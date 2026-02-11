@@ -113,15 +113,16 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
             sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
 
             if systemctl daemon-reload; then
-                if systemctl enable --now "${TARGET_UNIT}"; then
+                if systemctl start "${TARGET_UNIT}"; then
                     echo ""
                     ok "systemd system service installed and started."
                     printf "\n${BOLD}  Service unit:${RESET}      %s\n" "${TARGET_UNIT}"
                     printf "${BOLD}  Status:${RESET}            systemctl status %s\n" "${TARGET_UNIT}"
                     printf "${BOLD}  Logs:${RESET}              journalctl -u %s -f\n" "${TARGET_UNIT}"
+                    printf "${BOLD}  Enable on boot:${RESET}    systemctl enable %s\n" "${TARGET_UNIT}"
                 else
-                    warn "installed ${SERVICE_PATH}, but failed to enable/start ${TARGET_UNIT}"
-                    warn "you can try: systemctl enable --now ${TARGET_UNIT}"
+                    warn "installed ${SERVICE_PATH}, but failed to start ${TARGET_UNIT}"
+                    warn "you can try: systemctl start ${TARGET_UNIT}"
                 fi
             else
                 warn "failed to run 'systemctl daemon-reload'"
@@ -141,10 +142,14 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
             sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
 
             if systemctl --user daemon-reload; then
-                echo ""
-                ok "systemd user service installed."
-                printf "\n${BOLD}  Start now:${RESET}         systemctl --user start sentinel\n"
-                printf "${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
+                if systemctl --user start sentinel; then
+                    echo ""
+                    ok "systemd user service installed and started."
+                else
+                    warn "service installed, but failed to start user unit"
+                    warn "you can try: systemctl --user start sentinel"
+                fi
+                printf "\n${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
                 printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
                 printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
                 printf "    sudo loginctl enable-linger \$USER\n"
@@ -162,7 +167,7 @@ fi
 if [ "$OS" = "darwin" ]; then
     echo ""
     info "On macOS, you can create a launchd plist to start Sentinel on login."
-    info "See: https://github.com/${REPO}#running-as-a-service"
+    info "See: https://github.com/${REPO}#after-installation-user-journey"
 fi
 
 # --- Verify PATH ---

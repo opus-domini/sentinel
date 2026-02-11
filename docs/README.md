@@ -59,16 +59,19 @@ Token authentication setup for protected access.
 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash
 ```
 
-Optional overrides:
+What `install.sh` does on Linux:
 
-- `INSTALL_DIR=/usr/local/bin`
-- `VERSION=vX.Y.Z`
-- `SYSTEMD_TARGET_USER=your-user` (when running installer as root)
-
-When run as `root` on Linux, the installer now defaults to:
-
-- binary path: `/usr/local/bin/sentinel`
-- service mode: systemd system template (`sentinel@root`, or `sentinel@$SYSTEMD_TARGET_USER`)
+- regular user:
+  - installs binary to `~/.local/bin/sentinel`
+  - installs `~/.config/systemd/user/sentinel.service`
+  - starts the service (`systemctl --user start sentinel`)
+- root:
+  - installs binary to `/usr/local/bin/sentinel`
+  - installs `/etc/systemd/system/sentinel@.service`
+  - starts `sentinel@root` (or `sentinel@$SYSTEMD_TARGET_USER`)
+- optional persistence:
+  - `systemctl --user enable sentinel` (regular user)
+  - `systemctl enable sentinel@root` (root)
 
 ### 2) Go install
 
@@ -96,44 +99,56 @@ If needed:
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
-### 3) Run from source
+For development from source, see `CONTRIBUTING.md`.
 
-Requirements:
+## After Installation (User Journey)
 
-- `Go 1.25+`
-- `Node.js 20+`
-- `npm`
-- Linux or macOS
-- `tmux` (required only for tmux workflows)
+### 1) Confirm service status
+
+`install.sh` already starts the service for you.
+
+If installed as regular user:
 
 ```bash
-git clone https://github.com/opus-domini/sentinel.git
-cd sentinel
-make run
+systemctl --user status sentinel
+journalctl --user -u sentinel -f
 ```
+
+If installed as root:
+
+```bash
+systemctl status sentinel@root
+journalctl -u sentinel@root -f
+```
+
+If you used `SYSTEMD_TARGET_USER`, replace `root` with that user in the unit name.
+
+Optional: persist across reboot/login.
+
+```bash
+# regular user
+systemctl --user enable sentinel
+
+# root/system install
+systemctl enable sentinel@root
+```
+
+If you used `SYSTEMD_TARGET_USER`, enable `sentinel@your-user` instead.
+
+### 2) Open Sentinel
 
 Open `http://127.0.0.1:4040`.
 
-## First Run
+Default binding is local-only (`127.0.0.1:4040`).
 
-- Default listen: `127.0.0.1:4040`
-- Config file: `~/.sentinel/config.toml`
-- Data dir: `~/.sentinel`
+### 3) Edit config file (recommended)
 
-If token auth is enabled, the UI asks for the token before access.
+Sentinel uses:
 
-Start Sentinel in foreground:
+- config file: `~/.sentinel/config.toml`
+- data dir: `~/.sentinel`
 
-```bash
-sentinel serve
-```
-
-Run Sentinel as a Linux user daemon:
-
-```bash
-sentinel service install
-sentinel service status
-```
+The config file is created on first startup.
 
 ## CLI Subcommands
 
@@ -156,44 +171,48 @@ sentinel --help
 sentinel --version
 ```
 
-## Running as a Service
+## Configuration File (Recommended)
 
-### Linux user service (recommended)
+By default Sentinel listens on:
 
-```bash
-sentinel service install
-sentinel service status
-journalctl --user -u sentinel -f
+```toml
+listen = "127.0.0.1:4040"
 ```
 
-Optional boot start without interactive login:
+For remote access, update `~/.sentinel/config.toml`:
 
-```bash
-sudo loginctl enable-linger "$USER"
+```toml
+listen = "0.0.0.0:4040"
+token = "strong-token"
+allowed_origins = ["https://sentinel.example.com"]
+log_level = "info"
 ```
 
-### Linux user service (manual)
+After editing config, restart the service.
+
+Regular user service:
 
 ```bash
-systemctl --user enable --now sentinel
-journalctl --user -u sentinel -f
+systemctl --user restart sentinel
 ```
 
-### Linux system-level template service
+Root/system service:
 
 ```bash
-sudo cp contrib/sentinel@.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now sentinel@your-user
+systemctl restart sentinel@root
 ```
 
-### macOS
+If you used `SYSTEMD_TARGET_USER`, restart `sentinel@your-user` instead.
 
-`install.sh` installs the binary and prints launchd guidance.
+Security recommendations:
 
-## Configuration
+- never expose Sentinel without token auth;
+- prefer private networking (Tailscale) or authenticated Cloudflare Tunnel;
+- set `allowed_origins` explicitly when using reverse proxies.
 
-Environment variables override config file values.
+## Advanced: Environment Variables
+
+Environment variables override config file values and are useful for technical/automation scenarios.
 
 | Environment variable | Config key | Default | Description |
 | --- | --- | --- | --- |
@@ -202,32 +221,6 @@ Environment variables override config file values.
 | `SENTINEL_ALLOWED_ORIGINS` | `allowed_origins` | auto | Comma-separated allowlist |
 | `SENTINEL_LOG_LEVEL` | `log_level` | `info` | `debug`, `info`, `warn`, `error` |
 | `SENTINEL_DATA_DIR` | n/a | `~/.sentinel` | Data directory |
-
-Example:
-
-```bash
-SENTINEL_TOKEN='replace-this' \
-SENTINEL_LOG_LEVEL=debug \
-./build/sentinel
-```
-
-## Remote Access
-
-For local-only usage keep `127.0.0.1:4040`.
-For remote usage, bind to `0.0.0.0` and place Sentinel behind private networking or an authenticated tunnel.
-
-```bash
-SENTINEL_LISTEN=0.0.0.0:4040 \
-SENTINEL_TOKEN='strong-token' \
-SENTINEL_ALLOWED_ORIGINS='https://sentinel.example.com' \
-./build/sentinel
-```
-
-Recommended:
-
-- never expose without token auth;
-- prefer Tailscale or authenticated Cloudflare Tunnel;
-- set `SENTINEL_ALLOWED_ORIGINS` explicitly when behind reverse proxy.
 
 ## Current Limitations
 
