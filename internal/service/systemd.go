@@ -59,12 +59,12 @@ func InstallUser(opts InstallUserOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(servicePath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(servicePath), 0o750); err != nil {
 		return fmt.Errorf("create systemd user directory: %w", err)
 	}
 
 	unit := renderUserUnit(execPath)
-	if err := os.WriteFile(servicePath, []byte(unit), 0o644); err != nil {
+	if err := os.WriteFile(servicePath, []byte(unit), 0o600); err != nil {
 		return fmt.Errorf("write user service: %w", err)
 	}
 
@@ -88,11 +88,12 @@ func UninstallUser(opts UninstallUserOptions) error {
 		return err
 	}
 
-	if opts.Disable && opts.Stop {
+	switch {
+	case opts.Disable && opts.Stop:
 		_ = runSystemctlUser("disable", "--now", "sentinel")
-	} else if opts.Disable {
+	case opts.Disable:
 		_ = runSystemctlUser("disable", "sentinel")
-	} else if opts.Stop {
+	case opts.Stop:
 		_ = runSystemctlUser("stop", "sentinel")
 	}
 

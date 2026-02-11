@@ -22,6 +22,14 @@ var (
 	currentVersionFn   = currentVersion
 )
 
+func writef(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+func writeln(w io.Writer, args ...any) {
+	_, _ = fmt.Fprintln(w, args...)
+}
+
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	ctx := commandContext{stdout: stdout, stderr: stderr}
 
@@ -31,7 +39,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "-v", "--version", "version":
-		fmt.Fprintf(stdout, "sentinel version %s\n", currentVersionFn())
+		writef(stdout, "sentinel version %s\n", currentVersionFn())
 		return 0
 	case "serve":
 		return runServeCommand(ctx, args[1:])
@@ -47,7 +55,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		if strings.HasPrefix(args[0], "-") {
 			return runServeCommand(ctx, args)
 		}
-		fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
+		writef(stderr, "unknown command: %s\n\n", args[0])
 		printRootHelp(stderr)
 		return 2
 	}
@@ -65,7 +73,7 @@ func runServeCommand(ctx commandContext, args []string) int {
 		return 0
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
 		printServeHelp(ctx.stderr)
 		return 2
 	}
@@ -89,7 +97,7 @@ func runServiceCommand(ctx commandContext, args []string) int {
 		printServiceHelp(ctx.stdout)
 		return 0
 	default:
-		fmt.Fprintf(ctx.stderr, "unknown service command: %s\n\n", args[0])
+		writef(ctx.stderr, "unknown service command: %s\n\n", args[0])
 		printServiceHelp(ctx.stderr)
 		return 2
 	}
@@ -110,7 +118,7 @@ func runServiceInstallCommand(ctx commandContext, args []string) int {
 		return 0
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
 		printServiceInstallHelp(ctx.stderr)
 		return 2
 	}
@@ -121,22 +129,23 @@ func runServiceInstallCommand(ctx commandContext, args []string) int {
 		Start:    *start,
 	})
 	if err != nil {
-		fmt.Fprintf(ctx.stderr, "service install failed: %v\n", err)
+		writef(ctx.stderr, "service install failed: %v\n", err)
 		return 1
 	}
 
 	path, pathErr := service.UserServicePath()
 	if pathErr == nil {
-		fmt.Fprintf(ctx.stdout, "service installed: %s\n", path)
+		writef(ctx.stdout, "service installed: %s\n", path)
 	}
-	if *enable && *start {
-		fmt.Fprintln(ctx.stdout, "service enabled and started")
-	} else if *enable {
-		fmt.Fprintln(ctx.stdout, "service enabled")
-	} else if *start {
-		fmt.Fprintln(ctx.stdout, "service started")
-	} else {
-		fmt.Fprintln(ctx.stdout, "service installed (not enabled, not started)")
+	switch {
+	case *enable && *start:
+		writeln(ctx.stdout, "service enabled and started")
+	case *enable:
+		writeln(ctx.stdout, "service enabled")
+	case *start:
+		writeln(ctx.stdout, "service started")
+	default:
+		writeln(ctx.stdout, "service installed (not enabled, not started)")
 	}
 	return 0
 }
@@ -156,7 +165,7 @@ func runServiceUninstallCommand(ctx commandContext, args []string) int {
 		return 0
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
 		printServiceUninstallHelp(ctx.stderr)
 		return 2
 	}
@@ -167,10 +176,10 @@ func runServiceUninstallCommand(ctx commandContext, args []string) int {
 		RemoveUnit: *removeUnit,
 	})
 	if err != nil {
-		fmt.Fprintf(ctx.stderr, "service uninstall failed: %v\n", err)
+		writef(ctx.stderr, "service uninstall failed: %v\n", err)
 		return 1
 	}
-	fmt.Fprintln(ctx.stdout, "service uninstalled")
+	writeln(ctx.stdout, "service uninstalled")
 	return 0
 }
 
@@ -186,22 +195,22 @@ func runServiceStatusCommand(ctx commandContext, args []string) int {
 		return 0
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
 		printServiceStatusHelp(ctx.stderr)
 		return 2
 	}
 
 	status, err := userStatusFn()
 	if err != nil {
-		fmt.Fprintf(ctx.stderr, "service status failed: %v\n", err)
+		writef(ctx.stderr, "service status failed: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(ctx.stdout, "service file: %s\n", status.ServicePath)
-	fmt.Fprintf(ctx.stdout, "unit exists: %t\n", status.UnitFileExists)
-	fmt.Fprintf(ctx.stdout, "systemctl: %t\n", status.SystemctlAvailable)
+	writef(ctx.stdout, "service file: %s\n", status.ServicePath)
+	writef(ctx.stdout, "unit exists: %t\n", status.UnitFileExists)
+	writef(ctx.stdout, "systemctl: %t\n", status.SystemctlAvailable)
 	if status.SystemctlAvailable {
-		fmt.Fprintf(ctx.stdout, "enabled: %s\n", status.EnabledState)
-		fmt.Fprintf(ctx.stdout, "active: %s\n", status.ActiveState)
+		writef(ctx.stdout, "enabled: %s\n", status.EnabledState)
+		writef(ctx.stdout, "active: %s\n", status.ActiveState)
 	}
 	return 0
 }
@@ -218,7 +227,7 @@ func runDoctorCommand(ctx commandContext, args []string) int {
 		return 0
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
 		printDoctorHelp(ctx.stderr)
 		return 2
 	}
@@ -228,82 +237,82 @@ func runDoctorCommand(ctx commandContext, args []string) int {
 	systemctlPath, systemctlErr := exec.LookPath("systemctl")
 	status, statusErr := userStatusFn()
 
-	fmt.Fprintln(ctx.stdout, "Sentinel doctor report")
-	fmt.Fprintln(ctx.stdout, "---------------------")
-	fmt.Fprintf(ctx.stdout, "os: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	fmt.Fprintf(ctx.stdout, "supported host: %t\n", runtime.GOOS == "linux" || runtime.GOOS == "darwin")
+	writeln(ctx.stdout, "Sentinel doctor report")
+	writeln(ctx.stdout, "---------------------")
+	writef(ctx.stdout, "os: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	writef(ctx.stdout, "supported host: %t\n", runtime.GOOS == "linux" || runtime.GOOS == "darwin")
 	if tmuxErr == nil {
-		fmt.Fprintf(ctx.stdout, "tmux: %s\n", tmuxPath)
+		writef(ctx.stdout, "tmux: %s\n", tmuxPath)
 	} else {
-		fmt.Fprintln(ctx.stdout, "tmux: not found")
+		writeln(ctx.stdout, "tmux: not found")
 	}
-	fmt.Fprintf(ctx.stdout, "listen: %s\n", cfg.ListenAddr)
-	fmt.Fprintf(ctx.stdout, "data dir: %s\n", cfg.DataDir)
-	fmt.Fprintf(ctx.stdout, "token required: %t\n", cfg.Token != "")
+	writef(ctx.stdout, "listen: %s\n", cfg.ListenAddr)
+	writef(ctx.stdout, "data dir: %s\n", cfg.DataDir)
+	writef(ctx.stdout, "token required: %t\n", cfg.Token != "")
 	if systemctlErr == nil {
-		fmt.Fprintf(ctx.stdout, "systemctl: %s\n", systemctlPath)
+		writef(ctx.stdout, "systemctl: %s\n", systemctlPath)
 	} else {
-		fmt.Fprintln(ctx.stdout, "systemctl: not found")
+		writeln(ctx.stdout, "systemctl: not found")
 	}
 	if statusErr == nil {
-		fmt.Fprintf(ctx.stdout, "user unit file: %s\n", status.ServicePath)
-		fmt.Fprintf(ctx.stdout, "user unit exists: %t\n", status.UnitFileExists)
+		writef(ctx.stdout, "user unit file: %s\n", status.ServicePath)
+		writef(ctx.stdout, "user unit exists: %t\n", status.UnitFileExists)
 		if status.SystemctlAvailable {
-			fmt.Fprintf(ctx.stdout, "user unit enabled: %s\n", status.EnabledState)
-			fmt.Fprintf(ctx.stdout, "user unit active: %s\n", status.ActiveState)
+			writef(ctx.stdout, "user unit enabled: %s\n", status.EnabledState)
+			writef(ctx.stdout, "user unit active: %s\n", status.ActiveState)
 		}
 	} else {
-		fmt.Fprintf(ctx.stdout, "service status: unavailable (%v)\n", statusErr)
+		writef(ctx.stdout, "service status: unavailable (%v)\n", statusErr)
 	}
 	return 0
 }
 
 func printRootHelp(w io.Writer) {
-	fmt.Fprintln(w, "Sentinel command-line interface")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  sentinel [serve]")
-	fmt.Fprintln(w, "  sentinel service <install|uninstall|status>")
-	fmt.Fprintln(w, "  sentinel doctor")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  serve      Start Sentinel HTTP server (default)")
-	fmt.Fprintln(w, "  service    Manage systemd user service (Linux)")
-	fmt.Fprintln(w, "  doctor     Check local environment and runtime config")
+	writeln(w, "Sentinel command-line interface")
+	writeln(w, "")
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel [serve]")
+	writeln(w, "  sentinel service <install|uninstall|status>")
+	writeln(w, "  sentinel doctor")
+	writeln(w, "")
+	writeln(w, "Commands:")
+	writeln(w, "  serve      Start Sentinel HTTP server (default)")
+	writeln(w, "  service    Manage systemd user service (Linux)")
+	writeln(w, "  doctor     Check local environment and runtime config")
 }
 
 func printServeHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  sentinel serve")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Starts the Sentinel server using config file/env defaults.")
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel serve")
+	writeln(w, "")
+	writeln(w, "Starts the Sentinel server using config file/env defaults.")
 }
 
 func printServiceHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  sentinel service install [-exec PATH] [-enable=true] [-start=true]")
-	fmt.Fprintln(w, "  sentinel service uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
-	fmt.Fprintln(w, "  sentinel service status")
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service install [-exec PATH] [-enable=true] [-start=true]")
+	writeln(w, "  sentinel service uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
+	writeln(w, "  sentinel service status")
 }
 
 func printServiceInstallHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  sentinel service install [-exec PATH] [-enable=true] [-start=true]")
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service install [-exec PATH] [-enable=true] [-start=true]")
 }
 
 func printServiceUninstallHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  sentinel service uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
 }
 
 func printServiceStatusHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  sentinel service status")
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service status")
 }
 
 func printDoctorHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  sentinel doctor")
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel doctor")
 }
 
 func currentVersion() string {
