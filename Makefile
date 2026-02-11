@@ -94,11 +94,15 @@ install: build ## Install binary and systemd user service
 		mkdir -p $(SERVICEDIR); \
 		sed 's|ExecStart=.*|ExecStart=$(BINDIR)/sentinel|' contrib/sentinel.service \
 			> $(SERVICEDIR)/sentinel.service; \
-		systemctl --user daemon-reload; \
-		echo "systemd user service installed."; \
-		echo "  Start:   systemctl --user start sentinel"; \
-		echo "  Enable:  systemctl --user enable sentinel"; \
-		echo "  Logs:    journalctl --user -u sentinel -f"; \
+		if systemctl --user daemon-reload; then \
+			echo "systemd user service installed."; \
+			echo "  Start:   systemctl --user start sentinel"; \
+			echo "  Enable:  systemctl --user enable sentinel"; \
+			echo "  Logs:    journalctl --user -u sentinel -f"; \
+		else \
+			echo "warning: failed to run 'systemctl --user daemon-reload' (no active user bus?)"; \
+			echo "service file written to $(SERVICEDIR)/sentinel.service"; \
+		fi; \
 	fi
 
 .PHONY: uninstall

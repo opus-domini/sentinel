@@ -14,6 +14,7 @@ SERVICE_DIR="$HOME/.config/systemd/user"
 
 # --- Colors ---
 RED='\033[0;31m'
+YELLOW='\033[0;33m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
@@ -21,6 +22,7 @@ RESET='\033[0m'
 
 info()  { printf "${CYAN}%s${RESET}\n" "$*"; }
 ok()    { printf "${GREEN}%s${RESET}\n" "$*"; }
+warn()  { printf "${YELLOW}warning: %s${RESET}\n" "$*" >&2; }
 err()   { printf "${RED}error: %s${RESET}\n" "$*" >&2; exit 1; }
 
 # --- Detect platform ---
@@ -42,7 +44,9 @@ esac
 # --- Check dependencies ---
 command -v curl  >/dev/null 2>&1 || err "curl is required but not installed"
 command -v tar   >/dev/null 2>&1 || err "tar is required but not installed"
-command -v tmux  >/dev/null 2>&1 || err "tmux is required but not installed"
+if ! command -v tmux >/dev/null 2>&1; then
+    warn "tmux was not found on this host; tmux features will be unavailable until it is installed"
+fi
 
 # --- Get version ---
 if [ -z "${VERSION:-}" ]; then
@@ -50,6 +54,9 @@ if [ -z "${VERSION:-}" ]; then
     VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
         | grep '"tag_name"' | cut -d'"' -f4)
     [ -n "$VERSION" ] || err "could not determine latest version"
+fi
+if [ "${VERSION#v}" = "${VERSION}" ]; then
+    VERSION="v${VERSION}"
 fi
 
 info "Installing Sentinel ${VERSION} (${OS}/${ARCH})..."
@@ -74,49 +81,37 @@ ok "Installed sentinel to ${INSTALL_DIR}/sentinel"
 if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
     mkdir -p "$SERVICE_DIR"
 
-    # Adjust ExecStart if using a non-default install dir
     EXEC_START="${INSTALL_DIR}/sentinel"
-    cat > "${SERVICE_DIR}/sentinel.service" << EOF
-[Unit]
-Description=Sentinel - tmux session manager
-Documentation=https://github.com/${REPO}
-StartLimitIntervalSec=60
-StartLimitBurst=4
+    SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel.service"
+    TEMPLATE_PATH="${TMP}/sentinel.service"
 
-[Service]
-Type=simple
-ExecStart=${EXEC_START}
-Restart=on-failure
-RestartSec=2
-# Preserve tmux server/sessions across sentinel restarts.
-# Default systemd KillMode=control-group would terminate tmux too.
-KillMode=process
-Environment=SENTINEL_LOG_LEVEL=info
-Environment=TERM=xterm-256color
-Environment=LANG=C.UTF-8
-SystemCallArchitectures=native
-NoNewPrivileges=true
+    info "Installing systemd user service from ${SERVICE_TEMPLATE_URL}..."
+    if curl -fsSL "${SERVICE_TEMPLATE_URL}" -o "${TEMPLATE_PATH}"; then
+        ESCAPED_EXEC_START=$(printf '%s\n' "${EXEC_START}" | sed 's/[\/&]/\\&/g')
+        sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_DIR}/sentinel.service"
 
-[Install]
-WantedBy=default.target
-EOF
-
-    systemctl --user daemon-reload
-
-    echo ""
-    ok "systemd user service installed."
-    printf "\n${BOLD}  Start now:${RESET}         systemctl --user start sentinel\n"
-    printf "${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
-    printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
-    printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
-    printf "    sudo loginctl enable-linger \$USER\n"
+        if systemctl --user daemon-reload; then
+            echo ""
+            ok "systemd user service installed."
+            printf "\n${BOLD}  Start now:${RESET}         systemctl --user start sentinel\n"
+            printf "${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
+            printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
+            printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
+            printf "    sudo loginctl enable-linger \$USER\n"
+        else
+            warn "failed to run 'systemctl --user daemon-reload' (likely no active user bus)"
+            warn "service file was written to ${SERVICE_DIR}/sentinel.service"
+        fi
+    else
+        warn "failed to download contrib/sentinel.service for ${VERSION}; skipping service installation"
+    fi
 fi
 
 # --- macOS hint ---
 if [ "$OS" = "darwin" ]; then
     echo ""
     info "On macOS, you can create a launchd plist to start Sentinel on login."
-    info "See: https://github.com/${REPO}#install-as-a-service"
+    info "See: https://github.com/${REPO}#running-as-a-service"
 fi
 
 # --- Verify PATH ---

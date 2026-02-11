@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	clientassets "sentinel/client"
+	clientassets "github.com/opus-domini/sentinel/client"
 )
 
 var distFS fs.FS

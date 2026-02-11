@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"sentinel/internal/security"
-	"sentinel/internal/store"
-	"sentinel/internal/terminals"
-	"sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/terminals"
+	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
 // ---------------------------------------------------------------------------
@@ -644,6 +644,53 @@ func TestListSessionsHandler(t *testing.T) {
 		}
 		if s["hash"] == nil || s["hash"] == "" {
 			t.Error("hash should not be empty")
+		}
+	})
+
+	t.Run("fallback to list panes when snapshot is missing", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now().UTC().Truncate(time.Second)
+		tm := &mockTmux{
+			listSessionsFn: func(_ context.Context) ([]tmux.Session, error) {
+				return []tmux.Session{
+					{Name: "dev", Windows: 2, Attached: 1, CreatedAt: now, ActivityAt: now},
+				}, nil
+			},
+			listActivePaneCommandsFn: func(_ context.Context) (map[string]tmux.PaneSnapshot, error) {
+				return map[string]tmux.PaneSnapshot{}, nil
+			},
+			listPanesFn: func(_ context.Context, session string) ([]tmux.Pane, error) {
+				if session != "dev" {
+					t.Fatalf("unexpected session %q", session)
+				}
+				return []tmux.Pane{
+					{PaneID: "%1"},
+					{PaneID: "%2"},
+					{PaneID: "%3"},
+					{PaneID: "%4"},
+				}, nil
+			},
+		}
+		h := newTestHandler(t, tm, nil)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+		h.listSessions(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		sessions, _ := data["sessions"].([]any)
+		if len(sessions) != 1 {
+			t.Fatalf("sessions count = %d, want 1", len(sessions))
+		}
+		s := sessions[0].(map[string]any)
+		if int(s["panes"].(float64)) != 4 {
+			t.Errorf("panes = %v, want 4", s["panes"])
 		}
 	})
 

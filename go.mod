@@ -1,4 +1,4 @@
-module sentinel
+module github.com/opus-domini/sentinel
 
 go 1.25.5
 

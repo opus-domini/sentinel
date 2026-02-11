@@ -1,5 +1,5 @@
 [Unit]
-Description=Sentinel - tmux session manager for %I
+Description=Sentinel - terminal workspace for %I
 Documentation=https://github.com/opus-domini/sentinel
 After=network.target
 StartLimitIntervalSec=60

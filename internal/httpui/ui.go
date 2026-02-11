@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"sentinel/internal/security"
-	"sentinel/internal/term"
-	"sentinel/internal/terminals"
-	"sentinel/internal/tmux"
-	"sentinel/internal/validate"
-	"sentinel/internal/ws"
+	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/term"
+	"github.com/opus-domini/sentinel/internal/terminals"
+	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/validate"
+	"github.com/opus-domini/sentinel/internal/ws"
 )
 
 const (
@@ -155,7 +155,18 @@ func (h *Handler) attachTerminalWS(w http.ResponseWriter, r *http.Request) {
 			"state":    "attached",
 			"terminal": terminalName,
 		},
-		registerFn: nil,
+		registerFn: func(shutdown func(string)) (string, func()) {
+			if h.terminals == nil {
+				return "", func() {}
+			}
+			return h.terminals.Register(
+				terminalName,
+				strings.TrimSpace(r.RemoteAddr),
+				defaultTermCols,
+				defaultTermRows,
+				shutdown,
+			)
+		},
 	})
 }
 
@@ -164,6 +175,10 @@ type attachPTYOptions struct {
 	startPTY   func(ctx context.Context) (*term.PTY, error)
 	statusMsg  map[string]any
 	registerFn func(shutdown func(string)) (id string, unregister func())
+}
+
+type pingWriter interface {
+	WritePing(payload []byte) error
 }
 
 func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
@@ -276,14 +291,7 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 	// Keepalive pings
 	pingTicker := time.NewTicker(30 * time.Second)
 	defer pingTicker.Stop()
-	go func() {
-		for range pingTicker.C {
-			if pingErr := wsConn.WritePing([]byte("k")); pingErr != nil {
-				sendErr(pingErr)
-				return
-			}
-		}
-	}()
+	go runPingLoop(attachCtx, wsConn, pingTicker.C, sendErr)
 
 	err = <-errCh
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, ws.ErrClosed) {
@@ -292,6 +300,20 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 		return
 	}
 	_ = wsConn.WriteClose(ws.CloseNormal, "done")
+}
+
+func runPingLoop(ctx context.Context, conn pingWriter, ticks <-chan time.Time, sendErr func(error)) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+			if pingErr := conn.WritePing([]byte("k")); pingErr != nil {
+				sendErr(pingErr)
+				return
+			}
+		}
+	}
 }
 
 func handleControlMessage(payload []byte, pty *term.PTY) (int, int, error) {

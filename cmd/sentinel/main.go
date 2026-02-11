@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,15 +12,19 @@ import (
 	"syscall"
 	"time"
 
-	"sentinel/internal/api"
-	"sentinel/internal/config"
-	"sentinel/internal/httpui"
-	"sentinel/internal/security"
-	"sentinel/internal/store"
-	"sentinel/internal/terminals"
+	"github.com/opus-domini/sentinel/internal/api"
+	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/httpui"
+	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/terminals"
 )
 
 func main() {
+	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func serve() int {
 	cfg := config.Load()
 	initLogger(cfg.LogLevel)
 
@@ -29,20 +34,25 @@ func main() {
 	mux := http.NewServeMux()
 	if err := httpui.Register(mux, guard, terminalRegistry); err != nil {
 		slog.Error("frontend init failed", "err", err)
-		os.Exit(1)
+		return 1
 	}
 
 	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))
 	if err != nil {
 		slog.Error("store init failed", "err", err)
-		os.Exit(1)
+		return 1
 	}
 
 	api.Register(mux, guard, terminalRegistry, st)
 
 	exitCode := run(cfg, mux)
 	_ = st.Close()
-	os.Exit(exitCode)
+	return exitCode
+}
+
+type commandContext struct {
+	stdout io.Writer
+	stderr io.Writer
 }
 
 func run(cfg config.Config, mux *http.ServeMux) int {

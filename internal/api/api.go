@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"sentinel/internal/security"
-	"sentinel/internal/store"
-	"sentinel/internal/terminals"
-	"sentinel/internal/tmux"
-	"sentinel/internal/validate"
+	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/terminals"
+	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/validate"
 )
 
 type tmuxService interface {
@@ -154,7 +154,12 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 
 		panes := snap.Panes
 		if panes == 0 {
-			panes = s.Windows
+			// Fallback to an exact pane count when snapshots are missing.
+			if paneList, paneErr := h.tmux.ListPanes(ctx, s.Name); paneErr == nil {
+				panes = len(paneList)
+			} else {
+				panes = s.Windows
+			}
 		}
 
 		result = append(result, enrichedSession{
