@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="docs/assets/images/logo.png" alt="Sentinel logo" width="320"/>
+    <img src="docs/assets/images/logo.png" alt="Sentinel logo" width="500"/>
     <hr />
     <p>Your terminal watchtower.</p>
 </div>
