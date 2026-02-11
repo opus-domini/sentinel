@@ -1,0 +1,66 @@
+name: Feature request
+description: Suggest an improvement for Sentinel
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for new features and substantial improvements.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Short feature title
+      placeholder: Add configurable terminal startup command
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What pain point does this solve?
+      placeholder: I cannot configure startup command for standalone terminals.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe your ideal approach
+      placeholder: Add `SENTINEL_SHELL_COMMAND` config + UI setting.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you evaluate?
+      placeholder: Wrapper scripts, manual shell aliases, etc.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: API/UX impact
+      description: Mention any expected API changes or UI behavior changes
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Links, references, mockups, or examples
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This request is scoped to one clear improvement.
+          required: false

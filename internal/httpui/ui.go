@@ -1,0 +1,333 @@
+package httpui
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"sentinel/internal/security"
+	"sentinel/internal/term"
+	"sentinel/internal/terminals"
+	"sentinel/internal/tmux"
+	"sentinel/internal/validate"
+	"sentinel/internal/ws"
+)
+
+const (
+	defaultTermCols = 120
+	defaultTermRows = 40
+)
+
+type Handler struct {
+	guard     *security.Guard
+	terminals *terminals.Registry
+}
+
+func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry) error {
+	h := &Handler{guard: guard, terminals: terminalRegistry}
+	if err := registerAssetRoutes(mux); err != nil {
+		return err
+	}
+	mux.HandleFunc("GET /ws/tmux", h.attachWS)
+	mux.HandleFunc("GET /ws/terminals", h.attachTerminalWS)
+	mux.HandleFunc("GET /{path...}", h.spaPage)
+	return nil
+}
+
+func (h *Handler) spaPage(w http.ResponseWriter, r *http.Request) {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	urlPath := strings.TrimPrefix(r.URL.Path, "/")
+	if isReservedPath(urlPath) {
+		http.NotFound(w, r)
+		return
+	}
+
+	if urlPath != "" && serveDistPath(w, r, urlPath) {
+		return
+	}
+	if serveDistPath(w, r, "index.html") {
+		return
+	}
+	if !serveDistPath(w, r, "index.placeholder.html") {
+		http.Error(w, "frontend bundle missing", http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := h.guard.RequireWSToken(r); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	session := strings.TrimSpace(r.URL.Query().Get("session"))
+	if !validate.SessionName(session) {
+		http.Error(w, "invalid session", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	exists, err := tmux.SessionExists(ctx, session)
+	cancel()
+	if err != nil {
+		status, message := tmuxHTTPError(err)
+		http.Error(w, message, status)
+		return
+	}
+	if !exists {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	wsConn, err := ws.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer func() { _ = wsConn.Close() }()
+
+	h.attachPTY(wsConn, attachPTYOptions{
+		label: session,
+		startPTY: func(ctx context.Context) (*term.PTY, error) {
+			return term.StartTmuxAttach(ctx, session, defaultTermCols, defaultTermRows)
+		},
+		statusMsg: map[string]any{
+			"type":    "status",
+			"state":   "attached",
+			"session": session,
+		},
+		registerFn: func(shutdown func(string)) (string, func()) {
+			if h.terminals == nil {
+				return "", func() {}
+			}
+			return h.terminals.Register(
+				session,
+				strings.TrimSpace(r.RemoteAddr),
+				defaultTermCols,
+				defaultTermRows,
+				shutdown,
+			)
+		},
+	})
+}
+
+func (h *Handler) attachTerminalWS(w http.ResponseWriter, r *http.Request) {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := h.guard.RequireWSToken(r); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	terminalName := strings.TrimSpace(r.URL.Query().Get("terminal"))
+	if !validate.SessionName(terminalName) {
+		http.Error(w, "invalid terminal", http.StatusBadRequest)
+		return
+	}
+
+	wsConn, err := ws.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer func() { _ = wsConn.Close() }()
+
+	h.attachPTY(wsConn, attachPTYOptions{
+		label: terminalName,
+		startPTY: func(ctx context.Context) (*term.PTY, error) {
+			return term.StartShell(ctx, "", defaultTermCols, defaultTermRows)
+		},
+		statusMsg: map[string]any{
+			"type":     "status",
+			"state":    "attached",
+			"terminal": terminalName,
+		},
+		registerFn: nil,
+	})
+}
+
+type attachPTYOptions struct {
+	label      string
+	startPTY   func(ctx context.Context) (*term.PTY, error)
+	statusMsg  map[string]any
+	registerFn func(shutdown func(string)) (id string, unregister func())
+}
+
+func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
+	attachCtx, cancelAttach := context.WithCancel(context.Background())
+	defer cancelAttach()
+
+	pty, err := opts.startPTY(attachCtx)
+	if err != nil {
+		slog.Error("pty start failed", "label", opts.label, "err", err)
+		_ = wsConn.WriteText([]byte(`{"type":"error","code":"PTY_FAILED","message":"unable to start terminal"}`))
+		_ = wsConn.WriteClose(ws.CloseInternal, "pty start failed")
+		return
+	}
+	defer func() { _ = pty.Close() }()
+
+	var shutdownOnce sync.Once
+	shutdown := func(reason string) {
+		shutdownOnce.Do(func() {
+			cancelAttach()
+			_ = pty.Close()
+			_ = wsConn.Close()
+			slog.Info("terminal closed", "label", opts.label, "reason", reason)
+		})
+	}
+	defer shutdown("connection closed")
+
+	terminalID := ""
+	unregisterTerminal := func() {}
+	if opts.registerFn != nil {
+		terminalID, unregisterTerminal = opts.registerFn(func(reason string) {
+			shutdown(reason)
+		})
+		opts.statusMsg["terminalId"] = terminalID
+	}
+	defer unregisterTerminal()
+
+	statusPayload, err := json.Marshal(opts.statusMsg)
+	if err != nil {
+		slog.Error("marshal status failed", "label", opts.label, "err", err)
+		_ = wsConn.WriteClose(ws.CloseInternal, "internal error")
+		return
+	}
+	_ = wsConn.WriteText(statusPayload)
+
+	errCh := make(chan error, 1)
+	sendErr := func(err error) {
+		select {
+		case errCh <- err:
+		default:
+		}
+	}
+
+	// PTY → WebSocket
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, readErr := pty.Read(buf)
+			if n > 0 {
+				if werr := wsConn.WriteBinary(buf[:n]); werr != nil {
+					sendErr(werr)
+					return
+				}
+			}
+			if readErr != nil {
+				if !errors.Is(readErr, io.EOF) {
+					sendErr(readErr)
+				}
+				return
+			}
+		}
+	}()
+
+	// WebSocket → PTY
+	go func() {
+		for {
+			opcode, payload, readErr := wsConn.ReadMessage()
+			if readErr != nil {
+				sendErr(readErr)
+				return
+			}
+			switch opcode {
+			case ws.OpBinary:
+				if _, writeErr := pty.Write(payload); writeErr != nil {
+					sendErr(writeErr)
+					return
+				}
+			case ws.OpText:
+				cols, rows, ctrlErr := handleControlMessage(payload, pty)
+				if ctrlErr != nil {
+					sendErr(ctrlErr)
+					return
+				}
+				if terminalID != "" && cols > 0 && rows > 0 && h.terminals != nil {
+					h.terminals.UpdateSize(terminalID, cols, rows)
+				}
+			}
+		}
+	}()
+
+	// Wait for PTY exit
+	go func() {
+		waitErr := pty.Wait()
+		if waitErr != nil {
+			sendErr(waitErr)
+			return
+		}
+		sendErr(io.EOF)
+	}()
+
+	// Keepalive pings
+	pingTicker := time.NewTicker(30 * time.Second)
+	defer pingTicker.Stop()
+	go func() {
+		for range pingTicker.C {
+			if pingErr := wsConn.WritePing([]byte("k")); pingErr != nil {
+				sendErr(pingErr)
+				return
+			}
+		}
+	}()
+
+	err = <-errCh
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, ws.ErrClosed) {
+		slog.Warn("ws error", "label", opts.label, "err", err)
+		_ = wsConn.WriteClose(ws.CloseInternal, "connection error")
+		return
+	}
+	_ = wsConn.WriteClose(ws.CloseNormal, "done")
+}
+
+func handleControlMessage(payload []byte, pty *term.PTY) (int, int, error) {
+	if len(payload) > 8*1024 {
+		return 0, 0, errors.New("control payload too large")
+	}
+
+	var msg struct {
+		Type string `json:"type"`
+		Cols int    `json:"cols"`
+		Rows int    `json:"rows"`
+	}
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return 0, 0, nil
+	}
+	if msg.Type != "resize" {
+		return 0, 0, nil
+	}
+	if msg.Cols <= 0 || msg.Rows <= 0 {
+		return 0, 0, nil
+	}
+	if err := pty.Resize(msg.Cols, msg.Rows); err != nil {
+		return 0, 0, err
+	}
+	return msg.Cols, msg.Rows, nil
+}
+
+func tmuxHTTPError(err error) (int, string) {
+	switch {
+	case tmux.IsKind(err, tmux.ErrKindNotFound):
+		return http.StatusServiceUnavailable, "tmux binary not found"
+	case tmux.IsKind(err, tmux.ErrKindSessionNotFound):
+		return http.StatusNotFound, "session not found"
+	case tmux.IsKind(err, tmux.ErrKindServerNotRunning):
+		return http.StatusServiceUnavailable, "tmux server not running"
+	default:
+		return http.StatusInternalServerError, "tmux error"
+	}
+}

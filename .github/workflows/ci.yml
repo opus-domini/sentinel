@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - run: npm ci --prefix client
+      - run: npm --prefix client run lint
+      - run: npm --prefix client test
+      - run: npm --prefix client run build
+
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.8.0
+
+      - run: go test -race ./...
+      - run: go build -trimpath -o /tmp/sentinel ./cmd/sentinel

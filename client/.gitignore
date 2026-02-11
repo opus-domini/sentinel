@@ -1,0 +1,30 @@
+# Frontend-scoped allowlist: ignore everything by default.
+*
+
+# Keep this file tracked.
+!.gitignore
+
+# Project files used by Go embed/runtime and frontend tooling.
+!assets.go
+!package.json
+!package-lock.json
+!tsconfig.json
+!vite.config.ts
+!vitest.config.ts
+!eslint.config.js
+!prettier.config.js
+!.prettierignore
+!components.json
+!.cta.json
+
+# Frontend sources.
+!src/
+!src/**
+!public/
+!public/**
+
+# Keep the dist scaffold for go:embed, but ignore generated assets.
+!dist/
+dist/*
+!dist/.gitkeep
+!dist/index.placeholder.html
