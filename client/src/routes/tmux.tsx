@@ -74,7 +74,6 @@ function TmuxPage() {
   const [inspectorLoading, setInspectorLoading] = useState(false)
   const [inspectorError, setInspectorError] = useState('')
   const [tmuxUnavailable, setTmuxUnavailable] = useState(false)
-  const [tmuxUnavailableMessage, setTmuxUnavailableMessage] = useState('')
 
   const [killDialogSession, setKillDialogSession] = useState<string | null>(
     null,
@@ -196,7 +195,6 @@ function TmuxPage() {
       const data = await api<SessionsResponse>('/api/tmux/sessions')
       if (gen !== refreshGenerationRef.current) return
       setTmuxUnavailable(false)
-      setTmuxUnavailableMessage('')
       setSessions(data.sessions)
       const sessionNames = data.sessions.map((s) => s.name)
       const cur = tabsStateRef.current.activeSession
@@ -211,11 +209,7 @@ function TmuxPage() {
         error instanceof Error ? error.message : 'failed to refresh sessions'
       const unavailable = isTmuxBinaryMissingMessage(message)
       setTmuxUnavailable(unavailable)
-      setTmuxUnavailableMessage(unavailable ? message : '')
-      setConnection(
-        'error',
-        message,
-      )
+      setConnection('error', message)
     }
   }, [api, closeCurrentSocket, resetTerminal, setConnection])
 
@@ -252,15 +246,14 @@ function TmuxPage() {
       } catch (error) {
         if (gen !== inspectorGenerationRef.current) return
         const message =
-          error instanceof Error ? error.message : 'failed to load session details'
+          error instanceof Error
+            ? error.message
+            : 'failed to load session details'
         const unavailable = isTmuxBinaryMissingMessage(message)
         if (unavailable) {
           setTmuxUnavailable(true)
-          setTmuxUnavailableMessage(message)
         }
-        setInspectorError(
-          message,
-        )
+        setInspectorError(message)
       } finally {
         if (gen === inspectorGenerationRef.current && !bg)
           setInspectorLoading(false)
@@ -888,8 +881,6 @@ function TmuxPage() {
       <TmuxTerminalPanel
         connectionState={connectionState}
         statusDetail={statusDetail}
-        tmuxUnavailable={tmuxUnavailable}
-        tmuxUnavailableMessage={tmuxUnavailableMessage}
         openTabs={tabsState.openTabs}
         activeSession={tabsState.activeSession}
         inspectorLoading={inspectorLoading}
