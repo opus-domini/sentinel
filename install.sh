@@ -5,12 +5,26 @@ set -euo pipefail
 # Usage: curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash
 #
 # Environment variables:
-#   INSTALL_DIR   - Binary install directory (default: ~/.local/bin)
-#   VERSION       - Specific version to install (default: latest)
+#   INSTALL_DIR          - Binary install directory (default: ~/.local/bin, or /usr/local/bin when root)
+#   VERSION              - Specific version to install (default: latest)
+#   SYSTEMD_TARGET_USER  - systemd template user instance when running as root (default: root)
 
 REPO="opus-domini/sentinel"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-SERVICE_DIR="$HOME/.config/systemd/user"
+IS_ROOT=0
+if [ "$(id -u)" -eq 0 ]; then
+    IS_ROOT=1
+fi
+
+if [ -z "${INSTALL_DIR:-}" ]; then
+    if [ "$IS_ROOT" -eq 1 ]; then
+        INSTALL_DIR="/usr/local/bin"
+    else
+        INSTALL_DIR="$HOME/.local/bin"
+    fi
+fi
+
+USER_SERVICE_DIR="$HOME/.config/systemd/user"
+SYSTEM_SERVICE_DIR="/etc/systemd/system"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -24,6 +38,11 @@ info()  { printf "${CYAN}%s${RESET}\n" "$*"; }
 ok()    { printf "${GREEN}%s${RESET}\n" "$*"; }
 warn()  { printf "${YELLOW}warning: %s${RESET}\n" "$*" >&2; }
 err()   { printf "${RED}error: %s${RESET}\n" "$*" >&2; exit 1; }
+highlight_warn() {
+    printf "\n${YELLOW}${BOLD}==================== IMPORTANT ====================${RESET}\n" >&2
+    printf "${YELLOW}${BOLD}%s${RESET}\n" "$*" >&2
+    printf "${YELLOW}${BOLD}===================================================${RESET}\n\n" >&2
+}
 
 # --- Detect platform ---
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -45,7 +64,7 @@ esac
 command -v curl  >/dev/null 2>&1 || err "curl is required but not installed"
 command -v tar   >/dev/null 2>&1 || err "tar is required but not installed"
 if ! command -v tmux >/dev/null 2>&1; then
-    warn "tmux was not found on this host; tmux features will be unavailable until it is installed"
+    highlight_warn "tmux was not found on this host. Sentinel installed successfully, but tmux features will stay disabled until tmux is installed."
 fi
 
 # --- Get version ---
@@ -77,33 +96,65 @@ mkdir -p "$INSTALL_DIR"
 install -m755 "${TMP}/sentinel" "${INSTALL_DIR}/sentinel"
 ok "Installed sentinel to ${INSTALL_DIR}/sentinel"
 
-# --- Install systemd user service (Linux only) ---
+# --- Install systemd service (Linux only) ---
 if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
-    mkdir -p "$SERVICE_DIR"
-
     EXEC_START="${INSTALL_DIR}/sentinel"
-    SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel.service"
-    TEMPLATE_PATH="${TMP}/sentinel.service"
+    ESCAPED_EXEC_START=$(printf '%s\n' "${EXEC_START}" | sed 's/[\/&]/\\&/g')
 
-    info "Installing systemd user service from ${SERVICE_TEMPLATE_URL}..."
-    if curl -fsSL "${SERVICE_TEMPLATE_URL}" -o "${TEMPLATE_PATH}"; then
-        ESCAPED_EXEC_START=$(printf '%s\n' "${EXEC_START}" | sed 's/[\/&]/\\&/g')
-        sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_DIR}/sentinel.service"
+    if [ "$IS_ROOT" -eq 1 ]; then
+        TARGET_USER="${SYSTEMD_TARGET_USER:-root}"
+        TARGET_UNIT="sentinel@${TARGET_USER}"
+        SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel@.service"
+        TEMPLATE_PATH="${TMP}/sentinel@.service"
+        SERVICE_PATH="${SYSTEM_SERVICE_DIR}/sentinel@.service"
 
-        if systemctl --user daemon-reload; then
-            echo ""
-            ok "systemd user service installed."
-            printf "\n${BOLD}  Start now:${RESET}         systemctl --user start sentinel\n"
-            printf "${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
-            printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
-            printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
-            printf "    sudo loginctl enable-linger \$USER\n"
+        info "Running as root: installing system-level unit template from ${SERVICE_TEMPLATE_URL}..."
+        if curl -fsSL "${SERVICE_TEMPLATE_URL}" -o "${TEMPLATE_PATH}"; then
+            sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
+
+            if systemctl daemon-reload; then
+                if systemctl enable --now "${TARGET_UNIT}"; then
+                    echo ""
+                    ok "systemd system service installed and started."
+                    printf "\n${BOLD}  Service unit:${RESET}      %s\n" "${TARGET_UNIT}"
+                    printf "${BOLD}  Status:${RESET}            systemctl status %s\n" "${TARGET_UNIT}"
+                    printf "${BOLD}  Logs:${RESET}              journalctl -u %s -f\n" "${TARGET_UNIT}"
+                else
+                    warn "installed ${SERVICE_PATH}, but failed to enable/start ${TARGET_UNIT}"
+                    warn "you can try: systemctl enable --now ${TARGET_UNIT}"
+                fi
+            else
+                warn "failed to run 'systemctl daemon-reload'"
+                warn "service file was written to ${SERVICE_PATH}"
+            fi
         else
-            warn "failed to run 'systemctl --user daemon-reload' (likely no active user bus)"
-            warn "service file was written to ${SERVICE_DIR}/sentinel.service"
+            warn "failed to download contrib/sentinel@.service for ${VERSION}; skipping service installation"
         fi
     else
-        warn "failed to download contrib/sentinel.service for ${VERSION}; skipping service installation"
+        mkdir -p "$USER_SERVICE_DIR"
+        SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel.service"
+        TEMPLATE_PATH="${TMP}/sentinel.service"
+        SERVICE_PATH="${USER_SERVICE_DIR}/sentinel.service"
+
+        info "Installing systemd user service from ${SERVICE_TEMPLATE_URL}..."
+        if curl -fsSL "${SERVICE_TEMPLATE_URL}" -o "${TEMPLATE_PATH}"; then
+            sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
+
+            if systemctl --user daemon-reload; then
+                echo ""
+                ok "systemd user service installed."
+                printf "\n${BOLD}  Start now:${RESET}         systemctl --user start sentinel\n"
+                printf "${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
+                printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
+                printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
+                printf "    sudo loginctl enable-linger \$USER\n"
+            else
+                warn "failed to run 'systemctl --user daemon-reload' (likely no active user bus)"
+                warn "service file was written to ${SERVICE_PATH}"
+            fi
+        else
+            warn "failed to download contrib/sentinel.service for ${VERSION}; skipping service installation"
+        fi
     fi
 fi
 

@@ -59,6 +59,12 @@ Optional overrides:
 
 - `INSTALL_DIR=/usr/local/bin`
 - `VERSION=vX.Y.Z`
+- `SYSTEMD_TARGET_USER=your-user` (when running installer as root)
+
+When run as `root` on Linux, the installer now defaults to:
+
+- binary path: `/usr/local/bin/sentinel`
+- service mode: systemd system template (`sentinel@root`, or `sentinel@$SYSTEMD_TARGET_USER`)
 
 ### 2) Go install
 
