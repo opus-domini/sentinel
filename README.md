@@ -33,7 +33,9 @@ Interactive terminal focused on the active workspace.
 
 Responsive terminal workflow with touch-first controls.
 
-![Mobile tmux view](docs/assets/images/mobile-tmux.png)
+<p align="center">
+  <img src="docs/assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
+</p>
 
 ### Settings
 
