@@ -16,6 +16,8 @@ import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 type TmuxTerminalPanelProps = {
   connectionState: ConnectionState
   statusDetail: string
+  tmuxUnavailable: boolean
+  tmuxUnavailableMessage: string
   openTabs: Array<string>
   activeSession: string
   inspectorLoading: boolean
@@ -52,6 +54,8 @@ type TmuxTerminalPanelProps = {
 export default function TmuxTerminalPanel({
   connectionState,
   statusDetail,
+  tmuxUnavailable,
+  tmuxUnavailableMessage,
   openTabs,
   activeSession,
   inspectorLoading,
@@ -102,9 +106,12 @@ export default function TmuxTerminalPanel({
     <main
       className={cn(
         'grid min-h-0 min-w-0 grid-cols-1 overflow-hidden bg-[radial-gradient(circle_at_20%_-10%,rgba(30,64,175,.18),transparent_34%),var(--background)]',
-        showControls
-          ? 'grid-rows-[40px_30px_1fr_auto_28px]'
-          : 'grid-rows-[40px_30px_1fr_28px]',
+        showControls && tmuxUnavailable && 'grid-rows-[40px_30px_auto_1fr_auto_28px]',
+        showControls &&
+          !tmuxUnavailable &&
+          'grid-rows-[40px_30px_1fr_auto_28px]',
+        !showControls && tmuxUnavailable && 'grid-rows-[40px_30px_auto_1fr_28px]',
+        !showControls && !tmuxUnavailable && 'grid-rows-[40px_30px_1fr_28px]',
       )}
     >
       <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
@@ -141,6 +148,20 @@ export default function TmuxTerminalPanel({
         onKill={onKillTab}
         onReorder={onReorderTabs}
       />
+
+      {tmuxUnavailable && (
+        <div className="border-x border-b border-warning/45 bg-warning/20 px-3 py-2 text-[12px] text-warning-foreground">
+          <p className="font-semibold">tmux is not installed on this host.</p>
+          <p className="mt-0.5 text-secondary-foreground">
+            Install tmux and restart Sentinel to enable session management.
+          </p>
+          {tmuxUnavailableMessage.trim() !== '' && (
+            <p className="mt-1 truncate text-[11px] text-secondary-foreground">
+              {tmuxUnavailableMessage}
+            </p>
+          )}
+        </div>
+      )}
 
       <section className="grid min-h-0 min-w-0 grid-cols-1 grid-rows-[36px_1fr] border-x border-border-subtle">
         <div className="min-w-0 overflow-hidden border-b border-border-subtle bg-surface-overlay px-2.5 py-1">

@@ -95,6 +95,7 @@ export default function TerminalsSidebar({
             count={totalTerminals}
             hasToken={hasToken}
             lockTitle={lockLabel}
+            canCreate
             onToggleAdd={onCreateTerminal}
             onToggleLock={() => setIsTokenOpen(true)}
           />

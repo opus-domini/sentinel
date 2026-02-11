@@ -7,6 +7,7 @@ type SidebarHeaderProps = {
   count: number
   hasToken: boolean
   lockTitle: string
+  canCreate: boolean
   onToggleAdd: () => void
   onToggleLock: () => void
 }
@@ -16,6 +17,7 @@ export default function SidebarHeader({
   count,
   hasToken,
   lockTitle,
+  canCreate,
   onToggleAdd,
   onToggleLock,
 }: SidebarHeaderProps) {
@@ -28,13 +30,14 @@ export default function SidebarHeader({
         {count}
       </span>
       <div className="ml-auto flex items-center gap-1.5">
-        <TooltipHelper content="New session">
+        <TooltipHelper content={canCreate ? 'New session' : 'tmux not available'}>
           <Button
             variant="ghost"
             size="icon"
             className="border border-border bg-surface-hover text-foreground hover:bg-accent"
             onClick={onToggleAdd}
             aria-label="New session"
+            disabled={!canCreate}
           >
             <Plus className="h-4 w-4" />
           </Button>

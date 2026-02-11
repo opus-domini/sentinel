@@ -48,6 +48,11 @@ import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
 import { initialTabsState, tabsReducer } from '@/tabsReducer'
 
+function isTmuxBinaryMissingMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  return normalized.includes('tmux binary not found')
+}
+
 function TmuxPage() {
   const { tokenRequired } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -68,6 +73,8 @@ function TmuxPage() {
   >(null)
   const [inspectorLoading, setInspectorLoading] = useState(false)
   const [inspectorError, setInspectorError] = useState('')
+  const [tmuxUnavailable, setTmuxUnavailable] = useState(false)
+  const [tmuxUnavailableMessage, setTmuxUnavailableMessage] = useState('')
 
   const [killDialogSession, setKillDialogSession] = useState<string | null>(
     null,
@@ -188,6 +195,8 @@ function TmuxPage() {
     try {
       const data = await api<SessionsResponse>('/api/tmux/sessions')
       if (gen !== refreshGenerationRef.current) return
+      setTmuxUnavailable(false)
+      setTmuxUnavailableMessage('')
       setSessions(data.sessions)
       const sessionNames = data.sessions.map((s) => s.name)
       const cur = tabsStateRef.current.activeSession
@@ -198,9 +207,14 @@ function TmuxPage() {
       }
       dispatchTabs({ type: 'sync', sessions: sessionNames })
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'failed to refresh sessions'
+      const unavailable = isTmuxBinaryMissingMessage(message)
+      setTmuxUnavailable(unavailable)
+      setTmuxUnavailableMessage(unavailable ? message : '')
       setConnection(
         'error',
-        error instanceof Error ? error.message : 'failed to refresh sessions',
+        message,
       )
     }
   }, [api, closeCurrentSocket, resetTerminal, setConnection])
@@ -237,10 +251,15 @@ function TmuxPage() {
         setActivePaneIDOverride(null)
       } catch (error) {
         if (gen !== inspectorGenerationRef.current) return
+        const message =
+          error instanceof Error ? error.message : 'failed to load session details'
+        const unavailable = isTmuxBinaryMissingMessage(message)
+        if (unavailable) {
+          setTmuxUnavailable(true)
+          setTmuxUnavailableMessage(message)
+        }
         setInspectorError(
-          error instanceof Error
-            ? error.message
-            : 'failed to load session details',
+          message,
         )
       } finally {
         if (gen === inspectorGenerationRef.current && !bg)
@@ -852,6 +871,7 @@ function TmuxPage() {
           tokenRequired={tokenRequired}
           filter={filter}
           token={token}
+          tmuxUnavailable={tmuxUnavailable}
           onFilterChange={setFilter}
           onTokenChange={setToken}
           onCreate={(name, cwd) => {
@@ -868,6 +888,8 @@ function TmuxPage() {
       <TmuxTerminalPanel
         connectionState={connectionState}
         statusDetail={statusDetail}
+        tmuxUnavailable={tmuxUnavailable}
+        tmuxUnavailableMessage={tmuxUnavailableMessage}
         openTabs={tabsState.openTabs}
         activeSession={tabsState.activeSession}
         inspectorLoading={inspectorLoading}

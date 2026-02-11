@@ -13,6 +13,7 @@ type SessionSidebarProps = {
   tokenRequired: boolean
   filter: string
   token: string
+  tmuxUnavailable: boolean
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string) => void
@@ -33,6 +34,7 @@ export default function SessionSidebar({
   tokenRequired,
   filter,
   token,
+  tmuxUnavailable,
   onFilterChange,
   onTokenChange,
   onCreate,
@@ -50,6 +52,7 @@ export default function SessionSidebar({
           tokenRequired={tokenRequired}
           filter={filter}
           token={token}
+          tmuxUnavailable={tmuxUnavailable}
           onFilterChange={onFilterChange}
           onTokenChange={onTokenChange}
           onCreate={onCreate}
@@ -57,6 +60,7 @@ export default function SessionSidebar({
 
         <SessionListPanel
           sessions={sessions}
+          tmuxUnavailable={tmuxUnavailable}
           openTabs={openTabs}
           activeSession={activeSession}
           filter={filter}

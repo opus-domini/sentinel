@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 
 type SessionListPanelProps = {
   sessions: Array<Session>
+  tmuxUnavailable: boolean
   openTabs: Array<string>
   activeSession: string
   filter: string
@@ -19,6 +20,7 @@ type SessionListPanelProps = {
 
 export default function SessionListPanel({
   sessions,
+  tmuxUnavailable,
   openTabs,
   activeSession,
   filter,
@@ -56,7 +58,9 @@ export default function SessionListPanel({
               <span className="text-[12px]">
                 {hasFilter
                   ? 'No sessions match filter.'
-                  : 'No tmux sessions found.'}
+                  : tmuxUnavailable
+                    ? 'tmux is not installed on this host.'
+                    : 'No tmux sessions found.'}
               </span>
               {hasFilter && (
                 <Button
