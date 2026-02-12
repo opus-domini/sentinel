@@ -1,7 +1,13 @@
 <div align="center">
   <img src="assets/images/logo.png" alt="Sentinel logo" width="560" />
   <hr />
-  <p><strong>Your terminal watchtower.</strong></p>
+  <p><strong>Your terminal watchtower</strong></p>
+  <p>
+      <a href="https://goreportcard.com/report/opus-domini/sentinel"><img src="https://goreportcard.com/badge/opus-domini/sentinel" alt="Go Report Badge"></a>
+      <a href="https://godoc.org/github.com/opus-domini/sentinel"><img src="https://godoc.org/github.com/opus-domini/sentinel?status.svg" alt="Go Doc Badge"></a>    
+      <a href="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml"><img src="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml/badge.svg" alt="Converage Actions Badge"></a>
+      <a href="https://github.com/opus-domini/sentinel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/opus-domini/sentinel.svg" alt="License Badge"></a>      
+  </p>
 </div>
 
 Sentinel is a terminal-first workspace delivered as a single binary.
