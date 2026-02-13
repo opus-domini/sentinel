@@ -213,3 +213,144 @@ func TestCollectMarksKilledSessionsAfterBootChange(t *testing.T) {
 		t.Fatalf("killed session name = %q, want work", killed[0].Name)
 	}
 }
+
+func TestCollectBuildsSnapshotFromWatchtowerProjection(t *testing.T) {
+	t.Parallel()
+
+	st := newRecoveryStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	ctx := context.Background()
+
+	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName:       "dev",
+		Attached:          1,
+		Windows:           2,
+		Panes:             2,
+		ActivityAt:        now,
+		LastPreview:       "projection preview",
+		LastPreviewAt:     now,
+		LastPreviewPaneID: "%1",
+		Rev:               4,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+	for _, win := range []store.WatchtowerWindowWrite{
+		{
+			SessionName:      "dev",
+			WindowIndex:      0,
+			Name:             "editor",
+			Active:           true,
+			Layout:           "layout-a",
+			WindowActivityAt: now,
+			Rev:              2,
+			UpdatedAt:        now,
+		},
+		{
+			SessionName:      "dev",
+			WindowIndex:      1,
+			Name:             "logs",
+			Active:           false,
+			Layout:           "layout-b",
+			WindowActivityAt: now,
+			Rev:              2,
+			UpdatedAt:        now,
+		},
+	} {
+		if err := st.UpsertWatchtowerWindow(ctx, win); err != nil {
+			t.Fatalf("UpsertWatchtowerWindow(%d): %v", win.WindowIndex, err)
+		}
+	}
+	for _, pane := range []store.WatchtowerPaneWrite{
+		{
+			PaneID:         "%1",
+			SessionName:    "dev",
+			WindowIndex:    0,
+			PaneIndex:      0,
+			Title:          "editor-pane",
+			Active:         true,
+			CurrentPath:    "/tmp/dev",
+			StartCommand:   "nvim",
+			CurrentCommand: "nvim",
+			TailPreview:    "line from projection 1",
+			TailCapturedAt: now,
+			Revision:       2,
+			SeenRevision:   1,
+			ChangedAt:      now,
+			UpdatedAt:      now,
+		},
+		{
+			PaneID:         "%2",
+			SessionName:    "dev",
+			WindowIndex:    1,
+			PaneIndex:      0,
+			Title:          "logs-pane",
+			Active:         false,
+			CurrentPath:    "/var/log",
+			StartCommand:   "tail",
+			CurrentCommand: "tail -f app.log",
+			TailPreview:    "line from projection 2",
+			TailCapturedAt: now,
+			Revision:       3,
+			SeenRevision:   1,
+			ChangedAt:      now,
+			UpdatedAt:      now,
+		},
+	} {
+		if err := st.UpsertWatchtowerPane(ctx, pane); err != nil {
+			t.Fatalf("UpsertWatchtowerPane(%s): %v", pane.PaneID, err)
+		}
+	}
+
+	fake := &fakeTmux{
+		sessions: []tmux.Session{
+			{
+				Name:       "dev",
+				Attached:   2,
+				CreatedAt:  now,
+				ActivityAt: now,
+			},
+		},
+		windows: map[string][]tmux.Window{
+			"dev": {},
+		},
+		panes: map[string][]tmux.Pane{
+			"dev": {},
+		},
+	}
+
+	svc := New(st, fake, Options{})
+	svc.bootID = func(context.Context) string { return "boot-proj" }
+
+	if err := svc.Collect(ctx); err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	snapshots, err := st.ListRecoverySnapshots(ctx, "dev", 10)
+	if err != nil {
+		t.Fatalf("ListRecoverySnapshots() error = %v", err)
+	}
+	if len(snapshots) != 1 {
+		t.Fatalf("snapshots len = %d, want 1", len(snapshots))
+	}
+
+	view, err := svc.GetSnapshot(ctx, snapshots[0].ID)
+	if err != nil {
+		t.Fatalf("GetSnapshot() error = %v", err)
+	}
+	if view.Payload.Attached != 2 {
+		t.Fatalf("payload.Attached = %d, want 2", view.Payload.Attached)
+	}
+	if len(view.Payload.Windows) != 2 || len(view.Payload.Panes) != 2 {
+		t.Fatalf("payload sizes = windows:%d panes:%d, want windows:2 panes:2", len(view.Payload.Windows), len(view.Payload.Panes))
+	}
+	if view.Payload.ActiveWindow != 0 || view.Payload.ActivePaneID != "%1" {
+		t.Fatalf("active selection = (%d,%s), want (0,%%1)", view.Payload.ActiveWindow, view.Payload.ActivePaneID)
+	}
+	if view.Payload.Panes[0].LastContent != "line from projection 1" {
+		t.Fatalf("pane[0].LastContent = %q, want line from projection 1", view.Payload.Panes[0].LastContent)
+	}
+	if view.Payload.Panes[1].LastContent != "line from projection 2" {
+		t.Fatalf("pane[1].LastContent = %q, want line from projection 2", view.Payload.Panes[1].LastContent)
+	}
+}

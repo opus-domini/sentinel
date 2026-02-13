@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -33,7 +34,6 @@ type tmuxClient interface {
 	ListSessions(ctx context.Context) ([]tmux.Session, error)
 	ListWindows(ctx context.Context, session string) ([]tmux.Window, error)
 	ListPanes(ctx context.Context, session string) ([]tmux.Pane, error)
-	CapturePaneLines(ctx context.Context, target string, lines int) (string, error)
 	SessionExists(ctx context.Context, session string) (bool, error)
 	CreateSession(ctx context.Context, name, cwd string) error
 	RenameWindow(ctx context.Context, session string, index int, name string) error
@@ -259,13 +259,104 @@ func (s *Service) Collect(ctx context.Context) error {
 }
 
 func (s *Service) captureSession(ctx context.Context, sess tmux.Session, bootID string, capturedAt time.Time) (bool, error) {
-	windows, err := s.tmux.ListWindows(ctx, sess.Name)
+	snap, ok, err := s.snapshotFromWatchtowerProjection(ctx, sess, bootID, capturedAt)
 	if err != nil {
 		return false, err
 	}
+	if !ok {
+		snap, err = s.snapshotFromTmuxRuntime(ctx, sess, bootID, capturedAt)
+		if err != nil {
+			return false, err
+		}
+	}
+	return s.persistSnapshot(ctx, snap, capturedAt)
+}
+
+func (s *Service) snapshotFromWatchtowerProjection(ctx context.Context, sess tmux.Session, bootID string, capturedAt time.Time) (SessionSnapshot, bool, error) {
+	_, err := s.store.GetWatchtowerSession(ctx, sess.Name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SessionSnapshot{}, false, nil
+	}
+	if err != nil {
+		return SessionSnapshot{}, false, err
+	}
+
+	windows, err := s.store.ListWatchtowerWindows(ctx, sess.Name)
+	if err != nil {
+		return SessionSnapshot{}, false, err
+	}
+	panes, err := s.store.ListWatchtowerPanes(ctx, sess.Name)
+	if err != nil {
+		return SessionSnapshot{}, false, err
+	}
+	if len(windows) == 0 && len(panes) == 0 {
+		return SessionSnapshot{}, false, nil
+	}
+
+	sort.Slice(windows, func(i, j int) bool { return windows[i].WindowIndex < windows[j].WindowIndex })
+	sort.Slice(panes, func(i, j int) bool {
+		if panes[i].WindowIndex == panes[j].WindowIndex {
+			return panes[i].PaneIndex < panes[j].PaneIndex
+		}
+		return panes[i].WindowIndex < panes[j].WindowIndex
+	})
+
+	paneCountsByWindow := make(map[int]int, len(windows))
+	for _, pane := range panes {
+		paneCountsByWindow[pane.WindowIndex]++
+	}
+
+	snap := SessionSnapshot{
+		SessionName:  sess.Name,
+		CapturedAt:   capturedAt.UTC(),
+		BootID:       bootID,
+		Attached:     sess.Attached,
+		ActiveWindow: -1,
+		ActivePaneID: "",
+		Windows:      make([]WindowSnapshot, 0, len(windows)),
+		Panes:        make([]PaneSnapshot, 0, len(panes)),
+	}
+	for _, window := range windows {
+		if window.Active {
+			snap.ActiveWindow = window.WindowIndex
+		}
+		snap.Windows = append(snap.Windows, WindowSnapshot{
+			Index:  window.WindowIndex,
+			Name:   window.Name,
+			Active: window.Active,
+			Panes:  paneCountsByWindow[window.WindowIndex],
+			Layout: window.Layout,
+		})
+	}
+	for _, pane := range panes {
+		if pane.Active {
+			snap.ActivePaneID = pane.PaneID
+			if snap.ActiveWindow < 0 {
+				snap.ActiveWindow = pane.WindowIndex
+			}
+		}
+		snap.Panes = append(snap.Panes, PaneSnapshot{
+			WindowIndex:    pane.WindowIndex,
+			PaneIndex:      pane.PaneIndex,
+			Title:          pane.Title,
+			Active:         pane.Active,
+			CurrentPath:    pane.CurrentPath,
+			StartCommand:   pane.StartCommand,
+			CurrentCommand: pane.CurrentCommand,
+			LastContent:    pane.TailPreview,
+		})
+	}
+	return snap, true, nil
+}
+
+func (s *Service) snapshotFromTmuxRuntime(ctx context.Context, sess tmux.Session, bootID string, capturedAt time.Time) (SessionSnapshot, error) {
+	windows, err := s.tmux.ListWindows(ctx, sess.Name)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
 	panes, err := s.tmux.ListPanes(ctx, sess.Name)
 	if err != nil {
-		return false, err
+		return SessionSnapshot{}, err
 	}
 
 	sort.Slice(windows, func(i, j int) bool { return windows[i].Index < windows[j].Index })
@@ -303,10 +394,6 @@ func (s *Service) captureSession(ctx context.Context, sess tmux.Session, bootID 
 		if pane.Active {
 			snap.ActivePaneID = pane.PaneID
 		}
-		lastContent := ""
-		if captured, err := s.tmux.CapturePaneLines(ctx, pane.PaneID, s.options.CaptureLines); err == nil {
-			lastContent = trimmedPaneTail(captured)
-		}
 		snap.Panes = append(snap.Panes, PaneSnapshot{
 			WindowIndex:    pane.WindowIndex,
 			PaneIndex:      pane.PaneIndex,
@@ -315,10 +402,13 @@ func (s *Service) captureSession(ctx context.Context, sess tmux.Session, bootID 
 			CurrentPath:    pane.CurrentPath,
 			StartCommand:   pane.StartCommand,
 			CurrentCommand: pane.CurrentCommand,
-			LastContent:    lastContent,
+			LastContent:    "",
 		})
 	}
+	return snap, nil
+}
 
+func (s *Service) persistSnapshot(ctx context.Context, snap SessionSnapshot, capturedAt time.Time) (bool, error) {
 	payloadBytes, err := json.Marshal(snap)
 	if err != nil {
 		return false, err
@@ -326,8 +416,8 @@ func (s *Service) captureSession(ctx context.Context, sess tmux.Session, bootID 
 
 	hash := snapshotHash(snap)
 	_, changed, err := s.store.UpsertRecoverySnapshot(ctx, store.RecoverySnapshotWrite{
-		SessionName:  sess.Name,
-		BootID:       bootID,
+		SessionName:  snap.SessionName,
+		BootID:       snap.BootID,
 		StateHash:    hash,
 		CapturedAt:   capturedAt,
 		ActiveWindow: snap.ActiveWindow,
@@ -766,28 +856,6 @@ func randomJobID() string {
 		return fmt.Sprintf("job-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(raw[:])
-}
-
-func trimmedPaneTail(captured string) string {
-	captured = strings.TrimSpace(captured)
-	if captured == "" {
-		return ""
-	}
-	lines := strings.Split(captured, "\n")
-	filtered := lines[:0]
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			filtered = append(filtered, line)
-		}
-	}
-	if len(filtered) == 0 {
-		return ""
-	}
-	if len(filtered) > 4 {
-		filtered = filtered[len(filtered)-4:]
-	}
-	return strings.Join(filtered, "\n")
 }
 
 func snapshotHash(snap SessionSnapshot) string {
