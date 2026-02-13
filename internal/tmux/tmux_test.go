@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -217,5 +218,81 @@ func TestClassifyError(t *testing.T) {
 				t.Errorf("classifyError wrapped err = %v, want %v", terr.Err, tt.err)
 			}
 		})
+	}
+}
+
+func TestPatchMouseDown3PaneBinding(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		line      string
+		want      string
+		changed   bool
+		wantToken string
+	}{
+		{
+			name:      "adds_O_and_M_flags",
+			line:      `bind-key -T root MouseDown3Pane if-shell -F "#{mouse_any_flag}" { send-keys -M } { display-menu -T "Pane" -t = -x M -y M "Kill" X { kill-pane } }`,
+			changed:   true,
+			wantToken: "display-menu -O -M -T",
+		},
+		{
+			name:      "already_patched",
+			line:      `bind-key -T root MouseDown3Pane if-shell -F "#{mouse_any_flag}" { send-keys -M } { display-menu -O -M -T "Pane" -t = -x M -y M "Kill" X { kill-pane } }`,
+			changed:   false,
+			wantToken: "display-menu -O -M -T",
+		},
+		{
+			name:      "unrelated_binding",
+			line:      `bind-key -T root MouseDown1Pane select-pane -t = \; send-keys -M`,
+			changed:   false,
+			wantToken: "MouseDown1Pane",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, changed := patchMouseDown3PaneBinding(tt.line)
+			if changed != tt.changed {
+				t.Fatalf("changed = %v, want %v", changed, tt.changed)
+			}
+			if !strings.Contains(got, tt.wantToken) {
+				t.Fatalf("patched line missing token %q: %q", tt.wantToken, got)
+			}
+		})
+	}
+}
+
+func TestPatchDoubleClick1PaneBinding(t *testing.T) {
+	t.Parallel()
+
+	line := `bind-key -T root DoubleClick1Pane select-pane -t = \; if-shell -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send-keys -M } { copy-mode -H ; send-keys -X select-word ; run-shell -d 0.3 ; send-keys -X copy-pipe-and-cancel }`
+	got, changed := patchDoubleClick1PaneBinding(line)
+	if !changed {
+		t.Fatal("expected patchDoubleClick1PaneBinding to change default binding")
+	}
+	if strings.Contains(got, "copy-pipe-and-cancel") {
+		t.Fatalf("expected copy-pipe-and-cancel to be removed: %q", got)
+	}
+	if !strings.Contains(got, "{ send-keys -M }") {
+		t.Fatalf("expected fallback block to be send-keys -M: %q", got)
+	}
+}
+
+func TestPatchTripleClick1PaneBinding(t *testing.T) {
+	t.Parallel()
+
+	line := `bind-key -T root TripleClick1Pane select-pane -t = \; if-shell -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send-keys -M } { copy-mode -H ; send-keys -X select-line ; run-shell -d 0.3 ; send-keys -X copy-pipe-and-cancel }`
+	got, changed := patchTripleClick1PaneBinding(line)
+	if !changed {
+		t.Fatal("expected patchTripleClick1PaneBinding to change default binding")
+	}
+	if strings.Contains(got, "copy-pipe-and-cancel") {
+		t.Fatalf("expected copy-pipe-and-cancel to be removed: %q", got)
+	}
+	if !strings.Contains(got, "{ send-keys -M }") {
+		t.Fatalf("expected fallback block to be send-keys -M: %q", got)
 	}
 }

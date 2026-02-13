@@ -120,12 +120,15 @@ func TestRunPingLoopReportsPingError(t *testing.T) {
 }
 
 func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
+	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
+		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
 		startTmuxAttachFn = originalAttach
 	})
+	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
 
 	callOrder := make([]string, 0, 2)
 	tmuxSetSessionMouse = func(_ context.Context, session string, enabled bool) error {
@@ -165,12 +168,15 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 }
 
 func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
+	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
+		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
 		startTmuxAttachFn = originalAttach
 	})
+	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
 
 	callOrder := make([]string, 0, 2)
 	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error {
@@ -199,13 +205,16 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 
 func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	originalExists := tmuxSessionExistsFn
+	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
 		tmuxSessionExistsFn = originalExists
+		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
 		startTmuxAttachFn = originalAttach
 	})
+	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
 
 	tmuxSessionExistsFn = func(_ context.Context, session string) (bool, error) {
 		if session != testSessionName {
@@ -274,13 +283,16 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 
 func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	originalExists := tmuxSessionExistsFn
+	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
 		tmuxSessionExistsFn = originalExists
+		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
 		startTmuxAttachFn = originalAttach
 	})
+	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
 
 	tmuxSessionExistsFn = func(_ context.Context, _ string) (bool, error) {
 		return true, nil

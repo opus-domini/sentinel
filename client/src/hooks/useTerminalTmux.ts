@@ -44,6 +44,7 @@ type SessionRuntime = {
   isComposing: boolean
   onDataDispose: Disposable
   onResizeDispose: Disposable
+  contextMenuDispose: Disposable
   webglContextLossDispose: Disposable
   hostResizeObserver: ResizeObserver | null
   hostResizeRafId: number | null
@@ -61,6 +62,7 @@ type UseTerminalTmuxArgs = {
   connectingVerb?: string
   connectedVerb?: string
   allowWheelInAlternateBuffer?: boolean
+  suppressBrowserContextMenu?: boolean
 }
 
 type UseTerminalTmuxResult = {
@@ -92,6 +94,7 @@ export function useTerminalTmux({
   connectingVerb = 'opening',
   connectedVerb = 'attached',
   allowWheelInAlternateBuffer = false,
+  suppressBrowserContextMenu = false,
 }: UseTerminalTmuxArgs): UseTerminalTmuxResult {
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('disconnected')
@@ -287,17 +290,34 @@ export function useTerminalTmux({
           })
         }
 
+        if (suppressBrowserContextMenu) {
+          const handleContextMenu = (event: Event) => {
+            event.preventDefault()
+          }
+          host.addEventListener('contextmenu', handleContextMenu)
+          runtime.contextMenuDispose = {
+            dispose: () => {
+              host.removeEventListener('contextmenu', handleContextMenu)
+            },
+          }
+        }
+
         // FitAddon floors column/row counts, so a residual strip can appear.
         // Keep the xterm root in sync with theme background to hide it.
         const themeBg = getTerminalTheme(themeId).colors.background ?? ''
-        runtime.terminal.element?.style.setProperty('background-color', themeBg)
+        host.style.setProperty('background-color', themeBg)
 
         fitRuntime(runtime)
       }
 
       void document.fonts.ready.then(openTerminal).catch(openTerminal)
     },
-    [fitRuntime, observeHostResize, themeId],
+    [
+      fitRuntime,
+      observeHostResize,
+      suppressBrowserContextMenu,
+      themeId,
+    ],
   )
 
   const isSocketCurrent = useCallback(
@@ -480,6 +500,7 @@ export function useTerminalTmux({
         fontSize,
         lineHeight: 1,
         scrollback: 5000,
+        rightClickSelectsWord: false,
         theme: getTerminalTheme(themeId).colors,
       })
 
@@ -524,6 +545,7 @@ export function useTerminalTmux({
         isComposing: false,
         onDataDispose: { dispose: () => undefined },
         onResizeDispose: { dispose: () => undefined },
+        contextMenuDispose: { dispose: () => undefined },
         webglContextLossDispose: webglAddon.onContextLoss(() => {
           console.warn(`sentinel: webgl context lost (${session})`)
         }),
@@ -581,6 +603,7 @@ export function useTerminalTmux({
       cleanupHostResizeObserver(runtime)
       runtime.onDataDispose.dispose()
       runtime.onResizeDispose.dispose()
+      runtime.contextMenuDispose.dispose()
       runtime.webglContextLossDispose.dispose()
       runtime.terminal.dispose()
       runtimesRef.current.delete(runtime.session)

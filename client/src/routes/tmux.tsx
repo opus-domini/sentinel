@@ -180,6 +180,7 @@ function TmuxPage() {
     sidebarCollapsed: layout.sidebarCollapsed,
     onAttachedMobile: handleAttachedMobile,
     allowWheelInAlternateBuffer: true,
+    suppressBrowserContextMenu: true,
   })
 
   const orderedSessions = useMemo(() => {

@@ -27,6 +27,7 @@ const (
 
 var (
 	tmuxSessionExistsFn = tmux.SessionExists
+	tmuxEnsureWebMouse  = tmux.EnsureWebMouseBindings
 	tmuxSetSessionMouse = tmux.SetSessionMouse
 	startTmuxAttachFn   = term.StartTmuxAttach
 )
@@ -133,6 +134,11 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) startTmuxPTY(ctx context.Context, session string) (*term.PTY, error) {
+	// Best-effort: patch default tmux mouse bindings for web terminals.
+	if err := tmuxEnsureWebMouse(ctx); err != nil {
+		slog.Warn("tmux web mouse patch failed", "session", session, "err", err)
+	}
+
 	// Best-effort: keep wheel events as tmux mouse scroll instead of
 	// application ArrowUp/ArrowDown in alternate buffer contexts.
 	if err := tmuxSetSessionMouse(ctx, session, true); err != nil {

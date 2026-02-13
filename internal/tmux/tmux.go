@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -249,6 +250,110 @@ func SetSessionMouse(ctx context.Context, session string, enabled bool) error {
 	}
 	_, err := run(ctx, "set-option", "-t", session, "mouse", value)
 	return err
+}
+
+// EnsureWebMouseBindings patches a subset of tmux default mouse bindings to
+// behave consistently in browser terminals:
+// 1) Keep pane context menu open after button release (-O).
+// 2) Disable default double/triple-click auto-copy popup behavior.
+//
+// The patch is idempotent and only rewrites known default patterns.
+func EnsureWebMouseBindings(ctx context.Context) error {
+	patchers := []struct {
+		key   string
+		patch func(string) (string, bool)
+	}{
+		{key: "MouseDown3Pane", patch: patchMouseDown3PaneBinding},
+		{key: "DoubleClick1Pane", patch: patchDoubleClick1PaneBinding},
+		{key: "TripleClick1Pane", patch: patchTripleClick1PaneBinding},
+	}
+
+	var firstErr error
+	for _, item := range patchers {
+		if err := patchRootBinding(ctx, item.key, item.patch); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func patchRootBinding(
+	ctx context.Context,
+	key string,
+	patch func(line string) (string, bool),
+) error {
+	out, err := run(ctx, "list-keys", "-T", "root", key)
+	if err != nil {
+		return err
+	}
+
+	line := strings.TrimSpace(out)
+	if line == "" {
+		return nil
+	}
+
+	patched, changed := patch(line)
+	if !changed || patched == line {
+		return nil
+	}
+
+	tmpFile, err := os.CreateTemp("", "sentinel-tmux-bind-*.conf")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := tmpFile.WriteString(patched + "\n"); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	_, err = run(ctx, "source-file", tmpPath)
+	return err
+}
+
+func patchMouseDown3PaneBinding(line string) (string, bool) {
+	if !strings.Contains(line, "bind-key -T root MouseDown3Pane") {
+		return line, false
+	}
+	if strings.Contains(line, "display-menu -O") {
+		return line, false
+	}
+	if !strings.Contains(line, "display-menu ") {
+		return line, false
+	}
+	patched := strings.Replace(line, "display-menu ", "display-menu -O -M ", 1)
+	return patched, patched != line
+}
+
+func patchDoubleClick1PaneBinding(line string) (string, bool) {
+	const before = "{ copy-mode -H ; send-keys -X select-word ; run-shell -d 0.3 ; send-keys -X copy-pipe-and-cancel }"
+	const after = "{ send-keys -M }"
+	if !strings.Contains(line, "bind-key -T root DoubleClick1Pane") {
+		return line, false
+	}
+	if !strings.Contains(line, before) {
+		return line, false
+	}
+	patched := strings.Replace(line, before, after, 1)
+	return patched, patched != line
+}
+
+func patchTripleClick1PaneBinding(line string) (string, bool) {
+	const before = "{ copy-mode -H ; send-keys -X select-line ; run-shell -d 0.3 ; send-keys -X copy-pipe-and-cancel }"
+	const after = "{ send-keys -M }"
+	if !strings.Contains(line, "bind-key -T root TripleClick1Pane") {
+		return line, false
+	}
+	if !strings.Contains(line, before) {
+		return line, false
+	}
+	patched := strings.Replace(line, before, after, 1)
+	return patched, patched != line
 }
 
 func RenameSession(ctx context.Context, session, newName string) error {
