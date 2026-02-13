@@ -311,6 +311,11 @@ function TmuxPage() {
     [api],
   )
 
+  useEffect(() => {
+    // Keep inspector in sync when user switches active session/tab.
+    void refreshInspector(tabsState.activeSession)
+  }, [refreshInspector, tabsState.activeSession])
+
   const refreshRecovery = useCallback(
     async (options?: { quiet?: boolean }) => {
       const gen = ++recoveryGenerationRef.current

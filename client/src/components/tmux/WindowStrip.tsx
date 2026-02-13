@@ -38,31 +38,39 @@ export default function WindowStrip({
   const sortedWindows = [...windows].sort(
     (left, right) => left.index - right.index,
   )
+  const stripClass = 'flex min-h-[24px] items-center gap-1.5 overflow-x-auto'
 
   if (!hasActiveSession) {
     return (
-      <span className="truncate text-[11px] text-secondary-foreground">
-        Select and attach a session.
-      </span>
+      <div className={stripClass}>
+        <span className="truncate text-[11px] text-secondary-foreground">
+          Select and attach a session.
+        </span>
+      </div>
     )
   }
   if (inspectorLoading) {
     return (
-      <span className="truncate text-[11px] text-secondary-foreground">
-        Loading windows...
-      </span>
+      <div className={stripClass} aria-busy="true" aria-live="polite">
+        <div className="h-6 w-6 shrink-0 rounded border border-border-subtle bg-surface-elevated motion-safe:animate-pulse" />
+        <div className="h-5 w-20 shrink-0 rounded border border-border-subtle bg-surface-elevated motion-safe:animate-pulse" />
+        <div className="h-5 w-24 shrink-0 rounded border border-border-subtle bg-surface-elevated motion-safe:animate-pulse" />
+        <span className="sr-only">Loading windows</span>
+      </div>
     )
   }
   if (inspectorError) {
     return (
-      <span className="truncate text-[11px] text-destructive-foreground">
-        {inspectorError}
-      </span>
+      <div className={stripClass}>
+        <span className="truncate text-[11px] text-destructive-foreground">
+          {inspectorError}
+        </span>
+      </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto">
+    <div className={stripClass}>
       <TooltipHelper content="Create window">
         <Button
           variant="outline"
