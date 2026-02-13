@@ -280,6 +280,8 @@ func errCode(body map[string]any) string {
 	return c
 }
 
+const invalidRequestCode = "INVALID_REQUEST"
+
 // ---------------------------------------------------------------------------
 // Existing unit tests (unchanged)
 // ---------------------------------------------------------------------------
@@ -766,16 +768,17 @@ func TestListSessionsHandler(t *testing.T) {
 	t.Run("success with enrichment", func(t *testing.T) {
 		t.Parallel()
 
+		const sessionName = "dev"
 		now := time.Now().UTC().Truncate(time.Second)
 		tm := &mockTmux{
 			listSessionsFn: func(_ context.Context) ([]tmux.Session, error) {
 				return []tmux.Session{
-					{Name: "dev", Windows: 2, Attached: 1, CreatedAt: now, ActivityAt: now},
+					{Name: sessionName, Windows: 2, Attached: 1, CreatedAt: now, ActivityAt: now},
 				}, nil
 			},
 			listActivePaneCommandsFn: func(_ context.Context) (map[string]tmux.PaneSnapshot, error) {
 				return map[string]tmux.PaneSnapshot{
-					"dev": {Command: "vim", Panes: 3},
+					sessionName: {Command: "vim", Panes: 3},
 				}, nil
 			},
 			capturePaneFn: func(_ context.Context, _ string) (string, error) {
@@ -799,8 +802,8 @@ func TestListSessionsHandler(t *testing.T) {
 			t.Fatalf("sessions count = %d, want 1", len(sessions))
 		}
 		s := sessions[0].(map[string]any)
-		if s["name"] != "dev" {
-			t.Errorf("name = %v, want dev", s["name"])
+		if s["name"] != sessionName {
+			t.Errorf("name = %v, want %s", s["name"], sessionName)
 		}
 		if s["command"] != "vim" {
 			t.Errorf("command = %v, want vim", s["command"])
@@ -907,6 +910,78 @@ func TestListSessionsHandler(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 	})
+}
+
+func TestListSessionsHandlerProjectedFromWatchtower(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	tm := &mockTmux{
+		listSessionsFn: func(_ context.Context) ([]tmux.Session, error) {
+			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
+		},
+	}
+	h := newTestHandler(t, tm, nil)
+
+	if err := h.store.UpsertSession(ctx, "dev", "h-fixed", "legacy"); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+	if err := h.store.SetIcon(ctx, "dev", "bolt"); err != nil {
+		t.Fatalf("SetIcon: %v", err)
+	}
+	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName:       "dev",
+		Attached:          1,
+		Windows:           2,
+		Panes:             3,
+		ActivityAt:        now,
+		LastPreview:       "tail from watchtower",
+		LastPreviewAt:     now,
+		LastPreviewPaneID: "%5",
+		UnreadWindows:     1,
+		UnreadPanes:       2,
+		Rev:               7,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+	h.listSessions(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	sessions, _ := data["sessions"].([]any)
+	if len(sessions) != 1 {
+		t.Fatalf("sessions count = %d, want 1", len(sessions))
+	}
+	item := sessions[0].(map[string]any)
+	if item["name"] != "dev" {
+		t.Fatalf("name = %v, want dev", item["name"])
+	}
+	if item["lastContent"] != "tail from watchtower" {
+		t.Fatalf("lastContent = %v, want tail from watchtower", item["lastContent"])
+	}
+	if item["hash"] != "h-fixed" {
+		t.Fatalf("hash = %v, want h-fixed", item["hash"])
+	}
+	if item["icon"] != "bolt" {
+		t.Fatalf("icon = %v, want bolt", item["icon"])
+	}
+	if int(item["unreadWindows"].(float64)) != 1 {
+		t.Fatalf("unreadWindows = %v, want 1", item["unreadWindows"])
+	}
+	if int(item["unreadPanes"].(float64)) != 2 {
+		t.Fatalf("unreadPanes = %v, want 2", item["unreadPanes"])
+	}
+	if int64(item["rev"].(float64)) != 7 {
+		t.Fatalf("rev = %v, want 7", item["rev"])
+	}
 }
 
 func TestCreateSessionHandler(t *testing.T) {
@@ -1507,6 +1582,115 @@ func TestListWindowsHandler(t *testing.T) {
 	})
 }
 
+func TestListWindowsHandlerProjectedFromWatchtower(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	tm := &mockTmux{
+		listWindowsFn: func(_ context.Context, _ string) ([]tmux.Window, error) {
+			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
+		},
+	}
+	h := newTestHandler(t, tm, nil)
+
+	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName: "dev",
+		ActivityAt:  now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+	if err := h.store.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
+		SessionName:      "dev",
+		WindowIndex:      0,
+		Name:             "main",
+		Active:           true,
+		Layout:           "layout-0",
+		WindowActivityAt: now,
+		UnreadPanes:      1,
+		HasUnread:        true,
+		Rev:              3,
+		UpdatedAt:        now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow(0): %v", err)
+	}
+	if err := h.store.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
+		SessionName:      "dev",
+		WindowIndex:      1,
+		Name:             "logs",
+		Active:           false,
+		Layout:           "layout-1",
+		WindowActivityAt: now,
+		UnreadPanes:      0,
+		HasUnread:        false,
+		Rev:              2,
+		UpdatedAt:        now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow(1): %v", err)
+	}
+	for _, pane := range []store.WatchtowerPaneWrite{
+		{
+			PaneID:         "%1",
+			SessionName:    "dev",
+			WindowIndex:    0,
+			PaneIndex:      0,
+			Revision:       2,
+			SeenRevision:   1,
+			TailCapturedAt: now,
+			ChangedAt:      now,
+			UpdatedAt:      now,
+		},
+		{
+			PaneID:         "%2",
+			SessionName:    "dev",
+			WindowIndex:    1,
+			PaneIndex:      0,
+			Revision:       1,
+			SeenRevision:   1,
+			TailCapturedAt: now,
+			ChangedAt:      now,
+			UpdatedAt:      now,
+		},
+	} {
+		if err := h.store.UpsertWatchtowerPane(ctx, pane); err != nil {
+			t.Fatalf("UpsertWatchtowerPane(%s): %v", pane.PaneID, err)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/windows", nil)
+	r.SetPathValue("session", "dev")
+	h.listWindows(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	windows, _ := data["windows"].([]any)
+	if len(windows) != 2 {
+		t.Fatalf("windows len = %d, want 2", len(windows))
+	}
+
+	first := windows[0].(map[string]any)
+	if first["name"] != "main" {
+		t.Fatalf("first window name = %v, want main", first["name"])
+	}
+	if int(first["panes"].(float64)) != 1 {
+		t.Fatalf("first window panes = %v, want 1", first["panes"])
+	}
+	if first["hasUnread"] != true {
+		t.Fatalf("first window hasUnread = %v, want true", first["hasUnread"])
+	}
+	if int(first["unreadPanes"].(float64)) != 1 {
+		t.Fatalf("first window unreadPanes = %v, want 1", first["unreadPanes"])
+	}
+	if int64(first["rev"].(float64)) != 3 {
+		t.Fatalf("first window rev = %v, want 3", first["rev"])
+	}
+}
+
 func TestListPanesHandler(t *testing.T) {
 	t.Parallel()
 
@@ -1563,6 +1747,78 @@ func TestListPanesHandler(t *testing.T) {
 			t.Errorf("status = %d, want 500", w.Code)
 		}
 	})
+}
+
+func TestListPanesHandlerProjectedFromWatchtower(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	tm := &mockTmux{
+		listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
+		},
+	}
+	h := newTestHandler(t, tm, nil)
+
+	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName: "dev",
+		ActivityAt:  now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+	if err := h.store.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
+		PaneID:         "%8",
+		SessionName:    "dev",
+		WindowIndex:    0,
+		PaneIndex:      1,
+		Title:          "shell",
+		Active:         true,
+		TTY:            "pts/1",
+		CurrentPath:    "/tmp",
+		StartCommand:   "bash",
+		CurrentCommand: "vim",
+		TailPreview:    "line",
+		TailCapturedAt: now,
+		Revision:       5,
+		SeenRevision:   3,
+		ChangedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/panes", nil)
+	r.SetPathValue("session", "dev")
+	h.listPanes(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	panes, _ := data["panes"].([]any)
+	if len(panes) != 1 {
+		t.Fatalf("panes len = %d, want 1", len(panes))
+	}
+	item := panes[0].(map[string]any)
+	if item["paneId"] != "%8" {
+		t.Fatalf("paneId = %v, want %%8", item["paneId"])
+	}
+	if item["tailPreview"] != "line" {
+		t.Fatalf("tailPreview = %v, want line", item["tailPreview"])
+	}
+	if int64(item["revision"].(float64)) != 5 {
+		t.Fatalf("revision = %v, want 5", item["revision"])
+	}
+	if int64(item["seenRevision"].(float64)) != 3 {
+		t.Fatalf("seenRevision = %v, want 3", item["seenRevision"])
+	}
+	if item["hasUnread"] != true {
+		t.Fatalf("hasUnread = %v, want true", item["hasUnread"])
+	}
 }
 
 func TestSelectWindowHandler(t *testing.T) {
@@ -1688,8 +1944,8 @@ func TestSelectPaneHandler(t *testing.T) {
 			t.Errorf("status = %d, want 400", w.Code)
 		}
 		body := jsonBody(t, w)
-		if errCode(body) != "INVALID_REQUEST" {
-			t.Errorf("code = %q, want INVALID_REQUEST", errCode(body))
+		if errCode(body) != invalidRequestCode {
+			t.Errorf("code = %q, want %s", errCode(body), invalidRequestCode)
 		}
 	})
 
@@ -2240,4 +2496,310 @@ func TestRestoreRecoverySnapshotHandler(t *testing.T) {
 	if job["id"] != "job-1" {
 		t.Errorf("job.id = %v, want job-1", job["id"])
 	}
+}
+
+func TestActivityDeltaHandler(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	h := newTestHandler(t, nil, nil)
+
+	if err := h.store.SetWatchtowerRuntimeValue(ctx, "global_rev", "3"); err != nil {
+		t.Fatalf("SetWatchtowerRuntimeValue(global_rev): %v", err)
+	}
+	for rev := 1; rev <= 3; rev++ {
+		if _, err := h.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
+			GlobalRev:  int64(rev),
+			EntityType: "session",
+			Session:    "dev",
+			WindowIdx:  -1,
+			ChangeKind: "activity",
+			ChangedAt:  now.Add(time.Duration(rev) * time.Second),
+		}); err != nil {
+			t.Fatalf("InsertWatchtowerJournal(%d): %v", rev, err)
+		}
+	}
+
+	t.Run("overflow", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=0&limit=2", nil)
+		h.activityDelta(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		if data["overflow"] != true {
+			t.Fatalf("overflow = %v, want true", data["overflow"])
+		}
+		if int64(data["globalRev"].(float64)) != 3 {
+			t.Fatalf("globalRev = %v, want 3", data["globalRev"])
+		}
+		changes, _ := data["changes"].([]any)
+		if len(changes) != 2 {
+			t.Fatalf("changes len = %d, want 2", len(changes))
+		}
+	})
+
+	t.Run("success without overflow", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=2&limit=5", nil)
+		h.activityDelta(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		if data["overflow"] != false {
+			t.Fatalf("overflow = %v, want false", data["overflow"])
+		}
+		changes, _ := data["changes"].([]any)
+		if len(changes) != 1 {
+			t.Fatalf("changes len = %d, want 1", len(changes))
+		}
+		change, _ := changes[0].(map[string]any)
+		if int64(change["globalRev"].(float64)) != 3 {
+			t.Fatalf("change.globalRev = %v, want 3", change["globalRev"])
+		}
+	})
+
+	t.Run("invalid since", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=-1", nil)
+		h.activityDelta(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+		if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+		}
+	})
+}
+
+func TestActivityStatsHandler(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := newTestHandler(t, nil, nil)
+	for key, value := range map[string]string{
+		"global_rev":                    "11",
+		"collect_total":                 "25",
+		"collect_errors_total":          "2",
+		"last_collect_at":               "2026-02-13T20:00:00Z",
+		"last_collect_duration_ms":      "57",
+		"last_collect_sessions":         "4",
+		"last_collect_changed_sessions": "3",
+		"last_collect_error":            "",
+	} {
+		if err := h.store.SetWatchtowerRuntimeValue(ctx, key, value); err != nil {
+			t.Fatalf("SetWatchtowerRuntimeValue(%s): %v", key, err)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/activity/stats", nil)
+	h.activityStats(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	if int64(data["globalRev"].(float64)) != 11 {
+		t.Fatalf("globalRev = %v, want 11", data["globalRev"])
+	}
+	if int64(data["collectTotal"].(float64)) != 25 {
+		t.Fatalf("collectTotal = %v, want 25", data["collectTotal"])
+	}
+	if int64(data["collectErrorsTotal"].(float64)) != 2 {
+		t.Fatalf("collectErrorsTotal = %v, want 2", data["collectErrorsTotal"])
+	}
+	if int64(data["lastCollectDurationMs"].(float64)) != 57 {
+		t.Fatalf("lastCollectDurationMs = %v, want 57", data["lastCollectDurationMs"])
+	}
+	if int64(data["lastCollectSessions"].(float64)) != 4 {
+		t.Fatalf("lastCollectSessions = %v, want 4", data["lastCollectSessions"])
+	}
+	if int64(data["lastCollectChanged"].(float64)) != 3 {
+		t.Fatalf("lastCollectChanged = %v, want 3", data["lastCollectChanged"])
+	}
+	if data["lastCollectAt"] != "2026-02-13T20:00:00Z" {
+		t.Fatalf("lastCollectAt = %v, want 2026-02-13T20:00:00Z", data["lastCollectAt"])
+	}
+}
+
+func TestMarkSessionSeenHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	now := time.Now().UTC().Truncate(time.Second)
+	ctx := context.Background()
+
+	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName:   "dev",
+		Attached:      1,
+		Windows:       1,
+		Panes:         1,
+		ActivityAt:    now,
+		LastPreview:   "log line",
+		LastPreviewAt: now,
+		UnreadWindows: 1,
+		UnreadPanes:   1,
+		Rev:           1,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+	if err := h.store.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
+		SessionName:      "dev",
+		WindowIndex:      0,
+		Name:             "main",
+		Active:           true,
+		Layout:           "layout",
+		WindowActivityAt: now,
+		UnreadPanes:      1,
+		HasUnread:        true,
+		Rev:              1,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow: %v", err)
+	}
+	if err := h.store.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
+		PaneID:         "%1",
+		SessionName:    "dev",
+		WindowIndex:    0,
+		PaneIndex:      0,
+		Title:          "shell",
+		Active:         true,
+		TailHash:       "h1",
+		TailPreview:    "line",
+		TailCapturedAt: now,
+		Revision:       3,
+		SeenRevision:   1,
+		ChangedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/seen", strings.NewReader(`{"scope":"pane","paneId":"%1"}`))
+	r.SetPathValue("session", "dev")
+	h.markSessionSeen(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	if data["acked"] != true {
+		t.Fatalf("acked = %v, want true", data["acked"])
+	}
+
+	panes, err := h.store.ListWatchtowerPanes(ctx, "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPanes(dev): %v", err)
+	}
+	if len(panes) != 1 {
+		t.Fatalf("panes len = %d, want 1", len(panes))
+	}
+	if panes[0].SeenRevision != panes[0].Revision {
+		t.Fatalf("seenRevision = %d, revision = %d, want equal", panes[0].SeenRevision, panes[0].Revision)
+	}
+
+	session, err := h.store.GetWatchtowerSession(ctx, "dev")
+	if err != nil {
+		t.Fatalf("GetWatchtowerSession(dev): %v", err)
+	}
+	if session.UnreadPanes != 0 || session.UnreadWindows != 0 {
+		t.Fatalf("unexpected unread counters after seen: %+v", session)
+	}
+}
+
+func TestMarkSessionSeenHandlerInvalidScope(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/seen", strings.NewReader(`{"scope":"bad"}`))
+	r.SetPathValue("session", "dev")
+	h.markSessionSeen(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+		t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+	}
+}
+
+func TestSetTmuxPresenceHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/tmux/presence", strings.NewReader(`{
+		  "terminalId":"term-1",
+		  "session":"dev",
+		  "windowIndex":1,
+		  "paneId":"%11",
+		  "visible":true,
+		  "focused":true
+		}`))
+		h.setTmuxPresence(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		if data["accepted"] != true {
+			t.Fatalf("accepted = %v, want true", data["accepted"])
+		}
+
+		presence, err := h.store.ListWatchtowerPresenceBySession(context.Background(), "dev")
+		if err != nil {
+			t.Fatalf("ListWatchtowerPresenceBySession(dev): %v", err)
+		}
+		if len(presence) != 1 {
+			t.Fatalf("presence len = %d, want 1", len(presence))
+		}
+		if presence[0].TerminalID != "term-1" || !presence[0].Visible || !presence[0].Focused {
+			t.Fatalf("unexpected presence row: %+v", presence[0])
+		}
+	})
+
+	t.Run("invalid pane id", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/tmux/presence", strings.NewReader(`{
+		  "terminalId":"term-1",
+		  "session":"dev",
+		  "windowIndex":1,
+		  "paneId":"11",
+		  "visible":true,
+		  "focused":false
+		}`))
+		h.setTmuxPresence(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+		if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+		}
+	})
 }

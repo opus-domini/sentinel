@@ -118,6 +118,7 @@ export default function PaneStrip({
       )}
       {visiblePanes.map((paneInfo) => {
         const isActive = activePaneID === paneInfo.paneId
+        const hasUnread = paneInfo.hasUnread ?? false
         const paneLabel =
           paneInfo.title.trim() !== '' ? paneInfo.title : paneInfo.paneId
         return (
@@ -128,14 +129,22 @@ export default function PaneStrip({
                   'inline-flex shrink-0 items-center overflow-hidden rounded border text-[11px]',
                   isActive
                     ? 'border-primary/50 text-primary-text'
-                    : 'border-border text-secondary-foreground',
+                    : hasUnread
+                      ? 'border-amber-400/60 text-amber-100'
+                      : 'border-border text-secondary-foreground',
                 )}
               >
                 <button
-                  className="cursor-pointer px-1.5 py-0.5 whitespace-nowrap hover:text-foreground"
+                  className="inline-flex cursor-pointer items-center gap-1 px-1.5 py-0.5 whitespace-nowrap hover:text-foreground"
                   type="button"
                   onClick={() => onSelectPane(paneInfo.paneId)}
                 >
+                  {hasUnread && (
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-full bg-amber-300"
+                      aria-hidden="true"
+                    />
+                  )}
                   {isMobile ? paneInfo.paneIndex : paneLabel}
                 </button>
                 {!isMobile && (

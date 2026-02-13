@@ -9,6 +9,7 @@ const (
 	TypeReady            = "events.ready"
 	TypeTmuxSessions     = "tmux.sessions.updated"
 	TypeTmuxInspector    = "tmux.inspector.updated"
+	TypeTmuxActivity     = "tmux.activity.updated"
 	TypeRecoveryOverview = "recovery.overview.updated"
 	TypeRecoveryJob      = "recovery.job.updated"
 )

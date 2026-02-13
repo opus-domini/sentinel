@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadFile(t *testing.T) {
@@ -193,5 +194,66 @@ func TestSplitCSV(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoadWatchtowerConfigFromEnvAndFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+	content := `watchtower_enabled = false
+watchtower_tick_interval = "2s"
+watchtower_capture_lines = 120
+watchtower_capture_timeout = "250ms"
+watchtower_journal_rows = 7000
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
+	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
+	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "")
+	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
+	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "")
+
+	cfg := Load()
+	if cfg.Watchtower.Enabled {
+		t.Fatalf("watchtower enabled = true, want false from config file")
+	}
+	if cfg.Watchtower.TickInterval != 2*time.Second {
+		t.Fatalf("watchtower tick interval = %s, want 2s", cfg.Watchtower.TickInterval)
+	}
+	if cfg.Watchtower.CaptureLines != 120 {
+		t.Fatalf("watchtower capture lines = %d, want 120", cfg.Watchtower.CaptureLines)
+	}
+	if cfg.Watchtower.CaptureTimeout != 250*time.Millisecond {
+		t.Fatalf("watchtower capture timeout = %s, want 250ms", cfg.Watchtower.CaptureTimeout)
+	}
+	if cfg.Watchtower.JournalRows != 7000 {
+		t.Fatalf("watchtower journal rows = %d, want 7000", cfg.Watchtower.JournalRows)
+	}
+
+	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "true")
+	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "3s")
+	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "160")
+	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "300ms")
+	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "9000")
+
+	cfg = Load()
+	if !cfg.Watchtower.Enabled {
+		t.Fatalf("watchtower enabled = false, want true from env")
+	}
+	if cfg.Watchtower.TickInterval != 3*time.Second {
+		t.Fatalf("watchtower tick interval = %s, want 3s", cfg.Watchtower.TickInterval)
+	}
+	if cfg.Watchtower.CaptureLines != 160 {
+		t.Fatalf("watchtower capture lines = %d, want 160", cfg.Watchtower.CaptureLines)
+	}
+	if cfg.Watchtower.CaptureTimeout != 300*time.Millisecond {
+		t.Fatalf("watchtower capture timeout = %s, want 300ms", cfg.Watchtower.CaptureTimeout)
+	}
+	if cfg.Watchtower.JournalRows != 9000 {
+		t.Fatalf("watchtower journal rows = %d, want 9000", cfg.Watchtower.JournalRows)
 	}
 }

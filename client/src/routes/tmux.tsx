@@ -69,6 +69,22 @@ function isTmuxBinaryMissingMessage(message: string): boolean {
   return normalized.includes('tmux binary not found')
 }
 
+function resolvePresenceTerminalID(): string {
+  const key = 'sentinel.tmux.presence.terminalId'
+  const fromStorage = window.sessionStorage.getItem(key)
+  if (fromStorage && fromStorage.trim() !== '') {
+    return fromStorage
+  }
+
+  const generated =
+    typeof window.crypto !== 'undefined' &&
+    typeof window.crypto.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  window.sessionStorage.setItem(key, generated)
+  return generated
+}
+
 function TmuxPage() {
   const { tokenRequired, defaultCwd } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -140,6 +156,8 @@ function TmuxPage() {
   const inspectorGenerationRef = useRef(0)
   const recoveryGenerationRef = useRef(0)
   const tabsStateRef = useRef(tabsState)
+  const seenAckKeyRef = useRef('')
+  const presenceTerminalIDRef = useRef('')
   const refreshTimerRef = useRef<{
     sessions: number | null
     inspector: number | null
@@ -149,6 +167,9 @@ function TmuxPage() {
   useEffect(() => {
     tabsStateRef.current = tabsState
   }, [tabsState])
+  useEffect(() => {
+    presenceTerminalIDRef.current = resolvePresenceTerminalID()
+  }, [])
   useEffect(() => {
     setActiveWindowIndexOverride(null)
     setActivePaneIDOverride(null)
@@ -313,10 +334,130 @@ function TmuxPage() {
     [api],
   )
 
+  const markSeen = useCallback(
+    async (params: {
+      session: string
+      scope: 'pane' | 'window' | 'session'
+      paneId?: string
+      windowIndex?: number
+    }) => {
+      const session = params.session.trim()
+      if (session === '') return
+
+      const body: {
+        scope: 'pane' | 'window' | 'session'
+        paneId?: string
+        windowIndex?: number
+      } = { scope: params.scope }
+      if (params.scope === 'pane' && params.paneId) {
+        body.paneId = params.paneId
+      }
+      if (params.scope === 'window' && Number.isInteger(params.windowIndex)) {
+        body.windowIndex = params.windowIndex
+      }
+
+      try {
+        await api<{ acked: boolean }>(
+          `/api/tmux/sessions/${encodeURIComponent(session)}/seen`,
+          {
+            method: 'POST',
+            body: JSON.stringify(body),
+          },
+        )
+      } catch {
+        // Seen ack is best-effort.
+      }
+    },
+    [api],
+  )
+
+  const sendPresenceHeartbeat = useCallback(async () => {
+    const terminalId = presenceTerminalIDRef.current.trim()
+    if (terminalId === '') return
+
+    const activeSession = tabsStateRef.current.activeSession.trim()
+    const visible = document.visibilityState === 'visible'
+    const focused = document.hasFocus()
+
+    try {
+      await api<{ accepted: boolean }>('/api/tmux/presence', {
+        method: 'PUT',
+        body: JSON.stringify({
+          terminalId,
+          session: activeSession,
+          windowIndex: activeWindowIndex ?? -1,
+          paneId: activePaneID ?? '',
+          visible,
+          focused,
+        }),
+      })
+    } catch {
+      // Presence heartbeat is best-effort.
+    }
+  }, [activePaneID, activeWindowIndex, api])
+
   useEffect(() => {
     // Keep inspector in sync when user switches active session/tab.
     void refreshInspector(tabsState.activeSession)
   }, [refreshInspector, tabsState.activeSession])
+
+  useEffect(() => {
+    const session = tabsState.activeSession.trim()
+    if (session === '') {
+      seenAckKeyRef.current = ''
+      return
+    }
+
+    if (activePaneID && activePaneID.trim() !== '') {
+      const key = `${session}|pane|${activePaneID}`
+      if (seenAckKeyRef.current !== key) {
+        seenAckKeyRef.current = key
+        void markSeen({ session, scope: 'pane', paneId: activePaneID })
+      }
+      return
+    }
+
+    if (activeWindowIndex !== null && activeWindowIndex >= 0) {
+      const key = `${session}|window|${activeWindowIndex}`
+      if (seenAckKeyRef.current !== key) {
+        seenAckKeyRef.current = key
+        void markSeen({
+          session,
+          scope: 'window',
+          windowIndex: activeWindowIndex,
+        })
+      }
+      return
+    }
+
+    const key = `${session}|session`
+    if (seenAckKeyRef.current !== key) {
+      seenAckKeyRef.current = key
+      void markSeen({ session, scope: 'session' })
+    }
+  }, [activePaneID, activeWindowIndex, markSeen, tabsState.activeSession])
+
+  useEffect(() => {
+    void sendPresenceHeartbeat()
+
+    const heartbeatID = window.setInterval(() => {
+      void sendPresenceHeartbeat()
+    }, 5_000)
+
+    const onPresenceSignal = () => {
+      void sendPresenceHeartbeat()
+    }
+    document.addEventListener('visibilitychange', onPresenceSignal)
+    window.addEventListener('focus', onPresenceSignal)
+    window.addEventListener('blur', onPresenceSignal)
+
+    return () => {
+      window.clearInterval(heartbeatID)
+      document.removeEventListener('visibilitychange', onPresenceSignal)
+      window.removeEventListener('focus', onPresenceSignal)
+      window.removeEventListener('blur', onPresenceSignal)
+    }
+  }, [sendPresenceHeartbeat])
 
   const refreshRecovery = useCallback(
     async (options?: { quiet?: boolean }) => {
@@ -1199,6 +1340,7 @@ function TmuxPage() {
           }
           switch (msg.type) {
             case 'tmux.sessions.updated':
+            case 'tmux.activity.updated':
               schedule('sessions')
               schedule('inspector')
               break

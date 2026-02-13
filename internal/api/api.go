@@ -101,6 +101,10 @@ func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *termi
 	mux.HandleFunc("PATCH /api/tmux/sessions/{session}/icon", h.wrap(h.setSessionIcon))
 	mux.HandleFunc("GET /api/tmux/sessions/{session}/windows", h.wrap(h.listWindows))
 	mux.HandleFunc("GET /api/tmux/sessions/{session}/panes", h.wrap(h.listPanes))
+	mux.HandleFunc("GET /api/tmux/activity/delta", h.wrap(h.activityDelta))
+	mux.HandleFunc("GET /api/tmux/activity/stats", h.wrap(h.activityStats))
+	mux.HandleFunc("POST /api/tmux/sessions/{session}/seen", h.wrap(h.markSessionSeen))
+	mux.HandleFunc("PUT /api/tmux/presence", h.wrap(h.setTmuxPresence))
 	mux.HandleFunc("GET /api/recovery/overview", h.wrap(h.recoveryOverview))
 	mux.HandleFunc("GET /api/recovery/sessions", h.wrap(h.listRecoverySessions))
 	mux.HandleFunc("POST /api/recovery/sessions/{session}/archive", h.wrap(h.archiveRecoverySession))
@@ -268,67 +272,156 @@ func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+type enrichedSession struct {
+	Name          string `json:"name"`
+	Windows       int    `json:"windows"`
+	Panes         int    `json:"panes"`
+	Attached      int    `json:"attached"`
+	CreatedAt     string `json:"createdAt"`
+	ActivityAt    string `json:"activityAt"`
+	Command       string `json:"command"`
+	Hash          string `json:"hash"`
+	LastContent   string `json:"lastContent"`
+	Icon          string `json:"icon"`
+	UnreadWindows int    `json:"unreadWindows"`
+	UnreadPanes   int    `json:"unreadPanes"`
+	Rev           int64  `json:"rev"`
+}
+
+type enrichedWindow struct {
+	Session     string `json:"session"`
+	Index       int    `json:"index"`
+	Name        string `json:"name"`
+	Active      bool   `json:"active"`
+	Panes       int    `json:"panes"`
+	Layout      string `json:"layout,omitempty"`
+	UnreadPanes int    `json:"unreadPanes"`
+	HasUnread   bool   `json:"hasUnread"`
+	Rev         int64  `json:"rev"`
+	ActivityAt  string `json:"activityAt,omitempty"`
+}
+
+type enrichedPane struct {
+	Session        string `json:"session"`
+	WindowIndex    int    `json:"windowIndex"`
+	PaneIndex      int    `json:"paneIndex"`
+	PaneID         string `json:"paneId"`
+	Title          string `json:"title"`
+	Active         bool   `json:"active"`
+	TTY            string `json:"tty"`
+	CurrentPath    string `json:"currentPath,omitempty"`
+	StartCommand   string `json:"startCommand,omitempty"`
+	CurrentCommand string `json:"currentCommand,omitempty"`
+	TailPreview    string `json:"tailPreview,omitempty"`
+	Revision       int64  `json:"revision"`
+	SeenRevision   int64  `json:"seenRevision"`
+	HasUnread      bool   `json:"hasUnread"`
+	ChangedAt      string `json:"changedAt,omitempty"`
+}
+
 func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	stored := map[string]store.SessionMeta{}
+	if h.store != nil {
+		if meta, err := h.store.GetAll(ctx); err != nil {
+			slog.Warn("store.GetAll failed", "err", err)
+		} else {
+			stored = meta
+		}
+	}
+
+	if h.store != nil {
+		projected, err := h.store.ListWatchtowerSessions(ctx)
+		if err != nil {
+			slog.Warn("store.ListWatchtowerSessions failed", "err", err)
+		} else if len(projected) > 0 {
+			activeNames := make([]string, 0, len(projected))
+			result := make([]enrichedSession, 0, len(projected))
+
+			for _, row := range projected {
+				activeNames = append(activeNames, row.SessionName)
+
+				meta := stored[row.SessionName]
+				hash := strings.TrimSpace(meta.Hash)
+				if hash == "" {
+					hash = tmux.SessionHash(row.SessionName, row.ActivityAt.Unix())
+				}
+				lastContent := strings.TrimSpace(row.LastPreview)
+				if lastContent == "" {
+					lastContent = strings.TrimSpace(meta.LastContent)
+				}
+				if err := h.store.UpsertSession(ctx, row.SessionName, hash, lastContent); err != nil {
+					slog.Warn("store.UpsertSession failed", "session", row.SessionName, "err", err)
+				}
+
+				createdAt := row.ActivityAt
+				if row.LastPreviewAt.Before(createdAt) {
+					createdAt = row.LastPreviewAt
+				}
+
+				result = append(result, enrichedSession{
+					Name:          row.SessionName,
+					Windows:       row.Windows,
+					Panes:         row.Panes,
+					Attached:      row.Attached,
+					CreatedAt:     createdAt.Format(time.RFC3339),
+					ActivityAt:    row.ActivityAt.Format(time.RFC3339),
+					Command:       "",
+					Hash:          hash,
+					LastContent:   lastContent,
+					Icon:          meta.Icon,
+					UnreadWindows: row.UnreadWindows,
+					UnreadPanes:   row.UnreadPanes,
+					Rev:           row.Rev,
+				})
+			}
+			if err := h.store.Purge(ctx, activeNames); err != nil {
+				slog.Warn("store.Purge failed", "err", err)
+			}
+			writeData(w, http.StatusOK, map[string]any{"sessions": result})
+			return
+		}
+	}
+
+	// Warmup fallback: projections may still be empty right after startup.
 	sessions, err := h.tmux.ListSessions(ctx)
 	if err != nil {
 		writeTmuxError(w, err)
 		return
 	}
-
 	snapshots, err := h.tmux.ListActivePaneCommands(ctx)
 	if err != nil {
 		slog.Warn("list-pane-commands failed", "err", err)
 		snapshots = map[string]tmux.PaneSnapshot{}
 	}
 
-	stored, err := h.store.GetAll(ctx)
-	if err != nil {
-		slog.Warn("store.GetAll failed", "err", err)
-		stored = map[string]store.SessionMeta{}
-	}
-
-	type enrichedSession struct {
-		Name        string `json:"name"`
-		Windows     int    `json:"windows"`
-		Panes       int    `json:"panes"`
-		Attached    int    `json:"attached"`
-		CreatedAt   string `json:"createdAt"`
-		ActivityAt  string `json:"activityAt"`
-		Command     string `json:"command"`
-		Hash        string `json:"hash"`
-		LastContent string `json:"lastContent"`
-		Icon        string `json:"icon"`
-	}
-
 	activeNames := make([]string, 0, len(sessions))
 	result := make([]enrichedSession, 0, len(sessions))
-
 	for _, s := range sessions {
 		activeNames = append(activeNames, s.Name)
-
 		snap := snapshots[s.Name]
 		meta := stored[s.Name]
 
-		hash := meta.Hash
+		hash := strings.TrimSpace(meta.Hash)
 		if hash == "" {
 			hash = tmux.SessionHash(s.Name, s.CreatedAt.Unix())
 		}
-
-		content := meta.LastContent
-		if captured, capErr := h.tmux.CapturePane(ctx, s.Name); capErr == nil && captured != "" {
-			content = captured
+		lastContent := strings.TrimSpace(meta.LastContent)
+		if captured, capErr := h.tmux.CapturePane(ctx, s.Name); capErr == nil {
+			if trimmed := strings.TrimSpace(captured); trimmed != "" {
+				lastContent = trimmed
+			}
 		}
-
-		if err := h.store.UpsertSession(ctx, s.Name, hash, content); err != nil {
-			slog.Warn("store.UpsertSession failed", "session", s.Name, "err", err)
+		if h.store != nil {
+			if err := h.store.UpsertSession(ctx, s.Name, hash, lastContent); err != nil {
+				slog.Warn("store.UpsertSession failed", "session", s.Name, "err", err)
+			}
 		}
 
 		panes := snap.Panes
 		if panes == 0 {
-			// Fallback to an exact pane count when snapshots are missing.
 			if paneList, paneErr := h.tmux.ListPanes(ctx, s.Name); paneErr == nil {
 				panes = len(paneList)
 			} else {
@@ -337,23 +430,26 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		result = append(result, enrichedSession{
-			Name:        s.Name,
-			Windows:     s.Windows,
-			Panes:       panes,
-			Attached:    s.Attached,
-			CreatedAt:   s.CreatedAt.Format(time.RFC3339),
-			ActivityAt:  s.ActivityAt.Format(time.RFC3339),
-			Command:     snap.Command,
-			Hash:        hash,
-			LastContent: content,
-			Icon:        meta.Icon,
+			Name:          s.Name,
+			Windows:       s.Windows,
+			Panes:         panes,
+			Attached:      s.Attached,
+			CreatedAt:     s.CreatedAt.Format(time.RFC3339),
+			ActivityAt:    s.ActivityAt.Format(time.RFC3339),
+			Command:       snap.Command,
+			Hash:          hash,
+			LastContent:   lastContent,
+			Icon:          meta.Icon,
+			UnreadWindows: 0,
+			UnreadPanes:   0,
+			Rev:           0,
 		})
 	}
-
-	if err := h.store.Purge(ctx, activeNames); err != nil {
-		slog.Warn("store.Purge failed", "err", err)
+	if h.store != nil {
+		if err := h.store.Purge(ctx, activeNames); err != nil {
+			slog.Warn("store.Purge failed", "err", err)
+		}
 	}
-
 	writeData(w, http.StatusOK, map[string]any{"sessions": result})
 }
 
@@ -500,12 +596,66 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if h.store != nil {
+		projected, err := h.store.ListWatchtowerWindows(ctx, session)
+		if err != nil {
+			slog.Warn("store.ListWatchtowerWindows failed", "session", session, "err", err)
+		} else {
+			_, sessionErr := h.store.GetWatchtowerSession(ctx, session)
+			hasSession := sessionErr == nil
+			if len(projected) > 0 || hasSession {
+				panes, panesErr := h.store.ListWatchtowerPanes(ctx, session)
+				if panesErr != nil {
+					writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list windows", nil)
+					return
+				}
+
+				paneCounts := make(map[int]int, len(projected))
+				for _, pane := range panes {
+					paneCounts[pane.WindowIndex]++
+				}
+
+				resp := make([]enrichedWindow, 0, len(projected))
+				for _, row := range projected {
+					resp = append(resp, enrichedWindow{
+						Session:     row.SessionName,
+						Index:       row.WindowIndex,
+						Name:        row.Name,
+						Active:      row.Active,
+						Panes:       paneCounts[row.WindowIndex],
+						Layout:      row.Layout,
+						UnreadPanes: row.UnreadPanes,
+						HasUnread:   row.HasUnread,
+						Rev:         row.Rev,
+						ActivityAt:  row.WindowActivityAt.Format(time.RFC3339),
+					})
+				}
+				writeData(w, http.StatusOK, map[string]any{"windows": resp})
+				return
+			}
+		}
+	}
+
 	windows, err := h.tmux.ListWindows(ctx, session)
 	if err != nil {
 		writeTmuxError(w, err)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"windows": windows})
+	resp := make([]enrichedWindow, 0, len(windows))
+	for _, row := range windows {
+		resp = append(resp, enrichedWindow{
+			Session:     row.Session,
+			Index:       row.Index,
+			Name:        row.Name,
+			Active:      row.Active,
+			Panes:       row.Panes,
+			Layout:      row.Layout,
+			UnreadPanes: 0,
+			HasUnread:   false,
+			Rev:         0,
+		})
+	}
+	writeData(w, http.StatusOK, map[string]any{"windows": resp})
 }
 
 func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
@@ -517,12 +667,328 @@ func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if h.store != nil {
+		projected, err := h.store.ListWatchtowerPanes(ctx, session)
+		if err != nil {
+			slog.Warn("store.ListWatchtowerPanes failed", "session", session, "err", err)
+		} else {
+			_, sessionErr := h.store.GetWatchtowerSession(ctx, session)
+			hasSession := sessionErr == nil
+			if len(projected) > 0 || hasSession {
+				resp := make([]enrichedPane, 0, len(projected))
+				for _, row := range projected {
+					resp = append(resp, enrichedPane{
+						Session:        row.SessionName,
+						WindowIndex:    row.WindowIndex,
+						PaneIndex:      row.PaneIndex,
+						PaneID:         row.PaneID,
+						Title:          row.Title,
+						Active:         row.Active,
+						TTY:            row.TTY,
+						CurrentPath:    row.CurrentPath,
+						StartCommand:   row.StartCommand,
+						CurrentCommand: row.CurrentCommand,
+						TailPreview:    row.TailPreview,
+						Revision:       row.Revision,
+						SeenRevision:   row.SeenRevision,
+						HasUnread:      row.Revision > row.SeenRevision,
+						ChangedAt:      row.ChangedAt.Format(time.RFC3339),
+					})
+				}
+				writeData(w, http.StatusOK, map[string]any{"panes": resp})
+				return
+			}
+		}
+	}
+
 	panes, err := h.tmux.ListPanes(ctx, session)
 	if err != nil {
 		writeTmuxError(w, err)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"panes": panes})
+	resp := make([]enrichedPane, 0, len(panes))
+	for _, row := range panes {
+		resp = append(resp, enrichedPane{
+			Session:        row.Session,
+			WindowIndex:    row.WindowIndex,
+			PaneIndex:      row.PaneIndex,
+			PaneID:         row.PaneID,
+			Title:          row.Title,
+			Active:         row.Active,
+			TTY:            row.TTY,
+			CurrentPath:    row.CurrentPath,
+			StartCommand:   row.StartCommand,
+			CurrentCommand: row.CurrentCommand,
+			Revision:       0,
+			SeenRevision:   0,
+			HasUnread:      false,
+		})
+	}
+	writeData(w, http.StatusOK, map[string]any{"panes": resp})
+}
+
+func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
+	session := strings.TrimSpace(r.PathValue("session"))
+	if !validate.SessionName(session) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+		return
+	}
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+
+	var req struct {
+		Scope       string `json:"scope"`
+		WindowIndex int    `json:"windowIndex"`
+		PaneID      string `json:"paneId"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	req.Scope = strings.TrimSpace(strings.ToLower(req.Scope))
+	req.PaneID = strings.TrimSpace(req.PaneID)
+
+	if req.Scope == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	acked := false
+	var err error
+	switch req.Scope {
+	case "pane":
+		if !strings.HasPrefix(req.PaneID, "%") {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId must start with %", nil)
+			return
+		}
+		acked, err = h.store.MarkWatchtowerPaneSeen(ctx, session, req.PaneID)
+	case "window":
+		if req.WindowIndex < 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "windowIndex must be >= 0", nil)
+			return
+		}
+		acked, err = h.store.MarkWatchtowerWindowSeen(ctx, session, req.WindowIndex)
+	case "session":
+		acked, err = h.store.MarkWatchtowerSessionSeen(ctx, session)
+	default:
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope must be pane, window, or session", nil)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to mark seen", nil)
+		return
+	}
+
+	globalRev := int64(0)
+	if raw, getErr := h.store.GetWatchtowerRuntimeValue(ctx, "global_rev"); getErr == nil {
+		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil {
+			globalRev = parsed
+		}
+	}
+
+	if acked {
+		h.emit(events.TypeTmuxInspector, map[string]any{
+			"session": session,
+			"action":  "seen",
+			"scope":   req.Scope,
+		})
+		h.emit(events.TypeTmuxSessions, map[string]any{
+			"session": session,
+			"action":  "seen",
+			"scope":   req.Scope,
+		})
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"session":   session,
+		"scope":     req.Scope,
+		"acked":     acked,
+		"globalRev": globalRev,
+	})
+}
+
+func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+
+	since := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "since must be >= 0", nil)
+			return
+		}
+		since = parsed
+	}
+
+	limit := 200
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "limit must be > 0", nil)
+			return
+		}
+		if parsed > 1000 {
+			parsed = 1000
+		}
+		limit = parsed
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	changes, err := h.store.ListWatchtowerJournalSince(ctx, since, limit+1)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to read activity delta", nil)
+		return
+	}
+	overflow := false
+	if len(changes) > limit {
+		overflow = true
+		changes = changes[:limit]
+	}
+
+	globalRev := int64(0)
+	if raw, getErr := h.store.GetWatchtowerRuntimeValue(ctx, "global_rev"); getErr == nil {
+		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil {
+			globalRev = parsed
+		}
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"since":     since,
+		"limit":     limit,
+		"globalRev": globalRev,
+		"overflow":  overflow,
+		"changes":   changes,
+	})
+}
+
+func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	keys := []string{
+		"global_rev",
+		"collect_total",
+		"collect_errors_total",
+		"last_collect_at",
+		"last_collect_duration_ms",
+		"last_collect_sessions",
+		"last_collect_changed_sessions",
+		"last_collect_error",
+	}
+
+	runtime := make(map[string]string, len(keys))
+	for _, key := range keys {
+		value, err := h.store.GetWatchtowerRuntimeValue(ctx, key)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to read activity stats", nil)
+			return
+		}
+		runtime[key] = strings.TrimSpace(value)
+	}
+
+	parseInt := func(key string) int64 {
+		raw := strings.TrimSpace(runtime[key])
+		if raw == "" {
+			return 0
+		}
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return 0
+		}
+		return parsed
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"globalRev":             parseInt("global_rev"),
+		"collectTotal":          parseInt("collect_total"),
+		"collectErrorsTotal":    parseInt("collect_errors_total"),
+		"lastCollectAt":         runtime["last_collect_at"],
+		"lastCollectDurationMs": parseInt("last_collect_duration_ms"),
+		"lastCollectSessions":   parseInt("last_collect_sessions"),
+		"lastCollectChanged":    parseInt("last_collect_changed_sessions"),
+		"lastCollectError":      runtime["last_collect_error"],
+		"runtime":               runtime,
+	})
+}
+
+func (h *Handler) setTmuxPresence(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+
+	var req struct {
+		TerminalID  string `json:"terminalId"`
+		SessionName string `json:"session"`
+		WindowIndex int    `json:"windowIndex"`
+		PaneID      string `json:"paneId"`
+		Visible     bool   `json:"visible"`
+		Focused     bool   `json:"focused"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	req.TerminalID = strings.TrimSpace(req.TerminalID)
+	req.SessionName = strings.TrimSpace(req.SessionName)
+	req.PaneID = strings.TrimSpace(req.PaneID)
+
+	if req.TerminalID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "terminalId is required", nil)
+		return
+	}
+	if req.SessionName != "" && !validate.SessionName(req.SessionName) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+		return
+	}
+	if req.WindowIndex < -1 {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "windowIndex must be >= -1", nil)
+		return
+	}
+	if req.PaneID != "" && !strings.HasPrefix(req.PaneID, "%") {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId must start with %", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(15 * time.Second)
+	if err := h.store.UpsertWatchtowerPresence(ctx, store.WatchtowerPresenceWrite{
+		TerminalID:  req.TerminalID,
+		SessionName: req.SessionName,
+		WindowIndex: req.WindowIndex,
+		PaneID:      req.PaneID,
+		Visible:     req.Visible,
+		Focused:     req.Focused,
+		UpdatedAt:   now,
+		ExpiresAt:   expiresAt,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to set presence", nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"accepted":  true,
+		"expiresAt": expiresAt.Format(time.RFC3339),
+	})
 }
 
 func (h *Handler) selectWindow(w http.ResponseWriter, r *http.Request) {

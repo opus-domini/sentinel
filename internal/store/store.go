@@ -66,6 +66,10 @@ func New(dbPath string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("create recovery schema: %w", err)
 	}
+	if err := s.initWatchtowerSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create watchtower schema: %w", err)
+	}
 
 	return s, nil
 }

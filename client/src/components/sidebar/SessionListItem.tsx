@@ -37,6 +37,8 @@ export default function SessionListItem({
   canDetach,
 }: SessionListItemProps) {
   const isAttached = session.attached > 0
+  const unreadPanes = session.unreadPanes ?? 0
+  const unreadWindows = session.unreadWindows ?? 0
   const activityRelative = formatRelativeTime(session.activityAt)
   const activityAbsolute = formatTimestamp(session.activityAt)
   const createdAbsolute = formatTimestamp(session.createdAt)
@@ -103,6 +105,22 @@ export default function SessionListItem({
                   {session.panes}
                 </span>
               </TooltipHelper>
+              {unreadPanes > 0 && (
+                <TooltipHelper
+                  content={
+                    unreadWindows > 0
+                      ? `${unreadPanes} unread panes in ${unreadWindows} window(s)`
+                      : `${unreadPanes} unread panes`
+                  }
+                >
+                  <span
+                    className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-amber-500/50 bg-amber-500/15 px-1 text-[10px] font-semibold text-amber-200"
+                    aria-label={`${unreadPanes} unread panes`}
+                  >
+                    {unreadPanes}
+                  </span>
+                </TooltipHelper>
+              )}
               {isAttached && (
                 <TooltipHelper content="Attached clients">
                   <span
@@ -121,7 +139,14 @@ export default function SessionListItem({
             </div>
 
             {/* Line 2: Content preview (2 lines max, reserved height) */}
-            <div className="my-1 line-clamp-2 min-h-[2lh] overflow-hidden break-all text-[10px] leading-[1.4] italic text-muted-foreground">
+            <div
+              className={cn(
+                'my-1 line-clamp-2 min-h-[2lh] overflow-hidden break-all text-[10px] leading-[1.4] italic',
+                unreadPanes > 0
+                  ? 'text-secondary-foreground'
+                  : 'text-muted-foreground',
+              )}
+            >
               {session.lastContent || '\u00A0'}
             </div>
 

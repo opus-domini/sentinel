@@ -221,10 +221,36 @@ Environment variables override config file values and are useful for technical/a
 | `SENTINEL_ALLOWED_ORIGINS` | `allowed_origins` | auto | Comma-separated allowlist |
 | `SENTINEL_LOG_LEVEL` | `log_level` | `info` | `debug`, `info`, `warn`, `error` |
 | `SENTINEL_DATA_DIR` | n/a | `~/.sentinel` | Data directory |
+| `SENTINEL_WATCHTOWER_ENABLED` | `watchtower_enabled` | `true` | Enable watchtower activity projector |
+| `SENTINEL_WATCHTOWER_TICK_INTERVAL` | `watchtower_tick_interval` | `1s` | Activity collection interval |
+| `SENTINEL_WATCHTOWER_CAPTURE_LINES` | `watchtower_capture_lines` | `80` | Lines captured per pane tail |
+| `SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT` | `watchtower_capture_timeout` | `150ms` | Timeout per pane capture |
+| `SENTINEL_WATCHTOWER_JOURNAL_ROWS` | `watchtower_journal_rows` | `5000` | Max activity journal rows retained |
 | `SENTINEL_RECOVERY_ENABLED` | `recovery_enabled` | `true` | Enable recovery journal/restore engine |
 | `SENTINEL_RECOVERY_SNAPSHOT_INTERVAL` | `recovery_snapshot_interval` | `5s` | Snapshot polling interval |
-| `SENTINEL_RECOVERY_CAPTURE_LINES` | `recovery_capture_lines` | `80` | Lines captured per pane in snapshots |
 | `SENTINEL_RECOVERY_MAX_SNAPSHOTS` | `recovery_max_snapshots` | `300` | Max snapshots retained per session |
+
+## Watchtower Observability
+
+Sentinel exposes watchtower operational state via API:
+
+- `GET /api/tmux/activity/stats`: current runtime counters and last collect metadata.
+- `GET /api/tmux/activity/delta?since=<rev>&limit=<n>`: journal deltas by `globalRev`.
+
+Key fields in `/api/tmux/activity/stats`:
+
+- `collectTotal`: total collect cycles since startup.
+- `collectErrorsTotal`: collect cycles that returned error.
+- `lastCollectDurationMs`: duration of latest cycle.
+- `lastCollectSessions`: sessions seen in latest cycle.
+- `lastCollectChanged`: sessions with effective activity change in latest cycle.
+- `globalRev`: latest persisted activity revision.
+
+For local performance baselines, run:
+
+```bash
+go test -run=^$ -bench=BenchmarkCollectFiftyPanes -benchmem ./internal/watchtower
+```
 
 ## Current Limitations
 

@@ -15,7 +15,16 @@ type Config struct {
 	AllowedOrigins []string
 	DataDir        string
 	LogLevel       string
+	Watchtower     WatchtowerConfig
 	Recovery       RecoveryConfig
+}
+
+type WatchtowerConfig struct {
+	Enabled        bool
+	TickInterval   time.Duration
+	CaptureLines   int
+	CaptureTimeout time.Duration
+	JournalRows    int
 }
 
 type RecoveryConfig struct {
@@ -45,21 +54,39 @@ const defaultConfigContent = `# Sentinel configuration
 # Environment variable: SENTINEL_LOG_LEVEL
 # log_level = "info"
 
+# Watchtower subsystem (background activity projection + unread journal).
+# Environment variables:
+# - SENTINEL_WATCHTOWER_ENABLED
+# - SENTINEL_WATCHTOWER_TICK_INTERVAL
+# - SENTINEL_WATCHTOWER_CAPTURE_LINES
+# - SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT
+# - SENTINEL_WATCHTOWER_JOURNAL_ROWS
+# watchtower_enabled = true
+# watchtower_tick_interval = "1s"
+# watchtower_capture_lines = 80
+# watchtower_capture_timeout = "150ms"
+# watchtower_journal_rows = 5000
+
 # Recovery subsystem (tmux session journal + restore engine).
 # Environment variables:
 # - SENTINEL_RECOVERY_ENABLED
 # - SENTINEL_RECOVERY_SNAPSHOT_INTERVAL
-# - SENTINEL_RECOVERY_CAPTURE_LINES
 # - SENTINEL_RECOVERY_MAX_SNAPSHOTS
 # recovery_enabled = true
 # recovery_snapshot_interval = "5s"
-# recovery_capture_lines = 80
 # recovery_max_snapshots = 300
 `
 
 func Load() Config {
 	cfg := Config{
 		ListenAddr: "127.0.0.1:4040",
+		Watchtower: WatchtowerConfig{
+			Enabled:        true,
+			TickInterval:   1 * time.Second,
+			CaptureLines:   80,
+			CaptureTimeout: 150 * time.Millisecond,
+			JournalRows:    5000,
+		},
 		Recovery: RecoveryConfig{
 			Enabled:          true,
 			SnapshotInterval: 5 * time.Second,
@@ -111,6 +138,61 @@ func Load() Config {
 		cfg.LogLevel = strings.ToLower(v)
 	} else if v := file["log_level"]; v != "" {
 		cfg.LogLevel = strings.ToLower(v)
+	}
+
+	// Watchtower enabled.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_ENABLED")); raw != "" {
+		if parsed, ok := parseBool(raw); ok {
+			cfg.Watchtower.Enabled = parsed
+		}
+	} else if raw := file["watchtower_enabled"]; raw != "" {
+		if parsed, ok := parseBool(raw); ok {
+			cfg.Watchtower.Enabled = parsed
+		}
+	}
+
+	// Watchtower tick interval.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_TICK_INTERVAL")); raw != "" {
+		if parsed, ok := parseDuration(raw); ok {
+			cfg.Watchtower.TickInterval = parsed
+		}
+	} else if raw := file["watchtower_tick_interval"]; raw != "" {
+		if parsed, ok := parseDuration(raw); ok {
+			cfg.Watchtower.TickInterval = parsed
+		}
+	}
+
+	// Watchtower capture lines.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_CAPTURE_LINES")); raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Watchtower.CaptureLines = parsed
+		}
+	} else if raw := file["watchtower_capture_lines"]; raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Watchtower.CaptureLines = parsed
+		}
+	}
+
+	// Watchtower capture timeout.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT")); raw != "" {
+		if parsed, ok := parseDuration(raw); ok {
+			cfg.Watchtower.CaptureTimeout = parsed
+		}
+	} else if raw := file["watchtower_capture_timeout"]; raw != "" {
+		if parsed, ok := parseDuration(raw); ok {
+			cfg.Watchtower.CaptureTimeout = parsed
+		}
+	}
+
+	// Watchtower journal max rows.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS")); raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Watchtower.JournalRows = parsed
+		}
+	} else if raw := file["watchtower_journal_rows"]; raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Watchtower.JournalRows = parsed
+		}
 	}
 
 	// Recovery enabled.

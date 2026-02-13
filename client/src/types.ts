@@ -9,6 +9,9 @@ export type Session = {
   hash: string
   lastContent: string
   icon: string
+  unreadWindows?: number
+  unreadPanes?: number
+  rev?: number
 }
 
 export type ConnectionState =
@@ -27,6 +30,10 @@ export type WindowInfo = {
   name: string
   active: boolean
   panes: number
+  unreadPanes?: number
+  hasUnread?: boolean
+  rev?: number
+  activityAt?: string
 }
 
 export type PaneInfo = {
@@ -37,6 +44,11 @@ export type PaneInfo = {
   title: string
   active: boolean
   tty: string
+  tailPreview?: string
+  revision?: number
+  seenRevision?: number
+  hasUnread?: boolean
+  changedAt?: string
 }
 
 export type WindowsResponse = {

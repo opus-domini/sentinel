@@ -21,6 +21,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/terminals"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/watchtower"
 )
 
 func main() {
@@ -48,6 +49,18 @@ func serve() int {
 	}
 
 	var recoveryService *recovery.Service
+	watchtowerService := watchtower.New(st, tmux.Service{}, watchtower.Options{
+		TickInterval:   cfg.Watchtower.TickInterval,
+		CaptureLines:   cfg.Watchtower.CaptureLines,
+		CaptureTimeout: cfg.Watchtower.CaptureTimeout,
+		JournalRows:    cfg.Watchtower.JournalRows,
+		Publish: func(eventType string, payload map[string]any) {
+			eventHub.Publish(events.NewEvent(eventType, payload))
+		},
+	})
+	if cfg.Watchtower.Enabled {
+		watchtowerService.Start(context.Background())
+	}
 	if cfg.Recovery.Enabled {
 		recoveryService = recovery.New(st, tmux.Service{}, recovery.Options{
 			SnapshotInterval:    cfg.Recovery.SnapshotInterval,
@@ -61,6 +74,11 @@ func serve() int {
 	api.Register(mux, guard, terminalRegistry, st, recoveryService, eventHub)
 
 	exitCode := run(cfg, mux)
+	if cfg.Watchtower.Enabled {
+		stopWatchtowerCtx, cancelWatchtower := context.WithTimeout(context.Background(), 2*time.Second)
+		watchtowerService.Stop(stopWatchtowerCtx)
+		cancelWatchtower()
+	}
 	if recoveryService != nil {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		recoveryService.Stop(stopCtx)
@@ -102,6 +120,11 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 		"data_dir", cfg.DataDir,
 		"token_required", cfg.Token != "",
 		"log_level", cfg.LogLevel,
+		"watchtower_enabled", cfg.Watchtower.Enabled,
+		"watchtower_tick", cfg.Watchtower.TickInterval.String(),
+		"watchtower_capture_lines", cfg.Watchtower.CaptureLines,
+		"watchtower_capture_timeout", cfg.Watchtower.CaptureTimeout.String(),
+		"watchtower_journal_rows", cfg.Watchtower.JournalRows,
 		"recovery_enabled", cfg.Recovery.Enabled,
 		"recovery_interval", cfg.Recovery.SnapshotInterval.String(),
 	)

@@ -87,6 +87,8 @@ export default function WindowStrip({
       )}
       {sortedWindows.map((windowInfo) => {
         const isActive = activeWindowIndex === windowInfo.index
+        const unreadPanes = windowInfo.unreadPanes ?? 0
+        const hasUnread = windowInfo.hasUnread ?? unreadPanes > 0
         return (
           <ContextMenu key={`${windowInfo.session}:${windowInfo.index}`}>
             <ContextMenuTrigger asChild>
@@ -95,15 +97,25 @@ export default function WindowStrip({
                   'inline-flex shrink-0 items-center overflow-hidden rounded border text-[11px]',
                   isActive
                     ? 'border-primary/50 text-primary-text'
-                    : 'border-border text-secondary-foreground',
+                    : hasUnread
+                      ? 'border-amber-400/60 text-amber-100'
+                      : 'border-border text-secondary-foreground',
                 )}
               >
                 <button
-                  className="cursor-pointer px-1.5 py-0.5 whitespace-nowrap hover:text-foreground"
+                  className="inline-flex cursor-pointer items-center gap-1 px-1.5 py-0.5 whitespace-nowrap hover:text-foreground"
                   type="button"
                   onClick={() => onSelectWindow(windowInfo.index)}
                 >
                   {isMobile ? windowInfo.index : windowInfo.name}
+                  {hasUnread && unreadPanes > 0 && (
+                    <span
+                      className="inline-flex min-w-4 items-center justify-center rounded-full border border-amber-500/50 bg-amber-500/20 px-1 text-[10px] leading-none text-amber-200"
+                      aria-label={`${unreadPanes} unread panes in window ${windowInfo.name}`}
+                    >
+                      {unreadPanes}
+                    </span>
+                  )}
                 </button>
                 {!isMobile && (
                   <button
