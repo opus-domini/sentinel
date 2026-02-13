@@ -179,6 +179,7 @@ function TmuxPage() {
     token,
     sidebarCollapsed: layout.sidebarCollapsed,
     onAttachedMobile: handleAttachedMobile,
+    allowWheelInAlternateBuffer: true,
   })
 
   const orderedSessions = useMemo(() => {

@@ -25,6 +25,12 @@ const (
 	defaultTermRows = 40
 )
 
+var (
+	tmuxSessionExistsFn = tmux.SessionExists
+	tmuxSetSessionMouse = tmux.SetSessionMouse
+	startTmuxAttachFn   = term.StartTmuxAttach
+)
+
 type Handler struct {
 	guard     *security.Guard
 	events    *events.Hub
@@ -83,7 +89,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	exists, err := tmux.SessionExists(ctx, session)
+	exists, err := tmuxSessionExistsFn(ctx, session)
 	cancel()
 	if err != nil {
 		status, message := tmuxHTTPError(err)
@@ -104,7 +110,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	h.attachPTY(wsConn, attachPTYOptions{
 		label: session,
 		startPTY: func(ctx context.Context) (*term.PTY, error) {
-			return term.StartTmuxAttach(ctx, session, defaultTermCols, defaultTermRows)
+			return h.startTmuxPTY(ctx, session)
 		},
 		statusMsg: map[string]any{
 			"type":    "status",
@@ -124,6 +130,15 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 			)
 		},
 	})
+}
+
+func (h *Handler) startTmuxPTY(ctx context.Context, session string) (*term.PTY, error) {
+	// Best-effort: keep wheel events as tmux mouse scroll instead of
+	// application ArrowUp/ArrowDown in alternate buffer contexts.
+	if err := tmuxSetSessionMouse(ctx, session, true); err != nil {
+		slog.Warn("tmux mouse enable failed", "session", session, "err", err)
+	}
+	return startTmuxAttachFn(ctx, session, defaultTermCols, defaultTermRows)
 }
 
 func (h *Handler) attachTerminalWS(w http.ResponseWriter, r *http.Request) {

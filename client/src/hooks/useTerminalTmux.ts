@@ -60,6 +60,7 @@ type UseTerminalTmuxArgs = {
   wsQueryKey?: string
   connectingVerb?: string
   connectedVerb?: string
+  allowWheelInAlternateBuffer?: boolean
 }
 
 type UseTerminalTmuxResult = {
@@ -90,6 +91,7 @@ export function useTerminalTmux({
   wsQueryKey = 'session',
   connectingVerb = 'opening',
   connectedVerb = 'attached',
+  allowWheelInAlternateBuffer = false,
 }: UseTerminalTmuxArgs): UseTerminalTmuxResult {
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('disconnected')
@@ -481,12 +483,14 @@ export function useTerminalTmux({
         theme: getTerminalTheme(themeId).colors,
       })
 
-      // Prevent xterm.js from converting scroll wheel into arrow-up/down
-      // key sequences when tmux (or vim, etc.) activates the alternate
-      // screen buffer, which has no scrollback.
-      terminal.attachCustomWheelEventHandler(() => {
-        return terminal.buffer.active.type !== 'alternate'
-      })
+      // In alternate screen buffers (tmux/vim), xterm.js converts wheel
+      // gestures into arrow key sequences. Keep this blocked by default,
+      // but allow callers (tmux route) to opt-in so tmux can handle wheel.
+      if (!allowWheelInAlternateBuffer) {
+        terminal.attachCustomWheelEventHandler(() => {
+          return terminal.buffer.active.type !== 'alternate'
+        })
+      }
 
       const fitAddon = new FitAddon()
       const clipboardAddon = new ClipboardAddon()
@@ -560,7 +564,14 @@ export function useTerminalTmux({
       connectRuntime(runtime)
       return runtime
     },
-    [connectRuntime, fontSize, openRuntimeInHost, sendResize, themeId],
+    [
+      allowWheelInAlternateBuffer,
+      connectRuntime,
+      fontSize,
+      openRuntimeInHost,
+      sendResize,
+      themeId,
+    ],
   )
 
   const disposeRuntime = useCallback(

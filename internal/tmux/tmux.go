@@ -239,6 +239,18 @@ func CreateSession(ctx context.Context, name, cwd string) error {
 	return err
 }
 
+// SetSessionMouse toggles tmux mouse support for a target session.
+// When enabled, wheel gestures are handled by tmux copy-mode instead of
+// being interpreted as terminal cursor keys by applications.
+func SetSessionMouse(ctx context.Context, session string, enabled bool) error {
+	value := "off"
+	if enabled {
+		value = "on"
+	}
+	_, err := run(ctx, "set-option", "-t", session, "mouse", value)
+	return err
+}
+
 func RenameSession(ctx context.Context, session, newName string) error {
 	_, err := run(ctx, "rename-session", "-t", session, newName)
 	return err
