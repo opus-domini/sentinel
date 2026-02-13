@@ -11,6 +11,9 @@ import (
 )
 
 func currentBootID(ctx context.Context) string {
+	// Linux: read stable boot identifier from /proc.
+	// macOS (and other BSD-like hosts): /proc is unavailable, so we fallback
+	// to `sysctl -n kern.boottime` below.
 	if raw, err := os.ReadFile("/proc/sys/kernel/random/boot_id"); err == nil {
 		if v := strings.TrimSpace(string(raw)); v != "" {
 			return v
@@ -33,6 +36,8 @@ func currentBootID(ctx context.Context) string {
 	if host == "" {
 		host = "unknown-host"
 	}
+	// Last-resort value for constrained environments where neither Linux /proc
+	// nor sysctl are available.
 	return fmt.Sprintf("%s:%d", host, time.Now().UTC().Unix()/300)
 }
 
