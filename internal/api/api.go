@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -113,9 +114,23 @@ func (h *Handler) emit(eventType string, payload map[string]any) {
 }
 
 func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
+	defaultCwd := defaultSessionCWD()
 	writeData(w, http.StatusOK, map[string]any{
 		"tokenRequired": h.guard.TokenRequired(),
+		"defaultCwd":    defaultCwd,
 	})
+}
+
+func defaultSessionCWD() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	home = strings.TrimSpace(home)
+	if home == "" || !filepath.IsAbs(home) {
+		return ""
+	}
+	return home
 }
 
 func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {
@@ -233,6 +248,9 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.Cwd = strings.TrimSpace(req.Cwd)
+	if req.Cwd == "" {
+		req.Cwd = defaultSessionCWD()
+	}
 	if !validate.SessionName(req.Name) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "name must match ^[A-Za-z0-9._-]{1,64}$", nil)
 		return

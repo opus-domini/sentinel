@@ -633,7 +633,8 @@ func TestMetaHandler(t *testing.T) {
 
 			var body struct {
 				Data struct {
-					TokenRequired bool `json:"tokenRequired"`
+					TokenRequired bool   `json:"tokenRequired"`
+					DefaultCwd    string `json:"defaultCwd"`
 				} `json:"data"`
 			}
 			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -641,6 +642,9 @@ func TestMetaHandler(t *testing.T) {
 			}
 			if body.Data.TokenRequired != tt.wantRequired {
 				t.Errorf("tokenRequired = %v, want %v", body.Data.TokenRequired, tt.wantRequired)
+			}
+			if body.Data.DefaultCwd != defaultSessionCWD() {
+				t.Errorf("defaultCwd = %q, want %q", body.Data.DefaultCwd, defaultSessionCWD())
 			}
 		})
 	}
@@ -840,6 +844,29 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 		if gotCwd != "/tmp" {
 			t.Errorf("cwd = %q, want /tmp", gotCwd)
+		}
+	})
+
+	t.Run("success defaults cwd to home when empty", func(t *testing.T) {
+		t.Parallel()
+
+		var gotCwd string
+		tm := &mockTmux{
+			createSessionFn: func(_ context.Context, _, cwd string) error {
+				gotCwd = cwd
+				return nil
+			},
+		}
+		h := newTestHandler(t, tm, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":""}`))
+		h.createSession(w, r)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201", w.Code)
+		}
+		if gotCwd != defaultSessionCWD() {
+			t.Errorf("cwd = %q, want %q", gotCwd, defaultSessionCWD())
 		}
 	})
 

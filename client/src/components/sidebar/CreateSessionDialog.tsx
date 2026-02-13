@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,21 +15,30 @@ import { slugifyTmuxName } from '@/lib/tmuxName'
 type CreateSessionDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  defaultCwd: string
   onCreate: (name: string, cwd: string) => void
 }
 
 export default function CreateSessionDialog({
   open,
   onOpenChange,
+  defaultCwd,
   onCreate,
 }: CreateSessionDialogProps) {
+  const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
   const [name, setName] = useState('')
-  const [cwd, setCwd] = useState('')
+  const [cwd, setCwd] = useState(normalizedDefaultCwd)
+
+  useEffect(() => {
+    if (!open) {
+      setCwd(normalizedDefaultCwd)
+    }
+  }, [normalizedDefaultCwd, open])
 
   function handleOpenChange(next: boolean) {
     if (!next) {
       setName('')
-      setCwd('')
+      setCwd(normalizedDefaultCwd)
     }
     onOpenChange(next)
   }
@@ -40,7 +49,7 @@ export default function CreateSessionDialog({
     if (!trimmed) return
     onCreate(trimmed, cwd.trim())
     setName('')
-    setCwd('')
+    setCwd(normalizedDefaultCwd)
     onOpenChange(false)
   }
 
@@ -60,7 +69,7 @@ export default function CreateSessionDialog({
               autoFocus
             />
             <Input
-              placeholder="working directory (optional)"
+              placeholder="working directory"
               value={cwd}
               onChange={(e) => setCwd(e.target.value)}
             />

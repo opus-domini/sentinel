@@ -11,6 +11,7 @@ type SessionSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
+  defaultCwd: string
   filter: string
   token: string
   tmuxUnavailable: boolean
@@ -34,6 +35,7 @@ export default function SessionSidebar({
   isOpen,
   collapsed,
   tokenRequired,
+  defaultCwd,
   filter,
   token,
   tmuxUnavailable,
@@ -54,6 +56,7 @@ export default function SessionSidebar({
         <SessionControls
           sessionCount={totalSessions}
           tokenRequired={tokenRequired}
+          defaultCwd={defaultCwd}
           filter={filter}
           token={token}
           tmuxUnavailable={tmuxUnavailable}

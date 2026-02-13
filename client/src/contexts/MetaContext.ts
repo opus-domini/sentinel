@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 
 type MetaContextValue = {
   tokenRequired: boolean
+  defaultCwd: string
 }
 
 export const MetaContext = createContext<MetaContextValue | null>(null)

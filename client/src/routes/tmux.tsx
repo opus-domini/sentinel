@@ -70,7 +70,7 @@ function isTmuxBinaryMissingMessage(message: string): boolean {
 }
 
 function TmuxPage() {
-  const { tokenRequired } = useMetaContext()
+  const { tokenRequired, defaultCwd } = useMetaContext()
   const { token, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
@@ -1265,6 +1265,7 @@ function TmuxPage() {
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
           tokenRequired={tokenRequired}
+          defaultCwd={defaultCwd}
           filter={filter}
           token={token}
           tmuxUnavailable={tmuxUnavailable}

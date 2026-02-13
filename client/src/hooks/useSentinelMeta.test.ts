@@ -27,6 +27,7 @@ describe('useSentinelMeta', () => {
     mockFetch(200, { data: { tokenRequired: false } })
     const { result } = renderHook(() => useSentinelMeta(''))
     expect(result.current.tokenRequired).toBe(false)
+    expect(result.current.defaultCwd).toBe('')
     expect(result.current.unauthorized).toBe(false)
   })
 
@@ -41,6 +42,16 @@ describe('useSentinelMeta', () => {
     expect(result.current.unauthorized).toBe(false)
   })
 
+  it('sets defaultCwd from API response', async () => {
+    mockFetch(200, { data: { tokenRequired: false, defaultCwd: '/home/hugo' } })
+
+    const { result } = renderHook(() => useSentinelMeta(''))
+
+    await waitFor(() => {
+      expect(result.current.defaultCwd).toBe('/home/hugo')
+    })
+  })
+
   it('sets unauthorized on 401', async () => {
     mockFetch(401, {})
 
@@ -50,6 +61,7 @@ describe('useSentinelMeta', () => {
       expect(result.current.unauthorized).toBe(true)
     })
     expect(result.current.tokenRequired).toBe(true)
+    expect(result.current.defaultCwd).toBe('')
   })
 
   it('sends bearer token in request', async () => {
@@ -92,6 +104,7 @@ describe('useSentinelMeta', () => {
     await new Promise((r) => setTimeout(r, 10))
 
     expect(result.current.tokenRequired).toBe(false)
+    expect(result.current.defaultCwd).toBe('')
     expect(result.current.unauthorized).toBe(false)
   })
 
@@ -109,6 +122,7 @@ describe('useSentinelMeta', () => {
     await new Promise((r) => setTimeout(r, 10))
 
     expect(result.current.tokenRequired).toBe(false)
+    expect(result.current.defaultCwd).toBe('')
     expect(result.current.unauthorized).toBe(false)
   })
 })

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 type SessionControlsProps = {
   sessionCount: number
   tokenRequired: boolean
+  defaultCwd: string
   tmuxUnavailable: boolean
   recoveryKilledCount: number
   filter: string
@@ -21,6 +22,7 @@ type SessionControlsProps = {
 export default function SessionControls({
   sessionCount,
   tokenRequired,
+  defaultCwd,
   tmuxUnavailable,
   recoveryKilledCount,
   filter,
@@ -94,6 +96,7 @@ export default function SessionControls({
       <CreateSessionDialog
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
+        defaultCwd={defaultCwd}
         onCreate={onCreate}
       />
 
