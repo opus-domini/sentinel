@@ -67,11 +67,11 @@ What `install.sh` does on Linux:
 - regular user:
   - installs binary to `~/.local/bin/sentinel`
   - installs `~/.config/systemd/user/sentinel.service`
-  - starts the service (`systemctl --user start sentinel`)
+  - starts or restarts the service (`systemctl --user start|restart sentinel`)
 - root:
   - installs binary to `/usr/local/bin/sentinel`
   - installs `/etc/systemd/system/sentinel@.service`
-  - starts `sentinel@root` (or `sentinel@$SYSTEMD_TARGET_USER`)
+  - starts or restarts `sentinel@root` (or `sentinel@$SYSTEMD_TARGET_USER`)
 - optional persistence:
   - `systemctl --user enable sentinel` (regular user)
   - `systemctl enable sentinel@root` (root)
@@ -101,7 +101,7 @@ For development from source, see `CONTRIBUTING.md`.
 
 ### 1) Confirm service status
 
-`install.sh` already starts the service for you.
+`install.sh` already starts (or restarts, if already running) the service for you.
 
 If installed as regular user:
 

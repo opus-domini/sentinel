@@ -113,9 +113,17 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
             sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
 
             if systemctl daemon-reload; then
-                if systemctl start "${TARGET_UNIT}"; then
+                ACTION="start"
+                if systemctl is-active --quiet "${TARGET_UNIT}"; then
+                    ACTION="restart"
+                    SYSTEMCTL_CMD=(systemctl restart "${TARGET_UNIT}")
+                else
+                    SYSTEMCTL_CMD=(systemctl start "${TARGET_UNIT}")
+                fi
+
+                if "${SYSTEMCTL_CMD[@]}"; then
                     echo ""
-                    ok "systemd system service installed and started."
+                    ok "systemd system service installed and ${ACTION}ed."
                     printf "\n${BOLD}  Service unit:${RESET}      %s\n" "${TARGET_UNIT}"
                     printf "${BOLD}  Status:${RESET}            systemctl status %s\n" "${TARGET_UNIT}"
                     printf "${BOLD}  Logs:${RESET}              journalctl -u %s -f\n" "${TARGET_UNIT}"
@@ -142,12 +150,20 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
             sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
 
             if systemctl --user daemon-reload; then
-                if systemctl --user start sentinel; then
+                ACTION="start"
+                if systemctl --user is-active --quiet sentinel; then
+                    ACTION="restart"
+                    SYSTEMCTL_USER_CMD=(systemctl --user restart sentinel)
+                else
+                    SYSTEMCTL_USER_CMD=(systemctl --user start sentinel)
+                fi
+
+                if "${SYSTEMCTL_USER_CMD[@]}"; then
                     echo ""
-                    ok "systemd user service installed and started."
+                    ok "systemd user service installed and ${ACTION}ed."
                 else
                     warn "service installed, but failed to start user unit"
-                    warn "you can try: systemctl --user start sentinel"
+                    warn "you can try: systemctl --user restart sentinel"
                 fi
                 printf "\n${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
                 printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
