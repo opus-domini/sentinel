@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,11 @@ type Handler struct {
 	store     *store.Store
 }
 
+const (
+	defaultDirectorySuggestLimit = 12
+	maxDirectorySuggestLimit     = 64
+)
+
 func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry, st *store.Store, recoverySvc recoveryService, eventsHub *events.Hub) {
 	h := &Handler{
 		guard:     guard,
@@ -79,6 +85,7 @@ func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *termi
 		store:     st,
 	}
 	mux.HandleFunc("GET /api/meta", h.wrap(h.meta))
+	mux.HandleFunc("GET /api/fs/dirs", h.wrap(h.listDirectories))
 	mux.HandleFunc("GET /api/tmux/sessions", h.wrap(h.listSessions))
 	mux.HandleFunc("POST /api/tmux/sessions", h.wrap(h.createSession))
 	mux.HandleFunc("PATCH /api/tmux/sessions/{session}", h.wrap(h.renameSession))
@@ -121,6 +128,28 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+func (h *Handler) listDirectories(w http.ResponseWriter, r *http.Request) {
+	limit := defaultDirectorySuggestLimit
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			switch {
+			case parsed <= 0:
+				limit = defaultDirectorySuggestLimit
+			case parsed > maxDirectorySuggestLimit:
+				limit = maxDirectorySuggestLimit
+			default:
+				limit = parsed
+			}
+		}
+	}
+
+	prefix := strings.TrimSpace(r.URL.Query().Get("prefix"))
+	dirs := listDirectorySuggestions(prefix, defaultSessionCWD(), limit)
+	writeData(w, http.StatusOK, map[string]any{
+		"dirs": dirs,
+	})
+}
+
 func defaultSessionCWD() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -131,6 +160,98 @@ func defaultSessionCWD() string {
 		return ""
 	}
 	return home
+}
+
+func listDirectorySuggestions(rawPrefix, home string, limit int) []string {
+	if limit <= 0 {
+		limit = defaultDirectorySuggestLimit
+	}
+	if limit > maxDirectorySuggestLimit {
+		limit = maxDirectorySuggestLimit
+	}
+
+	expanded := normalizeDirectoryPrefix(rawPrefix, home)
+	if expanded == "" {
+		return []string{}
+	}
+
+	baseDir, matchPrefix, ok := splitDirectoryLookup(expanded)
+	if !ok {
+		return []string{}
+	}
+
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		// Non-fatal for autocomplete: path may not exist or be inaccessible.
+		return []string{}
+	}
+
+	matchPrefix = strings.ToLower(matchPrefix)
+	suggestions := make([]string, 0, limit)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if matchPrefix != "" && !strings.HasPrefix(strings.ToLower(name), matchPrefix) {
+			continue
+		}
+		suggestions = append(suggestions, filepath.Join(baseDir, name))
+	}
+
+	sort.Slice(suggestions, func(i, j int) bool {
+		left := strings.ToLower(filepath.Base(suggestions[i]))
+		right := strings.ToLower(filepath.Base(suggestions[j]))
+		if left == right {
+			return suggestions[i] < suggestions[j]
+		}
+		return left < right
+	})
+
+	if len(suggestions) > limit {
+		suggestions = suggestions[:limit]
+	}
+	return suggestions
+}
+
+func normalizeDirectoryPrefix(rawPrefix, home string) string {
+	rawPrefix = strings.TrimSpace(rawPrefix)
+	home = strings.TrimSpace(home)
+
+	if rawPrefix == "" {
+		rawPrefix = home
+	}
+	if rawPrefix == "" {
+		return ""
+	}
+
+	switch {
+	case rawPrefix == "~":
+		rawPrefix = home
+	case strings.HasPrefix(rawPrefix, "~/"):
+		rawPrefix = filepath.Join(home, strings.TrimPrefix(rawPrefix, "~/"))
+	case strings.HasPrefix(rawPrefix, "~"):
+		// "~user" expansion is intentionally unsupported.
+		return ""
+	}
+
+	if strings.TrimSpace(rawPrefix) == "" {
+		return ""
+	}
+	return rawPrefix
+}
+
+func splitDirectoryLookup(prefix string) (baseDir string, matchPrefix string, ok bool) {
+	hadTrailingSlash := strings.HasSuffix(prefix, string(os.PathSeparator))
+	cleaned := filepath.Clean(prefix)
+	if !filepath.IsAbs(cleaned) {
+		return "", "", false
+	}
+
+	if hadTrailingSlash || cleaned == string(os.PathSeparator) {
+		return cleaned, "", true
+	}
+	return filepath.Dir(cleaned), filepath.Base(cleaned), true
 }
 
 func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {

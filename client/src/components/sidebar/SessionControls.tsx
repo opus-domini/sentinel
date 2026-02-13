@@ -97,6 +97,7 @@ export default function SessionControls({
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
         defaultCwd={defaultCwd}
+        token={token}
         onCreate={onCreate}
       />
 

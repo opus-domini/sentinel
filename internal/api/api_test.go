@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -647,6 +649,110 @@ func TestMetaHandler(t *testing.T) {
 				t.Errorf("defaultCwd = %q, want %q", body.Data.DefaultCwd, defaultSessionCWD())
 			}
 		})
+	}
+}
+
+func TestNormalizeDirectoryPrefix(t *testing.T) {
+	t.Parallel()
+
+	home := "/home/tester"
+	tests := []struct {
+		name      string
+		rawPrefix string
+		want      string
+	}{
+		{name: "empty uses home", rawPrefix: "", want: home},
+		{name: "absolute", rawPrefix: "/tmp", want: "/tmp"},
+		{name: "tilde root", rawPrefix: "~", want: home},
+		{name: "tilde path", rawPrefix: "~/work", want: "/home/tester/work"},
+		{name: "tilde user unsupported", rawPrefix: "~root/work", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := normalizeDirectoryPrefix(tt.rawPrefix, home)
+			if got != tt.want {
+				t.Errorf("normalizeDirectoryPrefix(%q) = %q, want %q", tt.rawPrefix, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSplitDirectoryLookup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		prefix     string
+		wantBase   string
+		wantPrefix string
+		wantOK     bool
+	}{
+		{name: "root", prefix: "/", wantBase: "/", wantPrefix: "", wantOK: true},
+		{name: "trailing slash", prefix: "/tmp/", wantBase: "/tmp", wantPrefix: "", wantOK: true},
+		{name: "partial segment", prefix: "/tmp/ab", wantBase: "/tmp", wantPrefix: "ab", wantOK: true},
+		{name: "relative invalid", prefix: "tmp/ab", wantBase: "", wantPrefix: "", wantOK: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			base, match, ok := splitDirectoryLookup(tt.prefix)
+			if ok != tt.wantOK {
+				t.Fatalf("splitDirectoryLookup(%q) ok = %v, want %v", tt.prefix, ok, tt.wantOK)
+			}
+			if base != tt.wantBase || match != tt.wantPrefix {
+				t.Errorf("splitDirectoryLookup(%q) = (%q, %q), want (%q, %q)", tt.prefix, base, match, tt.wantBase, tt.wantPrefix)
+			}
+		})
+	}
+}
+
+func TestListDirectoriesHandler(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "alpha"), 0o750); err != nil {
+		t.Fatalf("mkdir alpha: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "alphabet"), 0o750); err != nil {
+		t.Fatalf("mkdir alphabet: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "beta"), 0o750); err != nil {
+		t.Fatalf("mkdir beta: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "alpha.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	h := newTestHandler(t, &mockTmux{}, nil)
+	req := httptest.NewRequest("GET", "/api/fs/dirs?prefix="+url.QueryEscape(filepath.Join(base, "alp"))+"&limit=10", nil)
+	w := httptest.NewRecorder()
+
+	h.listDirectories(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var body struct {
+		Data struct {
+			Dirs []string `json:"dirs"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json decode error: %v", err)
+	}
+
+	want := []string{
+		filepath.Join(base, "alpha"),
+		filepath.Join(base, "alphabet"),
+	}
+	if len(body.Data.Dirs) != len(want) {
+		t.Fatalf("dirs len = %d, want %d (%v)", len(body.Data.Dirs), len(want), body.Data.Dirs)
+	}
+	for i := range want {
+		if body.Data.Dirs[i] != want[i] {
+			t.Errorf("dirs[%d] = %q, want %q", i, body.Data.Dirs[i], want[i])
+		}
 	}
 }
 
