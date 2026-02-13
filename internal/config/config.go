@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -13,6 +15,14 @@ type Config struct {
 	AllowedOrigins []string
 	DataDir        string
 	LogLevel       string
+	Recovery       RecoveryConfig
+}
+
+type RecoveryConfig struct {
+	Enabled          bool
+	SnapshotInterval time.Duration
+	CaptureLines     int
+	MaxSnapshots     int
 }
 
 const defaultConfigContent = `# Sentinel configuration
@@ -34,11 +44,28 @@ const defaultConfigContent = `# Sentinel configuration
 # Log level: debug, info, warn, error.
 # Environment variable: SENTINEL_LOG_LEVEL
 # log_level = "info"
+
+# Recovery subsystem (tmux session journal + restore engine).
+# Environment variables:
+# - SENTINEL_RECOVERY_ENABLED
+# - SENTINEL_RECOVERY_SNAPSHOT_INTERVAL
+# - SENTINEL_RECOVERY_CAPTURE_LINES
+# - SENTINEL_RECOVERY_MAX_SNAPSHOTS
+# recovery_enabled = true
+# recovery_snapshot_interval = "5s"
+# recovery_capture_lines = 80
+# recovery_max_snapshots = 300
 `
 
 func Load() Config {
 	cfg := Config{
 		ListenAddr: "127.0.0.1:4040",
+		Recovery: RecoveryConfig{
+			Enabled:          true,
+			SnapshotInterval: 5 * time.Second,
+			CaptureLines:     80,
+			MaxSnapshots:     300,
+		},
 	}
 
 	// Resolve DataDir first (needed for config file path).
@@ -84,6 +111,50 @@ func Load() Config {
 		cfg.LogLevel = strings.ToLower(v)
 	} else if v := file["log_level"]; v != "" {
 		cfg.LogLevel = strings.ToLower(v)
+	}
+
+	// Recovery enabled.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_ENABLED")); raw != "" {
+		if parsed, ok := parseBool(raw); ok {
+			cfg.Recovery.Enabled = parsed
+		}
+	} else if raw := file["recovery_enabled"]; raw != "" {
+		if parsed, ok := parseBool(raw); ok {
+			cfg.Recovery.Enabled = parsed
+		}
+	}
+
+	// Recovery snapshot interval.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_SNAPSHOT_INTERVAL")); raw != "" {
+		if parsed, ok := parseDuration(raw); ok {
+			cfg.Recovery.SnapshotInterval = parsed
+		}
+	} else if raw := file["recovery_snapshot_interval"]; raw != "" {
+		if parsed, ok := parseDuration(raw); ok {
+			cfg.Recovery.SnapshotInterval = parsed
+		}
+	}
+
+	// Recovery capture lines.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_CAPTURE_LINES")); raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Recovery.CaptureLines = parsed
+		}
+	} else if raw := file["recovery_capture_lines"]; raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Recovery.CaptureLines = parsed
+		}
+	}
+
+	// Recovery max snapshots.
+	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_MAX_SNAPSHOTS")); raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Recovery.MaxSnapshots = parsed
+		}
+	} else if raw := file["recovery_max_snapshots"]; raw != "" {
+		if parsed, ok := parsePositiveInt(raw); ok {
+			cfg.Recovery.MaxSnapshots = parsed
+		}
 	}
 
 	return cfg
@@ -136,4 +207,31 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+func parseBool(raw string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func parseDuration(raw string) (time.Duration, bool) {
+	v, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+func parsePositiveInt(raw string) (int, bool) {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }

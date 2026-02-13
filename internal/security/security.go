@@ -2,6 +2,7 @@ package security
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -73,9 +74,9 @@ func (g *Guard) RequireWSToken(r *http.Request) error {
 	if !g.TokenRequired() {
 		return nil
 	}
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	token := bearerToken(r)
 	if token == "" {
-		token = bearerToken(r)
+		token = wsSubprotocolToken(r)
 	}
 	if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(g.token)) != 1 {
 		return ErrUnauthorized
@@ -93,4 +94,39 @@ func bearerToken(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(auth, prefix))
+}
+
+func wsSubprotocolToken(r *http.Request) string {
+	header := strings.TrimSpace(r.Header.Get("Sec-WebSocket-Protocol"))
+	if header == "" {
+		return ""
+	}
+	for _, raw := range strings.Split(header, ",") {
+		proto := strings.TrimSpace(raw)
+		const prefix = "sentinel.auth."
+		if !strings.HasPrefix(proto, prefix) {
+			continue
+		}
+		encoded := strings.TrimSpace(strings.TrimPrefix(proto, prefix))
+		if encoded == "" {
+			continue
+		}
+		decoded, err := decodeBase64URL(encoded)
+		if err != nil || strings.TrimSpace(decoded) == "" {
+			continue
+		}
+		return decoded
+	}
+	return ""
+}
+
+func decodeBase64URL(s string) (string, error) {
+	if m := len(s) % 4; m != 0 {
+		s += strings.Repeat("=", 4-m)
+	}
+	decoded, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
 }

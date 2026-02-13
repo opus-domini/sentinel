@@ -75,3 +75,127 @@ export type SystemTerminalDetailResponse = {
   tty: string
   processes: Array<TerminalProcess>
 }
+
+export type RecoverySessionState =
+  | 'running'
+  | 'killed'
+  | 'restoring'
+  | 'restored'
+  | 'archived'
+
+export type RecoverySession = {
+  name: string
+  state: RecoverySessionState
+  latestSnapshotId: number
+  snapshotHash: string
+  snapshotAt: string
+  lastBootId: string
+  lastSeenAt: string
+  killedAt?: string
+  restoredAt?: string
+  archivedAt?: string
+  restoreError: string
+  windows: number
+  panes: number
+}
+
+export type RecoveryJobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'partial'
+
+export type RecoveryJob = {
+  id: string
+  sessionName: string
+  targetSession: string
+  snapshotId: number
+  mode: 'safe' | 'confirm' | 'full'
+  conflictPolicy: 'rename' | 'replace' | 'skip'
+  status: RecoveryJobStatus
+  totalSteps: number
+  completedSteps: number
+  currentStep: string
+  error: string
+  createdAt: string
+  startedAt?: string
+  finishedAt?: string
+}
+
+export type RecoveryOverview = {
+  bootId: string
+  lastBootId: string
+  lastCollectAt: string
+  lastBootChange: string
+  killedSessions: Array<RecoverySession>
+  runningJobs: Array<RecoveryJob>
+}
+
+export type RecoveryOverviewResponse = {
+  overview: RecoveryOverview
+}
+
+export type RecoverySessionsResponse = {
+  sessions: Array<RecoverySession>
+}
+
+export type RecoverySnapshotMeta = {
+  id: number
+  sessionName: string
+  bootId: string
+  stateHash: string
+  capturedAt: string
+  activeWindow: number
+  activePaneId: string
+  windows: number
+  panes: number
+  payloadJson: string
+}
+
+export type RecoverySnapshotsResponse = {
+  snapshots: Array<RecoverySnapshotMeta>
+}
+
+export type RecoveryWindowSnapshot = {
+  index: number
+  name: string
+  active: boolean
+  panes: number
+  layout: string
+}
+
+export type RecoveryPaneSnapshot = {
+  windowIndex: number
+  paneIndex: number
+  title: string
+  active: boolean
+  currentPath: string
+  startCommand: string
+  currentCommand: string
+  lastContent: string
+}
+
+export type RecoverySnapshotPayload = {
+  sessionName: string
+  capturedAt: string
+  bootId: string
+  attached: number
+  activeWindow: number
+  activePaneId: string
+  windows: Array<RecoveryWindowSnapshot>
+  panes: Array<RecoveryPaneSnapshot>
+}
+
+export type RecoverySnapshotView = {
+  meta: RecoverySnapshotMeta
+  payload: RecoverySnapshotPayload
+}
+
+export type RecoverySnapshotResponse = {
+  snapshot: RecoverySnapshotView
+}
+
+export type RecoveryJobResponse = {
+  job: RecoveryJob
+}

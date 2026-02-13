@@ -61,7 +61,13 @@ func New(dbPath string) (*Store, error) {
 	// Migrate: add icon column (idempotent — ignore "duplicate column" error).
 	_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN icon TEXT DEFAULT ''")
 
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	if err := s.initRecoverySchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create recovery schema: %w", err)
+	}
+
+	return s, nil
 }
 
 func (s *Store) GetAll(ctx context.Context) (map[string]SessionMeta, error) {

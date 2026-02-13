@@ -1,16 +1,22 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
 var (
@@ -20,6 +26,12 @@ var (
 	userStatusFn       = service.UserStatus
 	loadConfigFn       = config.Load
 	currentVersionFn   = currentVersion
+)
+
+const (
+	cmdHelp       = "help"
+	flagHelpShort = "-h"
+	flagHelpLong  = "--help"
 )
 
 func writef(w io.Writer, format string, args ...any) {
@@ -47,7 +59,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return runServiceCommand(ctx, args[1:])
 	case "doctor":
 		return runDoctorCommand(ctx, args[1:])
-	case "help", "-h", "--help":
+	case "recovery":
+		return runRecoveryCommand(ctx, args[1:])
+	case cmdHelp, flagHelpShort, flagHelpLong:
 		printRootHelp(stdout)
 		return 0
 	default:
@@ -93,7 +107,7 @@ func runServiceCommand(ctx commandContext, args []string) int {
 		return runServiceUninstallCommand(ctx, args[1:])
 	case "status":
 		return runServiceStatusCommand(ctx, args[1:])
-	case "help", "-h", "--help":
+	case cmdHelp, flagHelpShort, flagHelpLong:
 		printServiceHelp(ctx.stdout)
 		return 0
 	default:
@@ -267,6 +281,191 @@ func runDoctorCommand(ctx commandContext, args []string) int {
 	return 0
 }
 
+func runRecoveryCommand(ctx commandContext, args []string) int {
+	if len(args) == 0 {
+		printRecoveryHelp(ctx.stderr)
+		return 2
+	}
+
+	switch args[0] {
+	case "list":
+		return runRecoveryListCommand(ctx, args[1:])
+	case "restore":
+		return runRecoveryRestoreCommand(ctx, args[1:])
+	case cmdHelp, flagHelpShort, flagHelpLong:
+		printRecoveryHelp(ctx.stdout)
+		return 0
+	default:
+		writef(ctx.stderr, "unknown recovery command: %s\n\n", args[0])
+		printRecoveryHelp(ctx.stderr)
+		return 2
+	}
+}
+
+func runRecoveryListCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("recovery list", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	state := fs.String("state", "killed", "session states (comma-separated): killed,restoring,restored,running,archived")
+	limit := fs.Int("limit", 100, "maximum sessions to print")
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printRecoveryListHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printRecoveryListHelp(ctx.stderr)
+		return 2
+	}
+
+	states, err := parseRecoveryStates(*state)
+	if err != nil {
+		writef(ctx.stderr, "invalid state: %v\n", err)
+		return 2
+	}
+
+	cfg := loadConfigFn()
+	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))
+	if err != nil {
+		writef(ctx.stderr, "store init failed: %v\n", err)
+		return 1
+	}
+	defer func() { _ = st.Close() }()
+
+	rows, err := st.ListRecoverySessions(context.Background(), states)
+	if err != nil {
+		writef(ctx.stderr, "failed to list recovery sessions: %v\n", err)
+		return 1
+	}
+	if len(rows) == 0 {
+		writeln(ctx.stdout, "no recovery sessions found")
+		return 0
+	}
+	if *limit > 0 && len(rows) > *limit {
+		rows = rows[:*limit]
+	}
+
+	for _, item := range rows {
+		timeLabel := item.SnapshotAt.Format(time.RFC3339)
+		if item.SnapshotAt.IsZero() {
+			timeLabel = "-"
+		}
+		writef(ctx.stdout,
+			"%s\tstate=%s\tsnapshot=%d\twindows=%d\tpanes=%d\tat=%s\n",
+			item.Name, item.State, item.LatestSnapshotID, item.Windows, item.Panes, timeLabel,
+		)
+	}
+	return 0
+}
+
+func runRecoveryRestoreCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("recovery restore", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	snapshotID := fs.Int64("snapshot", 0, "snapshot id to restore")
+	mode := fs.String("mode", "confirm", "replay mode: safe|confirm|full")
+	conflict := fs.String("conflict", "rename", "name conflict policy: rename|replace|skip")
+	target := fs.String("target", "", "target tmux session name")
+	wait := fs.Bool("wait", true, "wait for completion and print progress")
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printRecoveryRestoreHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printRecoveryRestoreHelp(ctx.stderr)
+		return 2
+	}
+	if *snapshotID <= 0 {
+		writeln(ctx.stderr, "snapshot id is required and must be > 0")
+		return 2
+	}
+
+	cfg := loadConfigFn()
+	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))
+	if err != nil {
+		writef(ctx.stderr, "store init failed: %v\n", err)
+		return 1
+	}
+	defer func() { _ = st.Close() }()
+
+	svc := recovery.New(st, tmux.Service{}, recovery.Options{
+		SnapshotInterval:    cfg.Recovery.SnapshotInterval,
+		CaptureLines:        cfg.Recovery.CaptureLines,
+		MaxSnapshotsPerSess: cfg.Recovery.MaxSnapshots,
+	})
+
+	job, err := svc.RestoreSnapshotAsync(context.Background(), *snapshotID, recovery.RestoreOptions{
+		Mode:           recovery.ReplayMode(strings.ToLower(strings.TrimSpace(*mode))),
+		ConflictPolicy: recovery.ConflictPolicy(strings.ToLower(strings.TrimSpace(*conflict))),
+		TargetSession:  strings.TrimSpace(*target),
+	})
+	if err != nil {
+		writef(ctx.stderr, "failed to start restore: %v\n", err)
+		return 1
+	}
+	writef(ctx.stdout, "restore job started: %s (session=%s snapshot=%d)\n", job.ID, job.SessionName, job.SnapshotID)
+	if !*wait {
+		return 0
+	}
+
+	deadline := time.Now().Add(5 * time.Minute)
+	lastProgress := ""
+	for time.Now().Before(deadline) {
+		current, err := svc.GetJob(context.Background(), job.ID)
+		if err != nil {
+			writef(ctx.stderr, "failed to load restore job: %v\n", err)
+			return 1
+		}
+		progress := fmt.Sprintf("%d/%d", current.CompletedSteps, current.TotalSteps)
+		line := fmt.Sprintf("status=%s progress=%s step=%s", current.Status, progress, current.CurrentStep)
+		if line != lastProgress {
+			writeln(ctx.stdout, line)
+			lastProgress = line
+		}
+		switch current.Status {
+		case store.RecoveryJobSucceeded:
+			writef(ctx.stdout, "restore finished successfully (target=%s)\n", current.TargetSession)
+			return 0
+		case store.RecoveryJobFailed, store.RecoveryJobPartial:
+			writef(ctx.stderr, "restore finished with errors: %s\n", current.Error)
+			return 1
+		}
+		time.Sleep(900 * time.Millisecond)
+	}
+	writeln(ctx.stderr, "restore job timeout exceeded (5m)")
+	return 1
+}
+
+func parseRecoveryStates(raw string) ([]store.RecoverySessionState, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []store.RecoverySessionState{store.RecoveryStateKilled}, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]store.RecoverySessionState, 0, len(parts))
+	for _, part := range parts {
+		value := strings.ToLower(strings.TrimSpace(part))
+		switch value {
+		case string(store.RecoveryStateRunning),
+			string(store.RecoveryStateKilled),
+			string(store.RecoveryStateRestoring),
+			string(store.RecoveryStateRestored),
+			string(store.RecoveryStateArchived):
+			out = append(out, store.RecoverySessionState(value))
+		default:
+			return nil, fmt.Errorf("%q", value)
+		}
+	}
+	return out, nil
+}
+
 func printRootHelp(w io.Writer) {
 	writeln(w, "Sentinel command-line interface")
 	writeln(w, "")
@@ -274,11 +473,13 @@ func printRootHelp(w io.Writer) {
 	writeln(w, "  sentinel [serve]")
 	writeln(w, "  sentinel service <install|uninstall|status>")
 	writeln(w, "  sentinel doctor")
+	writeln(w, "  sentinel recovery <list|restore>")
 	writeln(w, "")
 	writeln(w, "Commands:")
 	writeln(w, "  serve      Start Sentinel HTTP server (default)")
 	writeln(w, "  service    Manage systemd user service (Linux)")
 	writeln(w, "  doctor     Check local environment and runtime config")
+	writeln(w, "  recovery   Inspect and restore persisted tmux snapshots")
 }
 
 func printServeHelp(w io.Writer) {
@@ -313,6 +514,22 @@ func printServiceStatusHelp(w io.Writer) {
 func printDoctorHelp(w io.Writer) {
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel doctor")
+}
+
+func printRecoveryHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel recovery list [-state killed,restoring,restored] [-limit 100]")
+	writeln(w, "  sentinel recovery restore -snapshot ID [-mode confirm] [-conflict rename] [-target NAME] [-wait=true]")
+}
+
+func printRecoveryListHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel recovery list [-state killed,restoring,restored] [-limit 100]")
+}
+
+func printRecoveryRestoreHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel recovery restore -snapshot ID [-mode confirm] [-conflict rename] [-target NAME] [-wait=true]")
 }
 
 func currentVersion() string {

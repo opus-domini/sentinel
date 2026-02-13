@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/terminals"
@@ -162,6 +163,65 @@ func (m *mockSysTerms) ListSystem(ctx context.Context) ([]terminals.SystemTermin
 		return m.listSystemFn(ctx)
 	}
 	return nil, nil
+}
+
+type mockRecovery struct {
+	overviewFn             func(ctx context.Context) (recovery.Overview, error)
+	listKilledSessionsFn   func(ctx context.Context) ([]store.RecoverySession, error)
+	listSnapshotsFn        func(ctx context.Context, sessionName string, limit int) ([]store.RecoverySnapshot, error)
+	getSnapshotFn          func(ctx context.Context, id int64) (recovery.SnapshotView, error)
+	restoreSnapshotAsyncFn func(ctx context.Context, snapshotID int64, options recovery.RestoreOptions) (store.RecoveryJob, error)
+	getJobFn               func(ctx context.Context, id string) (store.RecoveryJob, error)
+	archiveSessionFn       func(ctx context.Context, name string) error
+}
+
+func (m *mockRecovery) Overview(ctx context.Context) (recovery.Overview, error) {
+	if m.overviewFn != nil {
+		return m.overviewFn(ctx)
+	}
+	return recovery.Overview{}, nil
+}
+
+func (m *mockRecovery) ListKilledSessions(ctx context.Context) ([]store.RecoverySession, error) {
+	if m.listKilledSessionsFn != nil {
+		return m.listKilledSessionsFn(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockRecovery) ListSnapshots(ctx context.Context, sessionName string, limit int) ([]store.RecoverySnapshot, error) {
+	if m.listSnapshotsFn != nil {
+		return m.listSnapshotsFn(ctx, sessionName, limit)
+	}
+	return nil, nil
+}
+
+func (m *mockRecovery) GetSnapshot(ctx context.Context, id int64) (recovery.SnapshotView, error) {
+	if m.getSnapshotFn != nil {
+		return m.getSnapshotFn(ctx, id)
+	}
+	return recovery.SnapshotView{}, nil
+}
+
+func (m *mockRecovery) RestoreSnapshotAsync(ctx context.Context, snapshotID int64, options recovery.RestoreOptions) (store.RecoveryJob, error) {
+	if m.restoreSnapshotAsyncFn != nil {
+		return m.restoreSnapshotAsyncFn(ctx, snapshotID, options)
+	}
+	return store.RecoveryJob{}, nil
+}
+
+func (m *mockRecovery) GetJob(ctx context.Context, id string) (store.RecoveryJob, error) {
+	if m.getJobFn != nil {
+		return m.getJobFn(ctx, id)
+	}
+	return store.RecoveryJob{}, nil
+}
+
+func (m *mockRecovery) ArchiveSession(ctx context.Context, name string) error {
+	if m.archiveSessionFn != nil {
+		return m.archiveSessionFn(ctx, name)
+	}
+	return nil
 }
 
 func (m *mockSysTerms) ListProcesses(ctx context.Context, tty string) ([]terminals.TerminalProcess, error) {
@@ -1965,4 +2025,86 @@ func TestCloseTerminalHandler(t *testing.T) {
 			t.Errorf("status = %d, want 400", w.Code)
 		}
 	})
+}
+
+func TestRecoveryOverviewHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+		h := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/overview", nil)
+		h.recoveryOverview(w, r)
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+		h := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			overviewFn: func(_ context.Context) (recovery.Overview, error) {
+				return recovery.Overview{
+					BootID: "boot-a",
+					KilledSessions: []store.RecoverySession{
+						{Name: "dev", State: store.RecoveryStateKilled},
+					},
+				}, nil
+			},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/overview", nil)
+		h.recoveryOverview(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		overview, _ := data["overview"].(map[string]any)
+		if overview["bootId"] != "boot-a" {
+			t.Errorf("bootId = %v, want boot-a", overview["bootId"])
+		}
+	})
+}
+
+func TestRestoreRecoverySnapshotHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.recovery = &mockRecovery{
+		restoreSnapshotAsyncFn: func(_ context.Context, snapshotID int64, options recovery.RestoreOptions) (store.RecoveryJob, error) {
+			if snapshotID != 12 {
+				t.Fatalf("snapshotID = %d, want 12", snapshotID)
+			}
+			if options.TargetSession != "dev-restored" {
+				t.Fatalf("target session = %q, want dev-restored", options.TargetSession)
+			}
+			return store.RecoveryJob{
+				ID:            "job-1",
+				SessionName:   "dev",
+				TargetSession: "dev-restored",
+				SnapshotID:    12,
+				Status:        store.RecoveryJobQueued,
+				CreatedAt:     time.Now().UTC(),
+			}, nil
+		},
+	}
+
+	body := `{"mode":"confirm","conflictPolicy":"rename","targetSession":"dev-restored"}`
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/recovery/snapshots/12/restore", strings.NewReader(body))
+	r.SetPathValue("snapshot", "12")
+	h.restoreRecoverySnapshot(w, r)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", w.Code)
+	}
+	payload := jsonBody(t, w)
+	data, _ := payload["data"].(map[string]any)
+	job, _ := data["job"].(map[string]any)
+	if job["id"] != "job-1" {
+		t.Errorf("job.id = %v, want job-1", job["id"])
+	}
 }

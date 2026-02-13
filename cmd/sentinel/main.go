@@ -14,10 +14,13 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/api"
 	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/httpui"
+	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/terminals"
+	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
 func main() {
@@ -30,9 +33,10 @@ func serve() int {
 
 	guard := security.New(cfg.Token, cfg.AllowedOrigins)
 	terminalRegistry := terminals.NewRegistry()
+	eventHub := events.NewHub()
 
 	mux := http.NewServeMux()
-	if err := httpui.Register(mux, guard, terminalRegistry); err != nil {
+	if err := httpui.Register(mux, guard, terminalRegistry, eventHub); err != nil {
 		slog.Error("frontend init failed", "err", err)
 		return 1
 	}
@@ -43,9 +47,25 @@ func serve() int {
 		return 1
 	}
 
-	api.Register(mux, guard, terminalRegistry, st)
+	var recoveryService *recovery.Service
+	if cfg.Recovery.Enabled {
+		recoveryService = recovery.New(st, tmux.Service{}, recovery.Options{
+			SnapshotInterval:    cfg.Recovery.SnapshotInterval,
+			CaptureLines:        cfg.Recovery.CaptureLines,
+			MaxSnapshotsPerSess: cfg.Recovery.MaxSnapshots,
+			EventHub:            eventHub,
+		})
+		recoveryService.Start(context.Background())
+	}
+
+	api.Register(mux, guard, terminalRegistry, st, recoveryService, eventHub)
 
 	exitCode := run(cfg, mux)
+	if recoveryService != nil {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		recoveryService.Stop(stopCtx)
+		cancel()
+	}
 	_ = st.Close()
 	return exitCode
 }
@@ -82,6 +102,8 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 		"data_dir", cfg.DataDir,
 		"token_required", cfg.Token != "",
 		"log_level", cfg.LogLevel,
+		"recovery_enabled", cfg.Recovery.Enabled,
+		"recovery_interval", cfg.Recovery.SnapshotInterval.String(),
 	)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("server error", "err", err)

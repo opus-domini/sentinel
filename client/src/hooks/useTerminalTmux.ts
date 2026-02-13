@@ -10,6 +10,7 @@ import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
+import { buildWSProtocols } from '@/lib/wsAuth'
 
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
@@ -347,11 +348,10 @@ export function useTerminalTmux({
 
       const wsURL = new URL(wsPath, window.location.origin)
       wsURL.searchParams.set(wsQueryKey, runtime.session)
-      if (token.trim() !== '') {
-        wsURL.searchParams.set('token', token.trim())
-      }
-
-      const socket = new WebSocket(wsURL.toString().replace(/^http/, 'ws'))
+      const socket = new WebSocket(
+        wsURL.toString().replace(/^http/, 'ws'),
+        buildWSProtocols(token),
+      )
       socket.binaryType = 'arraybuffer'
       runtime.socket = socket
 

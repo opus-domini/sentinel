@@ -14,9 +14,11 @@ type SessionSidebarProps = {
   filter: string
   token: string
   tmuxUnavailable: boolean
+  recoveryKilledCount: number
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string) => void
+  onOpenRecovery: () => void
   onAttach: (session: string) => void
   onRename: (session: string) => void
   onDetach: (session: string) => void
@@ -35,9 +37,11 @@ export default function SessionSidebar({
   filter,
   token,
   tmuxUnavailable,
+  recoveryKilledCount,
   onFilterChange,
   onTokenChange,
   onCreate,
+  onOpenRecovery,
   onAttach,
   onRename,
   onDetach,
@@ -53,9 +57,11 @@ export default function SessionSidebar({
           filter={filter}
           token={token}
           tmuxUnavailable={tmuxUnavailable}
+          recoveryKilledCount={recoveryKilledCount}
           onFilterChange={onFilterChange}
           onTokenChange={onTokenChange}
           onCreate={onCreate}
+          onOpenRecovery={onOpenRecovery}
         />
 
         <SessionListPanel

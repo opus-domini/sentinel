@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/term"
 	"github.com/opus-domini/sentinel/internal/terminals"
@@ -26,16 +27,18 @@ const (
 
 type Handler struct {
 	guard     *security.Guard
+	events    *events.Hub
 	terminals *terminals.Registry
 }
 
-func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry) error {
-	h := &Handler{guard: guard, terminals: terminalRegistry}
+func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry, eventsHub *events.Hub) error {
+	h := &Handler{guard: guard, events: eventsHub, terminals: terminalRegistry}
 	if err := registerAssetRoutes(mux); err != nil {
 		return err
 	}
 	mux.HandleFunc("GET /ws/tmux", h.attachWS)
 	mux.HandleFunc("GET /ws/terminals", h.attachTerminalWS)
+	mux.HandleFunc("GET /ws/events", h.attachEventsWS)
 	mux.HandleFunc("GET /{path...}", h.spaPage)
 	return nil
 }
@@ -92,7 +95,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsConn, err := ws.Upgrade(w, r, nil)
+	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
 	if err != nil {
 		return
 	}
@@ -139,7 +142,7 @@ func (h *Handler) attachTerminalWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsConn, err := ws.Upgrade(w, r, nil)
+	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
 	if err != nil {
 		return
 	}
@@ -168,6 +171,71 @@ func (h *Handler) attachTerminalWS(w http.ResponseWriter, r *http.Request) {
 			)
 		},
 	})
+}
+
+func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := h.guard.RequireWSToken(r); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if h.events == nil {
+		http.Error(w, "events unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
+	if err != nil {
+		return
+	}
+	defer func() { _ = wsConn.Close() }()
+
+	eventsCh, unsubscribe := h.events.Subscribe(64)
+	defer unsubscribe()
+
+	readyPayload, _ := json.Marshal(events.NewEvent(events.TypeReady, map[string]any{
+		"message": "subscribed",
+	}))
+	_ = wsConn.WriteText(readyPayload)
+
+	readErrCh := make(chan error, 1)
+	go func() {
+		for {
+			_, _, readErr := wsConn.ReadMessage()
+			if readErr != nil {
+				readErrCh <- readErr
+				return
+			}
+		}
+	}()
+
+	pingTicker := time.NewTicker(20 * time.Second)
+	defer pingTicker.Stop()
+
+	for {
+		select {
+		case evt, ok := <-eventsCh:
+			if !ok {
+				return
+			}
+			payload, marshalErr := json.Marshal(evt)
+			if marshalErr != nil {
+				continue
+			}
+			if err := wsConn.WriteText(payload); err != nil {
+				return
+			}
+		case <-pingTicker.C:
+			if err := wsConn.WritePing([]byte("k")); err != nil {
+				return
+			}
+		case <-readErrCh:
+			return
+		}
+	}
 }
 
 type attachPTYOptions struct {

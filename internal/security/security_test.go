@@ -2,6 +2,7 @@ package security
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"net/http/httptest"
 	"testing"
@@ -179,37 +180,43 @@ func TestRequireWSToken(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		token      string
-		queryToken string
-		auth       string
-		wantErr    error
+		name     string
+		token    string
+		auth     string
+		subproto string
+		wantErr  error
 	}{
 		{
 			name:  "no token configured",
 			token: "",
 		},
 		{
-			name:       "correct token in query",
-			token:      "my-token",
-			queryToken: "my-token",
-		},
-		{
-			name:       "wrong token in query",
-			token:      "my-token",
-			queryToken: "wrong",
-			wantErr:    ErrUnauthorized,
-		},
-		{
-			name:  "correct token in header",
+			name:  "correct token in authorization header",
 			token: "my-token",
 			auth:  "Bearer my-token",
 		},
 		{
-			name:       "query takes precedence over header",
-			token:      "my-token",
-			queryToken: "my-token",
-			auth:       "Bearer wrong",
+			name:    "wrong token in authorization header",
+			token:   "my-token",
+			auth:    "Bearer wrong",
+			wantErr: ErrUnauthorized,
+		},
+		{
+			name:     "correct token in websocket subprotocol",
+			token:    "my-token",
+			subproto: "sentinel.v1, sentinel.auth.bXktdG9rZW4",
+		},
+		{
+			name:     "invalid subprotocol token",
+			token:    "my-token",
+			subproto: "sentinel.v1, sentinel.auth.d3Jvbmc",
+			wantErr:  ErrUnauthorized,
+		},
+		{
+			name:     "authorization takes precedence over subprotocol",
+			token:    "my-token",
+			auth:     "Bearer my-token",
+			subproto: "sentinel.v1, sentinel.auth.d3Jvbmc",
 		},
 		{
 			name:    "no token anywhere",
@@ -217,27 +224,21 @@ func TestRequireWSToken(t *testing.T) {
 			wantErr: ErrUnauthorized,
 		},
 		{
-			name:       "wrong query only",
-			token:      "my-token",
-			queryToken: "wrong",
-			wantErr:    ErrUnauthorized,
-		},
-		{
-			name:  "empty query correct header",
-			token: "my-token",
-			auth:  "Bearer my-token",
+			name:     "only generic subprotocol no auth token",
+			token:    "my-token",
+			subproto: "sentinel.v1",
+			wantErr:  ErrUnauthorized,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			url := "http://localhost/"
-			if tt.queryToken != "" {
-				url = "http://localhost/?token=" + tt.queryToken
-			}
-			r := httptest.NewRequest("GET", url, nil)
+			r := httptest.NewRequest("GET", "http://localhost/", nil)
 			if tt.auth != "" {
 				r.Header.Set("Authorization", tt.auth)
+			}
+			if tt.subproto != "" {
+				r.Header.Set("Sec-WebSocket-Protocol", tt.subproto)
 			}
 			g := New(tt.token, nil)
 
@@ -250,6 +251,18 @@ func TestRequireWSToken(t *testing.T) {
 				t.Errorf("RequireWSToken() unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestWSSubprotocolToken(t *testing.T) {
+	t.Parallel()
+
+	token := "tok.en-123"
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(token))
+	r := httptest.NewRequest("GET", "http://localhost/", nil)
+	r.Header.Set("Sec-WebSocket-Protocol", "sentinel.v1, sentinel.auth."+encoded)
+	if got := wsSubprotocolToken(r); got != token {
+		t.Fatalf("wsSubprotocolToken() = %q, want %q", got, token)
 	}
 }
 

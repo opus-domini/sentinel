@@ -21,6 +21,7 @@ Sentinel is for people who want terminal power with less friction.
 
 - Real PTY terminals in the browser.
 - tmux session, window, and pane control with live attach.
+- Built-in tmux recovery journal with restore after reboot/power loss.
 - Standalone shell tabs that are not tied to tmux.
 - Optional token auth and origin validation.
 - One binary and simple operations.
@@ -163,6 +164,8 @@ The config file is created on first startup.
 - `sentinel service uninstall`: remove systemd user service (Linux).
 - `sentinel service status`: show service state.
 - `sentinel doctor`: print environment diagnostics.
+- `sentinel recovery list`: list persisted recovery sessions.
+- `sentinel recovery restore`: restore snapshot from local recovery journal.
 - `sentinel -h` / `sentinel --help`: help.
 - `sentinel -v` / `sentinel --version`: version.
 
@@ -173,6 +176,8 @@ sentinel serve
 sentinel service install
 sentinel service status
 sentinel doctor
+sentinel recovery list
+sentinel recovery restore -snapshot 42
 sentinel --help
 sentinel --version
 ```
@@ -227,12 +232,17 @@ Environment variables override config file values and are useful for technical/a
 | `SENTINEL_ALLOWED_ORIGINS` | `allowed_origins` | auto | Comma-separated allowlist |
 | `SENTINEL_LOG_LEVEL` | `log_level` | `info` | `debug`, `info`, `warn`, `error` |
 | `SENTINEL_DATA_DIR` | n/a | `~/.sentinel` | Data directory |
+| `SENTINEL_RECOVERY_ENABLED` | `recovery_enabled` | `true` | Enable recovery journal/restore engine |
+| `SENTINEL_RECOVERY_SNAPSHOT_INTERVAL` | `recovery_snapshot_interval` | `5s` | Snapshot polling interval |
+| `SENTINEL_RECOVERY_CAPTURE_LINES` | `recovery_capture_lines` | `80` | Lines captured per pane in snapshots |
+| `SENTINEL_RECOVERY_MAX_SNAPSHOTS` | `recovery_max_snapshots` | `300` | Max snapshots retained per session |
 
 ## Current Limitations
 
 - Host support: Linux and macOS only.
 - Windows is not supported yet.
 - tmux workflows require `tmux` installed on the host.
+- Recovery restores session structure/context, not in-memory process state.
 - No multi-tenant RBAC yet.
 
 ## Development

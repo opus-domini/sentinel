@@ -67,16 +67,24 @@ type Window struct {
 	Name    string `json:"name"`
 	Active  bool   `json:"active"`
 	Panes   int    `json:"panes"`
+	Layout  string `json:"layout,omitempty"`
 }
 
 type Pane struct {
-	Session     string `json:"session"`
-	WindowIndex int    `json:"windowIndex"`
-	PaneIndex   int    `json:"paneIndex"`
-	PaneID      string `json:"paneId"`
-	Title       string `json:"title"`
-	Active      bool   `json:"active"`
-	TTY         string `json:"tty"`
+	Session        string `json:"session"`
+	WindowIndex    int    `json:"windowIndex"`
+	PaneIndex      int    `json:"paneIndex"`
+	PaneID         string `json:"paneId"`
+	Title          string `json:"title"`
+	Active         bool   `json:"active"`
+	TTY            string `json:"tty"`
+	CurrentPath    string `json:"currentPath,omitempty"`
+	StartCommand   string `json:"startCommand,omitempty"`
+	CurrentCommand string `json:"currentCommand,omitempty"`
+	Left           int    `json:"left,omitempty"`
+	Top            int    `json:"top,omitempty"`
+	Width          int    `json:"width,omitempty"`
+	Height         int    `json:"height,omitempty"`
 }
 
 func ListSessions(ctx context.Context) ([]Session, error) {
@@ -269,6 +277,19 @@ func NewWindow(ctx context.Context, session string) error {
 	return err
 }
 
+func NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
+	target := fmt.Sprintf("%s:%d", session, index)
+	args := []string{"new-window", "-d", "-t", target}
+	if strings.TrimSpace(name) != "" {
+		args = append(args, "-n", name)
+	}
+	if strings.TrimSpace(cwd) != "" {
+		args = append(args, "-c", cwd)
+	}
+	_, err := run(ctx, args...)
+	return err
+}
+
 func KillWindow(ctx context.Context, session string, index int) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	_, err := run(ctx, "kill-window", "-t", target)
@@ -294,8 +315,46 @@ func SplitPane(ctx context.Context, paneID, direction string) error {
 	return err
 }
 
+func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) error {
+	args := []string{"split-window", "-d", "-t", paneID}
+	switch direction {
+	case "vertical":
+		args = append(args, "-h")
+	case "horizontal":
+		args = append(args, "-v")
+	default:
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
+	}
+	if strings.TrimSpace(cwd) != "" {
+		args = append(args, "-c", cwd)
+	}
+	_, err := run(ctx, args...)
+	return err
+}
+
+func SelectLayout(ctx context.Context, session string, index int, layout string) error {
+	target := fmt.Sprintf("%s:%d", session, index)
+	_, err := run(ctx, "select-layout", "-t", target, layout)
+	return err
+}
+
+func SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
+	keys = strings.TrimSpace(keys)
+	if keys != "" {
+		if _, err := run(ctx, "send-keys", "-t", paneID, "-l", keys); err != nil {
+			return err
+		}
+	}
+	if enter {
+		if _, err := run(ctx, "send-keys", "-t", paneID, "C-m"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ListWindows(ctx context.Context, session string) ([]Window, error) {
-	out, err := run(ctx, "list-windows", "-t", session, "-F", "#{session_name}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}")
+	out, err := run(ctx, "list-windows", "-t", session, "-F", "#{session_name}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}")
 	if err != nil {
 		return nil, err
 	}
@@ -306,24 +365,29 @@ func ListWindows(ctx context.Context, session string) ([]Window, error) {
 	windows := make([]Window, 0, len(lines))
 	for _, line := range lines {
 		parts := strings.Split(line, "\t")
-		if len(parts) != 5 {
+		if len(parts) < 5 {
 			continue
 		}
 		idx, _ := strconv.Atoi(parts[1])
 		panes, _ := strconv.Atoi(parts[4])
+		layout := ""
+		if len(parts) > 5 {
+			layout = parts[5]
+		}
 		windows = append(windows, Window{
 			Session: parts[0],
 			Index:   idx,
 			Name:    parts[2],
 			Active:  parts[3] == "1",
 			Panes:   panes,
+			Layout:  layout,
 		})
 	}
 	return windows, nil
 }
 
 func ListPanes(ctx context.Context, session string) ([]Pane, error) {
-	out, err := run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_id}\t#{pane_title}\t#{pane_active}\t#{pane_tty}")
+	out, err := run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_id}\t#{pane_title}\t#{pane_active}\t#{pane_tty}\t#{pane_current_path}\t#{pane_start_command}\t#{pane_current_command}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}")
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +398,7 @@ func ListPanes(ctx context.Context, session string) ([]Pane, error) {
 	panes := make([]Pane, 0, len(lines))
 	for _, line := range lines {
 		parts := strings.Split(line, "\t")
-		if len(parts) != 7 {
+		if len(parts) < 7 {
 			continue
 		}
 		if parts[0] != session {
@@ -342,17 +406,43 @@ func ListPanes(ctx context.Context, session string) ([]Pane, error) {
 		}
 		windowIndex, _ := strconv.Atoi(parts[1])
 		paneIndex, _ := strconv.Atoi(parts[2])
+		left, _ := strconv.Atoi(valueAt(parts, 10))
+		top, _ := strconv.Atoi(valueAt(parts, 11))
+		width, _ := strconv.Atoi(valueAt(parts, 12))
+		height, _ := strconv.Atoi(valueAt(parts, 13))
 		panes = append(panes, Pane{
-			Session:     parts[0],
-			WindowIndex: windowIndex,
-			PaneIndex:   paneIndex,
-			PaneID:      parts[3],
-			Title:       parts[4],
-			Active:      parts[5] == "1",
-			TTY:         parts[6],
+			Session:        parts[0],
+			WindowIndex:    windowIndex,
+			PaneIndex:      paneIndex,
+			PaneID:         parts[3],
+			Title:          parts[4],
+			Active:         parts[5] == "1",
+			TTY:            parts[6],
+			CurrentPath:    valueAt(parts, 7),
+			StartCommand:   valueAt(parts, 8),
+			CurrentCommand: valueAt(parts, 9),
+			Left:           left,
+			Top:            top,
+			Width:          width,
+			Height:         height,
 		})
 	}
 	return panes, nil
+}
+
+func CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
+	if strings.TrimSpace(target) == "" {
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "target is required"}
+	}
+	if lines <= 0 {
+		lines = 80
+	}
+	start := fmt.Sprintf("-%d", lines)
+	out, err := run(ctx, "capture-pane", "-t", target, "-p", "-S", start)
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }
 
 func SessionExists(ctx context.Context, session string) (bool, error) {
@@ -364,6 +454,13 @@ func SessionExists(ctx context.Context, session string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func valueAt(parts []string, idx int) string {
+	if idx < 0 || idx >= len(parts) {
+		return ""
+	}
+	return parts[idx]
 }
 
 func run(ctx context.Context, args ...string) (string, error) {

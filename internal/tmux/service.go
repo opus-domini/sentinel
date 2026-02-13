@@ -57,6 +57,10 @@ func (Service) NewWindow(ctx context.Context, session string) error {
 	return NewWindow(ctx, session)
 }
 
+func (Service) NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
+	return NewWindowAt(ctx, session, index, name, cwd)
+}
+
 func (Service) KillWindow(ctx context.Context, session string, index int) error {
 	return KillWindow(ctx, session, index)
 }
@@ -67,4 +71,24 @@ func (Service) KillPane(ctx context.Context, paneID string) error {
 
 func (Service) SplitPane(ctx context.Context, paneID, direction string) error {
 	return SplitPane(ctx, paneID, direction)
+}
+
+func (Service) SessionExists(ctx context.Context, session string) (bool, error) {
+	return SessionExists(ctx, session)
+}
+
+func (Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string) error {
+	return SplitPaneIn(ctx, paneID, direction, cwd)
+}
+
+func (Service) SelectLayout(ctx context.Context, session string, index int, layout string) error {
+	return SelectLayout(ctx, session, index, layout)
+}
+
+func (Service) SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
+	return SendKeys(ctx, paneID, keys, enter)
+}
+
+func (Service) CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
+	return CapturePaneLines(ctx, target, lines)
 }

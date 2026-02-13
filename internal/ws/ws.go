@@ -50,66 +50,81 @@ type Conn struct {
 }
 
 func Upgrade(w http.ResponseWriter, r *http.Request, originCheck func(*http.Request) error) (*Conn, error) {
+	conn, _, err := UpgradeWithSubprotocols(w, r, originCheck, nil)
+	return conn, err
+}
+
+func UpgradeWithSubprotocols(
+	w http.ResponseWriter,
+	r *http.Request,
+	originCheck func(*http.Request) error,
+	preferred []string,
+) (*Conn, string, error) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return nil, fmt.Errorf("method not allowed")
+		return nil, "", fmt.Errorf("method not allowed")
 	}
 	if originCheck != nil {
 		if err := originCheck(r); err != nil {
 			http.Error(w, "forbidden", http.StatusForbidden)
-			return nil, err
+			return nil, "", err
 		}
 	}
 	if !headerContainsToken(r.Header, "Connection", "upgrade") {
 		http.Error(w, "bad websocket request", http.StatusBadRequest)
-		return nil, fmt.Errorf("missing Connection: Upgrade")
+		return nil, "", fmt.Errorf("missing Connection: Upgrade")
 	}
 	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket") {
 		http.Error(w, "bad websocket request", http.StatusBadRequest)
-		return nil, fmt.Errorf("missing Upgrade: websocket")
+		return nil, "", fmt.Errorf("missing Upgrade: websocket")
 	}
 	if strings.TrimSpace(r.Header.Get("Sec-WebSocket-Version")) != "13" {
 		http.Error(w, "unsupported websocket version", http.StatusBadRequest)
-		return nil, fmt.Errorf("unsupported websocket version")
+		return nil, "", fmt.Errorf("unsupported websocket version")
 	}
 	key := strings.TrimSpace(r.Header.Get("Sec-WebSocket-Key"))
 	if key == "" {
 		http.Error(w, "missing websocket key", http.StatusBadRequest)
-		return nil, fmt.Errorf("missing Sec-WebSocket-Key")
+		return nil, "", fmt.Errorf("missing Sec-WebSocket-Key")
 	}
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "websocket upgrade unsupported", http.StatusInternalServerError)
-		return nil, fmt.Errorf("response writer is not a hijacker")
+		return nil, "", fmt.Errorf("response writer is not a hijacker")
 	}
 
 	rawConn, rw, err := hj.Hijack()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	accept := computeAcceptKey(key)
+	selectedProtocol := selectSubprotocol(r.Header.Get("Sec-WebSocket-Protocol"), preferred)
+	handshake := "HTTP/1.1 101 Switching Protocols\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Accept: " + accept + "\r\n"
+	if selectedProtocol != "" {
+		handshake += "Sec-WebSocket-Protocol: " + selectedProtocol + "\r\n"
+	}
+	handshake += "\r\n"
 	if _, err := rw.WriteString(
-		"HTTP/1.1 101 Switching Protocols\r\n" +
-			"Upgrade: websocket\r\n" +
-			"Connection: Upgrade\r\n" +
-			"Sec-WebSocket-Accept: " + accept + "\r\n" +
-			"\r\n",
+		handshake,
 	); err != nil {
 		_ = rawConn.Close()
-		return nil, err
+		return nil, "", err
 	}
 	if err := rw.Flush(); err != nil {
 		_ = rawConn.Close()
-		return nil, err
+		return nil, "", err
 	}
 
 	return &Conn{
 		conn:   rawConn,
 		reader: rw.Reader,
 		writer: rw.Writer,
-	}, nil
+	}, selectedProtocol, nil
 }
 
 func (c *Conn) ReadMessage() (byte, []byte, error) {
@@ -341,6 +356,44 @@ func headerContainsToken(h http.Header, key, token string) bool {
 		}
 	}
 	return false
+}
+
+func selectSubprotocol(header string, preferred []string) string {
+	if len(preferred) == 0 {
+		return ""
+	}
+	requested := parseSubprotocolList(header)
+	if len(requested) == 0 {
+		return ""
+	}
+	for _, candidate := range preferred {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		for _, item := range requested {
+			if strings.EqualFold(item, candidate) {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+func parseSubprotocolList(header string) []string {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return nil
+	}
+	parts := strings.Split(header, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 type frameError struct {

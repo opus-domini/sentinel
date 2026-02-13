@@ -3,27 +3,32 @@ import CreateSessionDialog from './CreateSessionDialog'
 import SidebarHeader from './SidebarHeader'
 import TokenDialog from './TokenDialog'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 type SessionControlsProps = {
   sessionCount: number
   tokenRequired: boolean
   tmuxUnavailable: boolean
+  recoveryKilledCount: number
   filter: string
   token: string
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string) => void
+  onOpenRecovery: () => void
 }
 
 export default function SessionControls({
   sessionCount,
   tokenRequired,
   tmuxUnavailable,
+  recoveryKilledCount,
   filter,
   token,
   onFilterChange,
   onTokenChange,
   onCreate,
+  onOpenRecovery,
 }: SessionControlsProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isTokenOpen, setIsTokenOpen] = useState(false)
@@ -56,6 +61,26 @@ export default function SessionControls({
           <p className="mt-1 text-secondary-foreground">
             Install tmux on this host and restart Sentinel.
           </p>
+        </div>
+      )}
+
+      {recoveryKilledCount > 0 && (
+        <div className="rounded-md border border-destructive/45 bg-destructive/10 px-2.5 py-2 text-[11px]">
+          <p className="font-semibold uppercase tracking-[0.06em] text-destructive-foreground">
+            Recovery available
+          </p>
+          <p className="mt-1 text-secondary-foreground">
+            {recoveryKilledCount} session
+            {recoveryKilledCount > 1 ? 's' : ''} interrupted.
+          </p>
+          <Button
+            className="mt-2 h-7"
+            variant="outline"
+            type="button"
+            onClick={onOpenRecovery}
+          >
+            Open Recovery Center
+          </Button>
         </div>
       )}
 

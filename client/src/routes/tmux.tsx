@@ -10,6 +10,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import type {
   PaneInfo,
   PanesResponse,
+  RecoveryJob,
+  RecoveryJobResponse,
+  RecoveryOverviewResponse,
+  RecoverySession,
+  RecoverySnapshotResponse,
+  RecoverySnapshotView,
+  RecoverySnapshotsResponse,
   Session,
   SessionsResponse,
   WindowInfo,
@@ -26,6 +33,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogClose,
@@ -36,6 +44,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import AppShell from '@/components/layout/AppShell'
 import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
@@ -46,6 +61,7 @@ import { useTokenContext } from '@/contexts/TokenContext'
 import { useTerminalTmux } from '@/hooks/useTerminalTmux'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
+import { buildWSProtocols } from '@/lib/wsAuth'
 import { initialTabsState, tabsReducer } from '@/tabsReducer'
 
 function isTmuxBinaryMissingMessage(message: string): boolean {
@@ -91,11 +107,44 @@ function TmuxPage() {
   const [renamePaneDialogOpen, setRenamePaneDialogOpen] = useState(false)
   const [renamePaneID, setRenamePaneID] = useState<string | null>(null)
   const [renamePaneValue, setRenamePaneValue] = useState('')
+  const [recoverySessions, setRecoverySessions] = useState<
+    Array<RecoverySession>
+  >([])
+  const [recoveryJobs, setRecoveryJobs] = useState<Array<RecoveryJob>>([])
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
+  const [recoverySnapshots, setRecoverySnapshots] = useState<
+    Array<{ id: number; capturedAt: string; windows: number; panes: number }>
+  >([])
+  const [selectedRecoverySession, setSelectedRecoverySession] = useState<
+    string | null
+  >(null)
+  const [selectedSnapshotID, setSelectedSnapshotID] = useState<number | null>(
+    null,
+  )
+  const [selectedSnapshot, setSelectedSnapshot] =
+    useState<RecoverySnapshotView | null>(null)
+  const [recoveryLoading, setRecoveryLoading] = useState(false)
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const [recoveryError, setRecoveryError] = useState('')
+  const [restoreMode, setRestoreMode] = useState<'safe' | 'confirm' | 'full'>(
+    'confirm',
+  )
+  const [eventsSocketConnected, setEventsSocketConnected] = useState(false)
+  const [restoreConflictPolicy, setRestoreConflictPolicy] = useState<
+    'rename' | 'replace' | 'skip'
+  >('rename')
+  const [restoreTargetSession, setRestoreTargetSession] = useState('')
 
   const api = useTmuxApi(token)
   const refreshGenerationRef = useRef(0)
   const inspectorGenerationRef = useRef(0)
+  const recoveryGenerationRef = useRef(0)
   const tabsStateRef = useRef(tabsState)
+  const refreshTimerRef = useRef<{
+    sessions: number | null
+    inspector: number | null
+    recovery: number | null
+  }>({ sessions: null, inspector: null, recovery: null })
 
   useEffect(() => {
     tabsStateRef.current = tabsState
@@ -260,6 +309,206 @@ function TmuxPage() {
       }
     },
     [api],
+  )
+
+  const refreshRecovery = useCallback(
+    async (options?: { quiet?: boolean }) => {
+      const gen = ++recoveryGenerationRef.current
+      if (!options?.quiet) {
+        setRecoveryLoading(true)
+      }
+      try {
+        const data = await api<RecoveryOverviewResponse>('/api/recovery/overview')
+        if (gen !== recoveryGenerationRef.current) return
+        setRecoverySessions(data.overview.killedSessions)
+        setRecoveryJobs(data.overview.runningJobs)
+        setRecoveryError('')
+      } catch (error) {
+        if (gen !== recoveryGenerationRef.current) return
+        const message =
+          error instanceof Error ? error.message : 'failed to refresh recovery'
+        // Recovery can be disabled by config. Treat this as a non-fatal state.
+        if (message.toLowerCase().includes('recovery subsystem is disabled')) {
+          setRecoverySessions([])
+          setRecoveryJobs([])
+          setRecoveryError('')
+        } else {
+          setRecoveryError(message)
+        }
+      } finally {
+        if (gen === recoveryGenerationRef.current) {
+          setRecoveryLoading(false)
+        }
+      }
+    },
+    [api],
+  )
+
+  const loadRecoverySnapshot = useCallback(
+    async (snapshotID: number) => {
+      setSelectedSnapshotID(snapshotID)
+      try {
+        const data = await api<RecoverySnapshotResponse>(
+          `/api/recovery/snapshots/${snapshotID}`,
+        )
+        setSelectedSnapshot(data.snapshot)
+        setRecoveryError('')
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to load snapshot'
+        setRecoveryError(message)
+      }
+    },
+    [api],
+  )
+
+  const loadRecoverySnapshots = useCallback(
+    async (sessionName: string) => {
+      const session = sessionName.trim()
+      if (session === '') {
+        setRecoverySnapshots([])
+        setSelectedSnapshot(null)
+        setSelectedSnapshotID(null)
+        return
+      }
+      try {
+        const data = await api<RecoverySnapshotsResponse>(
+          `/api/recovery/sessions/${encodeURIComponent(session)}/snapshots?limit=25`,
+        )
+        const snapshots = data.snapshots.map((item) => ({
+          id: item.id,
+          capturedAt: item.capturedAt,
+          windows: item.windows,
+          panes: item.panes,
+        }))
+        setRecoverySnapshots(snapshots)
+        if (snapshots.length > 0) {
+          const first = snapshots[0]
+          setRestoreTargetSession(session)
+          await loadRecoverySnapshot(first.id)
+        } else {
+          setSelectedSnapshot(null)
+          setSelectedSnapshotID(null)
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to list snapshots'
+        setRecoveryError(message)
+      }
+    },
+    [api, loadRecoverySnapshot],
+  )
+
+  const pollRecoveryJob = useCallback(
+    (jobID: string) => {
+      const startedAt = Date.now()
+      const maxDurationMs = 5 * 60 * 1000
+
+      const tick = async () => {
+        try {
+          const data = await api<RecoveryJobResponse>(
+            `/api/recovery/jobs/${encodeURIComponent(jobID)}`,
+          )
+          setRecoveryJobs((prev) => {
+            const next = [data.job, ...prev.filter((j) => j.id !== data.job.id)]
+            return next.slice(0, 30)
+          })
+
+          if (
+            (data.job.status === 'queued' || data.job.status === 'running') &&
+            Date.now() - startedAt < maxDurationMs
+          ) {
+            window.setTimeout(() => {
+              void tick()
+            }, 1200)
+            return
+          }
+
+          setRecoveryBusy(false)
+          if (data.job.status === 'succeeded') {
+            pushSuccessToast(
+              'Recovery',
+              `session restored to "${data.job.targetSession || data.job.sessionName}"`,
+            )
+            await refreshSessions()
+          } else if (data.job.status === 'failed' || data.job.status === 'partial') {
+            pushErrorToast(
+              'Recovery',
+              data.job.error || 'restore job finished with errors',
+            )
+          }
+          await refreshRecovery({ quiet: true })
+        } catch (error) {
+          setRecoveryBusy(false)
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'failed to track restore progress'
+          setRecoveryError(message)
+        }
+      }
+
+      void tick()
+    },
+    [api, pushErrorToast, pushSuccessToast, refreshRecovery, refreshSessions],
+  )
+
+  const restoreSelectedSnapshot = useCallback(async () => {
+    if (selectedSnapshotID === null) return
+    setRecoveryBusy(true)
+    setRecoveryError('')
+    try {
+      const data = await api<{ job: RecoveryJob }>(
+        `/api/recovery/snapshots/${selectedSnapshotID}/restore`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            mode: restoreMode,
+            conflictPolicy: restoreConflictPolicy,
+            targetSession: restoreTargetSession.trim(),
+          }),
+        },
+      )
+      setRecoveryJobs((prev) => [
+        data.job,
+        ...prev.filter((item) => item.id !== data.job.id),
+      ])
+      pollRecoveryJob(data.job.id)
+    } catch (error) {
+      setRecoveryBusy(false)
+      const message =
+        error instanceof Error ? error.message : 'failed to start restore'
+      setRecoveryError(message)
+      pushErrorToast('Recovery', message)
+    }
+  }, [
+    api,
+    pollRecoveryJob,
+    pushErrorToast,
+    restoreConflictPolicy,
+    restoreMode,
+    restoreTargetSession,
+    selectedSnapshotID,
+  ])
+
+  const archiveRecoverySession = useCallback(
+    async (sessionName: string) => {
+      try {
+        await api<void>(
+          `/api/recovery/sessions/${encodeURIComponent(sessionName)}/archive`,
+          {
+            method: 'POST',
+            body: '{}',
+          },
+        )
+        await refreshRecovery({ quiet: true })
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to archive session'
+        setRecoveryError(message)
+      }
+    },
+    [api, refreshRecovery],
   )
 
   const createSession = useCallback(
@@ -830,26 +1079,175 @@ function TmuxPage() {
     [closeTab],
   )
 
-  useEffect(() => {
-    void refreshSessions()
-    const id = window.setInterval(() => {
+  const refreshAllState = useCallback(
+    (options?: { quietRecovery?: boolean }) => {
       void refreshSessions()
-    }, 10_000)
-    return () => {
-      window.clearInterval(id)
-    }
-  }, [refreshSessions])
+      const active = tabsStateRef.current.activeSession.trim()
+      if (active !== '') {
+        void refreshInspector(active, { background: true })
+      }
+      void refreshRecovery({ quiet: options?.quietRecovery ?? true })
+    },
+    [refreshInspector, refreshRecovery, refreshSessions],
+  )
 
   useEffect(() => {
-    void refreshInspector(tabsState.activeSession)
-    if (tabsState.activeSession === '') return
+    // Initial sync on page load.
+    refreshAllState({ quietRecovery: false })
+  }, [refreshAllState])
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshAllState({ quietRecovery: true })
+      }
+    }
+    const onOnline = () => {
+      refreshAllState({ quietRecovery: true })
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [refreshAllState])
+
+  useEffect(() => {
+    // Adaptive fallback: poll only while WS events channel is disconnected.
+    if (eventsSocketConnected) return
+    refreshAllState({ quietRecovery: true })
     const id = window.setInterval(() => {
-      void refreshInspector(tabsState.activeSession, { background: true })
-    }, 10_000)
+      refreshAllState({ quietRecovery: true })
+    }, 8_000)
     return () => {
       window.clearInterval(id)
     }
-  }, [refreshInspector, tabsState.activeSession])
+  }, [eventsSocketConnected, refreshAllState])
+
+  useEffect(() => {
+    if (recoverySessions.length === 0) {
+      setSelectedRecoverySession(null)
+      setRecoverySnapshots([])
+      setSelectedSnapshot(null)
+      setSelectedSnapshotID(null)
+      return
+    }
+    if (
+      selectedRecoverySession === null ||
+      !recoverySessions.some((item) => item.name === selectedRecoverySession)
+    ) {
+      setSelectedRecoverySession(recoverySessions[0].name)
+    }
+  }, [recoverySessions, selectedRecoverySession])
+
+  useEffect(() => {
+    if (!recoveryDialogOpen || selectedRecoverySession === null) return
+    void loadRecoverySnapshots(selectedRecoverySession)
+  }, [loadRecoverySnapshots, recoveryDialogOpen, selectedRecoverySession])
+
+  useEffect(() => {
+    let reconnectTimer: number | null = null
+    let closed = false
+    let socket: WebSocket | null = null
+
+    const schedule = (kind: 'sessions' | 'inspector' | 'recovery') => {
+      if (refreshTimerRef.current[kind] !== null) return
+      refreshTimerRef.current[kind] = window.setTimeout(() => {
+        refreshTimerRef.current[kind] = null
+        if (kind === 'sessions') {
+          void refreshSessions()
+          return
+        }
+        if (kind === 'inspector') {
+          const active = tabsStateRef.current.activeSession
+          if (active.trim() !== '') {
+            void refreshInspector(active, { background: true })
+          }
+          return
+        }
+        void refreshRecovery({ quiet: true })
+      }, 180)
+    }
+
+    const connect = () => {
+      const wsURL = new URL('/ws/events', window.location.origin)
+      socket = new WebSocket(
+        wsURL.toString().replace(/^http/, 'ws'),
+        buildWSProtocols(token),
+      )
+
+      socket.onopen = () => {
+        setEventsSocketConnected(true)
+        // Reconcile any missed events after reconnect.
+        refreshAllState({ quietRecovery: true })
+      }
+
+      socket.onmessage = (event) => {
+        if (typeof event.data !== 'string') return
+        try {
+          const msg = JSON.parse(event.data) as {
+            type?: string
+            payload?: { session?: string }
+          }
+          switch (msg.type) {
+            case 'tmux.sessions.updated':
+              schedule('sessions')
+              schedule('inspector')
+              break
+            case 'tmux.inspector.updated': {
+              const target = msg.payload?.session?.trim() ?? ''
+              const active = tabsStateRef.current.activeSession
+              if (target === '' || target === active) {
+                schedule('inspector')
+              }
+              break
+            }
+            case 'recovery.overview.updated':
+            case 'recovery.job.updated':
+              schedule('recovery')
+              break
+            default:
+              break
+          }
+        } catch {
+          // Ignore non-JSON control messages.
+        }
+      }
+
+      socket.onerror = () => {
+        socket?.close()
+      }
+
+      socket.onclose = () => {
+        setEventsSocketConnected(false)
+        if (closed) return
+        reconnectTimer = window.setTimeout(() => {
+          connect()
+        }, 1200)
+      }
+    }
+
+    connect()
+
+    return () => {
+      closed = true
+      setEventsSocketConnected(false)
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
+      }
+      for (const key of ['sessions', 'inspector', 'recovery'] as const) {
+        const id = refreshTimerRef.current[key]
+        if (id !== null) {
+          window.clearTimeout(id)
+          refreshTimerRef.current[key] = null
+        }
+      }
+      if (socket !== null) {
+        socket.close()
+      }
+    }
+  }, [refreshAllState, refreshInspector, refreshRecovery, refreshSessions, token])
 
   return (
     <AppShell
@@ -865,10 +1263,16 @@ function TmuxPage() {
           filter={filter}
           token={token}
           tmuxUnavailable={tmuxUnavailable}
+          recoveryKilledCount={
+            recoverySessions.filter((item) => item.state === 'killed').length
+          }
           onFilterChange={setFilter}
           onTokenChange={setToken}
           onCreate={(name, cwd) => {
             void createSession(name, cwd)
+          }}
+          onOpenRecovery={() => {
+            setRecoveryDialogOpen(true)
           }}
           onAttach={activateSession}
           onRename={handleOpenRenameDialogForSession}
@@ -913,6 +1317,284 @@ function TmuxPage() {
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
       />
+
+      <Dialog
+        open={recoveryDialogOpen}
+        onOpenChange={(open) => {
+          setRecoveryDialogOpen(open)
+          if (open) void refreshRecovery()
+        }}
+      >
+        <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Recovery Center</DialogTitle>
+            <DialogDescription>
+              Restore tmux sessions interrupted by reboot or power loss.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid min-h-0 gap-3 md:grid-cols-[15rem_1fr]">
+            <section className="grid min-h-0 gap-2 rounded-md border border-border-subtle bg-secondary p-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  Sessions
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px]"
+                  type="button"
+                  onClick={() => {
+                    void refreshRecovery()
+                  }}
+                  disabled={recoveryLoading}
+                >
+                  Refresh
+                </Button>
+              </div>
+              <div className="min-h-0 overflow-auto">
+                {recoverySessions.length === 0 ? (
+                  <p className="px-1 py-2 text-[12px] text-muted-foreground">
+                    No recoverable sessions.
+                  </p>
+                ) : (
+                  <ul className="grid gap-1">
+                    {recoverySessions.map((item) => (
+                      <li key={item.name}>
+                        <button
+                          type="button"
+                          className={`w-full rounded-md border px-2 py-1.5 text-left text-[12px] ${
+                            selectedRecoverySession === item.name
+                              ? 'border-primary/60 bg-primary/10'
+                              : 'border-border-subtle bg-surface-overlay hover:border-border'
+                          }`}
+                          onClick={() => {
+                            setSelectedRecoverySession(item.name)
+                            setRestoreTargetSession(item.name)
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate font-medium">
+                              {item.name}
+                            </span>
+                            <Badge
+                              variant={
+                                item.state === 'restored'
+                                  ? 'secondary'
+                                  : item.state === 'restoring'
+                                    ? 'outline'
+                                    : 'destructive'
+                              }
+                            >
+                              {item.state}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 text-[10px] text-muted-foreground">
+                            {item.windows} windows · {item.panes} panes
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+
+            <section className="grid min-h-0 grid-rows-[auto_auto_1fr_auto] gap-2 rounded-md border border-border-subtle bg-secondary p-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  {selectedRecoverySession ?? 'Select a session'}
+                </Badge>
+                {recoveryBusy && <Badge variant="outline">Restoring…</Badge>}
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-3">
+                <div className="grid gap-1">
+                  <span className="text-[11px] text-muted-foreground">
+                    Snapshot
+                  </span>
+                  <Select
+                    value={selectedSnapshotID ? String(selectedSnapshotID) : ''}
+                    onValueChange={(value) => {
+                      const id = Number(value)
+                      if (Number.isFinite(id) && id > 0) {
+                        void loadRecoverySnapshot(id)
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose snapshot" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {recoverySnapshots.map((item) => (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          #{item.id} · {new Date(item.capturedAt).toLocaleString()}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-[11px] text-muted-foreground">
+                    Replay mode
+                  </span>
+                  <Select
+                    value={restoreMode}
+                    onValueChange={(value) =>
+                      setRestoreMode(value as 'safe' | 'confirm' | 'full')
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="safe">safe</SelectItem>
+                      <SelectItem value="confirm">confirm</SelectItem>
+                      <SelectItem value="full">full</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-[11px] text-muted-foreground">
+                    Name conflict
+                  </span>
+                  <Select
+                    value={restoreConflictPolicy}
+                    onValueChange={(value) =>
+                      setRestoreConflictPolicy(
+                        value as 'rename' | 'replace' | 'skip',
+                      )
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="rename">rename</SelectItem>
+                      <SelectItem value="replace">replace</SelectItem>
+                      <SelectItem value="skip">skip</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid min-h-0 gap-2 overflow-auto rounded-md border border-border-subtle bg-surface-overlay p-2">
+                <div className="grid gap-1">
+                  <span className="text-[11px] text-muted-foreground">
+                    Target session
+                  </span>
+                  <Input
+                    value={restoreTargetSession}
+                    onChange={(event) =>
+                      setRestoreTargetSession(
+                        slugifyTmuxName(event.target.value),
+                      )
+                    }
+                    placeholder="restored session name"
+                  />
+                </div>
+                {selectedSnapshot ? (
+                  <div className="grid gap-2 text-[12px]">
+                    <div className="text-muted-foreground">
+                      Captured:{' '}
+                      {new Date(
+                        selectedSnapshot.payload.capturedAt,
+                      ).toLocaleString()}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {selectedSnapshot.payload.windows.length} windows ·{' '}
+                      {selectedSnapshot.payload.panes.length} panes
+                    </div>
+                    <div className="grid gap-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                        Windows
+                      </span>
+                      <div className="max-h-24 overflow-auto rounded border border-border-subtle bg-secondary p-1 text-[11px]">
+                        {selectedSnapshot.payload.windows.map((window) => (
+                          <div key={`${window.index}-${window.name}`}>
+                            #{window.index} {window.name} ({window.panes} panes)
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid gap-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                        Panes
+                      </span>
+                      <div className="max-h-28 overflow-auto rounded border border-border-subtle bg-secondary p-1 text-[11px]">
+                        {selectedSnapshot.payload.panes.map((pane) => (
+                          <div
+                            key={`${pane.windowIndex}-${pane.paneIndex}-${pane.title}`}
+                          >
+                            {pane.windowIndex}.{pane.paneIndex} ·{' '}
+                            {pane.currentPath || '~'}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-muted-foreground">
+                    Select a snapshot to inspect and restore.
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter className="items-center justify-between">
+                <div className="min-h-[1.25rem] text-[11px] text-destructive-foreground">
+                  {recoveryError}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => {
+                      if (selectedRecoverySession) {
+                        void archiveRecoverySession(selectedRecoverySession)
+                      }
+                    }}
+                    disabled={selectedRecoverySession === null || recoveryBusy}
+                  >
+                    Archive
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void restoreSelectedSnapshot()
+                    }}
+                    disabled={selectedSnapshotID === null || recoveryBusy}
+                  >
+                    Restore Snapshot
+                  </Button>
+                </div>
+              </DialogFooter>
+            </section>
+          </div>
+
+          {recoveryJobs.length > 0 && (
+            <div className="mt-2 rounded-md border border-border-subtle bg-surface-overlay p-2 text-[11px]">
+              <p className="font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                Recent Jobs
+              </p>
+              <div className="mt-1 grid gap-1">
+                {recoveryJobs.slice(0, 6).map((job) => (
+                  <div
+                    key={job.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate">
+                      {job.sessionName} → {job.targetSession || job.sessionName}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {job.completedSteps}/{job.totalSteps} · {job.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={killDialogSession !== null}
