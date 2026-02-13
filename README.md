@@ -246,6 +246,13 @@ make lint-client
 make ci
 ```
 
+## Release Process
+
+- Versioning and release notes are automated by `release-please` on `main`.
+- Follow Conventional Commits (`feat:`, `fix:`, `feat!:`...) so version bumps and changelogs are accurate.
+- When a release is created, CI builds and uploads platform archives to that GitHub release automatically.
+- Manual tag releases are still supported via `.github/workflows/release.yml` and now always include generated notes.
+
 ## Contributing
 
 Pull requests are welcome.

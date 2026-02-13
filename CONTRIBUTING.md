@@ -49,6 +49,7 @@ Thank you for contributing to Sentinel. We prioritize reliability, clear UX, and
 
 ## Commit Message Guidelines
 
+Use Conventional Commits to keep automated versioning and changelogs consistent.
 Use concise, imperative commits. Preferred prefixes:
 
 - `feat: add ...`
@@ -57,6 +58,11 @@ Use concise, imperative commits. Preferred prefixes:
 - `chore: ...`
 - `ci: ...`
 - `docs: ...`
+
+Breaking changes:
+
+- `feat!: ...` or `fix!: ...`
+- include `BREAKING CHANGE:` in the commit body when needed.
 
 ## Pull Request Guidelines
 
