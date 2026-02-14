@@ -1371,20 +1371,44 @@ function TmuxPage() {
 
   const killSession = useCallback(
     async (name: string) => {
-      const wasActive = tabsStateRef.current.activeSession === name
+      const sessionName = name.trim()
+      if (sessionName === '') {
+        return
+      }
+
+      const activeBeforeKill = tabsStateRef.current.activeSession
+      const wasActive = activeBeforeKill === sessionName
+      const hadSession = sessionsRef.current.some(
+        (item) => item.name === sessionName,
+      )
+
+      if (hadSession) {
+        setSessions((prev) =>
+          prev.filter((item) => item.name !== sessionName),
+        )
+      }
+      pendingCreateSessionsRef.current.delete(sessionName)
+      dispatchTabs({ type: 'remove', session: sessionName })
+      if (wasActive) {
+        closeCurrentSocket('session killed')
+        resetTerminal()
+        setConnection('disconnected', 'session killed')
+      }
+
       try {
-        await api<void>(`/api/tmux/sessions/${encodeURIComponent(name)}`, {
+        await api<void>(`/api/tmux/sessions/${encodeURIComponent(sessionName)}`, {
           method: 'DELETE',
         })
-        if (wasActive) {
-          closeCurrentSocket('session killed')
-          resetTerminal()
-        }
-        dispatchTabs({ type: 'remove', session: name })
-        await refreshSessions()
-        if (!wasActive) setConnection('disconnected', 'session killed')
-        pushSuccessToast('Kill Session', `session "${name}" killed`)
+
+        void refreshSessions()
+        pushSuccessToast('Kill Session', `session "${sessionName}" killed`)
       } catch (error) {
+        if (hadSession) {
+          void refreshSessions()
+        }
+        if (activeBeforeKill !== '') {
+          dispatchTabs({ type: 'activate', session: activeBeforeKill })
+        }
         const msg =
           error instanceof Error ? error.message : 'failed to kill session'
         setConnection('error', msg)
