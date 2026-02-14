@@ -1,4 +1,5 @@
 import { ArrowLeftRight, ArrowUpDown, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import type { PaneInfo } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +28,14 @@ type PaneStripProps = {
   onSplitPaneHorizontal: () => void
 }
 
+type PaneStripTouchState = {
+  id: number
+  startX: number
+  startY: number
+  startScrollLeft: number
+  axis: 'unknown' | 'x' | 'y'
+}
+
 function parsePendingSplitSlot(paneID: string): number {
   const parts = paneID.trim().split(':')
   const rawSlot = parts.at(-1) ?? ''
@@ -47,6 +56,15 @@ function parsePaneIDOrder(paneID: string): number | null {
   return numeric
 }
 
+function findTouchByID(touches: TouchList, id: number): Touch | null {
+  for (const touch of Array.from(touches)) {
+    if (touch.identifier === id) {
+      return touch
+    }
+  }
+  return null
+}
+
 export default function PaneStrip({
   hasActiveSession,
   inspectorLoading,
@@ -61,6 +79,8 @@ export default function PaneStrip({
   onSplitPaneHorizontal,
 }: PaneStripProps) {
   const isMobile = useIsMobileLayout()
+  const stripRef = useRef<HTMLDivElement | null>(null)
+  const touchStateRef = useRef<PaneStripTouchState | null>(null)
   const sortedPanes = [...panes].sort((left, right) => {
     if (left.windowIndex !== right.windowIndex) {
       return left.windowIndex - right.windowIndex
@@ -86,7 +106,94 @@ export default function PaneStrip({
       : sortedPanes.filter(
           (paneInfo) => paneInfo.windowIndex === activeWindowIndex,
         )
-  const stripClass = 'flex min-h-[24px] items-center gap-1.5 overflow-x-auto'
+  const stripClass =
+    'flex min-h-[24px] items-center gap-1.5 overflow-x-auto overflow-y-hidden'
+
+  useEffect(() => {
+    const strip = stripRef.current
+    if (!strip) {
+      return
+    }
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        touchStateRef.current = null
+        return
+      }
+
+      const touch = event.touches[0]
+      touchStateRef.current = {
+        id: touch.identifier,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startScrollLeft: strip.scrollLeft,
+        axis: 'unknown',
+      }
+    }
+
+    const onTouchMove = (event: TouchEvent) => {
+      const state = touchStateRef.current
+      if (!state) return
+
+      const touch = findTouchByID(event.touches, state.id)
+      if (!touch) return
+
+      const dx = touch.clientX - state.startX
+      const dy = touch.clientY - state.startY
+      if (state.axis === 'unknown') {
+        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+          return
+        }
+        state.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y'
+      }
+
+      // Never let vertical gestures on pane strip bubble into terminal/page scroll.
+      if (state.axis === 'y') {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      event.preventDefault()
+      strip.scrollLeft = state.startScrollLeft - dx
+    }
+
+    const onTouchEnd = (event: TouchEvent) => {
+      const state = touchStateRef.current
+      if (!state) return
+      if (findTouchByID(event.touches, state.id) === null) {
+        touchStateRef.current = null
+      }
+    }
+
+    const onTouchCancel = () => {
+      touchStateRef.current = null
+    }
+
+    strip.addEventListener('touchstart', onTouchStart, {
+      passive: true,
+      capture: true,
+    })
+    strip.addEventListener('touchmove', onTouchMove, {
+      passive: false,
+      capture: true,
+    })
+    strip.addEventListener('touchend', onTouchEnd, {
+      passive: true,
+      capture: true,
+    })
+    strip.addEventListener('touchcancel', onTouchCancel, {
+      passive: true,
+      capture: true,
+    })
+
+    return () => {
+      strip.removeEventListener('touchstart', onTouchStart, true)
+      strip.removeEventListener('touchmove', onTouchMove, true)
+      strip.removeEventListener('touchend', onTouchEnd, true)
+      strip.removeEventListener('touchcancel', onTouchCancel, true)
+    }
+  }, [])
 
   if (!hasActiveSession) {
     return (
@@ -119,7 +226,16 @@ export default function PaneStrip({
   }
 
   return (
-    <div className={stripClass}>
+    <div
+      ref={stripRef}
+      className={stripClass}
+      data-sentinel-touch-lock
+      style={{
+        touchAction: 'none',
+        overscrollBehaviorX: 'contain',
+        overscrollBehaviorY: 'none',
+      }}
+    >
       <TooltipHelper content="Split vertical (left/right)">
         <Button
           variant="outline"

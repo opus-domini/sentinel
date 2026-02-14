@@ -257,9 +257,23 @@
   overscroll-behavior: contain;
 }
 
+@media (max-width: 767px) {
+  .xterm,
+  .xterm .xterm-viewport {
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-touch-callout: none;
+  }
+}
+
 /* iOS root positioning for visual viewport tracking */
 @media (max-width: 767px) {
-  .ios #root {
+  .viewport-tracked #root {
+    width: var(--visual-viewport-width, 100vw);
+    height: var(--visual-viewport-height, 100dvh);
+  }
+
+  .ios.viewport-tracked #root {
     position: fixed;
     top: 0;
     left: 0;
@@ -275,7 +289,7 @@
 }
 
 /* Safe area padding when keyboard is hidden */
-.ios:not(.keyboard-visible) #root {
+.ios.viewport-tracked:not(.keyboard-visible) #root {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 

@@ -3,8 +3,23 @@ type TouchWheelBridgeOptions = {
   dispatchTarget: HTMLElement
 }
 
+const BOTTOM_GESTURE_GUTTER = 56
+
 const noopDispose = {
   dispose: () => undefined,
+}
+
+function isNearBottomGestureArea(touch: Touch): boolean {
+  const vv = window.visualViewport
+  const viewportBottom = vv ? vv.height : window.innerHeight
+  return touch.clientY >= viewportBottom - BOTTOM_GESTURE_GUTTER
+}
+
+function isBlockedTouchTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false
+  }
+  return target.closest('[data-sentinel-touch-lock]') !== null
 }
 
 export function attachTouchWheelBridge({
@@ -42,8 +57,21 @@ export function attachTouchWheelBridge({
       reset()
       return
     }
+
+    if (isBlockedTouchTarget(event.target)) {
+      reset()
+      return
+    }
+
     const list = event.touches as unknown as ArrayLike<Touch>
     const touch = list[0]
+    if (isNearBottomGestureArea(touch)) {
+      reset()
+      return
+    }
+    if (document.documentElement.classList.contains('keyboard-visible')) {
+      event.preventDefault()
+    }
     activeTouchID = touch.identifier
     lastY = touch.clientY
   }
@@ -82,7 +110,7 @@ export function attachTouchWheelBridge({
     reset()
   }
 
-  host.addEventListener('touchstart', onTouchStart, { passive: true })
+  host.addEventListener('touchstart', onTouchStart, { passive: false })
   host.addEventListener('touchmove', onTouchMove, { passive: false })
   host.addEventListener('touchend', onTouchEnd, { passive: true })
   host.addEventListener('touchcancel', onTouchCancel, { passive: true })

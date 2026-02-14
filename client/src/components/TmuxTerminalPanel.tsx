@@ -1,5 +1,5 @@
 import { Menu, Minus, Plus } from 'lucide-react'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import ConnectionBadge from './ConnectionBadge'
 import HelpDialog from './HelpDialog'
 import SessionTabs from './SessionTabs'
@@ -85,6 +85,7 @@ export default function TmuxTerminalPanel({
   onZoomOut,
 }: TmuxTerminalPanelProps) {
   const isMobileLayout = useIsMobileLayout()
+  const lockedTouchIDsRef = useRef<Set<number>>(new Set())
   const hasActiveSession = activeSession !== ''
   const showControls =
     isMobileLayout && hasActiveSession && !!onSendKey && !!onFocusTerminal
@@ -97,6 +98,69 @@ export default function TmuxTerminalPanel({
     const tag = el.tagName.toLowerCase()
     return tag === 'textarea' || tag === 'input' || el.isContentEditable
   }, [])
+
+  useEffect(() => {
+    if (!isMobileLayout) {
+      return
+    }
+
+    const lockedTouchIDs = lockedTouchIDsRef.current
+    const isLockedTarget = (target: EventTarget | null): boolean =>
+      target instanceof Element &&
+      target.closest('[data-sentinel-touch-lock]') !== null
+
+    const onTouchStart = (event: TouchEvent) => {
+      const lockGesture = isLockedTarget(event.target)
+      for (const touch of Array.from(event.changedTouches)) {
+        if (lockGesture) {
+          lockedTouchIDs.add(touch.identifier)
+          continue
+        }
+        lockedTouchIDs.delete(touch.identifier)
+      }
+    }
+
+    const onTouchMove = (event: TouchEvent) => {
+      for (const touch of Array.from(event.changedTouches)) {
+        if (!lockedTouchIDs.has(touch.identifier)) {
+          continue
+        }
+        event.preventDefault()
+        return
+      }
+    }
+
+    const clearTouches = (event: TouchEvent) => {
+      for (const touch of Array.from(event.changedTouches)) {
+        lockedTouchIDs.delete(touch.identifier)
+      }
+    }
+
+    document.addEventListener('touchstart', onTouchStart, {
+      passive: true,
+      capture: true,
+    })
+    document.addEventListener('touchmove', onTouchMove, {
+      passive: false,
+      capture: true,
+    })
+    document.addEventListener('touchend', clearTouches, {
+      passive: true,
+      capture: true,
+    })
+    document.addEventListener('touchcancel', clearTouches, {
+      passive: true,
+      capture: true,
+    })
+
+    return () => {
+      lockedTouchIDs.clear()
+      document.removeEventListener('touchstart', onTouchStart, true)
+      document.removeEventListener('touchmove', onTouchMove, true)
+      document.removeEventListener('touchend', clearTouches, true)
+      document.removeEventListener('touchcancel', clearTouches, true)
+    }
+  }, [isMobileLayout])
 
   return (
     <main
@@ -157,7 +221,7 @@ export default function TmuxTerminalPanel({
           />
         </div>
 
-        <div className="relative min-h-0">
+        <div className="relative min-h-0 overflow-hidden">
           <TerminalHost
             openTabs={openTabs}
             activeSession={activeSession}
@@ -175,7 +239,11 @@ export default function TmuxTerminalPanel({
         />
       )}
 
-      <footer className="flex items-center justify-between gap-2 overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground">
+      <footer
+        className="relative z-20 flex items-center justify-between gap-2 overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground"
+        data-sentinel-touch-lock
+        style={{ touchAction: 'none', overscrollBehaviorY: 'none' }}
+      >
         <div className="min-w-0 flex-1 overflow-hidden text-[11px] text-secondary-foreground">
           <PaneStrip
             hasActiveSession={hasActiveSession}

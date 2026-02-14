@@ -298,6 +298,13 @@ export function useTerminalTmux({
               }
             }, 0)
           })
+          ta.addEventListener('focus', () => {
+            if (!isMobileRef.current) return
+            requestAnimationFrame(() => {
+              fitRuntime(runtime)
+              runtime.terminal.scrollToBottom()
+            })
+          })
         }
 
         if (suppressBrowserContextMenu) {
@@ -906,6 +913,28 @@ export function useTerminalTmux({
       window.removeEventListener('resize', onWindowResize)
     }
   }, [fitTerminal])
+
+  useEffect(() => {
+    if (!window.visualViewport) {
+      return
+    }
+    const vv = window.visualViewport
+    const onViewportChange = () => {
+      if (!isMobileRef.current) return
+      const runtime = runtimesRef.current.get(activeSessionRef.current.trim())
+      if (!runtime || !runtime.terminal.element) return
+      fitRuntime(runtime)
+      if (document.documentElement.classList.contains('keyboard-visible')) {
+        runtime.terminal.scrollToBottom()
+      }
+    }
+    vv.addEventListener('resize', onViewportChange)
+    vv.addEventListener('scroll', onViewportChange)
+    return () => {
+      vv.removeEventListener('resize', onViewportChange)
+      vv.removeEventListener('scroll', onViewportChange)
+    }
+  }, [fitRuntime])
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
