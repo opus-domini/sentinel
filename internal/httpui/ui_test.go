@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/term"
 	"github.com/opus-domini/sentinel/internal/ws"
 )
@@ -344,6 +346,61 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	}
 }
 
+func TestHandleEventsClientMessagePresence(t *testing.T) {
+	t.Parallel()
+
+	st := newHTTPUIStore(t)
+	h := &Handler{store: st}
+	h.handleEventsClientMessage([]byte(`{
+		"type":"presence",
+		"terminalId":"term-1",
+		"session":"dev",
+		"windowIndex":1,
+		"paneId":"%11",
+		"visible":true,
+		"focused":true
+	}`))
+
+	rows, err := st.ListWatchtowerPresenceBySession(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPresenceBySession(dev): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows len = %d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.TerminalID != "term-1" || row.WindowIndex != 1 || row.PaneID != "%11" {
+		t.Fatalf("unexpected presence row: %+v", row)
+	}
+	if !row.Visible || !row.Focused {
+		t.Fatalf("presence flags should be true: %+v", row)
+	}
+}
+
+func TestHandleEventsClientMessageIgnoresInvalidPresence(t *testing.T) {
+	t.Parallel()
+
+	st := newHTTPUIStore(t)
+	h := &Handler{store: st}
+	h.handleEventsClientMessage([]byte(`{
+		"type":"presence",
+		"terminalId":"term-1",
+		"session":"dev",
+		"windowIndex":0,
+		"paneId":"11",
+		"visible":true,
+		"focused":false
+	}`))
+
+	rows, err := st.ListWatchtowerPresenceBySession(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPresenceBySession(dev): %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows len = %d, want 0", len(rows))
+	}
+}
+
 func dialWebSocketPath(t *testing.T, serverURL, path string) net.Conn {
 	t.Helper()
 
@@ -389,6 +446,16 @@ func dialWebSocketPath(t *testing.T, serverURL, path string) net.Conn {
 	}
 
 	return &bufferedConn{Conn: conn, reader: reader}
+}
+
+func newHTTPUIStore(t *testing.T) *store.Store {
+	t.Helper()
+	st, err := store.New(filepath.Join(t.TempDir(), "sentinel.db"))
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
 }
 
 type bufferedConn struct {

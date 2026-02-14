@@ -158,6 +158,12 @@ function TmuxPage() {
   const tabsStateRef = useRef(tabsState)
   const seenAckKeyRef = useRef('')
   const presenceTerminalIDRef = useRef('')
+  const presenceSocketRef = useRef<WebSocket | null>(null)
+  const presenceLastSignatureRef = useRef('')
+  const presenceLastSentAtRef = useRef(0)
+  const presenceHTTPInFlightRef = useRef(false)
+  const activeWindowIndexRef = useRef<number | null>(null)
+  const activePaneIDRef = useRef<string | null>(null)
   const refreshTimerRef = useRef<{
     sessions: number | null
     inspector: number | null
@@ -231,6 +237,11 @@ function TmuxPage() {
       inWindow.find((p) => p.active)?.paneId ?? inWindow.at(0)?.paneId ?? null
     )
   }, [activePaneIDOverride, activeWindowIndex, panes])
+
+  useEffect(() => {
+    activeWindowIndexRef.current = activeWindowIndex
+    activePaneIDRef.current = activePaneID
+  }, [activePaneID, activeWindowIndex])
 
   const pushErrorToast = useCallback(
     (title: string, message: string) => {
@@ -371,30 +382,83 @@ function TmuxPage() {
     [api],
   )
 
-  const sendPresenceHeartbeat = useCallback(async () => {
-    const terminalId = presenceTerminalIDRef.current.trim()
-    if (terminalId === '') return
-
-    const activeSession = tabsStateRef.current.activeSession.trim()
-    const visible = document.visibilityState === 'visible'
-    const focused = document.hasFocus()
-
-    try {
-      await api<{ accepted: boolean }>('/api/tmux/presence', {
-        method: 'PUT',
-        body: JSON.stringify({
-          terminalId,
-          session: activeSession,
-          windowIndex: activeWindowIndex ?? -1,
-          paneId: activePaneID ?? '',
-          visible,
-          focused,
-        }),
-      })
-    } catch {
-      // Presence heartbeat is best-effort.
+  const buildPresencePayload = useCallback(() => {
+    return {
+      terminalId: presenceTerminalIDRef.current.trim(),
+      session: tabsStateRef.current.activeSession.trim(),
+      windowIndex: activeWindowIndexRef.current ?? -1,
+      paneId: activePaneIDRef.current ?? '',
+      visible: document.visibilityState === 'visible',
+      focused: document.hasFocus(),
     }
-  }, [activePaneID, activeWindowIndex, api])
+  }, [])
+
+  const canEmitPresence = useCallback((signature: string, force: boolean) => {
+    if (force) return true
+    if (signature !== presenceLastSignatureRef.current) return true
+    return Date.now() - presenceLastSentAtRef.current >= 10_000
+  }, [])
+
+  const markPresenceSent = useCallback((signature: string) => {
+    presenceLastSignatureRef.current = signature
+    presenceLastSentAtRef.current = Date.now()
+  }, [])
+
+  const sendPresenceOverWS = useCallback(
+    (force = false): boolean => {
+      const socket = presenceSocketRef.current
+      if (socket === null || socket.readyState !== WebSocket.OPEN) {
+        return false
+      }
+
+      const payload = buildPresencePayload()
+      if (payload.terminalId === '') return false
+
+      const signature = JSON.stringify(payload)
+      if (!canEmitPresence(signature, force)) {
+        return true
+      }
+
+      try {
+        socket.send(
+          JSON.stringify({
+            type: 'presence',
+            ...payload,
+          }),
+        )
+        markPresenceSent(signature)
+        return true
+      } catch {
+        return false
+      }
+    },
+    [buildPresencePayload, canEmitPresence, markPresenceSent],
+  )
+
+  const sendPresenceOverHTTP = useCallback(
+    async (force = false) => {
+      const payload = buildPresencePayload()
+      if (payload.terminalId === '') return
+
+      const signature = JSON.stringify(payload)
+      if (!canEmitPresence(signature, force)) return
+      if (presenceHTTPInFlightRef.current) return
+
+      presenceHTTPInFlightRef.current = true
+      try {
+        await api<{ accepted: boolean }>('/api/tmux/presence', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        })
+        markPresenceSent(signature)
+      } catch {
+        // Presence fallback is best-effort.
+      } finally {
+        presenceHTTPInFlightRef.current = false
+      }
+    },
+    [api, buildPresencePayload, canEmitPresence, markPresenceSent],
+  )
 
   useEffect(() => {
     // Keep inspector in sync when user switches active session/tab.
@@ -438,26 +502,44 @@ function TmuxPage() {
   }, [activePaneID, activeWindowIndex, markSeen, tabsState.activeSession])
 
   useEffect(() => {
-    void sendPresenceHeartbeat()
+    const tick = () => {
+      if (sendPresenceOverWS(false)) return
+      void sendPresenceOverHTTP(false)
+    }
 
-    const heartbeatID = window.setInterval(() => {
-      void sendPresenceHeartbeat()
-    }, 5_000)
+    tick()
+    const heartbeatID = window.setInterval(tick, 10_000)
+    return () => {
+      window.clearInterval(heartbeatID)
+    }
+  }, [sendPresenceOverHTTP, sendPresenceOverWS])
 
+  useEffect(() => {
     const onPresenceSignal = () => {
-      void sendPresenceHeartbeat()
+      if (sendPresenceOverWS(true)) return
+      void sendPresenceOverHTTP(true)
     }
     document.addEventListener('visibilitychange', onPresenceSignal)
     window.addEventListener('focus', onPresenceSignal)
     window.addEventListener('blur', onPresenceSignal)
 
     return () => {
-      window.clearInterval(heartbeatID)
       document.removeEventListener('visibilitychange', onPresenceSignal)
       window.removeEventListener('focus', onPresenceSignal)
       window.removeEventListener('blur', onPresenceSignal)
     }
-  }, [sendPresenceHeartbeat])
+  }, [sendPresenceOverHTTP, sendPresenceOverWS])
+
+  useEffect(() => {
+    if (sendPresenceOverWS(true)) return
+    void sendPresenceOverHTTP(true)
+  }, [
+    activePaneID,
+    activeWindowIndex,
+    sendPresenceOverHTTP,
+    sendPresenceOverWS,
+    tabsState.activeSession,
+  ])
 
   const refreshRecovery = useCallback(
     async (options?: { quiet?: boolean }) => {
@@ -1326,7 +1408,9 @@ function TmuxPage() {
       )
 
       socket.onopen = () => {
+        presenceSocketRef.current = socket
         setEventsSocketConnected(true)
+        sendPresenceOverWS(true)
         // Reconcile any missed events after reconnect.
         refreshAllState({ quietRecovery: true })
       }
@@ -1369,6 +1453,7 @@ function TmuxPage() {
       }
 
       socket.onclose = () => {
+        presenceSocketRef.current = null
         setEventsSocketConnected(false)
         if (closed) return
         reconnectTimer = window.setTimeout(() => {
@@ -1381,6 +1466,7 @@ function TmuxPage() {
 
     return () => {
       closed = true
+      presenceSocketRef.current = null
       setEventsSocketConnected(false)
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer)
@@ -1396,7 +1482,14 @@ function TmuxPage() {
         socket.close()
       }
     }
-  }, [refreshAllState, refreshInspector, refreshRecovery, refreshSessions, token])
+  }, [
+    refreshAllState,
+    refreshInspector,
+    refreshRecovery,
+    refreshSessions,
+    sendPresenceOverWS,
+    token,
+  ])
 
   return (
     <AppShell

@@ -970,7 +970,7 @@ func (h *Handler) setTmuxPresence(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	now := time.Now().UTC()
-	expiresAt := now.Add(15 * time.Second)
+	expiresAt := now.Add(30 * time.Second)
 	if err := h.store.UpsertWatchtowerPresence(ctx, store.WatchtowerPresenceWrite{
 		TerminalID:  req.TerminalID,
 		SessionName: req.SessionName,

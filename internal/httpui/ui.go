@@ -13,6 +13,7 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/term"
 	"github.com/opus-domini/sentinel/internal/terminals"
 	"github.com/opus-domini/sentinel/internal/tmux"
@@ -36,10 +37,11 @@ type Handler struct {
 	guard     *security.Guard
 	events    *events.Hub
 	terminals *terminals.Registry
+	store     *store.Store
 }
 
-func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry, eventsHub *events.Hub) error {
-	h := &Handler{guard: guard, events: eventsHub, terminals: terminalRegistry}
+func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry, st *store.Store, eventsHub *events.Hub) error {
+	h := &Handler{guard: guard, events: eventsHub, terminals: terminalRegistry, store: st}
 	if err := registerAssetRoutes(mux); err != nil {
 		return err
 	}
@@ -225,11 +227,15 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 	readErrCh := make(chan error, 1)
 	go func() {
 		for {
-			_, _, readErr := wsConn.ReadMessage()
+			opcode, payload, readErr := wsConn.ReadMessage()
 			if readErr != nil {
 				readErrCh <- readErr
 				return
 			}
+			if opcode != ws.OpText {
+				continue
+			}
+			h.handleEventsClientMessage(payload)
 		}
 	}()
 
@@ -256,6 +262,60 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 		case <-readErrCh:
 			return
 		}
+	}
+}
+
+func (h *Handler) handleEventsClientMessage(payload []byte) {
+	if h == nil || h.store == nil || len(payload) == 0 {
+		return
+	}
+
+	var msg struct {
+		Type       string `json:"type"`
+		TerminalID string `json:"terminalId"`
+		Session    string `json:"session"`
+		WindowIdx  int    `json:"windowIndex"`
+		PaneID     string `json:"paneId"`
+		Visible    bool   `json:"visible"`
+		Focused    bool   `json:"focused"`
+	}
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return
+	}
+	if strings.ToLower(strings.TrimSpace(msg.Type)) != "presence" {
+		return
+	}
+
+	terminalID := strings.TrimSpace(msg.TerminalID)
+	sessionName := strings.TrimSpace(msg.Session)
+	paneID := strings.TrimSpace(msg.PaneID)
+	if terminalID == "" {
+		return
+	}
+	if sessionName != "" && !validate.SessionName(sessionName) {
+		return
+	}
+	if msg.WindowIdx < -1 {
+		return
+	}
+	if paneID != "" && !strings.HasPrefix(paneID, "%") {
+		return
+	}
+
+	now := time.Now().UTC()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := h.store.UpsertWatchtowerPresence(ctx, store.WatchtowerPresenceWrite{
+		TerminalID:  terminalID,
+		SessionName: sessionName,
+		WindowIndex: msg.WindowIdx,
+		PaneID:      paneID,
+		Visible:     msg.Visible,
+		Focused:     msg.Focused,
+		UpdatedAt:   now,
+		ExpiresAt:   now.Add(30 * time.Second),
+	}); err != nil {
+		slog.Warn("events ws presence write failed", "terminal", terminalID, "err", err)
 	}
 }
 

@@ -36,15 +36,15 @@ func serve() int {
 	terminalRegistry := terminals.NewRegistry()
 	eventHub := events.NewHub()
 
-	mux := http.NewServeMux()
-	if err := httpui.Register(mux, guard, terminalRegistry, eventHub); err != nil {
-		slog.Error("frontend init failed", "err", err)
-		return 1
-	}
-
 	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))
 	if err != nil {
 		slog.Error("store init failed", "err", err)
+		return 1
+	}
+
+	mux := http.NewServeMux()
+	if err := httpui.Register(mux, guard, terminalRegistry, st, eventHub); err != nil {
+		slog.Error("frontend init failed", "err", err)
 		return 1
 	}
 
