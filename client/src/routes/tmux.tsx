@@ -187,6 +187,8 @@ function TmuxPage() {
   const presenceLastSignatureRef = useRef('')
   const presenceLastSentAtRef = useRef(0)
   const presenceHTTPInFlightRef = useRef(false)
+  const activeWindowOverrideRef = useRef<number | null>(null)
+  const activePaneOverrideRef = useRef<string | null>(null)
   const activeWindowIndexRef = useRef<number | null>(null)
   const activePaneIDRef = useRef<string | null>(null)
   const lastSessionsRefreshAtRef = useRef(0)
@@ -212,6 +214,12 @@ function TmuxPage() {
     setActiveWindowIndexOverride(null)
     setActivePaneIDOverride(null)
   }, [tabsState.activeSession])
+  useEffect(() => {
+    activeWindowOverrideRef.current = activeWindowIndexOverride
+  }, [activeWindowIndexOverride])
+  useEffect(() => {
+    activePaneOverrideRef.current = activePaneIDOverride
+  }, [activePaneIDOverride])
 
   const handleAttachedMobile = useCallback(() => {
     layout.setSidebarOpen(false)
@@ -513,8 +521,31 @@ function TmuxPage() {
         if (gen !== inspectorGenerationRef.current) return
         setWindows(wData.windows)
         setPanes(pData.panes)
-        setActiveWindowIndexOverride(null)
-        setActivePaneIDOverride(null)
+        const windowOverride = activeWindowOverrideRef.current
+        const paneOverride = activePaneOverrideRef.current
+        const fetchedActiveWindow =
+          wData.windows.find((windowInfo) => windowInfo.active)?.index ?? null
+        const fetchedActivePane =
+          pData.panes.find((paneInfo) => paneInfo.active)?.paneId ?? null
+
+        let keepWindowOverride =
+          windowOverride !== null &&
+          fetchedActiveWindow !== windowOverride &&
+          wData.windows.some((windowInfo) => windowInfo.index === windowOverride)
+        const keepPaneOverride =
+          paneOverride !== null &&
+          fetchedActivePane !== paneOverride &&
+          pData.panes.some((paneInfo) => paneInfo.paneId === paneOverride)
+        if (keepPaneOverride) {
+          keepWindowOverride = true
+        }
+
+        if (!keepWindowOverride) {
+          setActiveWindowIndexOverride(null)
+        }
+        if (!keepPaneOverride) {
+          setActivePaneIDOverride(null)
+        }
       } catch (error) {
         if (gen !== inspectorGenerationRef.current) return
         const message =
@@ -1221,6 +1252,7 @@ function TmuxPage() {
     (windowIndex: number) => {
       const active = tabsStateRef.current.activeSession
       if (!active) return
+      if (activeWindowIndexRef.current === windowIndex) return
       setInspectorError('')
       setActiveWindowIndexOverride(windowIndex)
       const preferredPaneID =
@@ -1239,14 +1271,13 @@ function TmuxPage() {
         `/api/tmux/sessions/${encodeURIComponent(active)}/select-window`,
         { method: 'POST', body: JSON.stringify({ index: windowIndex }) },
       )
-        .then(() => {
-          void refreshInspector(active, { background: true })
-        })
         .catch((error) => {
           const msg =
             error instanceof Error ? error.message : 'failed to switch window'
           setInspectorError(msg)
           pushErrorToast('Switch Window', msg)
+          setActiveWindowIndexOverride(null)
+          setActivePaneIDOverride(null)
           void refreshInspector(active, { background: true })
         })
     },
@@ -1257,6 +1288,7 @@ function TmuxPage() {
     (paneID: string) => {
       const active = tabsStateRef.current.activeSession
       if (!active || !paneID.trim()) return
+      if (activePaneIDRef.current === paneID) return
       const paneInfo = panes.find((p) => p.paneId === paneID)
       setInspectorError('')
       setActivePaneIDOverride(paneID)
@@ -1276,6 +1308,8 @@ function TmuxPage() {
           error instanceof Error ? error.message : 'failed to switch pane'
         setInspectorError(msg)
         pushErrorToast('Switch Pane', msg)
+        setActiveWindowIndexOverride(null)
+        setActivePaneIDOverride(null)
         void refreshInspector(active, { background: true })
       })
     },
