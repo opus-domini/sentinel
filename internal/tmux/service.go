@@ -53,7 +53,7 @@ func (Service) SelectPane(ctx context.Context, paneID string) error {
 	return SelectPane(ctx, paneID)
 }
 
-func (Service) NewWindow(ctx context.Context, session string) error {
+func (Service) NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
 	return NewWindow(ctx, session)
 }
 
@@ -69,7 +69,7 @@ func (Service) KillPane(ctx context.Context, paneID string) error {
 	return KillPane(ctx, paneID)
 }
 
-func (Service) SplitPane(ctx context.Context, paneID, direction string) error {
+func (Service) SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	return SplitPane(ctx, paneID, direction)
 }
 

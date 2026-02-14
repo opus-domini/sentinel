@@ -38,10 +38,10 @@ type tmuxService interface {
 	ListPanes(ctx context.Context, session string) ([]tmux.Pane, error)
 	SelectWindow(ctx context.Context, session string, index int) error
 	SelectPane(ctx context.Context, paneID string) error
-	NewWindow(ctx context.Context, session string) error
+	NewWindow(ctx context.Context, session string) (tmux.NewWindowResult, error)
 	KillWindow(ctx context.Context, session string, index int) error
 	KillPane(ctx context.Context, paneID string) error
-	SplitPane(ctx context.Context, paneID, direction string) error
+	SplitPane(ctx context.Context, paneID, direction string) (string, error)
 }
 
 type systemTerminals interface {
@@ -1193,6 +1193,18 @@ func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func defaultWindowName(index int) string {
+	return fmt.Sprintf("win-%d", index)
+}
+
+func defaultPaneTitle(paneID string) string {
+	suffix := strings.TrimPrefix(strings.TrimSpace(paneID), "%")
+	if suffix == "" {
+		return "pan-0"
+	}
+	return "pan-" + suffix
+}
+
 func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 	session := strings.TrimSpace(r.PathValue("session"))
 	if !validate.SessionName(session) {
@@ -1203,13 +1215,27 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.tmux.NewWindow(ctx, session); err != nil {
+	createdWindow, err := h.tmux.NewWindow(ctx, session)
+	if err != nil {
 		writeTmuxError(w, err)
 		return
+	}
+
+	windowName := defaultWindowName(createdWindow.Index)
+	if err := h.tmux.RenameWindow(ctx, session, createdWindow.Index, windowName); err != nil {
+		slog.Warn("failed to apply default window name", "session", session, "index", createdWindow.Index, "name", windowName, "err", err)
+	}
+	if createdWindow.PaneID != "" {
+		paneTitle := defaultPaneTitle(createdWindow.PaneID)
+		if err := h.tmux.RenamePane(ctx, createdWindow.PaneID, paneTitle); err != nil {
+			slog.Warn("failed to apply default pane title", "session", session, "paneId", createdWindow.PaneID, "title", paneTitle, "err", err)
+		}
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
 		"session": session,
 		"action":  "new-window",
+		"index":   createdWindow.Index,
+		"paneId":  createdWindow.PaneID,
 	})
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "window-count"})
 	w.WriteHeader(http.StatusNoContent)
@@ -1315,14 +1341,22 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.tmux.SplitPane(ctx, req.PaneID, req.Direction); err != nil {
+	createdPaneID, err := h.tmux.SplitPane(ctx, req.PaneID, req.Direction)
+	if err != nil {
 		writeTmuxError(w, err)
 		return
+	}
+	if createdPaneID != "" {
+		paneTitle := defaultPaneTitle(createdPaneID)
+		if err := h.tmux.RenamePane(ctx, createdPaneID, paneTitle); err != nil {
+			slog.Warn("failed to apply default pane title", "session", session, "paneId", createdPaneID, "title", paneTitle, "err", err)
+		}
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
 		"session":   session,
 		"action":    "split-pane",
 		"paneId":    req.PaneID,
+		"createdId": createdPaneID,
 		"direction": req.Direction,
 	})
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "pane-count"})

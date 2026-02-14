@@ -88,6 +88,11 @@ type Pane struct {
 	Height         int    `json:"height,omitempty"`
 }
 
+type NewWindowResult struct {
+	Index  int
+	PaneID string
+}
+
 func ListSessions(ctx context.Context) ([]Session, error) {
 	out, err := run(ctx, "list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{session_activity}")
 	if err != nil {
@@ -388,10 +393,17 @@ func SelectPane(ctx context.Context, paneID string) error {
 	return err
 }
 
-func NewWindow(ctx context.Context, session string) error {
+func NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
 	target := fmt.Sprintf("%s:", session)
-	_, err := run(ctx, "new-window", "-t", target)
-	return err
+	out, err := run(ctx, "new-window", "-P", "-F", "#{window_index}\t#{pane_id}", "-t", target)
+	if err != nil {
+		return NewWindowResult{}, err
+	}
+	result, parseErr := parseNewWindowOutput(out)
+	if parseErr != nil {
+		return NewWindowResult{}, parseErr
+	}
+	return result, nil
 }
 
 func NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
@@ -418,7 +430,7 @@ func KillPane(ctx context.Context, paneID string) error {
 	return err
 }
 
-func SplitPane(ctx context.Context, paneID, direction string) error {
+func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	args := []string{"split-window", "-t", paneID}
 	switch direction {
 	case "vertical":
@@ -426,10 +438,18 @@ func SplitPane(ctx context.Context, paneID, direction string) error {
 	case "horizontal":
 		args = append(args, "-v")
 	default:
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
 	}
-	_, err := run(ctx, args...)
-	return err
+	args = append(args, "-P", "-F", "#{pane_id}")
+	out, err := run(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	createdPaneID, parseErr := parseSplitPaneOutput(out)
+	if parseErr != nil {
+		return "", parseErr
+	}
+	return createdPaneID, nil
 }
 
 func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) error {
@@ -578,6 +598,47 @@ func valueAt(parts []string, idx int) string {
 		return ""
 	}
 	return parts[idx]
+}
+
+func parseNewWindowOutput(out string) (NewWindowResult, error) {
+	line := strings.TrimSpace(out)
+	parts := strings.Split(line, "\t")
+	if len(parts) != 2 {
+		return NewWindowResult{}, &Error{
+			Kind: ErrKindCommandFailed,
+			Msg:  fmt.Sprintf("tmux new-window returned unexpected output: %q", line),
+		}
+	}
+	index, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || index < 0 {
+		return NewWindowResult{}, &Error{
+			Kind: ErrKindCommandFailed,
+			Msg:  fmt.Sprintf("tmux new-window returned invalid index: %q", parts[0]),
+			Err:  err,
+		}
+	}
+	paneID := strings.TrimSpace(parts[1])
+	if !strings.HasPrefix(paneID, "%") {
+		return NewWindowResult{}, &Error{
+			Kind: ErrKindCommandFailed,
+			Msg:  fmt.Sprintf("tmux new-window returned invalid pane id: %q", paneID),
+		}
+	}
+	return NewWindowResult{
+		Index:  index,
+		PaneID: paneID,
+	}, nil
+}
+
+func parseSplitPaneOutput(out string) (string, error) {
+	paneID := strings.TrimSpace(out)
+	if !strings.HasPrefix(paneID, "%") {
+		return "", &Error{
+			Kind: ErrKindCommandFailed,
+			Msg:  fmt.Sprintf("tmux split-window returned invalid pane id: %q", paneID),
+		}
+	}
+	return paneID, nil
 }
 
 func run(ctx context.Context, args ...string) (string, error) {

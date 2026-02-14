@@ -38,10 +38,10 @@ type mockTmux struct {
 	listPanesFn              func(ctx context.Context, session string) ([]tmux.Pane, error)
 	selectWindowFn           func(ctx context.Context, session string, index int) error
 	selectPaneFn             func(ctx context.Context, paneID string) error
-	newWindowFn              func(ctx context.Context, session string) error
+	newWindowFn              func(ctx context.Context, session string) (tmux.NewWindowResult, error)
 	killWindowFn             func(ctx context.Context, session string, index int) error
 	killPaneFn               func(ctx context.Context, paneID string) error
-	splitPaneFn              func(ctx context.Context, paneID, direction string) error
+	splitPaneFn              func(ctx context.Context, paneID, direction string) (string, error)
 }
 
 func (m *mockTmux) ListSessions(ctx context.Context) ([]tmux.Session, error) {
@@ -128,11 +128,11 @@ func (m *mockTmux) SelectPane(ctx context.Context, paneID string) error {
 	return nil
 }
 
-func (m *mockTmux) NewWindow(ctx context.Context, session string) error {
+func (m *mockTmux) NewWindow(ctx context.Context, session string) (tmux.NewWindowResult, error) {
 	if m.newWindowFn != nil {
 		return m.newWindowFn(ctx, session)
 	}
-	return nil
+	return tmux.NewWindowResult{Index: 0, PaneID: "%0"}, nil
 }
 
 func (m *mockTmux) KillWindow(ctx context.Context, session string, index int) error {
@@ -149,11 +149,11 @@ func (m *mockTmux) KillPane(ctx context.Context, paneID string) error {
 	return nil
 }
 
-func (m *mockTmux) SplitPane(ctx context.Context, paneID, direction string) error {
+func (m *mockTmux) SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	if m.splitPaneFn != nil {
 		return m.splitPaneFn(ctx, paneID, direction)
 	}
-	return nil
+	return "%0", nil
 }
 
 type mockSysTerms struct {
@@ -1129,6 +1129,42 @@ func TestDeleteSessionHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("applies default names for new window and first pane", func(t *testing.T) {
+		t.Parallel()
+
+		renamedWindow := ""
+		renamedPane := ""
+		tm := &mockTmux{
+			newWindowFn: func(_ context.Context, _ string) (tmux.NewWindowResult, error) {
+				return tmux.NewWindowResult{Index: 7, PaneID: "%42"}, nil
+			},
+			renameWindowFn: func(_ context.Context, _ string, index int, name string) error {
+				renamedWindow = fmt.Sprintf("%d:%s", index, name)
+				return nil
+			},
+			renamePaneFn: func(_ context.Context, paneID, title string) error {
+				renamedPane = fmt.Sprintf("%s:%s", paneID, title)
+				return nil
+			},
+		}
+
+		h := newTestHandler(t, tm, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
+		r.SetPathValue("session", "dev")
+		h.newWindow(w, r)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", w.Code)
+		}
+		if renamedWindow != "7:win-7" {
+			t.Fatalf("renamed window = %q, want %q", renamedWindow, "7:win-7")
+		}
+		if renamedPane != "%42:pan-42" {
+			t.Fatalf("renamed pane = %q, want %q", renamedPane, "%42:pan-42")
+		}
+	})
+
 	t.Run("invalid name", func(t *testing.T) {
 		t.Parallel()
 
@@ -2007,8 +2043,8 @@ func TestNewWindowHandler(t *testing.T) {
 		t.Parallel()
 
 		tm := &mockTmux{
-			newWindowFn: func(_ context.Context, _ string) error {
-				return &tmux.Error{Kind: tmux.ErrKindServerNotRunning}
+			newWindowFn: func(_ context.Context, _ string) (tmux.NewWindowResult, error) {
+				return tmux.NewWindowResult{}, &tmux.Error{Kind: tmux.ErrKindServerNotRunning}
 			},
 		}
 		h := newTestHandler(t, tm, nil)
@@ -2198,6 +2234,34 @@ func TestSplitPaneHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("applies default name for created pane", func(t *testing.T) {
+		t.Parallel()
+
+		renamedPane := ""
+		tm := &mockTmux{
+			splitPaneFn: func(_ context.Context, _, _ string) (string, error) {
+				return "%77", nil
+			},
+			renamePaneFn: func(_ context.Context, paneID, title string) error {
+				renamedPane = fmt.Sprintf("%s:%s", paneID, title)
+				return nil
+			},
+		}
+
+		h := newTestHandler(t, tm, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
+		r.SetPathValue("session", "dev")
+		h.splitPane(w, r)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", w.Code)
+		}
+		if renamedPane != "%77:pan-77" {
+			t.Fatalf("renamed pane = %q, want %q", renamedPane, "%77:pan-77")
+		}
+	})
+
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
@@ -2244,8 +2308,8 @@ func TestSplitPaneHandler(t *testing.T) {
 		t.Parallel()
 
 		tm := &mockTmux{
-			splitPaneFn: func(_ context.Context, _, _ string) error {
-				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
+			splitPaneFn: func(_ context.Context, _, _ string) (string, error) {
+				return "", &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
 		h := newTestHandler(t, tm, nil)

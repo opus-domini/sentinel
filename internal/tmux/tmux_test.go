@@ -296,3 +296,47 @@ func TestPatchTripleClick1PaneBinding(t *testing.T) {
 		t.Fatalf("expected fallback block to be send-keys -M: %q", got)
 	}
 }
+
+func TestParseNewWindowOutput(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid output", func(t *testing.T) {
+		t.Parallel()
+		got, err := parseNewWindowOutput("3\t%19\n")
+		if err != nil {
+			t.Fatalf("parseNewWindowOutput error = %v", err)
+		}
+		if got.Index != 3 || got.PaneID != "%19" {
+			t.Fatalf("got = %+v, want index=3 paneID=%%19", got)
+		}
+	})
+
+	t.Run("invalid output", func(t *testing.T) {
+		t.Parallel()
+		if _, err := parseNewWindowOutput("bad-output"); err == nil {
+			t.Fatal("expected parseNewWindowOutput to fail")
+		}
+	})
+}
+
+func TestParseSplitPaneOutput(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid output", func(t *testing.T) {
+		t.Parallel()
+		got, err := parseSplitPaneOutput("%7\n")
+		if err != nil {
+			t.Fatalf("parseSplitPaneOutput error = %v", err)
+		}
+		if got != "%7" {
+			t.Fatalf("got = %q, want %q", got, "%7")
+		}
+	})
+
+	t.Run("invalid output", func(t *testing.T) {
+		t.Parallel()
+		if _, err := parseSplitPaneOutput("7"); err == nil {
+			t.Fatal("expected parseSplitPaneOutput to fail")
+		}
+	})
+}
