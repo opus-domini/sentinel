@@ -1,5 +1,9 @@
 import { Check, LayoutGrid, Rows3, User } from 'lucide-react'
 import { SESSION_ICONS, getSessionIcon } from './sessionIcons'
+import {
+  effectiveAttachedClients,
+  isSessionAttachedWithLocalTab,
+} from './sessionAttachment'
 import { formatRelativeTime, formatTimestamp } from './sessionTime'
 import type { Session } from '../../types'
 import { TooltipHelper } from '@/components/TooltipHelper'
@@ -36,7 +40,8 @@ export default function SessionListItem({
   onChangeIcon,
   canDetach,
 }: SessionListItemProps) {
-  const isAttached = session.attached > 0
+  const isAttached = isSessionAttachedWithLocalTab(session, canDetach)
+  const attachedClients = effectiveAttachedClients(session.attached, canDetach)
   const unreadPanes = session.unreadPanes ?? 0
   const unreadWindows = session.unreadWindows ?? 0
   const activityRelative = formatRelativeTime(session.activityAt)
@@ -126,13 +131,13 @@ export default function SessionListItem({
                   <span
                     className="inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full border border-primary/40 bg-primary/15 px-1 text-[10px] text-primary-text"
                     aria-label={
-                      session.attached === 1
+                      attachedClients === 1
                         ? '1 client attached'
-                        : `${session.attached} clients attached`
+                        : `${attachedClients} clients attached`
                     }
                   >
                     <User className="h-2.5 w-2.5" />
-                    {session.attached}
+                    {attachedClients}
                   </span>
                 </TooltipHelper>
               )}

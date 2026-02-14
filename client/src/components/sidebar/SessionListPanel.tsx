@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import SessionListItem from './SessionListItem'
+import { isSessionAttached } from './sessionAttachment'
 import type { Session } from '../../types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -39,15 +40,15 @@ export default function SessionListPanel({
     return next
   }, [sessions])
 
-  const attachedSessions = sortedSessions.filter(
-    (session) => session.attached > 0,
-  )
-  const idleSessions = sortedSessions.filter(
-    (session) => session.attached === 0,
-  )
   const hasFilter = filter.trim() !== ''
 
   const openTabsSet = useMemo(() => new Set(openTabs), [openTabs])
+  const attachedSessions = sortedSessions.filter((session) =>
+    isSessionAttached(session, openTabsSet),
+  )
+  const idleSessions = sortedSessions.filter(
+    (session) => !isSessionAttached(session, openTabsSet),
+  )
 
   return (
     <section className="min-h-0 overflow-hidden rounded-lg border border-border-subtle bg-secondary">
