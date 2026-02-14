@@ -278,6 +278,11 @@ make ci
 - Follow Conventional Commits (`feat:`, `fix:`, `feat!:`...) so version bumps and changelogs are accurate.
 - When a release is created, CI builds and uploads platform archives to that GitHub release automatically.
 - Manual tag releases are still supported via `.github/workflows/release.yml` and now always include generated notes.
+- Required GitHub setting for the default `GITHUB_TOKEN` path:
+  - `Settings` -> `Actions` -> `General` -> `Workflow permissions`
+  - enable `Read and write permissions`
+  - enable `Allow GitHub Actions to create and approve pull requests`
+- Optional fallback: set repository secret `RELEASE_PLEASE_TOKEN` (PAT/GitHub App token with repo write + PR scope). The workflow prefers this token when present.
 
 ## Contributing
 
