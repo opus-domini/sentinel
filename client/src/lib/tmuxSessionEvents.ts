@@ -11,6 +11,7 @@ export type SessionActivityPatch = {
 }
 
 export type SessionPatchApplyResult = {
+  hasInputPatches: boolean
   applied: boolean
   hasUnknownSession: boolean
 }
@@ -28,16 +29,21 @@ export function shouldRefreshSessionsFromEvent(
   patchResult: SessionPatchApplyResult,
 ): { refresh: boolean; minGapMs?: number } {
   const action = (actionRaw ?? '').trim().toLowerCase()
-  const { applied, hasUnknownSession } = patchResult
+  const { hasInputPatches, applied, hasUnknownSession } = patchResult
 
   if (action === 'activity' || action === 'seen') {
-    if (applied && !hasUnknownSession) {
+    if (hasUnknownSession) {
+      return { refresh: true, minGapMs: 2_500 }
+    }
+    if (applied) {
       return { refresh: false }
     }
-    if (!applied) {
-      return { refresh: true, minGapMs: 12_000 }
+    if (hasInputPatches) {
+      // Server already sent patch data; local policy may intentionally
+      // skip applying patches for untracked idle sessions.
+      return { refresh: false }
     }
-    return { refresh: true, minGapMs: 2_500 }
+    return { refresh: true, minGapMs: 12_000 }
   }
 
   if (applied && !hasUnknownSession) {

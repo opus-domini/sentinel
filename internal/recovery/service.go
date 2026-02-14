@@ -191,7 +191,6 @@ func (s *Service) Collect(ctx context.Context) error {
 		}
 		if changed {
 			changedCount++
-			s.publish(events.TypeTmuxInspector, map[string]any{"session": session.Name})
 		}
 	}
 	sort.Strings(liveSessionList)
@@ -242,10 +241,11 @@ func (s *Service) Collect(ctx context.Context) error {
 		slog.Warn("recovery snapshot trim failed", "err", err)
 	}
 
-	if liveSetChanged || changedCount > 0 {
+	if liveSetChanged {
 		s.publish(events.TypeTmuxSessions, map[string]any{
 			"changedSessions": changedCount,
 			"liveCount":       len(liveSessionList),
+			"action":          "live-set",
 		})
 	}
 	if changedCount > 0 || killedCount > 0 || bootChanged {

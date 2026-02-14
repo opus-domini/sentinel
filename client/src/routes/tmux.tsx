@@ -337,24 +337,46 @@ function TmuxPage() {
       rawPatches: Array<SessionActivityPatch> | undefined,
     ): SessionPatchApplyResult => {
       if (!Array.isArray(rawPatches) || rawPatches.length === 0) {
-        return { applied: false, hasUnknownSession: false }
+        return {
+          hasInputPatches: false,
+          applied: false,
+          hasUnknownSession: false,
+        }
       }
 
       const knownSessions = new Set(
         sessionsRef.current.map((item) => item.name.trim()),
       )
+      const trackedSessions = new Set<string>()
+      const activeSession = tabsStateRef.current.activeSession.trim()
+      if (activeSession !== '') {
+        trackedSessions.add(activeSession)
+      }
+      for (const tab of tabsStateRef.current.openTabs) {
+        const name = tab.trim()
+        if (name !== '') {
+          trackedSessions.add(name)
+        }
+      }
+
+      let hasInputPatches = false
       let hasUnknownSession = false
       const patchesByName = new Map<string, SessionActivityPatch>()
       for (const patch of rawPatches) {
         const name = patch.name?.trim() ?? ''
         if (name === '') continue
+        hasInputPatches = true
+        if (!trackedSessions.has(name)) {
+          continue
+        }
         if (!knownSessions.has(name)) {
           hasUnknownSession = true
+          continue
         }
         patchesByName.set(name, patch)
       }
       if (patchesByName.size === 0) {
-        return { applied: false, hasUnknownSession: false }
+        return { hasInputPatches, applied: false, hasUnknownSession }
       }
 
       const asNonNegativeInt = (value: number | undefined, fallback: number) =>
@@ -412,7 +434,7 @@ function TmuxPage() {
         }),
       )
 
-      return { applied: true, hasUnknownSession }
+      return { hasInputPatches, applied: true, hasUnknownSession }
     },
     [],
   )
@@ -1683,6 +1705,10 @@ function TmuxPage() {
               break
             }
             case 'tmux.inspector.updated': {
+              const action = (msg.payload?.action ?? '').trim().toLowerCase()
+              if (action === '') {
+                break
+              }
               const target = msg.payload?.session?.trim() ?? ''
               const active = tabsStateRef.current.activeSession
               if (target === '' || target === active) {

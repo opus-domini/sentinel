@@ -8,6 +8,7 @@ import {
 describe('shouldRefreshSessionsFromEvent', () => {
   it('skips refresh for activity when patches are applied for known sessions', () => {
     const decision = shouldRefreshSessionsFromEvent('activity', {
+      hasInputPatches: true,
       applied: true,
       hasUnknownSession: false,
     })
@@ -17,6 +18,7 @@ describe('shouldRefreshSessionsFromEvent', () => {
 
   it('uses slow fallback refresh when activity payload arrives without patches', () => {
     const decision = shouldRefreshSessionsFromEvent('activity', {
+      hasInputPatches: false,
       applied: false,
       hasUnknownSession: false,
     })
@@ -26,6 +28,7 @@ describe('shouldRefreshSessionsFromEvent', () => {
 
   it('uses short-gap refresh when activity patches include unknown sessions', () => {
     const decision = shouldRefreshSessionsFromEvent('activity', {
+      hasInputPatches: true,
       applied: true,
       hasUnknownSession: true,
     })
@@ -35,6 +38,7 @@ describe('shouldRefreshSessionsFromEvent', () => {
 
   it('treats seen like activity for refresh decisions', () => {
     const decision = shouldRefreshSessionsFromEvent('seen', {
+      hasInputPatches: true,
       applied: true,
       hasUnknownSession: false,
     })
@@ -44,6 +48,7 @@ describe('shouldRefreshSessionsFromEvent', () => {
 
   it('skips refresh for non-activity actions when patches are sufficient', () => {
     const decision = shouldRefreshSessionsFromEvent('rename', {
+      hasInputPatches: true,
       applied: true,
       hasUnknownSession: false,
     })
@@ -53,11 +58,22 @@ describe('shouldRefreshSessionsFromEvent', () => {
 
   it('refreshes for non-activity actions when no patches are available', () => {
     const decision = shouldRefreshSessionsFromEvent('rename', {
+      hasInputPatches: false,
       applied: false,
       hasUnknownSession: false,
     })
 
     expect(decision).toEqual({ refresh: true })
+  })
+
+  it('skips refresh for activity when patches exist but were ignored by policy', () => {
+    const decision = shouldRefreshSessionsFromEvent('activity', {
+      hasInputPatches: true,
+      applied: false,
+      hasUnknownSession: false,
+    })
+
+    expect(decision).toEqual({ refresh: false })
   })
 })
 
