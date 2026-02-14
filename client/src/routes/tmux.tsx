@@ -1745,7 +1745,7 @@ function TmuxPage() {
               }
               const target = msg.payload?.session?.trim() ?? ''
               const active = tabsStateRef.current.activeSession
-              if (target === '' || target === active) {
+              if (target !== '' && target === active) {
                 schedule('inspector')
               }
               break

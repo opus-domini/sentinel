@@ -61,8 +61,8 @@ export function shouldRefreshInspectorFromSessionProjection(
   }
   const structureChanged =
     prev.windows !== next.windows || prev.panes !== next.panes
-  const unreadCountChanged =
-    prev.unreadWindows !== next.unreadWindows ||
-    prev.unreadPanes !== next.unreadPanes
-  return structureChanged || unreadCountChanged
+  const unreadEdgeChanged =
+    (prev.unreadWindows > 0) !== (next.unreadWindows > 0) ||
+    (prev.unreadPanes > 0) !== (next.unreadPanes > 0)
+  return structureChanged || unreadEdgeChanged
 }

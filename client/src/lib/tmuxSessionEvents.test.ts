@@ -111,7 +111,28 @@ describe('shouldRefreshInspectorFromSessionProjection', () => {
     expect(decision).toBe(true)
   })
 
-  it('refreshes when unread counters change', () => {
+  it('refreshes when unread edge changes', () => {
+    const decision = shouldRefreshInspectorFromSessionProjection(
+      {
+        name: 'dev',
+        windows: 3,
+        panes: 6,
+        unreadWindows: 0,
+        unreadPanes: 0,
+      },
+      {
+        name: 'dev',
+        windows: 3,
+        panes: 6,
+        unreadWindows: 1,
+        unreadPanes: 1,
+      },
+    )
+
+    expect(decision).toBe(true)
+  })
+
+  it('does not refresh when unread counts change but edge is stable', () => {
     const decision = shouldRefreshInspectorFromSessionProjection(
       {
         name: 'dev',
@@ -125,28 +146,7 @@ describe('shouldRefreshInspectorFromSessionProjection', () => {
         windows: 3,
         panes: 6,
         unreadWindows: 2,
-        unreadPanes: 2,
-      },
-    )
-
-    expect(decision).toBe(true)
-  })
-
-  it('does not refresh when only activity/rev changed elsewhere', () => {
-    const decision = shouldRefreshInspectorFromSessionProjection(
-      {
-        name: 'dev',
-        windows: 3,
-        panes: 6,
-        unreadWindows: 2,
-        unreadPanes: 2,
-      },
-      {
-        name: 'dev',
-        windows: 3,
-        panes: 6,
-        unreadWindows: 2,
-        unreadPanes: 2,
+        unreadPanes: 3,
       },
     )
 
