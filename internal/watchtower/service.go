@@ -220,16 +220,55 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 	}
 
 	if len(changedSessions) > 0 && s.options.Publish != nil {
+		sessionPatches := s.buildSessionActivityPatches(ctx, changedSessions)
 		s.options.Publish(events.TypeTmuxSessions, map[string]any{
-			"action":   "activity",
-			"sessions": changedSessions,
+			"action":         "activity",
+			"sessions":       changedSessions,
+			"globalRev":      globalRev,
+			"sessionPatches": sessionPatches,
 		})
 		s.options.Publish(events.TypeTmuxActivity, map[string]any{
-			"globalRev": globalRev,
-			"sessions":  changedSessions,
+			"globalRev":      globalRev,
+			"sessions":       changedSessions,
+			"sessionPatches": sessionPatches,
 		})
 	}
 	return nil
+}
+
+func (s *Service) buildSessionActivityPatches(ctx context.Context, sessionNames []string) []map[string]any {
+	if s == nil || s.store == nil || len(sessionNames) == 0 {
+		return nil
+	}
+
+	patches := make([]map[string]any, 0, len(sessionNames))
+	for _, name := range sessionNames {
+		sessionName := strings.TrimSpace(name)
+		if sessionName == "" {
+			continue
+		}
+		row, err := s.store.GetWatchtowerSession(ctx, sessionName)
+		if err != nil {
+			slog.Warn("watchtower session patch build failed", "session", sessionName, "err", err)
+			continue
+		}
+		activityAt := ""
+		if !row.ActivityAt.IsZero() {
+			activityAt = row.ActivityAt.UTC().Format(time.RFC3339)
+		}
+		patches = append(patches, map[string]any{
+			"name":          row.SessionName,
+			"attached":      row.Attached,
+			"windows":       row.Windows,
+			"panes":         row.Panes,
+			"activityAt":    activityAt,
+			"lastContent":   row.LastPreview,
+			"unreadWindows": row.UnreadWindows,
+			"unreadPanes":   row.UnreadPanes,
+			"rev":           row.Rev,
+		})
+	}
+	return patches
 }
 
 func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, bool, error) {

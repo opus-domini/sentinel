@@ -85,6 +85,18 @@ function resolvePresenceTerminalID(): string {
   return generated
 }
 
+type SessionActivityPatch = {
+  name?: string
+  attached?: number
+  windows?: number
+  panes?: number
+  activityAt?: string
+  lastContent?: string
+  unreadWindows?: number
+  unreadPanes?: number
+  rev?: number
+}
+
 function TmuxPage() {
   const { tokenRequired, defaultCwd } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -155,6 +167,7 @@ function TmuxPage() {
   const refreshGenerationRef = useRef(0)
   const inspectorGenerationRef = useRef(0)
   const recoveryGenerationRef = useRef(0)
+  const sessionsRef = useRef<Array<Session>>([])
   const tabsStateRef = useRef(tabsState)
   const seenAckKeyRef = useRef('')
   const presenceTerminalIDRef = useRef('')
@@ -182,6 +195,9 @@ function TmuxPage() {
   useEffect(() => {
     tabsStateRef.current = tabsState
   }, [tabsState])
+  useEffect(() => {
+    sessionsRef.current = sessions
+  }, [sessions])
   useEffect(() => {
     presenceTerminalIDRef.current = resolvePresenceTerminalID()
   }, [])
@@ -308,6 +324,89 @@ function TmuxPage() {
       }
     }
   }, [api, closeCurrentSocket, resetTerminal, setConnection])
+
+  const applySessionActivityPatches = useCallback(
+    (rawPatches: Array<SessionActivityPatch> | undefined): boolean => {
+      if (!Array.isArray(rawPatches) || rawPatches.length === 0) {
+        return true
+      }
+
+      const knownSessions = new Set(
+        sessionsRef.current.map((item) => item.name.trim()),
+      )
+      let hasUnknownSession = false
+      const patchesByName = new Map<string, SessionActivityPatch>()
+      for (const patch of rawPatches) {
+        const name = patch.name?.trim() ?? ''
+        if (name === '') continue
+        if (!knownSessions.has(name)) {
+          hasUnknownSession = true
+        }
+        patchesByName.set(name, patch)
+      }
+      if (patchesByName.size === 0) {
+        return true
+      }
+
+      const asNonNegativeInt = (value: number | undefined, fallback: number) =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+          ? Math.trunc(value)
+          : fallback
+      const asNonNegativeInt64 = (value: number | undefined, fallback: number) =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+          ? Math.trunc(value)
+          : fallback
+
+      setSessions((prev) =>
+        prev.map((item) => {
+          const patch = patchesByName.get(item.name)
+          if (!patch) return item
+
+          const activityAt =
+            typeof patch.activityAt === 'string' && patch.activityAt.trim() !== ''
+              ? patch.activityAt
+              : item.activityAt
+          const lastContent =
+            typeof patch.lastContent === 'string'
+              ? patch.lastContent
+              : item.lastContent
+          const next = {
+            ...item,
+            attached: asNonNegativeInt(patch.attached, item.attached),
+            windows: asNonNegativeInt(patch.windows, item.windows),
+            panes: asNonNegativeInt(patch.panes, item.panes),
+            activityAt,
+            lastContent,
+            unreadWindows: asNonNegativeInt(
+              patch.unreadWindows,
+              item.unreadWindows ?? 0,
+            ),
+            unreadPanes: asNonNegativeInt(
+              patch.unreadPanes,
+              item.unreadPanes ?? 0,
+            ),
+            rev: asNonNegativeInt64(patch.rev, item.rev ?? 0),
+          }
+          if (
+            next.attached === item.attached &&
+            next.windows === item.windows &&
+            next.panes === item.panes &&
+            next.activityAt === item.activityAt &&
+            next.lastContent === item.lastContent &&
+            next.unreadWindows === (item.unreadWindows ?? 0) &&
+            next.unreadPanes === (item.unreadPanes ?? 0) &&
+            next.rev === (item.rev ?? 0)
+          ) {
+            return item
+          }
+          return next
+        }),
+      )
+
+      return hasUnknownSession
+    },
+    [],
+  )
 
   const refreshInspector = useCallback(
     async (target: string, options?: { background?: boolean }) => {
@@ -1484,15 +1583,23 @@ function TmuxPage() {
         try {
           const msg = JSON.parse(event.data) as {
             type?: string
-            payload?: { session?: string; action?: string }
+            payload?: {
+              session?: string
+              action?: string
+              sessionPatches?: Array<SessionActivityPatch>
+            }
           }
           switch (msg.type) {
             case 'tmux.activity.updated':
-              schedule('sessions', { minGapMs: 2_500 })
+              if (applySessionActivityPatches(msg.payload?.sessionPatches)) {
+                schedule('sessions', { minGapMs: 2_500 })
+              }
               break
             case 'tmux.sessions.updated':
               if ((msg.payload?.action ?? '').trim().toLowerCase() === 'activity') {
-                schedule('sessions', { minGapMs: 2_500 })
+                if (applySessionActivityPatches(msg.payload?.sessionPatches)) {
+                  schedule('sessions', { minGapMs: 2_500 })
+                }
               } else {
                 schedule('sessions')
               }
@@ -1553,6 +1660,7 @@ function TmuxPage() {
     }
   }, [
     refreshAllState,
+    applySessionActivityPatches,
     refreshInspector,
     refreshRecovery,
     refreshSessions,

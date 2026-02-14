@@ -19,6 +19,8 @@ type fakeTmux struct {
 	capturePaneLinesFn func(context.Context, string, int) (string, error)
 }
 
+const helloWorldPreview = "hello world"
+
 func (f fakeTmux) ListSessions(ctx context.Context) ([]tmux.Session, error) {
 	if f.listSessionsFn != nil {
 		return f.listSessionsFn(ctx)
@@ -129,7 +131,7 @@ func TestCollectWritesProjections(t *testing.T) {
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
-			return "\n\nhello world\n", nil
+			return "\n\n" + helloWorldPreview + "\n", nil
 		},
 	}
 
@@ -145,8 +147,8 @@ func TestCollectWritesProjections(t *testing.T) {
 	if session.UnreadPanes != 1 || session.UnreadWindows != 1 {
 		t.Fatalf("unexpected unread counters: %+v", session)
 	}
-	if session.LastPreview != "hello world" {
-		t.Fatalf("session.LastPreview = %q, want %q", session.LastPreview, "hello world")
+	if session.LastPreview != helloWorldPreview {
+		t.Fatalf("session.LastPreview = %q, want %q", session.LastPreview, helloWorldPreview)
 	}
 
 	windows, err := st.ListWatchtowerWindows(context.Background(), "dev")
@@ -211,7 +213,7 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
-			return "hello world", nil
+			return helloWorldPreview, nil
 		},
 	}
 
@@ -219,10 +221,34 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 	var activityEventCount atomic.Int32
 	svc := New(st, fake, Options{
 		Publish: func(eventType string, payload map[string]any) {
+			rawPatches, ok := payload["sessionPatches"]
+			if !ok {
+				t.Fatalf("missing sessionPatches payload: %+v", payload)
+			}
+			patches, ok := rawPatches.([]map[string]any)
+			if !ok {
+				t.Fatalf("sessionPatches type = %T, want []map[string]any", rawPatches)
+			}
+			if len(patches) != 1 {
+				t.Fatalf("sessionPatches len = %d, want 1", len(patches))
+			}
+			patch := patches[0]
+			if patch["name"] != "dev" {
+				t.Fatalf("session patch name = %v, want dev", patch["name"])
+			}
+			if patch["lastContent"] != helloWorldPreview {
+				t.Fatalf("session patch lastContent = %v, want %s", patch["lastContent"], helloWorldPreview)
+			}
+			if patch["unreadPanes"] != 1 {
+				t.Fatalf("session patch unreadPanes = %v, want 1", patch["unreadPanes"])
+			}
 			switch eventType {
 			case "tmux.sessions.updated":
 				if payload["action"] != "activity" {
 					t.Fatalf("unexpected action payload: %+v", payload)
+				}
+				if _, ok := payload["globalRev"]; !ok {
+					t.Fatalf("missing globalRev payload: %+v", payload)
 				}
 				publishCount.Add(1)
 			case "tmux.activity.updated":
