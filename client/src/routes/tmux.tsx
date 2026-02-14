@@ -25,6 +25,7 @@ import type {
 import type {
   SessionActivityPatch,
   SessionPatchApplyResult,
+  SessionProjectionSnapshot,
 } from '@/lib/tmuxSessionEvents'
 import {
   AlertDialog,
@@ -65,7 +66,10 @@ import { useTokenContext } from '@/contexts/TokenContext'
 import { useTerminalTmux } from '@/hooks/useTerminalTmux'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
-import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
+import {
+  shouldRefreshInspectorFromSessionProjection,
+  shouldRefreshSessionsFromEvent,
+} from '@/lib/tmuxSessionEvents'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { initialTabsState, tabsReducer } from '@/tabsReducer'
 
@@ -186,14 +190,9 @@ function TmuxPage() {
   const activeWindowIndexRef = useRef<number | null>(null)
   const activePaneIDRef = useRef<string | null>(null)
   const lastSessionsRefreshAtRef = useRef(0)
-  const activeSessionProjectionRef = useRef<{
-    name: string
-    windows: number
-    panes: number
-    unreadWindows: number
-    unreadPanes: number
-  } | null>(null)
-  const lastInspectorActivitySyncAtRef = useRef(0)
+  const activeSessionProjectionRef = useRef<SessionProjectionSnapshot | null>(
+    null,
+  )
   const refreshTimerRef = useRef<{
     sessions: number | null
     inspector: number | null
@@ -665,23 +664,8 @@ function TmuxPage() {
 
     const prev = activeSessionProjectionRef.current
     activeSessionProjectionRef.current = snapshot
-    if (prev === null || prev.name !== snapshot.name) {
-      lastInspectorActivitySyncAtRef.current = Date.now()
-      return
-    }
 
-    const structureChanged =
-      prev.windows !== snapshot.windows || prev.panes !== snapshot.panes
-    const unreadEdgeChanged =
-      (prev.unreadWindows === 0) !== (snapshot.unreadWindows === 0) ||
-      (prev.unreadPanes === 0) !== (snapshot.unreadPanes === 0)
-    const now = Date.now()
-    const unreadDrift =
-      snapshot.unreadPanes > 0 &&
-      now - lastInspectorActivitySyncAtRef.current >= 3_000
-
-    if (structureChanged || unreadEdgeChanged || unreadDrift) {
-      lastInspectorActivitySyncAtRef.current = now
+    if (shouldRefreshInspectorFromSessionProjection(prev, snapshot)) {
       void refreshInspector(active, { background: true })
     }
   }, [refreshInspector, sessions, tabsState.activeSession])
