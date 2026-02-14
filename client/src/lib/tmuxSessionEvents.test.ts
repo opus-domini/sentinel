@@ -24,17 +24,17 @@ describe('shouldRefreshSessionsFromEvent', () => {
       hasUnknownSession: false,
     })
 
-    expect(decision).toEqual({ refresh: true, minGapMs: 12_000 })
+    expect(decision).toEqual({ refresh: true, minGapMs: 20_000 })
   })
 
-  it('uses short-gap refresh when activity patches include unknown sessions', () => {
+  it('skips refresh when activity patches include unknown sessions', () => {
     const decision = shouldRefreshSessionsFromEvent('activity', {
       hasInputPatches: true,
       applied: true,
       hasUnknownSession: true,
     })
 
-    expect(decision).toEqual({ refresh: true, minGapMs: 2_500 })
+    expect(decision).toEqual({ refresh: false })
   })
 
   it('treats seen like activity for refresh decisions', () => {

@@ -34,9 +34,6 @@ export function shouldRefreshSessionsFromEvent(
   const { hasInputPatches, applied, hasUnknownSession } = patchResult
 
   if (action === 'activity' || action === 'seen') {
-    if (hasUnknownSession) {
-      return { refresh: true, minGapMs: 2_500 }
-    }
     if (applied) {
       return { refresh: false }
     }
@@ -45,7 +42,7 @@ export function shouldRefreshSessionsFromEvent(
       // skip applying patches for untracked idle sessions.
       return { refresh: false }
     }
-    return { refresh: true, minGapMs: 12_000 }
+    return { refresh: true, minGapMs: 20_000 }
   }
 
   if (applied && !hasUnknownSession) {
