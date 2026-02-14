@@ -429,8 +429,16 @@ func (h *Handler) handleEventsSeenClientMessage(payload []byte) []byte {
 		}
 	}
 
+	var sessionPatches []map[string]any
+	if patch, patchErr := h.store.GetWatchtowerSessionActivityPatch(ctx, sessionName); patchErr == nil {
+		sessionPatches = append(sessionPatches, patch)
+	}
+
 	ack["acked"] = acked
 	ack["globalRev"] = globalRev
+	if len(sessionPatches) > 0 {
+		ack["sessionPatches"] = sessionPatches
+	}
 
 	if acked && h.events != nil {
 		h.events.Publish(events.NewEvent(events.TypeTmuxInspector, map[string]any{
@@ -438,11 +446,16 @@ func (h *Handler) handleEventsSeenClientMessage(payload []byte) []byte {
 			"action":  "seen",
 			"scope":   scope,
 		}))
-		h.events.Publish(events.NewEvent(events.TypeTmuxSessions, map[string]any{
-			"session": sessionName,
-			"action":  "seen",
-			"scope":   scope,
-		}))
+		sessionsPayload := map[string]any{
+			"session":   sessionName,
+			"action":    "seen",
+			"scope":     scope,
+			"globalRev": globalRev,
+		}
+		if len(sessionPatches) > 0 {
+			sessionsPayload["sessionPatches"] = sessionPatches
+		}
+		h.events.Publish(events.NewEvent(events.TypeTmuxSessions, sessionsPayload))
 	}
 
 	return marshalEventsWSMessage(ack)

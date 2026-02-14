@@ -252,21 +252,7 @@ func (s *Service) buildSessionActivityPatches(ctx context.Context, sessionNames 
 			slog.Warn("watchtower session patch build failed", "session", sessionName, "err", err)
 			continue
 		}
-		activityAt := ""
-		if !row.ActivityAt.IsZero() {
-			activityAt = row.ActivityAt.UTC().Format(time.RFC3339)
-		}
-		patches = append(patches, map[string]any{
-			"name":          row.SessionName,
-			"attached":      row.Attached,
-			"windows":       row.Windows,
-			"panes":         row.Panes,
-			"activityAt":    activityAt,
-			"lastContent":   row.LastPreview,
-			"unreadWindows": row.UnreadWindows,
-			"unreadPanes":   row.UnreadPanes,
-			"rev":           row.Rev,
-		})
+		patches = append(patches, store.BuildWatchtowerSessionActivityPatch(row))
 	}
 	return patches
 }

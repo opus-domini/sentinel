@@ -133,6 +133,51 @@ func TestWatchtowerSessionAccessors(t *testing.T) {
 	}
 }
 
+func TestGetWatchtowerSessionActivityPatch(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if err := s.UpsertWatchtowerSession(ctx, WatchtowerSessionWrite{
+		SessionName:   "dev",
+		Attached:      2,
+		Windows:       3,
+		Panes:         5,
+		ActivityAt:    now,
+		LastPreview:   "htop update",
+		UnreadWindows: 1,
+		UnreadPanes:   2,
+		Rev:           9,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+
+	patch, err := s.GetWatchtowerSessionActivityPatch(ctx, "dev")
+	if err != nil {
+		t.Fatalf("GetWatchtowerSessionActivityPatch(dev): %v", err)
+	}
+
+	if patch["name"] != "dev" || patch["lastContent"] != "htop update" {
+		t.Fatalf("unexpected patch identity/content: %+v", patch)
+	}
+	if patch["attached"] != 2 || patch["windows"] != 3 || patch["panes"] != 5 {
+		t.Fatalf("unexpected patch counts: %+v", patch)
+	}
+	if patch["unreadWindows"] != 1 || patch["unreadPanes"] != 2 {
+		t.Fatalf("unexpected patch unread counters: %+v", patch)
+	}
+	if patch["rev"] != int64(9) {
+		t.Fatalf("patch rev = %v, want 9", patch["rev"])
+	}
+	if patch["activityAt"] == "" {
+		t.Fatalf("patch activityAt should not be empty: %+v", patch)
+	}
+}
+
 func TestWatchtowerWindowAndPaneAccessors(t *testing.T) {
 	t.Parallel()
 

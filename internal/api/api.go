@@ -791,25 +791,39 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var sessionPatches []map[string]any
+	if patch, patchErr := h.store.GetWatchtowerSessionActivityPatch(ctx, session); patchErr == nil {
+		sessionPatches = append(sessionPatches, patch)
+	}
+
 	if acked {
 		h.emit(events.TypeTmuxInspector, map[string]any{
 			"session": session,
 			"action":  "seen",
 			"scope":   req.Scope,
 		})
-		h.emit(events.TypeTmuxSessions, map[string]any{
-			"session": session,
-			"action":  "seen",
-			"scope":   req.Scope,
-		})
+		sessionsPayload := map[string]any{
+			"session":   session,
+			"action":    "seen",
+			"scope":     req.Scope,
+			"globalRev": globalRev,
+		}
+		if len(sessionPatches) > 0 {
+			sessionsPayload["sessionPatches"] = sessionPatches
+		}
+		h.emit(events.TypeTmuxSessions, sessionsPayload)
 	}
 
-	writeData(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"session":   session,
 		"scope":     req.Scope,
 		"acked":     acked,
 		"globalRev": globalRev,
-	})
+	}
+	if len(sessionPatches) > 0 {
+		response["sessionPatches"] = sessionPatches
+	}
+	writeData(w, http.StatusOK, response)
 }
 
 func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {

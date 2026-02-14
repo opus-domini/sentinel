@@ -22,6 +22,10 @@ import type {
   WindowInfo,
   WindowsResponse,
 } from '@/types'
+import type {
+  SessionActivityPatch,
+  SessionPatchApplyResult,
+} from '@/lib/tmuxSessionEvents'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +65,7 @@ import { useTokenContext } from '@/contexts/TokenContext'
 import { useTerminalTmux } from '@/hooks/useTerminalTmux'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
+import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { initialTabsState, tabsReducer } from '@/tabsReducer'
 
@@ -85,21 +90,10 @@ function resolvePresenceTerminalID(): string {
   return generated
 }
 
-type SessionActivityPatch = {
-  name?: string
-  attached?: number
-  windows?: number
-  panes?: number
-  activityAt?: string
-  lastContent?: string
-  unreadWindows?: number
-  unreadPanes?: number
-  rev?: number
-}
-
 type SeenAckMessage = {
   type?: string
   requestId?: string
+  sessionPatches?: Array<SessionActivityPatch>
 }
 
 type SeenCommandPayload = {
@@ -340,9 +334,11 @@ function TmuxPage() {
   }, [api, closeCurrentSocket, resetTerminal, setConnection])
 
   const applySessionActivityPatches = useCallback(
-    (rawPatches: Array<SessionActivityPatch> | undefined): boolean => {
+    (
+      rawPatches: Array<SessionActivityPatch> | undefined,
+    ): SessionPatchApplyResult => {
       if (!Array.isArray(rawPatches) || rawPatches.length === 0) {
-        return true
+        return { applied: false, hasUnknownSession: false }
       }
 
       const knownSessions = new Set(
@@ -359,7 +355,7 @@ function TmuxPage() {
         patchesByName.set(name, patch)
       }
       if (patchesByName.size === 0) {
-        return true
+        return { applied: false, hasUnknownSession: false }
       }
 
       const asNonNegativeInt = (value: number | undefined, fallback: number) =>
@@ -417,7 +413,7 @@ function TmuxPage() {
         }),
       )
 
-      return hasUnknownSession
+      return { applied: true, hasUnknownSession }
     },
     [],
   )
@@ -1662,6 +1658,7 @@ function TmuxPage() {
             }
           }
           if (msg.type === 'tmux.seen.ack') {
+            applySessionActivityPatches(msg.sessionPatches)
             const requestId = (msg.requestId ?? '').trim()
             if (requestId !== '') {
               const settle = seenAckWaitersRef.current.get(requestId)
@@ -1673,20 +1670,34 @@ function TmuxPage() {
             return
           }
           switch (msg.type) {
-            case 'tmux.activity.updated':
-              if (applySessionActivityPatches(msg.payload?.sessionPatches)) {
-                schedule('sessions', { minGapMs: 2_500 })
-              }
-              break
-            case 'tmux.sessions.updated':
-              if ((msg.payload?.action ?? '').trim().toLowerCase() === 'activity') {
-                if (applySessionActivityPatches(msg.payload?.sessionPatches)) {
-                  schedule('sessions', { minGapMs: 2_500 })
+            case 'tmux.activity.updated': {
+              const decision = shouldRefreshSessionsFromEvent(
+                'activity',
+                applySessionActivityPatches(msg.payload?.sessionPatches),
+              )
+              if (decision.refresh) {
+                if (typeof decision.minGapMs === 'number') {
+                  schedule('sessions', { minGapMs: decision.minGapMs })
+                } else {
+                  schedule('sessions')
                 }
-              } else {
-                schedule('sessions')
               }
               break
+            }
+            case 'tmux.sessions.updated': {
+              const decision = shouldRefreshSessionsFromEvent(
+                msg.payload?.action,
+                applySessionActivityPatches(msg.payload?.sessionPatches),
+              )
+              if (decision.refresh) {
+                if (typeof decision.minGapMs === 'number') {
+                  schedule('sessions', { minGapMs: decision.minGapMs })
+                } else {
+                  schedule('sessions')
+                }
+              }
+              break
+            }
             case 'tmux.inspector.updated': {
               const target = msg.payload?.session?.trim() ?? ''
               const active = tabsStateRef.current.activeSession

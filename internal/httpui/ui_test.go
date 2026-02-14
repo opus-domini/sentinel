@@ -432,6 +432,10 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 		Acked     bool   `json:"acked"`
 		GlobalRev int64  `json:"globalRev"`
 		Error     string `json:"error"`
+		Patches   []struct {
+			Name        string `json:"name"`
+			UnreadPanes int    `json:"unreadPanes"`
+		} `json:"sessionPatches"`
 	}
 	if err := json.Unmarshal(ackPayload, &ack); err != nil {
 		t.Fatalf("seen ack json: %v", err)
@@ -439,16 +443,22 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 	if ack.Type != "tmux.seen.ack" || ack.RequestID != "req-1" {
 		t.Fatalf("unexpected seen ack identity: %+v", ack)
 	}
-	if ack.Session != "dev" || ack.Scope != "pane" || ack.PaneID != "%11" {
+	if ack.Session != testSessionName || ack.Scope != "pane" || ack.PaneID != "%11" {
 		t.Fatalf("unexpected seen ack payload: %+v", ack)
 	}
 	if !ack.Acked || ack.Error != "" {
 		t.Fatalf("expected acked seen ack without error: %+v", ack)
 	}
+	if len(ack.Patches) != 1 {
+		t.Fatalf("seen ack sessionPatches len = %d, want 1", len(ack.Patches))
+	}
+	if ack.Patches[0].Name != testSessionName || ack.Patches[0].UnreadPanes != 0 {
+		t.Fatalf("unexpected seen ack patch: %+v", ack.Patches[0])
+	}
 
-	panes, err := st.ListWatchtowerPanes(context.Background(), "dev")
+	panes, err := st.ListWatchtowerPanes(context.Background(), testSessionName)
 	if err != nil {
-		t.Fatalf("ListWatchtowerPanes(dev): %v", err)
+		t.Fatalf("ListWatchtowerPanes(%s): %v", testSessionName, err)
 	}
 	if len(panes) != 1 {
 		t.Fatalf("panes len = %d, want 1", len(panes))
@@ -458,17 +468,28 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 	}
 
 	gotTypes := map[string]bool{}
+	var sessionsEvent events.Event
 	timeout := time.After(500 * time.Millisecond)
 	for len(gotTypes) < 2 {
 		select {
 		case evt := <-eventsCh:
 			gotTypes[evt.Type] = true
+			if evt.Type == events.TypeTmuxSessions {
+				sessionsEvent = evt
+			}
 		case <-timeout:
 			t.Fatalf("did not receive expected seen events, got=%v", gotTypes)
 		}
 	}
 	if !gotTypes[events.TypeTmuxInspector] || !gotTypes[events.TypeTmuxSessions] {
 		t.Fatalf("unexpected seen event types: %v", gotTypes)
+	}
+	rawPatches, ok := sessionsEvent.Payload["sessionPatches"].([]map[string]any)
+	if !ok || len(rawPatches) != 1 {
+		t.Fatalf("sessions event patches = %T(%v), want len=1", sessionsEvent.Payload["sessionPatches"], sessionsEvent.Payload["sessionPatches"])
+	}
+	if rawPatches[0]["name"] != testSessionName || rawPatches[0]["unreadPanes"] != 0 {
+		t.Fatalf("unexpected sessions event patch: %+v", rawPatches[0])
 	}
 }
 

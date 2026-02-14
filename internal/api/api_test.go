@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -823,18 +824,19 @@ func TestListSessionsHandler(t *testing.T) {
 	t.Run("fallback to list panes when snapshot is missing", func(t *testing.T) {
 		t.Parallel()
 
+		const sessionName = "dev"
 		now := time.Now().UTC().Truncate(time.Second)
 		tm := &mockTmux{
 			listSessionsFn: func(_ context.Context) ([]tmux.Session, error) {
 				return []tmux.Session{
-					{Name: "dev", Windows: 2, Attached: 1, CreatedAt: now, ActivityAt: now},
+					{Name: sessionName, Windows: 2, Attached: 1, CreatedAt: now, ActivityAt: now},
 				}, nil
 			},
 			listActivePaneCommandsFn: func(_ context.Context) (map[string]tmux.PaneSnapshot, error) {
 				return map[string]tmux.PaneSnapshot{}, nil
 			},
 			listPanesFn: func(_ context.Context, session string) ([]tmux.Pane, error) {
-				if session != "dev" {
+				if session != sessionName {
 					t.Fatalf("unexpected session %q", session)
 				}
 				return []tmux.Pane{
@@ -915,6 +917,7 @@ func TestListSessionsHandler(t *testing.T) {
 func TestListSessionsHandlerProjectedFromWatchtower(t *testing.T) {
 	t.Parallel()
 
+	const sessionName = "dev"
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	tm := &mockTmux{
@@ -924,14 +927,14 @@ func TestListSessionsHandlerProjectedFromWatchtower(t *testing.T) {
 	}
 	h := newTestHandler(t, tm, nil)
 
-	if err := h.store.UpsertSession(ctx, "dev", "h-fixed", "legacy"); err != nil {
+	if err := h.store.UpsertSession(ctx, sessionName, "h-fixed", "legacy"); err != nil {
 		t.Fatalf("UpsertSession: %v", err)
 	}
-	if err := h.store.SetIcon(ctx, "dev", "bolt"); err != nil {
+	if err := h.store.SetIcon(ctx, sessionName, "bolt"); err != nil {
 		t.Fatalf("SetIcon: %v", err)
 	}
 	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
-		SessionName:       "dev",
+		SessionName:       sessionName,
 		Attached:          1,
 		Windows:           2,
 		Panes:             3,
@@ -961,8 +964,8 @@ func TestListSessionsHandlerProjectedFromWatchtower(t *testing.T) {
 		t.Fatalf("sessions count = %d, want 1", len(sessions))
 	}
 	item := sessions[0].(map[string]any)
-	if item["name"] != "dev" {
-		t.Fatalf("name = %v, want dev", item["name"])
+	if item["name"] != sessionName {
+		t.Fatalf("name = %v, want %s", item["name"], sessionName)
 	}
 	if item["lastContent"] != "tail from watchtower" {
 		t.Fatalf("lastContent = %v, want tail from watchtower", item["lastContent"])
@@ -2642,6 +2645,10 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	t.Parallel()
 
 	h := newTestHandler(t, nil, nil)
+	hub := events.NewHub()
+	eventsCh, unsubscribe := hub.Subscribe(8)
+	t.Cleanup(unsubscribe)
+	h.events = hub
 	now := time.Now().UTC().Truncate(time.Second)
 	ctx := context.Background()
 
@@ -2702,6 +2709,20 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	if data["acked"] != true {
 		t.Fatalf("acked = %v, want true", data["acked"])
 	}
+	rawPatches, ok := data["sessionPatches"].([]any)
+	if !ok || len(rawPatches) != 1 {
+		t.Fatalf("sessionPatches = %T(%v), want len=1", data["sessionPatches"], data["sessionPatches"])
+	}
+	patch, ok := rawPatches[0].(map[string]any)
+	if !ok {
+		t.Fatalf("session patch type = %T, want map[string]any", rawPatches[0])
+	}
+	if patch["name"] != "dev" {
+		t.Fatalf("session patch name = %v, want dev", patch["name"])
+	}
+	if patch["unreadPanes"] != float64(0) {
+		t.Fatalf("session patch unreadPanes = %v, want 0", patch["unreadPanes"])
+	}
 
 	panes, err := h.store.ListWatchtowerPanes(ctx, "dev")
 	if err != nil {
@@ -2720,6 +2741,34 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	}
 	if session.UnreadPanes != 0 || session.UnreadWindows != 0 {
 		t.Fatalf("unexpected unread counters after seen: %+v", session)
+	}
+
+	gotTypes := map[string]bool{}
+	var sessionsEvent events.Event
+	timeout := time.After(500 * time.Millisecond)
+	for len(gotTypes) < 2 {
+		select {
+		case evt := <-eventsCh:
+			gotTypes[evt.Type] = true
+			if evt.Type == events.TypeTmuxSessions {
+				sessionsEvent = evt
+			}
+		case <-timeout:
+			t.Fatalf("did not receive expected seen events, got=%v", gotTypes)
+		}
+	}
+	if !gotTypes[events.TypeTmuxInspector] || !gotTypes[events.TypeTmuxSessions] {
+		t.Fatalf("unexpected seen event types: %v", gotTypes)
+	}
+	if sessionsEvent.Payload["action"] != "seen" {
+		t.Fatalf("sessions event action = %v, want seen", sessionsEvent.Payload["action"])
+	}
+	eventRawPatches, ok := sessionsEvent.Payload["sessionPatches"].([]map[string]any)
+	if !ok || len(eventRawPatches) != 1 {
+		t.Fatalf("sessions event sessionPatches = %T(%v), want len=1", sessionsEvent.Payload["sessionPatches"], sessionsEvent.Payload["sessionPatches"])
+	}
+	if eventRawPatches[0]["name"] != "dev" || eventRawPatches[0]["unreadPanes"] != 0 {
+		t.Fatalf("unexpected sessions event patch: %+v", eventRawPatches[0])
 	}
 }
 

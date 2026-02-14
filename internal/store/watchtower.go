@@ -38,6 +38,26 @@ type WatchtowerSessionWrite struct {
 	UpdatedAt         time.Time
 }
 
+// BuildWatchtowerSessionActivityPatch returns the compact projection pushed to
+// clients for session-list reconciliation without requiring full list reloads.
+func BuildWatchtowerSessionActivityPatch(row WatchtowerSession) map[string]any {
+	activityAt := ""
+	if !row.ActivityAt.IsZero() {
+		activityAt = row.ActivityAt.UTC().Format(time.RFC3339)
+	}
+	return map[string]any{
+		"name":          row.SessionName,
+		"attached":      row.Attached,
+		"windows":       row.Windows,
+		"panes":         row.Panes,
+		"activityAt":    activityAt,
+		"lastContent":   row.LastPreview,
+		"unreadWindows": row.UnreadWindows,
+		"unreadPanes":   row.UnreadPanes,
+		"rev":           row.Rev,
+	}
+}
+
 type WatchtowerWindow struct {
 	SessionName      string    `json:"sessionName"`
 	WindowIndex      int       `json:"windowIndex"`
@@ -322,6 +342,14 @@ func (s *Store) GetWatchtowerSession(ctx context.Context, sessionName string) (W
 	row.LastPreviewAt = parseStoreTime(previewAtRaw)
 	row.UpdatedAt = parseStoreTime(updatedRaw)
 	return row, nil
+}
+
+func (s *Store) GetWatchtowerSessionActivityPatch(ctx context.Context, sessionName string) (map[string]any, error) {
+	row, err := s.GetWatchtowerSession(ctx, sessionName)
+	if err != nil {
+		return nil, err
+	}
+	return BuildWatchtowerSessionActivityPatch(row), nil
 }
 
 func (s *Store) ListWatchtowerSessions(ctx context.Context) ([]WatchtowerSession, error) {
