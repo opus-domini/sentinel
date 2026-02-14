@@ -187,4 +187,34 @@ describe('mergePendingInspectorSnapshot', () => {
     expect(converged.windows[0]?.panes).toBe(3)
     expect(converged.confirmedWindowPaneFloors).toEqual([0])
   })
+
+  it('confirms pending create by cardinality when tmux assigns a different index', () => {
+    const options = {
+      pendingWindowCreates: new Map<string, Set<number>>([
+        ['alpha', new Set([3])],
+      ]),
+      pendingWindowCloses: new Map<string, Set<number>>(),
+      pendingPaneCloses: new Map<string, Set<string>>(),
+      pendingWindowPaneFloors: new Map<string, Map<number, number>>(),
+      optimisticVisibleWindowBaseline: 2,
+    }
+
+    const merged = mergePendingInspectorSnapshot(
+      'alpha',
+      [
+        buildWindow('alpha', 0, 1),
+        buildWindow('alpha', 1, 1),
+        buildWindow('alpha', 2, 1),
+      ],
+      [
+        buildPane('alpha', 0, 0, '%1'),
+        buildPane('alpha', 1, 0, '%2'),
+        buildPane('alpha', 2, 0, '%3'),
+      ],
+      options,
+    )
+
+    expect(merged.windows.map((item) => item.index)).toEqual([0, 1, 2])
+    expect(merged.confirmedWindowCreates).toEqual([3])
+  })
 })

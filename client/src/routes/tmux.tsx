@@ -527,6 +527,12 @@ function TmuxPage() {
           pendingWindowCloses: pendingCloseWindowsRef.current,
           pendingPaneCloses: pendingClosePanesRef.current,
           pendingWindowPaneFloors: pendingWindowPaneFloorsRef.current,
+          optimisticVisibleWindowBaseline: Math.max(
+            0,
+            windowsRef.current.filter((windowInfo) => windowInfo.session === session)
+              .length -
+              (pendingCreateWindowsRef.current.get(session)?.size ?? 0),
+          ),
         },
       )
       for (const index of merged.confirmedWindowCreates) {

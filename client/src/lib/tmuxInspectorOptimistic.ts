@@ -193,6 +193,7 @@ export type MergePendingInspectorOptions = {
   pendingWindowCloses: ReadonlyMap<string, ReadonlySet<number>>
   pendingPaneCloses: ReadonlyMap<string, ReadonlySet<string>>
   pendingWindowPaneFloors: ReadonlyMap<string, ReadonlyMap<number, number>>
+  optimisticVisibleWindowBaseline?: number
 }
 
 export type MergePendingInspectorResult = {
@@ -257,11 +258,43 @@ export function mergePendingInspectorSnapshot(
   const seenWindowIndexes = new Set(
     mergedWindows.map((windowInfo) => normalizeWindowIndex(windowInfo.index)),
   )
-  for (const rawIndex of pendingWindowCreateSet ?? []) {
-    const index = normalizeWindowIndex(rawIndex)
-    if (index === null || blockedWindowIndexes.has(index)) continue
+  const unmatchedPendingCreateIndexes: Array<number> = []
+  const pendingCreateIndexes = Array.from(pendingWindowCreateSet ?? [])
+    .map((rawIndex) => normalizeWindowIndex(rawIndex))
+    .filter((index): index is number => index !== null)
+    .sort((left, right) => left - right)
+
+  for (const index of pendingCreateIndexes) {
+    if (blockedWindowIndexes.has(index)) continue
     if (backendWindowIndexes.has(index)) {
       confirmedWindowCreates.push(index)
+      continue
+    }
+    unmatchedPendingCreateIndexes.push(index)
+  }
+
+  const optimisticVisibleWindowBaseline =
+    typeof options.optimisticVisibleWindowBaseline === 'number' &&
+    Number.isFinite(options.optimisticVisibleWindowBaseline) &&
+    options.optimisticVisibleWindowBaseline >= 0
+      ? Math.trunc(options.optimisticVisibleWindowBaseline)
+      : null
+  let fallbackConfirmedCreates = 0
+  if (optimisticVisibleWindowBaseline !== null) {
+    const realizedCreateCount = Math.max(
+      0,
+      mergedWindows.length - optimisticVisibleWindowBaseline,
+    )
+    fallbackConfirmedCreates = Math.max(
+      0,
+      realizedCreateCount - confirmedWindowCreates.length,
+    )
+  }
+
+  for (const index of unmatchedPendingCreateIndexes) {
+    if (fallbackConfirmedCreates > 0) {
+      confirmedWindowCreates.push(index)
+      fallbackConfirmedCreates -= 1
       continue
     }
     if (seenWindowIndexes.has(index)) {
