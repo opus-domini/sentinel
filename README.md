@@ -252,6 +252,25 @@ For local performance baselines, run:
 go test -run=^$ -bench=BenchmarkCollectFiftyPanes -benchmem ./internal/watchtower
 ```
 
+### Realtime Diagnostics (Frontend)
+
+The tmux route publishes client runtime counters to:
+
+- `window.__SENTINEL_TMUX_METRICS`
+
+Useful fields:
+
+- `wsMessages`, `wsOpenCount`, `wsCloseCount`, `wsReconnects`
+- `sessionsRefreshCount`, `inspectorRefreshCount`, `recoveryRefreshCount`
+- `fallbackRefreshCount` (poll fallback executions while events WS is down)
+- `deltaSyncCount`, `deltaSyncErrors`, `deltaOverflowCount`
+
+Expected healthy behavior:
+
+- while `/ws/events` is connected, no periodic polling loops for windows/panes;
+- `sessionsRefreshCount` should increase mostly on explicit actions or structural events;
+- `fallbackRefreshCount` should stay flat unless websocket is disconnected.
+
 ## Current Limitations
 
 - Host support: Linux and macOS only.
