@@ -221,16 +221,19 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 
 	if len(changedSessions) > 0 && s.options.Publish != nil {
 		sessionPatches := s.buildSessionActivityPatches(ctx, changedSessions)
+		inspectorPatches := s.buildInspectorActivityPatches(ctx, changedSessions)
 		s.options.Publish(events.TypeTmuxSessions, map[string]any{
-			"action":         "activity",
-			"sessions":       changedSessions,
-			"globalRev":      globalRev,
-			"sessionPatches": sessionPatches,
+			"action":           "activity",
+			"sessions":         changedSessions,
+			"globalRev":        globalRev,
+			"sessionPatches":   sessionPatches,
+			"inspectorPatches": inspectorPatches,
 		})
 		s.options.Publish(events.TypeTmuxActivity, map[string]any{
-			"globalRev":      globalRev,
-			"sessions":       changedSessions,
-			"sessionPatches": sessionPatches,
+			"globalRev":        globalRev,
+			"sessions":         changedSessions,
+			"sessionPatches":   sessionPatches,
+			"inspectorPatches": inspectorPatches,
 		})
 	}
 	return nil
@@ -253,6 +256,32 @@ func (s *Service) buildSessionActivityPatches(ctx context.Context, sessionNames 
 			continue
 		}
 		patches = append(patches, store.BuildWatchtowerSessionActivityPatch(row))
+	}
+	return patches
+}
+
+func (s *Service) buildInspectorActivityPatches(ctx context.Context, sessionNames []string) []map[string]any {
+	if s == nil || s.store == nil || len(sessionNames) == 0 {
+		return nil
+	}
+
+	patches := make([]map[string]any, 0, len(sessionNames))
+	for _, name := range sessionNames {
+		sessionName := strings.TrimSpace(name)
+		if sessionName == "" {
+			continue
+		}
+		windows, winErr := s.store.ListWatchtowerWindows(ctx, sessionName)
+		if winErr != nil {
+			slog.Warn("watchtower inspector patch windows build failed", "session", sessionName, "err", winErr)
+			continue
+		}
+		panes, paneErr := s.store.ListWatchtowerPanes(ctx, sessionName)
+		if paneErr != nil {
+			slog.Warn("watchtower inspector patch panes build failed", "session", sessionName, "err", paneErr)
+			continue
+		}
+		patches = append(patches, store.BuildWatchtowerInspectorPatch(sessionName, windows, panes))
 	}
 	return patches
 }

@@ -242,6 +242,32 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 			if patch["unreadPanes"] != 1 {
 				t.Fatalf("session patch unreadPanes = %v, want 1", patch["unreadPanes"])
 			}
+			rawInspector, ok := payload["inspectorPatches"]
+			if !ok {
+				t.Fatalf("missing inspectorPatches payload: %+v", payload)
+			}
+			inspectorPatches, ok := rawInspector.([]map[string]any)
+			if !ok {
+				t.Fatalf("inspectorPatches type = %T, want []map[string]any", rawInspector)
+			}
+			if len(inspectorPatches) != 1 {
+				t.Fatalf("inspectorPatches len = %d, want 1", len(inspectorPatches))
+			}
+			inspector := inspectorPatches[0]
+			if inspector["session"] != "dev" {
+				t.Fatalf("inspector patch session = %v, want dev", inspector["session"])
+			}
+			rawWindows, ok := inspector["windows"].([]map[string]any)
+			if !ok || len(rawWindows) != 1 {
+				t.Fatalf("inspector windows = %T(%v), want len=1", inspector["windows"], inspector["windows"])
+			}
+			rawPanes, ok := inspector["panes"].([]map[string]any)
+			if !ok || len(rawPanes) != 1 {
+				t.Fatalf("inspector panes = %T(%v), want len=1", inspector["panes"], inspector["panes"])
+			}
+			if rawPanes[0]["paneId"] != "%1" {
+				t.Fatalf("inspector paneId = %v, want %%1", rawPanes[0]["paneId"])
+			}
 			switch eventType {
 			case "tmux.sessions.updated":
 				if payload["action"] != "activity" {

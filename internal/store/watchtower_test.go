@@ -87,6 +87,8 @@ func TestWatchtowerSchemaIdempotentAndBackfill(t *testing.T) {
 func TestWatchtowerSessionAccessors(t *testing.T) {
 	t.Parallel()
 
+	const sessionName = "dev"
+
 	s := newTestStore(t)
 	defer func() { _ = s.Close() }()
 
@@ -94,7 +96,7 @@ func TestWatchtowerSessionAccessors(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	if err := s.UpsertWatchtowerSession(ctx, WatchtowerSessionWrite{
-		SessionName:       "dev",
+		SessionName:       sessionName,
 		Attached:          1,
 		Windows:           2,
 		Panes:             4,
@@ -109,9 +111,9 @@ func TestWatchtowerSessionAccessors(t *testing.T) {
 		t.Fatalf("UpsertWatchtowerSession: %v", err)
 	}
 
-	row, err := s.GetWatchtowerSession(ctx, "dev")
+	row, err := s.GetWatchtowerSession(ctx, sessionName)
 	if err != nil {
-		t.Fatalf("GetWatchtowerSession(dev): %v", err)
+		t.Fatalf("GetWatchtowerSession(%s): %v", sessionName, err)
 	}
 
 	if row.Attached != 1 || row.Windows != 2 || row.Panes != 4 {
@@ -128,8 +130,8 @@ func TestWatchtowerSessionAccessors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListWatchtowerSessions: %v", err)
 	}
-	if len(list) != 1 || list[0].SessionName != "dev" {
-		t.Fatalf("ListWatchtowerSessions = %+v, want 1 row for dev", list)
+	if len(list) != 1 || list[0].SessionName != sessionName {
+		t.Fatalf("ListWatchtowerSessions = %+v, want 1 row for %s", list, sessionName)
 	}
 }
 
@@ -175,6 +177,70 @@ func TestGetWatchtowerSessionActivityPatch(t *testing.T) {
 	}
 	if patch["activityAt"] == "" {
 		t.Fatalf("patch activityAt should not be empty: %+v", patch)
+	}
+}
+
+func TestGetWatchtowerInspectorPatch(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if err := s.UpsertWatchtowerWindow(ctx, WatchtowerWindowWrite{
+		SessionName:      "dev",
+		WindowIndex:      0,
+		Name:             "main",
+		Active:           true,
+		Layout:           "layout",
+		WindowActivityAt: now,
+		UnreadPanes:      1,
+		HasUnread:        true,
+		Rev:              7,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow: %v", err)
+	}
+	if err := s.UpsertWatchtowerPane(ctx, WatchtowerPaneWrite{
+		PaneID:         "%1",
+		SessionName:    "dev",
+		WindowIndex:    0,
+		PaneIndex:      0,
+		Title:          "shell",
+		Active:         true,
+		TTY:            "/dev/pts/1",
+		TailHash:       "h1",
+		TailPreview:    "line",
+		TailCapturedAt: now,
+		Revision:       3,
+		SeenRevision:   1,
+		ChangedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane: %v", err)
+	}
+
+	patch, err := s.GetWatchtowerInspectorPatch(ctx, "dev")
+	if err != nil {
+		t.Fatalf("GetWatchtowerInspectorPatch(dev): %v", err)
+	}
+
+	if patch["session"] != "dev" {
+		t.Fatalf("patch session = %v, want dev", patch["session"])
+	}
+	windows, ok := patch["windows"].([]map[string]any)
+	if !ok || len(windows) != 1 {
+		t.Fatalf("windows patch = %T(%v), want len=1", patch["windows"], patch["windows"])
+	}
+	if windows[0]["index"] != 0 || windows[0]["unreadPanes"] != 1 {
+		t.Fatalf("unexpected windows patch: %+v", windows[0])
+	}
+	panes, ok := patch["panes"].([]map[string]any)
+	if !ok || len(panes) != 1 {
+		t.Fatalf("panes patch = %T(%v), want len=1", patch["panes"], patch["panes"])
+	}
+	if panes[0]["paneId"] != "%1" || panes[0]["hasUnread"] != true {
+		t.Fatalf("unexpected panes patch: %+v", panes[0])
 	}
 }
 

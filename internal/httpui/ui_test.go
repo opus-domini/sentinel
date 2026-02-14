@@ -436,6 +436,15 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 			Name        string `json:"name"`
 			UnreadPanes int    `json:"unreadPanes"`
 		} `json:"sessionPatches"`
+		InspectorPatches []struct {
+			Session string `json:"session"`
+			Windows []struct {
+				Index int `json:"index"`
+			} `json:"windows"`
+			Panes []struct {
+				PaneID string `json:"paneId"`
+			} `json:"panes"`
+		} `json:"inspectorPatches"`
 	}
 	if err := json.Unmarshal(ackPayload, &ack); err != nil {
 		t.Fatalf("seen ack json: %v", err)
@@ -454,6 +463,15 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 	}
 	if ack.Patches[0].Name != testSessionName || ack.Patches[0].UnreadPanes != 0 {
 		t.Fatalf("unexpected seen ack patch: %+v", ack.Patches[0])
+	}
+	if len(ack.InspectorPatches) != 1 {
+		t.Fatalf("seen ack inspectorPatches len = %d, want 1", len(ack.InspectorPatches))
+	}
+	if ack.InspectorPatches[0].Session != testSessionName {
+		t.Fatalf("unexpected seen ack inspector session: %+v", ack.InspectorPatches[0])
+	}
+	if len(ack.InspectorPatches[0].Windows) != 1 || len(ack.InspectorPatches[0].Panes) != 1 {
+		t.Fatalf("unexpected seen ack inspector payload: %+v", ack.InspectorPatches[0])
 	}
 
 	panes, err := st.ListWatchtowerPanes(context.Background(), testSessionName)
@@ -490,6 +508,13 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 	}
 	if rawPatches[0]["name"] != testSessionName || rawPatches[0]["unreadPanes"] != 0 {
 		t.Fatalf("unexpected sessions event patch: %+v", rawPatches[0])
+	}
+	rawInspector, ok := sessionsEvent.Payload["inspectorPatches"].([]map[string]any)
+	if !ok || len(rawInspector) != 1 {
+		t.Fatalf("sessions event inspectorPatches = %T(%v), want len=1", sessionsEvent.Payload["inspectorPatches"], sessionsEvent.Payload["inspectorPatches"])
+	}
+	if rawInspector[0]["session"] != testSessionName {
+		t.Fatalf("unexpected sessions event inspector patch: %+v", rawInspector[0])
 	}
 }
 

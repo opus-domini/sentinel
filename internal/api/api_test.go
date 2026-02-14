@@ -2511,6 +2511,49 @@ func TestActivityDeltaHandler(t *testing.T) {
 	if err := h.store.SetWatchtowerRuntimeValue(ctx, "global_rev", "3"); err != nil {
 		t.Fatalf("SetWatchtowerRuntimeValue(global_rev): %v", err)
 	}
+	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName:   "dev",
+		Attached:      1,
+		Windows:       1,
+		Panes:         1,
+		ActivityAt:    now,
+		LastPreview:   "delta line",
+		UnreadWindows: 1,
+		UnreadPanes:   1,
+		Rev:           3,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession(dev): %v", err)
+	}
+	if err := h.store.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
+		SessionName:      "dev",
+		WindowIndex:      0,
+		Name:             "main",
+		Active:           true,
+		Layout:           "layout",
+		WindowActivityAt: now,
+		UnreadPanes:      1,
+		HasUnread:        true,
+		Rev:              2,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow(dev): %v", err)
+	}
+	if err := h.store.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
+		PaneID:         "%1",
+		SessionName:    "dev",
+		WindowIndex:    0,
+		PaneIndex:      0,
+		Title:          "shell",
+		Active:         true,
+		TTY:            "/dev/pts/1",
+		TailHash:       "h1",
+		TailPreview:    "delta line",
+		TailCapturedAt: now,
+		Revision:       4,
+		SeenRevision:   2,
+		ChangedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane(dev): %v", err)
+	}
 	for rev := 1; rev <= 3; rev++ {
 		if _, err := h.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
 			GlobalRev:  int64(rev),
@@ -2570,6 +2613,22 @@ func TestActivityDeltaHandler(t *testing.T) {
 		change, _ := changes[0].(map[string]any)
 		if int64(change["globalRev"].(float64)) != 3 {
 			t.Fatalf("change.globalRev = %v, want 3", change["globalRev"])
+		}
+		sessionPatches, ok := data["sessionPatches"].([]any)
+		if !ok || len(sessionPatches) != 1 {
+			t.Fatalf("sessionPatches = %T(%v), want len=1", data["sessionPatches"], data["sessionPatches"])
+		}
+		sessionPatch, _ := sessionPatches[0].(map[string]any)
+		if sessionPatch["name"] != "dev" {
+			t.Fatalf("session patch name = %v, want dev", sessionPatch["name"])
+		}
+		inspectorPatches, ok := data["inspectorPatches"].([]any)
+		if !ok || len(inspectorPatches) != 1 {
+			t.Fatalf("inspectorPatches = %T(%v), want len=1", data["inspectorPatches"], data["inspectorPatches"])
+		}
+		inspectorPatch, _ := inspectorPatches[0].(map[string]any)
+		if inspectorPatch["session"] != "dev" {
+			t.Fatalf("inspector patch session = %v, want dev", inspectorPatch["session"])
 		}
 	})
 
@@ -2644,6 +2703,8 @@ func TestActivityStatsHandler(t *testing.T) {
 func TestMarkSessionSeenHandler(t *testing.T) {
 	t.Parallel()
 
+	const sessionName = "dev"
+
 	h := newTestHandler(t, nil, nil)
 	hub := events.NewHub()
 	eventsCh, unsubscribe := hub.Subscribe(8)
@@ -2653,7 +2714,7 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	ctx := context.Background()
 
 	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
-		SessionName:   "dev",
+		SessionName:   sessionName,
 		Attached:      1,
 		Windows:       1,
 		Panes:         1,
@@ -2667,7 +2728,7 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 		t.Fatalf("UpsertWatchtowerSession: %v", err)
 	}
 	if err := h.store.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
-		SessionName:      "dev",
+		SessionName:      sessionName,
 		WindowIndex:      0,
 		Name:             "main",
 		Active:           true,
@@ -2681,7 +2742,7 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	}
 	if err := h.store.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
 		PaneID:         "%1",
-		SessionName:    "dev",
+		SessionName:    sessionName,
 		WindowIndex:    0,
 		PaneIndex:      0,
 		Title:          "shell",
@@ -2697,8 +2758,12 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/seen", strings.NewReader(`{"scope":"pane","paneId":"%1"}`))
-	r.SetPathValue("session", "dev")
+	r := httptest.NewRequest(
+		"POST",
+		fmt.Sprintf("/api/tmux/sessions/%s/seen", sessionName),
+		strings.NewReader(`{"scope":"pane","paneId":"%1"}`),
+	)
+	r.SetPathValue("session", sessionName)
 	h.markSessionSeen(w, r)
 
 	if w.Code != http.StatusOK {
@@ -2717,16 +2782,33 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("session patch type = %T, want map[string]any", rawPatches[0])
 	}
-	if patch["name"] != "dev" {
+	if patch["name"] != sessionName {
 		t.Fatalf("session patch name = %v, want dev", patch["name"])
 	}
 	if patch["unreadPanes"] != float64(0) {
 		t.Fatalf("session patch unreadPanes = %v, want 0", patch["unreadPanes"])
 	}
+	rawInspector, ok := data["inspectorPatches"].([]any)
+	if !ok || len(rawInspector) != 1 {
+		t.Fatalf("inspectorPatches = %T(%v), want len=1", data["inspectorPatches"], data["inspectorPatches"])
+	}
+	inspector, ok := rawInspector[0].(map[string]any)
+	if !ok {
+		t.Fatalf("inspector patch type = %T, want map[string]any", rawInspector[0])
+	}
+	if inspector["session"] != sessionName {
+		t.Fatalf("inspector session = %v, want dev", inspector["session"])
+	}
+	if windows, ok := inspector["windows"].([]any); !ok || len(windows) != 1 {
+		t.Fatalf("inspector windows = %T(%v), want len=1", inspector["windows"], inspector["windows"])
+	}
+	if panesRaw, ok := inspector["panes"].([]any); !ok || len(panesRaw) != 1 {
+		t.Fatalf("inspector panes = %T(%v), want len=1", inspector["panes"], inspector["panes"])
+	}
 
-	panes, err := h.store.ListWatchtowerPanes(ctx, "dev")
+	panes, err := h.store.ListWatchtowerPanes(ctx, sessionName)
 	if err != nil {
-		t.Fatalf("ListWatchtowerPanes(dev): %v", err)
+		t.Fatalf("ListWatchtowerPanes(%s): %v", sessionName, err)
 	}
 	if len(panes) != 1 {
 		t.Fatalf("panes len = %d, want 1", len(panes))
@@ -2735,9 +2817,9 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 		t.Fatalf("seenRevision = %d, revision = %d, want equal", panes[0].SeenRevision, panes[0].Revision)
 	}
 
-	session, err := h.store.GetWatchtowerSession(ctx, "dev")
+	session, err := h.store.GetWatchtowerSession(ctx, sessionName)
 	if err != nil {
-		t.Fatalf("GetWatchtowerSession(dev): %v", err)
+		t.Fatalf("GetWatchtowerSession(%s): %v", sessionName, err)
 	}
 	if session.UnreadPanes != 0 || session.UnreadWindows != 0 {
 		t.Fatalf("unexpected unread counters after seen: %+v", session)
@@ -2767,8 +2849,15 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	if !ok || len(eventRawPatches) != 1 {
 		t.Fatalf("sessions event sessionPatches = %T(%v), want len=1", sessionsEvent.Payload["sessionPatches"], sessionsEvent.Payload["sessionPatches"])
 	}
-	if eventRawPatches[0]["name"] != "dev" || eventRawPatches[0]["unreadPanes"] != 0 {
+	if eventRawPatches[0]["name"] != sessionName || eventRawPatches[0]["unreadPanes"] != 0 {
 		t.Fatalf("unexpected sessions event patch: %+v", eventRawPatches[0])
+	}
+	eventInspector, ok := sessionsEvent.Payload["inspectorPatches"].([]map[string]any)
+	if !ok || len(eventInspector) != 1 {
+		t.Fatalf("sessions event inspectorPatches = %T(%v), want len=1", sessionsEvent.Payload["inspectorPatches"], sessionsEvent.Payload["inspectorPatches"])
+	}
+	if eventInspector[0]["session"] != sessionName {
+		t.Fatalf("unexpected sessions event inspector patch: %+v", eventInspector[0])
 	}
 }
 

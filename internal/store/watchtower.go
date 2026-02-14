@@ -58,6 +58,84 @@ func BuildWatchtowerSessionActivityPatch(row WatchtowerSession) map[string]any {
 	}
 }
 
+// BuildWatchtowerWindowPatches returns projection rows suitable for
+// client-side window strip reconciliation without additional API reads.
+func BuildWatchtowerWindowPatches(windows []WatchtowerWindow, panes []WatchtowerPane) []map[string]any {
+	paneCounts := make(map[int]int, len(windows))
+	for _, pane := range panes {
+		paneCounts[pane.WindowIndex]++
+	}
+
+	patches := make([]map[string]any, 0, len(windows))
+	for _, row := range windows {
+		activityAt := ""
+		if !row.WindowActivityAt.IsZero() {
+			activityAt = row.WindowActivityAt.UTC().Format(time.RFC3339)
+		}
+		patches = append(patches, map[string]any{
+			"session":     row.SessionName,
+			"index":       row.WindowIndex,
+			"name":        row.Name,
+			"active":      row.Active,
+			"panes":       paneCounts[row.WindowIndex],
+			"layout":      row.Layout,
+			"unreadPanes": row.UnreadPanes,
+			"hasUnread":   row.HasUnread,
+			"rev":         row.Rev,
+			"activityAt":  activityAt,
+		})
+	}
+	return patches
+}
+
+// BuildWatchtowerPanePatches returns projection rows suitable for
+// client-side pane strip reconciliation without additional API reads.
+func BuildWatchtowerPanePatches(panes []WatchtowerPane) []map[string]any {
+	patches := make([]map[string]any, 0, len(panes))
+	for _, row := range panes {
+		changedAt := ""
+		if !row.ChangedAt.IsZero() {
+			changedAt = row.ChangedAt.UTC().Format(time.RFC3339)
+		}
+		patches = append(patches, map[string]any{
+			"session":        row.SessionName,
+			"windowIndex":    row.WindowIndex,
+			"paneIndex":      row.PaneIndex,
+			"paneId":         row.PaneID,
+			"title":          row.Title,
+			"active":         row.Active,
+			"tty":            row.TTY,
+			"currentPath":    row.CurrentPath,
+			"startCommand":   row.StartCommand,
+			"currentCommand": row.CurrentCommand,
+			"tailPreview":    row.TailPreview,
+			"revision":       row.Revision,
+			"seenRevision":   row.SeenRevision,
+			"hasUnread":      row.Revision > row.SeenRevision,
+			"changedAt":      changedAt,
+		})
+	}
+	return patches
+}
+
+// BuildWatchtowerInspectorPatch returns a full window/pane projection patch for
+// one session, used by ws activity/seen events to avoid inspector polling.
+func BuildWatchtowerInspectorPatch(sessionName string, windows []WatchtowerWindow, panes []WatchtowerPane) map[string]any {
+	sessionName = strings.TrimSpace(sessionName)
+	if sessionName == "" {
+		if len(windows) > 0 {
+			sessionName = strings.TrimSpace(windows[0].SessionName)
+		} else if len(panes) > 0 {
+			sessionName = strings.TrimSpace(panes[0].SessionName)
+		}
+	}
+	return map[string]any{
+		"session": sessionName,
+		"windows": BuildWatchtowerWindowPatches(windows, panes),
+		"panes":   BuildWatchtowerPanePatches(panes),
+	}
+}
+
 type WatchtowerWindow struct {
 	SessionName      string    `json:"sessionName"`
 	WindowIndex      int       `json:"windowIndex"`
@@ -350,6 +428,22 @@ func (s *Store) GetWatchtowerSessionActivityPatch(ctx context.Context, sessionNa
 		return nil, err
 	}
 	return BuildWatchtowerSessionActivityPatch(row), nil
+}
+
+func (s *Store) GetWatchtowerInspectorPatch(ctx context.Context, sessionName string) (map[string]any, error) {
+	sessionName = strings.TrimSpace(sessionName)
+	if sessionName == "" {
+		return nil, errors.New("session name is required")
+	}
+	windows, err := s.ListWatchtowerWindows(ctx, sessionName)
+	if err != nil {
+		return nil, err
+	}
+	panes, err := s.ListWatchtowerPanes(ctx, sessionName)
+	if err != nil {
+		return nil, err
+	}
+	return BuildWatchtowerInspectorPatch(sessionName, windows, panes), nil
 }
 
 func (s *Store) ListWatchtowerSessions(ctx context.Context) ([]WatchtowerSession, error) {

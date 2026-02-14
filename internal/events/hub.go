@@ -15,6 +15,7 @@ const (
 )
 
 type Event struct {
+	EventID   int64          `json:"eventId"`
 	Type      string         `json:"type"`
 	Timestamp string         `json:"timestamp"`
 	Payload   map[string]any `json:"payload,omitempty"`
@@ -30,7 +31,8 @@ func NewEvent(eventType string, payload map[string]any) Event {
 
 type Hub struct {
 	mu          sync.RWMutex
-	nextID      int64
+	nextSubID   int64
+	nextEventID int64
 	subscribers map[int64]chan Event
 }
 
@@ -52,8 +54,8 @@ func (h *Hub) Subscribe(buffer int) (<-chan Event, func()) {
 	ch := make(chan Event, buffer)
 
 	h.mu.Lock()
-	h.nextID++
-	id := h.nextID
+	h.nextSubID++
+	id := h.nextSubID
 	h.subscribers[id] = ch
 	h.mu.Unlock()
 
@@ -75,9 +77,22 @@ func (h *Hub) Publish(event Event) {
 	if h == nil {
 		return
 	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+
+	h.mu.Lock()
+	if event.EventID <= 0 {
+		h.nextEventID++
+		event.EventID = h.nextEventID
+	}
+	if event.Timestamp == "" {
+		event.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	}
+	subs := make([]chan Event, 0, len(h.subscribers))
 	for _, sub := range h.subscribers {
+		subs = append(subs, sub)
+	}
+	h.mu.Unlock()
+
+	for _, sub := range subs {
 		select {
 		case sub <- event:
 		default:

@@ -795,6 +795,10 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 	if patch, patchErr := h.store.GetWatchtowerSessionActivityPatch(ctx, session); patchErr == nil {
 		sessionPatches = append(sessionPatches, patch)
 	}
+	var inspectorPatches []map[string]any
+	if patch, patchErr := h.store.GetWatchtowerInspectorPatch(ctx, session); patchErr == nil {
+		inspectorPatches = append(inspectorPatches, patch)
+	}
 
 	if acked {
 		h.emit(events.TypeTmuxInspector, map[string]any{
@@ -811,6 +815,9 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 		if len(sessionPatches) > 0 {
 			sessionsPayload["sessionPatches"] = sessionPatches
 		}
+		if len(inspectorPatches) > 0 {
+			sessionsPayload["inspectorPatches"] = inspectorPatches
+		}
 		h.emit(events.TypeTmuxSessions, sessionsPayload)
 	}
 
@@ -822,6 +829,9 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(sessionPatches) > 0 {
 		response["sessionPatches"] = sessionPatches
+	}
+	if len(inspectorPatches) > 0 {
+		response["inspectorPatches"] = inspectorPatches
 	}
 	writeData(w, http.StatusOK, response)
 }
@@ -876,13 +886,40 @@ func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeData(w, http.StatusOK, map[string]any{
+	sessionNames := make(map[string]struct{}, len(changes))
+	for _, change := range changes {
+		session := strings.TrimSpace(change.Session)
+		if session == "" {
+			continue
+		}
+		sessionNames[session] = struct{}{}
+	}
+
+	sessionPatches := make([]map[string]any, 0, len(sessionNames))
+	inspectorPatches := make([]map[string]any, 0, len(sessionNames))
+	for sessionName := range sessionNames {
+		if patch, patchErr := h.store.GetWatchtowerSessionActivityPatch(ctx, sessionName); patchErr == nil {
+			sessionPatches = append(sessionPatches, patch)
+		}
+		if patch, patchErr := h.store.GetWatchtowerInspectorPatch(ctx, sessionName); patchErr == nil {
+			inspectorPatches = append(inspectorPatches, patch)
+		}
+	}
+
+	response := map[string]any{
 		"since":     since,
 		"limit":     limit,
 		"globalRev": globalRev,
 		"overflow":  overflow,
 		"changes":   changes,
-	})
+	}
+	if len(sessionPatches) > 0 {
+		response["sessionPatches"] = sessionPatches
+	}
+	if len(inspectorPatches) > 0 {
+		response["inspectorPatches"] = inspectorPatches
+	}
+	writeData(w, http.StatusOK, response)
 }
 
 func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
