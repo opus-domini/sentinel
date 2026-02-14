@@ -133,40 +133,36 @@ export default function SessionListItem({
               )}
             </div>
 
-            {isAttached && (
-              <>
-                {/* Line 2: Content preview (2 lines max, reserved height) */}
-                <div
-                  className={cn(
-                    'my-1 line-clamp-2 min-h-[2lh] max-w-full overflow-hidden break-all [overflow-wrap:anywhere] text-[10px] leading-[1.4] italic',
-                    hasUnreadActivity
-                      ? 'text-secondary-foreground'
-                      : 'text-muted-foreground',
-                  )}
-                >
-                  {session.lastContent || '\u00A0'}
-                </div>
+            {/* Line 2: Content preview (2 lines max, reserved height) */}
+            <div
+              className={cn(
+                'my-1 line-clamp-2 min-h-[2lh] max-w-full overflow-hidden break-all [overflow-wrap:anywhere] text-[10px] leading-[1.4] italic',
+                isAttached && hasUnreadActivity
+                  ? 'text-secondary-foreground'
+                  : 'text-muted-foreground',
+              )}
+            >
+              {session.lastContent || '\u00A0'}
+            </div>
 
-                {/* Line 3: hash — windows/panes — time */}
-                <div className="mt-1 flex items-center justify-between">
-                  {session.hash && (
-                    <TooltipHelper content={`Hash: ${session.hash}`}>
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                        {shortHash}
-                      </span>
-                    </TooltipHelper>
-                  )}
-                  <TooltipHelper content={`Last activity: ${activityAbsolute}`}>
-                    <time
-                      className="shrink-0 tabular-nums text-[10px] text-muted-foreground"
-                      dateTime={session.activityAt}
-                    >
-                      {activityRelative}
-                    </time>
-                  </TooltipHelper>
-                </div>
-              </>
-            )}
+            {/* Line 3: hash — windows/panes — time */}
+            <div className="mt-1 flex items-center justify-between">
+              {session.hash && (
+                <TooltipHelper content={`Hash: ${session.hash}`}>
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    {shortHash}
+                  </span>
+                </TooltipHelper>
+              )}
+              <TooltipHelper content={`Last activity: ${activityAbsolute}`}>
+                <time
+                  className="shrink-0 tabular-nums text-[10px] text-muted-foreground"
+                  dateTime={session.activityAt}
+                >
+                  {activityRelative}
+                </time>
+              </TooltipHelper>
+            </div>
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-44">
