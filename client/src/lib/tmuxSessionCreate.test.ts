@@ -101,6 +101,7 @@ describe('mergePendingCreateSessions', () => {
     expect(merged.sessionNamesForSync).toEqual(['stable', 'new-a', 'new-b'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual([])
+    expect(merged.confirmedRenamedNames).toEqual([])
   })
 
   it('marks pending sessions as confirmed when backend already contains them', () => {
@@ -122,6 +123,7 @@ describe('mergePendingCreateSessions', () => {
     ])
     expect(merged.confirmedPendingNames).toEqual(['new-a'])
     expect(merged.confirmedKilledNames).toEqual([])
+    expect(merged.confirmedRenamedNames).toEqual([])
   })
 
   it('hides pending-killed sessions until backend converges', () => {
@@ -143,6 +145,7 @@ describe('mergePendingCreateSessions', () => {
     expect(merged.sessionNamesForSync).toEqual(['stable', 'new-a'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual([])
+    expect(merged.confirmedRenamedNames).toEqual([])
   })
 
   it('marks pending kills as confirmed when backend no longer contains session', () => {
@@ -158,5 +161,30 @@ describe('mergePendingCreateSessions', () => {
     expect(merged.sessionNamesForSync).toEqual(['stable'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual(['killed'])
+    expect(merged.confirmedRenamedNames).toEqual([])
+  })
+
+  it('aliases pending renames until backend converges and confirms when new name exists', () => {
+    const backend = [buildOptimisticSession('old-name', '2026-02-14T12:00:00Z')]
+    const pendingRenames = new Map([['old-name', 'new-name']])
+
+    const optimistic = mergePendingCreateSessions(
+      backend,
+      new Map<string, string>(),
+      new Set<string>(),
+      pendingRenames,
+    )
+    expect(optimistic.sessions.map((item) => item.name)).toEqual(['new-name'])
+    expect(optimistic.sessionNamesForSync).toEqual(['new-name'])
+    expect(optimistic.confirmedRenamedNames).toEqual([])
+
+    const converged = mergePendingCreateSessions(
+      [buildOptimisticSession('new-name', '2026-02-14T12:01:00Z')],
+      new Map<string, string>(),
+      new Set<string>(),
+      pendingRenames,
+    )
+    expect(converged.sessions.map((item) => item.name)).toEqual(['new-name'])
+    expect(converged.confirmedRenamedNames).toEqual(['old-name'])
   })
 })

@@ -50,22 +50,52 @@ export function mergePendingCreateSessions(
   sessions: Array<Session>,
   pendingCreates: ReadonlyMap<string, string>,
   pendingKills?: ReadonlySet<string>,
+  pendingRenames?: ReadonlyMap<string, string>,
 ): {
   sessions: Array<Session>
   sessionNamesForSync: Array<string>
   confirmedPendingNames: Array<string>
   confirmedKilledNames: Array<string>
+  confirmedRenamedNames: Array<string>
 } {
-  const backendNames = new Set(sessions.map((item) => item.name))
+  const backendNames = new Set(sessions.map((item) => item.name.trim()))
   const confirmedPendingNames: Array<string> = []
   const confirmedKilledNames: Array<string> = []
+  const confirmedRenamedNames: Array<string> = []
   const pendingKillNames = pendingKills ?? new Set<string>()
-  let mergedSessions = sessions.filter(
-    (item) => !pendingKillNames.has(item.name.trim()),
-  )
+  const renameAliases = new Map<string, string>()
+  for (const [rawFrom, rawTo] of pendingRenames ?? []) {
+    const from = rawFrom.trim()
+    const to = rawTo.trim()
+    if (from === '' || to === '' || from === to) {
+      continue
+    }
+    const fromExists = backendNames.has(from)
+    const toExists = backendNames.has(to)
+    if (!fromExists || toExists) {
+      confirmedRenamedNames.push(from)
+      continue
+    }
+    renameAliases.set(from, to)
+  }
+
+  const backendVisibleNames = new Set(backendNames)
+  for (const to of renameAliases.values()) {
+    backendVisibleNames.add(to)
+  }
+
+  let mergedSessions = sessions
+    .map((item) => {
+      const nextName = renameAliases.get(item.name.trim())
+      if (!nextName) {
+        return item
+      }
+      return { ...item, name: nextName }
+    })
+    .filter((item) => !pendingKillNames.has(item.name.trim()))
 
   for (const name of pendingKillNames) {
-    if (!backendNames.has(name)) {
+    if (!backendVisibleNames.has(name)) {
       confirmedKilledNames.push(name)
     }
   }
@@ -74,7 +104,7 @@ export function mergePendingCreateSessions(
     if (pendingKillNames.has(name)) {
       continue
     }
-    if (backendNames.has(name)) {
+    if (backendVisibleNames.has(name)) {
       confirmedPendingNames.push(name)
       continue
     }
@@ -83,7 +113,7 @@ export function mergePendingCreateSessions(
 
   const sessionNamesForSync = Array.from(
     new Set([
-      ...sessions
+      ...mergedSessions
         .map((item) => item.name)
         .filter((name) => !pendingKillNames.has(name)),
       ...Array.from(pendingCreates.keys()).filter(
@@ -97,5 +127,6 @@ export function mergePendingCreateSessions(
     sessionNamesForSync,
     confirmedPendingNames,
     confirmedKilledNames,
+    confirmedRenamedNames,
   }
 }

@@ -307,6 +307,7 @@ function TmuxPage() {
   const recoveryGenerationRef = useRef(0)
   const pendingCreateSessionsRef = useRef(new Map<string, string>())
   const pendingKillSessionsRef = useRef(new Set<string>())
+  const pendingRenameSessionsRef = useRef(new Map<string, string>())
   const pendingCreateWindowsRef = useRef(new Map<string, Set<number>>())
   const pendingCloseWindowsRef = useRef(new Map<string, Set<number>>())
   const pendingClosePanesRef = useRef(new Map<string, Set<string>>())
@@ -505,6 +506,16 @@ function TmuxPage() {
     )
   }, [])
 
+  const clearPendingSessionRenamesForName = useCallback((session: string) => {
+    const name = session.trim()
+    if (name === '') return
+    for (const [from, to] of pendingRenameSessionsRef.current) {
+      if (from === name || to === name) {
+        pendingRenameSessionsRef.current.delete(from)
+      }
+    }
+  }, [])
+
   const mergeInspectorSnapshotWithPending = useCallback(
     (session: string, sourceWindows: Array<WindowInfo>, sourcePanes: Array<PaneInfo>) => {
       const merged = mergePendingInspectorSnapshot(
@@ -550,6 +561,7 @@ function TmuxPage() {
         data.sessions,
         pendingCreateSessionsRef.current,
         pendingKillSessionsRef.current,
+        pendingRenameSessionsRef.current,
       )
       for (const name of merged.confirmedPendingNames) {
         pendingCreateSessionsRef.current.delete(name)
@@ -557,9 +569,13 @@ function TmuxPage() {
       for (const name of merged.confirmedKilledNames) {
         pendingKillSessionsRef.current.delete(name)
       }
+      for (const name of merged.confirmedRenamedNames) {
+        pendingRenameSessionsRef.current.delete(name)
+      }
       setSessions(merged.sessions)
       const sessionNames = merged.sessionNamesForSync
       for (const name of merged.confirmedKilledNames) {
+        clearPendingSessionRenamesForName(name)
         clearPendingInspectorSessionState(name)
       }
       const cur = tabsStateRef.current.activeSession
@@ -587,6 +603,7 @@ function TmuxPage() {
     api,
     bumpRuntimeMetric,
     clearPendingInspectorSessionState,
+    clearPendingSessionRenamesForName,
     closeCurrentSocket,
     resetTerminal,
     setConnection,
@@ -1420,6 +1437,7 @@ function TmuxPage() {
 
       pendingKillSessionsRef.current.delete(sessionName)
       clearPendingInspectorSessionState(sessionName)
+      clearPendingSessionRenamesForName(sessionName)
 
       const previousActiveSession = tabsStateRef.current.activeSession
       const sessionAlreadyExists = sessionsRef.current.some(
@@ -1473,6 +1491,7 @@ function TmuxPage() {
       activateSession,
       api,
       clearPendingInspectorSessionState,
+      clearPendingSessionRenamesForName,
       pushErrorToast,
       pushSuccessToast,
       refreshInspector,
@@ -1502,6 +1521,7 @@ function TmuxPage() {
       }
       pendingCreateSessionsRef.current.delete(sessionName)
       clearPendingInspectorSessionState(sessionName)
+      clearPendingSessionRenamesForName(sessionName)
       dispatchTabs({ type: 'remove', session: sessionName })
       if (wasActive) {
         closeCurrentSocket('session killed')
@@ -1533,6 +1553,7 @@ function TmuxPage() {
     [
       api,
       clearPendingInspectorSessionState,
+      clearPendingSessionRenamesForName,
       closeCurrentSocket,
       pushErrorToast,
       pushSuccessToast,
@@ -1558,19 +1579,48 @@ function TmuxPage() {
       }
       const sanitized = slugifyTmuxName(newName).trim()
       if (!sanitized || sanitized === active) return
+      if (
+        sessionsRef.current.some(
+          (item) => item.name === sanitized && item.name !== active,
+        )
+      ) {
+        const msg = `session "${sanitized}" already exists`
+        setConnection('error', msg)
+        pushErrorToast('Rename Session', msg)
+        return
+      }
+      const changedAt = new Date().toISOString()
+      clearPendingSessionRenamesForName(active)
+      clearPendingSessionRenamesForName(sanitized)
+      pendingRenameSessionsRef.current.set(active, sanitized)
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.name === active
+            ? { ...item, name: sanitized, activityAt: changedAt }
+            : item,
+        ),
+      )
+      dispatchTabs({ type: 'rename', oldName: active, newName: sanitized })
       try {
         await api<{ name: string }>(
           `/api/tmux/sessions/${encodeURIComponent(active)}`,
           { method: 'PATCH', body: JSON.stringify({ newName: sanitized }) },
         )
-        dispatchTabs({ type: 'rename', oldName: active, newName: sanitized })
-        await refreshSessions()
+        void refreshSessions()
         setConnection(
           connectionState === 'connected' ? 'connected' : 'disconnected',
           'session renamed',
         )
         pushSuccessToast('Rename Session', `"${active}" -> "${sanitized}"`)
       } catch (error) {
+        pendingRenameSessionsRef.current.delete(active)
+        setSessions((prev) =>
+          prev.map((item) =>
+            item.name === sanitized ? { ...item, name: active } : item,
+          ),
+        )
+        dispatchTabs({ type: 'rename', oldName: sanitized, newName: active })
+        void refreshSessions()
         const msg =
           error instanceof Error ? error.message : 'failed to rename session'
         setConnection('error', msg)
@@ -1579,6 +1629,7 @@ function TmuxPage() {
     },
     [
       api,
+      clearPendingSessionRenamesForName,
       connectionState,
       pushErrorToast,
       pushSuccessToast,
