@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/term"
@@ -134,8 +135,8 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 
 	callOrder := make([]string, 0, 2)
 	tmuxSetSessionMouse = func(_ context.Context, session string, enabled bool) error {
-		if session != "dev" {
-			t.Fatalf("session = %q, want %q", session, "dev")
+		if session != testSessionName {
+			t.Fatalf("session = %q, want %q", session, testSessionName)
 		}
 		if !enabled {
 			t.Fatal("enabled = false, want true")
@@ -146,8 +147,8 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 
 	wantPTY := &term.PTY{}
 	startTmuxAttachFn = func(_ context.Context, session string, cols, rows int) (*term.PTY, error) {
-		if session != "dev" {
-			t.Fatalf("session = %q, want %q", session, "dev")
+		if session != testSessionName {
+			t.Fatalf("session = %q, want %q", session, testSessionName)
 		}
 		if cols != defaultTermCols || rows != defaultTermRows {
 			t.Fatalf("terminal size = %dx%d, want %dx%d", cols, rows, defaultTermCols, defaultTermRows)
@@ -157,7 +158,7 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), "dev")
+	got, err := h.startTmuxPTY(context.Background(), testSessionName)
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}
@@ -193,7 +194,7 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), "dev")
+	got, err := h.startTmuxPTY(context.Background(), testSessionName)
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}
@@ -401,6 +402,133 @@ func TestHandleEventsClientMessageIgnoresInvalidPresence(t *testing.T) {
 	}
 }
 
+func TestHandleEventsClientMessageSeenAck(t *testing.T) {
+	t.Parallel()
+
+	st := newHTTPUIStore(t)
+	seedWatchtowerSeenState(t, st)
+	hub := events.NewHub()
+	eventsCh, unsubscribe := hub.Subscribe(8)
+	t.Cleanup(unsubscribe)
+	h := &Handler{store: st, events: hub}
+
+	ackPayload := h.handleEventsClientMessage([]byte(`{
+		"type":"seen",
+		"requestId":"req-1",
+		"session":"dev",
+		"scope":"pane",
+		"paneId":"%11"
+	}`))
+	if len(ackPayload) == 0 {
+		t.Fatal("seen ack payload is empty")
+	}
+
+	var ack struct {
+		Type      string `json:"type"`
+		RequestID string `json:"requestId"`
+		Session   string `json:"session"`
+		Scope     string `json:"scope"`
+		PaneID    string `json:"paneId"`
+		Acked     bool   `json:"acked"`
+		GlobalRev int64  `json:"globalRev"`
+		Error     string `json:"error"`
+	}
+	if err := json.Unmarshal(ackPayload, &ack); err != nil {
+		t.Fatalf("seen ack json: %v", err)
+	}
+	if ack.Type != "tmux.seen.ack" || ack.RequestID != "req-1" {
+		t.Fatalf("unexpected seen ack identity: %+v", ack)
+	}
+	if ack.Session != "dev" || ack.Scope != "pane" || ack.PaneID != "%11" {
+		t.Fatalf("unexpected seen ack payload: %+v", ack)
+	}
+	if !ack.Acked || ack.Error != "" {
+		t.Fatalf("expected acked seen ack without error: %+v", ack)
+	}
+
+	panes, err := st.ListWatchtowerPanes(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPanes(dev): %v", err)
+	}
+	if len(panes) != 1 {
+		t.Fatalf("panes len = %d, want 1", len(panes))
+	}
+	if panes[0].SeenRevision != panes[0].Revision {
+		t.Fatalf("pane seen revision not updated: %+v", panes[0])
+	}
+
+	gotTypes := map[string]bool{}
+	timeout := time.After(500 * time.Millisecond)
+	for len(gotTypes) < 2 {
+		select {
+		case evt := <-eventsCh:
+			gotTypes[evt.Type] = true
+		case <-timeout:
+			t.Fatalf("did not receive expected seen events, got=%v", gotTypes)
+		}
+	}
+	if !gotTypes[events.TypeTmuxInspector] || !gotTypes[events.TypeTmuxSessions] {
+		t.Fatalf("unexpected seen event types: %v", gotTypes)
+	}
+}
+
+func TestHandleEventsClientMessageSeenAckValidationError(t *testing.T) {
+	t.Parallel()
+
+	st := newHTTPUIStore(t)
+	seedWatchtowerSeenState(t, st)
+	hub := events.NewHub()
+	eventsCh, unsubscribe := hub.Subscribe(2)
+	t.Cleanup(unsubscribe)
+	h := &Handler{store: st, events: hub}
+
+	ackPayload := h.handleEventsClientMessage([]byte(`{
+		"type":"seen",
+		"requestId":"req-2",
+		"session":"dev",
+		"scope":"pane",
+		"paneId":"11"
+	}`))
+	if len(ackPayload) == 0 {
+		t.Fatal("seen ack payload is empty")
+	}
+
+	var ack struct {
+		RequestID string `json:"requestId"`
+		Acked     bool   `json:"acked"`
+		Error     string `json:"error"`
+	}
+	if err := json.Unmarshal(ackPayload, &ack); err != nil {
+		t.Fatalf("seen ack json: %v", err)
+	}
+	if ack.RequestID != "req-2" {
+		t.Fatalf("requestId = %q, want req-2", ack.RequestID)
+	}
+	if ack.Acked {
+		t.Fatalf("acked = true, want false for invalid pane id")
+	}
+	if strings.TrimSpace(ack.Error) == "" {
+		t.Fatalf("error should be populated on invalid seen payload: %+v", ack)
+	}
+
+	panes, err := st.ListWatchtowerPanes(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPanes(dev): %v", err)
+	}
+	if len(panes) != 1 {
+		t.Fatalf("panes len = %d, want 1", len(panes))
+	}
+	if panes[0].SeenRevision != 1 {
+		t.Fatalf("seen revision changed unexpectedly: %+v", panes[0])
+	}
+
+	select {
+	case evt := <-eventsCh:
+		t.Fatalf("unexpected seen event published: %+v", evt)
+	default:
+	}
+}
+
 func dialWebSocketPath(t *testing.T, serverURL, path string) net.Conn {
 	t.Helper()
 
@@ -456,6 +584,62 @@ func newHTTPUIStore(t *testing.T) *store.Store {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	return st
+}
+
+func seedWatchtowerSeenState(t *testing.T, st *store.Store) {
+	t.Helper()
+	now := time.Now().UTC()
+	if err := st.UpsertWatchtowerSession(context.Background(), store.WatchtowerSessionWrite{
+		SessionName:       "dev",
+		Attached:          1,
+		Windows:           1,
+		Panes:             1,
+		ActivityAt:        now,
+		LastPreview:       "line",
+		LastPreviewAt:     now,
+		LastPreviewPaneID: "%11",
+		UnreadWindows:     1,
+		UnreadPanes:       1,
+		Rev:               1,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession(dev): %v", err)
+	}
+	if err := st.UpsertWatchtowerWindow(context.Background(), store.WatchtowerWindowWrite{
+		SessionName:      "dev",
+		WindowIndex:      0,
+		Name:             "main",
+		Active:           true,
+		Layout:           "",
+		WindowActivityAt: now,
+		UnreadPanes:      1,
+		HasUnread:        true,
+		Rev:              1,
+		UpdatedAt:        now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow(dev,0): %v", err)
+	}
+	if err := st.UpsertWatchtowerPane(context.Background(), store.WatchtowerPaneWrite{
+		PaneID:         "%11",
+		SessionName:    "dev",
+		WindowIndex:    0,
+		PaneIndex:      0,
+		Title:          "shell",
+		Active:         true,
+		TTY:            "/dev/pts/11",
+		CurrentPath:    "/tmp",
+		StartCommand:   "zsh",
+		CurrentCommand: "zsh",
+		TailHash:       "hash",
+		TailPreview:    "line",
+		TailCapturedAt: now,
+		Revision:       2,
+		SeenRevision:   1,
+		ChangedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane(dev,%%11): %v", err)
+	}
 }
 
 type bufferedConn struct {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -225,17 +226,28 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 	_ = wsConn.WriteText(readyPayload)
 
 	readErrCh := make(chan error, 1)
+	sendReadErr := func(err error) {
+		select {
+		case readErrCh <- err:
+		default:
+		}
+	}
 	go func() {
 		for {
 			opcode, payload, readErr := wsConn.ReadMessage()
 			if readErr != nil {
-				readErrCh <- readErr
+				sendReadErr(readErr)
 				return
 			}
 			if opcode != ws.OpText {
 				continue
 			}
-			h.handleEventsClientMessage(payload)
+			if responsePayload := h.handleEventsClientMessage(payload); len(responsePayload) > 0 {
+				if err := wsConn.WriteText(responsePayload); err != nil {
+					sendReadErr(err)
+					return
+				}
+			}
 		}
 	}()
 
@@ -265,7 +277,30 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) handleEventsClientMessage(payload []byte) {
+func (h *Handler) handleEventsClientMessage(payload []byte) []byte {
+	if h == nil || len(payload) == 0 {
+		return nil
+	}
+
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(envelope.Type)) {
+	case "presence":
+		h.handleEventsPresenceClientMessage(payload)
+		return nil
+	case "seen":
+		return h.handleEventsSeenClientMessage(payload)
+	default:
+		return nil
+	}
+}
+
+func (h *Handler) handleEventsPresenceClientMessage(payload []byte) {
 	if h == nil || h.store == nil || len(payload) == 0 {
 		return
 	}
@@ -280,9 +315,6 @@ func (h *Handler) handleEventsClientMessage(payload []byte) {
 		Focused    bool   `json:"focused"`
 	}
 	if err := json.Unmarshal(payload, &msg); err != nil {
-		return
-	}
-	if strings.ToLower(strings.TrimSpace(msg.Type)) != "presence" {
 		return
 	}
 
@@ -317,6 +349,114 @@ func (h *Handler) handleEventsClientMessage(payload []byte) {
 	}); err != nil {
 		slog.Warn("events ws presence write failed", "terminal", terminalID, "err", err)
 	}
+}
+
+func (h *Handler) handleEventsSeenClientMessage(payload []byte) []byte {
+	if h == nil || h.store == nil || len(payload) == 0 {
+		return nil
+	}
+
+	var msg struct {
+		RequestID string `json:"requestId"`
+		Session   string `json:"session"`
+		Scope     string `json:"scope"`
+		WindowIdx int    `json:"windowIndex"`
+		PaneID    string `json:"paneId"`
+	}
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return nil
+	}
+
+	requestID := strings.TrimSpace(msg.RequestID)
+	sessionName := strings.TrimSpace(msg.Session)
+	scope := strings.ToLower(strings.TrimSpace(msg.Scope))
+	paneID := strings.TrimSpace(msg.PaneID)
+
+	ack := map[string]any{
+		"type":      "tmux.seen.ack",
+		"requestId": requestID,
+		"session":   sessionName,
+		"scope":     scope,
+		"acked":     false,
+		"globalRev": int64(0),
+	}
+	if paneID != "" {
+		ack["paneId"] = paneID
+	}
+	if msg.WindowIdx >= 0 {
+		ack["windowIndex"] = msg.WindowIdx
+	}
+
+	if !validate.SessionName(sessionName) {
+		ack["error"] = "invalid session name"
+		return marshalEventsWSMessage(ack)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	acked := false
+	var err error
+	switch scope {
+	case "pane":
+		if !strings.HasPrefix(paneID, "%") {
+			ack["error"] = "paneId must start with %"
+			return marshalEventsWSMessage(ack)
+		}
+		acked, err = h.store.MarkWatchtowerPaneSeen(ctx, sessionName, paneID)
+	case "window":
+		if msg.WindowIdx < 0 {
+			ack["error"] = "windowIndex must be >= 0"
+			return marshalEventsWSMessage(ack)
+		}
+		acked, err = h.store.MarkWatchtowerWindowSeen(ctx, sessionName, msg.WindowIdx)
+	case "session":
+		acked, err = h.store.MarkWatchtowerSessionSeen(ctx, sessionName)
+	default:
+		ack["error"] = "scope must be pane, window, or session"
+		return marshalEventsWSMessage(ack)
+	}
+	if err != nil {
+		ack["error"] = "failed to mark seen"
+		slog.Warn("events ws seen write failed", "session", sessionName, "scope", scope, "err", err)
+		return marshalEventsWSMessage(ack)
+	}
+
+	globalRev := int64(0)
+	if raw, getErr := h.store.GetWatchtowerRuntimeValue(ctx, "global_rev"); getErr == nil {
+		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil {
+			globalRev = parsed
+		}
+	}
+
+	ack["acked"] = acked
+	ack["globalRev"] = globalRev
+
+	if acked && h.events != nil {
+		h.events.Publish(events.NewEvent(events.TypeTmuxInspector, map[string]any{
+			"session": sessionName,
+			"action":  "seen",
+			"scope":   scope,
+		}))
+		h.events.Publish(events.NewEvent(events.TypeTmuxSessions, map[string]any{
+			"session": sessionName,
+			"action":  "seen",
+			"scope":   scope,
+		}))
+	}
+
+	return marshalEventsWSMessage(ack)
+}
+
+func marshalEventsWSMessage(payload map[string]any) []byte {
+	if payload == nil {
+		return nil
+	}
+	buf, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	return buf
 }
 
 type attachPTYOptions struct {

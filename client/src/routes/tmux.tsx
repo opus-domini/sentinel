@@ -97,6 +97,18 @@ type SessionActivityPatch = {
   rev?: number
 }
 
+type SeenAckMessage = {
+  type?: string
+  requestId?: string
+}
+
+type SeenCommandPayload = {
+  session: string
+  scope: 'pane' | 'window' | 'session'
+  paneId?: string
+  windowIndex?: number
+}
+
 function TmuxPage() {
   const { tokenRequired, defaultCwd } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -170,6 +182,8 @@ function TmuxPage() {
   const sessionsRef = useRef<Array<Session>>([])
   const tabsStateRef = useRef(tabsState)
   const seenAckKeyRef = useRef('')
+  const seenRequestSeqRef = useRef(0)
+  const seenAckWaitersRef = useRef(new Map<string, (ok: boolean) => void>())
   const presenceTerminalIDRef = useRef('')
   const presenceSocketRef = useRef<WebSocket | null>(null)
   const presenceLastSignatureRef = useRef('')
@@ -408,6 +422,52 @@ function TmuxPage() {
     [],
   )
 
+  const settlePendingSeenAcks = useCallback((ok: boolean) => {
+    if (seenAckWaitersRef.current.size === 0) {
+      return
+    }
+    const pending = Array.from(seenAckWaitersRef.current.values())
+    seenAckWaitersRef.current.clear()
+    for (const settle of pending) {
+      settle(ok)
+    }
+  }, [])
+
+  const sendSeenOverWS = useCallback((payload: SeenCommandPayload) => {
+    const socket = presenceSocketRef.current
+    if (socket === null || socket.readyState !== WebSocket.OPEN) {
+      return Promise.resolve(false)
+    }
+
+    seenRequestSeqRef.current += 1
+    const requestId = `seen-${Date.now()}-${seenRequestSeqRef.current}`
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      const settle = (ok: boolean) => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timeoutID)
+        seenAckWaitersRef.current.delete(requestId)
+        resolve(ok)
+      }
+      const timeoutID = window.setTimeout(() => {
+        settle(false)
+      }, 800)
+      seenAckWaitersRef.current.set(requestId, settle)
+      try {
+        socket.send(
+          JSON.stringify({
+            type: 'seen',
+            requestId,
+            ...payload,
+          }),
+        )
+      } catch {
+        settle(false)
+      }
+    })
+  }, [])
+
   const refreshInspector = useCallback(
     async (target: string, options?: { background?: boolean }) => {
       const session = target.trim()
@@ -480,6 +540,19 @@ function TmuxPage() {
       }
 
       try {
+        if (
+          await sendSeenOverWS({
+            session,
+            ...body,
+          })
+        ) {
+          return
+        }
+      } catch {
+        // Seen WS ack is best-effort.
+      }
+
+      try {
         await api<{ acked: boolean }>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/seen`,
           {
@@ -488,10 +561,10 @@ function TmuxPage() {
           },
         )
       } catch {
-        // Seen ack is best-effort.
+        // Seen HTTP fallback is best-effort.
       }
     },
-    [api],
+    [api, sendSeenOverWS],
   )
 
   const buildPresencePayload = useCallback(() => {
@@ -1581,13 +1654,23 @@ function TmuxPage() {
       socket.onmessage = (event) => {
         if (typeof event.data !== 'string') return
         try {
-          const msg = JSON.parse(event.data) as {
-            type?: string
+          const msg = JSON.parse(event.data) as SeenAckMessage & {
             payload?: {
               session?: string
               action?: string
               sessionPatches?: Array<SessionActivityPatch>
             }
+          }
+          if (msg.type === 'tmux.seen.ack') {
+            const requestId = (msg.requestId ?? '').trim()
+            if (requestId !== '') {
+              const settle = seenAckWaitersRef.current.get(requestId)
+              if (settle) {
+                seenAckWaitersRef.current.delete(requestId)
+                settle(true)
+              }
+            }
+            return
           }
           switch (msg.type) {
             case 'tmux.activity.updated':
@@ -1629,6 +1712,7 @@ function TmuxPage() {
       }
 
       socket.onclose = () => {
+        settlePendingSeenAcks(false)
         presenceSocketRef.current = null
         setEventsSocketConnected(false)
         if (closed) return
@@ -1642,6 +1726,7 @@ function TmuxPage() {
 
     return () => {
       closed = true
+      settlePendingSeenAcks(false)
       presenceSocketRef.current = null
       setEventsSocketConnected(false)
       if (reconnectTimer !== null) {
@@ -1665,6 +1750,7 @@ function TmuxPage() {
     refreshRecovery,
     refreshSessions,
     sendPresenceOverWS,
+    settlePendingSeenAcks,
     token,
   ])
 
