@@ -164,6 +164,7 @@ function TmuxPage() {
   const presenceHTTPInFlightRef = useRef(false)
   const activeWindowIndexRef = useRef<number | null>(null)
   const activePaneIDRef = useRef<string | null>(null)
+  const lastSessionsRefreshAtRef = useRef(0)
   const activeSessionProjectionRef = useRef<{
     name: string
     windows: number
@@ -301,6 +302,10 @@ function TmuxPage() {
       const unavailable = isTmuxBinaryMissingMessage(message)
       setTmuxUnavailable(unavailable)
       setConnection('error', message)
+    } finally {
+      if (gen === refreshGenerationRef.current) {
+        lastSessionsRefreshAtRef.current = Date.now()
+      }
     }
   }, [api, closeCurrentSocket, resetTerminal, setConnection])
 
@@ -1429,8 +1434,19 @@ function TmuxPage() {
     let closed = false
     let socket: WebSocket | null = null
 
-    const schedule = (kind: 'sessions' | 'inspector' | 'recovery') => {
+    const schedule = (
+      kind: 'sessions' | 'inspector' | 'recovery',
+      options?: { minGapMs?: number },
+    ) => {
       if (refreshTimerRef.current[kind] !== null) return
+      let delay = 180
+      if (kind === 'sessions' && (options?.minGapMs ?? 0) > 0) {
+        const elapsed = Date.now() - lastSessionsRefreshAtRef.current
+        const gap = options?.minGapMs ?? 0
+        if (elapsed < gap) {
+          delay = Math.max(delay, gap - elapsed)
+        }
+      }
       refreshTimerRef.current[kind] = window.setTimeout(() => {
         refreshTimerRef.current[kind] = null
         if (kind === 'sessions') {
@@ -1445,7 +1461,7 @@ function TmuxPage() {
           return
         }
         void refreshRecovery({ quiet: true })
-      }, 180)
+      }, delay)
     }
 
     const connect = () => {
@@ -1472,8 +1488,14 @@ function TmuxPage() {
           }
           switch (msg.type) {
             case 'tmux.activity.updated':
+              schedule('sessions', { minGapMs: 2_500 })
+              break
             case 'tmux.sessions.updated':
-              schedule('sessions')
+              if ((msg.payload?.action ?? '').trim().toLowerCase() === 'activity') {
+                schedule('sessions', { minGapMs: 2_500 })
+              } else {
+                schedule('sessions')
+              }
               break
             case 'tmux.inspector.updated': {
               const target = msg.payload?.session?.trim() ?? ''
