@@ -1200,6 +1200,36 @@ func defaultWindowName(sequence int) string {
 	return fmt.Sprintf("win-%d", sequence)
 }
 
+func parseNamedSequence(name, prefix string) (int, bool) {
+	trimmed := strings.TrimSpace(name)
+	if !strings.HasPrefix(trimmed, prefix) {
+		return 0, false
+	}
+	raw := strings.TrimPrefix(trimmed, prefix)
+	if raw == "" {
+		return 0, false
+	}
+	seq, err := strconv.Atoi(raw)
+	if err != nil || seq < 1 {
+		return 0, false
+	}
+	return seq, true
+}
+
+func nextWindowNameSequence(windows []tmux.Window) int {
+	next := 1
+	for _, window := range windows {
+		seq, ok := parseNamedSequence(window.Name, "win-")
+		if !ok {
+			continue
+		}
+		if candidate := seq + 1; candidate > next {
+			next = candidate
+		}
+	}
+	return next
+}
+
 func defaultPaneTitle(paneID string) string {
 	suffix := strings.TrimPrefix(strings.TrimSpace(paneID), "%")
 	if suffix == "" {
@@ -1225,10 +1255,21 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	windowNameSequence := createdWindow.Index + 1
+	if windowNameSequence < 1 {
+		windowNameSequence = 1
+	}
 	if windows, listErr := h.tmux.ListWindows(ctx, session); listErr != nil {
 		slog.Warn("failed to resolve window count for default name", "session", session, "index", createdWindow.Index, "err", listErr)
-	} else if len(windows) > 0 {
-		windowNameSequence = len(windows)
+	} else if next := nextWindowNameSequence(windows); next > windowNameSequence {
+		windowNameSequence = next
+	}
+	if h.store != nil {
+		allocatedSequence, allocErr := h.store.AllocateNextWindowSequence(ctx, session, windowNameSequence)
+		if allocErr != nil {
+			slog.Warn("failed to allocate default window sequence", "session", session, "min", windowNameSequence, "err", allocErr)
+		} else {
+			windowNameSequence = allocatedSequence
+		}
 	}
 	windowName := defaultWindowName(windowNameSequence)
 	if err := h.tmux.RenameWindow(ctx, session, createdWindow.Index, windowName); err != nil {

@@ -60,6 +60,8 @@ func New(dbPath string) (*Store, error) {
 
 	// Migrate: add icon column (idempotent — ignore "duplicate column" error).
 	_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN icon TEXT DEFAULT ''")
+	// Migrate: add default naming sequence for tmux windows.
+	_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN next_window_seq INTEGER NOT NULL DEFAULT 1")
 
 	s := &Store{db: db}
 	if err := s.initRecoverySchema(); err != nil {
@@ -135,6 +137,49 @@ func (s *Store) SetIcon(ctx context.Context, name, icon string) error {
 		icon, name,
 	)
 	return err
+}
+
+func (s *Store) AllocateNextWindowSequence(ctx context.Context, name string, minimum int) (int, error) {
+	if minimum < 1 {
+		minimum = 1
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO sessions (name, hash, last_content, updated_at)
+		 VALUES (?, '', '', datetime('now'))
+		 ON CONFLICT(name) DO NOTHING`,
+		name,
+	); err != nil {
+		return 0, err
+	}
+
+	var current int
+	if err := tx.QueryRowContext(ctx,
+		"SELECT next_window_seq FROM sessions WHERE name = ?",
+		name,
+	).Scan(&current); err != nil {
+		return 0, err
+	}
+	if current < minimum {
+		current = minimum
+	}
+	next := current + 1
+
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE sessions SET next_window_seq = ? WHERE name = ?",
+		next, name,
+	); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return current, nil
 }
 
 func (s *Store) Close() error {

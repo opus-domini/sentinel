@@ -260,6 +260,71 @@ func TestSetIcon(t *testing.T) {
 	})
 }
 
+func TestAllocateNextWindowSequence(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("allocates monotonically for same session", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		first, err := s.AllocateNextWindowSequence(ctx, "dev", 1)
+		if err != nil {
+			t.Fatalf("AllocateNextWindowSequence(first) error = %v", err)
+		}
+		second, err := s.AllocateNextWindowSequence(ctx, "dev", 1)
+		if err != nil {
+			t.Fatalf("AllocateNextWindowSequence(second) error = %v", err)
+		}
+
+		if first != 1 || second != 2 {
+			t.Fatalf("allocated (%d, %d), want (1, 2)", first, second)
+		}
+	})
+
+	t.Run("respects minimum floor for legacy sessions", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		seq, err := s.AllocateNextWindowSequence(ctx, "dev", 5)
+		if err != nil {
+			t.Fatalf("AllocateNextWindowSequence(min=5) error = %v", err)
+		}
+		next, err := s.AllocateNextWindowSequence(ctx, "dev", 1)
+		if err != nil {
+			t.Fatalf("AllocateNextWindowSequence(next) error = %v", err)
+		}
+
+		if seq != 5 || next != 6 {
+			t.Fatalf("allocated (%d, %d), want (5, 6)", seq, next)
+		}
+	})
+
+	t.Run("keeps sequence after rename", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		if _, err := s.AllocateNextWindowSequence(ctx, "old", 1); err != nil {
+			t.Fatalf("AllocateNextWindowSequence(old) error = %v", err)
+		}
+		if err := s.Rename(ctx, "old", "new"); err != nil {
+			t.Fatalf("Rename(old->new) error = %v", err)
+		}
+
+		seq, err := s.AllocateNextWindowSequence(ctx, "new", 1)
+		if err != nil {
+			t.Fatalf("AllocateNextWindowSequence(new) error = %v", err)
+		}
+		if seq != 2 {
+			t.Fatalf("allocated seq = %d, want 2", seq)
+		}
+	})
+}
+
 func TestClose(t *testing.T) {
 	t.Parallel()
 

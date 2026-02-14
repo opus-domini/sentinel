@@ -2024,11 +2024,53 @@ func TestNewWindowHandler(t *testing.T) {
 		if w.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", w.Code)
 		}
-		if renamedWindow != "1:win-3" {
-			t.Fatalf("renamed window = %q, want %q", renamedWindow, "1:win-3")
+		if renamedWindow != "1:win-4" {
+			t.Fatalf("renamed window = %q, want %q", renamedWindow, "1:win-4")
 		}
 		if renamedPane != "%42:pan-42" {
 			t.Fatalf("renamed pane = %q, want %q", renamedPane, "%42:pan-42")
+		}
+	})
+
+	t.Run("allocates monotonic default window names when tmux reuses index", func(t *testing.T) {
+		t.Parallel()
+
+		renamedWindows := make([]string, 0, 2)
+		callCount := 0
+		tm := &mockTmux{
+			newWindowFn: func(_ context.Context, _ string) (tmux.NewWindowResult, error) {
+				callCount++
+				return tmux.NewWindowResult{Index: 0, PaneID: "%10"}, nil
+			},
+			listWindowsFn: func(_ context.Context, _ string) ([]tmux.Window, error) {
+				return nil, fmt.Errorf("temporary list error")
+			},
+			renameWindowFn: func(_ context.Context, _ string, index int, name string) error {
+				renamedWindows = append(renamedWindows, fmt.Sprintf("%d:%s", index, name))
+				return nil
+			},
+		}
+
+		h := newTestHandler(t, tm, nil)
+
+		for i := 0; i < 2; i++ {
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
+			r.SetPathValue("session", "dev")
+			h.newWindow(w, r)
+			if w.Code != http.StatusNoContent {
+				t.Fatalf("call %d status = %d, want 204", i+1, w.Code)
+			}
+		}
+
+		if callCount != 2 {
+			t.Fatalf("newWindow calls = %d, want 2", callCount)
+		}
+		if len(renamedWindows) != 2 {
+			t.Fatalf("renamed windows = %d, want 2", len(renamedWindows))
+		}
+		if renamedWindows[0] != "0:win-1" || renamedWindows[1] != "0:win-2" {
+			t.Fatalf("renamed windows = %v, want [0:win-1 0:win-2]", renamedWindows)
 		}
 	})
 

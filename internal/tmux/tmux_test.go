@@ -340,3 +340,53 @@ func TestParseSplitPaneOutput(t *testing.T) {
 		}
 	})
 }
+
+func TestNextWindowIndexFromListOutput(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		out    string
+		want   int
+		wantOK bool
+	}{
+		{
+			name:   "sequential indexes",
+			out:    "0\n1\n2\n",
+			want:   3,
+			wantOK: true,
+		},
+		{
+			name:   "with gaps uses rightmost",
+			out:    "0\n2\n",
+			want:   3,
+			wantOK: true,
+		},
+		{
+			name:   "ignores invalid rows",
+			out:    "0\nfoo\n5\n",
+			want:   6,
+			wantOK: true,
+		},
+		{
+			name:   "no valid indexes",
+			out:    "\nfoo\n-1\n",
+			want:   0,
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := nextWindowIndexFromListOutput(tt.out)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if got != tt.want {
+				t.Fatalf("nextWindowIndexFromListOutput(%q) = %d, want %d", tt.out, got, tt.want)
+			}
+		})
+	}
+}

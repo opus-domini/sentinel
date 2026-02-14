@@ -395,6 +395,11 @@ func SelectPane(ctx context.Context, paneID string) error {
 
 func NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
 	target := fmt.Sprintf("%s:", session)
+	if indexesOut, listErr := run(ctx, "list-windows", "-t", session, "-F", "#{window_index}"); listErr == nil {
+		if nextIndex, ok := nextWindowIndexFromListOutput(indexesOut); ok {
+			target = fmt.Sprintf("%s:%d", session, nextIndex)
+		}
+	}
 	out, err := run(ctx, "new-window", "-P", "-F", "#{window_index}\t#{pane_id}", "-t", target)
 	if err != nil {
 		return NewWindowResult{}, err
@@ -639,6 +644,27 @@ func parseSplitPaneOutput(out string) (string, error) {
 		}
 	}
 	return paneID, nil
+}
+
+func nextWindowIndexFromListOutput(out string) (int, bool) {
+	maxIndex := -1
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		raw := strings.TrimSpace(line)
+		if raw == "" {
+			continue
+		}
+		index, err := strconv.Atoi(raw)
+		if err != nil || index < 0 {
+			continue
+		}
+		if index > maxIndex {
+			maxIndex = index
+		}
+	}
+	if maxIndex < 0 {
+		return 0, false
+	}
+	return maxIndex + 1, true
 }
 
 func run(ctx context.Context, args ...string) (string, error) {
