@@ -55,12 +55,12 @@ export default function SessionListItem({
   }
 
   return (
-    <li>
+    <li className="min-w-0">
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <button
             className={cn(
-              'group w-full cursor-pointer rounded-lg border bg-surface-elevated px-2.5 py-2 text-left outline-none transition-colors',
+              'group w-full max-w-full cursor-pointer overflow-hidden rounded-lg border bg-surface-elevated px-2.5 py-2 text-left outline-none transition-colors',
               isActive
                 ? 'border-primary/60 bg-surface-active-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,.25)]'
                 : 'border-border-subtle hover:border-border hover:bg-secondary focus-within:border-border',
@@ -69,7 +69,7 @@ export default function SessionListItem({
             onClick={handleOpen}
           >
             {/* Line 1: Icon + Name + Hash + Activity */}
-            <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
               <SessionIcon
                 className={cn(
                   'h-3.5 w-3.5 shrink-0',
@@ -141,7 +141,7 @@ export default function SessionListItem({
             {/* Line 2: Content preview (2 lines max, reserved height) */}
             <div
               className={cn(
-                'my-1 line-clamp-2 min-h-[2lh] overflow-hidden break-all text-[10px] leading-[1.4] italic',
+                'my-1 line-clamp-2 min-h-[2lh] max-w-full overflow-hidden break-all [overflow-wrap:anywhere] text-[10px] leading-[1.4] italic',
                 unreadPanes > 0
                   ? 'text-secondary-foreground'
                   : 'text-muted-foreground',
