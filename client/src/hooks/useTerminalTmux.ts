@@ -9,6 +9,7 @@ import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { attachTouchWheelBridge } from '@/lib/touchWheelBridge'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
 import { buildWSProtocols } from '@/lib/wsAuth'
 
@@ -45,6 +46,7 @@ type SessionRuntime = {
   onDataDispose: Disposable
   onResizeDispose: Disposable
   contextMenuDispose: Disposable
+  touchWheelDispose: Disposable
   webglContextLossDispose: Disposable
   hostResizeObserver: ResizeObserver | null
   hostResizeRafId: number | null
@@ -245,6 +247,14 @@ export function useTerminalTmux({
     (runtime: SessionRuntime, host: HTMLDivElement) => {
       observeHostResize(runtime, host)
       if (runtime.terminal.element) {
+        runtime.touchWheelDispose.dispose()
+        runtime.touchWheelDispose = { dispose: () => undefined }
+        if (isMobileRef.current && allowWheelInAlternateBuffer) {
+          runtime.touchWheelDispose = attachTouchWheelBridge({
+            host,
+            dispatchTarget: runtime.terminal.element,
+          })
+        }
         return
       }
 
@@ -302,6 +312,16 @@ export function useTerminalTmux({
           }
         }
 
+        runtime.touchWheelDispose.dispose()
+        runtime.touchWheelDispose = { dispose: () => undefined }
+        if (isMobileRef.current && allowWheelInAlternateBuffer) {
+          const dispatchTarget = host.querySelector<HTMLElement>('.xterm')
+          runtime.touchWheelDispose = attachTouchWheelBridge({
+            host,
+            dispatchTarget: dispatchTarget ?? host,
+          })
+        }
+
         // FitAddon floors column/row counts, so a residual strip can appear.
         // Keep the xterm root in sync with theme background to hide it.
         const themeBg = getTerminalTheme(themeId).colors.background ?? ''
@@ -317,6 +337,7 @@ export function useTerminalTmux({
       observeHostResize,
       suppressBrowserContextMenu,
       themeId,
+      allowWheelInAlternateBuffer,
     ],
   )
 
@@ -546,6 +567,7 @@ export function useTerminalTmux({
         onDataDispose: { dispose: () => undefined },
         onResizeDispose: { dispose: () => undefined },
         contextMenuDispose: { dispose: () => undefined },
+        touchWheelDispose: { dispose: () => undefined },
         webglContextLossDispose: webglAddon.onContextLoss(() => {
           console.warn(`sentinel: webgl context lost (${session})`)
         }),
@@ -604,6 +626,7 @@ export function useTerminalTmux({
       runtime.onDataDispose.dispose()
       runtime.onResizeDispose.dispose()
       runtime.contextMenuDispose.dispose()
+      runtime.touchWheelDispose.dispose()
       runtime.webglContextLossDispose.dispose()
       runtime.terminal.dispose()
       runtimesRef.current.delete(runtime.session)
@@ -632,6 +655,8 @@ export function useTerminalTmux({
           openRuntimeInHost(runtime, node)
         } else if (runtime) {
           cleanupHostResizeObserver(runtime)
+          runtime.touchWheelDispose.dispose()
+          runtime.touchWheelDispose = { dispose: () => undefined }
         }
       }
 
@@ -851,6 +876,25 @@ export function useTerminalTmux({
 
     publishActiveRuntimeState()
   }, [createRuntime, disposeRuntime, openTabs, publishActiveRuntimeState])
+
+  useEffect(() => {
+    for (const runtime of runtimesRef.current.values()) {
+      runtime.touchWheelDispose.dispose()
+      runtime.touchWheelDispose = { dispose: () => undefined }
+      if (!isMobile || !allowWheelInAlternateBuffer) {
+        continue
+      }
+      const host = hostsRef.current.get(runtime.session)
+      const terminalElement = runtime.terminal.element
+      if (!host || !terminalElement) {
+        continue
+      }
+      runtime.touchWheelDispose = attachTouchWheelBridge({
+        host,
+        dispatchTarget: terminalElement,
+      })
+    }
+  }, [allowWheelInAlternateBuffer, isMobile])
 
   useEffect(() => {
     const onWindowResize = () => {
