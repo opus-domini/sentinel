@@ -4,11 +4,13 @@ import {
   addPendingPaneClose,
   addPendingWindowClose,
   addPendingWindowCreate,
+  buildPendingSplitPaneID,
   clearPendingPaneClosesForSession,
   clearPendingWindowClosesForSession,
   clearPendingWindowCreatesForSession,
   clearPendingWindowPaneFloor,
   clearPendingWindowPaneFloorsForSession,
+  isPendingSplitPaneID,
   mergePendingInspectorSnapshot,
   removePendingPaneClose,
   removePendingWindowClose,
@@ -88,6 +90,18 @@ describe('pending optimistic inspector maps', () => {
     expect(pendingCloses.has('alpha')).toBe(false)
     expect(pendingPaneCloses.has('alpha')).toBe(false)
     expect(pendingFloors.has('alpha')).toBe(false)
+  })
+})
+
+describe('pending split pane ids', () => {
+  it('builds deterministic ids and detects pending panes', () => {
+    const first = buildPendingSplitPaneID('alpha', 1, 2)
+    const second = buildPendingSplitPaneID('alpha', 1, 2)
+    const other = buildPendingSplitPaneID('alpha', 1, 3)
+    expect(first).toBe(second)
+    expect(first).not.toBe(other)
+    expect(isPendingSplitPaneID(first)).toBe(true)
+    expect(isPendingSplitPaneID('%1')).toBe(false)
   })
 })
 
@@ -172,7 +186,28 @@ describe('mergePendingInspectorSnapshot', () => {
       options,
     )
     expect(stale.windows[0]?.panes).toBe(3)
+    expect(stale.panes.map((item) => item.paneId)).toEqual([
+      '%1',
+      '%2',
+      buildPendingSplitPaneID('alpha', 0, 2),
+    ])
+    expect(
+      stale.panes.find((item) => item.paneId === buildPendingSplitPaneID('alpha', 0, 2))
+        ?.title,
+    ).toBe('new')
     expect(stale.confirmedWindowPaneFloors).toEqual([])
+
+    const stillPendingWithOptimisticPane = mergePendingInspectorSnapshot(
+      'alpha',
+      [buildWindow('alpha', 0, 3)],
+      [
+        buildPane('alpha', 0, 0, '%1'),
+        buildPane('alpha', 0, 1, '%2'),
+        buildPane('alpha', 0, 2, buildPendingSplitPaneID('alpha', 0, 2)),
+      ],
+      options,
+    )
+    expect(stillPendingWithOptimisticPane.confirmedWindowPaneFloors).toEqual([])
 
     const converged = mergePendingInspectorSnapshot(
       'alpha',

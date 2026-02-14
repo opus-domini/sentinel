@@ -3,6 +3,24 @@ import type { PaneInfo, WindowInfo } from '@/types'
 export type PendingWindowIndexMap = Map<string, Set<number>>
 export type PendingPaneIDMap = Map<string, Set<string>>
 export type PendingWindowPaneFloorMap = Map<string, Map<number, number>>
+const pendingSplitPanePrefix = '__pending_split__'
+
+export function buildPendingSplitPaneID(
+  session: string,
+  windowIndex: number,
+  slot: number,
+): string {
+  const name = normalizeSession(session)
+  const index = normalizeWindowIndex(windowIndex)
+  if (name === '' || index === null || !Number.isFinite(slot) || slot < 0) {
+    return `${pendingSplitPanePrefix}:invalid`
+  }
+  return `${pendingSplitPanePrefix}:${name}:${index}:${Math.trunc(slot)}`
+}
+
+export function isPendingSplitPaneID(paneID: string): boolean {
+  return paneID.trim().startsWith(`${pendingSplitPanePrefix}:`)
+}
 
 function normalizeSession(session: string): string {
   return session.trim()
@@ -345,15 +363,82 @@ export function mergePendingInspectorSnapshot(
     }
     return visibleWindowIndexes.has(windowIndex)
   })
-
+  const paneIDs = new Set(
+    mergedPanes.map((paneInfo) => paneInfo.paneId.trim()).filter((id) => id !== ''),
+  )
   const paneCountByWindow = new Map<number, number>()
+  const realPaneCountByWindow = new Map<number, number>()
+  const paneMaxIndexByWindow = new Map<number, number>()
   for (const paneInfo of mergedPanes) {
     const windowIndex = normalizeWindowIndex(paneInfo.windowIndex)
     if (windowIndex === null) continue
     paneCountByWindow.set(windowIndex, (paneCountByWindow.get(windowIndex) ?? 0) + 1)
+    if (!isPendingSplitPaneID(paneInfo.paneId)) {
+      realPaneCountByWindow.set(
+        windowIndex,
+        (realPaneCountByWindow.get(windowIndex) ?? 0) + 1,
+      )
+    }
+    const paneIndex = normalizeWindowIndex(paneInfo.paneIndex) ?? 0
+    paneMaxIndexByWindow.set(
+      windowIndex,
+      Math.max(paneMaxIndexByWindow.get(windowIndex) ?? -1, paneIndex),
+    )
   }
 
   const confirmedWindowPaneFloors: Array<number> = []
+  for (const windowInfo of mergedWindows) {
+    const windowIndex = normalizeWindowIndex(windowInfo.index)
+    if (windowIndex === null) continue
+    const floor = pendingWindowPaneFloorMap?.get(windowIndex)
+    if (
+      typeof floor !== 'number' ||
+      !Number.isFinite(floor) ||
+      floor < 0
+    ) {
+      continue
+    }
+    const normalizedFloor = Math.trunc(floor)
+    const currentRealPaneCount = realPaneCountByWindow.get(windowIndex) ?? 0
+    const currentPaneCount = paneCountByWindow.get(windowIndex) ?? 0
+    if (currentRealPaneCount >= normalizedFloor) {
+      confirmedWindowPaneFloors.push(windowIndex)
+      continue
+    }
+
+    let nextPaneIndex = (paneMaxIndexByWindow.get(windowIndex) ?? -1) + 1
+    for (let offset = 0; offset < normalizedFloor - currentPaneCount; offset += 1) {
+      const slot = currentPaneCount + offset
+      const pendingPaneID = buildPendingSplitPaneID(name, windowIndex, slot)
+      if (paneIDs.has(pendingPaneID)) {
+        continue
+      }
+      paneIDs.add(pendingPaneID)
+      mergedPanes.push({
+        session: name,
+        windowIndex,
+        paneIndex: nextPaneIndex,
+        paneId: pendingPaneID,
+        title: 'new',
+        active: false,
+        tty: '',
+        hasUnread: false,
+      })
+      nextPaneIndex += 1
+    }
+    paneCountByWindow.set(windowIndex, normalizedFloor)
+    paneMaxIndexByWindow.set(windowIndex, nextPaneIndex - 1)
+  }
+
+  if (mergedPanes.length > 1) {
+    mergedPanes.sort((left, right) => {
+      if (left.windowIndex !== right.windowIndex) {
+        return left.windowIndex - right.windowIndex
+      }
+      return left.paneIndex - right.paneIndex
+    })
+  }
+
   const nextWindows = mergedWindows.map((windowInfo) => {
     const windowIndex = normalizeWindowIndex(windowInfo.index)
     if (windowIndex === null) return windowInfo
@@ -363,16 +448,6 @@ export function mergePendingInspectorSnapshot(
       paneCount = Math.max(1, paneCount, windowInfo.panes)
     } else if (paneCount === 0) {
       paneCount = windowInfo.panes
-    }
-
-    const floor = pendingWindowPaneFloorMap?.get(windowIndex)
-    if (typeof floor === 'number' && Number.isFinite(floor) && floor >= 0) {
-      const normalizedFloor = Math.trunc(floor)
-      if (paneCount >= normalizedFloor) {
-        confirmedWindowPaneFloors.push(windowIndex)
-      } else {
-        paneCount = normalizedFloor
-      }
     }
 
     if (paneCount === windowInfo.panes) {

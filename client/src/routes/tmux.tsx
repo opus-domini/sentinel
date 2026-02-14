@@ -74,11 +74,13 @@ import {
   addPendingPaneClose,
   addPendingWindowClose,
   addPendingWindowCreate,
+  buildPendingSplitPaneID,
   clearPendingPaneClosesForSession,
   clearPendingWindowClosesForSession,
   clearPendingWindowCreatesForSession,
   clearPendingWindowPaneFloor,
   clearPendingWindowPaneFloorsForSession,
+  isPendingSplitPaneID,
   mergePendingInspectorSnapshot,
   removePendingPaneClose,
   removePendingWindowClose,
@@ -1757,6 +1759,10 @@ function TmuxPage() {
         pushErrorToast('Rename Pane', 'no active session')
         return
       }
+      if (isPendingSplitPaneID(paneID)) {
+        pushErrorToast('Rename Pane', 'wait for pane creation to finish')
+        return
+      }
       const sanitized = slugifyTmuxName(title).trim()
       if (!sanitized) {
         pushErrorToast('Rename Pane', 'pane title required')
@@ -1841,6 +1847,7 @@ function TmuxPage() {
     (paneID: string) => {
       const active = tabsStateRef.current.activeSession
       if (!active || !paneID.trim()) return
+      if (isPendingSplitPaneID(paneID)) return
       if (activePaneIDRef.current === paneID) return
       const paneInfo = panes.find((p) => p.paneId === paneID)
       setInspectorError('')
@@ -2011,6 +2018,7 @@ function TmuxPage() {
     (paneID: string) => {
       const active = tabsStateRef.current.activeSession
       if (!active || !paneID.trim()) return
+      if (isPendingSplitPaneID(paneID)) return
       const changedAt = new Date().toISOString()
       addPendingPaneClose(pendingClosePanesRef.current, active, paneID)
       const removed = panes.find((p) => p.paneId === paneID)
@@ -2145,6 +2153,11 @@ function TmuxPage() {
       const expectedPaneFloor =
         (windows.find((windowInfo) => windowInfo.index === target.windowIndex)
           ?.panes ?? inWin.length) + 1
+      const pendingPaneID = buildPendingSplitPaneID(
+        active,
+        target.windowIndex,
+        inWin.length,
+      )
       setPendingWindowPaneFloor(
         pendingWindowPaneFloorsRef.current,
         active,
@@ -2171,10 +2184,35 @@ function TmuxPage() {
         })),
       )
       setPanes((prev) =>
-        prev.map((p) => ({ ...p, active: p.paneId === targetID })),
+        {
+          const inWindow = prev.filter(
+            (paneInfo) => paneInfo.windowIndex === target.windowIndex,
+          )
+          const nextPaneIndex =
+            inWindow.reduce(
+              (highest, paneInfo) => Math.max(highest, paneInfo.paneIndex),
+              -1,
+            ) + 1
+          const withoutPending = prev.filter(
+            (paneInfo) => paneInfo.paneId !== pendingPaneID,
+          )
+          return [
+            ...withoutPending.map((p) => ({ ...p, active: false })),
+            {
+              session: active,
+              windowIndex: target.windowIndex,
+              paneIndex: nextPaneIndex,
+              paneId: pendingPaneID,
+              title: 'new',
+              active: true,
+              tty: '',
+              hasUnread: false,
+            },
+          ]
+        },
       )
       setActiveWindowIndexOverride(target.windowIndex)
-      setActivePaneIDOverride(targetID)
+      setActivePaneIDOverride(pendingPaneID)
       void api<void>(
         `/api/tmux/sessions/${encodeURIComponent(active)}/split-pane`,
         {

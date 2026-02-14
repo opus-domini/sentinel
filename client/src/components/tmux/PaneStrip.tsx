@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/context-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { isPendingSplitPaneID } from '@/lib/tmuxInspectorOptimistic'
 import { cn } from '@/lib/utils'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 
@@ -24,6 +25,26 @@ type PaneStripProps = {
   onRenamePane: (paneInfo: PaneInfo) => void
   onSplitPaneVertical: () => void
   onSplitPaneHorizontal: () => void
+}
+
+function parsePendingSplitSlot(paneID: string): number {
+  const parts = paneID.trim().split(':')
+  const rawSlot = parts.at(-1) ?? ''
+  const slot = Number.parseInt(rawSlot, 10)
+  if (!Number.isFinite(slot) || slot < 0) {
+    return Number.MAX_SAFE_INTEGER
+  }
+  return slot
+}
+
+function parsePaneIDOrder(paneID: string): number | null {
+  const trimmed = paneID.trim()
+  if (!trimmed.startsWith('%')) return null
+  const raw = trimmed.slice(1)
+  if (raw === '') return null
+  const numeric = Number.parseInt(raw, 10)
+  if (!Number.isFinite(numeric) || numeric < 0) return null
+  return numeric
 }
 
 export default function PaneStrip({
@@ -43,6 +64,19 @@ export default function PaneStrip({
   const sortedPanes = [...panes].sort((left, right) => {
     if (left.windowIndex !== right.windowIndex) {
       return left.windowIndex - right.windowIndex
+    }
+    const leftPending = isPendingSplitPaneID(left.paneId)
+    const rightPending = isPendingSplitPaneID(right.paneId)
+    if (leftPending !== rightPending) {
+      return leftPending ? 1 : -1
+    }
+    if (leftPending && rightPending) {
+      return parsePendingSplitSlot(left.paneId) - parsePendingSplitSlot(right.paneId)
+    }
+    const leftIDOrder = parsePaneIDOrder(left.paneId)
+    const rightIDOrder = parsePaneIDOrder(right.paneId)
+    if (leftIDOrder !== null && rightIDOrder !== null && leftIDOrder !== rightIDOrder) {
+      return leftIDOrder - rightIDOrder
     }
     return left.paneIndex - right.paneIndex
   })
@@ -119,6 +153,8 @@ export default function PaneStrip({
       {visiblePanes.map((paneInfo) => {
         const isActive = activePaneID === paneInfo.paneId
         const hasUnread = paneInfo.hasUnread ?? false
+        const isPending = isPendingSplitPaneID(paneInfo.paneId)
+        const canInteract = !isPending
         const paneLabel =
           paneInfo.title.trim() !== '' ? paneInfo.title : paneInfo.paneId
         return (
@@ -131,17 +167,28 @@ export default function PaneStrip({
                     ? 'border-primary/50 text-primary-text'
                     : hasUnread
                       ? 'border-amber-400/60 text-amber-100'
+                      : isPending
+                        ? 'border-border-subtle text-muted-foreground'
                       : 'border-border text-secondary-foreground',
                 )}
               >
                 <button
-                  className="inline-flex cursor-pointer items-center gap-1 px-1.5 py-0.5 whitespace-nowrap hover:text-foreground"
+                  className={cn(
+                    'inline-flex items-center gap-1 px-1.5 py-0.5 whitespace-nowrap',
+                    canInteract
+                      ? 'cursor-pointer hover:text-foreground'
+                      : 'cursor-default opacity-80',
+                  )}
                   type="button"
-                  onClick={() => onSelectPane(paneInfo.paneId)}
+                  disabled={!canInteract}
+                  onClick={() => {
+                    if (!canInteract) return
+                    onSelectPane(paneInfo.paneId)
+                  }}
                 >
                   {isMobile ? paneInfo.paneIndex : paneLabel}
                 </button>
-                {!isMobile && (
+                {!isMobile && canInteract && (
                   <button
                     className="grid h-5 w-5 cursor-pointer place-items-center border-l border-border-subtle text-secondary-foreground hover:bg-surface-close-hover hover:text-destructive-foreground"
                     type="button"
@@ -154,12 +201,22 @@ export default function PaneStrip({
               </div>
             </ContextMenuTrigger>
             <ContextMenuContent className="w-44">
-              <ContextMenuItem onSelect={() => onRenamePane(paneInfo)}>
+              <ContextMenuItem
+                disabled={!canInteract}
+                onSelect={() => {
+                  if (!canInteract) return
+                  onRenamePane(paneInfo)
+                }}
+              >
                 Rename pane
               </ContextMenuItem>
               <ContextMenuItem
+                disabled={!canInteract}
                 className="text-destructive-foreground focus:text-destructive-foreground"
-                onSelect={() => onClosePane(paneInfo.paneId)}
+                onSelect={() => {
+                  if (!canInteract) return
+                  onClosePane(paneInfo.paneId)
+                }}
               >
                 Close pane
               </ContextMenuItem>
