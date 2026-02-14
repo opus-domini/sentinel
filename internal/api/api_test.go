@@ -1129,42 +1129,6 @@ func TestDeleteSessionHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("applies default names for new window and first pane", func(t *testing.T) {
-		t.Parallel()
-
-		renamedWindow := ""
-		renamedPane := ""
-		tm := &mockTmux{
-			newWindowFn: func(_ context.Context, _ string) (tmux.NewWindowResult, error) {
-				return tmux.NewWindowResult{Index: 7, PaneID: "%42"}, nil
-			},
-			renameWindowFn: func(_ context.Context, _ string, index int, name string) error {
-				renamedWindow = fmt.Sprintf("%d:%s", index, name)
-				return nil
-			},
-			renamePaneFn: func(_ context.Context, paneID, title string) error {
-				renamedPane = fmt.Sprintf("%s:%s", paneID, title)
-				return nil
-			},
-		}
-
-		h := newTestHandler(t, tm, nil)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
-		r.SetPathValue("session", "dev")
-		h.newWindow(w, r)
-
-		if w.Code != http.StatusNoContent {
-			t.Fatalf("status = %d, want 204", w.Code)
-		}
-		if renamedWindow != "7:win-7" {
-			t.Fatalf("renamed window = %q, want %q", renamedWindow, "7:win-7")
-		}
-		if renamedPane != "%42:pan-42" {
-			t.Fatalf("renamed pane = %q, want %q", renamedPane, "%42:pan-42")
-		}
-	})
-
 	t.Run("invalid name", func(t *testing.T) {
 		t.Parallel()
 
@@ -2022,6 +1986,49 @@ func TestNewWindowHandler(t *testing.T) {
 
 		if w.Code != http.StatusNoContent {
 			t.Errorf("status = %d, want 204", w.Code)
+		}
+	})
+
+	t.Run("applies default names for new window and first pane", func(t *testing.T) {
+		t.Parallel()
+
+		renamedWindow := ""
+		renamedPane := ""
+		tm := &mockTmux{
+			newWindowFn: func(_ context.Context, _ string) (tmux.NewWindowResult, error) {
+				return tmux.NewWindowResult{Index: 1, PaneID: "%42"}, nil
+			},
+			listWindowsFn: func(_ context.Context, _ string) ([]tmux.Window, error) {
+				return []tmux.Window{
+					{Index: 0, Name: "win-1"},
+					{Index: 1, Name: "win-3"},
+					{Index: 2, Name: "zsh"},
+				}, nil
+			},
+			renameWindowFn: func(_ context.Context, _ string, index int, name string) error {
+				renamedWindow = fmt.Sprintf("%d:%s", index, name)
+				return nil
+			},
+			renamePaneFn: func(_ context.Context, paneID, title string) error {
+				renamedPane = fmt.Sprintf("%s:%s", paneID, title)
+				return nil
+			},
+		}
+
+		h := newTestHandler(t, tm, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
+		r.SetPathValue("session", "dev")
+		h.newWindow(w, r)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", w.Code)
+		}
+		if renamedWindow != "1:win-3" {
+			t.Fatalf("renamed window = %q, want %q", renamedWindow, "1:win-3")
+		}
+		if renamedPane != "%42:pan-42" {
+			t.Fatalf("renamed pane = %q, want %q", renamedPane, "%42:pan-42")
 		}
 	})
 

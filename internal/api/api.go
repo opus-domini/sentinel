@@ -1193,8 +1193,11 @@ func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func defaultWindowName(index int) string {
-	return fmt.Sprintf("win-%d", index)
+func defaultWindowName(sequence int) string {
+	if sequence < 1 {
+		sequence = 1
+	}
+	return fmt.Sprintf("win-%d", sequence)
 }
 
 func defaultPaneTitle(paneID string) string {
@@ -1221,7 +1224,13 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	windowName := defaultWindowName(createdWindow.Index)
+	windowNameSequence := createdWindow.Index + 1
+	if windows, listErr := h.tmux.ListWindows(ctx, session); listErr != nil {
+		slog.Warn("failed to resolve window count for default name", "session", session, "index", createdWindow.Index, "err", listErr)
+	} else if len(windows) > 0 {
+		windowNameSequence = len(windows)
+	}
+	windowName := defaultWindowName(windowNameSequence)
 	if err := h.tmux.RenameWindow(ctx, session, createdWindow.Index, windowName); err != nil {
 		slog.Warn("failed to apply default window name", "session", session, "index", createdWindow.Index, "name", windowName, "err", err)
 	}
