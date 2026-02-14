@@ -282,7 +282,6 @@ make ci
   - `Settings` -> `Actions` -> `General` -> `Workflow permissions`
   - enable `Read and write permissions`
   - enable `Allow GitHub Actions to create and approve pull requests`
-- Optional fallback: set repository secret `RELEASE_PLEASE_TOKEN` (PAT/GitHub App token with repo write + PR scope). The workflow prefers this token when present.
 
 ## Contributing
 
