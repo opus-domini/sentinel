@@ -164,6 +164,14 @@ function TmuxPage() {
   const presenceHTTPInFlightRef = useRef(false)
   const activeWindowIndexRef = useRef<number | null>(null)
   const activePaneIDRef = useRef<string | null>(null)
+  const activeSessionProjectionRef = useRef<{
+    name: string
+    windows: number
+    panes: number
+    unreadWindows: number
+    unreadPanes: number
+  } | null>(null)
+  const lastInspectorActivitySyncAtRef = useRef(0)
   const refreshTimerRef = useRef<{
     sessions: number | null
     inspector: number | null
@@ -464,6 +472,46 @@ function TmuxPage() {
     // Keep inspector in sync when user switches active session/tab.
     void refreshInspector(tabsState.activeSession)
   }, [refreshInspector, tabsState.activeSession])
+
+  useEffect(() => {
+    const active = tabsState.activeSession.trim()
+    if (active === '') {
+      activeSessionProjectionRef.current = null
+      return
+    }
+    const current = sessions.find((item) => item.name === active)
+    if (!current) return
+
+    const snapshot = {
+      name: current.name,
+      windows: current.windows,
+      panes: current.panes,
+      unreadWindows: current.unreadWindows ?? 0,
+      unreadPanes: current.unreadPanes ?? 0,
+    }
+
+    const prev = activeSessionProjectionRef.current
+    activeSessionProjectionRef.current = snapshot
+    if (prev === null || prev.name !== snapshot.name) {
+      lastInspectorActivitySyncAtRef.current = Date.now()
+      return
+    }
+
+    const structureChanged =
+      prev.windows !== snapshot.windows || prev.panes !== snapshot.panes
+    const unreadEdgeChanged =
+      (prev.unreadWindows === 0) !== (snapshot.unreadWindows === 0) ||
+      (prev.unreadPanes === 0) !== (snapshot.unreadPanes === 0)
+    const now = Date.now()
+    const unreadDrift =
+      snapshot.unreadPanes > 0 &&
+      now - lastInspectorActivitySyncAtRef.current >= 3_000
+
+    if (structureChanged || unreadEdgeChanged || unreadDrift) {
+      lastInspectorActivitySyncAtRef.current = now
+      void refreshInspector(active, { background: true })
+    }
+  }, [refreshInspector, sessions, tabsState.activeSession])
 
   useEffect(() => {
     const session = tabsState.activeSession.trim()
@@ -1420,13 +1468,12 @@ function TmuxPage() {
         try {
           const msg = JSON.parse(event.data) as {
             type?: string
-            payload?: { session?: string }
+            payload?: { session?: string; action?: string }
           }
           switch (msg.type) {
-            case 'tmux.sessions.updated':
             case 'tmux.activity.updated':
+            case 'tmux.sessions.updated':
               schedule('sessions')
-              schedule('inspector')
               break
             case 'tmux.inspector.updated': {
               const target = msg.payload?.session?.trim() ?? ''
