@@ -2,6 +2,7 @@ import ReactDOM from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
 import { router } from './router'
 import { isIOSDevice } from '@/lib/device'
+import { registerSentinelPwa } from '@/lib/pwa'
 import './styles.css'
 
 if (isIOSDevice()) {
@@ -14,3 +15,5 @@ if (!root) {
 }
 
 ReactDOM.createRoot(root).render(<RouterProvider router={router} />)
+
+registerSentinelPwa()

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --host",
-    "build": "vite build && cp public/index.html dist/index.html",
+    "build": "vite build && cp public/index.html dist/index.html && cp public/manifest.webmanifest dist/manifest.webmanifest && cp public/sw.js dist/sw.js && mkdir -p dist/icons && cp public/icons/* dist/icons/",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint",
