@@ -24,6 +24,8 @@ export type SessionProjectionSnapshot = {
   unreadPanes: number
 }
 
+export type InspectorProjectionRefreshMode = 'none' | 'windows' | 'full'
+
 export function shouldRefreshSessionsFromEvent(
   actionRaw: string | undefined,
   patchResult: SessionPatchApplyResult,
@@ -52,17 +54,31 @@ export function shouldRefreshSessionsFromEvent(
   return { refresh: true }
 }
 
+export function inspectorRefreshModeFromSessionProjection(
+  prev: SessionProjectionSnapshot | null,
+  next: SessionProjectionSnapshot,
+): InspectorProjectionRefreshMode {
+  if (prev === null || prev.name !== next.name) {
+    return 'none'
+  }
+  const structureChanged =
+    prev.windows !== next.windows || prev.panes !== next.panes
+  if (structureChanged) {
+    return 'full'
+  }
+  const unreadCountChanged =
+    prev.unreadWindows !== next.unreadWindows ||
+    prev.unreadPanes !== next.unreadPanes
+  if (unreadCountChanged) {
+    return 'windows'
+  }
+  return 'none'
+}
+
 export function shouldRefreshInspectorFromSessionProjection(
   prev: SessionProjectionSnapshot | null,
   next: SessionProjectionSnapshot,
 ): boolean {
-  if (prev === null || prev.name !== next.name) {
-    return false
-  }
-  const structureChanged =
-    prev.windows !== next.windows || prev.panes !== next.panes
-  const unreadEdgeChanged =
-    (prev.unreadWindows > 0) !== (next.unreadWindows > 0) ||
-    (prev.unreadPanes > 0) !== (next.unreadPanes > 0)
-  return structureChanged || unreadEdgeChanged
+  const mode = inspectorRefreshModeFromSessionProjection(prev, next)
+  return mode !== 'none'
 }

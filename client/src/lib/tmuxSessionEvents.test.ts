@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  inspectorRefreshModeFromSessionProjection,
   shouldRefreshInspectorFromSessionProjection,
   shouldRefreshSessionsFromEvent,
 } from './tmuxSessionEvents'
@@ -109,9 +110,27 @@ describe('shouldRefreshInspectorFromSessionProjection', () => {
     )
 
     expect(decision).toBe(true)
+    expect(
+      inspectorRefreshModeFromSessionProjection(
+        {
+          name: 'dev',
+          windows: 2,
+          panes: 3,
+          unreadWindows: 0,
+          unreadPanes: 0,
+        },
+        {
+          name: 'dev',
+          windows: 3,
+          panes: 3,
+          unreadWindows: 0,
+          unreadPanes: 0,
+        },
+      ),
+    ).toBe('full')
   })
 
-  it('refreshes when unread edge changes', () => {
+  it('refreshes when unread counters change', () => {
     const decision = shouldRefreshInspectorFromSessionProjection(
       {
         name: 'dev',
@@ -130,9 +149,27 @@ describe('shouldRefreshInspectorFromSessionProjection', () => {
     )
 
     expect(decision).toBe(true)
+    expect(
+      inspectorRefreshModeFromSessionProjection(
+        {
+          name: 'dev',
+          windows: 3,
+          panes: 6,
+          unreadWindows: 0,
+          unreadPanes: 0,
+        },
+        {
+          name: 'dev',
+          windows: 3,
+          panes: 6,
+          unreadWindows: 1,
+          unreadPanes: 1,
+        },
+      ),
+    ).toBe('windows')
   })
 
-  it('does not refresh when unread counts change but edge is stable', () => {
+  it('refreshes when unread counts change but structure is stable', () => {
     const decision = shouldRefreshInspectorFromSessionProjection(
       {
         name: 'dev',
@@ -150,6 +187,24 @@ describe('shouldRefreshInspectorFromSessionProjection', () => {
       },
     )
 
-    expect(decision).toBe(false)
+    expect(decision).toBe(true)
+    expect(
+      inspectorRefreshModeFromSessionProjection(
+        {
+          name: 'dev',
+          windows: 3,
+          panes: 6,
+          unreadWindows: 1,
+          unreadPanes: 1,
+        },
+        {
+          name: 'dev',
+          windows: 3,
+          panes: 6,
+          unreadWindows: 2,
+          unreadPanes: 3,
+        },
+      ),
+    ).toBe('windows')
   })
 })

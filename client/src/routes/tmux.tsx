@@ -23,6 +23,7 @@ import type {
   WindowsResponse,
 } from '@/types'
 import type {
+  InspectorProjectionRefreshMode,
   SessionActivityPatch,
   SessionPatchApplyResult,
   SessionProjectionSnapshot,
@@ -67,7 +68,7 @@ import { useTerminalTmux } from '@/hooks/useTerminalTmux'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
 import {
-  shouldRefreshInspectorFromSessionProjection,
+  inspectorRefreshModeFromSessionProjection,
   shouldRefreshSessionsFromEvent,
 } from '@/lib/tmuxSessionEvents'
 import { buildWSProtocols } from '@/lib/wsAuth'
@@ -494,9 +495,13 @@ function TmuxPage() {
   }, [])
 
   const refreshInspector = useCallback(
-    async (target: string, options?: { background?: boolean }) => {
+    async (
+      target: string,
+      options?: { background?: boolean; mode?: InspectorProjectionRefreshMode },
+    ) => {
       const session = target.trim()
       const bg = options?.background === true
+      const mode = options?.mode ?? 'full'
       if (session === '') {
         setWindows([])
         setPanes([])
@@ -510,16 +515,19 @@ function TmuxPage() {
       if (!bg) setInspectorLoading(true)
       setInspectorError('')
       try {
-        const [wData, pData] = await Promise.all([
-          api<WindowsResponse>(
-            `/api/tmux/sessions/${encodeURIComponent(session)}/windows`,
-          ),
-          api<PanesResponse>(
-            `/api/tmux/sessions/${encodeURIComponent(session)}/panes`,
-          ),
-        ])
+        const wData = await api<WindowsResponse>(
+          `/api/tmux/sessions/${encodeURIComponent(session)}/windows`,
+        )
         if (gen !== inspectorGenerationRef.current) return
         setWindows(wData.windows)
+        if (mode === 'windows') {
+          return
+        }
+
+        const pData = await api<PanesResponse>(
+          `/api/tmux/sessions/${encodeURIComponent(session)}/panes`,
+        )
+        if (gen !== inspectorGenerationRef.current) return
         setPanes(pData.panes)
         const windowOverride = activeWindowOverrideRef.current
         const paneOverride = activePaneOverrideRef.current
@@ -718,8 +726,12 @@ function TmuxPage() {
     const prev = activeSessionProjectionRef.current
     activeSessionProjectionRef.current = snapshot
 
-    if (shouldRefreshInspectorFromSessionProjection(prev, snapshot)) {
-      void refreshInspector(active, { background: true })
+    const refreshMode = inspectorRefreshModeFromSessionProjection(prev, snapshot)
+    if (refreshMode !== 'none') {
+      void refreshInspector(active, {
+        background: true,
+        mode: refreshMode,
+      })
     }
   }, [refreshInspector, sessions, tabsState.activeSession])
 
