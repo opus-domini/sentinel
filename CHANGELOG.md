@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.2.4](https://github.com/opus-domini/sentinel/compare/v0.2.3...v0.2.4) (2026-02-14)
+
+
+### Features
+
+* **client:** add mobile touch-to-scroll bridge for tmux ([df7db0d](https://github.com/opus-domini/sentinel/commit/df7db0d0fb31d63b80a0d7f579927f673c31e8ff))
+* **client:** make session rename optimistic and stable ([a03f7a3](https://github.com/opus-domini/sentinel/commit/a03f7a3705b41cda694ac606c54421447b7eabdf))
+* **client:** standardize optimistic tmux mutations ([836cd9f](https://github.com/opus-domini/sentinel/commit/836cd9f0b4c29d9a02f34ff43382fac2ea07c358))
+* **events:** enrich tmux updates with inspector patches and event IDs ([226e62e](https://github.com/opus-domini/sentinel/commit/226e62eb82f53726999fb1fd58694bd50e2b5225))
+* **pwa:** add install/update flow with local app shell caching ([fafe9d1](https://github.com/opus-domini/sentinel/commit/fafe9d18abdde46057f6a118a6d8433588d4087d))
+* **tmux:** auto-name new windows and panes ([41a066b](https://github.com/opus-domini/sentinel/commit/41a066bbebdb95f988bb90a42a7cba51a1866437))
+* **tmux:** keep window naming monotonic and create on right ([30f6ec3](https://github.com/opus-domini/sentinel/commit/30f6ec3111dfafc7491d17a8005d4311e8e1185b))
+
+
+### Bug Fixes
+
+* **api:** name new windows by session size ([6717427](https://github.com/opus-domini/sentinel/commit/6717427e7e9c717d5ae6e0eff8bcebfd72b4703b))
+* **client:** harden optimistic tmux create/kill flows ([b49854c](https://github.com/opus-domini/sentinel/commit/b49854c2e493cd2f39ecc31f98cb076c9c70f777))
+* **client:** make split panes optimistic and right-aligned ([a56ac4c](https://github.com/opus-domini/sentinel/commit/a56ac4c70a75d1d4f40c3e1ceedc00709e263fe5))
+* **client:** prevent ghost windows after optimistic close/create ([6431ae8](https://github.com/opus-domini/sentinel/commit/6431ae8834d73d768cf94f812847a63814cebb34))
+* **client:** stabilize mobile touch scroll with keyboard open ([7f9edef](https://github.com/opus-domini/sentinel/commit/7f9edef0573bbc23173da26489fcae504b61eec9))
+* **tmux:** keep optimistic session creation attached until backend confirms ([7982c83](https://github.com/opus-domini/sentinel/commit/7982c835816126cd67cd18e6df3b67e6f9482df8))
+* **tmux:** make session kill optimistic with rollback ([75cdedd](https://github.com/opus-domini/sentinel/commit/75cdedd7c2a924a4aca432dca0b29fa1f61c306a))
+
+
+### Performance
+
+* **client:** reduce activity-driven session refresh fallback ([11d6e79](https://github.com/opus-domini/sentinel/commit/11d6e79de38ce7da275449dc55d822c4b0723bb3))
+
+
+### Documentation
+
+* **readme:** document frontend realtime metrics diagnostics ([2a688f1](https://github.com/opus-domini/sentinel/commit/2a688f1232af684c56343d2b9f007597d0052f71))
+
 ## [0.2.3](https://github.com/opus-domini/sentinel/compare/v0.2.2...v0.2.3) (2026-02-14)
 
 
