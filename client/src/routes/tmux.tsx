@@ -70,6 +70,12 @@ import {
   mergePendingCreateSessions,
   upsertOptimisticAttachedSession,
 } from '@/lib/tmuxSessionCreate'
+import {
+  addPendingWindowCreate,
+  clearPendingWindowCreatesForSession,
+  mergePendingWindowCreates,
+  removePendingWindowCreate,
+} from '@/lib/tmuxInspectorOptimistic'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { initialTabsState, tabsReducer } from '@/tabsReducer'
 
@@ -238,6 +244,8 @@ function TmuxPage() {
   const inspectorGenerationRef = useRef(0)
   const recoveryGenerationRef = useRef(0)
   const pendingCreateSessionsRef = useRef(new Map<string, string>())
+  const pendingKillSessionsRef = useRef(new Set<string>())
+  const pendingCreateWindowsRef = useRef(new Map<string, Set<number>>())
   const sessionsRef = useRef<Array<Session>>([])
   const tabsStateRef = useRef(tabsState)
   const seenAckKeyRef = useRef('')
@@ -424,12 +432,19 @@ function TmuxPage() {
       const merged = mergePendingCreateSessions(
         data.sessions,
         pendingCreateSessionsRef.current,
+        pendingKillSessionsRef.current,
       )
       for (const name of merged.confirmedPendingNames) {
         pendingCreateSessionsRef.current.delete(name)
       }
+      for (const name of merged.confirmedKilledNames) {
+        pendingKillSessionsRef.current.delete(name)
+      }
       setSessions(merged.sessions)
       const sessionNames = merged.sessionNamesForSync
+      for (const name of merged.confirmedKilledNames) {
+        clearPendingWindowCreatesForSession(pendingCreateWindowsRef.current, name)
+      }
       const cur = tabsStateRef.current.activeSession
       if (cur !== '' && !sessionNames.includes(cur)) {
         closeCurrentSocket('active session removed')
@@ -624,14 +639,26 @@ function TmuxPage() {
           })
         }
         nextWindows.sort((left, right) => left.index - right.index)
+        const mergedWindows = mergePendingWindowCreates(
+          activeSession,
+          nextWindows,
+          pendingCreateWindowsRef.current,
+        )
+        for (const index of mergedWindows.confirmedPendingIndexes) {
+          removePendingWindowCreate(
+            pendingCreateWindowsRef.current,
+            activeSession,
+            index,
+          )
+        }
 
         setWindows((prev) => {
-          if (prev.length !== nextWindows.length) {
-            return nextWindows
+          if (prev.length !== mergedWindows.windows.length) {
+            return mergedWindows.windows
           }
           for (let i = 0; i < prev.length; i += 1) {
             const left = prev[i]
-            const right = nextWindows[i]
+            const right = mergedWindows.windows[i]
             if (
               left.session !== right.session ||
               left.index !== right.index ||
@@ -643,7 +670,7 @@ function TmuxPage() {
               (left.rev ?? 0) !== (right.rev ?? 0) ||
               (left.activityAt ?? '') !== (right.activityAt ?? '')
             ) {
-              return nextWindows
+              return mergedWindows.windows
             }
           }
           return prev
@@ -652,7 +679,9 @@ function TmuxPage() {
         const windowOverride = activeWindowOverrideRef.current
         if (
           windowOverride !== null &&
-          !nextWindows.some((windowInfo) => windowInfo.index === windowOverride)
+          !mergedWindows.windows.some(
+            (windowInfo) => windowInfo.index === windowOverride,
+          )
         ) {
           setActiveWindowIndexOverride(null)
         }
@@ -828,7 +857,19 @@ function TmuxPage() {
           `/api/tmux/sessions/${encodeURIComponent(session)}/windows`,
         )
         if (gen !== inspectorGenerationRef.current) return
-        setWindows(wData.windows)
+        const mergedWindows = mergePendingWindowCreates(
+          session,
+          wData.windows,
+          pendingCreateWindowsRef.current,
+        )
+        for (const index of mergedWindows.confirmedPendingIndexes) {
+          removePendingWindowCreate(
+            pendingCreateWindowsRef.current,
+            session,
+            index,
+          )
+        }
+        setWindows(mergedWindows.windows)
 
         const pData = await api<PanesResponse>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/panes`,
@@ -838,14 +879,17 @@ function TmuxPage() {
         const windowOverride = activeWindowOverrideRef.current
         const paneOverride = activePaneOverrideRef.current
         const fetchedActiveWindow =
-          wData.windows.find((windowInfo) => windowInfo.active)?.index ?? null
+          mergedWindows.windows.find((windowInfo) => windowInfo.active)?.index ??
+          null
         const fetchedActivePane =
           pData.panes.find((paneInfo) => paneInfo.active)?.paneId ?? null
 
         let keepWindowOverride =
           windowOverride !== null &&
           fetchedActiveWindow !== windowOverride &&
-          wData.windows.some((windowInfo) => windowInfo.index === windowOverride)
+          mergedWindows.windows.some(
+            (windowInfo) => windowInfo.index === windowOverride,
+          )
         const keepPaneOverride =
           paneOverride !== null &&
           fetchedActivePane !== paneOverride &&
@@ -1310,6 +1354,8 @@ function TmuxPage() {
         return
       }
 
+      pendingKillSessionsRef.current.delete(sessionName)
+
       const previousActiveSession = tabsStateRef.current.activeSession
       const sessionAlreadyExists = sessionsRef.current.some(
         (item) => item.name === sessionName,
@@ -1382,12 +1428,14 @@ function TmuxPage() {
         (item) => item.name === sessionName,
       )
 
+      pendingKillSessionsRef.current.add(sessionName)
       if (hadSession) {
         setSessions((prev) =>
           prev.filter((item) => item.name !== sessionName),
         )
       }
       pendingCreateSessionsRef.current.delete(sessionName)
+      clearPendingWindowCreatesForSession(pendingCreateWindowsRef.current, sessionName)
       dispatchTabs({ type: 'remove', session: sessionName })
       if (wasActive) {
         closeCurrentSocket('session killed')
@@ -1403,6 +1451,7 @@ function TmuxPage() {
         void refreshSessions()
         pushSuccessToast('Kill Session', `session "${sessionName}" killed`)
       } catch (error) {
+        pendingKillSessionsRef.current.delete(sessionName)
         if (hadSession) {
           void refreshSessions()
         }
@@ -1688,10 +1737,26 @@ function TmuxPage() {
   const createWindow = useCallback(() => {
     const active = tabsStateRef.current.activeSession
     if (!active) return
+    const changedAt = new Date().toISOString()
     const nextIdx = windows.reduce((h, w) => Math.max(h, w.index), -1) + 1
+    addPendingWindowCreate(pendingCreateWindowsRef.current, active, nextIdx)
     setInspectorError('')
+    setSessions((prev) =>
+      prev.map((item) =>
+        item.name === active
+          ? {
+              ...item,
+              windows: item.windows + 1,
+              panes: item.panes + 1,
+              activityAt: changedAt,
+            }
+          : item,
+      ),
+    )
     setWindows((prev) => [
-      ...prev.map((w) => ({ ...w, active: false })),
+      ...prev
+        .filter((w) => w.index !== nextIdx)
+        .map((w) => ({ ...w, active: false })),
       { session: active, index: nextIdx, name: 'new', active: true, panes: 1 },
     ])
     setPanes((prev) => prev.map((p) => ({ ...p, active: false })))
@@ -1706,11 +1771,13 @@ function TmuxPage() {
         void refreshSessions()
       })
       .catch((error) => {
+        removePendingWindowCreate(pendingCreateWindowsRef.current, active, nextIdx)
         const msg =
           error instanceof Error ? error.message : 'failed to create window'
         setInspectorError(msg)
         pushErrorToast('New Window', msg)
         void refreshInspector(active, { background: true })
+        void refreshSessions()
       })
   }, [api, pushErrorToast, refreshInspector, refreshSessions, windows])
 

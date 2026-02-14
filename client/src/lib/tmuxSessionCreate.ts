@@ -49,16 +49,31 @@ export function upsertOptimisticAttachedSession(
 export function mergePendingCreateSessions(
   sessions: Array<Session>,
   pendingCreates: ReadonlyMap<string, string>,
+  pendingKills?: ReadonlySet<string>,
 ): {
   sessions: Array<Session>
   sessionNamesForSync: Array<string>
   confirmedPendingNames: Array<string>
+  confirmedKilledNames: Array<string>
 } {
   const backendNames = new Set(sessions.map((item) => item.name))
   const confirmedPendingNames: Array<string> = []
-  let mergedSessions = sessions
+  const confirmedKilledNames: Array<string> = []
+  const pendingKillNames = pendingKills ?? new Set<string>()
+  let mergedSessions = sessions.filter(
+    (item) => !pendingKillNames.has(item.name.trim()),
+  )
+
+  for (const name of pendingKillNames) {
+    if (!backendNames.has(name)) {
+      confirmedKilledNames.push(name)
+    }
+  }
 
   for (const [name, at] of pendingCreates) {
+    if (pendingKillNames.has(name)) {
+      continue
+    }
     if (backendNames.has(name)) {
       confirmedPendingNames.push(name)
       continue
@@ -67,12 +82,20 @@ export function mergePendingCreateSessions(
   }
 
   const sessionNamesForSync = Array.from(
-    new Set([...sessions.map((item) => item.name), ...pendingCreates.keys()]),
+    new Set([
+      ...sessions
+        .map((item) => item.name)
+        .filter((name) => !pendingKillNames.has(name)),
+      ...Array.from(pendingCreates.keys()).filter(
+        (name) => !pendingKillNames.has(name),
+      ),
+    ]),
   )
 
   return {
     sessions: mergedSessions,
     sessionNamesForSync,
     confirmedPendingNames,
+    confirmedKilledNames,
   }
 }

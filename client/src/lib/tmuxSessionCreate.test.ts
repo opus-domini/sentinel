@@ -91,7 +91,7 @@ describe('mergePendingCreateSessions', () => {
       ['new-b', '2026-02-14T12:02:00Z'],
     ])
 
-    const merged = mergePendingCreateSessions(backend, pending)
+    const merged = mergePendingCreateSessions(backend, pending, new Set())
 
     expect(merged.sessions.map((item) => item.name)).toEqual([
       'stable',
@@ -100,6 +100,7 @@ describe('mergePendingCreateSessions', () => {
     ])
     expect(merged.sessionNamesForSync).toEqual(['stable', 'new-a', 'new-b'])
     expect(merged.confirmedPendingNames).toEqual([])
+    expect(merged.confirmedKilledNames).toEqual([])
   })
 
   it('marks pending sessions as confirmed when backend already contains them', () => {
@@ -112,7 +113,7 @@ describe('mergePendingCreateSessions', () => {
       ['new-b', '2026-02-14T12:02:00Z'],
     ])
 
-    const merged = mergePendingCreateSessions(backend, pending)
+    const merged = mergePendingCreateSessions(backend, pending, new Set())
 
     expect(merged.sessions.map((item) => item.name)).toEqual([
       'stable',
@@ -120,5 +121,42 @@ describe('mergePendingCreateSessions', () => {
       'new-b',
     ])
     expect(merged.confirmedPendingNames).toEqual(['new-a'])
+    expect(merged.confirmedKilledNames).toEqual([])
+  })
+
+  it('hides pending-killed sessions until backend converges', () => {
+    const backend = [
+      buildOptimisticSession('stable', '2026-02-14T12:00:00Z'),
+      buildOptimisticSession('killed', '2026-02-14T12:01:00Z'),
+    ]
+
+    const merged = mergePendingCreateSessions(
+      backend,
+      new Map([
+        ['killed', '2026-02-14T12:03:00Z'],
+        ['new-a', '2026-02-14T12:04:00Z'],
+      ]),
+      new Set(['killed']),
+    )
+
+    expect(merged.sessions.map((item) => item.name)).toEqual(['stable', 'new-a'])
+    expect(merged.sessionNamesForSync).toEqual(['stable', 'new-a'])
+    expect(merged.confirmedPendingNames).toEqual([])
+    expect(merged.confirmedKilledNames).toEqual([])
+  })
+
+  it('marks pending kills as confirmed when backend no longer contains session', () => {
+    const backend = [buildOptimisticSession('stable', '2026-02-14T12:00:00Z')]
+
+    const merged = mergePendingCreateSessions(
+      backend,
+      new Map<string, string>(),
+      new Set(['killed']),
+    )
+
+    expect(merged.sessions.map((item) => item.name)).toEqual(['stable'])
+    expect(merged.sessionNamesForSync).toEqual(['stable'])
+    expect(merged.confirmedPendingNames).toEqual([])
+    expect(merged.confirmedKilledNames).toEqual(['killed'])
   })
 })
