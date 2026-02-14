@@ -23,10 +23,8 @@ import type {
   WindowsResponse,
 } from '@/types'
 import type {
-  InspectorProjectionRefreshMode,
   SessionActivityPatch,
   SessionPatchApplyResult,
-  SessionProjectionSnapshot,
 } from '@/lib/tmuxSessionEvents'
 import {
   AlertDialog,
@@ -67,10 +65,11 @@ import { useTokenContext } from '@/contexts/TokenContext'
 import { useTerminalTmux } from '@/hooks/useTerminalTmux'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
+import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import {
-  inspectorRefreshModeFromSessionProjection,
-  shouldRefreshSessionsFromEvent,
-} from '@/lib/tmuxSessionEvents'
+  mergePendingCreateSessions,
+  upsertOptimisticAttachedSession,
+} from '@/lib/tmuxSessionCreate'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { initialTabsState, tabsReducer } from '@/tabsReducer'
 
@@ -96,9 +95,12 @@ function resolvePresenceTerminalID(): string {
 }
 
 type SeenAckMessage = {
+  eventId?: number
   type?: string
   requestId?: string
+  globalRev?: number
   sessionPatches?: Array<SessionActivityPatch>
+  inspectorPatches?: Array<InspectorSessionPatch>
 }
 
 type SeenCommandPayload = {
@@ -106,6 +108,63 @@ type SeenCommandPayload = {
   scope: 'pane' | 'window' | 'session'
   paneId?: string
   windowIndex?: number
+}
+
+type InspectorWindowPatch = {
+  session?: string
+  index?: number
+  name?: string
+  active?: boolean
+  panes?: number
+  unreadPanes?: number
+  hasUnread?: boolean
+  rev?: number
+  activityAt?: string
+}
+
+type InspectorPanePatch = {
+  session?: string
+  windowIndex?: number
+  paneIndex?: number
+  paneId?: string
+  title?: string
+  active?: boolean
+  tty?: string
+  currentPath?: string
+  startCommand?: string
+  currentCommand?: string
+  tailPreview?: string
+  revision?: number
+  seenRevision?: number
+  hasUnread?: boolean
+  changedAt?: string
+}
+
+type InspectorSessionPatch = {
+  session?: string
+  windows?: Array<InspectorWindowPatch>
+  panes?: Array<InspectorPanePatch>
+}
+
+type ActivityDeltaChange = {
+  id?: number
+  globalRev?: number
+  entityType?: string
+  session?: string
+  windowIndex?: number
+  paneId?: string
+  changeKind?: string
+  changedAt?: string
+}
+
+type ActivityDeltaResponse = {
+  since?: number
+  limit?: number
+  globalRev?: number
+  overflow?: boolean
+  changes?: Array<ActivityDeltaChange>
+  sessionPatches?: Array<SessionActivityPatch>
+  inspectorPatches?: Array<InspectorSessionPatch>
 }
 
 function TmuxPage() {
@@ -178,6 +237,7 @@ function TmuxPage() {
   const refreshGenerationRef = useRef(0)
   const inspectorGenerationRef = useRef(0)
   const recoveryGenerationRef = useRef(0)
+  const pendingCreateSessionsRef = useRef(new Map<string, string>())
   const sessionsRef = useRef<Array<Session>>([])
   const tabsStateRef = useRef(tabsState)
   const seenAckKeyRef = useRef('')
@@ -192,15 +252,53 @@ function TmuxPage() {
   const activePaneOverrideRef = useRef<string | null>(null)
   const activeWindowIndexRef = useRef<number | null>(null)
   const activePaneIDRef = useRef<string | null>(null)
+  const eventsSocketConnectedRef = useRef(false)
   const lastSessionsRefreshAtRef = useRef(0)
-  const activeSessionProjectionRef = useRef<SessionProjectionSnapshot | null>(
-    null,
-  )
+  const lastGlobalRevRef = useRef(0)
+  const lastEventIDRef = useRef(0)
+  const lastDeltaSyncAtRef = useRef(0)
+  const deltaSyncInFlightRef = useRef(false)
+  const wsReconnectAttemptsRef = useRef(0)
+  const runtimeMetricsRef = useRef({
+    wsMessages: 0,
+    wsReconnects: 0,
+    wsOpenCount: 0,
+    wsCloseCount: 0,
+    sessionsRefreshCount: 0,
+    inspectorRefreshCount: 0,
+    recoveryRefreshCount: 0,
+    fallbackRefreshCount: 0,
+    deltaSyncCount: 0,
+    deltaSyncErrors: 0,
+    deltaOverflowCount: 0,
+  })
   const refreshTimerRef = useRef<{
     sessions: number | null
     inspector: number | null
     recovery: number | null
   }>({ sessions: null, inspector: null, recovery: null })
+
+  const bumpRuntimeMetric = useCallback(
+    (
+      key: keyof typeof runtimeMetricsRef.current,
+      delta = 1,
+    ): number => {
+      const current = runtimeMetricsRef.current[key]
+      const next = current + delta
+      runtimeMetricsRef.current[key] = next
+      return next
+    },
+    [],
+  )
+
+  useEffect(() => {
+    ;(window as typeof window & { __SENTINEL_TMUX_METRICS?: unknown }).__SENTINEL_TMUX_METRICS =
+      runtimeMetricsRef.current
+    return () => {
+      ;(window as typeof window & { __SENTINEL_TMUX_METRICS?: unknown }).__SENTINEL_TMUX_METRICS =
+        undefined
+    }
+  }, [])
 
   useEffect(() => {
     tabsStateRef.current = tabsState
@@ -283,6 +381,9 @@ function TmuxPage() {
     activeWindowIndexRef.current = activeWindowIndex
     activePaneIDRef.current = activePaneID
   }, [activePaneID, activeWindowIndex])
+  useEffect(() => {
+    eventsSocketConnectedRef.current = eventsSocketConnected
+  }, [eventsSocketConnected])
 
   const pushErrorToast = useCallback(
     (title: string, message: string) => {
@@ -314,13 +415,21 @@ function TmuxPage() {
   }, [])
 
   const refreshSessions = useCallback(async () => {
+    bumpRuntimeMetric('sessionsRefreshCount')
     const gen = ++refreshGenerationRef.current
     try {
       const data = await api<SessionsResponse>('/api/tmux/sessions')
       if (gen !== refreshGenerationRef.current) return
       setTmuxUnavailable(false)
-      setSessions(data.sessions)
-      const sessionNames = data.sessions.map((s) => s.name)
+      const merged = mergePendingCreateSessions(
+        data.sessions,
+        pendingCreateSessionsRef.current,
+      )
+      for (const name of merged.confirmedPendingNames) {
+        pendingCreateSessionsRef.current.delete(name)
+      }
+      setSessions(merged.sessions)
+      const sessionNames = merged.sessionNamesForSync
       const cur = tabsStateRef.current.activeSession
       if (cur !== '' && !sessionNames.includes(cur)) {
         closeCurrentSocket('active session removed')
@@ -328,6 +437,9 @@ function TmuxPage() {
         setConnection('disconnected', 'active session removed')
       }
       dispatchTabs({ type: 'sync', sessions: sessionNames })
+      if (cur !== '' && merged.confirmedPendingNames.includes(cur)) {
+        dispatchTabs({ type: 'activate', session: cur })
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'failed to refresh sessions'
@@ -339,7 +451,7 @@ function TmuxPage() {
         lastSessionsRefreshAtRef.current = Date.now()
       }
     }
-  }, [api, closeCurrentSocket, resetTerminal, setConnection])
+  }, [api, bumpRuntimeMetric, closeCurrentSocket, resetTerminal, setConnection])
 
   const applySessionActivityPatches = useCallback(
     (
@@ -448,6 +560,206 @@ function TmuxPage() {
     [],
   )
 
+  const applyInspectorProjectionPatches = useCallback(
+    (rawPatches: Array<InspectorSessionPatch> | undefined): boolean => {
+      if (!Array.isArray(rawPatches) || rawPatches.length === 0) {
+        return false
+      }
+
+      const activeSession = tabsStateRef.current.activeSession.trim()
+      if (activeSession === '') {
+        return false
+      }
+
+      const targetPatch = rawPatches.find(
+        (patch) => (patch.session?.trim() ?? '') === activeSession,
+      )
+      if (!targetPatch) {
+        return false
+      }
+
+      const asNonNegativeInt = (value: number | undefined, fallback: number) =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+          ? Math.trunc(value)
+          : fallback
+      const asNonNegativeInt64 = (value: number | undefined, fallback: number) =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+          ? Math.trunc(value)
+          : fallback
+
+      let matched = false
+
+      if (Array.isArray(targetPatch.windows)) {
+        matched = true
+        const nextWindows: Array<WindowInfo> = []
+        for (const rawWindow of targetPatch.windows) {
+          const session = (rawWindow.session?.trim() ?? '') || activeSession
+          if (session !== activeSession) continue
+          const index = rawWindow.index
+          if (
+            typeof index !== 'number' ||
+            !Number.isFinite(index) ||
+            index < 0
+          ) {
+            continue
+          }
+
+          const unreadPanes = asNonNegativeInt(rawWindow.unreadPanes, 0)
+          nextWindows.push({
+            session,
+            index: Math.trunc(index),
+            name: rawWindow.name ?? '',
+            active: rawWindow.active === true,
+            panes: asNonNegativeInt(rawWindow.panes, 0),
+            unreadPanes,
+            hasUnread:
+              typeof rawWindow.hasUnread === 'boolean'
+                ? rawWindow.hasUnread
+                : unreadPanes > 0,
+            rev: asNonNegativeInt64(rawWindow.rev, 0),
+            activityAt:
+              typeof rawWindow.activityAt === 'string'
+                ? rawWindow.activityAt
+                : undefined,
+          })
+        }
+        nextWindows.sort((left, right) => left.index - right.index)
+
+        setWindows((prev) => {
+          if (prev.length !== nextWindows.length) {
+            return nextWindows
+          }
+          for (let i = 0; i < prev.length; i += 1) {
+            const left = prev[i]
+            const right = nextWindows[i]
+            if (
+              left.session !== right.session ||
+              left.index !== right.index ||
+              left.name !== right.name ||
+              left.active !== right.active ||
+              left.panes !== right.panes ||
+              (left.unreadPanes ?? 0) !== (right.unreadPanes ?? 0) ||
+              (left.hasUnread ?? false) !== (right.hasUnread ?? false) ||
+              (left.rev ?? 0) !== (right.rev ?? 0) ||
+              (left.activityAt ?? '') !== (right.activityAt ?? '')
+            ) {
+              return nextWindows
+            }
+          }
+          return prev
+        })
+
+        const windowOverride = activeWindowOverrideRef.current
+        if (
+          windowOverride !== null &&
+          !nextWindows.some((windowInfo) => windowInfo.index === windowOverride)
+        ) {
+          setActiveWindowIndexOverride(null)
+        }
+      }
+
+      if (Array.isArray(targetPatch.panes)) {
+        matched = true
+        const nextPanes: Array<PaneInfo> = []
+        for (const rawPane of targetPatch.panes) {
+          const session = (rawPane.session?.trim() ?? '') || activeSession
+          if (session !== activeSession) continue
+          const windowIndex = rawPane.windowIndex
+          const paneIndex = rawPane.paneIndex
+          const paneId = rawPane.paneId?.trim() ?? ''
+          if (
+            typeof windowIndex !== 'number' ||
+            !Number.isFinite(windowIndex) ||
+            windowIndex < 0 ||
+            typeof paneIndex !== 'number' ||
+            !Number.isFinite(paneIndex) ||
+            paneIndex < 0 ||
+            paneId === ''
+          ) {
+            continue
+          }
+
+          const revision = asNonNegativeInt64(rawPane.revision, 0)
+          const seenRevision = asNonNegativeInt64(rawPane.seenRevision, 0)
+          nextPanes.push({
+            session,
+            windowIndex: Math.trunc(windowIndex),
+            paneIndex: Math.trunc(paneIndex),
+            paneId,
+            title: rawPane.title ?? '',
+            active: rawPane.active === true,
+            tty: rawPane.tty ?? '',
+            currentPath: rawPane.currentPath ?? '',
+            startCommand: rawPane.startCommand ?? '',
+            currentCommand: rawPane.currentCommand ?? '',
+            tailPreview:
+              typeof rawPane.tailPreview === 'string'
+                ? rawPane.tailPreview
+                : undefined,
+            revision,
+            seenRevision,
+            hasUnread:
+              typeof rawPane.hasUnread === 'boolean'
+                ? rawPane.hasUnread
+                : revision > seenRevision,
+            changedAt:
+              typeof rawPane.changedAt === 'string'
+                ? rawPane.changedAt
+                : undefined,
+          })
+        }
+
+        nextPanes.sort((left, right) => {
+          if (left.windowIndex !== right.windowIndex) {
+            return left.windowIndex - right.windowIndex
+          }
+          return left.paneIndex - right.paneIndex
+        })
+
+        setPanes((prev) => {
+          if (prev.length !== nextPanes.length) {
+            return nextPanes
+          }
+          for (let i = 0; i < prev.length; i += 1) {
+            const left = prev[i]
+            const right = nextPanes[i]
+            if (
+              left.session !== right.session ||
+              left.windowIndex !== right.windowIndex ||
+              left.paneIndex !== right.paneIndex ||
+              left.paneId !== right.paneId ||
+              left.title !== right.title ||
+              left.active !== right.active ||
+              left.tty !== right.tty ||
+              (left.currentPath ?? '') !== (right.currentPath ?? '') ||
+              (left.startCommand ?? '') !== (right.startCommand ?? '') ||
+              (left.currentCommand ?? '') !== (right.currentCommand ?? '') ||
+              (left.tailPreview ?? '') !== (right.tailPreview ?? '') ||
+              (left.revision ?? 0) !== (right.revision ?? 0) ||
+              (left.seenRevision ?? 0) !== (right.seenRevision ?? 0) ||
+              (left.hasUnread ?? false) !== (right.hasUnread ?? false) ||
+              (left.changedAt ?? '') !== (right.changedAt ?? '')
+            ) {
+              return nextPanes
+            }
+          }
+          return prev
+        })
+
+        const paneOverride = activePaneOverrideRef.current
+        if (
+          paneOverride !== null &&
+          !nextPanes.some((paneInfo) => paneInfo.paneId === paneOverride)
+        ) {
+          setActivePaneIDOverride(null)
+        }
+      }
+
+      return matched
+    },
+    [],
+  )
+
   const settlePendingSeenAcks = useCallback((ok: boolean) => {
     if (seenAckWaitersRef.current.size === 0) {
       return
@@ -495,13 +807,10 @@ function TmuxPage() {
   }, [])
 
   const refreshInspector = useCallback(
-    async (
-      target: string,
-      options?: { background?: boolean; mode?: InspectorProjectionRefreshMode },
-    ) => {
+    async (target: string, options?: { background?: boolean }) => {
+      bumpRuntimeMetric('inspectorRefreshCount')
       const session = target.trim()
       const bg = options?.background === true
-      const mode = options?.mode ?? 'full'
       if (session === '') {
         setWindows([])
         setPanes([])
@@ -520,9 +829,6 @@ function TmuxPage() {
         )
         if (gen !== inspectorGenerationRef.current) return
         setWindows(wData.windows)
-        if (mode === 'windows') {
-          return
-        }
 
         const pData = await api<PanesResponse>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/panes`,
@@ -556,6 +862,12 @@ function TmuxPage() {
         }
       } catch (error) {
         if (gen !== inspectorGenerationRef.current) return
+        if (pendingCreateSessionsRef.current.has(session)) {
+          // During optimistic session create, inspector fetches can race with
+          // backend provisioning and return "session not found". Ignore until
+          // create flow resolves and retries.
+          return
+        }
         const message =
           error instanceof Error
             ? error.message
@@ -570,7 +882,7 @@ function TmuxPage() {
           setInspectorLoading(false)
       }
     },
-    [api],
+    [api, bumpRuntimeMetric],
   )
 
   const markSeen = useCallback(
@@ -609,18 +921,24 @@ function TmuxPage() {
       }
 
       try {
-        await api<{ acked: boolean }>(
+        const response = await api<{
+          acked: boolean
+          sessionPatches?: Array<SessionActivityPatch>
+          inspectorPatches?: Array<InspectorSessionPatch>
+        }>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/seen`,
           {
             method: 'POST',
             body: JSON.stringify(body),
           },
         )
+        applySessionActivityPatches(response.sessionPatches)
+        applyInspectorProjectionPatches(response.inspectorPatches)
       } catch {
         // Seen HTTP fallback is best-effort.
       }
     },
-    [api, sendSeenOverWS],
+    [api, applyInspectorProjectionPatches, applySessionActivityPatches, sendSeenOverWS],
   )
 
   const buildPresencePayload = useCallback(() => {
@@ -707,35 +1025,6 @@ function TmuxPage() {
   }, [refreshInspector, tabsState.activeSession])
 
   useEffect(() => {
-    const active = tabsState.activeSession.trim()
-    if (active === '') {
-      activeSessionProjectionRef.current = null
-      return
-    }
-    const current = sessions.find((item) => item.name === active)
-    if (!current) return
-
-    const snapshot = {
-      name: current.name,
-      windows: current.windows,
-      panes: current.panes,
-      unreadWindows: current.unreadWindows ?? 0,
-      unreadPanes: current.unreadPanes ?? 0,
-    }
-
-    const prev = activeSessionProjectionRef.current
-    activeSessionProjectionRef.current = snapshot
-
-    const refreshMode = inspectorRefreshModeFromSessionProjection(prev, snapshot)
-    if (refreshMode !== 'none') {
-      void refreshInspector(active, {
-        background: true,
-        mode: refreshMode,
-      })
-    }
-  }, [refreshInspector, sessions, tabsState.activeSession])
-
-  useEffect(() => {
     const session = tabsState.activeSession.trim()
     if (session === '') {
       seenAckKeyRef.current = ''
@@ -813,6 +1102,7 @@ function TmuxPage() {
 
   const refreshRecovery = useCallback(
     async (options?: { quiet?: boolean }) => {
+      bumpRuntimeMetric('recoveryRefreshCount')
       const gen = ++recoveryGenerationRef.current
       if (!options?.quiet) {
         setRecoveryLoading(true)
@@ -841,7 +1131,7 @@ function TmuxPage() {
         }
       }
     },
-    [api],
+    [api, bumpRuntimeMetric],
   )
 
   const loadRecoverySnapshot = useCallback(
@@ -1013,27 +1303,70 @@ function TmuxPage() {
 
   const createSession = useCallback(
     async (name: string, cwd: string) => {
-      if (!name) {
+      const sessionName = name.trim()
+      if (!sessionName) {
         setConnection('error', 'session name required')
         pushErrorToast('Create Session', 'session name required')
         return
       }
+
+      const previousActiveSession = tabsStateRef.current.activeSession
+      const sessionAlreadyExists = sessionsRef.current.some(
+        (item) => item.name === sessionName,
+      )
+      if (!sessionAlreadyExists) {
+        const optimisticAt = new Date().toISOString()
+        pendingCreateSessionsRef.current.set(sessionName, optimisticAt)
+        setSessions((prev) =>
+          upsertOptimisticAttachedSession(prev, sessionName, optimisticAt),
+        )
+        dispatchTabs({ type: 'activate', session: sessionName })
+        setConnection('connecting', `creating ${sessionName}`)
+        setInspectorError('')
+      }
+
       try {
         await api<{ name: string }>('/api/tmux/sessions', {
           method: 'POST',
-          body: JSON.stringify({ name, cwd }),
+          body: JSON.stringify({ name: sessionName, cwd }),
         })
-        await refreshSessions()
-        setConnection('disconnected', 'session created')
-        pushSuccessToast('Create Session', `session "${name}" created`)
+
+        activateSession(sessionName)
+        setConnection('connecting', `opening ${sessionName}`)
+        void refreshInspector(sessionName)
+        void refreshSessions()
+        pushSuccessToast('Create Session', `session "${sessionName}" created`)
       } catch (error) {
+        pendingCreateSessionsRef.current.delete(sessionName)
         const msg =
           error instanceof Error ? error.message : 'failed to create session'
+        if (!sessionAlreadyExists) {
+          setSessions((prev) =>
+            prev.filter((item) => item.name !== sessionName),
+          )
+          dispatchTabs({ type: 'remove', session: sessionName })
+          const currentActiveSession = tabsStateRef.current.activeSession
+          if (
+            currentActiveSession === sessionName &&
+            previousActiveSession !== '' &&
+            previousActiveSession !== sessionName
+          ) {
+            dispatchTabs({ type: 'activate', session: previousActiveSession })
+          }
+        }
         setConnection('error', msg)
         pushErrorToast('Create Session', msg)
       }
     },
-    [api, pushErrorToast, pushSuccessToast, refreshSessions, setConnection],
+    [
+      activateSession,
+      api,
+      pushErrorToast,
+      pushSuccessToast,
+      refreshInspector,
+      refreshSessions,
+      setConnection,
+    ],
   )
 
   const killSession = useCallback(
@@ -1582,6 +1915,65 @@ function TmuxPage() {
     [closeTab],
   )
 
+  const syncActivityDelta = useCallback(
+    async (options?: { reason?: string; force?: boolean }) => {
+      if (deltaSyncInFlightRef.current) {
+        return
+      }
+      if (!options?.force && !eventsSocketConnectedRef.current) {
+        return
+      }
+      const now = Date.now()
+      if (now - lastDeltaSyncAtRef.current < 900) {
+        return
+      }
+
+      deltaSyncInFlightRef.current = true
+      lastDeltaSyncAtRef.current = now
+      bumpRuntimeMetric('deltaSyncCount')
+      try {
+        const since = Math.max(0, Math.trunc(lastGlobalRevRef.current))
+        const data = await api<ActivityDeltaResponse>(
+          `/api/tmux/activity/delta?since=${since}&limit=300`,
+        )
+
+        const responseGlobalRev =
+          typeof data.globalRev === 'number' &&
+          Number.isFinite(data.globalRev) &&
+          data.globalRev >= 0
+            ? Math.trunc(data.globalRev)
+            : 0
+        if (responseGlobalRev > lastGlobalRevRef.current) {
+          lastGlobalRevRef.current = responseGlobalRev
+        }
+
+        applySessionActivityPatches(data.sessionPatches)
+        applyInspectorProjectionPatches(data.inspectorPatches)
+
+        if (data.overflow === true) {
+          bumpRuntimeMetric('deltaOverflowCount')
+          void refreshSessions()
+          const active = tabsStateRef.current.activeSession.trim()
+          if (active !== '') {
+            void refreshInspector(active, { background: true })
+          }
+        }
+      } catch {
+        bumpRuntimeMetric('deltaSyncErrors')
+      } finally {
+        deltaSyncInFlightRef.current = false
+      }
+    },
+    [
+      api,
+      applyInspectorProjectionPatches,
+      applySessionActivityPatches,
+      bumpRuntimeMetric,
+      refreshInspector,
+      refreshSessions,
+    ],
+  )
+
   const refreshAllState = useCallback(
     (options?: { quietRecovery?: boolean }) => {
       void refreshSessions()
@@ -1602,10 +1994,18 @@ function TmuxPage() {
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
+        if (eventsSocketConnected) {
+          void syncActivityDelta({ reason: 'visibility-visible' })
+          return
+        }
         refreshAllState({ quietRecovery: true })
       }
     }
     const onOnline = () => {
+      if (eventsSocketConnected) {
+        void syncActivityDelta({ reason: 'browser-online' })
+        return
+      }
       refreshAllState({ quietRecovery: true })
     }
     document.addEventListener('visibilitychange', onVisibility)
@@ -1614,19 +2014,21 @@ function TmuxPage() {
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('online', onOnline)
     }
-  }, [refreshAllState])
+  }, [eventsSocketConnected, refreshAllState, syncActivityDelta])
 
   useEffect(() => {
     // Adaptive fallback: poll only while WS events channel is disconnected.
     if (eventsSocketConnected) return
+    bumpRuntimeMetric('fallbackRefreshCount')
     refreshAllState({ quietRecovery: true })
     const id = window.setInterval(() => {
+      bumpRuntimeMetric('fallbackRefreshCount')
       refreshAllState({ quietRecovery: true })
     }, 8_000)
     return () => {
       window.clearInterval(id)
     }
-  }, [eventsSocketConnected, refreshAllState])
+  }, [bumpRuntimeMetric, eventsSocketConnected, refreshAllState])
 
   useEffect(() => {
     if (recoverySessions.length === 0) {
@@ -1653,6 +2055,20 @@ function TmuxPage() {
     let reconnectTimer: number | null = null
     let closed = false
     let socket: WebSocket | null = null
+
+    const parseEventID = (value: unknown): number => {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        return 0
+      }
+      return Math.trunc(value)
+    }
+
+    const parseGlobalRev = (value: unknown): number => {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        return 0
+      }
+      return Math.trunc(value)
+    }
 
     const schedule = (
       kind: 'sessions' | 'inspector' | 'recovery',
@@ -1692,25 +2108,49 @@ function TmuxPage() {
       )
 
       socket.onopen = () => {
+        bumpRuntimeMetric('wsOpenCount')
+        wsReconnectAttemptsRef.current = 0
         presenceSocketRef.current = socket
         setEventsSocketConnected(true)
         sendPresenceOverWS(true)
-        // Reconcile any missed events after reconnect.
-        refreshAllState({ quietRecovery: true })
+        // Reconcile missed revisions without forcing full inspector reload.
+        void syncActivityDelta({ reason: 'events-open', force: true })
       }
 
       socket.onmessage = (event) => {
+        bumpRuntimeMetric('wsMessages')
         if (typeof event.data !== 'string') return
         try {
           const msg = JSON.parse(event.data) as SeenAckMessage & {
+            globalRev?: number
             payload?: {
               session?: string
               action?: string
+              globalRev?: number
               sessionPatches?: Array<SessionActivityPatch>
+              inspectorPatches?: Array<InspectorSessionPatch>
             }
           }
+
+          const messageEventID = parseEventID(msg.eventId)
+          const previousEventID = lastEventIDRef.current
+          if (messageEventID > lastEventIDRef.current) {
+            lastEventIDRef.current = messageEventID
+          }
+          const hasEventGap =
+            previousEventID > 0 && messageEventID > previousEventID + 1
+
+          const messageGlobalRev = Math.max(
+            parseGlobalRev(msg.globalRev),
+            parseGlobalRev(msg.payload?.globalRev),
+          )
+          if (messageGlobalRev > lastGlobalRevRef.current) {
+            lastGlobalRevRef.current = messageGlobalRev
+          }
+
           if (msg.type === 'tmux.seen.ack') {
             applySessionActivityPatches(msg.sessionPatches)
+            applyInspectorProjectionPatches(msg.inspectorPatches)
             const requestId = (msg.requestId ?? '').trim()
             if (requestId !== '') {
               const settle = seenAckWaitersRef.current.get(requestId)
@@ -1723,6 +2163,7 @@ function TmuxPage() {
           }
           switch (msg.type) {
             case 'tmux.activity.updated': {
+              applyInspectorProjectionPatches(msg.payload?.inspectorPatches)
               const decision = shouldRefreshSessionsFromEvent(
                 'activity',
                 applySessionActivityPatches(msg.payload?.sessionPatches),
@@ -1734,9 +2175,13 @@ function TmuxPage() {
                   schedule('sessions')
                 }
               }
+              if (hasEventGap) {
+                void syncActivityDelta({ reason: 'activity-event-gap', force: true })
+              }
               break
             }
             case 'tmux.sessions.updated': {
+              applyInspectorProjectionPatches(msg.payload?.inspectorPatches)
               const decision = shouldRefreshSessionsFromEvent(
                 msg.payload?.action,
                 applySessionActivityPatches(msg.payload?.sessionPatches),
@@ -1748,6 +2193,9 @@ function TmuxPage() {
                   schedule('sessions')
                 }
               }
+              if (hasEventGap) {
+                void syncActivityDelta({ reason: 'sessions-event-gap', force: true })
+              }
               break
             }
             case 'tmux.inspector.updated': {
@@ -1755,11 +2203,22 @@ function TmuxPage() {
               if (action === '') {
                 break
               }
+              if (action === 'seen') {
+                break
+              }
               const target = msg.payload?.session?.trim() ?? ''
               const active = tabsStateRef.current.activeSession
               if (target !== '' && target === active) {
                 schedule('inspector')
               }
+              break
+            }
+            case 'tmux.auth.expired': {
+              settlePendingSeenAcks(false)
+              if (tokenRequired) {
+                setToken('')
+              }
+              socket?.close()
               break
             }
             case 'recovery.overview.updated':
@@ -1779,13 +2238,20 @@ function TmuxPage() {
       }
 
       socket.onclose = () => {
+        bumpRuntimeMetric('wsCloseCount')
         settlePendingSeenAcks(false)
         presenceSocketRef.current = null
         setEventsSocketConnected(false)
         if (closed) return
+        wsReconnectAttemptsRef.current += 1
+        bumpRuntimeMetric('wsReconnects')
+        const attempt = wsReconnectAttemptsRef.current
+        const expo = Math.min(8, attempt)
+        const baseDelay = Math.min(10_000, 500 * 2 ** expo)
+        const jitter = Math.floor(Math.random() * 300)
         reconnectTimer = window.setTimeout(() => {
           connect()
-        }, 1200)
+        }, baseDelay + jitter)
       }
     }
 
@@ -1811,13 +2277,17 @@ function TmuxPage() {
       }
     }
   }, [
-    refreshAllState,
+    bumpRuntimeMetric,
+    applyInspectorProjectionPatches,
     applySessionActivityPatches,
     refreshInspector,
     refreshRecovery,
     refreshSessions,
     sendPresenceOverWS,
     settlePendingSeenAcks,
+    syncActivityDelta,
+    tokenRequired,
+    setToken,
     token,
   ])
 
