@@ -71,10 +71,19 @@ import {
   upsertOptimisticAttachedSession,
 } from '@/lib/tmuxSessionCreate'
 import {
+  addPendingPaneClose,
+  addPendingWindowClose,
   addPendingWindowCreate,
+  clearPendingPaneClosesForSession,
+  clearPendingWindowClosesForSession,
   clearPendingWindowCreatesForSession,
-  mergePendingWindowCreates,
+  clearPendingWindowPaneFloor,
+  clearPendingWindowPaneFloorsForSession,
+  mergePendingInspectorSnapshot,
+  removePendingPaneClose,
+  removePendingWindowClose,
   removePendingWindowCreate,
+  setPendingWindowPaneFloor,
 } from '@/lib/tmuxInspectorOptimistic'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { initialTabsState, tabsReducer } from '@/tabsReducer'
@@ -98,6 +107,59 @@ function resolvePresenceTerminalID(): string {
       : `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   window.sessionStorage.setItem(key, generated)
   return generated
+}
+
+function sameWindowProjection(
+  left: Array<WindowInfo>,
+  right: Array<WindowInfo>,
+): boolean {
+  if (left.length !== right.length) return false
+  for (let i = 0; i < left.length; i += 1) {
+    const a = left[i]
+    const b = right[i]
+    if (
+      a.session !== b.session ||
+      a.index !== b.index ||
+      a.name !== b.name ||
+      a.active !== b.active ||
+      a.panes !== b.panes ||
+      (a.unreadPanes ?? 0) !== (b.unreadPanes ?? 0) ||
+      (a.hasUnread ?? false) !== (b.hasUnread ?? false) ||
+      (a.rev ?? 0) !== (b.rev ?? 0) ||
+      (a.activityAt ?? '') !== (b.activityAt ?? '')
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function samePaneProjection(left: Array<PaneInfo>, right: Array<PaneInfo>): boolean {
+  if (left.length !== right.length) return false
+  for (let i = 0; i < left.length; i += 1) {
+    const a = left[i]
+    const b = right[i]
+    if (
+      a.session !== b.session ||
+      a.windowIndex !== b.windowIndex ||
+      a.paneIndex !== b.paneIndex ||
+      a.paneId !== b.paneId ||
+      a.title !== b.title ||
+      a.active !== b.active ||
+      a.tty !== b.tty ||
+      (a.currentPath ?? '') !== (b.currentPath ?? '') ||
+      (a.startCommand ?? '') !== (b.startCommand ?? '') ||
+      (a.currentCommand ?? '') !== (b.currentCommand ?? '') ||
+      (a.tailPreview ?? '') !== (b.tailPreview ?? '') ||
+      (a.revision ?? 0) !== (b.revision ?? 0) ||
+      (a.seenRevision ?? 0) !== (b.seenRevision ?? 0) ||
+      (a.hasUnread ?? false) !== (b.hasUnread ?? false) ||
+      (a.changedAt ?? '') !== (b.changedAt ?? '')
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 type SeenAckMessage = {
@@ -246,7 +308,12 @@ function TmuxPage() {
   const pendingCreateSessionsRef = useRef(new Map<string, string>())
   const pendingKillSessionsRef = useRef(new Set<string>())
   const pendingCreateWindowsRef = useRef(new Map<string, Set<number>>())
+  const pendingCloseWindowsRef = useRef(new Map<string, Set<number>>())
+  const pendingClosePanesRef = useRef(new Map<string, Set<string>>())
+  const pendingWindowPaneFloorsRef = useRef(new Map<string, Map<number, number>>())
   const sessionsRef = useRef<Array<Session>>([])
+  const windowsRef = useRef<Array<WindowInfo>>([])
+  const panesRef = useRef<Array<PaneInfo>>([])
   const tabsStateRef = useRef(tabsState)
   const seenAckKeyRef = useRef('')
   const seenRequestSeqRef = useRef(0)
@@ -314,6 +381,12 @@ function TmuxPage() {
   useEffect(() => {
     sessionsRef.current = sessions
   }, [sessions])
+  useEffect(() => {
+    windowsRef.current = windows
+  }, [windows])
+  useEffect(() => {
+    panesRef.current = panes
+  }, [panes])
   useEffect(() => {
     presenceTerminalIDRef.current = resolvePresenceTerminalID()
   }, [])
@@ -422,6 +495,50 @@ function TmuxPage() {
     dispatchTabs({ type: 'activate', session })
   }, [])
 
+  const clearPendingInspectorSessionState = useCallback((session: string) => {
+    clearPendingWindowCreatesForSession(pendingCreateWindowsRef.current, session)
+    clearPendingWindowClosesForSession(pendingCloseWindowsRef.current, session)
+    clearPendingPaneClosesForSession(pendingClosePanesRef.current, session)
+    clearPendingWindowPaneFloorsForSession(
+      pendingWindowPaneFloorsRef.current,
+      session,
+    )
+  }, [])
+
+  const mergeInspectorSnapshotWithPending = useCallback(
+    (session: string, sourceWindows: Array<WindowInfo>, sourcePanes: Array<PaneInfo>) => {
+      const merged = mergePendingInspectorSnapshot(
+        session,
+        sourceWindows,
+        sourcePanes,
+        {
+          pendingWindowCreates: pendingCreateWindowsRef.current,
+          pendingWindowCloses: pendingCloseWindowsRef.current,
+          pendingPaneCloses: pendingClosePanesRef.current,
+          pendingWindowPaneFloors: pendingWindowPaneFloorsRef.current,
+        },
+      )
+      for (const index of merged.confirmedWindowCreates) {
+        removePendingWindowCreate(pendingCreateWindowsRef.current, session, index)
+      }
+      for (const index of merged.confirmedWindowCloses) {
+        removePendingWindowClose(pendingCloseWindowsRef.current, session, index)
+      }
+      for (const paneID of merged.confirmedPaneCloses) {
+        removePendingPaneClose(pendingClosePanesRef.current, session, paneID)
+      }
+      for (const index of merged.confirmedWindowPaneFloors) {
+        clearPendingWindowPaneFloor(
+          pendingWindowPaneFloorsRef.current,
+          session,
+          index,
+        )
+      }
+      return merged
+    },
+    [],
+  )
+
   const refreshSessions = useCallback(async () => {
     bumpRuntimeMetric('sessionsRefreshCount')
     const gen = ++refreshGenerationRef.current
@@ -443,7 +560,7 @@ function TmuxPage() {
       setSessions(merged.sessions)
       const sessionNames = merged.sessionNamesForSync
       for (const name of merged.confirmedKilledNames) {
-        clearPendingWindowCreatesForSession(pendingCreateWindowsRef.current, name)
+        clearPendingInspectorSessionState(name)
       }
       const cur = tabsStateRef.current.activeSession
       if (cur !== '' && !sessionNames.includes(cur)) {
@@ -466,7 +583,14 @@ function TmuxPage() {
         lastSessionsRefreshAtRef.current = Date.now()
       }
     }
-  }, [api, bumpRuntimeMetric, closeCurrentSocket, resetTerminal, setConnection])
+  }, [
+    api,
+    bumpRuntimeMetric,
+    clearPendingInspectorSessionState,
+    closeCurrentSocket,
+    resetTerminal,
+    setConnection,
+  ])
 
   const applySessionActivityPatches = useCallback(
     (
@@ -602,11 +726,9 @@ function TmuxPage() {
           ? Math.trunc(value)
           : fallback
 
-      let matched = false
-
+      let nextWindows: Array<WindowInfo> | null = null
       if (Array.isArray(targetPatch.windows)) {
-        matched = true
-        const nextWindows: Array<WindowInfo> = []
+        const parsedWindows: Array<WindowInfo> = []
         for (const rawWindow of targetPatch.windows) {
           const session = (rawWindow.session?.trim() ?? '') || activeSession
           if (session !== activeSession) continue
@@ -620,7 +742,7 @@ function TmuxPage() {
           }
 
           const unreadPanes = asNonNegativeInt(rawWindow.unreadPanes, 0)
-          nextWindows.push({
+          parsedWindows.push({
             session,
             index: Math.trunc(index),
             name: rawWindow.name ?? '',
@@ -638,58 +760,13 @@ function TmuxPage() {
                 : undefined,
           })
         }
-        nextWindows.sort((left, right) => left.index - right.index)
-        const mergedWindows = mergePendingWindowCreates(
-          activeSession,
-          nextWindows,
-          pendingCreateWindowsRef.current,
-        )
-        for (const index of mergedWindows.confirmedPendingIndexes) {
-          removePendingWindowCreate(
-            pendingCreateWindowsRef.current,
-            activeSession,
-            index,
-          )
-        }
-
-        setWindows((prev) => {
-          if (prev.length !== mergedWindows.windows.length) {
-            return mergedWindows.windows
-          }
-          for (let i = 0; i < prev.length; i += 1) {
-            const left = prev[i]
-            const right = mergedWindows.windows[i]
-            if (
-              left.session !== right.session ||
-              left.index !== right.index ||
-              left.name !== right.name ||
-              left.active !== right.active ||
-              left.panes !== right.panes ||
-              (left.unreadPanes ?? 0) !== (right.unreadPanes ?? 0) ||
-              (left.hasUnread ?? false) !== (right.hasUnread ?? false) ||
-              (left.rev ?? 0) !== (right.rev ?? 0) ||
-              (left.activityAt ?? '') !== (right.activityAt ?? '')
-            ) {
-              return mergedWindows.windows
-            }
-          }
-          return prev
-        })
-
-        const windowOverride = activeWindowOverrideRef.current
-        if (
-          windowOverride !== null &&
-          !mergedWindows.windows.some(
-            (windowInfo) => windowInfo.index === windowOverride,
-          )
-        ) {
-          setActiveWindowIndexOverride(null)
-        }
+        parsedWindows.sort((left, right) => left.index - right.index)
+        nextWindows = parsedWindows
       }
 
+      let nextPanes: Array<PaneInfo> | null = null
       if (Array.isArray(targetPatch.panes)) {
-        matched = true
-        const nextPanes: Array<PaneInfo> = []
+        const parsedPanes: Array<PaneInfo> = []
         for (const rawPane of targetPatch.panes) {
           const session = (rawPane.session?.trim() ?? '') || activeSession
           if (session !== activeSession) continue
@@ -710,7 +787,7 @@ function TmuxPage() {
 
           const revision = asNonNegativeInt64(rawPane.revision, 0)
           const seenRevision = asNonNegativeInt64(rawPane.seenRevision, 0)
-          nextPanes.push({
+          parsedPanes.push({
             session,
             windowIndex: Math.trunc(windowIndex),
             paneIndex: Math.trunc(paneIndex),
@@ -737,56 +814,51 @@ function TmuxPage() {
                 : undefined,
           })
         }
-
-        nextPanes.sort((left, right) => {
+        parsedPanes.sort((left, right) => {
           if (left.windowIndex !== right.windowIndex) {
             return left.windowIndex - right.windowIndex
           }
           return left.paneIndex - right.paneIndex
         })
-
-        setPanes((prev) => {
-          if (prev.length !== nextPanes.length) {
-            return nextPanes
-          }
-          for (let i = 0; i < prev.length; i += 1) {
-            const left = prev[i]
-            const right = nextPanes[i]
-            if (
-              left.session !== right.session ||
-              left.windowIndex !== right.windowIndex ||
-              left.paneIndex !== right.paneIndex ||
-              left.paneId !== right.paneId ||
-              left.title !== right.title ||
-              left.active !== right.active ||
-              left.tty !== right.tty ||
-              (left.currentPath ?? '') !== (right.currentPath ?? '') ||
-              (left.startCommand ?? '') !== (right.startCommand ?? '') ||
-              (left.currentCommand ?? '') !== (right.currentCommand ?? '') ||
-              (left.tailPreview ?? '') !== (right.tailPreview ?? '') ||
-              (left.revision ?? 0) !== (right.revision ?? 0) ||
-              (left.seenRevision ?? 0) !== (right.seenRevision ?? 0) ||
-              (left.hasUnread ?? false) !== (right.hasUnread ?? false) ||
-              (left.changedAt ?? '') !== (right.changedAt ?? '')
-            ) {
-              return nextPanes
-            }
-          }
-          return prev
-        })
-
-        const paneOverride = activePaneOverrideRef.current
-        if (
-          paneOverride !== null &&
-          !nextPanes.some((paneInfo) => paneInfo.paneId === paneOverride)
-        ) {
-          setActivePaneIDOverride(null)
-        }
+        nextPanes = parsedPanes
       }
 
-      return matched
+      if (nextWindows === null && nextPanes === null) {
+        return false
+      }
+
+      const merged = mergeInspectorSnapshotWithPending(
+        activeSession,
+        nextWindows ?? windowsRef.current,
+        nextPanes ?? panesRef.current,
+      )
+
+      setWindows((prev) =>
+        sameWindowProjection(prev, merged.windows) ? prev : merged.windows,
+      )
+      setPanes((prev) =>
+        samePaneProjection(prev, merged.panes) ? prev : merged.panes,
+      )
+
+      const windowOverride = activeWindowOverrideRef.current
+      if (
+        windowOverride !== null &&
+        !merged.windows.some((windowInfo) => windowInfo.index === windowOverride)
+      ) {
+        setActiveWindowIndexOverride(null)
+      }
+
+      const paneOverride = activePaneOverrideRef.current
+      if (
+        paneOverride !== null &&
+        !merged.panes.some((paneInfo) => paneInfo.paneId === paneOverride)
+      ) {
+        setActivePaneIDOverride(null)
+      }
+
+      return true
     },
-    [],
+    [mergeInspectorSnapshotWithPending],
   )
 
   const settlePendingSeenAcks = useCallback((ok: boolean) => {
@@ -853,47 +925,39 @@ function TmuxPage() {
       if (!bg) setInspectorLoading(true)
       setInspectorError('')
       try {
-        const wData = await api<WindowsResponse>(
+        const windowsResponse = await api<WindowsResponse>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/windows`,
         )
         if (gen !== inspectorGenerationRef.current) return
-        const mergedWindows = mergePendingWindowCreates(
-          session,
-          wData.windows,
-          pendingCreateWindowsRef.current,
-        )
-        for (const index of mergedWindows.confirmedPendingIndexes) {
-          removePendingWindowCreate(
-            pendingCreateWindowsRef.current,
-            session,
-            index,
-          )
-        }
-        setWindows(mergedWindows.windows)
-
-        const pData = await api<PanesResponse>(
+        const panesResponse = await api<PanesResponse>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/panes`,
         )
         if (gen !== inspectorGenerationRef.current) return
-        setPanes(pData.panes)
+        const merged = mergeInspectorSnapshotWithPending(
+          session,
+          windowsResponse.windows,
+          panesResponse.panes,
+        )
+        setWindows((prev) =>
+          sameWindowProjection(prev, merged.windows) ? prev : merged.windows,
+        )
+        setPanes((prev) => (samePaneProjection(prev, merged.panes) ? prev : merged.panes))
+
         const windowOverride = activeWindowOverrideRef.current
         const paneOverride = activePaneOverrideRef.current
         const fetchedActiveWindow =
-          mergedWindows.windows.find((windowInfo) => windowInfo.active)?.index ??
-          null
+          merged.windows.find((windowInfo) => windowInfo.active)?.index ?? null
         const fetchedActivePane =
-          pData.panes.find((paneInfo) => paneInfo.active)?.paneId ?? null
+          merged.panes.find((paneInfo) => paneInfo.active)?.paneId ?? null
 
         let keepWindowOverride =
           windowOverride !== null &&
           fetchedActiveWindow !== windowOverride &&
-          mergedWindows.windows.some(
-            (windowInfo) => windowInfo.index === windowOverride,
-          )
+          merged.windows.some((windowInfo) => windowInfo.index === windowOverride)
         const keepPaneOverride =
           paneOverride !== null &&
           fetchedActivePane !== paneOverride &&
-          pData.panes.some((paneInfo) => paneInfo.paneId === paneOverride)
+          merged.panes.some((paneInfo) => paneInfo.paneId === paneOverride)
         if (keepPaneOverride) {
           keepWindowOverride = true
         }
@@ -926,7 +990,7 @@ function TmuxPage() {
           setInspectorLoading(false)
       }
     },
-    [api, bumpRuntimeMetric],
+    [api, bumpRuntimeMetric, mergeInspectorSnapshotWithPending],
   )
 
   const markSeen = useCallback(
@@ -1355,6 +1419,7 @@ function TmuxPage() {
       }
 
       pendingKillSessionsRef.current.delete(sessionName)
+      clearPendingInspectorSessionState(sessionName)
 
       const previousActiveSession = tabsStateRef.current.activeSession
       const sessionAlreadyExists = sessionsRef.current.some(
@@ -1407,6 +1472,7 @@ function TmuxPage() {
     [
       activateSession,
       api,
+      clearPendingInspectorSessionState,
       pushErrorToast,
       pushSuccessToast,
       refreshInspector,
@@ -1435,7 +1501,7 @@ function TmuxPage() {
         )
       }
       pendingCreateSessionsRef.current.delete(sessionName)
-      clearPendingWindowCreatesForSession(pendingCreateWindowsRef.current, sessionName)
+      clearPendingInspectorSessionState(sessionName)
       dispatchTabs({ type: 'remove', session: sessionName })
       if (wasActive) {
         closeCurrentSocket('session killed')
@@ -1466,6 +1532,7 @@ function TmuxPage() {
     },
     [
       api,
+      clearPendingInspectorSessionState,
       closeCurrentSocket,
       pushErrorToast,
       pushSuccessToast,
@@ -1522,18 +1589,31 @@ function TmuxPage() {
 
   const setSessionIcon = useCallback(
     async (session: string, icon: string) => {
+      const target = session.trim()
+      if (target === '') return
+      const previousIcon =
+        sessionsRef.current.find((item) => item.name === target)?.icon ?? ''
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.name === target
+            ? { ...item, icon, activityAt: new Date().toISOString() }
+            : item,
+        ),
+      )
       try {
         await api<void>(
-          `/api/tmux/sessions/${encodeURIComponent(session)}/icon`,
+          `/api/tmux/sessions/${encodeURIComponent(target)}/icon`,
           {
             method: 'PATCH',
             body: JSON.stringify({ icon }),
           },
         )
-        setSessions((prev) =>
-          prev.map((s) => (s.name === session ? { ...s, icon } : s)),
-        )
       } catch {
+        setSessions((prev) =>
+          prev.map((item) =>
+            item.name === target ? { ...item, icon: previousIcon } : item,
+          ),
+        )
         pushErrorToast('Change Icon', 'failed to change session icon')
       }
     },
@@ -1575,6 +1655,9 @@ function TmuxPage() {
         pushErrorToast('Rename Window', 'window name required')
         return
       }
+      setWindows((prev) =>
+        prev.map((w) => (w.index === index ? { ...w, name: sanitized } : w)),
+      )
       try {
         await api<void>(
           `/api/tmux/sessions/${encodeURIComponent(active)}/rename-window`,
@@ -1583,16 +1666,13 @@ function TmuxPage() {
             body: JSON.stringify({ index, name: sanitized }),
           },
         )
-        setWindows((prev) =>
-          prev.map((w) => (w.index === index ? { ...w, name: sanitized } : w)),
-        )
-        void refreshInspector(active, { background: true })
         pushSuccessToast('Rename Window', `window #${index} -> "${sanitized}"`)
       } catch (error) {
         const msg =
           error instanceof Error ? error.message : 'failed to rename window'
         setInspectorError(msg)
         pushErrorToast('Rename Window', msg)
+        void refreshInspector(active, { background: true })
       }
     },
     [api, pushErrorToast, pushSuccessToast, refreshInspector, setConnection],
@@ -1625,6 +1705,9 @@ function TmuxPage() {
         pushErrorToast('Rename Pane', 'pane title required')
         return
       }
+      setPanes((prev) =>
+        prev.map((p) => (p.paneId === paneID ? { ...p, title: sanitized } : p)),
+      )
       try {
         await api<void>(
           `/api/tmux/sessions/${encodeURIComponent(active)}/rename-pane`,
@@ -1633,18 +1716,13 @@ function TmuxPage() {
             body: JSON.stringify({ paneId: paneID, title: sanitized }),
           },
         )
-        setPanes((prev) =>
-          prev.map((p) =>
-            p.paneId === paneID ? { ...p, title: sanitized } : p,
-          ),
-        )
-        void refreshInspector(active, { background: true })
         pushSuccessToast('Rename Pane', `pane ${paneID} renamed`)
       } catch (error) {
         const msg =
           error instanceof Error ? error.message : 'failed to rename pane'
         setInspectorError(msg)
         pushErrorToast('Rename Pane', msg)
+        void refreshInspector(active, { background: true })
       }
     },
     [api, pushErrorToast, pushSuccessToast, refreshInspector, setConnection],
@@ -1739,7 +1817,9 @@ function TmuxPage() {
     if (!active) return
     const changedAt = new Date().toISOString()
     const nextIdx = windows.reduce((h, w) => Math.max(h, w.index), -1) + 1
+    removePendingWindowClose(pendingCloseWindowsRef.current, active, nextIdx)
     addPendingWindowCreate(pendingCreateWindowsRef.current, active, nextIdx)
+    clearPendingWindowPaneFloor(pendingWindowPaneFloorsRef.current, active, nextIdx)
     setInspectorError('')
     setSessions((prev) =>
       prev.map((item) =>
@@ -1767,8 +1847,10 @@ function TmuxPage() {
       { method: 'POST', body: '{}' },
     )
       .then(() => {
-        void refreshInspector(active, { background: true })
-        void refreshSessions()
+        if (!eventsSocketConnectedRef.current) {
+          void refreshInspector(active, { background: true })
+          void refreshSessions()
+        }
       })
       .catch((error) => {
         removePendingWindowCreate(pendingCreateWindowsRef.current, active, nextIdx)
@@ -1785,6 +1867,17 @@ function TmuxPage() {
     (windowIndex: number) => {
       const active = tabsStateRef.current.activeSession
       if (!active) return
+      const removedPaneCount = panes.filter(
+        (paneInfo) => paneInfo.windowIndex === windowIndex,
+      ).length
+      const changedAt = new Date().toISOString()
+      removePendingWindowCreate(pendingCreateWindowsRef.current, active, windowIndex)
+      addPendingWindowClose(pendingCloseWindowsRef.current, active, windowIndex)
+      clearPendingWindowPaneFloor(
+        pendingWindowPaneFloorsRef.current,
+        active,
+        windowIndex,
+      )
       const rem = windows.filter((w) => w.index !== windowIndex)
       const remP = panes.filter((p) => p.windowIndex !== windowIndex)
       const ord = [...rem].sort((a, b) => a.index - b.index)
@@ -1806,6 +1899,18 @@ function TmuxPage() {
           : (remP.find((p) => p.windowIndex === nextWI)?.paneId ?? null)
       }
       setInspectorError('')
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.name === active
+            ? {
+                ...item,
+                windows: Math.max(0, item.windows - 1),
+                panes: Math.max(0, item.panes - Math.max(1, removedPaneCount)),
+                activityAt: changedAt,
+              }
+            : item,
+        ),
+      )
       setWindows(rem.map((w) => ({ ...w, active: w.index === nextWI })))
       setPanes(remP.map((p) => ({ ...p, active: p.paneId === nextPI })))
       setActiveWindowIndexOverride(nextWI)
@@ -1815,10 +1920,17 @@ function TmuxPage() {
         { method: 'POST', body: JSON.stringify({ index: windowIndex }) },
       )
         .then(() => {
-          void refreshInspector(active, { background: true })
-          void refreshSessions()
+          if (!eventsSocketConnectedRef.current) {
+            void refreshInspector(active, { background: true })
+            void refreshSessions()
+          }
         })
         .catch((error) => {
+          removePendingWindowClose(
+            pendingCloseWindowsRef.current,
+            active,
+            windowIndex,
+          )
           const msg =
             error instanceof Error ? error.message : 'failed to close window'
           setInspectorError(msg)
@@ -1842,6 +1954,8 @@ function TmuxPage() {
     (paneID: string) => {
       const active = tabsStateRef.current.activeSession
       if (!active || !paneID.trim()) return
+      const changedAt = new Date().toISOString()
+      addPendingPaneClose(pendingClosePanesRef.current, active, paneID)
       const removed = panes.find((p) => p.paneId === paneID)
       const remP = panes.filter((p) => p.paneId !== paneID)
       const countByW = new Map<number, number>()
@@ -1873,7 +1987,39 @@ function TmuxPage() {
           ? ap.paneId
           : (remP.find((p) => p.windowIndex === nextWI)?.paneId ?? null)
       }
+      const removedWindow = removed ? !remW.some((w) => w.index === removed.windowIndex) : false
+      if (removed && removedWindow) {
+        removePendingWindowCreate(
+          pendingCreateWindowsRef.current,
+          active,
+          removed.windowIndex,
+        )
+        addPendingWindowClose(
+          pendingCloseWindowsRef.current,
+          active,
+          removed.windowIndex,
+        )
+      }
+      if (removed) {
+        clearPendingWindowPaneFloor(
+          pendingWindowPaneFloorsRef.current,
+          active,
+          removed.windowIndex,
+        )
+      }
       setInspectorError('')
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.name === active
+            ? {
+                ...item,
+                panes: Math.max(0, item.panes - 1),
+                windows: removedWindow ? Math.max(0, item.windows - 1) : item.windows,
+                activityAt: changedAt,
+              }
+            : item,
+        ),
+      )
       setWindows(remW.map((w) => ({ ...w, active: w.index === nextWI })))
       setPanes(remP.map((p) => ({ ...p, active: p.paneId === nextPI })))
       setActiveWindowIndexOverride(nextWI)
@@ -1883,10 +2029,20 @@ function TmuxPage() {
         { method: 'POST', body: JSON.stringify({ paneId: paneID }) },
       )
         .then(() => {
-          void refreshInspector(active, { background: true })
-          void refreshSessions()
+          if (!eventsSocketConnectedRef.current) {
+            void refreshInspector(active, { background: true })
+            void refreshSessions()
+          }
         })
         .catch((error) => {
+          removePendingPaneClose(pendingClosePanesRef.current, active, paneID)
+          if (removedWindow && removed) {
+            removePendingWindowClose(
+              pendingCloseWindowsRef.current,
+              active,
+              removed.windowIndex,
+            )
+          }
           const msg =
             error instanceof Error ? error.message : 'failed to close pane'
           setInspectorError(msg)
@@ -1911,6 +2067,7 @@ function TmuxPage() {
     (direction: 'vertical' | 'horizontal') => {
       const active = tabsStateRef.current.activeSession
       if (!active) return
+      const changedAt = new Date().toISOString()
       const inWin =
         activeWindowIndex === null
           ? []
@@ -1928,7 +2085,27 @@ function TmuxPage() {
         pushErrorToast('Split Pane', 'target pane is not available')
         return
       }
+      const expectedPaneFloor =
+        (windows.find((windowInfo) => windowInfo.index === target.windowIndex)
+          ?.panes ?? inWin.length) + 1
+      setPendingWindowPaneFloor(
+        pendingWindowPaneFloorsRef.current,
+        active,
+        target.windowIndex,
+        expectedPaneFloor,
+      )
       setInspectorError('')
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.name === active
+            ? {
+                ...item,
+                panes: item.panes + 1,
+                activityAt: changedAt,
+              }
+            : item,
+        ),
+      )
       setWindows((prev) =>
         prev.map((w) => ({
           ...w,
@@ -1949,9 +2126,16 @@ function TmuxPage() {
         },
       )
         .then(() => {
-          void refreshInspector(active, { background: true })
+          if (!eventsSocketConnectedRef.current) {
+            void refreshInspector(active, { background: true })
+          }
         })
         .catch((error) => {
+          clearPendingWindowPaneFloor(
+            pendingWindowPaneFloorsRef.current,
+            active,
+            target.windowIndex,
+          )
           const msg =
             error instanceof Error ? error.message : 'failed to split pane'
           setInspectorError(msg)
