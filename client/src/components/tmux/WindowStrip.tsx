@@ -108,14 +108,6 @@ export default function WindowStrip({
                   onClick={() => onSelectWindow(windowInfo.index)}
                 >
                   {isMobile ? windowInfo.index : windowInfo.name}
-                  {hasUnread && unreadPanes > 0 && (
-                    <span
-                      className="inline-flex min-w-4 items-center justify-center rounded-full border border-amber-500/50 bg-amber-500/20 px-1 text-[10px] leading-none text-amber-200"
-                      aria-label={`${unreadPanes} unread panes in window ${windowInfo.name}`}
-                    >
-                      {unreadPanes}
-                    </span>
-                  )}
                 </button>
                 {!isMobile && (
                   <button

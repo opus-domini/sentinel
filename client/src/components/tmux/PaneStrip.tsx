@@ -139,12 +139,6 @@ export default function PaneStrip({
                   type="button"
                   onClick={() => onSelectPane(paneInfo.paneId)}
                 >
-                  {hasUnread && (
-                    <span
-                      className="inline-block h-1.5 w-1.5 rounded-full bg-amber-300"
-                      aria-hidden="true"
-                    />
-                  )}
                   {isMobile ? paneInfo.paneIndex : paneLabel}
                 </button>
                 {!isMobile && (
