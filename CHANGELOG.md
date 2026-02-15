@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/opus-domini/sentinel/compare/v0.2.7...v0.2.8) (2026-02-15)
+
+
+### Refactors
+
+* **cli:** unify cross-platform service semantics and scope flags ([91a40c2](https://github.com/opus-domini/sentinel/commit/91a40c2e4a0950eb52849b05db2345a7e8214528))
+
 ## [0.2.7](https://github.com/opus-domini/sentinel/compare/v0.2.6...v0.2.7) (2026-02-15)
 
 
