@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -164,6 +166,74 @@ token = "file-token"
 	}
 	if cfg.Token != "env-token" {
 		t.Errorf("Token = %q, want %q", cfg.Token, "env-token")
+	}
+}
+
+func TestLoadFallsBackToCurrentUserHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", "")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("HOME", "")
+
+	originalHomeFn := osUserHomeDir
+	originalCurrentFn := osCurrentUser
+	t.Cleanup(func() {
+		osUserHomeDir = originalHomeFn
+		osCurrentUser = originalCurrentFn
+	})
+
+	osUserHomeDir = func() (string, error) {
+		return "", errors.New("home unavailable")
+	}
+	osCurrentUser = func() (*user.User, error) {
+		return &user.User{HomeDir: dir}, nil
+	}
+
+	cfg := Load()
+	want := filepath.Join(dir, ".sentinel")
+	if cfg.DataDir != want {
+		t.Fatalf("DataDir = %q, want %q", cfg.DataDir, want)
+	}
+}
+
+func TestLoadFallsBackToTempDirWhenHomeUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", "")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("HOME", "")
+
+	originalHomeFn := osUserHomeDir
+	originalCurrentFn := osCurrentUser
+	originalGeteuidFn := osGeteuid
+	originalTempDirFn := osTempDir
+	t.Cleanup(func() {
+		osUserHomeDir = originalHomeFn
+		osCurrentUser = originalCurrentFn
+		osGeteuid = originalGeteuidFn
+		osTempDir = originalTempDirFn
+	})
+
+	osUserHomeDir = func() (string, error) {
+		return "", errors.New("home unavailable")
+	}
+	osCurrentUser = func() (*user.User, error) {
+		return nil, errors.New("user unavailable")
+	}
+	osGeteuid = func() int {
+		return 1000
+	}
+	osTempDir = func() string {
+		return dir
+	}
+
+	cfg := Load()
+	want := filepath.Join(dir, "sentinel")
+	if cfg.DataDir != want {
+		t.Fatalf("DataDir = %q, want %q", cfg.DataDir, want)
 	}
 }
 

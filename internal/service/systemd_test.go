@@ -28,6 +28,9 @@ func TestRenderUserUnitIncludesExecStart(t *testing.T) {
 	if !strings.Contains(unit, "Description=Sentinel - terminal workspace") {
 		t.Fatalf("rendered unit missing description: %s", unit)
 	}
+	if !strings.Contains(unit, "Environment=HOME=%h") {
+		t.Fatalf("rendered unit missing HOME environment: %s", unit)
+	}
 }
 
 func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {

@@ -2,8 +2,11 @@ package config
 
 import (
 	"bufio"
+	"errors"
 	"os"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +36,13 @@ type RecoveryConfig struct {
 	CaptureLines     int
 	MaxSnapshots     int
 }
+
+var (
+	osUserHomeDir = os.UserHomeDir
+	osCurrentUser = user.Current
+	osGeteuid     = os.Geteuid
+	osTempDir     = os.TempDir
+)
 
 const defaultConfigContent = `# Sentinel configuration
 # All values shown are defaults. Uncomment and edit to customize.
@@ -98,8 +108,11 @@ func Load() Config {
 	// Resolve DataDir first (needed for config file path).
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_DATA_DIR")); v != "" {
 		cfg.DataDir = v
-	} else if home, err := os.UserHomeDir(); err == nil {
+	} else if home, err := resolveHomeDir(); err == nil {
 		cfg.DataDir = filepath.Join(home, ".sentinel")
+	} else {
+		// Last-resort fallback for restricted service environments.
+		cfg.DataDir = filepath.Join(osTempDir(), "sentinel")
 	}
 
 	// Create default config file if it does not exist.
@@ -316,4 +329,26 @@ func parsePositiveInt(raw string) (int, bool) {
 		return 0, false
 	}
 	return value, true
+}
+
+func resolveHomeDir() (string, error) {
+	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
+		return home, nil
+	}
+	if home, err := osUserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return strings.TrimSpace(home), nil
+	}
+	if current, err := osCurrentUser(); err == nil && current != nil {
+		if home := strings.TrimSpace(current.HomeDir); home != "" {
+			return home, nil
+		}
+	}
+	if osGeteuid() == 0 {
+		// System services may run without HOME set.
+		if runtime.GOOS == "darwin" {
+			return "/var/root", nil
+		}
+		return "/root", nil
+	}
+	return "", errors.New("home directory not found")
 }

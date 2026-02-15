@@ -715,6 +715,7 @@ Restart=on-failure
 RestartSec=2
 KillMode=process
 Environment=SENTINEL_LOG_LEVEL=info
+Environment=HOME=%%h
 Environment=TERM=xterm-256color
 Environment=LANG=C.UTF-8
 SystemCallArchitectures=native
