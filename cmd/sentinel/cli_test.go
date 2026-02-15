@@ -2,12 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/updater"
+)
+
+const (
+	testSentinelPath    = "/tmp/sentinel"
+	testCurrentVersion1 = "1.0.0"
 )
 
 func TestRunCLIDefaultServe(t *testing.T) {
@@ -43,12 +51,12 @@ func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runCLI([]string{"service", "install", "-exec", "/tmp/sentinel", "-enable=false", "-start=false"}, &out, &errOut)
+	code := runCLI([]string{"service", "install", "-exec", testSentinelPath, "-enable=false", "-start=false"}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
-	if got.ExecPath != "/tmp/sentinel" {
-		t.Fatalf("ExecPath = %q, want /tmp/sentinel", got.ExecPath)
+	if got.ExecPath != testSentinelPath {
+		t.Fatalf("ExecPath = %q, want %s", got.ExecPath, testSentinelPath)
 	}
 	if got.Enable {
 		t.Fatal("Enable = true, want false")
@@ -179,6 +187,247 @@ func TestRunCLIHelpFlag(t *testing.T) {
 	}
 }
 
+func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
+	origInstall := installUserAutoUpdateFn
+	t.Cleanup(func() { installUserAutoUpdateFn = origInstall })
+
+	var got service.InstallUserAutoUpdateOptions
+	installUserAutoUpdateFn = func(opts service.InstallUserAutoUpdateOptions) error {
+		got = opts
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{
+		"service", "autoupdate", "install",
+		"-exec", testSentinelPath,
+		"-enable=false",
+		"-start=false",
+		"-service", "sentinel-custom",
+		"-scope", "system",
+		"-on-calendar", "hourly",
+		"-randomized-delay", "30m",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if got.ExecPath != testSentinelPath {
+		t.Fatalf("ExecPath = %q, want %s", got.ExecPath, testSentinelPath)
+	}
+	if got.Enable {
+		t.Fatal("Enable = true, want false")
+	}
+	if got.Start {
+		t.Fatal("Start = true, want false")
+	}
+	if got.ServiceUnit != "sentinel-custom" {
+		t.Fatalf("ServiceUnit = %q, want sentinel-custom", got.ServiceUnit)
+	}
+	if got.SystemdScope != "system" {
+		t.Fatalf("SystemdScope = %q, want system", got.SystemdScope)
+	}
+	if got.OnCalendar != "hourly" {
+		t.Fatalf("OnCalendar = %q, want hourly", got.OnCalendar)
+	}
+	if got.RandomizedDelay != 30*time.Minute {
+		t.Fatalf("RandomizedDelay = %s, want 30m", got.RandomizedDelay)
+	}
+}
+
+func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
+	origStatus := userAutoUpdateStatusFn
+	t.Cleanup(func() { userAutoUpdateStatusFn = origStatus })
+
+	userAutoUpdateStatusFn = func() (service.UserAutoUpdateServiceStatus, error) {
+		return service.UserAutoUpdateServiceStatus{
+			ServicePath:        "/tmp/sentinel-updater.service",
+			TimerPath:          "/tmp/sentinel-updater.timer",
+			ServiceUnitExists:  true,
+			TimerUnitExists:    true,
+			SystemctlAvailable: true,
+			TimerEnabledState:  "enabled",
+			TimerActiveState:   "active",
+			LastRunState:       "inactive",
+		}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"service", "autoupdate", "status"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	text := out.String()
+	for _, fragment := range []string{
+		"service file: /tmp/sentinel-updater.service",
+		"timer file: /tmp/sentinel-updater.timer",
+		"timer enabled: enabled",
+		"timer active: active",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("output missing %q:\n%s", fragment, text)
+		}
+	}
+}
+
+func TestRunCLIUpdateCheck(t *testing.T) {
+	origLoad := loadConfigFn
+	origVersion := currentVersionFn
+	origCheck := updateCheckFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		currentVersionFn = origVersion
+		updateCheckFn = origCheck
+	})
+
+	loadConfigFn = func() config.Config {
+		return config.Config{DataDir: testSentinelPath}
+	}
+	currentVersionFn = func() string { return testCurrentVersion1 }
+
+	var got updater.CheckOptions
+	updateCheckFn = func(_ context.Context, opts updater.CheckOptions) (updater.CheckResult, error) {
+		got = opts
+		return updater.CheckResult{
+			CurrentVersion: "1.0.0",
+			LatestVersion:  "1.1.0",
+			UpToDate:       false,
+			ReleaseURL:     "https://github.com/opus-domini/sentinel/releases/tag/v1.1.0",
+			AssetName:      "sentinel-1.1.0-linux-amd64.tar.gz",
+			ExpectedSHA256: strings.Repeat("a", 64),
+		}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"update", "check", "-repo", "opus-domini/sentinel", "-api", "http://example", "-os", "linux", "-arch", "amd64"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if got.CurrentVersion != testCurrentVersion1 {
+		t.Fatalf("CurrentVersion = %q, want %s", got.CurrentVersion, testCurrentVersion1)
+	}
+	if got.DataDir != testSentinelPath {
+		t.Fatalf("DataDir = %q, want %s", got.DataDir, testSentinelPath)
+	}
+	if got.Repo != "opus-domini/sentinel" {
+		t.Fatalf("Repo = %q, want opus-domini/sentinel", got.Repo)
+	}
+	if !strings.Contains(out.String(), "latest version: 1.1.0") {
+		t.Fatalf("unexpected output: %s", out.String())
+	}
+}
+
+func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
+	origLoad := loadConfigFn
+	origVersion := currentVersionFn
+	origApply := updateApplyFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		currentVersionFn = origVersion
+		updateApplyFn = origApply
+	})
+
+	loadConfigFn = func() config.Config {
+		return config.Config{DataDir: testSentinelPath}
+	}
+	currentVersionFn = func() string { return testCurrentVersion1 }
+
+	var got updater.ApplyOptions
+	updateApplyFn = func(_ context.Context, opts updater.ApplyOptions) (updater.ApplyResult, error) {
+		got = opts
+		return updater.ApplyResult{
+			Applied:        true,
+			CurrentVersion: testCurrentVersion1,
+			LatestVersion:  "1.1.0",
+			BinaryPath:     testSentinelPath,
+			BackupPath:     testSentinelPath + ".bak",
+		}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{
+		"update", "apply",
+		"-repo", "opus-domini/sentinel",
+		"-api", "http://example",
+		"-os", "linux",
+		"-arch", "amd64",
+		"-exec", testSentinelPath,
+		"-allow-downgrade=true",
+		"-allow-unverified=true",
+		"-restart=true",
+		"-service", "sentinel",
+		"-systemd-scope", "user",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if got.DataDir != testSentinelPath {
+		t.Fatalf("DataDir = %q, want %s", got.DataDir, testSentinelPath)
+	}
+	if got.ExecPath != testSentinelPath {
+		t.Fatalf("ExecPath = %q, want %s", got.ExecPath, testSentinelPath)
+	}
+	if !got.AllowDowngrade {
+		t.Fatal("AllowDowngrade = false, want true")
+	}
+	if !got.AllowUnverified {
+		t.Fatal("AllowUnverified = false, want true")
+	}
+	if !got.Restart {
+		t.Fatal("Restart = false, want true")
+	}
+	if !strings.Contains(out.String(), "updated from 1.0.0 to 1.1.0") {
+		t.Fatalf("unexpected output: %s", out.String())
+	}
+}
+
+func TestRunCLIUpdateStatus(t *testing.T) {
+	origLoad := loadConfigFn
+	origStatus := updateStatusFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		updateStatusFn = origStatus
+	})
+
+	loadConfigFn = func() config.Config {
+		return config.Config{DataDir: testSentinelPath}
+	}
+	updateStatusFn = func(dataDir string) (updater.State, error) {
+		if dataDir != testSentinelPath {
+			t.Fatalf("dataDir = %q, want %s", dataDir, testSentinelPath)
+		}
+		return updater.State{
+			LastCheckedAt:  time.Date(2026, time.February, 15, 12, 0, 0, 0, time.UTC),
+			LastAppliedAt:  time.Date(2026, time.February, 15, 12, 30, 0, 0, time.UTC),
+			CurrentVersion: "1.1.0",
+			LatestVersion:  "1.1.0",
+			UpToDate:       true,
+		}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"update", "status"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	text := out.String()
+	for _, fragment := range []string{
+		"current version: 1.1.0",
+		"latest version: 1.1.0",
+		"up to date: true",
+		"last checked: 2026-02-15T12:00:00Z",
+		"last applied: 2026-02-15T12:30:00Z",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("output missing %q:\n%s", fragment, text)
+		}
+	}
+}
+
 func TestRunCLIVersionFlag(t *testing.T) {
 	origVersion := currentVersionFn
 	t.Cleanup(func() { currentVersionFn = origVersion })
@@ -192,5 +441,15 @@ func TestRunCLIVersionFlag(t *testing.T) {
 	}
 	if strings.TrimSpace(out.String()) != "sentinel version v1.2.3" {
 		t.Fatalf("unexpected version output: %q", out.String())
+	}
+}
+
+func TestCurrentVersionPrefersBuildVersion(t *testing.T) {
+	orig := buildVersion
+	t.Cleanup(func() { buildVersion = orig })
+
+	buildVersion = "1.9.0"
+	if got := currentVersion(); got != "1.9.0" {
+		t.Fatalf("currentVersion() = %q, want 1.9.0", got)
 	}
 }

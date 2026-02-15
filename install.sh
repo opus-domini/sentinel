@@ -8,6 +8,7 @@ set -euo pipefail
 #   INSTALL_DIR          - Binary install directory (default: ~/.local/bin, or /usr/local/bin when root)
 #   VERSION              - Specific version to install (default: latest)
 #   SYSTEMD_TARGET_USER  - systemd template user instance when running as root (default: root)
+#   ENABLE_AUTOUPDATE    - Set to 1/true to install and enable daily autoupdate timer (user service only)
 
 REPO="opus-domini/sentinel"
 IS_ROOT=0
@@ -44,6 +45,18 @@ highlight_warn() {
     printf "${YELLOW}${BOLD}===================================================${RESET}\n\n" >&2
 }
 
+is_true() {
+    case "${1:-}" in
+        1|true|TRUE|True|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+AUTOUPDATE_ENABLED=0
+if is_true "${ENABLE_AUTOUPDATE:-false}"; then
+    AUTOUPDATE_ENABLED=1
+fi
+
 # --- Detect platform ---
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
@@ -67,6 +80,15 @@ if ! command -v tmux >/dev/null 2>&1; then
     highlight_warn "tmux was not found on this host. Sentinel installed successfully, but tmux features will stay disabled until tmux is installed."
 fi
 
+SHA256_TOOL=""
+if command -v sha256sum >/dev/null 2>&1; then
+    SHA256_TOOL="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+    SHA256_TOOL="shasum"
+else
+    warn "no checksum tool found (sha256sum/shasum); release integrity verification will be skipped"
+fi
+
 # --- Get version ---
 if [ -z "${VERSION:-}" ]; then
     info "Fetching latest version..."
@@ -83,12 +105,44 @@ info "Installing Sentinel ${VERSION} (${OS}/${ARCH})..."
 # --- Download and extract ---
 TARBALL="sentinel-${VERSION#v}-${OS}-${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+CHECKSUMS_FILE="sentinel-${VERSION#v}-checksums.txt"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/${CHECKSUMS_FILE}"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 info "Downloading ${URL}..."
 curl -fsSL "$URL" -o "${TMP}/${TARBALL}" || err "download failed — check that version ${VERSION} exists"
+
+if curl -fsSL "${CHECKSUMS_URL}" -o "${TMP}/${CHECKSUMS_FILE}"; then
+    if [ -n "${SHA256_TOOL}" ]; then
+        TARGET_CHECKSUM_FILE="${TMP}/sentinel-target-checksum.txt"
+        awk -v target="${TARBALL}" '
+            NF >= 2 {
+                file = $NF
+                gsub(/^\*/, "", file)
+                if (file == target) {
+                    print $1 "  " target
+                }
+            }
+        ' "${TMP}/${CHECKSUMS_FILE}" > "${TARGET_CHECKSUM_FILE}"
+
+        if [ ! -s "${TARGET_CHECKSUM_FILE}" ]; then
+            err "checksum entry for ${TARBALL} was not found in ${CHECKSUMS_FILE}"
+        fi
+
+        info "Verifying release checksum..."
+        if [ "${SHA256_TOOL}" = "sha256sum" ]; then
+            (cd "${TMP}" && sha256sum -c "$(basename "${TARGET_CHECKSUM_FILE}")") || err "checksum verification failed"
+        else
+            (cd "${TMP}" && shasum -a 256 -c "$(basename "${TARGET_CHECKSUM_FILE}")") || err "checksum verification failed"
+        fi
+        ok "Checksum verified for ${TARBALL}"
+    fi
+else
+    warn "checksum file ${CHECKSUMS_FILE} not found for ${VERSION}; proceeding without checksum verification"
+fi
+
 tar -xzf "${TMP}/${TARBALL}" -C "$TMP" || err "extraction failed"
 
 # --- Install binary ---
@@ -132,6 +186,11 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
                     warn "installed ${SERVICE_PATH}, but failed to start ${TARGET_UNIT}"
                     warn "you can try: systemctl start ${TARGET_UNIT}"
                 fi
+
+                if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
+                    warn "ENABLE_AUTOUPDATE is currently supported only for regular user installs"
+                    warn "switch to target user and run: sentinel service autoupdate install"
+                fi
             else
                 warn "failed to run 'systemctl daemon-reload'"
                 warn "service file was written to ${SERVICE_PATH}"
@@ -165,8 +224,20 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
                     warn "service installed, but failed to start user unit"
                     warn "you can try: systemctl --user restart sentinel"
                 fi
+
+                if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
+                    info "Enabling daily autoupdate timer..."
+                    if "${INSTALL_DIR}/sentinel" service autoupdate install -exec "${EXEC_START}" -enable=true -start=true -service sentinel -scope user; then
+                        ok "Autoupdate timer enabled"
+                    else
+                        warn "failed to enable autoupdate timer"
+                        warn "you can retry with: sentinel service autoupdate install"
+                    fi
+                fi
+
                 printf "\n${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
                 printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
+                printf "${BOLD}  Auto-update status:${RESET} sentinel service autoupdate status\n"
                 printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
                 printf "    sudo loginctl enable-linger \$USER\n"
             else

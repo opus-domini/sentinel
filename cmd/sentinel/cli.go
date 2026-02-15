@@ -17,19 +17,34 @@ import (
 	"github.com/opus-domini/sentinel/internal/service"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/updater"
 )
 
 var (
-	serveFn            = serve
-	installUserSvcFn   = service.InstallUser
-	uninstallUserSvcFn = service.UninstallUser
-	userStatusFn       = service.UserStatus
-	loadConfigFn       = config.Load
-	currentVersionFn   = currentVersion
+	serveFn                   = serve
+	installUserSvcFn          = service.InstallUser
+	uninstallUserSvcFn        = service.UninstallUser
+	userStatusFn              = service.UserStatus
+	installUserAutoUpdateFn   = service.InstallUserAutoUpdate
+	uninstallUserAutoUpdateFn = service.UninstallUserAutoUpdate
+	userAutoUpdateStatusFn    = service.UserAutoUpdateStatus
+	loadConfigFn              = config.Load
+	currentVersionFn          = currentVersion
+	updateCheckFn             = updater.Check
+	updateApplyFn             = updater.Apply
+	updateStatusFn            = updater.Status
+)
+
+// buildVersion is injected by release workflows via -ldflags.
+var buildVersion = "dev"
+
+const (
+	defaultUpdaterRepo = "opus-domini/sentinel"
 )
 
 const (
 	cmdHelp       = "help"
+	cmdStatus     = "status"
 	flagHelpShort = "-h"
 	flagHelpLong  = "--help"
 )
@@ -61,6 +76,8 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return runDoctorCommand(ctx, args[1:])
 	case "recovery":
 		return runRecoveryCommand(ctx, args[1:])
+	case "update":
+		return runUpdateCommand(ctx, args[1:])
 	case cmdHelp, flagHelpShort, flagHelpLong:
 		printRootHelp(stdout)
 		return 0
@@ -105,8 +122,10 @@ func runServiceCommand(ctx commandContext, args []string) int {
 		return runServiceInstallCommand(ctx, args[1:])
 	case "uninstall":
 		return runServiceUninstallCommand(ctx, args[1:])
-	case "status":
+	case cmdStatus:
 		return runServiceStatusCommand(ctx, args[1:])
+	case "autoupdate":
+		return runServiceAutoUpdateCommand(ctx, args[1:])
 	case cmdHelp, flagHelpShort, flagHelpLong:
 		printServiceHelp(ctx.stdout)
 		return 0
@@ -226,6 +245,312 @@ func runServiceStatusCommand(ctx commandContext, args []string) int {
 		writef(ctx.stdout, "enabled: %s\n", status.EnabledState)
 		writef(ctx.stdout, "active: %s\n", status.ActiveState)
 	}
+	return 0
+}
+
+func runServiceAutoUpdateCommand(ctx commandContext, args []string) int {
+	if len(args) == 0 {
+		printServiceAutoUpdateHelp(ctx.stderr)
+		return 2
+	}
+
+	switch args[0] {
+	case "install":
+		return runServiceAutoUpdateInstallCommand(ctx, args[1:])
+	case "uninstall":
+		return runServiceAutoUpdateUninstallCommand(ctx, args[1:])
+	case cmdStatus:
+		return runServiceAutoUpdateStatusCommand(ctx, args[1:])
+	case cmdHelp, flagHelpShort, flagHelpLong:
+		printServiceAutoUpdateHelp(ctx.stdout)
+		return 0
+	default:
+		writef(ctx.stderr, "unknown autoupdate command: %s\n\n", args[0])
+		printServiceAutoUpdateHelp(ctx.stderr)
+		return 2
+	}
+}
+
+func runServiceAutoUpdateInstallCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("service autoupdate install", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	execPath := fs.String("exec", "", "path to sentinel binary for updater ExecStart (defaults to current executable)")
+	enable := fs.Bool("enable", true, "enable autoupdate timer")
+	start := fs.Bool("start", true, "start autoupdate timer now")
+	serviceUnit := fs.String("service", "sentinel", "systemd unit to restart after update")
+	scope := fs.String("scope", "user", "systemd scope for service restart: user|system")
+	onCalendar := fs.String("on-calendar", "daily", "systemd OnCalendar schedule for update timer")
+	randomizedDelay := fs.Duration("randomized-delay", time.Hour, "systemd RandomizedDelaySec")
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printServiceAutoUpdateInstallHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printServiceAutoUpdateInstallHelp(ctx.stderr)
+		return 2
+	}
+
+	if err := installUserAutoUpdateFn(service.InstallUserAutoUpdateOptions{
+		ExecPath:        strings.TrimSpace(*execPath),
+		Enable:          *enable,
+		Start:           *start,
+		ServiceUnit:     strings.TrimSpace(*serviceUnit),
+		SystemdScope:    strings.TrimSpace(*scope),
+		OnCalendar:      strings.TrimSpace(*onCalendar),
+		RandomizedDelay: *randomizedDelay,
+	}); err != nil {
+		writef(ctx.stderr, "service autoupdate install failed: %v\n", err)
+		return 1
+	}
+
+	timerPath, pathErr := service.UserAutoUpdateTimerPath()
+	if pathErr == nil {
+		writef(ctx.stdout, "autoupdate timer installed: %s\n", timerPath)
+	}
+	switch {
+	case *enable && *start:
+		writeln(ctx.stdout, "autoupdate timer enabled and started")
+	case *enable:
+		writeln(ctx.stdout, "autoupdate timer enabled")
+	case *start:
+		writeln(ctx.stdout, "autoupdate timer started")
+	default:
+		writeln(ctx.stdout, "autoupdate timer installed (not enabled, not started)")
+	}
+	return 0
+}
+
+func runServiceAutoUpdateUninstallCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("service autoupdate uninstall", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	disable := fs.Bool("disable", true, "disable autoupdate timer")
+	stop := fs.Bool("stop", true, "stop autoupdate timer")
+	removeUnit := fs.Bool("remove-unit", true, "remove autoupdate unit files")
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printServiceAutoUpdateUninstallHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printServiceAutoUpdateUninstallHelp(ctx.stderr)
+		return 2
+	}
+
+	if err := uninstallUserAutoUpdateFn(service.UninstallUserAutoUpdateOptions{
+		Disable:    *disable,
+		Stop:       *stop,
+		RemoveUnit: *removeUnit,
+	}); err != nil {
+		writef(ctx.stderr, "service autoupdate uninstall failed: %v\n", err)
+		return 1
+	}
+	writeln(ctx.stdout, "autoupdate timer uninstalled")
+	return 0
+}
+
+func runServiceAutoUpdateStatusCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("service autoupdate status", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printServiceAutoUpdateStatusHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printServiceAutoUpdateStatusHelp(ctx.stderr)
+		return 2
+	}
+
+	status, err := userAutoUpdateStatusFn()
+	if err != nil {
+		writef(ctx.stderr, "service autoupdate status failed: %v\n", err)
+		return 1
+	}
+	writef(ctx.stdout, "service file: %s\n", status.ServicePath)
+	writef(ctx.stdout, "timer file: %s\n", status.TimerPath)
+	writef(ctx.stdout, "service unit exists: %t\n", status.ServiceUnitExists)
+	writef(ctx.stdout, "timer unit exists: %t\n", status.TimerUnitExists)
+	writef(ctx.stdout, "systemctl: %t\n", status.SystemctlAvailable)
+	if status.SystemctlAvailable {
+		writef(ctx.stdout, "timer enabled: %s\n", status.TimerEnabledState)
+		writef(ctx.stdout, "timer active: %s\n", status.TimerActiveState)
+		writef(ctx.stdout, "last run: %s\n", status.LastRunState)
+	}
+	return 0
+}
+
+func runUpdateCommand(ctx commandContext, args []string) int {
+	if len(args) == 0 {
+		printUpdateHelp(ctx.stderr)
+		return 2
+	}
+
+	switch args[0] {
+	case "check":
+		return runUpdateCheckCommand(ctx, args[1:])
+	case "apply":
+		return runUpdateApplyCommand(ctx, args[1:])
+	case cmdStatus:
+		return runUpdateStatusCommand(ctx, args[1:])
+	case cmdHelp, flagHelpShort, flagHelpLong:
+		printUpdateHelp(ctx.stdout)
+		return 0
+	default:
+		writef(ctx.stderr, "unknown update command: %s\n\n", args[0])
+		printUpdateHelp(ctx.stderr)
+		return 2
+	}
+}
+
+func runUpdateCheckCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("update check", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	repo := fs.String("repo", defaultUpdaterRepo, "GitHub repository in owner/name format")
+	apiBase := fs.String("api", "", "GitHub API base URL override")
+	targetOS := fs.String("os", runtime.GOOS, "target operating system")
+	targetArch := fs.String("arch", runtime.GOARCH, "target CPU architecture")
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printUpdateCheckHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printUpdateCheckHelp(ctx.stderr)
+		return 2
+	}
+
+	cfg := loadConfigFn()
+	result, err := updateCheckFn(context.Background(), updater.CheckOptions{
+		CurrentVersion: currentVersionFn(),
+		Repo:           strings.TrimSpace(*repo),
+		APIBaseURL:     strings.TrimSpace(*apiBase),
+		OS:             strings.TrimSpace(*targetOS),
+		Arch:           strings.TrimSpace(*targetArch),
+		DataDir:        cfg.DataDir,
+	})
+	if err != nil {
+		writef(ctx.stderr, "update check failed: %v\n", err)
+		return 1
+	}
+
+	writef(ctx.stdout, "current version: %s\n", valueOrDash(result.CurrentVersion))
+	writef(ctx.stdout, "latest version: %s\n", valueOrDash(result.LatestVersion))
+	writef(ctx.stdout, "up to date: %t\n", result.UpToDate)
+	writef(ctx.stdout, "release: %s\n", valueOrDash(result.ReleaseURL))
+	writef(ctx.stdout, "asset: %s\n", valueOrDash(result.AssetName))
+	writef(ctx.stdout, "sha256: %s\n", valueOrDash(result.ExpectedSHA256))
+	return 0
+}
+
+func runUpdateApplyCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("update apply", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	repo := fs.String("repo", defaultUpdaterRepo, "GitHub repository in owner/name format")
+	apiBase := fs.String("api", "", "GitHub API base URL override")
+	targetOS := fs.String("os", runtime.GOOS, "target operating system")
+	targetArch := fs.String("arch", runtime.GOARCH, "target CPU architecture")
+	execPath := fs.String("exec", "", "path to sentinel binary to replace (defaults to current executable)")
+	allowDowngrade := fs.Bool("allow-downgrade", false, "allow installing an older release")
+	allowUnverified := fs.Bool("allow-unverified", false, "allow update when checksum is unavailable")
+	restart := fs.Bool("restart", false, "restart systemd service after successful update")
+	serviceUnit := fs.String("service", "sentinel", "service unit name to restart after update")
+	systemdScope := fs.String("systemd-scope", "", "restart scope: user|system|none")
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printUpdateApplyHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printUpdateApplyHelp(ctx.stderr)
+		return 2
+	}
+
+	cfg := loadConfigFn()
+	result, err := updateApplyFn(context.Background(), updater.ApplyOptions{
+		CurrentVersion:  currentVersionFn(),
+		Repo:            strings.TrimSpace(*repo),
+		APIBaseURL:      strings.TrimSpace(*apiBase),
+		OS:              strings.TrimSpace(*targetOS),
+		Arch:            strings.TrimSpace(*targetArch),
+		DataDir:         cfg.DataDir,
+		ExecPath:        strings.TrimSpace(*execPath),
+		AllowDowngrade:  *allowDowngrade,
+		AllowUnverified: *allowUnverified,
+		Restart:         *restart,
+		ServiceUnit:     strings.TrimSpace(*serviceUnit),
+		SystemdScope:    strings.TrimSpace(*systemdScope),
+	})
+	if err != nil {
+		writef(ctx.stderr, "update apply failed: %v\n", err)
+		return 1
+	}
+
+	if !result.Applied {
+		writef(ctx.stdout, "already up to date: %s\n", valueOrDash(result.CurrentVersion))
+		return 0
+	}
+
+	writef(ctx.stdout, "updated from %s to %s\n", valueOrDash(result.CurrentVersion), valueOrDash(result.LatestVersion))
+	writef(ctx.stdout, "binary: %s\n", valueOrDash(result.BinaryPath))
+	writef(ctx.stdout, "backup: %s\n", valueOrDash(result.BackupPath))
+	return 0
+}
+
+func runUpdateStatusCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("update status", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printUpdateStatusHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printUpdateStatusHelp(ctx.stderr)
+		return 2
+	}
+
+	cfg := loadConfigFn()
+	state, err := updateStatusFn(cfg.DataDir)
+	if err != nil {
+		writef(ctx.stderr, "update status failed: %v\n", err)
+		return 1
+	}
+
+	writef(ctx.stdout, "current version: %s\n", valueOrDash(state.CurrentVersion))
+	writef(ctx.stdout, "latest version: %s\n", valueOrDash(state.LatestVersion))
+	writef(ctx.stdout, "up to date: %t\n", state.UpToDate)
+	writef(ctx.stdout, "last checked: %s\n", formatTime(state.LastCheckedAt))
+	writef(ctx.stdout, "last applied: %s\n", formatTime(state.LastAppliedAt))
+	writef(ctx.stdout, "release: %s\n", valueOrDash(state.LastReleaseURL))
+	writef(ctx.stdout, "binary: %s\n", valueOrDash(state.LastAppliedBinary))
+	writef(ctx.stdout, "backup: %s\n", valueOrDash(state.LastAppliedBackup))
+	writef(ctx.stdout, "sha256: %s\n", valueOrDash(state.LastExpectedSHA256))
+	writef(ctx.stdout, "last error: %s\n", valueOrDash(state.LastError))
 	return 0
 }
 
@@ -466,20 +791,36 @@ func parseRecoveryStates(raw string) ([]store.RecoverySessionState, error) {
 	return out, nil
 }
 
+func formatTime(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.UTC().Format(time.RFC3339)
+}
+
+func valueOrDash(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "-"
+	}
+	return raw
+}
+
 func printRootHelp(w io.Writer) {
 	writeln(w, "Sentinel command-line interface")
 	writeln(w, "")
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel [serve]")
-	writeln(w, "  sentinel service <install|uninstall|status>")
+	writeln(w, "  sentinel service <install|uninstall|status|autoupdate>")
 	writeln(w, "  sentinel doctor")
 	writeln(w, "  sentinel recovery <list|restore>")
+	writeln(w, "  sentinel update <check|apply|status>")
 	writeln(w, "")
 	writeln(w, "Commands:")
 	writeln(w, "  serve      Start Sentinel HTTP server (default)")
-	writeln(w, "  service    Manage systemd user service (Linux)")
+	writeln(w, "  service    Manage systemd user service and autoupdate timer (Linux)")
 	writeln(w, "  doctor     Check local environment and runtime config")
 	writeln(w, "  recovery   Inspect and restore persisted tmux snapshots")
+	writeln(w, "  update     Check/apply binary updates from GitHub releases")
 }
 
 func printServeHelp(w io.Writer) {
@@ -494,6 +835,7 @@ func printServiceHelp(w io.Writer) {
 	writeln(w, "  sentinel service install [-exec PATH] [-enable=true] [-start=true]")
 	writeln(w, "  sentinel service uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
 	writeln(w, "  sentinel service status")
+	writeln(w, "  sentinel service autoupdate <install|uninstall|status>")
 }
 
 func printServiceInstallHelp(w io.Writer) {
@@ -509,6 +851,28 @@ func printServiceUninstallHelp(w io.Writer) {
 func printServiceStatusHelp(w io.Writer) {
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel service status")
+}
+
+func printServiceAutoUpdateHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope user] [-on-calendar daily] [-randomized-delay 1h]")
+	writeln(w, "  sentinel service autoupdate uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
+	writeln(w, "  sentinel service autoupdate status")
+}
+
+func printServiceAutoUpdateInstallHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope user] [-on-calendar daily] [-randomized-delay 1h]")
+}
+
+func printServiceAutoUpdateUninstallHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service autoupdate uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
+}
+
+func printServiceAutoUpdateStatusHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service autoupdate status")
 }
 
 func printDoctorHelp(w io.Writer) {
@@ -532,7 +896,32 @@ func printRecoveryRestoreHelp(w io.Writer) {
 	writeln(w, "  sentinel recovery restore -snapshot ID [-mode confirm] [-conflict rename] [-target NAME] [-wait=true]")
 }
 
+func printUpdateHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel update check [-repo owner/name] [-api URL] [-os linux] [-arch amd64]")
+	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope user]")
+	writeln(w, "  sentinel update status")
+}
+
+func printUpdateCheckHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel update check [-repo owner/name] [-api URL] [-os linux] [-arch amd64]")
+}
+
+func printUpdateApplyHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope user]")
+}
+
+func printUpdateStatusHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel update status")
+}
+
 func currentVersion() string {
+	if value := strings.TrimSpace(buildVersion); value != "" && value != "dev" && value != "(devel)" {
+		return value
+	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		if strings.TrimSpace(bi.Main.Version) != "" && bi.Main.Version != "(devel)" {
 			return bi.Main.Version
