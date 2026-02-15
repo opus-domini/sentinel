@@ -7,8 +7,7 @@ set -euo pipefail
 # Environment variables:
 #   INSTALL_DIR          - Binary install directory (default: ~/.local/bin, or /usr/local/bin when root)
 #   VERSION              - Specific version to install (default: latest)
-#   SYSTEMD_TARGET_USER  - systemd template user instance when running as root (default: root)
-#   ENABLE_AUTOUPDATE    - Set to 1/true to install and enable daily autoupdate timer (user service only)
+#   ENABLE_AUTOUPDATE    - Set to 1/true to install and enable daily autoupdate timer
 
 REPO="opus-domini/sentinel"
 IS_ROOT=0
@@ -156,13 +155,12 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
     ESCAPED_EXEC_START=$(printf '%s\n' "${EXEC_START}" | sed 's/[\/&]/\\&/g')
 
     if [ "$IS_ROOT" -eq 1 ]; then
-        TARGET_USER="${SYSTEMD_TARGET_USER:-root}"
-        TARGET_UNIT="sentinel@${TARGET_USER}"
-        SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel@.service"
-        TEMPLATE_PATH="${TMP}/sentinel@.service"
-        SERVICE_PATH="${SYSTEM_SERVICE_DIR}/sentinel@.service"
+        TARGET_UNIT="sentinel"
+        SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel.service"
+        TEMPLATE_PATH="${TMP}/sentinel.service"
+        SERVICE_PATH="${SYSTEM_SERVICE_DIR}/sentinel.service"
 
-        info "Running as root: installing system-level unit template from ${SERVICE_TEMPLATE_URL}..."
+        info "Running as root: installing system-level unit from ${SERVICE_TEMPLATE_URL}..."
         if curl -fsSL "${SERVICE_TEMPLATE_URL}" -o "${TEMPLATE_PATH}"; then
             sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
 
@@ -188,15 +186,20 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
                 fi
 
                 if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
-                    warn "ENABLE_AUTOUPDATE is currently supported only for regular user installs"
-                    warn "switch to target user and run: sentinel service autoupdate install"
+                    info "Enabling daily autoupdate timer (system scope)..."
+                    if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${EXEC_START}" --enable=true --start=true --service sentinel --scope system; then
+                        ok "Autoupdate timer enabled"
+                    else
+                        warn "failed to enable autoupdate timer"
+                        warn "you can retry with: sentinel service autoupdate install --scope system"
+                    fi
                 fi
             else
                 warn "failed to run 'systemctl daemon-reload'"
                 warn "service file was written to ${SERVICE_PATH}"
             fi
         else
-            warn "failed to download contrib/sentinel@.service for ${VERSION}; skipping service installation"
+            warn "failed to download contrib/sentinel.service for ${VERSION}; skipping service installation"
         fi
     else
         mkdir -p "$USER_SERVICE_DIR"
@@ -227,7 +230,7 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
 
                 if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
                     info "Enabling daily autoupdate timer..."
-                    if "${INSTALL_DIR}/sentinel" service autoupdate install -exec "${EXEC_START}" -enable=true -start=true -service sentinel -scope user; then
+                    if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${EXEC_START}" --enable=true --start=true --service sentinel --scope user; then
                         ok "Autoupdate timer enabled"
                     else
                         warn "failed to enable autoupdate timer"
@@ -254,7 +257,7 @@ fi
 if [ "$OS" = "darwin" ]; then
     echo ""
     info "Installing launchd user service..."
-    if "${INSTALL_DIR}/sentinel" service install -exec "${INSTALL_DIR}/sentinel" -enable=true -start=true; then
+    if "${INSTALL_DIR}/sentinel" service install --exec "${INSTALL_DIR}/sentinel" --enable=true --start=true; then
         ok "launchd user service installed and started."
     else
         warn "failed to install/start launchd service"
@@ -263,11 +266,11 @@ if [ "$OS" = "darwin" ]; then
 
     if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
         info "Enabling daily autoupdate with launchd..."
-        if "${INSTALL_DIR}/sentinel" service autoupdate install -exec "${INSTALL_DIR}/sentinel" -enable=true -start=true -service io.opusdomini.sentinel -scope launchd -on-calendar daily; then
+        if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${INSTALL_DIR}/sentinel" --enable=true --start=true --service io.opusdomini.sentinel --scope launchd --on-calendar daily; then
             ok "launchd autoupdate enabled"
         else
             warn "failed to enable launchd autoupdate"
-            warn "you can retry with: sentinel service autoupdate install -scope launchd"
+            warn "you can retry with: sentinel service autoupdate install --scope launchd"
         fi
     fi
 

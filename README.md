@@ -70,15 +70,15 @@ What `install.sh` does:
   - starts or restarts the service (`systemctl --user start|restart sentinel`)
 - root:
   - installs binary to `/usr/local/bin/sentinel`
-  - installs `/etc/systemd/system/sentinel@.service`
-  - starts or restarts `sentinel@root` (or `sentinel@$SYSTEMD_TARGET_USER`)
+  - installs `/etc/systemd/system/sentinel.service`
+  - starts or restarts the service (`systemctl start|restart sentinel`)
 - macOS:
   - installs binary to `~/.local/bin/sentinel` (or `INSTALL_DIR`)
   - installs `~/Library/LaunchAgents/io.opusdomini.sentinel.plist`
   - starts or restarts service via `launchctl`
 - optional persistence:
   - `systemctl --user enable sentinel` (regular user)
-  - `systemctl enable sentinel@root` (root)
+  - `systemctl enable sentinel` (root)
 - optional auto-update (regular user):
   - `ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash`
   - or later: `sentinel service autoupdate install`
@@ -120,11 +120,9 @@ journalctl --user -u sentinel -f
 If installed as root:
 
 ```bash
-systemctl status sentinel@root
-journalctl -u sentinel@root -f
+systemctl status sentinel
+journalctl -u sentinel -f
 ```
-
-If you used `SYSTEMD_TARGET_USER`, replace `root` with that user in the unit name.
 
 If installed on macOS:
 
@@ -140,10 +138,8 @@ Optional: persist across reboot/login.
 systemctl --user enable sentinel
 
 # root/system install
-systemctl enable sentinel@root
+systemctl enable sentinel
 ```
-
-If you used `SYSTEMD_TARGET_USER`, enable `sentinel@your-user` instead.
 
 Optional: enable daily updater timer (regular user install).
 
@@ -224,10 +220,8 @@ systemctl --user restart sentinel
 Root/system service:
 
 ```bash
-systemctl restart sentinel@root
+systemctl restart sentinel
 ```
-
-If you used `SYSTEMD_TARGET_USER`, restart `sentinel@your-user` instead.
 
 Security recommendations:
 
