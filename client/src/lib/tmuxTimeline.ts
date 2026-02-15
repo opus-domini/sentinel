@@ -50,8 +50,11 @@ export function formatTimelineEventLocation(
   const paneName = metadataString(metadata, ['paneTitle', 'title'])
 
   const windowLabel =
-    windowName !== '' ? windowName : `#${normalizeWindowFallback(event.windowIndex)}`
-  const paneLabel = paneName !== '' ? paneName : normalizePaneFallback(event.paneId)
+    windowName !== ''
+      ? windowName
+      : `#${normalizeWindowFallback(event.windowIndex)}`
+  const paneLabel =
+    paneName !== '' ? paneName : normalizePaneFallback(event.paneId)
 
   return {
     label: `${session} > ${windowLabel} > ${paneLabel}`,
@@ -82,7 +85,9 @@ export function buildTimelineQueryString(filter: TimelineEventFilter): string {
     params.set('eventType', eventType)
   }
 
-  const limit = Number.isFinite(filter.limit) ? Math.trunc(filter.limit ?? 0) : 0
+  const limit = Number.isFinite(filter.limit)
+    ? Math.trunc(filter.limit ?? 0)
+    : 0
   if (limit > 0) {
     params.set('limit', String(limit))
   }

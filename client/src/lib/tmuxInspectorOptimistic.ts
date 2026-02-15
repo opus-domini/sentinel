@@ -364,7 +364,9 @@ export function mergePendingInspectorSnapshot(
     return visibleWindowIndexes.has(windowIndex)
   })
   const paneIDs = new Set(
-    mergedPanes.map((paneInfo) => paneInfo.paneId.trim()).filter((id) => id !== ''),
+    mergedPanes
+      .map((paneInfo) => paneInfo.paneId.trim())
+      .filter((id) => id !== ''),
   )
   const paneCountByWindow = new Map<number, number>()
   const realPaneCountByWindow = new Map<number, number>()
@@ -372,7 +374,10 @@ export function mergePendingInspectorSnapshot(
   for (const paneInfo of mergedPanes) {
     const windowIndex = normalizeWindowIndex(paneInfo.windowIndex)
     if (windowIndex === null) continue
-    paneCountByWindow.set(windowIndex, (paneCountByWindow.get(windowIndex) ?? 0) + 1)
+    paneCountByWindow.set(
+      windowIndex,
+      (paneCountByWindow.get(windowIndex) ?? 0) + 1,
+    )
     if (!isPendingSplitPaneID(paneInfo.paneId)) {
       realPaneCountByWindow.set(
         windowIndex,
@@ -391,11 +396,7 @@ export function mergePendingInspectorSnapshot(
     const windowIndex = normalizeWindowIndex(windowInfo.index)
     if (windowIndex === null) continue
     const floor = pendingWindowPaneFloorMap?.get(windowIndex)
-    if (
-      typeof floor !== 'number' ||
-      !Number.isFinite(floor) ||
-      floor < 0
-    ) {
+    if (typeof floor !== 'number' || !Number.isFinite(floor) || floor < 0) {
       continue
     }
     const normalizedFloor = Math.trunc(floor)
@@ -407,7 +408,11 @@ export function mergePendingInspectorSnapshot(
     }
 
     let nextPaneIndex = (paneMaxIndexByWindow.get(windowIndex) ?? -1) + 1
-    for (let offset = 0; offset < normalizedFloor - currentPaneCount; offset += 1) {
+    for (
+      let offset = 0;
+      offset < normalizedFloor - currentPaneCount;
+      offset += 1
+    ) {
       const slot = currentPaneCount + offset
       const pendingPaneID = buildPendingSplitPaneID(name, windowIndex, slot)
       if (paneIDs.has(pendingPaneID)) {

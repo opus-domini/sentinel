@@ -30,7 +30,9 @@ export default function SidebarHeader({
         {count}
       </span>
       <div className="ml-auto flex items-center gap-1.5">
-        <TooltipHelper content={canCreate ? 'New session' : 'tmux not available'}>
+        <TooltipHelper
+          content={canCreate ? 'New session' : 'tmux not available'}
+        >
           <Button
             variant="ghost"
             size="icon"

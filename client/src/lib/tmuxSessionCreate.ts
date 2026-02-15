@@ -1,9 +1,6 @@
 import type { Session } from '@/types'
 
-export function buildOptimisticSession(
-  name: string,
-  at: string,
-): Session {
+export function buildOptimisticSession(name: string, at: string): Session {
   return {
     name,
     windows: 1,

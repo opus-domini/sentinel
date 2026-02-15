@@ -111,7 +111,9 @@ export default function TimelineDialog({
               <SelectContent>
                 <SelectItem value="all">all event types</SelectItem>
                 <SelectItem value="command.started">command.started</SelectItem>
-                <SelectItem value="command.finished">command.finished</SelectItem>
+                <SelectItem value="command.finished">
+                  command.finished
+                </SelectItem>
                 <SelectItem value="output.marker">output.marker</SelectItem>
               </SelectContent>
             </Select>
@@ -139,7 +141,8 @@ export default function TimelineDialog({
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Tip: <span className="font-mono">Ctrl/Cmd + K</span> opens this panel.
+            Tip: <span className="font-mono">Ctrl/Cmd + K</span> opens this
+            panel.
           </p>
         </section>
 
@@ -151,7 +154,9 @@ export default function TimelineDialog({
           )}
           {events.length === 0 ? (
             <p className="py-10 text-center text-[12px] text-muted-foreground">
-              {loading ? 'Loading timeline events...' : 'No events for this filter.'}
+              {loading
+                ? 'Loading timeline events...'
+                : 'No events for this filter.'}
             </p>
           ) : (
             <ul className="grid gap-2">
@@ -186,24 +191,26 @@ export default function TimelineDialog({
                         </span>
                       )}
                     </div>
-                  <p className="mt-1 text-[12px] font-medium">{event.summary}</p>
-                  {(event.command || event.cwd || event.marker) && (
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {event.command && <span>cmd: {event.command}</span>}
-                      {event.command && event.cwd && <span> · </span>}
-                      {event.cwd && <span>cwd: {event.cwd}</span>}
-                      {event.marker && <span> · marker: {event.marker}</span>}
+                    <p className="mt-1 text-[12px] font-medium">
+                      {event.summary}
                     </p>
-                  )}
-                  {event.details && (
-                    <pre
-                      className={cn(
-                        'mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-card px-2 py-1 text-[11px] text-secondary-foreground',
-                      )}
-                    >
-                      {event.details}
-                    </pre>
-                  )}
+                    {(event.command || event.cwd || event.marker) && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {event.command && <span>cmd: {event.command}</span>}
+                        {event.command && event.cwd && <span> · </span>}
+                        {event.cwd && <span>cwd: {event.cwd}</span>}
+                        {event.marker && <span> · marker: {event.marker}</span>}
+                      </p>
+                    )}
+                    {event.details && (
+                      <pre
+                        className={cn(
+                          'mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-card px-2 py-1 text-[11px] text-secondary-foreground',
+                        )}
+                      >
+                        {event.details}
+                      </pre>
+                    )}
                   </li>
                 )
               })}

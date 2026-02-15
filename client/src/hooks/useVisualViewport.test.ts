@@ -12,7 +12,10 @@ type FakeVisualViewport = EventTarget & {
 }
 
 function installVisualViewport(
-  initial: Pick<FakeVisualViewport, 'width' | 'height' | 'offsetTop' | 'offsetLeft'>,
+  initial: Pick<
+    FakeVisualViewport,
+    'width' | 'height' | 'offsetTop' | 'offsetLeft'
+  >,
 ): FakeVisualViewport {
   const target = new EventTarget() as FakeVisualViewport
   target.width = initial.width
@@ -63,9 +66,9 @@ describe('useVisualViewport', () => {
     })
     const { unmount } = renderHook(() => useVisualViewport())
 
-    expect(document.documentElement.classList.contains('viewport-tracked')).toBe(
-      true,
-    )
+    expect(
+      document.documentElement.classList.contains('viewport-tracked'),
+    ).toBe(true)
     unmount()
 
     const root = document.documentElement

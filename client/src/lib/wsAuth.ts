@@ -5,7 +5,10 @@ function toBase64URL(input: string): string {
   for (const b of bytes) {
     binary += String.fromCharCode(b)
   }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
 }
 
 export function buildWSProtocols(token: string): Array<string> {
@@ -18,4 +21,3 @@ export function buildWSProtocols(token: string): Array<string> {
   }
   return protocols
 }
-

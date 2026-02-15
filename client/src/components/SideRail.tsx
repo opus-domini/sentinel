@@ -52,11 +52,7 @@ export default function SideRail({
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Ops" side="right">
-        <Link
-          className={navItemClass(opsActive)}
-          to="/ops"
-          aria-label="Ops"
-        >
+        <Link className={navItemClass(opsActive)} to="/ops" aria-label="Ops">
           OP
         </Link>
       </TooltipHelper>

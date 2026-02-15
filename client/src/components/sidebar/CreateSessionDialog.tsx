@@ -209,33 +209,35 @@ export default function CreateSessionDialog({
                 }}
               />
 
-              {open && cwdFocused && (cwdLoading || cwdSuggestions.length > 0) && (
-                <div className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md">
-                  {cwdLoading && (
-                    <div className="px-2 py-1 text-[11px] text-secondary-foreground">
-                      Searching directories...
-                    </div>
-                  )}
-                  {!cwdLoading &&
-                    cwdSuggestions.map((item, idx) => (
-                      <button
-                        key={item}
-                        type="button"
-                        className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] ${
-                          idx === activeSuggestion
-                            ? 'bg-accent text-accent-foreground'
-                            : 'hover:bg-secondary'
-                        }`}
-                        onMouseDown={(event) => {
-                          event.preventDefault()
-                          selectSuggestion(item)
-                        }}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                </div>
-              )}
+              {open &&
+                cwdFocused &&
+                (cwdLoading || cwdSuggestions.length > 0) && (
+                  <div className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md">
+                    {cwdLoading && (
+                      <div className="px-2 py-1 text-[11px] text-secondary-foreground">
+                        Searching directories...
+                      </div>
+                    )}
+                    {!cwdLoading &&
+                      cwdSuggestions.map((item, idx) => (
+                        <button
+                          key={item}
+                          type="button"
+                          className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] ${
+                            idx === activeSuggestion
+                              ? 'bg-accent text-accent-foreground'
+                              : 'hover:bg-secondary'
+                          }`}
+                          onMouseDown={(event) => {
+                            event.preventDefault()
+                            selectSuggestion(item)
+                          }}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                  </div>
+                )}
             </div>
           </div>
           <DialogFooter className="mt-4">

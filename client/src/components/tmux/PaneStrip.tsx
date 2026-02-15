@@ -91,11 +91,17 @@ export default function PaneStrip({
       return leftPending ? 1 : -1
     }
     if (leftPending && rightPending) {
-      return parsePendingSplitSlot(left.paneId) - parsePendingSplitSlot(right.paneId)
+      return (
+        parsePendingSplitSlot(left.paneId) - parsePendingSplitSlot(right.paneId)
+      )
     }
     const leftIDOrder = parsePaneIDOrder(left.paneId)
     const rightIDOrder = parsePaneIDOrder(right.paneId)
-    if (leftIDOrder !== null && rightIDOrder !== null && leftIDOrder !== rightIDOrder) {
+    if (
+      leftIDOrder !== null &&
+      rightIDOrder !== null &&
+      leftIDOrder !== rightIDOrder
+    ) {
       return leftIDOrder - rightIDOrder
     }
     return left.paneIndex - right.paneIndex
@@ -285,7 +291,7 @@ export default function PaneStrip({
                       ? 'border-amber-400/60 text-amber-100'
                       : isPending
                         ? 'border-border-subtle text-muted-foreground'
-                      : 'border-border text-secondary-foreground',
+                        : 'border-border text-secondary-foreground',
                 )}
               >
                 <button

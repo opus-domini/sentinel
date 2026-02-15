@@ -141,7 +141,10 @@ describe('mergePendingCreateSessions', () => {
       new Set(['killed']),
     )
 
-    expect(merged.sessions.map((item) => item.name)).toEqual(['stable', 'new-a'])
+    expect(merged.sessions.map((item) => item.name)).toEqual([
+      'stable',
+      'new-a',
+    ])
     expect(merged.sessionNamesForSync).toEqual(['stable', 'new-a'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual([])

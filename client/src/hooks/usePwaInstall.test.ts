@@ -35,7 +35,10 @@ describe('usePwaInstall', () => {
 
     const installEvent = new Event('beforeinstallprompt') as Event & {
       prompt: () => Promise<void>
-      userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+      userChoice: Promise<{
+        outcome: 'accepted' | 'dismissed'
+        platform: string
+      }>
     }
     installEvent.prompt = vi.fn(() => Promise.resolve())
     installEvent.userChoice = Promise.resolve({
@@ -55,7 +58,10 @@ describe('usePwaInstall', () => {
     const prompt = vi.fn(() => Promise.resolve())
     const installEvent = new Event('beforeinstallprompt') as Event & {
       prompt: () => Promise<void>
-      userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+      userChoice: Promise<{
+        outcome: 'accepted' | 'dismissed'
+        platform: string
+      }>
     }
     installEvent.prompt = prompt
     installEvent.userChoice = Promise.resolve({

@@ -19,7 +19,11 @@ import {
 } from './tmuxInspectorOptimistic'
 import type { PaneInfo, WindowInfo } from '@/types'
 
-function buildWindow(session: string, index: number, panes: number): WindowInfo {
+function buildWindow(
+  session: string,
+  index: number,
+  panes: number,
+): WindowInfo {
   return {
     session,
     index,
@@ -192,8 +196,9 @@ describe('mergePendingInspectorSnapshot', () => {
       buildPendingSplitPaneID('alpha', 0, 2),
     ])
     expect(
-      stale.panes.find((item) => item.paneId === buildPendingSplitPaneID('alpha', 0, 2))
-        ?.title,
+      stale.panes.find(
+        (item) => item.paneId === buildPendingSplitPaneID('alpha', 0, 2),
+      )?.title,
     ).toBe('new')
     expect(stale.confirmedWindowPaneFloors).toEqual([])
 
