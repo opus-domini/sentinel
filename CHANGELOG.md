@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.6](https://github.com/opus-domini/sentinel/compare/v0.2.5...v0.2.6) (2026-02-15)
+
+
+### Features
+
+* **service:** add seamless auto scope across launchd and updater restart ([945046f](https://github.com/opus-domini/sentinel/commit/945046f8ed29c6015e3c4a7ee25bc6ab396ec320))
+
+
+### Refactors
+
+* **cli:** standardize long option style in help and docs ([51c3d7f](https://github.com/opus-domini/sentinel/commit/51c3d7f368ee3f3af23a7cbeb6d50ad7b4201943))
+
 ## [0.2.5](https://github.com/opus-domini/sentinel/compare/v0.2.4...v0.2.5) (2026-02-15)
 
 
