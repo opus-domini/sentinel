@@ -79,6 +79,9 @@ What `install.sh` does on Linux:
 - optional persistence:
   - `systemctl --user enable sentinel` (regular user)
   - `systemctl enable sentinel@root` (root)
+- optional auto-update (regular user):
+  - `ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash`
+  - or later: `sentinel service autoupdate install`
 
 ### 2) Go install
 
@@ -142,6 +145,13 @@ systemctl enable sentinel@root
 
 If you used `SYSTEMD_TARGET_USER`, enable `sentinel@your-user` instead.
 
+Optional: enable daily updater timer (regular user install).
+
+```bash
+sentinel service autoupdate install
+sentinel service autoupdate status
+```
+
 ### 2) Open Sentinel
 
 Open `http://127.0.0.1:4040`.
@@ -163,9 +173,11 @@ The config file is created on first startup.
 - `sentinel service install`: install systemd user service (Linux).
 - `sentinel service uninstall`: remove systemd user service (Linux).
 - `sentinel service status`: show service state.
+- `sentinel service autoupdate install|uninstall|status`: manage daily updater timer (Linux).
 - `sentinel doctor`: print environment diagnostics.
 - `sentinel recovery list`: list persisted recovery sessions.
 - `sentinel recovery restore`: restore snapshot from local recovery journal.
+- `sentinel update check|apply|status`: check and apply binary updates.
 - `sentinel -h` / `sentinel --help`: help.
 - `sentinel -v` / `sentinel --version`: version.
 
@@ -175,6 +187,8 @@ Examples:
 sentinel serve
 sentinel service install
 sentinel service status
+sentinel service autoupdate install
+sentinel update check
 sentinel doctor
 sentinel recovery list
 sentinel recovery restore -snapshot 42
