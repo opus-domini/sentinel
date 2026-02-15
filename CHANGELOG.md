@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.0](https://github.com/opus-domini/sentinel/compare/v0.2.13...v0.3.0) (2026-02-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* removed /api/terminals* and /ws/terminals endpoints, plus /terminal and /terminals routes.
+
+### Features
+
+* **client:** cache tmux state with react-query ([c98d6a0](https://github.com/opus-domini/sentinel/commit/c98d6a02a8e43f848be11001e85c4d0c017752dc))
+* **client:** expand react-query caching across ops and settings ([bc7fde4](https://github.com/opus-domini/sentinel/commit/bc7fde44028ca38a6104a993591cda4de341f1e6))
+* **client:** persist tmux tabs and add react-query dependency ([1d5de25](https://github.com/opus-domini/sentinel/commit/1d5de25f7217bf80d8bcc3550570c3d1494a04d5))
+* **metrics:** add host metrics collection for CPU, memory, disk, and load averages ([ef81bf4](https://github.com/opus-domini/sentinel/commit/ef81bf4d3085eb982d76d68d52463ecb204e9629))
+* **ops:** add service status inspect and resilient updater actions ([b06df3b](https://github.com/opus-domini/sentinel/commit/b06df3bfef006914105815e3ff3a444eb36c20ae))
+* **ops:** discover and register host services from sidebar ([5e41c96](https://github.com/opus-domini/sentinel/commit/5e41c9686085ca9398fa16e08f35197495106afe))
+* replace standalone terminals with ops control plane ([8a291bd](https://github.com/opus-domini/sentinel/commit/8a291bd5191d96b2bfc7bad9bdc6f77a705a0d4f))
+* **runbook:** implement runbook executor for sequential step execution ([ef81bf4](https://github.com/opus-domini/sentinel/commit/ef81bf4d3085eb982d76d68d52463ecb204e9629))
+* **store:** add CRUD operations for custom services and runbooks ([ef81bf4](https://github.com/opus-domini/sentinel/commit/ef81bf4d3085eb982d76d68d52463ecb204e9629))
+* **watchtower:** enhance timeline event publishing for significant changes ([ef81bf4](https://github.com/opus-domini/sentinel/commit/ef81bf4d3085eb982d76d68d52463ecb204e9629))
+
+
+### Bug Fixes
+
+* **client:** polish ops panel affordances and header layout ([87a289e](https://github.com/opus-domini/sentinel/commit/87a289ea09afa25a8761dde7d043111bf01b9c5b))
+* **client:** prevent tmux inspector loading race on route return ([507baf6](https://github.com/opus-domini/sentinel/commit/507baf6c247a6031aecbccf7294b1e0c6ba05ec1))
+
 ## [0.2.13](https://github.com/opus-domini/sentinel/compare/v0.2.12...v0.2.13) (2026-02-15)
 
 
