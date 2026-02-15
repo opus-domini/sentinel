@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/opus-domini/sentinel/compare/v0.2.9...v0.2.10) (2026-02-15)
+
+
+### Bug Fixes
+
+* **service:** preserve home/config resolution for system installs ([5501e5f](https://github.com/opus-domini/sentinel/commit/5501e5f907ff94b7088237c8538039641adb14c2))
+
 ## [0.2.9](https://github.com/opus-domini/sentinel/compare/v0.2.8...v0.2.9) (2026-02-15)
 
 
