@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/opus-domini/sentinel/compare/v0.2.6...v0.2.7) (2026-02-15)
+
+
+### Features
+
+* **ui:** show runtime version in settings and harden status parsing ([178ef2f](https://github.com/opus-domini/sentinel/commit/178ef2fc9d8be570f39f8c19220e3ec0c15eb489))
+
 ## [0.2.6](https://github.com/opus-domini/sentinel/compare/v0.2.5...v0.2.6) (2026-02-15)
 
 
