@@ -4,337 +4,85 @@
     <p><strong>Your terminal watchtower</strong></p>
     <p>
         <a href="https://goreportcard.com/report/opus-domini/sentinel"><img src="https://goreportcard.com/badge/opus-domini/sentinel" alt="Go Report Badge"></a>
-        <a href="https://godoc.org/github.com/opus-domini/sentinel"><img src="https://godoc.org/github.com/opus-domini/sentinel?status.svg" alt="Go Doc Badge"></a>    
-        <a href="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml"><img src="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml/badge.svg" alt="Converage Actions Badge"></a>
-        <a href="https://github.com/opus-domini/sentinel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/opus-domini/sentinel.svg" alt="License Badge"></a>      
+        <a href="https://godoc.org/github.com/opus-domini/sentinel"><img src="https://godoc.org/github.com/opus-domini/sentinel?status.svg" alt="Go Doc Badge"></a>
+        <a href="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml"><img src="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml/badge.svg" alt="Coverage Actions Badge"></a>
+        <a href="https://github.com/opus-domini/sentinel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/opus-domini/sentinel.svg" alt="License Badge"></a>
     </p>
 </div>
 
 Sentinel is a terminal-first workspace delivered as a single binary.
-It gives you an interactive browser UI to manage tmux sessions, run standalone terminals, and inspect active host terminals in one place.
+It gives you a realtime browser interface to operate tmux sessions, standalone terminals, and recovery workflows on your own host.
 
 No Electron. No cloud relay. Just your machine and your shell.
 
-## Why Sentinel?
+## Why Sentinel
 
-- Real PTY terminals in the browser.
-- tmux session, window, and pane control with live attach.
-- Built-in tmux recovery journal with restore after reboot/power loss.
-- Standalone shell tabs that are not tied to tmux.
-- Optional token auth and origin validation.
-- One binary and simple operations.
+- One binary, fast setup, low operational overhead.
+- Realtime tmux control with session, window, and pane visibility.
+- Optimistic and responsive UI tuned for desktop and mobile.
+- Built-in watchtower activity tracking and timeline.
+- Built-in recovery snapshots and restore jobs.
+- Guardrails for safer destructive terminal actions.
 
-## Screenshots
+## Core Capabilities
 
-### Desktop
-
-Session and pane management with full tmux visibility.
-
-![Desktop tmux sessions](docs/assets/images/desktop-tmux-sessions.png)
-
-Interactive terminal focused on the active workspace.
-
-![Desktop tmux fullscreen](docs/assets/images/desktop-tmux-fullscreen.png)
-
-### Mobile
-
-Responsive terminal workflow with touch-first controls.
-
-<p align="center">
-  <img src="docs/assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
-</p>
-
-### Settings
-
-Theme customization and terminal identity tuning.
-
-![Theme settings](docs/assets/images/settings-theme.png)
-
-Token authentication setup for protected access.
-
-![Token settings](docs/assets/images/settings-token.png)
+- Interactive PTY terminal in the browser.
+- Tmux workspace management (`Session > Window > Pane`).
+- Standalone terminal tabs not tied to tmux.
+- Event-driven updates over WebSocket (`/ws/events`).
+- Service mode and daily autoupdate (Linux/macOS).
+- Optional token auth and origin allowlist.
 
 ## Quick Start
 
-### 1) Recommended: GitHub release installer
+### Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash
 ```
 
-What `install.sh` does:
+### Open Sentinel
 
-- regular user:
-  - installs binary to `~/.local/bin/sentinel`
-  - installs `~/.config/systemd/user/sentinel.service`
-  - starts or restarts the service (`systemctl --user start|restart sentinel`)
-- root:
-  - installs binary to `/usr/local/bin/sentinel`
-  - installs `/etc/systemd/system/sentinel.service`
-  - starts or restarts the service (`systemctl start|restart sentinel`)
-- macOS:
-  - installs binary to `~/.local/bin/sentinel` (or `INSTALL_DIR`)
-  - regular user installs `~/Library/LaunchAgents/io.opusdomini.sentinel.plist`
-  - root installs `/Library/LaunchDaemons/io.opusdomini.sentinel.plist`
-  - starts or restarts service via `launchctl`
-- optional persistence:
-  - `systemctl --user enable sentinel` (regular user)
-  - `systemctl enable sentinel` (root)
-- optional auto-update:
-  - `ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash`
-  - or later: `sentinel service autoupdate install`
-  - to force root/system scope on Linux: `sentinel service autoupdate install --scope system`
+- `http://127.0.0.1:4040`
 
-### 2) Go install
+### Validate Runtime
 
 ```bash
-go install github.com/opus-domini/sentinel/cmd/sentinel@latest
-```
-
-Or from local checkout:
-
-```bash
-go install ./cmd/sentinel
-```
-
-Go puts the binary in `GOBIN` (or `$(go env GOPATH)/bin` when `GOBIN` is empty).
-If needed:
-
-```bash
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
-For development from source, see `CONTRIBUTING.md`.
-
-## After Installation (User Journey)
-
-### 1) Confirm service status
-
-`install.sh` already starts (or restarts, if already running) the service for you.
-
-If installed as regular user:
-
-```bash
-systemctl --user status sentinel
-journalctl --user -u sentinel -f
-```
-
-If installed as root:
-
-```bash
-systemctl status sentinel
-journalctl -u sentinel -f
-```
-
-If installed on macOS:
-
-```bash
-sentinel service status
-tail -f ~/.sentinel/logs/sentinel.out.log
-```
-
-Optional: persist across reboot/login.
-
-```bash
-# regular user
-systemctl --user enable sentinel
-
-# root/system install
-systemctl enable sentinel
-```
-
-Optional: enable daily updater timer.
-
-```bash
-sentinel service autoupdate install
-sentinel service autoupdate status
-```
-
-For Linux root/system scope:
-
-```bash
-sentinel service autoupdate install --scope system
-sentinel service autoupdate status --scope system
-```
-
-### 2) Open Sentinel
-
-Open `http://127.0.0.1:4040`.
-
-Default binding is local-only (`127.0.0.1:4040`).
-
-### 3) Edit config file (recommended)
-
-Sentinel uses:
-
-- config file: `~/.sentinel/config.toml`
-- data dir: `~/.sentinel`
-
-The config file is created on first startup.
-
-## CLI Subcommands
-
-- `sentinel` or `sentinel serve`: start server.
-- `sentinel service install`: install local user service (systemd on Linux, launchd on macOS).
-- `sentinel service uninstall`: remove local user service (systemd on Linux, launchd on macOS).
-- `sentinel service status`: show service state.
-- `sentinel service autoupdate install|uninstall|status`: manage daily updater timer (Linux/macOS).
-- `sentinel doctor`: print environment diagnostics.
-- `sentinel recovery list`: list persisted recovery sessions.
-- `sentinel recovery restore`: restore snapshot from local recovery journal.
-- `sentinel update check|apply|status`: check and apply binary updates.
-- `sentinel -h` / `sentinel --help`: help.
-- `sentinel -v` / `sentinel --version`: version.
-
-Examples:
-
-```bash
-sentinel serve
-sentinel service install
-sentinel service status
-sentinel service autoupdate install
-sentinel update check
 sentinel doctor
-sentinel recovery list
-sentinel recovery restore --snapshot 42
-sentinel --help
-sentinel --version
+sentinel service status
 ```
 
-## Configuration File (Recommended)
+## Documentation
 
-By default Sentinel listens on:
+For complete guides and references, use the Docsify documentation in `docs/`:
 
-```toml
-listen = "127.0.0.1:4040"
-```
+- Start page: `docs/README.md`
+- Full guide index: `docs/_sidebar.md`
 
-For remote access, update `~/.sentinel/config.toml`:
+Main areas covered there:
 
-```toml
-listen = "0.0.0.0:4040"
-token = "strong-token"
-allowed_origins = ["https://sentinel.example.com"]
-log_level = "info"
-```
+- Getting started and architecture
+- Security model
+- Tmux/watchtower/recovery/guardrails deep dives
+- CLI, HTTP API, WebSocket and events reference
+- Service/autoupdate and storage operations
+- Troubleshooting
 
-After editing config, restart the service.
+## Screenshots
 
-Regular user service:
+![Desktop tmux sessions](docs/assets/images/desktop-tmux-sessions.png)
 
-```bash
-systemctl --user restart sentinel
-```
+![Desktop tmux fullscreen](docs/assets/images/desktop-tmux-fullscreen.png)
 
-Root/system service:
-
-```bash
-systemctl restart sentinel
-```
-
-Security recommendations:
-
-- never expose Sentinel without token auth;
-- prefer private networking (Tailscale) or authenticated Cloudflare Tunnel;
-- set `allowed_origins` explicitly when using reverse proxies.
-
-## Advanced: Environment Variables
-
-Environment variables override config file values and are useful for technical/automation scenarios.
-
-| Environment variable | Config key | Default | Description |
-| --- | --- | --- | --- |
-| `SENTINEL_LISTEN` | `listen` | `127.0.0.1:4040` | Listen address |
-| `SENTINEL_TOKEN` | `token` | disabled | Bearer token for API and WS auth |
-| `SENTINEL_ALLOWED_ORIGINS` | `allowed_origins` | auto | Comma-separated allowlist |
-| `SENTINEL_LOG_LEVEL` | `log_level` | `info` | `debug`, `info`, `warn`, `error` |
-| `SENTINEL_DATA_DIR` | n/a | `~/.sentinel` | Data directory |
-| `SENTINEL_WATCHTOWER_ENABLED` | `watchtower_enabled` | `true` | Enable watchtower activity projector |
-| `SENTINEL_WATCHTOWER_TICK_INTERVAL` | `watchtower_tick_interval` | `1s` | Activity collection interval |
-| `SENTINEL_WATCHTOWER_CAPTURE_LINES` | `watchtower_capture_lines` | `80` | Lines captured per pane tail |
-| `SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT` | `watchtower_capture_timeout` | `150ms` | Timeout per pane capture |
-| `SENTINEL_WATCHTOWER_JOURNAL_ROWS` | `watchtower_journal_rows` | `5000` | Max activity journal rows retained |
-| `SENTINEL_RECOVERY_ENABLED` | `recovery_enabled` | `true` | Enable recovery journal/restore engine |
-| `SENTINEL_RECOVERY_SNAPSHOT_INTERVAL` | `recovery_snapshot_interval` | `5s` | Snapshot polling interval |
-| `SENTINEL_RECOVERY_MAX_SNAPSHOTS` | `recovery_max_snapshots` | `300` | Max snapshots retained per session |
-
-## Watchtower Observability
-
-Sentinel exposes watchtower operational state via API:
-
-- `GET /api/tmux/activity/stats`: current runtime counters and last collect metadata.
-- `GET /api/tmux/activity/delta?since=<rev>&limit=<n>`: journal deltas by `globalRev`.
-
-Key fields in `/api/tmux/activity/stats`:
-
-- `collectTotal`: total collect cycles since startup.
-- `collectErrorsTotal`: collect cycles that returned error.
-- `lastCollectDurationMs`: duration of latest cycle.
-- `lastCollectSessions`: sessions seen in latest cycle.
-- `lastCollectChanged`: sessions with effective activity change in latest cycle.
-- `globalRev`: latest persisted activity revision.
-
-For local performance baselines, run:
-
-```bash
-go test -run=^$ -bench=BenchmarkCollectFiftyPanes -benchmem ./internal/watchtower
-```
-
-### Realtime Diagnostics (Frontend)
-
-The tmux route publishes client runtime counters to:
-
-- `window.__SENTINEL_TMUX_METRICS`
-
-Useful fields:
-
-- `wsMessages`, `wsOpenCount`, `wsCloseCount`, `wsReconnects`
-- `sessionsRefreshCount`, `inspectorRefreshCount`, `recoveryRefreshCount`
-- `fallbackRefreshCount` (poll fallback executions while events WS is down)
-- `deltaSyncCount`, `deltaSyncErrors`, `deltaOverflowCount`
-
-Expected healthy behavior:
-
-- while `/ws/events` is connected, no periodic polling loops for windows/panes;
-- `sessionsRefreshCount` should increase mostly on explicit actions or structural events;
-- `fallbackRefreshCount` should stay flat unless websocket is disconnected.
-
-## Current Limitations
-
-- Host support: Linux and macOS only.
-- Windows is not supported yet.
-- tmux workflows require `tmux` installed on the host.
-- Recovery restores session structure/context, not in-memory process state.
-- No multi-tenant RBAC yet.
+<p align="center">
+  <img src="docs/assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
+</p>
 
 ## Development
 
 ```bash
 make dev
-make build
 make test
-make test-client
 make lint
-make lint-client
 make ci
 ```
-
-## Release Process
-
-- Versioning and release notes are automated by `release-please` on `main`.
-- Follow Conventional Commits (`feat:`, `fix:`, `feat!:`...) so version bumps and changelogs are accurate.
-- When a release is created, CI builds and uploads platform archives and checksum manifest (`sentinel-<version>-checksums.txt`) automatically.
-- Manual tag releases are still supported via `.github/workflows/release.yml` and now always include generated notes.
-- Required GitHub setting for the default `GITHUB_TOKEN` path:
-  - `Settings` -> `Actions` -> `General` -> `Workflow permissions`
-  - enable `Read and write permissions`
-  - enable `Allow GitHub Actions to create and approve pull requests`
-
-## Contributing
-
-Pull requests are welcome.
-
-1. Fork repository
-2. Create a feature branch
-3. Run `make ci`
-4. Open a pull request
