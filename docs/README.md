@@ -1,295 +1,61 @@
 <div align="center">
-  <img src="assets/images/logo.png" alt="Sentinel logo" width="560" />
+  <img src="assets/images/logo.png" alt="Sentinel logo" width="520" />
   <hr />
   <p><strong>Your terminal watchtower</strong></p>
-  <p>
-      <a href="https://goreportcard.com/report/opus-domini/sentinel"><img src="https://goreportcard.com/badge/opus-domini/sentinel" alt="Go Report Badge"></a>
-      <a href="https://godoc.org/github.com/opus-domini/sentinel"><img src="https://godoc.org/github.com/opus-domini/sentinel?status.svg" alt="Go Doc Badge"></a>    
-      <a href="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml"><img src="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml/badge.svg" alt="Converage Actions Badge"></a>
-      <a href="https://github.com/opus-domini/sentinel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/opus-domini/sentinel.svg" alt="License Badge"></a>      
-  </p>
 </div>
 
 Sentinel is a terminal-first workspace delivered as a single binary.
-It gives you an interactive browser UI to manage tmux sessions, run standalone terminals, and inspect active host terminals in one place.
+It provides tmux session control, standalone terminals, realtime activity projection, and recovery workflows in a browser UI.
 
-No Electron. No cloud relay. Just your machine and your shell.
+## What You Will Find Here
 
-## Why Sentinel
+- Installation and first-run flow.
+- Architecture and security model.
+- Deep feature guides for tmux/watchtower/recovery/guardrails.
+- Full CLI and API reference.
+- Operations runbooks for services, autoupdate, and storage management.
+- Mobile/PWA behavior and known troubleshooting patterns.
 
-Sentinel is for people who want terminal power with less friction.
+## Quick Start
 
-- Real PTY terminals in the browser.
-- tmux session, window, and pane control with live attach.
-- Built-in tmux recovery journal with restore after reboot/power loss.
-- Standalone shell tabs that are not tied to tmux.
-- Optional token auth and origin validation.
-- One binary and simple operations.
-
-## Screenshots
-
-Tip: click any image to zoom.
-
-### Desktop
-
-Session and pane management with full tmux visibility.
-
-![Desktop tmux sessions](assets/images/desktop-tmux-sessions.png)
-
-Interactive terminal focused on the active workspace.
-
-![Desktop tmux fullscreen](assets/images/desktop-tmux-fullscreen.png)
-
-### Mobile
-
-Responsive terminal workflow with touch-first controls.
-
-<p align="center">
-  <img src="assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
-</p>
-
-### Settings
-
-Theme customization and terminal identity tuning.
-
-![Theme settings](assets/images/settings-theme.png)
-
-Token authentication setup for protected access.
-
-![Token settings](assets/images/settings-token.png)
-
-## Installation
-
-### 1) Recommended: GitHub release installer
+### Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash
 ```
 
-What `install.sh` does:
+### Open UI
 
-- regular user:
-  - installs binary to `~/.local/bin/sentinel`
-  - installs `~/.config/systemd/user/sentinel.service`
-  - starts or restarts the service (`systemctl --user start|restart sentinel`)
-- root:
-  - installs binary to `/usr/local/bin/sentinel`
-  - installs `/etc/systemd/system/sentinel.service`
-  - starts or restarts the service (`systemctl start|restart sentinel`)
-- macOS:
-  - installs binary to `~/.local/bin/sentinel` (or `INSTALL_DIR`)
-  - regular user installs `~/Library/LaunchAgents/io.opusdomini.sentinel.plist`
-  - root installs `/Library/LaunchDaemons/io.opusdomini.sentinel.plist`
-  - starts or restarts service via `launchctl`
-- optional persistence:
-  - `systemctl --user enable sentinel` (regular user)
-  - `systemctl enable sentinel` (root)
-- optional auto-update:
-  - `ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash`
-  - or later: `sentinel service autoupdate install`
-  - to force root/system scope on Linux: `sentinel service autoupdate install --scope system`
+- Default URL: `http://127.0.0.1:4040`
+- If token is enabled, authenticate in Settings or with `Authorization: Bearer <token>`.
 
-### 2) Go install
-
-Requirements:
-
-- `Go 1.25+`
-- Linux or macOS
-
-From GitHub:
+### Check Runtime
 
 ```bash
-go install github.com/opus-domini/sentinel/cmd/sentinel@latest
-```
-
-From local checkout:
-
-```bash
-go install ./cmd/sentinel
-```
-
-Go puts the binary in `GOBIN` (or `$(go env GOPATH)/bin` when `GOBIN` is empty).
-If needed:
-
-```bash
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
-For development from source, see `CONTRIBUTING.md`.
-
-## After Installation (User Journey)
-
-### 1) Confirm service status
-
-`install.sh` already starts (or restarts, if already running) the service for you.
-
-If installed as regular user:
-
-```bash
-systemctl --user status sentinel
-journalctl --user -u sentinel -f
-```
-
-If installed as root:
-
-```bash
-systemctl status sentinel
-journalctl -u sentinel -f
-```
-
-If installed on macOS:
-
-```bash
+sentinel doctor
 sentinel service status
-tail -f ~/.sentinel/logs/sentinel.out.log
-```
-
-Optional: persist across reboot/login.
-
-```bash
-# regular user
-systemctl --user enable sentinel
-
-# root/system install
-systemctl enable sentinel
-```
-
-Optional: enable daily updater timer.
-
-```bash
-sentinel service autoupdate install
 sentinel service autoupdate status
 ```
 
-For Linux root/system scope:
+## Navigation
 
-```bash
-sentinel service autoupdate install --scope system
-sentinel service autoupdate status --scope system
-```
+Use the left sidebar as the primary index.
+Suggested reading order:
 
-### 2) Open Sentinel
+1. `Guide > Getting Started`
+2. `Guide > Architecture`
+3. `Features > Tmux Workspace`
+4. `Reference > CLI Reference`
+5. `Operations > Service and Autoupdate`
 
-Open `http://127.0.0.1:4040`.
+## Screenshots
 
-Default binding is local-only (`127.0.0.1:4040`).
+Tip: click any image to zoom.
 
-### 3) Edit config file (recommended)
+![Desktop tmux sessions](assets/images/desktop-tmux-sessions.png)
 
-Sentinel uses:
+![Desktop tmux fullscreen](assets/images/desktop-tmux-fullscreen.png)
 
-- config file: `~/.sentinel/config.toml`
-- data dir: `~/.sentinel`
-
-The config file is created on first startup.
-
-## CLI Subcommands
-
-- `sentinel` or `sentinel serve`: start server.
-- `sentinel service install`: install local user service (systemd on Linux, launchd on macOS).
-- `sentinel service uninstall`: remove local user service (systemd on Linux, launchd on macOS).
-- `sentinel service status`: show service state.
-- `sentinel service autoupdate install|uninstall|status`: manage daily updater timer (Linux/macOS).
-- `sentinel doctor`: print environment diagnostics.
-- `sentinel recovery list`: list persisted recovery sessions.
-- `sentinel recovery restore`: restore snapshot from local recovery journal.
-- `sentinel update check|apply|status`: check and apply binary updates.
-- `sentinel -h` / `sentinel --help`: help.
-- `sentinel -v` / `sentinel --version`: version.
-
-Examples:
-
-```bash
-sentinel serve
-sentinel service install
-sentinel service status
-sentinel service autoupdate install
-sentinel update check
-sentinel doctor
-sentinel recovery list
-sentinel recovery restore --snapshot 42
-sentinel --help
-sentinel --version
-```
-
-## Configuration File (Recommended)
-
-By default Sentinel listens on:
-
-```toml
-listen = "127.0.0.1:4040"
-```
-
-For remote access, update `~/.sentinel/config.toml`:
-
-```toml
-listen = "0.0.0.0:4040"
-token = "strong-token"
-allowed_origins = ["https://sentinel.example.com"]
-log_level = "info"
-```
-
-After editing config, restart the service.
-
-Regular user service:
-
-```bash
-systemctl --user restart sentinel
-```
-
-Root/system service:
-
-```bash
-systemctl restart sentinel
-```
-
-Security recommendations:
-
-- never expose Sentinel without token auth;
-- prefer private networking (Tailscale) or authenticated Cloudflare Tunnel;
-- set `allowed_origins` explicitly when using reverse proxies.
-
-## Advanced: Environment Variables
-
-Environment variables override config file values and are useful for technical/automation scenarios.
-
-| Environment variable | Config key | Default | Description |
-| --- | --- | --- | --- |
-| `SENTINEL_LISTEN` | `listen` | `127.0.0.1:4040` | Listen address |
-| `SENTINEL_TOKEN` | `token` | disabled | Bearer token for API and WS auth |
-| `SENTINEL_ALLOWED_ORIGINS` | `allowed_origins` | auto | Comma-separated allowlist |
-| `SENTINEL_LOG_LEVEL` | `log_level` | `info` | `debug`, `info`, `warn`, `error` |
-| `SENTINEL_DATA_DIR` | n/a | `~/.sentinel` | Data directory |
-| `SENTINEL_RECOVERY_ENABLED` | `recovery_enabled` | `true` | Enable recovery journal/restore engine |
-| `SENTINEL_RECOVERY_SNAPSHOT_INTERVAL` | `recovery_snapshot_interval` | `5s` | Snapshot polling interval |
-| `SENTINEL_RECOVERY_CAPTURE_LINES` | `recovery_capture_lines` | `80` | Lines captured per pane in snapshots |
-| `SENTINEL_RECOVERY_MAX_SNAPSHOTS` | `recovery_max_snapshots` | `300` | Max snapshots retained per session |
-
-## Current Limitations
-
-- Host support: Linux and macOS only.
-- Windows is not supported yet.
-- tmux workflows require `tmux` installed on the host.
-- Recovery restores session structure/context, not in-memory process state.
-- No multi-tenant RBAC yet.
-
-## Development
-
-```bash
-make dev
-make build
-make test
-make test-client
-make lint
-make lint-client
-make ci
-```
-
-## Contributing
-
-Pull requests are welcome.
-
-1. Fork repository
-2. Create a feature branch
-3. Run `make ci`
-4. Open a pull request
+<p align="center">
+  <img src="assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
+</p>
