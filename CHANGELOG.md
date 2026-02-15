@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.12](https://github.com/opus-domini/sentinel/compare/v0.2.11...v0.2.12) (2026-02-15)
+
+
+### Features
+
+* expand timeline ops and add storage controls ([029f40d](https://github.com/opus-domini/sentinel/commit/029f40d43e15cffff4305238352aa5f416d499ca))
+
+
+### Documentation
+
+* restructure docsify guide and expand product documentation ([62f2b5d](https://github.com/opus-domini/sentinel/commit/62f2b5db716924198ab3124d8379f054422ab566))
+* simplify root readme and point to detailed docs ([6139803](https://github.com/opus-domini/sentinel/commit/61398034c51ee5d6b611bab1e1fecd5da9d1f102))
+
 ## [0.2.11](https://github.com/opus-domini/sentinel/compare/v0.2.10...v0.2.11) (2026-02-15)
 
 
