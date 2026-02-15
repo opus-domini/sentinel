@@ -75,7 +75,8 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -trimpath -o sentinel ./cmd/sentinel
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: go build -trimpath -ldflags "-X main.buildVersion=${VERSION}" -o sentinel ./cmd/sentinel
 
       - name: Package
         run: |
@@ -100,12 +101,19 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: Generate checksums
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          CHECKSUM_FILE="sentinel-${VERSION}-checksums.txt"
+          sha256sum sentinel-*.tar.gz > "$CHECKSUM_FILE"
+          echo "CHECKSUM_FILE=$CHECKSUM_FILE" >> "$GITHUB_ENV"
+
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ needs.release-please.outputs.tag_name }}"
-          gh release upload "$TAG" sentinel-*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" sentinel-*.tar.gz "${CHECKSUM_FILE}" --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Release URL
         env:
