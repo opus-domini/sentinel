@@ -73,9 +73,11 @@ import { slugifyTmuxName } from '@/lib/tmuxName'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import { shouldSkipInspectorRefresh } from '@/lib/tmuxInspectorRefresh'
 import {
+  TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
   TMUX_SESSIONS_QUERY_KEY,
   shouldCacheActiveInspectorSnapshot,
   tmuxInspectorQueryKey,
+  tmuxTimelineQueryKey,
 } from '@/lib/tmuxQueryCache'
 import {
   buildTimelineQueryString,
@@ -255,6 +257,16 @@ type ActivityDeltaResponse = {
   inspectorPatches?: Array<InspectorSessionPatch>
 }
 
+type RecoveryOverviewCache = {
+  sessions: Array<RecoverySession>
+  jobs: Array<RecoveryJob>
+}
+
+type TmuxTimelineCache = {
+  events: Array<TimelineEvent>
+  hasMore: boolean
+}
+
 function TmuxPage() {
   const { tokenRequired, defaultCwd } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -338,8 +350,18 @@ function TmuxPage() {
   const [renamePaneValue, setRenamePaneValue] = useState('')
   const [recoverySessions, setRecoverySessions] = useState<
     Array<RecoverySession>
-  >([])
-  const [recoveryJobs, setRecoveryJobs] = useState<Array<RecoveryJob>>([])
+  >(
+    () =>
+      queryClient.getQueryData<RecoveryOverviewCache>(
+        TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
+      )?.sessions ?? [],
+  )
+  const [recoveryJobs, setRecoveryJobs] = useState<Array<RecoveryJob>>(
+    () =>
+      queryClient.getQueryData<RecoveryOverviewCache>(
+        TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
+      )?.jobs ?? [],
+  )
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
   const [recoverySnapshots, setRecoverySnapshots] = useState<
     Array<{ id: number; capturedAt: string; windows: number; panes: number }>
@@ -364,8 +386,30 @@ function TmuxPage() {
   >('rename')
   const [restoreTargetSession, setRestoreTargetSession] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(false)
-  const [timelineEvents, setTimelineEvents] = useState<Array<TimelineEvent>>([])
-  const [timelineHasMore, setTimelineHasMore] = useState(false)
+  const [timelineEvents, setTimelineEvents] = useState<Array<TimelineEvent>>(
+    () =>
+      queryClient.getQueryData<TmuxTimelineCache>(
+        tmuxTimelineQueryKey({
+          session: '',
+          query: '',
+          severity: 'all',
+          eventType: 'all',
+          limit: 180,
+        }),
+      )?.events ?? [],
+  )
+  const [timelineHasMore, setTimelineHasMore] = useState(
+    () =>
+      queryClient.getQueryData<TmuxTimelineCache>(
+        tmuxTimelineQueryKey({
+          session: '',
+          query: '',
+          severity: 'all',
+          eventType: 'all',
+          limit: 180,
+        }),
+      )?.hasMore ?? false,
+  )
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [timelineError, setTimelineError] = useState('')
   const [timelineQuery, setTimelineQuery] = useState('')
@@ -475,6 +519,46 @@ function TmuxPage() {
   useEffect(() => {
     inspectorLoadingRef.current = inspectorLoading
   }, [inspectorLoading])
+  useEffect(() => {
+    queryClient.setQueryData<RecoveryOverviewCache>(
+      TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
+      {
+        sessions: recoverySessions,
+        jobs: recoveryJobs,
+      },
+    )
+  }, [queryClient, recoveryJobs, recoverySessions])
+  useEffect(() => {
+    const rawScope = timelineSessionFilter.trim()
+    const session =
+      rawScope === '' || rawScope === 'all'
+        ? ''
+        : rawScope === 'active'
+          ? tabsState.activeSession.trim()
+          : rawScope
+    queryClient.setQueryData<TmuxTimelineCache>(
+      tmuxTimelineQueryKey({
+        session,
+        query: timelineQuery,
+        severity: timelineSeverity,
+        eventType: timelineEventType,
+        limit: 180,
+      }),
+      {
+        events: timelineEvents,
+        hasMore: timelineHasMore,
+      },
+    )
+  }, [
+    queryClient,
+    tabsState.activeSession,
+    timelineEventType,
+    timelineEvents,
+    timelineHasMore,
+    timelineQuery,
+    timelineSessionFilter,
+    timelineSeverity,
+  ])
   useEffect(() => {
     const active = tabsState.activeSession.trim()
     if (!shouldCacheActiveInspectorSnapshot(active, windows, panes)) {
@@ -1429,6 +1513,13 @@ function TmuxPage() {
         if (gen !== recoveryGenerationRef.current) return
         setRecoverySessions(data.overview.killedSessions)
         setRecoveryJobs(data.overview.runningJobs)
+        queryClient.setQueryData<RecoveryOverviewCache>(
+          TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
+          {
+            sessions: data.overview.killedSessions,
+            jobs: data.overview.runningJobs,
+          },
+        )
         setRecoveryError('')
       } catch (error) {
         if (gen !== recoveryGenerationRef.current) return
@@ -1438,6 +1529,13 @@ function TmuxPage() {
         if (message.toLowerCase().includes('recovery subsystem is disabled')) {
           setRecoverySessions([])
           setRecoveryJobs([])
+          queryClient.setQueryData<RecoveryOverviewCache>(
+            TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
+            {
+              sessions: [],
+              jobs: [],
+            },
+          )
           setRecoveryError('')
         } else {
           setRecoveryError(message)
@@ -1448,7 +1546,7 @@ function TmuxPage() {
         }
       }
     },
-    [api, bumpRuntimeMetric],
+    [api, bumpRuntimeMetric, queryClient],
   )
 
   const resolveTimelineSessionScope = useCallback((scope: string): string => {
@@ -1471,6 +1569,18 @@ function TmuxPage() {
       const session = resolveTimelineSessionScope(
         timelineSessionFilterRef.current,
       )
+      const cacheKey = tmuxTimelineQueryKey({
+        session,
+        query: timelineQuery,
+        severity: timelineSeverity,
+        eventType: timelineEventType,
+        limit: 180,
+      })
+      const cached = queryClient.getQueryData<TmuxTimelineCache>(cacheKey)
+      if (cached != null) {
+        setTimelineEvents(cached.events)
+        setTimelineHasMore(cached.hasMore)
+      }
       const queryString = buildTimelineQueryString({
         session,
         query: timelineQuery,
@@ -1485,6 +1595,10 @@ function TmuxPage() {
         if (gen !== timelineGenerationRef.current) return
         setTimelineEvents(data.events)
         setTimelineHasMore(data.hasMore)
+        queryClient.setQueryData<TmuxTimelineCache>(cacheKey, {
+          events: data.events,
+          hasMore: data.hasMore,
+        })
         setTimelineError('')
       } catch (error) {
         if (gen !== timelineGenerationRef.current) return
@@ -1499,6 +1613,7 @@ function TmuxPage() {
     },
     [
       api,
+      queryClient,
       resolveTimelineSessionScope,
       timelineEventType,
       timelineQuery,
@@ -1515,6 +1630,22 @@ function TmuxPage() {
     if (!timelineOpen) {
       return
     }
+    const session = resolveTimelineSessionScope(timelineSessionFilter)
+    const cached = queryClient.getQueryData<TmuxTimelineCache>(
+      tmuxTimelineQueryKey({
+        session,
+        query: timelineQuery,
+        severity: timelineSeverity,
+        eventType: timelineEventType,
+        limit: 180,
+      }),
+    )
+    if (cached != null) {
+      setTimelineEvents(cached.events)
+      setTimelineHasMore(cached.hasMore)
+      setTimelineError('')
+      setTimelineLoading(false)
+    }
     const timeoutID = window.setTimeout(() => {
       void loadTimeline()
     }, 120)
@@ -1523,6 +1654,8 @@ function TmuxPage() {
     }
   }, [
     loadTimeline,
+    queryClient,
+    resolveTimelineSessionScope,
     timelineOpen,
     timelineQuery,
     timelineSeverity,

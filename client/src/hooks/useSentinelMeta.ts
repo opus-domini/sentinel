@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 type MetaResponse = {
   tokenRequired?: boolean
@@ -7,58 +8,65 @@ type MetaResponse = {
 }
 
 export function useSentinelMeta(token: string) {
-  const [tokenRequired, setTokenRequired] = useState(false)
-  const [defaultCwd, setDefaultCwd] = useState('')
-  const [version, setVersion] = useState('dev')
-  const [unauthorized, setUnauthorized] = useState(false)
-
-  useEffect(() => {
-    const abortController = new AbortController()
-
-    void (async () => {
-      try {
-        const headers: Record<string, string> = {
-          Accept: 'application/json',
-        }
-        if (token.trim() !== '') {
-          headers.Authorization = `Bearer ${token.trim()}`
-        }
-
-        const response = await fetch('/api/meta', {
-          signal: abortController.signal,
-          headers,
-        })
-        if (response.status === 401) {
-          setTokenRequired(true)
-          setUnauthorized(true)
-          return
-        }
-        if (!response.ok) {
-          return
-        }
-
-        const payload = (await response.json()) as { data?: MetaResponse }
-        setTokenRequired(Boolean(payload.data?.tokenRequired))
-        setDefaultCwd((payload.data?.defaultCwd ?? '').trim())
-        setVersion((payload.data?.version ?? 'dev').trim() || 'dev')
-        setUnauthorized(false)
-      } catch {
-        if (abortController.signal.aborted) {
-          return
-        }
-        // Keep default when metadata cannot be loaded.
+  const normalizedToken = token.trim()
+  const metaQuery = useQuery({
+    queryKey: ['meta', normalizedToken],
+    queryFn: async ({ signal }) => {
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
       }
-    })()
+      if (normalizedToken !== '') {
+        headers.Authorization = `Bearer ${normalizedToken}`
+      }
 
-    return () => {
-      abortController.abort()
-    }
-  }, [token])
+      const response = await fetch('/api/meta', {
+        signal,
+        headers,
+      })
+      if (response.status === 401) {
+        return {
+          tokenRequired: true,
+          defaultCwd: '',
+          version: 'dev',
+          unauthorized: true,
+        }
+      }
+      if (!response.ok) {
+        return {
+          tokenRequired: false,
+          defaultCwd: '',
+          version: 'dev',
+          unauthorized: false,
+        }
+      }
+
+      const payload = (await response.json()) as { data?: MetaResponse }
+      return {
+        tokenRequired: Boolean(payload.data?.tokenRequired),
+        defaultCwd: (payload.data?.defaultCwd ?? '').trim(),
+        version: (payload.data?.version ?? 'dev').trim() || 'dev',
+        unauthorized: false,
+      }
+    },
+    retry: false,
+    staleTime: 60_000,
+  })
+
+  const value = useMemo(
+    () =>
+      metaQuery.data ?? {
+        tokenRequired: false,
+        defaultCwd: '',
+        version: 'dev',
+        unauthorized: false,
+      },
+    [metaQuery.data],
+  )
 
   return {
-    tokenRequired,
-    defaultCwd,
-    version,
-    unauthorized,
+    tokenRequired: value.tokenRequired,
+    defaultCwd: value.defaultCwd,
+    version: value.version,
+    unauthorized: value.unauthorized,
   }
 }

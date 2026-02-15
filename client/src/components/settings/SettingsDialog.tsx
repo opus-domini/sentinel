@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   GuardrailRule,
   GuardrailRulesResponse,
@@ -11,6 +12,10 @@ import { useMetaContext } from '@/contexts/MetaContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
+import {
+  OPS_GUARDRAILS_QUERY_KEY,
+  OPS_STORAGE_STATS_QUERY_KEY,
+} from '@/lib/opsQueryCache'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -45,15 +50,12 @@ export default function SettingsDialog({
   const { version } = useMetaContext()
   const { token } = useTokenContext()
   const api = useTmuxApi(token)
+  const queryClient = useQueryClient()
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
-  const [guardrailRules, setGuardrailRules] = useState<Array<GuardrailRule>>([])
-  const [guardrailLoading, setGuardrailLoading] = useState(false)
   const [guardrailError, setGuardrailError] = useState('')
   const [guardrailSavingID, setGuardrailSavingID] = useState('')
-  const [storageStats, setStorageStats] = useState<StorageStatsResponse | null>(null)
-  const [storageLoading, setStorageLoading] = useState(false)
   const [storageError, setStorageError] = useState('')
   const [storageNotice, setStorageNotice] = useState('')
   const [storageFlushingResource, setStorageFlushingResource] = useState('')
@@ -77,35 +79,55 @@ export default function SettingsDialog({
     )
   }
 
-  const loadGuardrails = useCallback(async () => {
-    setGuardrailLoading(true)
-    try {
+  const guardrailsQuery = useQuery({
+    queryKey: OPS_GUARDRAILS_QUERY_KEY,
+    queryFn: async () => {
       const data = await api<GuardrailRulesResponse>('/api/ops/guardrails/rules')
-      setGuardrailRules(data.rules)
-      setGuardrailError('')
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'failed to load guardrails'
-      setGuardrailError(message)
-    } finally {
-      setGuardrailLoading(false)
-    }
-  }, [api])
+      return data.rules
+    },
+    enabled: open && activeSection === 'security',
+  })
+
+  const storageStatsQuery = useQuery({
+    queryKey: OPS_STORAGE_STATS_QUERY_KEY,
+    queryFn: async () => {
+      return api<StorageStatsResponse>('/api/ops/storage/stats')
+    },
+    enabled: open && activeSection === 'data',
+  })
+
+  const guardrailRules = guardrailsQuery.data ?? []
+  const guardrailLoading = guardrailsQuery.isLoading
+  const storageStats = storageStatsQuery.data ?? null
+  const storageLoading = storageStatsQuery.isLoading
+  const guardrailErrorMessage =
+    guardrailError.trim() !== ''
+      ? guardrailError
+      : guardrailsQuery.error instanceof Error
+        ? guardrailsQuery.error.message
+        : ''
+  const storageErrorMessage =
+    storageError.trim() !== ''
+      ? storageError
+      : storageStatsQuery.error instanceof Error
+        ? storageStatsQuery.error.message
+        : ''
+
+  const loadGuardrails = useCallback(async () => {
+    setGuardrailError('')
+    await queryClient.refetchQueries({
+      queryKey: OPS_GUARDRAILS_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
 
   const loadStorageStats = useCallback(async () => {
-    setStorageLoading(true)
-    try {
-      const data = await api<StorageStatsResponse>('/api/ops/storage/stats')
-      setStorageStats(data)
-      setStorageError('')
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'failed to load storage stats'
-      setStorageError(message)
-    } finally {
-      setStorageLoading(false)
-    }
-  }, [api])
+    setStorageError('')
+    await queryClient.refetchQueries({
+      queryKey: OPS_STORAGE_STATS_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
 
   const saveGuardrail = useCallback(
     async (rule: GuardrailRule, patch: Partial<GuardrailRule>) => {
@@ -127,7 +149,11 @@ export default function SettingsDialog({
             }),
           },
         )
-        await loadGuardrails()
+        await queryClient.invalidateQueries({
+          queryKey: OPS_GUARDRAILS_QUERY_KEY,
+          exact: true,
+        })
+        setGuardrailError('')
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'failed to update guardrail'
@@ -136,7 +162,7 @@ export default function SettingsDialog({
         setGuardrailSavingID('')
       }
     },
-    [api, loadGuardrails],
+    [api, queryClient],
   )
 
   const flushStorageResource = useCallback(
@@ -163,7 +189,10 @@ export default function SettingsDialog({
           `${data.results.length} resource(s) flushed (${removedRows} row(s) removed).`,
         )
         setStorageError('')
-        await loadStorageStats()
+        await queryClient.invalidateQueries({
+          queryKey: OPS_STORAGE_STATS_QUERY_KEY,
+          exact: true,
+        })
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'failed to flush storage'
@@ -172,20 +201,8 @@ export default function SettingsDialog({
         setStorageFlushingResource('')
       }
     },
-    [api, loadStorageStats],
+    [api, queryClient],
   )
-
-  useEffect(() => {
-    if (!open) return
-    if (activeSection !== 'security') return
-    void loadGuardrails()
-  }, [activeSection, loadGuardrails, open])
-
-  useEffect(() => {
-    if (!open) return
-    if (activeSection !== 'data') return
-    void loadStorageStats()
-  }, [activeSection, loadStorageStats, open])
 
   const formatBytes = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return '0 B'
@@ -288,7 +305,8 @@ export default function SettingsDialog({
                 </Badge>
               </div>
               <p className="mb-3 text-xs text-muted-foreground">
-                Install Sentinel as an app for faster launch and better mobile UX.
+                Install Sentinel as an app for faster launch and better mobile
+                UX.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -360,13 +378,13 @@ export default function SettingsDialog({
                 </div>
               </div>
               <p className="mb-2 text-xs text-muted-foreground">
-                Monitor persisted data growth and flush historical resources when
-                needed.
+                Monitor persisted data growth and flush historical resources
+                when needed.
               </p>
 
-              {storageError.trim() !== '' && (
+              {storageErrorMessage.trim() !== '' && (
                 <div className="mb-2 rounded border border-destructive/45 bg-destructive/10 px-2 py-1 text-[11px] text-destructive-foreground">
-                  {storageError}
+                  {storageErrorMessage}
                 </div>
               )}
               {storageNotice.trim() !== '' && (
@@ -383,7 +401,9 @@ export default function SettingsDialog({
                   </p>
                 </div>
                 <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                  <p className="text-[11px] text-muted-foreground">SQLite files</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    SQLite files
+                  </p>
                   <p className="font-mono text-[12px] text-secondary-foreground">
                     db {formatBytes(storageStats?.databaseBytes ?? 0)} · wal{' '}
                     {formatBytes(storageStats?.walBytes ?? 0)} · shm{' '}
@@ -431,11 +451,12 @@ export default function SettingsDialog({
                     </Button>
                   </div>
                 ))}
-                {storageStats != null && storageStats.resources.length === 0 && (
-                  <p className="text-[12px] text-muted-foreground">
-                    No storage resources available.
-                  </p>
-                )}
+                {storageStats != null &&
+                  storageStats.resources.length === 0 && (
+                    <p className="text-[12px] text-muted-foreground">
+                      No storage resources available.
+                    </p>
+                  )}
               </div>
             </section>
           )}
@@ -459,9 +480,9 @@ export default function SettingsDialog({
               <p className="mb-2 text-xs text-muted-foreground">
                 Policies evaluated before sensitive operations run.
               </p>
-              {guardrailError.trim() !== '' && (
+              {guardrailErrorMessage.trim() !== '' && (
                 <div className="mb-2 rounded border border-destructive/45 bg-destructive/10 px-2 py-1 text-[11px] text-destructive-foreground">
-                  {guardrailError}
+                  {guardrailErrorMessage}
                 </div>
               )}
               <div className="grid min-w-0 gap-2 pr-1">
@@ -472,7 +493,9 @@ export default function SettingsDialog({
                   >
                     <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[12px] font-medium">{rule.name}</p>
+                        <p className="truncate text-[12px] font-medium">
+                          {rule.name}
+                        </p>
                         <TooltipHelper content={rule.message || rule.id}>
                           <p className="truncate text-[11px] text-muted-foreground">
                             {rule.message || rule.id}

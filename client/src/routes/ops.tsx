@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   Activity,
   Bell,
+  BookOpen,
   Clock3,
   FileText,
   Menu,
   Play,
   RefreshCw,
   RotateCw,
+  Server,
   Settings,
   Square,
 } from 'lucide-react'
@@ -16,7 +22,9 @@ import type {
   ConnectionState,
   OpsAlert,
   OpsAlertsResponse,
+  OpsAvailableService,
   OpsConfigResponse,
+  OpsDiscoverServicesResponse,
   OpsHostMetrics,
   OpsMetricsResponse,
   OpsOverview,
@@ -58,6 +66,17 @@ import {
   upsertOpsService,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
+import {
+  OPS_ALERTS_QUERY_KEY,
+  OPS_CONFIG_QUERY_KEY,
+  OPS_METRICS_QUERY_KEY,
+  OPS_OVERVIEW_QUERY_KEY,
+  OPS_RUNBOOKS_QUERY_KEY,
+  OPS_SERVICES_QUERY_KEY,
+  opsTimelineQueryKey,
+  prependOpsTimelineEvent,
+  upsertOpsRunbookJob,
+} from '@/lib/opsQueryCache'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { cn } from '@/lib/utils'
 
@@ -100,6 +119,13 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
 }
 
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message
+  }
+  return fallback
+}
+
 function MetricCard({
   label,
   value,
@@ -124,9 +150,7 @@ function MetricCard({
         {label}
       </p>
       <p className="mt-1 text-[12px] font-semibold">{value}</p>
-      {sub && (
-        <p className="text-[10px] text-muted-foreground">{sub}</p>
-      )}
+      {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
     </div>
   )
 }
@@ -137,28 +161,11 @@ function OpsPage() {
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
   const api = useTmuxApi(token)
+  const queryClient = useQueryClient()
 
-  const [overview, setOverview] = useState<OpsOverview | null>(null)
-  const [services, setServices] = useState<Array<OpsServiceStatus>>([])
-  const [alerts, setAlerts] = useState<Array<OpsAlert>>([])
-  const [timelineEvents, setTimelineEvents] = useState<Array<OpsTimelineEvent>>(
-    [],
-  )
-  const [runbooks, setRunbooks] = useState<Array<OpsRunbook>>([])
-  const [jobs, setJobs] = useState<Array<OpsRunbookRun>>([])
   const [opsTab, setOpsTab] = useState<
     'services' | 'alerts' | 'timeline' | 'runbooks' | 'metrics' | 'config'
   >('services')
-  const [overviewLoading, setOverviewLoading] = useState(false)
-  const [servicesLoading, setServicesLoading] = useState(false)
-  const [alertsLoading, setAlertsLoading] = useState(false)
-  const [timelineLoading, setTimelineLoading] = useState(false)
-  const [runbooksLoading, setRunbooksLoading] = useState(false)
-  const [overviewError, setOverviewError] = useState('')
-  const [servicesError, setServicesError] = useState('')
-  const [alertsError, setAlertsError] = useState('')
-  const [timelineError, setTimelineError] = useState('')
-  const [runbooksError, setRunbooksError] = useState('')
   const [timelineQuery, setTimelineQuery] = useState('')
   const [timelineSeverity, setTimelineSeverity] = useState('all')
   const [connectionState, setConnectionState] =
@@ -172,13 +179,7 @@ function OpsPage() {
   const [serviceStatusData, setServiceStatusData] =
     useState<OpsServiceInspect | null>(null)
 
-  const [metrics, setMetrics] = useState<OpsHostMetrics | null>(null)
-  const [metricsLoading, setMetricsLoading] = useState(false)
-  const [metricsError, setMetricsError] = useState('')
-  const [configContent, setConfigContent] = useState('')
-  const [configPath, setConfigPath] = useState('')
-  const [configLoading, setConfigLoading] = useState(false)
-  const [configError, setConfigError] = useState('')
+  const [metricsAutoRefresh, setMetricsAutoRefresh] = useState(false)
   const [configSaving, setConfigSaving] = useState(false)
   const [configEdited, setConfigEdited] = useState('')
   const [serviceLogs, setServiceLogs] = useState('')
@@ -186,133 +187,192 @@ function OpsPage() {
 
   const previousServiceRef = useRef(new Map<string, OpsServiceStatus>())
 
-  const refreshOverview = useCallback(
-    async (background = false) => {
-      if (!background) setOverviewLoading(true)
-      try {
-        const data = await api<OpsOverviewResponse>('/api/ops/overview')
-        setOverview(data.overview)
-        setOverviewError('')
-      } catch (error) {
-        setOverviewError(
-          error instanceof Error ? error.message : 'failed to load overview',
-        )
-      } finally {
-        if (!background) setOverviewLoading(false)
-      }
-    },
-    [api],
+  const timelineQueryKey = useMemo(
+    () => opsTimelineQueryKey(timelineQuery, timelineSeverity),
+    [timelineQuery, timelineSeverity],
   )
+  const timelineQueryRef = useRef(timelineQuery)
+  const timelineSeverityRef = useRef(timelineSeverity)
+  useEffect(() => {
+    timelineQueryRef.current = timelineQuery
+  }, [timelineQuery])
+  useEffect(() => {
+    timelineSeverityRef.current = timelineSeverity
+  }, [timelineSeverity])
 
-  const refreshServices = useCallback(
-    async (background = false) => {
-      if (!background) setServicesLoading(true)
-      try {
-        const data = await api<OpsServicesResponse>('/api/ops/services')
-        setServices(data.services)
-        setServicesError('')
-      } catch (error) {
-        setServicesError(
-          error instanceof Error ? error.message : 'failed to load services',
-        )
-      } finally {
-        if (!background) setServicesLoading(false)
-      }
+  const overviewQuery = useQuery({
+    queryKey: OPS_OVERVIEW_QUERY_KEY,
+    queryFn: async () => {
+      const data = await api<OpsOverviewResponse>('/api/ops/overview')
+      return data.overview
     },
-    [api],
-  )
+  })
 
-  const refreshAlerts = useCallback(
-    async (background = false) => {
-      if (!background) setAlertsLoading(true)
-      try {
-        const data = await api<OpsAlertsResponse>('/api/ops/alerts?limit=100')
-        setAlerts(data.alerts)
-        setAlertsError('')
-      } catch (error) {
-        setAlertsError(
-          error instanceof Error ? error.message : 'failed to load alerts',
-        )
-      } finally {
-        if (!background) setAlertsLoading(false)
-      }
+  const servicesQuery = useQuery({
+    queryKey: OPS_SERVICES_QUERY_KEY,
+    queryFn: async () => {
+      const data = await api<OpsServicesResponse>('/api/ops/services')
+      return data.services
     },
-    [api],
-  )
+  })
 
-  const refreshTimeline = useCallback(
-    async (background = false) => {
-      if (!background) setTimelineLoading(true)
-      try {
-        const params = new URLSearchParams({ limit: '200' })
-        if (timelineQuery.trim() !== '') params.set('q', timelineQuery.trim())
-        if (timelineSeverity !== 'all') params.set('severity', timelineSeverity)
-        const data = await api<OpsTimelineResponse>(
-          `/api/ops/timeline?${params.toString()}`,
-        )
-        setTimelineEvents(data.events)
-        setTimelineError('')
-      } catch (error) {
-        setTimelineError(
-          error instanceof Error ? error.message : 'failed to load timeline',
-        )
-      } finally {
-        if (!background) setTimelineLoading(false)
-      }
+  const alertsQuery = useQuery({
+    queryKey: OPS_ALERTS_QUERY_KEY,
+    queryFn: async () => {
+      const data = await api<OpsAlertsResponse>('/api/ops/alerts?limit=100')
+      return data.alerts
     },
-    [api, timelineQuery, timelineSeverity],
-  )
+  })
 
-  const refreshRunbooks = useCallback(
-    async (background = false) => {
-      if (!background) setRunbooksLoading(true)
-      try {
-        const data = await api<OpsRunbooksResponse>('/api/ops/runbooks')
-        setRunbooks(data.runbooks)
-        setJobs(data.jobs)
-        setRunbooksError('')
-      } catch (error) {
-        setRunbooksError(
-          error instanceof Error ? error.message : 'failed to load runbooks',
-        )
-      } finally {
-        if (!background) setRunbooksLoading(false)
-      }
+  const runbooksQuery = useQuery({
+    queryKey: OPS_RUNBOOKS_QUERY_KEY,
+    queryFn: async () => {
+      return api<OpsRunbooksResponse>('/api/ops/runbooks')
     },
-    [api],
-  )
+  })
+
+  const timelineEventsQuery = useQuery({
+    queryKey: timelineQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '200' })
+      if (timelineQuery.trim() !== '') params.set('q', timelineQuery.trim())
+      if (timelineSeverity !== 'all') params.set('severity', timelineSeverity)
+      const data = await api<OpsTimelineResponse>(
+        `/api/ops/timeline?${params.toString()}`,
+      )
+      return data.events
+    },
+  })
+
+  const metricsQuery = useQuery({
+    queryKey: OPS_METRICS_QUERY_KEY,
+    queryFn: async () => {
+      const data = await api<OpsMetricsResponse>('/api/ops/metrics')
+      return data.metrics
+    },
+    enabled: opsTab === 'metrics',
+    refetchInterval:
+      metricsAutoRefresh && opsTab === 'metrics' ? 5_000 : false,
+  })
+
+  const configQuery = useQuery({
+    queryKey: OPS_CONFIG_QUERY_KEY,
+    queryFn: async () => {
+      return api<OpsConfigResponse>('/api/ops/config')
+    },
+    enabled: opsTab === 'config',
+  })
+
+  const overview = overviewQuery.data ?? null
+  const services = servicesQuery.data ?? []
+  const alerts = alertsQuery.data ?? []
+  const runbooks = runbooksQuery.data?.runbooks ?? []
+  const jobs = runbooksQuery.data?.jobs ?? []
+  const timelineEvents = timelineEventsQuery.data ?? []
+  const metrics = metricsQuery.data ?? null
+  const configContent = configQuery.data?.content ?? ''
+  const configPath = configQuery.data?.path ?? ''
+
+  const overviewLoading = overviewQuery.isLoading
+  const servicesLoading = servicesQuery.isLoading
+  const alertsLoading = alertsQuery.isLoading
+  const timelineLoading = timelineEventsQuery.isLoading
+  const runbooksLoading = runbooksQuery.isLoading
+  const metricsLoading = metricsQuery.isLoading
+  const configLoading = configQuery.isLoading
+  const overviewError =
+    overviewQuery.error != null
+      ? toErrorMessage(overviewQuery.error, 'failed to load overview')
+      : ''
+  const servicesError =
+    servicesQuery.error != null
+      ? toErrorMessage(servicesQuery.error, 'failed to load services')
+      : ''
+  const alertsError =
+    alertsQuery.error != null
+      ? toErrorMessage(alertsQuery.error, 'failed to load alerts')
+      : ''
+  const timelineError =
+    timelineEventsQuery.error != null
+      ? toErrorMessage(timelineEventsQuery.error, 'failed to load timeline')
+      : ''
+  const runbooksError =
+    runbooksQuery.error != null
+      ? toErrorMessage(runbooksQuery.error, 'failed to load runbooks')
+      : ''
+  const metricsError =
+    metricsQuery.error != null
+      ? toErrorMessage(metricsQuery.error, 'failed to load metrics')
+      : ''
+  const configError =
+    configQuery.error != null
+      ? toErrorMessage(configQuery.error, 'failed to load config')
+      : ''
+
+  const knownConfigContentRef = useRef('')
+  useEffect(() => {
+    if (configContent === '') {
+      return
+    }
+    setConfigEdited((previous) =>
+      previous === '' || previous === knownConfigContentRef.current
+        ? configContent
+        : previous,
+    )
+    knownConfigContentRef.current = configContent
+  }, [configContent])
+
+  const refreshOverview = useCallback(async () => {
+    await queryClient.refetchQueries({
+      queryKey: OPS_OVERVIEW_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
+
+  const refreshServices = useCallback(async () => {
+    await queryClient.refetchQueries({
+      queryKey: OPS_SERVICES_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
+
+  const refreshAlerts = useCallback(async () => {
+    await queryClient.refetchQueries({
+      queryKey: OPS_ALERTS_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
+
+  const refreshRunbooks = useCallback(async () => {
+    await queryClient.refetchQueries({
+      queryKey: OPS_RUNBOOKS_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
+
+  const refreshTimeline = useCallback(async () => {
+    await queryClient.refetchQueries({
+      queryKey: opsTimelineQueryKey(
+        timelineQueryRef.current,
+        timelineSeverityRef.current,
+      ),
+      exact: true,
+    })
+  }, [queryClient])
 
   const refreshMetrics = useCallback(async () => {
-    setMetricsLoading(true)
-    try {
-      const data = await api<OpsMetricsResponse>('/api/ops/metrics')
-      setMetrics(data.metrics)
-      setMetricsError('')
-    } catch (error) {
-      setMetricsError(
-        error instanceof Error ? error.message : 'failed to load metrics',
-      )
-    } finally {
-      setMetricsLoading(false)
-    }
-  }, [api])
+    await queryClient.refetchQueries({
+      queryKey: OPS_METRICS_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
 
   const refreshConfig = useCallback(async () => {
-    setConfigLoading(true)
-    try {
-      const data = await api<OpsConfigResponse>('/api/ops/config')
-      setConfigContent(data.content)
-      setConfigPath(data.path)
-      setConfigEdited(data.content)
-      setConfigError('')
-    } catch (error) {
-      setConfigError(
-        error instanceof Error ? error.message : 'failed to load config',
-      )
-    } finally {
-      setConfigLoading(false)
-    }
-  }, [api])
+    await queryClient.refetchQueries({
+      queryKey: OPS_CONFIG_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
 
   const saveConfig = useCallback(async () => {
     setConfigSaving(true)
@@ -321,8 +381,16 @@ function OpsPage() {
         method: 'PATCH',
         body: JSON.stringify({ content: configEdited }),
       })
-      setConfigContent(configEdited)
-      pushToast({ title: 'Config', message: 'Saved (restart required)', level: 'info' })
+      queryClient.setQueryData<OpsConfigResponse>(OPS_CONFIG_QUERY_KEY, {
+        path: configPath,
+        content: configEdited,
+      })
+      knownConfigContentRef.current = configEdited
+      pushToast({
+        title: 'Config',
+        message: 'Saved (restart required)',
+        level: 'info',
+      })
     } catch (error) {
       pushToast({
         title: 'Config',
@@ -333,7 +401,7 @@ function OpsPage() {
     } finally {
       setConfigSaving(false)
     }
-  }, [api, configEdited, pushToast])
+  }, [api, configEdited, configPath, pushToast, queryClient])
 
   const fetchServiceLogs = useCallback(
     async (serviceName: string) => {
@@ -364,14 +432,6 @@ function OpsPage() {
     refreshAll()
     void refreshTimeline()
   }, [refreshAll, refreshTimeline])
-
-  useEffect(() => {
-    refreshAll()
-  }, [refreshAll])
-
-  useEffect(() => {
-    void refreshTimeline(true)
-  }, [refreshTimeline])
 
   useEffect(() => {
     if (tokenRequired && token.trim() === '') {
@@ -427,10 +487,9 @@ function OpsPage() {
         switch (typed.type) {
           case 'ops.services.updated':
             if (Array.isArray(typed.payload?.services)) {
-              setServices(typed.payload.services)
-              setServicesError('')
+              queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, typed.payload.services)
             } else {
-              void refreshServices(true)
+              void refreshServices()
             }
             break
           case 'ops.overview.updated':
@@ -438,41 +497,47 @@ function OpsPage() {
               typed.payload?.overview != null &&
               typeof typed.payload.overview === 'object'
             ) {
-              setOverview(typed.payload.overview)
-              setOverviewError('')
+              queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, typed.payload.overview)
             } else {
-              void refreshOverview(true)
+              void refreshOverview()
             }
             break
           case 'ops.alerts.updated':
             if (Array.isArray(typed.payload?.alerts)) {
-              setAlerts(typed.payload.alerts)
-              setAlertsError('')
+              queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, typed.payload.alerts)
             } else {
-              void refreshAlerts(true)
+              void refreshAlerts()
             }
             break
           case 'ops.timeline.updated':
             if (typed.payload?.event != null) {
               const timelineEvent = typed.payload.event
-              setTimelineEvents((prev) => [
-                timelineEvent,
-                ...prev.filter((item) => item.id !== timelineEvent.id),
-              ])
-              setTimelineError('')
+              queryClient.setQueryData<Array<OpsTimelineEvent>>(
+                opsTimelineQueryKey(
+                  timelineQueryRef.current,
+                  timelineSeverityRef.current,
+                ),
+                (previous = []) => prependOpsTimelineEvent(previous, timelineEvent),
+              )
             } else {
-              void refreshTimeline(true)
+              void refreshTimeline()
             }
             break
           case 'ops.job.updated':
             if (typed.payload?.job != null) {
               const job = typed.payload.job
-              setJobs((prev) => {
-                const next = prev.filter((item) => item.id !== job.id)
-                return [job, ...next]
-              })
+              queryClient.setQueryData<OpsRunbooksResponse>(
+                OPS_RUNBOOKS_QUERY_KEY,
+                (previous) => {
+                  if (previous == null) return previous
+                  return {
+                    ...previous,
+                    jobs: upsertOpsRunbookJob(previous.jobs, job),
+                  }
+                },
+              )
             } else {
-              void refreshRunbooks(true)
+              void refreshRunbooks()
             }
             break
           default:
@@ -507,6 +572,7 @@ function OpsPage() {
       }
     }
   }, [
+    queryClient,
     refreshAlerts,
     refreshOverview,
     refreshServices,
@@ -523,12 +589,14 @@ function OpsPage() {
 
       previousServiceRef.current.set(serviceName, previous)
       setPendingActions((prev) => ({ ...prev, [serviceName]: action }))
-      setServices((prev) =>
-        prev.map((item) =>
-          item.name === serviceName
-            ? withOptimisticServiceAction(item, action)
-            : item,
-        ),
+      queryClient.setQueryData<Array<OpsServiceStatus>>(
+        OPS_SERVICES_QUERY_KEY,
+        (current = []) =>
+          current.map((item) =>
+            item.name === serviceName
+              ? withOptimisticServiceAction(item, action)
+              : item,
+          ),
       )
 
       try {
@@ -540,20 +608,26 @@ function OpsPage() {
           },
         )
         if (Array.isArray(data.services) && data.services.length > 0) {
-          setServices(data.services)
+          queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, data.services)
         } else {
-          setServices((prev) => upsertOpsService(prev, data.service))
+          queryClient.setQueryData<Array<OpsServiceStatus>>(
+            OPS_SERVICES_QUERY_KEY,
+            (current = []) => upsertOpsService(current, data.service),
+          )
         }
-        setOverview(data.overview)
+        queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
         if (Array.isArray(data.alerts)) {
-          setAlerts(data.alerts)
+          queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, data.alerts)
         }
         if (data.timelineEvent != null) {
-          const timelineEvent = data.timelineEvent
-          setTimelineEvents((prev) => [
-            timelineEvent,
-            ...prev.filter((item) => item.id !== timelineEvent.id),
-          ])
+          queryClient.setQueryData<Array<OpsTimelineEvent>>(
+            opsTimelineQueryKey(
+              timelineQueryRef.current,
+              timelineSeverityRef.current,
+            ),
+            (current = []) =>
+              prependOpsTimelineEvent(current, data.timelineEvent as OpsTimelineEvent),
+          )
         }
         pushToast({
           level: 'success',
@@ -563,7 +637,10 @@ function OpsPage() {
       } catch (error) {
         const fallback = previousServiceRef.current.get(serviceName)
         if (fallback) {
-          setServices((prev) => upsertOpsService(prev, fallback))
+          queryClient.setQueryData<Array<OpsServiceStatus>>(
+            OPS_SERVICES_QUERY_KEY,
+            (current = []) => upsertOpsService(current, fallback),
+          )
         }
         pushToast({
           level: 'error',
@@ -579,7 +656,88 @@ function OpsPage() {
         })
       }
     },
-    [api, pushToast, services],
+    [api, pushToast, queryClient, services],
+  )
+
+  const discoverServices = useCallback(async () => {
+    const data = await api<OpsDiscoverServicesResponse>(
+      '/api/ops/services/discover',
+    )
+    return data.services
+  }, [api])
+
+  const registerService = useCallback(
+    async (svc: OpsAvailableService) => {
+      const name = svc.unit
+        .replace(/\.(service|timer|socket|mount|slice)$/, '')
+        .replace(/\./g, '-')
+      try {
+        const data = await api<{
+          services: Array<OpsServiceStatus>
+          globalRev: number
+        }>('/api/ops/services', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            displayName: svc.description || svc.unit,
+            manager: svc.manager,
+            unit: svc.unit,
+            scope: svc.scope,
+          }),
+        })
+        if (Array.isArray(data.services)) {
+          queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, data.services)
+        }
+        pushToast({
+          level: 'success',
+          title: svc.description || svc.unit,
+          message: 'Service added',
+        })
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: 'Register service',
+          message:
+            error instanceof Error ? error.message : 'failed to register',
+        })
+        throw error
+      }
+    },
+    [api, pushToast, queryClient],
+  )
+
+  const unregisterService = useCallback(
+    async (name: string) => {
+      const previous = services.find((s) => s.name === name)
+      queryClient.setQueryData<Array<OpsServiceStatus>>(
+        OPS_SERVICES_QUERY_KEY,
+        (current = []) => current.filter((service) => service.name !== name),
+      )
+      try {
+        await api<{ removed: string; globalRev: number }>(
+          `/api/ops/services/${encodeURIComponent(name)}`,
+          { method: 'DELETE' },
+        )
+        pushToast({
+          level: 'success',
+          title: previous?.displayName ?? name,
+          message: 'Service removed',
+        })
+      } catch (error) {
+        if (previous) {
+          queryClient.setQueryData<Array<OpsServiceStatus>>(
+            OPS_SERVICES_QUERY_KEY,
+            (current = []) => [...current, previous],
+          )
+        }
+        pushToast({
+          level: 'error',
+          title: 'Remove service',
+          message: error instanceof Error ? error.message : 'failed to remove',
+        })
+      }
+    },
+    [api, pushToast, queryClient, services],
   )
 
   const ackAlert = useCallback(
@@ -587,8 +745,10 @@ function OpsPage() {
       const previous = alerts.find((item) => item.id === alertID)
       if (!previous) return
 
-      setAlerts((prev) =>
-        prev.map((item) =>
+      queryClient.setQueryData<Array<OpsAlert>>(
+        OPS_ALERTS_QUERY_KEY,
+        (current = []) =>
+          current.map((item) =>
           item.id === alertID ? { ...item, status: 'acked' } : item,
         ),
       )
@@ -600,28 +760,36 @@ function OpsPage() {
         }>(`/api/ops/alerts/${alertID}/ack`, {
           method: 'POST',
         })
-        setAlerts((prev) =>
-          prev.map((item) => (item.id === alertID ? data.alert : item)),
+        queryClient.setQueryData<Array<OpsAlert>>(
+          OPS_ALERTS_QUERY_KEY,
+          (current = []) =>
+            current.map((item) => (item.id === alertID ? data.alert : item)),
         )
         if (data.timelineEvent != null) {
-          const timelineEvent = data.timelineEvent
-          setTimelineEvents((prev) => [
-            timelineEvent,
-            ...prev.filter((item) => item.id !== timelineEvent.id),
-          ])
+          queryClient.setQueryData<Array<OpsTimelineEvent>>(
+            opsTimelineQueryKey(
+              timelineQueryRef.current,
+              timelineSeverityRef.current,
+            ),
+            (current = []) =>
+              prependOpsTimelineEvent(current, data.timelineEvent as OpsTimelineEvent),
+          )
         }
       } catch (error) {
-        setAlerts((prev) =>
-          prev.map((item) => (item.id === alertID ? previous : item)),
+        queryClient.setQueryData<Array<OpsAlert>>(
+          OPS_ALERTS_QUERY_KEY,
+          (current = []) =>
+            current.map((item) => (item.id === alertID ? previous : item)),
         )
         pushToast({
           level: 'error',
           title: previous.title,
-          message: error instanceof Error ? error.message : 'failed to ack alert',
+          message:
+            error instanceof Error ? error.message : 'failed to ack alert',
         })
       }
     },
-    [alerts, api, pushToast],
+    [alerts, api, pushToast, queryClient],
   )
 
   const runRunbook = useCallback(
@@ -637,16 +805,25 @@ function OpsPage() {
           },
         )
         const job = data.job
-        setJobs((prev) => {
-          const next = prev.filter((item) => item.id !== job.id)
-          return [job, ...next]
-        })
+        queryClient.setQueryData<OpsRunbooksResponse>(
+          OPS_RUNBOOKS_QUERY_KEY,
+          (previous) => {
+            if (previous == null) return previous
+            return {
+              ...previous,
+              jobs: upsertOpsRunbookJob(previous.jobs, job),
+            }
+          },
+        )
         if (data.timelineEvent != null) {
-          const timelineEvent = data.timelineEvent
-          setTimelineEvents((prev) => [
-            timelineEvent,
-            ...prev.filter((item) => item.id !== timelineEvent.id),
-          ])
+          queryClient.setQueryData<Array<OpsTimelineEvent>>(
+            opsTimelineQueryKey(
+              timelineQueryRef.current,
+              timelineSeverityRef.current,
+            ),
+            (current = []) =>
+              prependOpsTimelineEvent(current, data.timelineEvent as OpsTimelineEvent),
+          )
         }
         pushToast({
           level: 'success',
@@ -662,7 +839,7 @@ function OpsPage() {
         })
       }
     },
-    [api, pushToast, runbooks],
+    [api, pushToast, queryClient, runbooks],
   )
 
   const inspectService = useCallback(
@@ -678,7 +855,9 @@ function OpsPage() {
       } catch (error) {
         setServiceStatusData(null)
         setServiceStatusError(
-          error instanceof Error ? error.message : 'failed to load service status',
+          error instanceof Error
+            ? error.message
+            : 'failed to load service status',
         )
       } finally {
         setServiceStatusLoading(false)
@@ -720,7 +899,9 @@ function OpsPage() {
           error={servicesError}
           services={services}
           onTokenChange={setToken}
-          onRefresh={refreshPage}
+          onDiscoverServices={discoverServices}
+          onAddService={registerService}
+          onRemoveService={unregisterService}
         />
       }
     >
@@ -796,6 +977,7 @@ function OpsPage() {
                     className={opsTabButtonClass(opsTab === 'services')}
                     onClick={() => setOpsTab('services')}
                   >
+                    <Server className="h-3 w-3" />
                     Services
                   </button>
                   <button
@@ -831,6 +1013,7 @@ function OpsPage() {
                     className={opsTabButtonClass(opsTab === 'runbooks')}
                     onClick={() => setOpsTab('runbooks')}
                   >
+                    <BookOpen className="h-3 w-3" />
                     Runbooks
                   </button>
                   <button
@@ -866,7 +1049,8 @@ function OpsPage() {
                   {services.map((service) => {
                     const pending = pendingActions[service.name]
                     const rowBusy = pending !== undefined
-                    const startDisabled = rowBusy || !canStartOpsService(service)
+                    const startDisabled =
+                      rowBusy || !canStartOpsService(service)
                     const stopDisabled = rowBusy || !canStopOpsService(service)
                     return (
                       <div
@@ -906,7 +1090,9 @@ function OpsPage() {
                             variant="outline"
                             size="sm"
                             className="h-7 cursor-pointer text-[11px]"
-                            onClick={() => runServiceAction(service.name, 'stop')}
+                            onClick={() =>
+                              runServiceAction(service.name, 'stop')
+                            }
                             disabled={stopDisabled}
                           >
                             <Square className="h-3 w-3" />
@@ -1023,7 +1209,9 @@ function OpsPage() {
                     />
                     <select
                       value={timelineSeverity}
-                      onChange={(event) => setTimelineSeverity(event.target.value)}
+                      onChange={(event) =>
+                        setTimelineSeverity(event.target.value)
+                      }
                       className="h-8 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
                     >
                       <option value="all">all severities</option>
@@ -1113,8 +1301,9 @@ function OpsPage() {
                         </div>
                         {lastJob && (
                           <div className="rounded border border-border-subtle bg-surface-overlay px-2 py-1 text-[10px] text-muted-foreground">
-                            last run: {lastJob.status} • {lastJob.completedSteps}/
-                            {lastJob.totalSteps} • {lastJob.createdAt}
+                            last run: {lastJob.status} •{' '}
+                            {lastJob.completedSteps}/{lastJob.totalSteps} •{' '}
+                            {lastJob.createdAt}
                           </div>
                         )}
                       </div>
@@ -1147,6 +1336,47 @@ function OpsPage() {
                   )}
                   {!metricsLoading && metrics != null && (
                     <>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[11px]"
+                            onClick={() => void refreshMetrics()}
+                          >
+                            <RefreshCw className="mr-1 h-3 w-3" />
+                            Refresh
+                          </Button>
+                          <p className="text-[10px] text-muted-foreground">
+                            {metrics.collectedAt}
+                          </p>
+                        </div>
+                        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground select-none">
+                          <span>Auto</span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={metricsAutoRefresh}
+                            onClick={() => setMetricsAutoRefresh((v) => !v)}
+                            className={cn(
+                              'relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border transition-colors',
+                              metricsAutoRefresh
+                                ? 'border-emerald-500/60 bg-emerald-500/30'
+                                : 'border-border bg-surface-elevated',
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'pointer-events-none block h-3 w-3 rounded-full bg-foreground shadow transition-transform',
+                                metricsAutoRefresh
+                                  ? 'translate-x-3'
+                                  : 'translate-x-0',
+                              )}
+                            />
+                          </button>
+                          <span className="text-[10px]">5s</span>
+                        </label>
+                      </div>
                       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                         <MetricCard
                           label="CPU"
@@ -1179,18 +1409,6 @@ function OpsPage() {
                           value={`${metrics.goMemAllocMB.toFixed(1)} MB`}
                         />
                       </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        collected at {metrics.collectedAt}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-fit text-[11px]"
-                        onClick={() => void refreshMetrics()}
-                      >
-                        <RefreshCw className="mr-1 h-3 w-3" />
-                        Refresh
-                      </Button>
                     </>
                   )}
                 </div>
@@ -1275,7 +1493,8 @@ function OpsPage() {
               {serviceStatusData?.service.displayName ?? 'Service status'}
             </DialogTitle>
             <DialogDescription>
-              {serviceStatusData?.summary ?? 'Runtime details from service manager'}
+              {serviceStatusData?.summary ??
+                'Runtime details from service manager'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1351,9 +1570,7 @@ function OpsPage() {
                         size="sm"
                         className="h-6 text-[10px]"
                         onClick={() =>
-                          void fetchServiceLogs(
-                            serviceStatusData.service.name,
-                          )
+                          void fetchServiceLogs(serviceStatusData.service.name)
                         }
                       >
                         {serviceLogsLoading ? 'Loading...' : 'Fetch logs'}
