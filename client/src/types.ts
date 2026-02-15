@@ -325,6 +325,34 @@ export type OpsDiscoverServicesResponse = {
   services: Array<OpsAvailableService>
 }
 
+export type OpsBrowsedService = {
+  unit: string
+  description: string
+  activeState: string
+  enabledState: string
+  manager: string
+  scope: string
+  tracked: boolean
+  trackedName?: string
+}
+
+export type OpsBrowseServicesResponse = {
+  services: Array<OpsBrowsedService>
+}
+
+export type OpsUnitActionResponse = {
+  overview: OpsOverview
+  timelineEvent?: OpsTimelineEvent
+  alerts?: Array<OpsAlert>
+  globalRev: number
+}
+
+export type OpsUnitLogsResponse = {
+  unit: string
+  lines: number
+  output: string
+}
+
 export type RecoverySessionState =
   | 'running'
   | 'killed'

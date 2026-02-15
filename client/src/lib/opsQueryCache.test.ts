@@ -69,10 +69,9 @@ describe('opsQueryCache', () => {
     const second = buildTimelineEvent(2)
     const updatedFirst = { ...first, message: 'updated' }
 
-    expect(prependOpsTimelineEvent([first], second).map((item) => item.id)).toEqual([
-      2,
-      1,
-    ])
+    expect(
+      prependOpsTimelineEvent([first], second).map((item) => item.id),
+    ).toEqual([2, 1])
     expect(
       prependOpsTimelineEvent([first, second], updatedFirst).map(
         (item) => item.message,
@@ -85,12 +84,13 @@ describe('opsQueryCache', () => {
     const second = buildJob('b')
     const updatedFirst = { ...first, status: 'succeeded' }
 
-    expect(upsertOpsRunbookJob([first], second).map((item) => item.id)).toEqual([
-      'b',
-      'a',
-    ])
+    expect(upsertOpsRunbookJob([first], second).map((item) => item.id)).toEqual(
+      ['b', 'a'],
+    )
     expect(
-      upsertOpsRunbookJob([first, second], updatedFirst).map((item) => item.status),
+      upsertOpsRunbookJob([first, second], updatedFirst).map(
+        (item) => item.status,
+      ),
     ).toEqual(['succeeded', 'queued'])
   })
 })

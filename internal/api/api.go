@@ -65,6 +65,10 @@ type opsControlPlane interface {
 	Logs(ctx context.Context, name string, lines int) (string, error)
 	Metrics(ctx context.Context) opsplane.HostMetrics
 	DiscoverServices(ctx context.Context) ([]opsplane.AvailableService, error)
+	BrowseServices(ctx context.Context) ([]opsplane.BrowsedService, error)
+	ActByUnit(ctx context.Context, unit, scope, manager, action string) error
+	InspectByUnit(ctx context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error)
+	LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error)
 }
 
 type Handler struct {
@@ -128,6 +132,10 @@ func Register(
 	mux.HandleFunc("GET /api/tmux/timeline", h.wrap(h.timelineSearch))
 	mux.HandleFunc("GET /api/ops/overview", h.wrap(h.opsOverview))
 	mux.HandleFunc("GET /api/ops/services", h.wrap(h.opsServices))
+	mux.HandleFunc("GET /api/ops/services/browse", h.wrap(h.browseOpsServices))
+	mux.HandleFunc("POST /api/ops/services/unit/action", h.wrap(h.opsUnitAction))
+	mux.HandleFunc("GET /api/ops/services/unit/status", h.wrap(h.opsUnitStatus))
+	mux.HandleFunc("GET /api/ops/services/unit/logs", h.wrap(h.opsUnitLogs))
 	mux.HandleFunc("GET /api/ops/services/discover", h.wrap(h.discoverOpsServices))
 	mux.HandleFunc("GET /api/ops/services/{service}/status", h.wrap(h.opsServiceStatus))
 	mux.HandleFunc("POST /api/ops/services/{service}/action", h.wrap(h.opsServiceAction))
@@ -1971,6 +1979,186 @@ func (h *Handler) discoverOpsServices(w http.ResponseWriter, r *http.Request) {
 	}
 	writeData(w, http.StatusOK, map[string]any{
 		"services": available,
+	})
+}
+
+func (h *Handler) browseOpsServices(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	services, err := h.ops.BrowseServices(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_BROWSE_FAILED", err.Error(), nil)
+		return
+	}
+	if services == nil {
+		services = []opsplane.BrowsedService{}
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"services": services,
+	})
+}
+
+func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+
+	var req struct {
+		Unit    string `json:"unit"`
+		Scope   string `json:"scope"`
+		Manager string `json:"manager"`
+		Action  string `json:"action"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	req.Unit = strings.TrimSpace(req.Unit)
+	req.Scope = strings.TrimSpace(req.Scope)
+	req.Manager = strings.TrimSpace(req.Manager)
+	req.Action = strings.ToLower(strings.TrimSpace(req.Action))
+
+	if req.Unit == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is required", nil)
+		return
+	}
+	if !slices.Contains([]string{opsplane.ActionStart, opsplane.ActionStop, opsplane.ActionRestart}, req.Action) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "action must be start, stop, or restart", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	if err := h.ops.ActByUnit(ctx, req.Unit, req.Scope, req.Manager, req.Action); err != nil {
+		if errors.Is(err, opsplane.ErrInvalidAction) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid action", nil)
+		} else {
+			writeError(w, http.StatusBadRequest, "OPS_ACTION_FAILED", err.Error(), nil)
+		}
+		return
+	}
+
+	now := time.Now().UTC()
+	serviceStatus := opsplane.ServiceStatus{
+		Name:        req.Unit,
+		DisplayName: req.Unit,
+		Unit:        req.Unit,
+		Scope:       req.Scope,
+		Manager:     req.Manager,
+	}
+
+	timelineEvent, timelineRecorded, alerts, err := h.recordOpsServiceAction(ctx, serviceStatus, req.Action, now)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist ops action", nil)
+		return
+	}
+
+	overview, err := h.ops.Overview(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to refresh ops overview", nil)
+		return
+	}
+
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsServices, map[string]any{
+		"globalRev": globalRev,
+		"service":   req.Unit,
+		"action":    req.Action,
+	})
+	h.emit(events.TypeOpsOverview, map[string]any{
+		"globalRev": globalRev,
+		"overview":  overview,
+	})
+	if timelineRecorded {
+		h.emit(events.TypeOpsTimeline, map[string]any{
+			"globalRev": globalRev,
+			"event":     timelineEvent,
+		})
+	}
+
+	response := map[string]any{
+		"overview":  overview,
+		"alerts":    alerts,
+		"globalRev": globalRev,
+	}
+	if timelineRecorded {
+		response["timelineEvent"] = timelineEvent
+	}
+	writeData(w, http.StatusOK, response)
+}
+
+func (h *Handler) opsUnitStatus(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+
+	unit := strings.TrimSpace(r.URL.Query().Get("unit"))
+	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	manager := strings.TrimSpace(r.URL.Query().Get("manager"))
+
+	if unit == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	status, err := h.ops.InspectByUnit(ctx, unit, scope, manager)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "OPS_ACTION_FAILED", err.Error(), nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"status": status,
+	})
+}
+
+func (h *Handler) opsUnitLogs(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+
+	unit := strings.TrimSpace(r.URL.Query().Get("unit"))
+	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	manager := strings.TrimSpace(r.URL.Query().Get("manager"))
+
+	if unit == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is required", nil)
+		return
+	}
+
+	lines := 100
+	if raw := strings.TrimSpace(r.URL.Query().Get("lines")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			lines = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	output, err := h.ops.LogsByUnit(ctx, unit, scope, manager, lines)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_LOGS_FAILED", err.Error(), nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"unit":   unit,
+		"lines":  lines,
+		"output": output,
 	})
 }
 

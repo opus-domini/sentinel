@@ -787,6 +787,202 @@ func (m *Manager) discoverLaunchdUnits(ctx context.Context) ([]AvailableService,
 	return units, nil
 }
 
+// BrowsedService represents a service unit found on the host, enriched with
+// tracking information when it matches a registered custom service.
+type BrowsedService struct {
+	Unit         string `json:"unit"`
+	Description  string `json:"description"`
+	ActiveState  string `json:"activeState"`
+	EnabledState string `json:"enabledState"`
+	Manager      string `json:"manager"`
+	Scope        string `json:"scope"`
+	Tracked      bool   `json:"tracked"`
+	TrackedName  string `json:"trackedName,omitempty"`
+}
+
+// BrowseServices returns all service units discovered on the host, annotated
+// with tracking info for units that are already registered in the store.
+func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) {
+	tracked, err := m.ListServices(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	type trackedInfo struct{ Name string }
+	trackedMap := make(map[string]trackedInfo, len(tracked))
+	for _, s := range tracked {
+		key := strings.ToLower(s.Unit) + "\x00" + strings.ToLower(s.Scope)
+		trackedMap[key] = trackedInfo{Name: s.Name}
+	}
+
+	manager := detectManager(m.goos)
+	var result []BrowsedService
+	seen := make(map[string]bool)
+
+	switch manager {
+	case managerSystemd:
+		for _, scope := range []string{scopeUser, scopeSystem} {
+			units, _ := m.discoverSystemdUnits(ctx, scope)
+			for _, u := range units {
+				key := strings.ToLower(u.Unit) + "\x00" + strings.ToLower(scope)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				bs := BrowsedService{
+					Unit:        u.Unit,
+					Description: u.Description,
+					ActiveState: u.ActiveState,
+					Manager:     managerSystemd,
+					Scope:       scope,
+				}
+				if info, ok := trackedMap[key]; ok {
+					bs.Tracked = true
+					bs.TrackedName = info.Name
+				}
+				result = append(result, bs)
+			}
+		}
+	case managerLaunchd:
+		units, _ := m.discoverLaunchdUnits(ctx)
+		for _, u := range units {
+			key := strings.ToLower(u.Unit) + "\x00" + strings.ToLower(scopeUser)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			bs := BrowsedService{
+				Unit:        u.Unit,
+				Description: u.Description,
+				ActiveState: u.ActiveState,
+				Manager:     managerLaunchd,
+				Scope:       scopeUser,
+			}
+			if info, ok := trackedMap[key]; ok {
+				bs.Tracked = true
+				bs.TrackedName = info.Name
+			}
+			result = append(result, bs)
+		}
+	}
+
+	// Inject tracked services that were not returned by discover (e.g. built-ins).
+	for _, s := range tracked {
+		key := strings.ToLower(s.Unit) + "\x00" + strings.ToLower(s.Scope)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, BrowsedService{
+			Unit:         s.Unit,
+			Description:  s.DisplayName,
+			ActiveState:  s.ActiveState,
+			EnabledState: s.EnabledState,
+			Manager:      s.Manager,
+			Scope:        s.Scope,
+			Tracked:      true,
+			TrackedName:  s.Name,
+		})
+	}
+
+	return result, nil
+}
+
+// ActByUnit performs a service action using unit/scope/manager directly,
+// without requiring the service to be tracked in the store.
+func (m *Manager) ActByUnit(ctx context.Context, unit, scope, manager, action string) error {
+	action = strings.ToLower(strings.TrimSpace(action))
+	if !isValidAction(action) {
+		return ErrInvalidAction
+	}
+
+	switch manager {
+	case managerSystemd:
+		return m.actSystemdUnit(ctx, scope, unit, action)
+	case managerLaunchd:
+		return m.actLaunchdUnit(ctx, scope, unit, action)
+	default:
+		return fmt.Errorf("unsupported service manager: %s", manager)
+	}
+}
+
+func (m *Manager) actSystemdUnit(ctx context.Context, scope, unit, action string) error {
+	args := make([]string, 0, 4)
+	if strings.EqualFold(scope, scopeUser) {
+		args = append(args, "--user")
+	}
+	args = append(args, action, unit)
+	_, err := m.commandRunner(ctx, "systemctl", args...)
+	if err != nil {
+		return fmt.Errorf("systemd action failed: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) actLaunchdUnit(ctx context.Context, scope, unit, action string) error {
+	target := launchdTarget(scope, m.uidFn, unit)
+
+	switch action {
+	case ActionStop:
+		_, err := m.commandRunner(ctx, "launchctl", "bootout", target)
+		if err != nil && !isLaunchdMissingJobError(err) {
+			return fmt.Errorf("launchd stop failed: %w", err)
+		}
+		return nil
+	case ActionStart, ActionRestart:
+		if loaded, _ := m.isLaunchdLoaded(ctx, target); !loaded {
+			return fmt.Errorf("launchd service %s is not loaded", unit)
+		}
+		_, err := m.commandRunner(ctx, "launchctl", "kickstart", "-k", target)
+		if err != nil {
+			return fmt.Errorf("launchd %s failed: %w", action, err)
+		}
+		return nil
+	default:
+		return ErrInvalidAction
+	}
+}
+
+// InspectByUnit inspects a service identified by unit/scope/manager directly,
+// without requiring the service to be tracked in the store.
+func (m *Manager) InspectByUnit(ctx context.Context, unit, scope, manager string) (ServiceInspect, error) {
+	target := ServiceStatus{
+		Unit:    unit,
+		Scope:   scope,
+		Manager: manager,
+	}
+
+	inspect := ServiceInspect{
+		Service:   target,
+		Summary:   fmt.Sprintf("unit=%s scope=%s", unit, scope),
+		CheckedAt: m.nowFn().UTC().Format(time.RFC3339),
+	}
+
+	switch manager {
+	case managerSystemd:
+		props, output, err := m.inspectSystemd(ctx, target)
+		if err != nil {
+			return ServiceInspect{}, err
+		}
+		inspect.Properties = props
+		inspect.Output = output
+		if summary := strings.TrimSpace(buildInspectSummary(props)); summary != "" {
+			inspect.Summary = summary
+		}
+	case managerLaunchd:
+		tgt := launchdTarget(scope, m.uidFn, unit)
+		out, err := m.commandRunner(ctx, "launchctl", "print", tgt)
+		if err != nil {
+			return ServiceInspect{}, fmt.Errorf("launchd inspect failed: %w", err)
+		}
+		inspect.Output = out
+	default:
+		return ServiceInspect{}, fmt.Errorf("unsupported service manager: %s", manager)
+	}
+
+	return inspect, nil
+}
+
 func buildInspectSummary(props map[string]string) string {
 	if len(props) == 0 {
 		return ""

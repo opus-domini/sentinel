@@ -61,6 +61,48 @@ func (m *Manager) logsSystemd(ctx context.Context, target ServiceStatus, lines i
 	return out, nil
 }
 
+// LogsByUnit retrieves recent log output for a service identified by
+// unit/scope/manager directly, without requiring the service to be tracked.
+func (m *Manager) LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error) {
+	if lines <= 0 {
+		lines = defaultLogLines
+	}
+	if lines > maxLogLines {
+		lines = maxLogLines
+	}
+
+	target := ServiceStatus{
+		Unit:    unit,
+		Scope:   scope,
+		Manager: manager,
+	}
+
+	switch manager {
+	case managerSystemd:
+		return m.logsSystemd(ctx, target, lines)
+	case managerLaunchd:
+		return m.logsLaunchdUnit(ctx, unit, lines)
+	default:
+		return "", fmt.Errorf("unsupported service manager: %s", manager)
+	}
+}
+
+func (m *Manager) logsLaunchdUnit(ctx context.Context, label string, lines int) (string, error) {
+	out, err := m.commandRunner(ctx, "log", "show",
+		"--predicate", fmt.Sprintf(`senderImagePath CONTAINS "%s" OR subsystem == "%s"`, label, label),
+		"--style", "compact",
+		"--last", fmt.Sprintf("%dm", max(lines/10, 5)),
+	)
+	if err != nil {
+		return "", fmt.Errorf("log show failed: %w", err)
+	}
+	outputLines := strings.Split(out, "\n")
+	if len(outputLines) > lines {
+		outputLines = outputLines[len(outputLines)-lines:]
+	}
+	return strings.Join(outputLines, "\n"), nil
+}
+
 func (m *Manager) logsLaunchd(ctx context.Context, target ServiceStatus, lines int) (string, error) {
 	label := unitForService(managerLaunchd, target.Name)
 	out, err := m.commandRunner(ctx, "log", "show",

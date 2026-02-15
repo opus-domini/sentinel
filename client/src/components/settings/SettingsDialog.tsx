@@ -82,7 +82,9 @@ export default function SettingsDialog({
   const guardrailsQuery = useQuery({
     queryKey: OPS_GUARDRAILS_QUERY_KEY,
     queryFn: async () => {
-      const data = await api<GuardrailRulesResponse>('/api/ops/guardrails/rules')
+      const data = await api<GuardrailRulesResponse>(
+        '/api/ops/guardrails/rules',
+      )
       return data.rules
     },
     enabled: open && activeSection === 'security',

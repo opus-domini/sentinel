@@ -219,13 +219,17 @@ func (m *mockRecovery) ArchiveSession(ctx context.Context, name string) error {
 }
 
 type mockOpsControlPlane struct {
-	overviewFn     func(ctx context.Context) (opsplane.Overview, error)
-	listServicesFn func(ctx context.Context) ([]opsplane.ServiceStatus, error)
-	actFn          func(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
-	inspectFn      func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
-	logsFn         func(ctx context.Context, name string, lines int) (string, error)
-	metricsFn      func(ctx context.Context) opsplane.HostMetrics
-	discoverFn     func(ctx context.Context) ([]opsplane.AvailableService, error)
+	overviewFn      func(ctx context.Context) (opsplane.Overview, error)
+	listServicesFn  func(ctx context.Context) ([]opsplane.ServiceStatus, error)
+	actFn           func(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
+	inspectFn       func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
+	logsFn          func(ctx context.Context, name string, lines int) (string, error)
+	metricsFn       func(ctx context.Context) opsplane.HostMetrics
+	discoverFn      func(ctx context.Context) ([]opsplane.AvailableService, error)
+	browseFn        func(ctx context.Context) ([]opsplane.BrowsedService, error)
+	actByUnitFn     func(ctx context.Context, unit, scope, manager, action string) error
+	inspectByUnitFn func(ctx context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error)
+	logsByUnitFn    func(ctx context.Context, unit, scope, manager string, lines int) (string, error)
 }
 
 func (m *mockOpsControlPlane) Overview(ctx context.Context) (opsplane.Overview, error) {
@@ -275,6 +279,34 @@ func (m *mockOpsControlPlane) DiscoverServices(ctx context.Context) ([]opsplane.
 		return m.discoverFn(ctx)
 	}
 	return []opsplane.AvailableService{}, nil
+}
+
+func (m *mockOpsControlPlane) BrowseServices(ctx context.Context) ([]opsplane.BrowsedService, error) {
+	if m.browseFn != nil {
+		return m.browseFn(ctx)
+	}
+	return []opsplane.BrowsedService{}, nil
+}
+
+func (m *mockOpsControlPlane) ActByUnit(ctx context.Context, unit, scope, manager, action string) error {
+	if m.actByUnitFn != nil {
+		return m.actByUnitFn(ctx, unit, scope, manager, action)
+	}
+	return nil
+}
+
+func (m *mockOpsControlPlane) InspectByUnit(ctx context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error) {
+	if m.inspectByUnitFn != nil {
+		return m.inspectByUnitFn(ctx, unit, scope, manager)
+	}
+	return opsplane.ServiceInspect{}, nil
+}
+
+func (m *mockOpsControlPlane) LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error) {
+	if m.logsByUnitFn != nil {
+		return m.logsByUnitFn(ctx, unit, scope, manager, lines)
+	}
+	return "", nil
 }
 
 // ---------------------------------------------------------------------------
@@ -4024,6 +4056,154 @@ func TestOpsMetricsHandler(t *testing.T) {
 	metrics, _ := data["metrics"].(map[string]any)
 	if metrics["cpuPercent"] != 42.5 {
 		t.Fatalf("cpuPercent = %v, want 42.5", metrics["cpuPercent"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Browse + unit-based handler tests
+// ---------------------------------------------------------------------------
+
+const testNginxUnit = "nginx.service"
+
+func TestBrowseOpsServicesHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		browseFn: func(context.Context) ([]opsplane.BrowsedService, error) {
+			return []opsplane.BrowsedService{
+				{Unit: testNginxUnit, ActiveState: "active", Manager: "systemd", Scope: "system", Tracked: false},
+				{Unit: "sentinel", ActiveState: "active", Manager: "systemd", Scope: "user", Tracked: true, TrackedName: "sentinel"},
+			}, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/browse", nil)
+	h.browseOpsServices(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	services, _ := data["services"].([]any)
+	if len(services) != 2 {
+		t.Fatalf("len(services) = %d, want 2", len(services))
+	}
+	first, _ := services[0].(map[string]any)
+	if first["tracked"] != false {
+		t.Fatalf("first service tracked = %v, want false", first["tracked"])
+	}
+	second, _ := services[1].(map[string]any)
+	if second["tracked"] != true {
+		t.Fatalf("second service tracked = %v, want true", second["tracked"])
+	}
+	if second["trackedName"] != "sentinel" {
+		t.Fatalf("trackedName = %v, want sentinel", second["trackedName"])
+	}
+}
+
+func TestOpsUnitActionHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		actByUnitFn: func(_ context.Context, unit, scope, manager, action string) error {
+			if unit != testNginxUnit {
+				t.Fatalf("unit = %q, want %s", unit, testNginxUnit)
+			}
+			if action != "restart" {
+				t.Fatalf("action = %q, want restart", action)
+			}
+			return nil
+		},
+		overviewFn: func(context.Context) (opsplane.Overview, error) {
+			return opsplane.Overview{Host: opsplane.HostOverview{Hostname: "test"}}, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/services/unit/action",
+		strings.NewReader(`{"unit":"`+testNginxUnit+`","scope":"system","manager":"systemd","action":"restart"}`))
+	r.Header.Set("Content-Type", "application/json")
+	h.opsUnitAction(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+}
+
+func TestOpsUnitActionHandlerMissingUnit(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/services/unit/action",
+		strings.NewReader(`{"scope":"system","manager":"systemd","action":"restart"}`))
+	r.Header.Set("Content-Type", "application/json")
+	h.opsUnitAction(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", w.Code, w.Body.String())
+	}
+}
+
+func TestOpsUnitStatusHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		inspectByUnitFn: func(_ context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error) {
+			if unit != testNginxUnit {
+				t.Fatalf("unit = %q, want %s", unit, testNginxUnit)
+			}
+			return opsplane.ServiceInspect{
+				Service: opsplane.ServiceStatus{Unit: unit, Scope: scope, Manager: manager},
+				Summary: "load=loaded active=active sub=running",
+			}, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/unit/status?unit="+testNginxUnit+"&scope=system&manager=systemd", nil)
+	h.opsUnitStatus(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	status, _ := data["status"].(map[string]any)
+	if status["summary"] != "load=loaded active=active sub=running" {
+		t.Fatalf("summary = %v, want load=loaded...", status["summary"])
+	}
+}
+
+func TestOpsUnitLogsHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		logsByUnitFn: func(_ context.Context, unit, scope, manager string, lines int) (string, error) {
+			if unit != testNginxUnit {
+				t.Fatalf("unit = %q, want %s", unit, testNginxUnit)
+			}
+			if lines != 50 {
+				t.Fatalf("lines = %d, want 50", lines)
+			}
+			return "log line 1\nlog line 2", nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/unit/logs?unit="+testNginxUnit+"&scope=system&manager=systemd&lines=50", nil)
+	h.opsUnitLogs(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	if data["output"] != "log line 1\nlog line 2" {
+		t.Fatalf("output = %v", data["output"])
 	}
 }
 
