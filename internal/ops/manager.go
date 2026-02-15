@@ -665,6 +665,128 @@ func parseSystemdShow(raw string) map[string]string {
 	return props
 }
 
+// AvailableService represents a systemd/launchd unit discovered on the host
+// that is not yet tracked by Sentinel.
+type AvailableService struct {
+	Unit        string `json:"unit"`
+	Description string `json:"description"`
+	ActiveState string `json:"activeState"`
+	Manager     string `json:"manager"`
+	Scope       string `json:"scope"`
+}
+
+// DiscoverServices lists service units visible on the host that are not
+// already tracked. On Linux it queries both --user and --system scopes.
+func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, error) {
+	tracked, err := m.ListServices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	trackedUnits := make(map[string]bool, len(tracked))
+	for _, s := range tracked {
+		trackedUnits[strings.ToLower(s.Unit)] = true
+	}
+
+	manager := detectManager(m.goos)
+	var out []AvailableService
+
+	switch manager {
+	case managerSystemd:
+		for _, scope := range []string{scopeUser, scopeSystem} {
+			units, _ := m.discoverSystemdUnits(ctx, scope)
+			for _, u := range units {
+				if trackedUnits[strings.ToLower(u.Unit)] {
+					continue
+				}
+				u.Manager = managerSystemd
+				u.Scope = scope
+				out = append(out, u)
+			}
+		}
+	case managerLaunchd:
+		units, _ := m.discoverLaunchdUnits(ctx)
+		for _, u := range units {
+			if trackedUnits[strings.ToLower(u.Unit)] {
+				continue
+			}
+			u.Manager = managerLaunchd
+			u.Scope = scopeUser
+			out = append(out, u)
+		}
+	}
+
+	return out, nil
+}
+
+func (m *Manager) discoverSystemdUnits(ctx context.Context, scope string) ([]AvailableService, error) {
+	args := make([]string, 0, 8)
+	if scope == scopeUser {
+		args = append(args, "--user")
+	}
+	args = append(args, "list-units", "--type=service,timer", "--all", "--no-pager", "--no-legend", "--plain")
+	raw, err := m.commandRunner(ctx, "systemctl", args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var units []AvailableService
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		unit := fields[0]
+		active := fields[2]
+		desc := ""
+		if len(fields) > 4 {
+			desc = strings.Join(fields[4:], " ")
+		}
+		units = append(units, AvailableService{
+			Unit:        unit,
+			Description: desc,
+			ActiveState: active,
+		})
+	}
+	return units, nil
+}
+
+func (m *Manager) discoverLaunchdUnits(ctx context.Context) ([]AvailableService, error) {
+	raw, err := m.commandRunner(ctx, "launchctl", "list")
+	if err != nil {
+		return nil, err
+	}
+
+	var units []AvailableService
+	for i, line := range strings.Split(raw, "\n") {
+		if i == 0 { // skip header
+			continue
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		label := fields[2]
+		state := "active"
+		if fields[0] == "-" {
+			state = "inactive"
+		}
+		units = append(units, AvailableService{
+			Unit:        label,
+			Description: label,
+			ActiveState: state,
+		})
+	}
+	return units, nil
+}
+
 func buildInspectSummary(props map[string]string) string {
 	if len(props) == 0 {
 		return ""

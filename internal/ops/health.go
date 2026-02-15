@@ -112,7 +112,7 @@ func (hc *HealthChecker) checkServices(ctx context.Context) {
 				Metadata:  fmt.Sprintf(`{"service":"%s","unit":"%s","state":"%s"}`, svc.Name, svc.Unit, state),
 				CreatedAt: now,
 			})
-		case "active", "running":
+		case stateActive, stateRunning:
 			hc.resolveAlert(ctx, dedupeKey, now)
 		}
 	}

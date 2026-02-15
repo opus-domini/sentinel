@@ -64,6 +64,7 @@ type opsControlPlane interface {
 	Inspect(ctx context.Context, name string) (opsplane.ServiceInspect, error)
 	Logs(ctx context.Context, name string, lines int) (string, error)
 	Metrics(ctx context.Context) opsplane.HostMetrics
+	DiscoverServices(ctx context.Context) ([]opsplane.AvailableService, error)
 }
 
 type Handler struct {
@@ -127,6 +128,7 @@ func Register(
 	mux.HandleFunc("GET /api/tmux/timeline", h.wrap(h.timelineSearch))
 	mux.HandleFunc("GET /api/ops/overview", h.wrap(h.opsOverview))
 	mux.HandleFunc("GET /api/ops/services", h.wrap(h.opsServices))
+	mux.HandleFunc("GET /api/ops/services/discover", h.wrap(h.discoverOpsServices))
 	mux.HandleFunc("GET /api/ops/services/{service}/status", h.wrap(h.opsServiceStatus))
 	mux.HandleFunc("POST /api/ops/services/{service}/action", h.wrap(h.opsServiceAction))
 	mux.HandleFunc("GET /api/ops/alerts", h.wrap(h.opsAlerts))
@@ -1823,14 +1825,13 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	svc, err := h.store.InsertOpsCustomService(ctx, store.OpsCustomServiceWrite{
+	if _, err := h.store.InsertOpsCustomService(ctx, store.OpsCustomServiceWrite{
 		Name:        req.Name,
 		DisplayName: req.DisplayName,
 		Manager:     req.Manager,
 		Unit:        req.Unit,
 		Scope:       req.Scope,
-	})
-	if err != nil {
+	}); err != nil {
 		writeError(w, http.StatusConflict, "OPS_SERVICE_EXISTS", "service already registered or invalid", nil)
 		return
 	}
@@ -1840,21 +1841,30 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		Source:    "service",
 		EventType: "service.registered",
 		Severity:  "info",
-		Resource:  svc.Name,
-		Message:   fmt.Sprintf("Custom service registered: %s", svc.DisplayName),
-		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s", svc.Unit, svc.Manager, svc.Scope),
+		Resource:  req.Name,
+		Message:   fmt.Sprintf("Custom service registered: %s", req.DisplayName),
+		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s", req.Unit, req.Manager, req.Scope),
 		CreatedAt: now,
 	})
+
+	// Re-fetch the full services list so the new service is probed.
+	var services []opsplane.ServiceStatus
+	if h.ops != nil {
+		services, _ = h.ops.ListServices(ctx)
+	}
+	if services == nil {
+		services = []opsplane.ServiceStatus{}
+	}
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
 		"globalRev": globalRev,
 		"action":    "registered",
-		"service":   svc.Name,
+		"service":   req.Name,
 	})
 
 	writeData(w, http.StatusCreated, map[string]any{
-		"service":   svc,
+		"services":  services,
 		"globalRev": globalRev,
 	})
 }
@@ -1940,6 +1950,27 @@ func (h *Handler) opsServiceLogs(w http.ResponseWriter, r *http.Request) {
 		"service": serviceName,
 		"lines":   lines,
 		"output":  output,
+	})
+}
+
+func (h *Handler) discoverOpsServices(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	available, err := h.ops.DiscoverServices(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_DISCOVER_FAILED", err.Error(), nil)
+		return
+	}
+	if available == nil {
+		available = []opsplane.AvailableService{}
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"services": available,
 	})
 }
 

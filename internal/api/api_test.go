@@ -225,6 +225,7 @@ type mockOpsControlPlane struct {
 	inspectFn      func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
 	logsFn         func(ctx context.Context, name string, lines int) (string, error)
 	metricsFn      func(ctx context.Context) opsplane.HostMetrics
+	discoverFn     func(ctx context.Context) ([]opsplane.AvailableService, error)
 }
 
 func (m *mockOpsControlPlane) Overview(ctx context.Context) (opsplane.Overview, error) {
@@ -267,6 +268,13 @@ func (m *mockOpsControlPlane) Metrics(ctx context.Context) opsplane.HostMetrics 
 		return m.metricsFn(ctx)
 	}
 	return opsplane.HostMetrics{}
+}
+
+func (m *mockOpsControlPlane) DiscoverServices(ctx context.Context) ([]opsplane.AvailableService, error) {
+	if m.discoverFn != nil {
+		return m.discoverFn(ctx)
+	}
+	return []opsplane.AvailableService{}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -3856,9 +3864,16 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 	}
 	body := jsonBody(t, w)
 	data, _ := body["data"].(map[string]any)
-	svc, _ := data["service"].(map[string]any)
-	if svc["name"] != "myapp" {
-		t.Fatalf("service.name = %v, want myapp", svc["name"])
+	services, _ := data["services"].([]any)
+	// The mock ListServices returns empty, so services array may be empty;
+	// verify the store persisted the record.
+	_ = services
+	custom, err := h.store.ListOpsCustomServices(r.Context())
+	if err != nil {
+		t.Fatalf("ListOpsCustomServices: %v", err)
+	}
+	if len(custom) != 1 || custom[0].Name != "myapp" {
+		t.Fatalf("custom services = %+v, want 1 entry named myapp", custom)
 	}
 
 	// Duplicate registration should conflict.

@@ -313,6 +313,18 @@ export type OpsCustomServiceWrite = {
   scope: string
 }
 
+export type OpsAvailableService = {
+  unit: string
+  description: string
+  activeState: string
+  manager: string
+  scope: string
+}
+
+export type OpsDiscoverServicesResponse = {
+  services: Array<OpsAvailableService>
+}
+
 export type RecoverySessionState =
   | 'running'
   | 'killed'
