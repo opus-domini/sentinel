@@ -222,6 +222,7 @@ type mockOpsControlPlane struct {
 	overviewFn     func(ctx context.Context) (opsplane.Overview, error)
 	listServicesFn func(ctx context.Context) ([]opsplane.ServiceStatus, error)
 	actFn          func(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
+	inspectFn      func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
 }
 
 func (m *mockOpsControlPlane) Overview(ctx context.Context) (opsplane.Overview, error) {
@@ -243,6 +244,13 @@ func (m *mockOpsControlPlane) Act(ctx context.Context, name, action string) (ops
 		return m.actFn(ctx, name, action)
 	}
 	return opsplane.ServiceStatus{}, nil
+}
+
+func (m *mockOpsControlPlane) Inspect(ctx context.Context, name string) (opsplane.ServiceInspect, error) {
+	if m.inspectFn != nil {
+		return m.inspectFn(ctx, name)
+	}
+	return opsplane.ServiceInspect{}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -2951,6 +2959,82 @@ func TestOpsServiceActionHandler(t *testing.T) {
 	}
 	if !gotTypes[events.TypeOpsServices] || !gotTypes[events.TypeOpsOverview] {
 		t.Fatalf("unexpected event types: %v", gotTypes)
+	}
+}
+
+func TestOpsServiceStatusHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		inspectFn: func(_ context.Context, name string) (opsplane.ServiceInspect, error) {
+			if name != opsplane.ServiceNameUpdater {
+				t.Fatalf("service name = %q, want %q", name, opsplane.ServiceNameUpdater)
+			}
+			return opsplane.ServiceInspect{
+				Service: opsplane.ServiceStatus{
+					Name:         opsplane.ServiceNameUpdater,
+					DisplayName:  "Autoupdate timer",
+					Manager:      "systemd",
+					Scope:        "user",
+					Unit:         "sentinel-updater.timer",
+					Exists:       true,
+					EnabledState: "enabled",
+					ActiveState:  "active",
+					UpdatedAt:    "2026-02-15T12:00:00Z",
+				},
+				Summary: "load=loaded active=active sub=waiting",
+				Properties: map[string]string{
+					"LoadState":   "loaded",
+					"ActiveState": "active",
+					"SubState":    "waiting",
+				},
+				Output:    "Id=sentinel-updater.timer",
+				CheckedAt: "2026-02-15T12:00:01Z",
+			}, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/sentinel-updater/status", nil)
+	r.SetPathValue("service", "sentinel-updater")
+	h.opsServiceStatus(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	status, _ := data["status"].(map[string]any)
+	service, _ := status["service"].(map[string]any)
+	if service["name"] != opsplane.ServiceNameUpdater {
+		t.Fatalf("service.name = %v, want %s", service["name"], opsplane.ServiceNameUpdater)
+	}
+	if status["summary"] != "load=loaded active=active sub=waiting" {
+		t.Fatalf("summary = %v, want expected summary", status["summary"])
+	}
+}
+
+func TestOpsServiceStatusHandlerNotFound(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		inspectFn: func(context.Context, string) (opsplane.ServiceInspect, error) {
+			return opsplane.ServiceInspect{}, opsplane.ErrServiceNotFound
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/missing/status", nil)
+	r.SetPathValue("service", "missing")
+	h.opsServiceStatus(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	body := jsonBody(t, w)
+	if got := errCode(body); got != "OPS_SERVICE_NOT_FOUND" {
+		t.Fatalf("error code = %q, want OPS_SERVICE_NOT_FOUND", got)
 	}
 }
 

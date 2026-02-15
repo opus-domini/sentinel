@@ -1,8 +1,33 @@
 import type { OpsServiceAction, OpsServiceStatus } from '@/types'
 
+function normalizedServiceState(service: OpsServiceStatus): string {
+  return service.activeState.trim().toLowerCase()
+}
+
 export function isOpsServiceActive(service: OpsServiceStatus): boolean {
-  const state = service.activeState.trim().toLowerCase()
+  const state = normalizedServiceState(service)
   return state === 'active' || state === 'running'
+}
+
+export function canStartOpsService(service: OpsServiceStatus): boolean {
+  const state = normalizedServiceState(service)
+  return !(
+    state === 'active' ||
+    state === 'running' ||
+    state === 'activating' ||
+    state === 'reloading' ||
+    state === 'restarting'
+  )
+}
+
+export function canStopOpsService(service: OpsServiceStatus): boolean {
+  const state = normalizedServiceState(service)
+  return (
+    state === 'active' ||
+    state === 'running' ||
+    state === 'activating' ||
+    state === 'reloading'
+  )
 }
 
 export function withOptimisticServiceAction(

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -193,6 +194,133 @@ func TestActSystemdUpdater(t *testing.T) {
 	}
 }
 
+func TestActSystemdUpdaterStartBootstrapsWhenMissing(t *testing.T) {
+	t.Parallel()
+
+	installed := false
+	var installOpts service.InstallUserAutoUpdateOptions
+	var calls [][]string
+	m := &Manager{
+		nowFn:    time.Now,
+		uidFn:    func() int { return 1000 },
+		goos:     "linux",
+		hostname: func() (string, error) { return testHostname, nil },
+		userStatusFn: func() (service.UserServiceStatus, error) {
+			return service.UserServiceStatus{
+				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
+				UnitFileExists: true,
+				EnabledState:   "enabled",
+				ActiveState:    "active",
+			}, nil
+		},
+		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
+			if installed {
+				return service.UserAutoUpdateServiceStatus{
+					ServiceUnitExists: true,
+					TimerUnitExists:   true,
+					TimerEnabledState: "enabled",
+					TimerActiveState:  "active",
+				}, nil
+			}
+			return service.UserAutoUpdateServiceStatus{
+				ServiceUnitExists: false,
+				TimerUnitExists:   false,
+				TimerEnabledState: "not-found",
+				TimerActiveState:  "inactive",
+			}, nil
+		},
+		installAutoUpdate: func(opts service.InstallUserAutoUpdateOptions) error {
+			installOpts = opts
+			installed = true
+			return nil
+		},
+		commandRunner: func(_ context.Context, name string, args ...string) (string, error) {
+			row := append([]string{name}, args...)
+			calls = append(calls, row)
+			return "", nil
+		},
+	}
+
+	status, err := m.Act(context.Background(), ServiceNameUpdater, ActionStart)
+	if err != nil {
+		t.Fatalf("Act: %v", err)
+	}
+	if !installed {
+		t.Fatal("expected updater bootstrap install to run")
+	}
+	if installOpts.SystemdScope != scopeUser {
+		t.Fatalf("scope = %q, want %q", installOpts.SystemdScope, scopeUser)
+	}
+	if !installOpts.Enable || !installOpts.Start {
+		t.Fatalf("install opts should enable and start updater: %+v", installOpts)
+	}
+	if installOpts.ServiceUnit != ServiceNameSentinel {
+		t.Fatalf("service unit = %q, want %q", installOpts.ServiceUnit, ServiceNameSentinel)
+	}
+	want := []string{"systemctl", "--user", "start", updaterSystemdUnit}
+	if len(calls) == 0 || !reflect.DeepEqual(calls[0], want) {
+		t.Fatalf("first call = %v, want %v", calls, want)
+	}
+	if !status.Exists {
+		t.Fatalf("status.Exists = false, want true")
+	}
+}
+
+func TestActSystemdUpdaterRetriesAfterUnitNotFound(t *testing.T) {
+	t.Parallel()
+
+	attempt := 0
+	installed := false
+	var calls [][]string
+	m := &Manager{
+		nowFn:    time.Now,
+		uidFn:    func() int { return 1000 },
+		goos:     "linux",
+		hostname: func() (string, error) { return testHostname, nil },
+		userStatusFn: func() (service.UserServiceStatus, error) {
+			return service.UserServiceStatus{
+				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
+				UnitFileExists: true,
+				EnabledState:   "enabled",
+				ActiveState:    "active",
+			}, nil
+		},
+		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
+			return service.UserAutoUpdateServiceStatus{
+				ServiceUnitExists: true,
+				TimerUnitExists:   true,
+				TimerEnabledState: "enabled",
+				TimerActiveState:  "inactive",
+			}, nil
+		},
+		installAutoUpdate: func(opts service.InstallUserAutoUpdateOptions) error {
+			_ = opts
+			installed = true
+			return nil
+		},
+		commandRunner: func(_ context.Context, name string, args ...string) (string, error) {
+			row := append([]string{name}, args...)
+			calls = append(calls, row)
+			attempt++
+			if attempt == 1 {
+				return "", errors.New("systemctl --user start sentinel-updater.timer failed: Unit sentinel-updater.timer not found.")
+			}
+			return "", nil
+		},
+	}
+
+	_, err := m.Act(context.Background(), ServiceNameUpdater, ActionStart)
+	if err != nil {
+		t.Fatalf("Act: %v", err)
+	}
+	if !installed {
+		t.Fatal("expected updater bootstrap install to run after unit-not-found error")
+	}
+	if len(calls) != 2 {
+		t.Fatalf("command attempts = %d, want 2", len(calls))
+	}
+}
+
 func TestActLaunchdStartBootstrapsWhenMissing(t *testing.T) {
 	t.Parallel()
 
@@ -250,6 +378,74 @@ func TestActLaunchdStartBootstrapsWhenMissing(t *testing.T) {
 		if !reflect.DeepEqual(calls[i], expected[i]) {
 			t.Fatalf("call[%d] = %v, want %v", i, calls[i], expected[i])
 		}
+	}
+}
+
+func TestInspectSystemdService(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{
+		nowFn:    func() time.Time { return time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC) },
+		uidFn:    func() int { return 1000 },
+		goos:     "linux",
+		hostname: func() (string, error) { return testHostname, nil },
+		userStatusFn: func() (service.UserServiceStatus, error) {
+			return service.UserServiceStatus{
+				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
+				UnitFileExists: true,
+				EnabledState:   "enabled",
+				ActiveState:    "active",
+			}, nil
+		},
+		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
+			return service.UserAutoUpdateServiceStatus{
+				ServiceUnitExists: true,
+				TimerUnitExists:   true,
+				TimerEnabledState: "enabled",
+				TimerActiveState:  "active",
+			}, nil
+		},
+		commandRunner: func(_ context.Context, _ string, args ...string) (string, error) {
+			if len(args) < 2 || args[0] != "--user" || args[1] != "show" {
+				t.Fatalf("unexpected command args: %v", args)
+			}
+			return strings.Join([]string{
+				"Id=sentinel.service",
+				"Description=Sentinel service",
+				"LoadState=loaded",
+				"UnitFileState=enabled",
+				"ActiveState=active",
+				"SubState=running",
+				"FragmentPath=/home/dev/.config/systemd/user/sentinel.service",
+				"ExecMainPID=1234",
+			}, "\n"), nil
+		},
+	}
+
+	details, err := m.Inspect(context.Background(), ServiceNameSentinel)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if details.Service.Name != ServiceNameSentinel {
+		t.Fatalf("service = %q, want %q", details.Service.Name, ServiceNameSentinel)
+	}
+	if details.Properties["ActiveState"] != "active" {
+		t.Fatalf("ActiveState = %q, want active", details.Properties["ActiveState"])
+	}
+	if details.Summary != "load=loaded active=active sub=running" {
+		t.Fatalf("summary = %q, want systemd summary", details.Summary)
+	}
+	if details.CheckedAt != "2026-02-15T12:00:00Z" {
+		t.Fatalf("checkedAt = %q, want fixed timestamp", details.CheckedAt)
+	}
+}
+
+func TestInspectServiceNotFound(t *testing.T) {
+	t.Parallel()
+
+	m := NewManager(time.Now())
+	if _, err := m.Inspect(context.Background(), "missing"); !errors.Is(err, ErrServiceNotFound) {
+		t.Fatalf("error = %v, want ErrServiceNotFound", err)
 	}
 }
 

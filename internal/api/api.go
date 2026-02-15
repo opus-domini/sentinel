@@ -60,6 +60,7 @@ type opsControlPlane interface {
 	Overview(ctx context.Context) (opsplane.Overview, error)
 	ListServices(ctx context.Context) ([]opsplane.ServiceStatus, error)
 	Act(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
+	Inspect(ctx context.Context, name string) (opsplane.ServiceInspect, error)
 }
 
 type Handler struct {
@@ -119,6 +120,7 @@ func Register(
 	mux.HandleFunc("GET /api/tmux/timeline", h.wrap(h.timelineSearch))
 	mux.HandleFunc("GET /api/ops/overview", h.wrap(h.opsOverview))
 	mux.HandleFunc("GET /api/ops/services", h.wrap(h.opsServices))
+	mux.HandleFunc("GET /api/ops/services/{service}/status", h.wrap(h.opsServiceStatus))
 	mux.HandleFunc("POST /api/ops/services/{service}/action", h.wrap(h.opsServiceAction))
 	mux.HandleFunc("GET /api/ops/alerts", h.wrap(h.opsAlerts))
 	mux.HandleFunc("POST /api/ops/alerts/{alert}/ack", h.wrap(h.ackOpsAlert))
@@ -1286,6 +1288,36 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 		response["timelineEvent"] = timelineEvent
 	}
 	writeData(w, http.StatusOK, response)
+}
+
+func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+
+	serviceName := strings.TrimSpace(r.PathValue("service"))
+	if serviceName == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	status, err := h.ops.Inspect(ctx, serviceName)
+	if err != nil {
+		if errors.Is(err, opsplane.ErrServiceNotFound) {
+			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
+			return
+		}
+		writeError(w, http.StatusBadRequest, "OPS_ACTION_FAILED", err.Error(), nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"status": status,
+	})
 }
 
 func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsplane.ServiceStatus, action string, at time.Time) (store.OpsTimelineEvent, bool, []store.OpsAlert, error) {

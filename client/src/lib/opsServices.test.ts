@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { OpsServiceStatus } from '@/types'
 import {
+  canStartOpsService,
+  canStopOpsService,
   isOpsServiceActive,
   upsertOpsService,
   withOptimisticServiceAction,
@@ -30,6 +32,34 @@ describe('opsServices', () => {
       true,
     )
     expect(isOpsServiceActive(buildService({ activeState: 'inactive' }))).toBe(
+      false,
+    )
+  })
+
+  it('enables start/stop actions by service state', () => {
+    expect(canStartOpsService(buildService({ activeState: 'active' }))).toBe(
+      false,
+    )
+    expect(canStartOpsService(buildService({ activeState: 'running' }))).toBe(
+      false,
+    )
+    expect(canStartOpsService(buildService({ activeState: 'inactive' }))).toBe(
+      true,
+    )
+    expect(canStartOpsService(buildService({ activeState: 'failed' }))).toBe(
+      true,
+    )
+
+    expect(canStopOpsService(buildService({ activeState: 'active' }))).toBe(
+      true,
+    )
+    expect(canStopOpsService(buildService({ activeState: 'running' }))).toBe(
+      true,
+    )
+    expect(canStopOpsService(buildService({ activeState: 'inactive' }))).toBe(
+      false,
+    )
+    expect(canStopOpsService(buildService({ activeState: 'failed' }))).toBe(
       false,
     )
   })

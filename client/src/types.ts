@@ -142,6 +142,14 @@ export type OpsServiceStatus = {
   updatedAt: string
 }
 
+export type OpsServiceInspect = {
+  service: OpsServiceStatus
+  summary: string
+  properties?: Record<string, string>
+  output?: string
+  checkedAt: string
+}
+
 export type OpsAlertStatus = 'open' | 'acked' | 'resolved' | string
 
 export type OpsAlert = {
@@ -260,6 +268,10 @@ export type OpsServiceActionResponse = {
   timelineEvent?: OpsTimelineEvent
   alerts?: Array<OpsAlert>
   globalRev: number
+}
+
+export type OpsServiceStatusResponse = {
+  status: OpsServiceInspect
 }
 
 export type RecoverySessionState =

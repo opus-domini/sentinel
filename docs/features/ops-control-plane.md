@@ -6,6 +6,7 @@ The `/ops` route centralizes host operations in a single event-driven panel.
 
 - **Overview**: host identity, Sentinel uptime, service health summary.
 - **Services**: start/stop/restart with optimistic UI updates.
+- **Service status inspect**: open manager details (`systemctl`/`launchctl`) per service.
 - **Alerts**: deduplicated alert feed with acknowledge action.
 - **Timeline**: searchable operational timeline by severity/text.
 - **Runbooks**: executable operational procedures with tracked job status.

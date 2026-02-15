@@ -21,7 +21,9 @@ import type {
   OpsRunbooksResponse,
   OpsServiceAction,
   OpsServiceActionResponse,
+  OpsServiceInspect,
   OpsServiceStatus,
+  OpsServiceStatusResponse,
   OpsServicesResponse,
   OpsTimelineEvent,
   OpsTimelineResponse,
@@ -30,6 +32,13 @@ import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import OpsSidebar from '@/components/OpsSidebar'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
@@ -37,6 +46,8 @@ import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
+  canStartOpsService,
+  canStopOpsService,
   upsertOpsService,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
@@ -107,6 +118,11 @@ function OpsPage() {
   const [pendingActions, setPendingActions] = useState<
     Partial<Record<string, OpsServiceAction>>
   >({})
+  const [serviceStatusOpen, setServiceStatusOpen] = useState(false)
+  const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
+  const [serviceStatusError, setServiceStatusError] = useState('')
+  const [serviceStatusData, setServiceStatusData] =
+    useState<OpsServiceInspect | null>(null)
 
   const previousServiceRef = useRef(new Map<string, OpsServiceStatus>())
 
@@ -518,6 +534,28 @@ function OpsPage() {
     [api, pushToast, runbooks],
   )
 
+  const inspectService = useCallback(
+    async (serviceName: string) => {
+      setServiceStatusOpen(true)
+      setServiceStatusLoading(true)
+      setServiceStatusError('')
+      try {
+        const data = await api<OpsServiceStatusResponse>(
+          `/api/ops/services/${encodeURIComponent(serviceName)}/status`,
+        )
+        setServiceStatusData(data.status)
+      } catch (error) {
+        setServiceStatusData(null)
+        setServiceStatusError(
+          error instanceof Error ? error.message : 'failed to load service status',
+        )
+      } finally {
+        setServiceStatusLoading(false)
+      }
+    },
+    [api],
+  )
+
   const stats = useMemo(() => {
     if (overview == null) {
       return {
@@ -674,7 +712,9 @@ function OpsPage() {
                 <div className="grid gap-1.5 p-2">
                   {services.map((service) => {
                     const pending = pendingActions[service.name]
-                    const disabled = pending !== undefined
+                    const rowBusy = pending !== undefined
+                    const startDisabled = rowBusy || !canStartOpsService(service)
+                    const stopDisabled = rowBusy || !canStopOpsService(service)
                     return (
                       <div
                         key={service.name}
@@ -700,11 +740,11 @@ function OpsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 cursor-pointer text-[11px]"
                             onClick={() =>
                               runServiceAction(service.name, 'start')
                             }
-                            disabled={disabled}
+                            disabled={startDisabled}
                           >
                             <Play className="h-3 w-3" />
                             Start
@@ -712,9 +752,9 @@ function OpsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 cursor-pointer text-[11px]"
                             onClick={() => runServiceAction(service.name, 'stop')}
-                            disabled={disabled}
+                            disabled={stopDisabled}
                           >
                             <Square className="h-3 w-3" />
                             Stop
@@ -722,14 +762,25 @@ function OpsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 cursor-pointer text-[11px]"
                             onClick={() =>
                               runServiceAction(service.name, 'restart')
                             }
-                            disabled={disabled}
+                            disabled={rowBusy}
                           >
                             <RotateCw className="h-3 w-3" />
                             Restart
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 cursor-pointer text-[11px]"
+                            onClick={() => {
+                              void inspectService(service.name)
+                            }}
+                            disabled={rowBusy}
+                          >
+                            Status
                           </Button>
                           {pending && (
                             <span className="text-[10px] text-muted-foreground">
@@ -945,6 +996,84 @@ function OpsPage() {
           </span>
         </footer>
       </main>
+
+      <Dialog open={serviceStatusOpen} onOpenChange={setServiceStatusOpen}>
+        <DialogContent className="max-h-[85vh] max-w-[calc(100vw-1rem)] overflow-hidden sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              {serviceStatusData?.service.displayName ?? 'Service status'}
+            </DialogTitle>
+            <DialogDescription>
+              {serviceStatusData?.summary ?? 'Runtime details from service manager'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid min-h-0 gap-2 overflow-hidden">
+            {serviceStatusLoading && (
+              <p className="text-[12px] text-muted-foreground">
+                Loading service status...
+              </p>
+            )}
+            {serviceStatusError !== '' && (
+              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[12px] text-destructive-foreground">
+                {serviceStatusError}
+              </p>
+            )}
+
+            {!serviceStatusLoading && serviceStatusData != null && (
+              <ScrollArea className="max-h-[58vh] min-h-0">
+                <div className="grid gap-2 pr-2">
+                  <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
+                    <p className="text-[11px] font-semibold text-foreground">
+                      {serviceStatusData.service.unit}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      checked at {serviceStatusData.checkedAt}
+                    </p>
+                  </div>
+
+                  {serviceStatusData.properties != null &&
+                    Object.keys(serviceStatusData.properties).length > 0 && (
+                      <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
+                        <p className="mb-1 text-[11px] font-semibold text-foreground">
+                          Properties
+                        </p>
+                        <div className="grid gap-1 text-[11px]">
+                          {Object.entries(serviceStatusData.properties)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([key, value]) => (
+                              <div
+                                key={key}
+                                className="grid grid-cols-[9rem_1fr] gap-2"
+                              >
+                                <span className="font-mono text-muted-foreground">
+                                  {key}
+                                </span>
+                                <span className="break-all font-mono text-foreground">
+                                  {value}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                  {serviceStatusData.output?.trim() !== '' && (
+                    <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
+                      <p className="mb-1 text-[11px] font-semibold text-foreground">
+                        Raw output
+                      </p>
+                      <pre className="max-h-[36vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-background p-2 font-mono text-[11px] text-secondary-foreground">
+                        {serviceStatusData.output}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   )
 }

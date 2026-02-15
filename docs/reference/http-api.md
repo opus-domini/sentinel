@@ -123,6 +123,7 @@ Payload:
 | --- | --- | --- |
 | `GET` | `/api/ops/overview` | Host + Sentinel + services summary |
 | `GET` | `/api/ops/services` | Service list and runtime status |
+| `GET` | `/api/ops/services/{service}/status` | Detailed manager status for one service |
 | `POST` | `/api/ops/services/{service}/action` | Execute `start`, `stop`, or `restart` |
 | `GET` | `/api/ops/alerts` | List active/recent ops alerts |
 | `POST` | `/api/ops/alerts/{alert}/ack` | Acknowledge one alert |

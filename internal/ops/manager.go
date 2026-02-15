@@ -54,6 +54,14 @@ type ServiceStatus struct {
 	UpdatedAt    string `json:"updatedAt"`
 }
 
+type ServiceInspect struct {
+	Service    ServiceStatus     `json:"service"`
+	Summary    string            `json:"summary"`
+	Properties map[string]string `json:"properties,omitempty"`
+	Output     string            `json:"output,omitempty"`
+	CheckedAt  string            `json:"checkedAt"`
+}
+
 type HostOverview struct {
 	Hostname  string `json:"hostname"`
 	OS        string `json:"os"`
@@ -89,6 +97,7 @@ type Manager struct {
 
 	userStatusFn       func() (service.UserServiceStatus, error)
 	autoUpdateStatusFn func(scope string) (service.UserAutoUpdateServiceStatus, error)
+	installAutoUpdate  func(opts service.InstallUserAutoUpdateOptions) error
 	userServicePathFn  func() (string, error)
 	autoServicePathFn  func(scope string) (string, error)
 	commandRunner      commandRunner
@@ -107,6 +116,7 @@ func NewManager(startedAt time.Time) *Manager {
 		goos:               runtime.GOOS,
 		userStatusFn:       service.UserStatus,
 		autoUpdateStatusFn: service.UserAutoUpdateStatusForScope,
+		installAutoUpdate:  service.InstallUserAutoUpdate,
 		userServicePathFn:  service.UserServicePath,
 		autoServicePathFn:  service.UserAutoUpdateServicePathForScope,
 		commandRunner:      runCommand,
@@ -215,6 +225,9 @@ func (m *Manager) Act(ctx context.Context, name, action string) (ServiceStatus, 
 	if !ok {
 		return ServiceStatus{}, ErrServiceNotFound
 	}
+	if err := m.ensureServiceActionReady(target, action); err != nil {
+		return ServiceStatus{}, err
+	}
 
 	switch target.Manager {
 	case managerSystemd:
@@ -239,6 +252,51 @@ func (m *Manager) Act(ctx context.Context, name, action string) (ServiceStatus, 
 	return ServiceStatus{}, ErrServiceNotFound
 }
 
+func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, error) {
+	serviceName, ok := normalizeServiceName(name)
+	if !ok {
+		return ServiceInspect{}, ErrServiceNotFound
+	}
+
+	services, err := m.ListServices(ctx)
+	if err != nil {
+		return ServiceInspect{}, err
+	}
+	target, ok := findServiceStatus(services, serviceName)
+	if !ok {
+		return ServiceInspect{}, ErrServiceNotFound
+	}
+
+	inspect := ServiceInspect{
+		Service:   target,
+		Summary:   fmt.Sprintf("enabled=%s active=%s", target.EnabledState, target.ActiveState),
+		CheckedAt: m.nowFn().UTC().Format(time.RFC3339),
+	}
+
+	switch target.Manager {
+	case managerSystemd:
+		props, output, inspectErr := m.inspectSystemd(ctx, target)
+		if inspectErr != nil {
+			return ServiceInspect{}, inspectErr
+		}
+		inspect.Properties = props
+		inspect.Output = output
+		if summary := strings.TrimSpace(buildInspectSummary(props)); summary != "" {
+			inspect.Summary = summary
+		}
+	case managerLaunchd:
+		output, inspectErr := m.inspectLaunchd(ctx, target)
+		if inspectErr != nil {
+			return ServiceInspect{}, inspectErr
+		}
+		inspect.Output = output
+	default:
+		return ServiceInspect{}, fmt.Errorf("unsupported service manager: %s", target.Manager)
+	}
+
+	return inspect, nil
+}
+
 func (m *Manager) actSystemd(ctx context.Context, scope, serviceName, action string) error {
 	args := make([]string, 0, 4)
 	if strings.EqualFold(scope, scopeUser) {
@@ -247,7 +305,77 @@ func (m *Manager) actSystemd(ctx context.Context, scope, serviceName, action str
 	args = append(args, action, unitForService(managerSystemd, serviceName))
 	_, err := m.commandRunner(ctx, "systemctl", args...)
 	if err != nil {
+		if serviceName == ServiceNameUpdater &&
+			(action == ActionStart || action == ActionRestart) &&
+			isSystemdUnitNotFoundError(err) {
+			if bootstrapErr := m.bootstrapUpdater(scope); bootstrapErr != nil {
+				return bootstrapErr
+			}
+			if _, retryErr := m.commandRunner(ctx, "systemctl", args...); retryErr != nil {
+				return fmt.Errorf("systemd action failed after autoupdate bootstrap: %w", retryErr)
+			}
+			return nil
+		}
 		return fmt.Errorf("systemd action failed: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) inspectSystemd(ctx context.Context, target ServiceStatus) (map[string]string, string, error) {
+	args := make([]string, 0, 12)
+	if strings.EqualFold(target.Scope, scopeUser) {
+		args = append(args, "--user")
+	}
+	args = append(args,
+		"show",
+		target.Unit,
+		"--no-pager",
+		"--property=Id,Description,LoadState,UnitFileState,ActiveState,SubState,FragmentPath,ExecMainPID",
+	)
+	out, err := m.commandRunner(ctx, "systemctl", args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("systemd inspect failed: %w", err)
+	}
+	props := parseSystemdShow(out)
+	return props, out, nil
+}
+
+func (m *Manager) inspectLaunchd(ctx context.Context, target ServiceStatus) (string, error) {
+	label := unitForService(managerLaunchd, target.Name)
+	out, err := m.commandRunner(ctx, "launchctl", "print", launchdTarget(target.Scope, m.uidFn, label))
+	if err != nil {
+		return "", fmt.Errorf("launchd inspect failed: %w", err)
+	}
+	return out, nil
+}
+
+func (m *Manager) ensureServiceActionReady(target ServiceStatus, action string) error {
+	if target.Name != ServiceNameUpdater {
+		return nil
+	}
+	if action != ActionStart && action != ActionRestart {
+		return nil
+	}
+	if target.Exists {
+		return nil
+	}
+	return m.bootstrapUpdater(target.Scope)
+}
+
+func (m *Manager) bootstrapUpdater(scope string) error {
+	installFn := m.installAutoUpdate
+	if installFn == nil {
+		installFn = service.InstallUserAutoUpdate
+	}
+	if err := installFn(service.InstallUserAutoUpdateOptions{
+		Enable:          true,
+		Start:           true,
+		ServiceUnit:     ServiceNameSentinel,
+		SystemdScope:    scope,
+		OnCalendar:      "daily",
+		RandomizedDelay: time.Hour,
+	}); err != nil {
+		return fmt.Errorf("autoupdate bootstrap failed: %w", err)
 	}
 	return nil
 }
@@ -428,4 +556,55 @@ func isLaunchdAlreadyLoadedError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "service already loaded")
+}
+
+func isSystemdUnitNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "unit sentinel-updater.timer not found") ||
+		strings.Contains(msg, "could not be found") ||
+		strings.Contains(msg, "no such file or directory")
+}
+
+func parseSystemdShow(raw string) map[string]string {
+	props := make(map[string]string)
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		idx := strings.Index(line, "=")
+		if idx <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		value := strings.TrimSpace(line[idx+1:])
+		if key == "" {
+			continue
+		}
+		props[key] = value
+	}
+	return props
+}
+
+func buildInspectSummary(props map[string]string) string {
+	if len(props) == 0 {
+		return ""
+	}
+	load := strings.TrimSpace(props["LoadState"])
+	active := strings.TrimSpace(props["ActiveState"])
+	sub := strings.TrimSpace(props["SubState"])
+	parts := make([]string, 0, 3)
+	if load != "" {
+		parts = append(parts, "load="+load)
+	}
+	if active != "" {
+		parts = append(parts, "active="+active)
+	}
+	if sub != "" {
+		parts = append(parts, "sub="+sub)
+	}
+	return strings.Join(parts, " ")
 }
