@@ -3,6 +3,7 @@ import type { OpsServiceStatus } from '@/types'
 import {
   canStartOpsService,
   canStopOpsService,
+  filterOpsServicesByQuery,
   isOpsServiceActive,
   upsertOpsService,
   withOptimisticServiceAction,
@@ -89,5 +90,36 @@ describe('opsServices', () => {
     )
     expect(updated).toHaveLength(2)
     expect(updated[0].activeState).toBe('failed')
+  })
+
+  it('filters services by query and keeps sorted output', () => {
+    const services = [
+      buildService({
+        name: 'queue-worker',
+        displayName: 'Queue Worker',
+        unit: 'queue-worker.service',
+      }),
+      buildService({
+        name: 'api',
+        displayName: 'API',
+        unit: 'api.service',
+      }),
+      buildService({
+        name: 'sentinel-updater',
+        displayName: 'Updater',
+        unit: 'sentinel-updater.timer',
+      }),
+    ]
+
+    const filtered = filterOpsServicesByQuery(services, 'api')
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].name).toBe('api')
+
+    const sorted = filterOpsServicesByQuery(services, '')
+    expect(sorted.map((service) => service.displayName)).toEqual([
+      'API',
+      'Queue Worker',
+      'Updater',
+    ])
   })
 })

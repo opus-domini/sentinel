@@ -78,7 +78,7 @@ export default function SidebarShell({
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-30 h-screen border-r border-border bg-card p-2 transition-transform duration-200 ease-out md:static md:z-auto md:h-auto md:w-auto md:min-w-0 md:overflow-hidden md:translate-x-0 md:transition-none',
+        'fixed left-0 top-0 z-30 h-screen border-r border-border bg-card p-2 transition-transform duration-200 ease-out md:static md:z-auto md:h-full md:min-h-0 md:w-auto md:min-w-0 md:overflow-hidden md:translate-x-0 md:transition-none',
         widthClassName,
         collapsed ? 'md:hidden' : 'md:block',
         isOpen ? 'translate-x-0' : '-translate-x-[108%]',

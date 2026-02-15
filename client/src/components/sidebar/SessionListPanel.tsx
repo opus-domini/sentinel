@@ -51,7 +51,7 @@ export default function SessionListPanel({
   )
 
   return (
-    <section className="min-h-0 overflow-hidden rounded-lg border border-border-subtle bg-secondary">
+    <section className="h-full min-h-0 overflow-hidden rounded-lg border border-border-subtle bg-secondary">
       <ul className="grid min-h-0 min-w-0 grid-cols-1 list-none gap-1.5 overflow-x-hidden overflow-y-auto p-2">
         {sessions.length === 0 && (
           <li>

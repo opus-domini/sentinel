@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   Activity,
@@ -11,25 +8,27 @@ import {
   Clock3,
   FileText,
   Menu,
+  Pin,
+  PinOff,
   Play,
   RefreshCw,
   RotateCw,
+  Search,
   Server,
   Settings,
   Square,
+  X,
 } from 'lucide-react'
 import type {
   ConnectionState,
   OpsAlert,
   OpsAlertsResponse,
-  OpsAvailableService,
+  OpsBrowseServicesResponse,
+  OpsBrowsedService,
   OpsConfigResponse,
-  OpsDiscoverServicesResponse,
-  OpsHostMetrics,
   OpsMetricsResponse,
   OpsOverview,
   OpsOverviewResponse,
-  OpsRunbook,
   OpsRunbookRun,
   OpsRunbookRunResponse,
   OpsRunbooksResponse,
@@ -42,6 +41,8 @@ import type {
   OpsServicesResponse,
   OpsTimelineEvent,
   OpsTimelineResponse,
+  OpsUnitActionResponse,
+  OpsUnitLogsResponse,
 } from '@/types'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
@@ -55,6 +56,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { TooltipHelper } from '@/components/TooltipHelper'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
@@ -68,6 +70,7 @@ import {
 } from '@/lib/opsServices'
 import {
   OPS_ALERTS_QUERY_KEY,
+  OPS_BROWSE_QUERY_KEY,
   OPS_CONFIG_QUERY_KEY,
   OPS_METRICS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
@@ -89,15 +92,11 @@ function formatUptime(totalSeconds: number): string {
   return `${seconds}s`
 }
 
-function serviceRowTone(service: OpsServiceStatus): string {
-  const state = service.activeState.trim().toLowerCase()
-  if (state === 'active' || state === 'running') {
-    return 'border-emerald-500/40 bg-emerald-500/10'
-  }
-  if (state === 'failed') {
-    return 'border-red-500/40 bg-red-500/10'
-  }
-  return 'border-border-subtle bg-surface-elevated'
+function browsedServiceDot(state: string): string {
+  const s = state.trim().toLowerCase()
+  if (s === 'active' || s === 'running') return 'bg-emerald-500'
+  if (s === 'failed') return 'bg-red-500'
+  return 'bg-muted-foreground/50'
 }
 
 function opsTabButtonClass(active: boolean): string {
@@ -170,7 +169,7 @@ function OpsPage() {
   const [timelineSeverity, setTimelineSeverity] = useState('all')
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('connecting')
-  const [pendingActions, setPendingActions] = useState<
+  const [, setPendingActions] = useState<
     Partial<Record<string, OpsServiceAction>>
   >({})
   const [serviceStatusOpen, setServiceStatusOpen] = useState(false)
@@ -184,6 +183,15 @@ function OpsPage() {
   const [configEdited, setConfigEdited] = useState('')
   const [serviceLogs, setServiceLogs] = useState('')
   const [serviceLogsLoading, setServiceLogsLoading] = useState(false)
+  const [serviceLogsOpen, setServiceLogsOpen] = useState(false)
+  const [serviceLogsTitle, setServiceLogsTitle] = useState('')
+
+  const [svcStateFilter, setSvcStateFilter] = useState('all')
+  const [svcScopeFilter, setSvcScopeFilter] = useState('all')
+  const [svcSearch, setSvcSearch] = useState('')
+  const [browsePendingActions, setBrowsePendingActions] = useState<
+    Partial<Record<string, OpsServiceAction>>
+  >({})
 
   const previousServiceRef = useRef(new Map<string, OpsServiceStatus>())
 
@@ -214,6 +222,17 @@ function OpsPage() {
       const data = await api<OpsServicesResponse>('/api/ops/services')
       return data.services
     },
+  })
+
+  const browseQuery = useQuery({
+    queryKey: OPS_BROWSE_QUERY_KEY,
+    queryFn: async () => {
+      const data = await api<OpsBrowseServicesResponse>(
+        '/api/ops/services/browse',
+      )
+      return data.services
+    },
+    enabled: opsTab === 'services',
   })
 
   const alertsQuery = useQuery({
@@ -251,8 +270,7 @@ function OpsPage() {
       return data.metrics
     },
     enabled: opsTab === 'metrics',
-    refetchInterval:
-      metricsAutoRefresh && opsTab === 'metrics' ? 5_000 : false,
+    refetchInterval: metricsAutoRefresh && opsTab === 'metrics' ? 5_000 : false,
   })
 
   const configQuery = useQuery({
@@ -265,6 +283,7 @@ function OpsPage() {
 
   const overview = overviewQuery.data ?? null
   const services = servicesQuery.data ?? []
+  const browseServices = browseQuery.data ?? []
   const alerts = alertsQuery.data ?? []
   const runbooks = runbooksQuery.data?.runbooks ?? []
   const jobs = runbooksQuery.data?.jobs ?? []
@@ -309,6 +328,41 @@ function OpsPage() {
       ? toErrorMessage(configQuery.error, 'failed to load config')
       : ''
 
+  const browseLoading = browseQuery.isLoading
+  const browseError =
+    browseQuery.error != null
+      ? toErrorMessage(browseQuery.error, 'failed to browse services')
+      : ''
+
+  const filteredBrowseServices = useMemo(() => {
+    let list = browseServices
+    if (svcStateFilter !== 'all') {
+      list = list.filter((s) => {
+        const state = s.activeState.trim().toLowerCase()
+        if (svcStateFilter === 'active')
+          return state === 'active' || state === 'running'
+        if (svcStateFilter === 'failed') return state === 'failed'
+        if (svcStateFilter === 'inactive')
+          return state === 'inactive' || state === 'dead'
+        return true
+      })
+    }
+    if (svcScopeFilter !== 'all') {
+      list = list.filter(
+        (s) => s.scope.toLowerCase() === svcScopeFilter.toLowerCase(),
+      )
+    }
+    if (svcSearch.trim() !== '') {
+      const q = svcSearch.trim().toLowerCase()
+      list = list.filter(
+        (s) =>
+          s.unit.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [browseServices, svcStateFilter, svcScopeFilter, svcSearch])
+
   const knownConfigContentRef = useRef('')
   useEffect(() => {
     if (configContent === '') {
@@ -332,6 +386,13 @@ function OpsPage() {
   const refreshServices = useCallback(async () => {
     await queryClient.refetchQueries({
       queryKey: OPS_SERVICES_QUERY_KEY,
+      exact: true,
+    })
+  }, [queryClient])
+
+  const refreshBrowse = useCallback(async () => {
+    await queryClient.refetchQueries({
+      queryKey: OPS_BROWSE_QUERY_KEY,
       exact: true,
     })
   }, [queryClient])
@@ -403,30 +464,19 @@ function OpsPage() {
     }
   }, [api, configEdited, configPath, pushToast, queryClient])
 
-  const fetchServiceLogs = useCallback(
-    async (serviceName: string) => {
-      setServiceLogsLoading(true)
-      setServiceLogs('')
-      try {
-        const data = await api<OpsServiceLogsResponse>(
-          `/api/ops/services/${encodeURIComponent(serviceName)}/logs?lines=200`,
-        )
-        setServiceLogs(data.output)
-      } catch {
-        setServiceLogs('(failed to fetch logs)')
-      } finally {
-        setServiceLogsLoading(false)
-      }
-    },
-    [api],
-  )
-
   const refreshAll = useCallback(() => {
     void refreshOverview()
     void refreshServices()
+    void refreshBrowse()
     void refreshAlerts()
     void refreshRunbooks()
-  }, [refreshAlerts, refreshOverview, refreshRunbooks, refreshServices])
+  }, [
+    refreshAlerts,
+    refreshBrowse,
+    refreshOverview,
+    refreshRunbooks,
+    refreshServices,
+  ])
 
   const refreshPage = useCallback(() => {
     refreshAll()
@@ -487,24 +537,34 @@ function OpsPage() {
         switch (typed.type) {
           case 'ops.services.updated':
             if (Array.isArray(typed.payload?.services)) {
-              queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, typed.payload.services)
+              queryClient.setQueryData(
+                OPS_SERVICES_QUERY_KEY,
+                typed.payload.services,
+              )
             } else {
               void refreshServices()
             }
+            void refreshBrowse()
             break
           case 'ops.overview.updated':
             if (
               typed.payload?.overview != null &&
               typeof typed.payload.overview === 'object'
             ) {
-              queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, typed.payload.overview)
+              queryClient.setQueryData(
+                OPS_OVERVIEW_QUERY_KEY,
+                typed.payload.overview,
+              )
             } else {
               void refreshOverview()
             }
             break
           case 'ops.alerts.updated':
             if (Array.isArray(typed.payload?.alerts)) {
-              queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, typed.payload.alerts)
+              queryClient.setQueryData(
+                OPS_ALERTS_QUERY_KEY,
+                typed.payload.alerts,
+              )
             } else {
               void refreshAlerts()
             }
@@ -517,7 +577,8 @@ function OpsPage() {
                   timelineQueryRef.current,
                   timelineSeverityRef.current,
                 ),
-                (previous = []) => prependOpsTimelineEvent(previous, timelineEvent),
+                (previous = []) =>
+                  prependOpsTimelineEvent(previous, timelineEvent),
               )
             } else {
               void refreshTimeline()
@@ -574,6 +635,7 @@ function OpsPage() {
   }, [
     queryClient,
     refreshAlerts,
+    refreshBrowse,
     refreshOverview,
     refreshServices,
     refreshTimeline,
@@ -626,7 +688,10 @@ function OpsPage() {
               timelineSeverityRef.current,
             ),
             (current = []) =>
-              prependOpsTimelineEvent(current, data.timelineEvent as OpsTimelineEvent),
+              prependOpsTimelineEvent(
+                current,
+                data.timelineEvent as OpsTimelineEvent,
+              ),
           )
         }
         pushToast({
@@ -659,53 +724,6 @@ function OpsPage() {
     [api, pushToast, queryClient, services],
   )
 
-  const discoverServices = useCallback(async () => {
-    const data = await api<OpsDiscoverServicesResponse>(
-      '/api/ops/services/discover',
-    )
-    return data.services
-  }, [api])
-
-  const registerService = useCallback(
-    async (svc: OpsAvailableService) => {
-      const name = svc.unit
-        .replace(/\.(service|timer|socket|mount|slice)$/, '')
-        .replace(/\./g, '-')
-      try {
-        const data = await api<{
-          services: Array<OpsServiceStatus>
-          globalRev: number
-        }>('/api/ops/services', {
-          method: 'POST',
-          body: JSON.stringify({
-            name,
-            displayName: svc.description || svc.unit,
-            manager: svc.manager,
-            unit: svc.unit,
-            scope: svc.scope,
-          }),
-        })
-        if (Array.isArray(data.services)) {
-          queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, data.services)
-        }
-        pushToast({
-          level: 'success',
-          title: svc.description || svc.unit,
-          message: 'Service added',
-        })
-      } catch (error) {
-        pushToast({
-          level: 'error',
-          title: 'Register service',
-          message:
-            error instanceof Error ? error.message : 'failed to register',
-        })
-        throw error
-      }
-    },
-    [api, pushToast, queryClient],
-  )
-
   const unregisterService = useCallback(
     async (name: string) => {
       const previous = services.find((s) => s.name === name)
@@ -723,6 +741,7 @@ function OpsPage() {
           title: previous?.displayName ?? name,
           message: 'Service removed',
         })
+        void refreshBrowse()
       } catch (error) {
         if (previous) {
           queryClient.setQueryData<Array<OpsServiceStatus>>(
@@ -737,8 +756,184 @@ function OpsPage() {
         })
       }
     },
-    [api, pushToast, queryClient, services],
+    [api, pushToast, queryClient, refreshBrowse, services],
   )
+
+  const actOnBrowsedService = useCallback(
+    async (svc: OpsBrowsedService, action: OpsServiceAction) => {
+      setBrowsePendingActions((prev) => ({ ...prev, [svc.unit]: action }))
+      try {
+        if (svc.tracked && svc.trackedName) {
+          await runServiceAction(svc.trackedName, action)
+        } else {
+          const data = await api<OpsUnitActionResponse>(
+            '/api/ops/services/unit/action',
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                unit: svc.unit,
+                scope: svc.scope,
+                manager: svc.manager,
+                action,
+              }),
+            },
+          )
+          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
+          if (data.timelineEvent != null) {
+            queryClient.setQueryData<Array<OpsTimelineEvent>>(
+              opsTimelineQueryKey(
+                timelineQueryRef.current,
+                timelineSeverityRef.current,
+              ),
+              (current = []) =>
+                prependOpsTimelineEvent(
+                  current,
+                  data.timelineEvent as OpsTimelineEvent,
+                ),
+            )
+          }
+          pushToast({
+            level: 'success',
+            title: svc.unit,
+            message: `${action} completed`,
+          })
+        }
+        void refreshBrowse()
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: svc.unit,
+          message: error instanceof Error ? error.message : `${action} failed`,
+        })
+      } finally {
+        setBrowsePendingActions((prev) => {
+          const next = { ...prev }
+          delete next[svc.unit]
+          return next
+        })
+      }
+    },
+    [api, pushToast, queryClient, refreshBrowse, runServiceAction],
+  )
+
+  const inspectBrowsedService = useCallback(
+    async (svc: OpsBrowsedService) => {
+      setServiceStatusOpen(true)
+      setServiceStatusLoading(true)
+      setServiceStatusError('')
+      try {
+        if (svc.tracked && svc.trackedName) {
+          const data = await api<OpsServiceStatusResponse>(
+            `/api/ops/services/${encodeURIComponent(svc.trackedName)}/status`,
+          )
+          setServiceStatusData(data.status)
+        } else {
+          const params = new URLSearchParams({
+            unit: svc.unit,
+            scope: svc.scope,
+            manager: svc.manager,
+          })
+          const data = await api<OpsServiceStatusResponse>(
+            `/api/ops/services/unit/status?${params.toString()}`,
+          )
+          setServiceStatusData(data.status)
+        }
+      } catch (error) {
+        setServiceStatusData(null)
+        setServiceStatusError(
+          error instanceof Error
+            ? error.message
+            : 'failed to load service status',
+        )
+      } finally {
+        setServiceStatusLoading(false)
+      }
+    },
+    [api],
+  )
+
+  const fetchBrowsedServiceLogs = useCallback(
+    async (svc: OpsBrowsedService) => {
+      setServiceLogsOpen(true)
+      setServiceLogsTitle(svc.unit)
+      setServiceLogsLoading(true)
+      setServiceLogs('')
+      try {
+        if (svc.tracked && svc.trackedName) {
+          const data = await api<OpsServiceLogsResponse>(
+            `/api/ops/services/${encodeURIComponent(svc.trackedName)}/logs?lines=200`,
+          )
+          setServiceLogs(data.output)
+        } else {
+          const params = new URLSearchParams({
+            unit: svc.unit,
+            scope: svc.scope,
+            manager: svc.manager,
+            lines: '200',
+          })
+          const data = await api<OpsUnitLogsResponse>(
+            `/api/ops/services/unit/logs?${params.toString()}`,
+          )
+          setServiceLogs(data.output)
+        }
+      } catch {
+        setServiceLogs('(failed to fetch logs)')
+      } finally {
+        setServiceLogsLoading(false)
+      }
+    },
+    [api],
+  )
+
+  const toggleTrack = useCallback(
+    async (svc: OpsBrowsedService) => {
+      if (svc.tracked && svc.trackedName) {
+        await unregisterService(svc.trackedName)
+      } else {
+        const name = svc.unit
+          .replace(/\.(service|timer|socket|mount|slice)$/, '')
+          .replace(/\./g, '-')
+        try {
+          const data = await api<{
+            services: Array<OpsServiceStatus>
+            globalRev: number
+          }>('/api/ops/services', {
+            method: 'POST',
+            body: JSON.stringify({
+              name,
+              displayName: svc.description || svc.unit,
+              manager: svc.manager,
+              unit: svc.unit,
+              scope: svc.scope,
+            }),
+          })
+          if (Array.isArray(data.services)) {
+            queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, data.services)
+          }
+          pushToast({
+            level: 'success',
+            title: svc.description || svc.unit,
+            message: 'Service tracked',
+          })
+          void refreshBrowse()
+        } catch (error) {
+          pushToast({
+            level: 'error',
+            title: 'Track service',
+            message: error instanceof Error ? error.message : 'failed to track',
+          })
+        }
+      }
+    },
+    [api, pushToast, queryClient, refreshBrowse, unregisterService],
+  )
+
+  const navigateToService = useCallback((unit: string) => {
+    setOpsTab('services')
+    setSvcStateFilter('all')
+    setSvcScopeFilter('all')
+    setSvcSearch(unit)
+  }, [])
 
   const ackAlert = useCallback(
     async (alertID: number) => {
@@ -749,8 +944,8 @@ function OpsPage() {
         OPS_ALERTS_QUERY_KEY,
         (current = []) =>
           current.map((item) =>
-          item.id === alertID ? { ...item, status: 'acked' } : item,
-        ),
+            item.id === alertID ? { ...item, status: 'acked' } : item,
+          ),
       )
 
       try {
@@ -772,7 +967,10 @@ function OpsPage() {
               timelineSeverityRef.current,
             ),
             (current = []) =>
-              prependOpsTimelineEvent(current, data.timelineEvent as OpsTimelineEvent),
+              prependOpsTimelineEvent(
+                current,
+                data.timelineEvent as OpsTimelineEvent,
+              ),
           )
         }
       } catch (error) {
@@ -822,7 +1020,10 @@ function OpsPage() {
               timelineSeverityRef.current,
             ),
             (current = []) =>
-              prependOpsTimelineEvent(current, data.timelineEvent as OpsTimelineEvent),
+              prependOpsTimelineEvent(
+                current,
+                data.timelineEvent as OpsTimelineEvent,
+              ),
           )
         }
         pushToast({
@@ -840,30 +1041,6 @@ function OpsPage() {
       }
     },
     [api, pushToast, queryClient, runbooks],
-  )
-
-  const inspectService = useCallback(
-    async (serviceName: string) => {
-      setServiceStatusOpen(true)
-      setServiceStatusLoading(true)
-      setServiceStatusError('')
-      try {
-        const data = await api<OpsServiceStatusResponse>(
-          `/api/ops/services/${encodeURIComponent(serviceName)}/status`,
-        )
-        setServiceStatusData(data.status)
-      } catch (error) {
-        setServiceStatusData(null)
-        setServiceStatusError(
-          error instanceof Error
-            ? error.message
-            : 'failed to load service status',
-        )
-      } finally {
-        setServiceStatusLoading(false)
-      }
-    },
-    [api],
   )
 
   const stats = useMemo(() => {
@@ -899,13 +1076,12 @@ function OpsPage() {
           error={servicesError}
           services={services}
           onTokenChange={setToken}
-          onDiscoverServices={discoverServices}
-          onAddService={registerService}
           onRemoveService={unregisterService}
+          onNavigateToService={navigateToService}
         />
       }
     >
-      <main className="grid min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,rgba(34,197,94,.16),transparent_34%),var(--background)]">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,rgba(34,197,94,.16),transparent_34%),var(--background)]">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Button
@@ -936,8 +1112,8 @@ function OpsPage() {
           </div>
         </header>
 
-        <ScrollArea className="min-h-0">
-          <section className="grid min-h-0 gap-3 p-3">
+        <div className="grid min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden p-3">
+          <section>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
               <div className="rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
                 <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
@@ -968,182 +1144,309 @@ function OpsPage() {
                 <p className="mt-1 text-[12px] font-semibold">{stats.health}</p>
               </div>
             </div>
+          </section>
 
-            <section className="rounded-lg border border-border-subtle bg-secondary">
-              <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2">
-                <nav className="flex flex-wrap gap-1 rounded-md border border-border-subtle bg-surface-elevated p-1">
-                  <button
-                    type="button"
-                    className={opsTabButtonClass(opsTab === 'services')}
-                    onClick={() => setOpsTab('services')}
+          <section className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
+            <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2">
+              <nav className="flex flex-wrap gap-1 rounded-md border border-border-subtle bg-surface-elevated p-1">
+                <button
+                  type="button"
+                  className={opsTabButtonClass(opsTab === 'services')}
+                  onClick={() => setOpsTab('services')}
+                >
+                  <Server className="h-3 w-3" />
+                  Services
+                </button>
+                <button
+                  type="button"
+                  className={opsTabButtonClass(opsTab === 'alerts')}
+                  onClick={() => setOpsTab('alerts')}
+                >
+                  <Bell className="h-3 w-3" />
+                  Alerts
+                  {alerts.length > 0 && (
+                    <span
+                      className={cn(
+                        'ml-1 rounded-full px-1 text-[10px]',
+                        opsTab === 'alerts'
+                          ? 'bg-amber-400/20 text-amber-100'
+                          : 'bg-amber-500/20 text-amber-200',
+                      )}
+                    >
+                      {alerts.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={opsTabButtonClass(opsTab === 'timeline')}
+                  onClick={() => setOpsTab('timeline')}
+                >
+                  <Clock3 className="h-3 w-3" />
+                  Timeline
+                </button>
+                <button
+                  type="button"
+                  className={opsTabButtonClass(opsTab === 'runbooks')}
+                  onClick={() => setOpsTab('runbooks')}
+                >
+                  <BookOpen className="h-3 w-3" />
+                  Runbooks
+                </button>
+                <button
+                  type="button"
+                  className={opsTabButtonClass(opsTab === 'metrics')}
+                  onClick={() => {
+                    setOpsTab('metrics')
+                    void refreshMetrics()
+                  }}
+                >
+                  <Activity className="h-3 w-3" />
+                  Metrics
+                </button>
+                <button
+                  type="button"
+                  className={opsTabButtonClass(opsTab === 'config')}
+                  onClick={() => {
+                    setOpsTab('config')
+                    void refreshConfig()
+                  }}
+                >
+                  <Settings className="h-3 w-3" />
+                  Config
+                </button>
+              </nav>
+              <span className="text-[10px] text-muted-foreground">
+                event-driven
+              </span>
+            </div>
+
+            {opsTab === 'services' && (
+              <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2 overflow-hidden p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={svcStateFilter}
+                    onChange={(e) => setSvcStateFilter(e.target.value)}
+                    className="h-8 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
                   >
-                    <Server className="h-3 w-3" />
-                    Services
-                  </button>
-                  <button
-                    type="button"
-                    className={opsTabButtonClass(opsTab === 'alerts')}
-                    onClick={() => setOpsTab('alerts')}
+                    <option value="all">All states</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                  <select
+                    value={svcScopeFilter}
+                    onChange={(e) => setSvcScopeFilter(e.target.value)}
+                    className="h-8 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
                   >
-                    <Bell className="h-3 w-3" />
-                    Alerts
-                    {alerts.length > 0 && (
-                      <span
-                        className={cn(
-                          'ml-1 rounded-full px-1 text-[10px]',
-                          opsTab === 'alerts'
-                            ? 'bg-amber-400/20 text-amber-100'
-                            : 'bg-amber-500/20 text-amber-200',
-                        )}
+                    <option value="all">All scopes</option>
+                    <option value="user">user</option>
+                    <option value="system">system</option>
+                  </select>
+                  <div className="relative min-w-44 flex-1">
+                    <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+                    <input
+                      value={svcSearch}
+                      onChange={(e) => setSvcSearch(e.target.value)}
+                      placeholder="Search services..."
+                      className={cn(
+                        'h-8 w-full rounded-md border border-border-subtle bg-surface-overlay pl-8 text-[12px] placeholder:text-muted-foreground',
+                        svcSearch ? 'pr-7' : 'pr-2',
+                      )}
+                    />
+                    {svcSearch && (
+                      <button
+                        type="button"
+                        className="absolute right-1.5 top-1.5 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                        onClick={() => setSvcSearch('')}
+                        aria-label="Clear search"
                       >
-                        {alerts.length}
-                      </span>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    className={opsTabButtonClass(opsTab === 'timeline')}
-                    onClick={() => setOpsTab('timeline')}
-                  >
-                    <Clock3 className="h-3 w-3" />
-                    Timeline
-                  </button>
-                  <button
-                    type="button"
-                    className={opsTabButtonClass(opsTab === 'runbooks')}
-                    onClick={() => setOpsTab('runbooks')}
-                  >
-                    <BookOpen className="h-3 w-3" />
-                    Runbooks
-                  </button>
-                  <button
-                    type="button"
-                    className={opsTabButtonClass(opsTab === 'metrics')}
-                    onClick={() => {
-                      setOpsTab('metrics')
-                      void refreshMetrics()
-                    }}
-                  >
-                    <Activity className="h-3 w-3" />
-                    Metrics
-                  </button>
-                  <button
-                    type="button"
-                    className={opsTabButtonClass(opsTab === 'config')}
-                    onClick={() => {
-                      setOpsTab('config')
-                      void refreshConfig()
-                    }}
-                  >
-                    <Settings className="h-3 w-3" />
-                    Config
-                  </button>
-                </nav>
-                <span className="text-[10px] text-muted-foreground">
-                  event-driven
-                </span>
-              </div>
-
-              {opsTab === 'services' && (
-                <div className="grid gap-1.5 p-2">
-                  {services.map((service) => {
-                    const pending = pendingActions[service.name]
-                    const rowBusy = pending !== undefined
-                    const startDisabled =
-                      rowBusy || !canStartOpsService(service)
-                    const stopDisabled = rowBusy || !canStopOpsService(service)
-                    return (
-                      <div
-                        key={service.name}
-                        className={cn(
-                          'grid gap-2 rounded border px-2.5 py-2',
-                          serviceRowTone(service),
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-[12px] font-semibold">
-                              {service.displayName}
-                            </p>
-                            <p className="truncate text-[10px] text-muted-foreground">
-                              {service.unit} • {service.scope}
-                            </p>
-                          </div>
-                          <span className="shrink-0 rounded-full border border-border-subtle bg-surface-overlay px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            {service.activeState}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 cursor-pointer text-[11px]"
-                            onClick={() =>
-                              runServiceAction(service.name, 'start')
-                            }
-                            disabled={startDisabled}
-                          >
-                            <Play className="h-3 w-3" />
-                            Start
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 cursor-pointer text-[11px]"
-                            onClick={() =>
-                              runServiceAction(service.name, 'stop')
-                            }
-                            disabled={stopDisabled}
-                          >
-                            <Square className="h-3 w-3" />
-                            Stop
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 cursor-pointer text-[11px]"
-                            onClick={() =>
-                              runServiceAction(service.name, 'restart')
-                            }
-                            disabled={rowBusy}
-                          >
-                            <RotateCw className="h-3 w-3" />
-                            Restart
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 cursor-pointer text-[11px]"
-                            onClick={() => {
-                              void inspectService(service.name)
-                            }}
-                            disabled={rowBusy}
-                          >
-                            Status
-                          </Button>
-                          {pending && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {pending}...
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {!servicesLoading && services.length === 0 && (
-                    <p className="p-2 text-[12px] text-muted-foreground">
-                      No services available.
-                    </p>
-                  )}
-                  {servicesError !== '' && (
-                    <p className="px-2 pb-2 text-[12px] text-destructive-foreground">
-                      {servicesError}
-                    </p>
-                  )}
+                  </div>
+                  <TooltipHelper content="Refresh service list">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 cursor-pointer text-[11px]"
+                      onClick={() => void refreshBrowse()}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </Button>
+                  </TooltipHelper>
+                  <span className="text-[10px] text-muted-foreground">
+                    {filteredBrowseServices.length}/{browseServices.length}{' '}
+                    services
+                  </span>
                 </div>
-              )}
+                <ScrollArea className="h-full min-h-0">
+                  <div className="grid gap-1">
+                    {filteredBrowseServices.map((svc) => {
+                      const pending = browsePendingActions[svc.unit]
+                      const rowBusy = pending !== undefined
+                      const startDisabled = rowBusy || !canStartOpsService(svc)
+                      const stopDisabled = rowBusy || !canStopOpsService(svc)
+                      return (
+                        <div
+                          key={`${svc.scope}:${svc.unit}`}
+                          className="grid min-w-0 gap-2 rounded border border-border-subtle bg-surface-elevated px-2.5 py-2"
+                        >
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span
+                              className={cn(
+                                'mt-1 h-2 w-2 shrink-0 rounded-full',
+                                browsedServiceDot(svc.activeState),
+                              )}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <p className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                                  {svc.unit}
+                                </p>
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  <span className="rounded border border-border-subtle px-1 text-[9px] text-muted-foreground">
+                                    {svc.scope}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {svc.activeState}
+                                  </span>
+                                </div>
+                              </div>
+                              {svc.description &&
+                                svc.description !== svc.unit && (
+                                  <p className="truncate text-[10px] text-muted-foreground">
+                                    {svc.description}
+                                  </p>
+                                )}
+                            </div>
+                            {pending && (
+                              <span className="shrink-0 text-[10px] text-muted-foreground">
+                                {pending}...
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center gap-1.5 pl-4">
+                            <TooltipHelper content="Start service">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+                                onClick={() =>
+                                  actOnBrowsedService(svc, 'start')
+                                }
+                                disabled={startDisabled}
+                                aria-label="Start service"
+                              >
+                                <Play className="h-3 w-3" />
+                                Start
+                              </Button>
+                            </TooltipHelper>
+                            <TooltipHelper content="Stop service">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+                                onClick={() => actOnBrowsedService(svc, 'stop')}
+                                disabled={stopDisabled}
+                                aria-label="Stop service"
+                              >
+                                <Square className="h-3 w-3" />
+                                Stop
+                              </Button>
+                            </TooltipHelper>
+                            <TooltipHelper content="Restart service">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+                                onClick={() =>
+                                  actOnBrowsedService(svc, 'restart')
+                                }
+                                disabled={rowBusy}
+                                aria-label="Restart service"
+                              >
+                                <RotateCw className="h-3 w-3" />
+                                Restart
+                              </Button>
+                            </TooltipHelper>
+                            <TooltipHelper content="Inspect status">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+                                onClick={() => void inspectBrowsedService(svc)}
+                                disabled={rowBusy}
+                                aria-label="Inspect service status"
+                              >
+                                <FileText className="h-3 w-3" />
+                                Status
+                              </Button>
+                            </TooltipHelper>
+                            <TooltipHelper content="View logs">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+                                onClick={() =>
+                                  void fetchBrowsedServiceLogs(svc)
+                                }
+                                disabled={rowBusy}
+                                aria-label="View service logs"
+                              >
+                                <Clock3 className="h-3 w-3" />
+                                Logs
+                              </Button>
+                            </TooltipHelper>
+                            <TooltipHelper
+                              content={
+                                svc.tracked
+                                  ? 'Unpin from sidebar'
+                                  : 'Pin to sidebar'
+                              }
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={cn(
+                                  'h-7 cursor-pointer gap-1 px-2 text-[11px]',
+                                  svc.tracked ? 'text-primary-text-bright' : '',
+                                )}
+                                onClick={() => void toggleTrack(svc)}
+                                disabled={rowBusy}
+                                aria-label={svc.tracked ? 'Unpin service' : 'Pin service'}
+                              >
+                                {svc.tracked ? (
+                                  <PinOff className="h-3 w-3" />
+                                ) : (
+                                  <Pin className="h-3 w-3" />
+                                )}
+                                {svc.tracked ? 'Unpin' : 'Pin'}
+                              </Button>
+                            </TooltipHelper>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {!browseLoading && filteredBrowseServices.length === 0 && (
+                      <p className="p-2 text-[12px] text-muted-foreground">
+                        {browseServices.length === 0
+                          ? 'No services discovered on this host.'
+                          : 'No services match filters.'}
+                      </p>
+                    )}
+                    {browseError !== '' && (
+                      <p className="px-2 pb-2 text-[12px] text-destructive-foreground">
+                        {browseError}
+                      </p>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
 
-              {opsTab === 'alerts' && (
+            {opsTab === 'alerts' && (
+              <ScrollArea className="h-full min-h-0">
                 <div className="grid gap-1.5 p-2">
                   {alerts.map((alert) => (
                     <div
@@ -1196,9 +1499,11 @@ function OpsPage() {
                     </p>
                   )}
                 </div>
-              )}
+              </ScrollArea>
+            )}
 
-              {opsTab === 'timeline' && (
+            {opsTab === 'timeline' && (
+              <ScrollArea className="h-full min-h-0">
                 <div className="grid gap-2 p-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <input
@@ -1265,9 +1570,11 @@ function OpsPage() {
                     )}
                   </div>
                 </div>
-              )}
+              </ScrollArea>
+            )}
 
-              {opsTab === 'runbooks' && (
+            {opsTab === 'runbooks' && (
+              <ScrollArea className="h-full min-h-0">
                 <div className="grid gap-2 p-2">
                   {runbooks.map((runbook) => {
                     const lastJob = jobs.find(
@@ -1320,9 +1627,11 @@ function OpsPage() {
                     </p>
                   )}
                 </div>
-              )}
+              </ScrollArea>
+            )}
 
-              {opsTab === 'metrics' && (
+            {opsTab === 'metrics' && (
+              <ScrollArea className="h-full min-h-0">
                 <div className="grid gap-2 p-2">
                   {metricsLoading && (
                     <p className="text-[12px] text-muted-foreground">
@@ -1412,9 +1721,11 @@ function OpsPage() {
                     </>
                   )}
                 </div>
-              )}
+              </ScrollArea>
+            )}
 
-              {opsTab === 'config' && (
+            {opsTab === 'config' && (
+              <ScrollArea className="h-full min-h-0">
                 <div className="grid gap-2 p-2">
                   {configLoading && (
                     <p className="text-[12px] text-muted-foreground">
@@ -1467,10 +1778,10 @@ function OpsPage() {
                     </>
                   )}
                 </div>
-              )}
-            </section>
+              </ScrollArea>
+            )}
           </section>
-        </ScrollArea>
+        </div>
 
         <footer className="flex items-center justify-between gap-2 overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground">
           <span className="min-w-0 flex-1 truncate">
@@ -1490,7 +1801,7 @@ function OpsPage() {
         <DialogContent className="max-h-[85vh] max-w-[calc(100vw-1rem)] overflow-hidden sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
-              {serviceStatusData?.service.displayName ?? 'Service status'}
+              {serviceStatusData?.service.unit ?? 'Service status'}
             </DialogTitle>
             <DialogDescription>
               {serviceStatusData?.summary ??
@@ -1558,32 +1869,36 @@ function OpsPage() {
                       </pre>
                     </div>
                   )}
-
-                  <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                    <div className="mb-1 flex items-center justify-between">
-                      <p className="text-[11px] font-semibold text-foreground">
-                        <FileText className="mr-1 inline-block h-3 w-3" />
-                        Service logs
-                      </p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[10px]"
-                        onClick={() =>
-                          void fetchServiceLogs(serviceStatusData.service.name)
-                        }
-                      >
-                        {serviceLogsLoading ? 'Loading...' : 'Fetch logs'}
-                      </Button>
-                    </div>
-                    {serviceLogs !== '' && (
-                      <pre className="max-h-[36vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-background p-2 font-mono text-[11px] text-secondary-foreground">
-                        {serviceLogs}
-                      </pre>
-                    )}
-                  </div>
                 </div>
               </ScrollArea>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={serviceLogsOpen} onOpenChange={setServiceLogsOpen}>
+        <DialogContent className="max-h-[85vh] max-w-[calc(100vw-1rem)] overflow-hidden sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{serviceLogsTitle || 'Service logs'}</DialogTitle>
+            <DialogDescription>Recent log output</DialogDescription>
+          </DialogHeader>
+          <div className="grid min-h-0 gap-2 overflow-hidden">
+            {serviceLogsLoading && (
+              <p className="text-[12px] text-muted-foreground">
+                Loading logs...
+              </p>
+            )}
+            {!serviceLogsLoading && serviceLogs !== '' && (
+              <div className="max-h-[60vh] min-h-0 overflow-auto rounded border border-border-subtle bg-background">
+                <pre className="whitespace-pre p-2 font-mono text-[11px] text-secondary-foreground">
+                  {serviceLogs}
+                </pre>
+              </div>
+            )}
+            {!serviceLogsLoading && serviceLogs === '' && (
+              <p className="text-[12px] text-muted-foreground">
+                No logs available.
+              </p>
             )}
           </div>
         </DialogContent>

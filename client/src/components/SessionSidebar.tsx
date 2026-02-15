@@ -52,7 +52,7 @@ export default function SessionSidebar({
 }: SessionSidebarProps) {
   return (
     <SidebarShell isOpen={isOpen} collapsed={collapsed}>
-      <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-2">
+      <div className="flex h-full min-h-0 flex-col gap-2">
         <SessionControls
           sessionCount={totalSessions}
           tokenRequired={tokenRequired}
@@ -67,19 +67,21 @@ export default function SessionSidebar({
           onOpenRecovery={onOpenRecovery}
         />
 
-        <SessionListPanel
-          sessions={sessions}
-          tmuxUnavailable={tmuxUnavailable}
-          openTabs={openTabs}
-          activeSession={activeSession}
-          filter={filter}
-          onFilterChange={onFilterChange}
-          onAttach={onAttach}
-          onRename={onRename}
-          onDetach={onDetach}
-          onKill={onKill}
-          onChangeIcon={onChangeIcon}
-        />
+        <div className="min-h-0 flex-1">
+          <SessionListPanel
+            sessions={sessions}
+            tmuxUnavailable={tmuxUnavailable}
+            openTabs={openTabs}
+            activeSession={activeSession}
+            filter={filter}
+            onFilterChange={onFilterChange}
+            onAttach={onAttach}
+            onRename={onRename}
+            onDetach={onDetach}
+            onKill={onKill}
+            onChangeIcon={onChangeIcon}
+          />
+        </div>
       </div>
     </SidebarShell>
   )
