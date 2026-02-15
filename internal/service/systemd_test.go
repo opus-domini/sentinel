@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const testServiceUnit = "sentinel"
+
 func TestEscapeSystemdExec(t *testing.T) {
 	t.Parallel()
 
@@ -230,12 +232,12 @@ func TestApplySystemdUnitState(t *testing.T) {
 			t.Parallel()
 			var calls []string
 			err := applySystemdUnitState(
-				"sentinel",
+				testServiceUnit,
 				tc.enable,
 				tc.start,
 				func(unit string) bool {
-					if unit != "sentinel" {
-						t.Fatalf("unit = %q, want sentinel", unit)
+					if unit != testServiceUnit {
+						t.Fatalf("unit = %q, want %s", unit, testServiceUnit)
 					}
 					return tc.active
 				},
@@ -259,7 +261,7 @@ func TestApplySystemdUnitStateReturnsEnableError(t *testing.T) {
 
 	expected := "enable failed"
 	err := applySystemdUnitState(
-		"sentinel",
+		testServiceUnit,
 		true,
 		true,
 		func(string) bool { return false },
@@ -280,7 +282,7 @@ func TestApplySystemdUnitStateReturnsStartError(t *testing.T) {
 
 	expected := "restart failed"
 	err := applySystemdUnitState(
-		"sentinel",
+		testServiceUnit,
 		true,
 		true,
 		func(string) bool { return true },
