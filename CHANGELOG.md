@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.11](https://github.com/opus-domini/sentinel/compare/v0.2.10...v0.2.11) (2026-02-15)
+
+
+### Bug Fixes
+
+* **service:** restart active unit on install ([9cbc6d0](https://github.com/opus-domini/sentinel/commit/9cbc6d0903b6285db6c7ceea19b7d09344fa459d))
+
 ## [0.2.10](https://github.com/opus-domini/sentinel/compare/v0.2.9...v0.2.10) (2026-02-15)
 
 
