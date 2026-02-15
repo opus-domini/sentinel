@@ -48,12 +48,12 @@ function MobileNav() {
           TM
         </Link>
         <Link
-          className={navItemClass(pathname === '/terminals')}
-          to="/terminals"
+          className={navItemClass(pathname === '/ops')}
+          to="/ops"
           onClick={handleNav}
-          aria-label="Terminals"
+          aria-label="Ops"
         >
-          TR
+          OP
         </Link>
       </div>
       <Button

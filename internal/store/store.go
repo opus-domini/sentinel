@@ -77,6 +77,10 @@ func New(dbPath string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("create guardrail schema: %w", err)
 	}
+	if err := s.initOpsSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create ops schema: %w", err)
+	}
 
 	return s, nil
 }

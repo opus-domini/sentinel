@@ -21,8 +21,8 @@ func TestStorageStatsAndFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetStorageStats: %v", err)
 	}
-	if len(stats.Resources) != 4 {
-		t.Fatalf("len(resources) = %d, want 4", len(stats.Resources))
+	if len(stats.Resources) != 7 {
+		t.Fatalf("len(resources) = %d, want 7", len(stats.Resources))
 	}
 
 	rowsByResource := make(map[string]int64, len(stats.Resources))
@@ -34,6 +34,9 @@ func TestStorageStatsAndFlush(t *testing.T) {
 		StorageResourceActivityLog,
 		StorageResourceGuardrailLog,
 		StorageResourceRecoveryLog,
+		StorageResourceOpsTimeline,
+		StorageResourceOpsAlerts,
+		StorageResourceOpsJobs,
 	} {
 		if rowsByResource[resource] < 1 {
 			t.Fatalf("resource %q rows = %d, want >= 1", resource, rowsByResource[resource])
@@ -44,8 +47,8 @@ func TestStorageStatsAndFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FlushStorageResource(all): %v", err)
 	}
-	if len(results) != 4 {
-		t.Fatalf("len(results) = %d, want 4", len(results))
+	if len(results) != 7 {
+		t.Fatalf("len(results) = %d, want 7", len(results))
 	}
 
 	after, err := s.GetStorageStats(ctx)
@@ -123,6 +126,40 @@ func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time
 		CreatedAt:      base,
 	}); err != nil {
 		t.Fatalf("CreateRecoveryJob: %v", err)
+	}
+	if _, err := s.InsertOpsTimelineEvent(ctx, OpsTimelineEventWrite{
+		Source:    "service",
+		EventType: "service.action",
+		Severity:  "info",
+		Resource:  "sentinel",
+		Message:   "service restarted",
+		Details:   "test",
+		Metadata:  `{"source":"test"}`,
+		CreatedAt: base,
+	}); err != nil {
+		t.Fatalf("InsertOpsTimelineEvent: %v", err)
+	}
+	if _, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+		DedupeKey: "service:sentinel:failed",
+		Source:    "service",
+		Resource:  "sentinel",
+		Title:     "Sentinel failed",
+		Message:   "service entered failed state",
+		Severity:  "error",
+		Metadata:  `{"source":"test"}`,
+		CreatedAt: base,
+	}); err != nil {
+		t.Fatalf("UpsertOpsAlert: %v", err)
+	}
+	runbooks, err := s.ListOpsRunbooks(ctx)
+	if err != nil {
+		t.Fatalf("ListOpsRunbooks: %v", err)
+	}
+	if len(runbooks) == 0 {
+		t.Fatalf("expected at least one seeded runbook")
+	}
+	if _, err := s.StartOpsRunbook(ctx, runbooks[0].ID, base); err != nil {
+		t.Fatalf("StartOpsRunbook: %v", err)
 	}
 }
 

@@ -117,6 +117,32 @@ Payload:
 }
 ```
 
+## Operations: Control Plane
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/ops/overview` | Host + Sentinel + services summary |
+| `GET` | `/api/ops/services` | Service list and runtime status |
+| `POST` | `/api/ops/services/{service}/action` | Execute `start`, `stop`, or `restart` |
+| `GET` | `/api/ops/alerts` | List active/recent ops alerts |
+| `POST` | `/api/ops/alerts/{alert}/ack` | Acknowledge one alert |
+| `GET` | `/api/ops/timeline` | Ops timeline search/filter |
+| `GET` | `/api/ops/runbooks` | List runbooks and latest jobs |
+| `POST` | `/api/ops/runbooks/{runbook}/run` | Execute runbook asynchronously |
+| `GET` | `/api/ops/jobs/{job}` | Query one runbook execution |
+
+Service action payload:
+
+```json
+{ "action": "restart" }
+```
+
+Timeline query params:
+
+- `q` text filter
+- `severity` (`info`, `warn`, `error`)
+- `limit` (1..500)
+
 ## Operations: Storage
 
 | Method | Path | Purpose |
@@ -136,6 +162,9 @@ Allowed resources:
 - `activity-journal`
 - `guardrail-audit`
 - `recovery-history`
+- `ops-timeline`
+- `ops-alerts`
+- `ops-jobs`
 - `all`
 
 ## Operations: Guardrails
@@ -168,14 +197,6 @@ Restore payload (optional body):
   "targetSession": "target-name"
 }
 ```
-
-## System Terminals
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/terminals` | List host system terminals |
-| `GET` | `/api/terminals/system/{tty...}` | List processes in tty |
-| `DELETE` | `/api/terminals/{terminal}` | Close tracked terminal |
 
 ## Common Error Codes
 

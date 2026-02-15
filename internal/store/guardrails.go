@@ -15,6 +15,10 @@ const (
 	GuardrailModeWarn    = "warn"
 	GuardrailModeConfirm = "confirm"
 	GuardrailModeBlock   = "block"
+
+	GuardrailSeverityInfo  = "info"
+	GuardrailSeverityWarn  = "warn"
+	GuardrailSeverityError = "error"
 )
 
 type GuardrailRule struct {
@@ -336,11 +340,11 @@ func normalizeGuardrailMode(raw string) string {
 
 func normalizeGuardrailSeverity(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "error":
-		return "error"
-	case "info":
-		return "info"
+	case GuardrailSeverityError:
+		return GuardrailSeverityError
+	case GuardrailSeverityInfo:
+		return GuardrailSeverityInfo
 	default:
-		return "warn"
+		return GuardrailSeverityWarn
 	}
 }

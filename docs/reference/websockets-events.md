@@ -7,7 +7,6 @@ Sentinel exposes three WS endpoints.
 | Endpoint | Purpose |
 | --- | --- |
 | `/ws/tmux?session=<name>` | Attach to tmux session PTY |
-| `/ws/terminals?terminal=<name>` | Attach to standalone terminal PTY |
 | `/ws/events` | Realtime state/event channel |
 
 ## Authentication
@@ -20,7 +19,7 @@ When token is required:
 
 No token in URL query params.
 
-## PTY Streams (`/ws/tmux`, `/ws/terminals`)
+## PTY Streams (`/ws/tmux`)
 
 Server -> client:
 
@@ -67,6 +66,11 @@ Server sends:
 - `tmux.activity.updated`
 - `tmux.timeline.updated`
 - `tmux.guardrail.blocked`
+- `ops.overview.updated`
+- `ops.services.updated`
+- `ops.alerts.updated`
+- `ops.timeline.updated`
+- `ops.job.updated`
 - `recovery.overview.updated`
 - `recovery.job.updated`
 

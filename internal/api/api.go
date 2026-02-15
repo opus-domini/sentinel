@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,10 +19,10 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
+	opsplane "github.com/opus-domini/sentinel/internal/ops"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/terminals"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
@@ -45,11 +46,6 @@ type tmuxService interface {
 	SplitPane(ctx context.Context, paneID, direction string) (string, error)
 }
 
-type systemTerminals interface {
-	ListSystem(ctx context.Context) ([]terminals.SystemTerminal, error)
-	ListProcesses(ctx context.Context, tty string) ([]terminals.TerminalProcess, error)
-}
-
 type recoveryService interface {
 	Overview(ctx context.Context) (recovery.Overview, error)
 	ListKilledSessions(ctx context.Context) ([]store.RecoverySession, error)
@@ -60,13 +56,18 @@ type recoveryService interface {
 	ArchiveSession(ctx context.Context, name string) error
 }
 
+type opsControlPlane interface {
+	Overview(ctx context.Context) (opsplane.Overview, error)
+	ListServices(ctx context.Context) ([]opsplane.ServiceStatus, error)
+	Act(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
+}
+
 type Handler struct {
 	guard      *security.Guard
 	tmux       tmuxService
-	sysTerms   systemTerminals
 	recovery   recoveryService
+	ops        opsControlPlane
 	events     *events.Hub
-	terminals  *terminals.Registry
 	store      *store.Store
 	guardrails *guardrails.Service
 	version    string
@@ -81,7 +82,6 @@ const (
 func Register(
 	mux *http.ServeMux,
 	guard *security.Guard,
-	terminalRegistry *terminals.Registry,
 	st *store.Store,
 	recoverySvc recoveryService,
 	eventsHub *events.Hub,
@@ -90,10 +90,9 @@ func Register(
 	h := &Handler{
 		guard:      guard,
 		tmux:       tmux.Service{},
-		sysTerms:   terminals.SystemService{},
 		recovery:   recoverySvc,
+		ops:        opsplane.NewManager(time.Now()),
 		events:     eventsHub,
-		terminals:  terminalRegistry,
 		store:      st,
 		guardrails: guardrails.New(st),
 		version:    strings.TrimSpace(version),
@@ -118,6 +117,15 @@ func Register(
 	mux.HandleFunc("GET /api/tmux/activity/delta", h.wrap(h.activityDelta))
 	mux.HandleFunc("GET /api/tmux/activity/stats", h.wrap(h.activityStats))
 	mux.HandleFunc("GET /api/tmux/timeline", h.wrap(h.timelineSearch))
+	mux.HandleFunc("GET /api/ops/overview", h.wrap(h.opsOverview))
+	mux.HandleFunc("GET /api/ops/services", h.wrap(h.opsServices))
+	mux.HandleFunc("POST /api/ops/services/{service}/action", h.wrap(h.opsServiceAction))
+	mux.HandleFunc("GET /api/ops/alerts", h.wrap(h.opsAlerts))
+	mux.HandleFunc("POST /api/ops/alerts/{alert}/ack", h.wrap(h.ackOpsAlert))
+	mux.HandleFunc("GET /api/ops/timeline", h.wrap(h.opsTimeline))
+	mux.HandleFunc("GET /api/ops/runbooks", h.wrap(h.opsRunbooks))
+	mux.HandleFunc("POST /api/ops/runbooks/{runbook}/run", h.wrap(h.runOpsRunbook))
+	mux.HandleFunc("GET /api/ops/jobs/{job}", h.wrap(h.opsJob))
 	mux.HandleFunc("GET /api/ops/storage/stats", h.wrap(h.storageStats))
 	mux.HandleFunc("POST /api/ops/storage/flush", h.wrap(h.flushStorage))
 	mux.HandleFunc("GET /api/ops/guardrails/rules", h.wrap(h.listGuardrailRules))
@@ -133,9 +141,6 @@ func Register(
 	mux.HandleFunc("GET /api/recovery/snapshots/{snapshot}", h.wrap(h.getRecoverySnapshot))
 	mux.HandleFunc("POST /api/recovery/snapshots/{snapshot}/restore", h.wrap(h.restoreRecoverySnapshot))
 	mux.HandleFunc("GET /api/recovery/jobs/{job}", h.wrap(h.getRecoveryJob))
-	mux.HandleFunc("GET /api/terminals", h.wrap(h.listTerminals))
-	mux.HandleFunc("GET /api/terminals/system/{tty...}", h.wrap(h.getSystemTerminal))
-	mux.HandleFunc("DELETE /api/terminals/{terminal}", h.wrap(h.closeTerminal))
 }
 
 func (h *Handler) emit(eventType string, payload map[string]any) {
@@ -1143,6 +1148,435 @@ func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]any{
 		"events":  result.Events,
 		"hasMore": result.HasMore,
+	})
+}
+
+func (h *Handler) opsOverview(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	overview, err := h.ops.Overview(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to load ops overview", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"overview": overview,
+	})
+}
+
+func (h *Handler) opsServices(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	services, err := h.ops.ListServices(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to load ops services", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"services": services,
+	})
+}
+
+func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+
+	serviceName := strings.TrimSpace(r.PathValue("service"))
+	if serviceName == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service is required", nil)
+		return
+	}
+
+	var req struct {
+		Action string `json:"action"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	req.Action = strings.ToLower(strings.TrimSpace(req.Action))
+	if !slices.Contains([]string{
+		opsplane.ActionStart,
+		opsplane.ActionStop,
+		opsplane.ActionRestart,
+	}, req.Action) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "action must be start, stop, or restart", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	serviceStatus, err := h.ops.Act(ctx, serviceName, req.Action)
+	if err != nil {
+		switch {
+		case errors.Is(err, opsplane.ErrServiceNotFound):
+			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
+		case errors.Is(err, opsplane.ErrInvalidAction):
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid action", nil)
+		default:
+			writeError(w, http.StatusBadRequest, "OPS_ACTION_FAILED", err.Error(), nil)
+		}
+		return
+	}
+
+	services, err := h.ops.ListServices(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to refresh ops services", nil)
+		return
+	}
+	overview, err := h.ops.Overview(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to refresh ops overview", nil)
+		return
+	}
+
+	now := time.Now().UTC()
+	timelineEvent, timelineRecorded, alerts, err := h.recordOpsServiceAction(ctx, serviceStatus, req.Action, now)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist ops action", nil)
+		return
+	}
+
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsServices, map[string]any{
+		"globalRev": globalRev,
+		"service":   serviceStatus.Name,
+		"action":    req.Action,
+		"services":  services,
+	})
+	h.emit(events.TypeOpsOverview, map[string]any{
+		"globalRev": globalRev,
+		"overview":  overview,
+	})
+	if timelineRecorded {
+		h.emit(events.TypeOpsTimeline, map[string]any{
+			"globalRev": globalRev,
+			"event":     timelineEvent,
+		})
+	}
+	if len(alerts) > 0 {
+		h.emit(events.TypeOpsAlerts, map[string]any{
+			"globalRev": globalRev,
+			"alerts":    alerts,
+		})
+	}
+
+	response := map[string]any{
+		"service":   serviceStatus,
+		"services":  services,
+		"overview":  overview,
+		"alerts":    alerts,
+		"globalRev": globalRev,
+	}
+	if timelineRecorded {
+		response["timelineEvent"] = timelineEvent
+	}
+	writeData(w, http.StatusOK, response)
+}
+
+func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsplane.ServiceStatus, action string, at time.Time) (store.OpsTimelineEvent, bool, []store.OpsAlert, error) {
+	if h.store == nil {
+		return store.OpsTimelineEvent{}, false, nil, nil
+	}
+	normalizedAction := strings.ToLower(strings.TrimSpace(action))
+	state := strings.ToLower(strings.TrimSpace(serviceStatus.ActiveState))
+	severity := "info"
+	switch {
+	case state == "failed":
+		severity = "error"
+	case normalizedAction == opsplane.ActionStop:
+		severity = "warn"
+	}
+
+	event, err := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+		Source:    "service",
+		EventType: "service.action",
+		Severity:  severity,
+		Resource:  serviceStatus.Name,
+		Message:   fmt.Sprintf("%s %s", serviceStatus.DisplayName, normalizedAction),
+		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s state=%s", serviceStatus.Unit, serviceStatus.Manager, serviceStatus.Scope, serviceStatus.ActiveState),
+		Metadata:  fmt.Sprintf(`{"action":"%s","service":"%s","manager":"%s","scope":"%s","state":"%s"}`, normalizedAction, serviceStatus.Name, serviceStatus.Manager, serviceStatus.Scope, serviceStatus.ActiveState),
+		CreatedAt: at,
+	})
+	if err != nil {
+		return store.OpsTimelineEvent{}, false, nil, err
+	}
+
+	alerts := make([]store.OpsAlert, 0, 1)
+	if state == "failed" {
+		alert, err := h.store.UpsertOpsAlert(ctx, store.OpsAlertWrite{
+			DedupeKey: fmt.Sprintf("service:%s:failed", serviceStatus.Name),
+			Source:    "service",
+			Resource:  serviceStatus.Name,
+			Title:     fmt.Sprintf("%s entered failed state", serviceStatus.DisplayName),
+			Message:   fmt.Sprintf("%s is failed after %s", serviceStatus.DisplayName, normalizedAction),
+			Severity:  "error",
+			Metadata:  fmt.Sprintf(`{"action":"%s","service":"%s","unit":"%s"}`, normalizedAction, serviceStatus.Name, serviceStatus.Unit),
+			CreatedAt: at,
+		})
+		if err != nil {
+			return store.OpsTimelineEvent{}, false, nil, err
+		}
+		alerts = append(alerts, alert)
+	}
+
+	return event, true, alerts, nil
+}
+
+func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	limit, err := parseTimelineLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	alerts, err := h.store.ListOpsAlerts(ctx, limit, status)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidOpsFilter) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load alerts", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"alerts": alerts,
+	})
+}
+
+func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	alertRaw := strings.TrimSpace(r.PathValue("alert"))
+	alertID, err := strconv.ParseInt(alertRaw, 10, 64)
+	if err != nil || alertID <= 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "alert must be a positive integer", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC()
+	alert, err := h.store.AckOpsAlert(ctx, alertID, now)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_ALERT_NOT_FOUND", "alert not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to ack alert", nil)
+		return
+	}
+
+	timelineEvent, timelineRecorded, timelineErr := h.recordOpsAlertAck(ctx, alert, now)
+	if timelineErr != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to write alert timeline event", nil)
+		return
+	}
+
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsAlerts, map[string]any{
+		"globalRev": globalRev,
+		"alert":     alert,
+		"action":    "ack",
+	})
+	if timelineRecorded {
+		h.emit(events.TypeOpsTimeline, map[string]any{
+			"globalRev": globalRev,
+			"event":     timelineEvent,
+		})
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"alert":         alert,
+		"timelineEvent": timelineEvent,
+		"globalRev":     globalRev,
+	})
+}
+
+func (h *Handler) recordOpsAlertAck(ctx context.Context, alert store.OpsAlert, at time.Time) (store.OpsTimelineEvent, bool, error) {
+	if h.store == nil {
+		return store.OpsTimelineEvent{}, false, nil
+	}
+	event, err := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+		Source:    "alert",
+		EventType: "alert.acked",
+		Severity:  "info",
+		Resource:  alert.Resource,
+		Message:   fmt.Sprintf("Alert acknowledged: %s", alert.Title),
+		Details:   alert.Message,
+		Metadata:  fmt.Sprintf(`{"alertId":%d,"dedupeKey":"%s"}`, alert.ID, alert.DedupeKey),
+		CreatedAt: at,
+	})
+	if err != nil {
+		return store.OpsTimelineEvent{}, false, err
+	}
+	return event, true, nil
+}
+
+func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	limit, err := parseTimelineLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	query := store.OpsTimelineQuery{
+		Query:    strings.TrimSpace(r.URL.Query().Get("q")),
+		Severity: strings.TrimSpace(r.URL.Query().Get("severity")),
+		Source:   strings.TrimSpace(r.URL.Query().Get("source")),
+		Limit:    limit,
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	result, err := h.store.SearchOpsTimelineEvents(ctx, query)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidOpsFilter) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to query ops timeline", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"events":  result.Events,
+		"hasMore": result.HasMore,
+	})
+}
+
+func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	runbooks, err := h.store.ListOpsRunbooks(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load runbooks", nil)
+		return
+	}
+	jobs, err := h.store.ListOpsRunbookRuns(ctx, 20)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load runbook jobs", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"runbooks": runbooks,
+		"jobs":     jobs,
+	})
+}
+
+func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	runbookID := strings.TrimSpace(r.PathValue("runbook"))
+	if runbookID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC()
+	job, err := h.store.StartOpsRunbook(ctx, runbookID, now)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to run runbook", nil)
+		return
+	}
+	timelineEvent, timelineErr := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+		Source:    "runbook",
+		EventType: "runbook.executed",
+		Severity:  "info",
+		Resource:  job.RunbookID,
+		Message:   fmt.Sprintf("Runbook executed: %s", job.RunbookName),
+		Details:   fmt.Sprintf("job=%s status=%s steps=%d/%d", job.ID, job.Status, job.CompletedSteps, job.TotalSteps),
+		Metadata:  fmt.Sprintf(`{"jobId":"%s","runbookId":"%s","status":"%s"}`, job.ID, job.RunbookID, job.Status),
+		CreatedAt: now,
+	})
+	if timelineErr != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist runbook timeline", nil)
+		return
+	}
+
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsJob, map[string]any{
+		"globalRev": globalRev,
+		"job":       job,
+	})
+	h.emit(events.TypeOpsTimeline, map[string]any{
+		"globalRev": globalRev,
+		"event":     timelineEvent,
+	})
+
+	writeData(w, http.StatusAccepted, map[string]any{
+		"job":           job,
+		"timelineEvent": timelineEvent,
+		"globalRev":     globalRev,
+	})
+}
+
+func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	jobID := strings.TrimSpace(r.PathValue("job"))
+	if jobID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "job id is required", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	job, err := h.store.GetOpsRunbookRun(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_JOB_NOT_FOUND", "job not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load job", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"job": job,
 	})
 }
 
@@ -2189,49 +2623,6 @@ func (h *Handler) getRecoveryJob(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]any{
 		"job": job,
 	})
-}
-
-func (h *Handler) listTerminals(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	systemTerminals, err := h.sysTerms.ListSystem(ctx)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "TERMINALS_UNAVAILABLE", "failed to list system terminals", nil)
-		return
-	}
-	writeData(w, http.StatusOK, map[string]any{"terminals": systemTerminals})
-}
-
-func (h *Handler) getSystemTerminal(w http.ResponseWriter, r *http.Request) {
-	tty := strings.TrimSpace(r.PathValue("tty"))
-	if tty == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "tty is required", nil)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	processes, err := h.sysTerms.ListProcesses(ctx, tty)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-	writeData(w, http.StatusOK, map[string]any{"tty": tty, "processes": processes})
-}
-
-func (h *Handler) closeTerminal(w http.ResponseWriter, r *http.Request) {
-	terminalID := strings.TrimSpace(r.PathValue("terminal"))
-	if terminalID == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid terminal id", nil)
-		return
-	}
-	if h.terminals == nil || !h.terminals.Close(terminalID, "closed by terminal manager") {
-		writeError(w, http.StatusNotFound, "TERMINAL_NOT_FOUND", "terminal not found", nil)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func decodeJSON(r *http.Request, dst any) error {

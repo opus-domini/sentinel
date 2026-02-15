@@ -25,7 +25,7 @@ export default function SideRail({
     select: (state) => state.location.pathname,
   })
   const tmuxActive = pathname === '/tmux'
-  const terminalsActive = pathname === '/terminals'
+  const opsActive = pathname === '/ops'
 
   const navItemClass = (isActive: boolean) =>
     cn(
@@ -51,13 +51,13 @@ export default function SideRail({
           TM
         </Link>
       </TooltipHelper>
-      <TooltipHelper content="Terminals" side="right">
+      <TooltipHelper content="Ops" side="right">
         <Link
-          className={navItemClass(terminalsActive)}
-          to="/terminals"
-          aria-label="Terminals"
+          className={navItemClass(opsActive)}
+          to="/ops"
+          aria-label="Ops"
         >
-          TR
+          OP
         </Link>
       </TooltipHelper>
       <div className="flex-1" />

@@ -10,7 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TmuxRouteImport } from './routes/tmux'
-import { Route as TerminalsRouteImport } from './routes/terminals'
+import { Route as OpsRouteImport } from './routes/ops'
 import { Route as IndexRouteImport } from './routes/index'
 
 const TmuxRoute = TmuxRouteImport.update({
@@ -18,9 +18,9 @@ const TmuxRoute = TmuxRouteImport.update({
   path: '/tmux',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TerminalsRoute = TerminalsRouteImport.update({
-  id: '/terminals',
-  path: '/terminals',
+const OpsRoute = OpsRouteImport.update({
+  id: '/ops',
+  path: '/ops',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -31,31 +31,31 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/terminals': typeof TerminalsRoute
+  '/ops': typeof OpsRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/terminals': typeof TerminalsRoute
+  '/ops': typeof OpsRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/terminals': typeof TerminalsRoute
+  '/ops': typeof OpsRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/terminals' | '/tmux'
+  fullPaths: '/' | '/ops' | '/tmux'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/terminals' | '/tmux'
-  id: '__root__' | '/' | '/terminals' | '/tmux'
+  to: '/' | '/ops' | '/tmux'
+  id: '__root__' | '/' | '/ops' | '/tmux'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  TerminalsRoute: typeof TerminalsRoute
+  OpsRoute: typeof OpsRoute
   TmuxRoute: typeof TmuxRoute
 }
 
@@ -68,11 +68,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TmuxRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/terminals': {
-      id: '/terminals'
-      path: '/terminals'
-      fullPath: '/terminals'
-      preLoaderRoute: typeof TerminalsRouteImport
+    '/ops': {
+      id: '/ops'
+      path: '/ops'
+      fullPath: '/ops'
+      preLoaderRoute: typeof OpsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -87,7 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  TerminalsRoute: TerminalsRoute,
+  OpsRoute: OpsRoute,
   TmuxRoute: TmuxRoute,
 }
 export const routeTree = rootRouteImport

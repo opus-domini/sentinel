@@ -16,7 +16,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/term"
-	"github.com/opus-domini/sentinel/internal/terminals"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/validate"
 	"github.com/opus-domini/sentinel/internal/ws"
@@ -35,19 +34,17 @@ var (
 )
 
 type Handler struct {
-	guard     *security.Guard
-	events    *events.Hub
-	terminals *terminals.Registry
-	store     *store.Store
+	guard  *security.Guard
+	events *events.Hub
+	store  *store.Store
 }
 
-func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry, st *store.Store, eventsHub *events.Hub) error {
-	h := &Handler{guard: guard, events: eventsHub, terminals: terminalRegistry, store: st}
+func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, eventsHub *events.Hub) error {
+	h := &Handler{guard: guard, events: eventsHub, store: st}
 	if err := registerAssetRoutes(mux); err != nil {
 		return err
 	}
 	mux.HandleFunc("GET /ws/tmux", h.attachWS)
-	mux.HandleFunc("GET /ws/terminals", h.attachTerminalWS)
 	mux.HandleFunc("GET /ws/events", h.attachEventsWS)
 	mux.HandleFunc("GET /{path...}", h.spaPage)
 	return nil
@@ -121,18 +118,6 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 			"state":   "attached",
 			"session": session,
 		},
-		registerFn: func(shutdown func(string)) (string, func()) {
-			if h.terminals == nil {
-				return "", func() {}
-			}
-			return h.terminals.Register(
-				session,
-				strings.TrimSpace(r.RemoteAddr),
-				defaultTermCols,
-				defaultTermRows,
-				shutdown,
-			)
-		},
 	})
 }
 
@@ -148,53 +133,6 @@ func (h *Handler) startTmuxPTY(ctx context.Context, session string) (*term.PTY, 
 		slog.Warn("tmux mouse enable failed", "session", session, "err", err)
 	}
 	return startTmuxAttachFn(ctx, session, defaultTermCols, defaultTermRows)
-}
-
-func (h *Handler) attachTerminalWS(w http.ResponseWriter, r *http.Request) {
-	if err := h.guard.CheckOrigin(r); err != nil {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if err := h.guard.RequireWSToken(r); err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	terminalName := strings.TrimSpace(r.URL.Query().Get("terminal"))
-	if !validate.SessionName(terminalName) {
-		http.Error(w, "invalid terminal", http.StatusBadRequest)
-		return
-	}
-
-	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
-	if err != nil {
-		return
-	}
-	defer func() { _ = wsConn.Close() }()
-
-	h.attachPTY(wsConn, attachPTYOptions{
-		label: terminalName,
-		startPTY: func(ctx context.Context) (*term.PTY, error) {
-			return term.StartShell(ctx, "", defaultTermCols, defaultTermRows)
-		},
-		statusMsg: map[string]any{
-			"type":     "status",
-			"state":    "attached",
-			"terminal": terminalName,
-		},
-		registerFn: func(shutdown func(string)) (string, func()) {
-			if h.terminals == nil {
-				return "", func() {}
-			}
-			return h.terminals.Register(
-				terminalName,
-				strings.TrimSpace(r.RemoteAddr),
-				defaultTermCols,
-				defaultTermRows,
-				shutdown,
-			)
-		},
-	})
 }
 
 func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
@@ -542,10 +480,9 @@ func marshalEventsWSMessage(payload map[string]any) []byte {
 }
 
 type attachPTYOptions struct {
-	label      string
-	startPTY   func(ctx context.Context) (*term.PTY, error)
-	statusMsg  map[string]any
-	registerFn func(shutdown func(string)) (id string, unregister func())
+	label     string
+	startPTY  func(ctx context.Context) (*term.PTY, error)
+	statusMsg map[string]any
 }
 
 type pingWriter interface {
@@ -565,16 +502,13 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 	shutdown := attachShutdown(cancelAttach, pty, wsConn, opts.label)
 	defer shutdown("connection closed")
 
-	terminalID, unregisterTerminal := registerAttachTerminal(opts, shutdown)
-	defer unregisterTerminal()
-
 	if !writeAttachStatus(wsConn, opts.statusMsg, opts.label) {
 		return
 	}
 
 	errCh, sendErr := newAttachErrChannel()
 	startPTYReadLoop(pty, wsConn, sendErr)
-	startWSReadLoop(wsConn, pty, terminalID, h.terminals, sendErr)
+	startWSReadLoop(wsConn, pty, sendErr)
 	startPTYWaitLoop(pty, sendErr)
 
 	// Keepalive pings
@@ -612,17 +546,6 @@ func attachShutdown(cancelAttach context.CancelFunc, pty *term.PTY, wsConn *ws.C
 			slog.Info("terminal closed", "label", label, "reason", reason)
 		})
 	}
-}
-
-func registerAttachTerminal(opts attachPTYOptions, shutdown func(string)) (string, func()) {
-	if opts.registerFn == nil {
-		return "", func() {}
-	}
-	terminalID, unregisterTerminal := opts.registerFn(func(reason string) {
-		shutdown(reason)
-	})
-	opts.statusMsg["terminalId"] = terminalID
-	return terminalID, unregisterTerminal
 }
 
 func writeAttachStatus(wsConn *ws.Conn, status map[string]any, label string) bool {
@@ -668,7 +591,7 @@ func startPTYReadLoop(pty *term.PTY, wsConn *ws.Conn, sendErr func(error)) {
 	}()
 }
 
-func startWSReadLoop(wsConn *ws.Conn, pty *term.PTY, terminalID string, registry *terminals.Registry, sendErr func(error)) {
+func startWSReadLoop(wsConn *ws.Conn, pty *term.PTY, sendErr func(error)) {
 	go func() {
 		for {
 			opcode, payload, readErr := wsConn.ReadMessage()
@@ -683,13 +606,9 @@ func startWSReadLoop(wsConn *ws.Conn, pty *term.PTY, terminalID string, registry
 					return
 				}
 			case ws.OpText:
-				cols, rows, ctrlErr := handleControlMessage(payload, pty)
-				if ctrlErr != nil {
+				if _, _, ctrlErr := handleControlMessage(payload, pty); ctrlErr != nil {
 					sendErr(ctrlErr)
 					return
-				}
-				if terminalID != "" && cols > 0 && rows > 0 && registry != nil {
-					registry.UpdateSize(terminalID, cols, rows)
 				}
 			}
 		}

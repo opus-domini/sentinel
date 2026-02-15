@@ -15,11 +15,17 @@ const (
 	StorageResourceActivityLog   = "activity-journal"
 	StorageResourceGuardrailLog  = "guardrail-audit"
 	StorageResourceRecoveryLog   = "recovery-history"
+	StorageResourceOpsTimeline   = "ops-timeline"
+	StorageResourceOpsAlerts     = "ops-alerts"
+	StorageResourceOpsJobs       = "ops-jobs"
 	StorageResourceAll           = "all"
 	storageResourceTimelineLabel = "Timeline events"
 	storageResourceActivityLabel = "Activity journal"
 	storageResourceGuardrailLbl  = "Guardrail audit"
 	storageResourceRecoveryLbl   = "Recovery history"
+	storageResourceOpsTimelineLb = "Ops timeline"
+	storageResourceOpsAlertsLbl  = "Ops alerts"
+	storageResourceOpsJobsLbl    = "Ops runbook jobs"
 )
 
 var ErrInvalidStorageResource = errors.New("invalid storage resource")
@@ -55,6 +61,9 @@ func IsStorageResource(raw string) bool {
 		StorageResourceActivityLog,
 		StorageResourceGuardrailLog,
 		StorageResourceRecoveryLog,
+		StorageResourceOpsTimeline,
+		StorageResourceOpsAlerts,
+		StorageResourceOpsJobs,
 		StorageResourceAll:
 		return true
 	default:
@@ -64,7 +73,7 @@ func IsStorageResource(raw string) bool {
 
 func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 	stats := StorageStats{
-		Resources:   make([]StorageResourceStat, 0, 4),
+		Resources:   make([]StorageResourceStat, 0, 7),
 		CollectedAt: time.Now().UTC(),
 	}
 
@@ -90,6 +99,9 @@ func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 		StorageResourceActivityLog,
 		StorageResourceGuardrailLog,
 		StorageResourceRecoveryLog,
+		StorageResourceOpsTimeline,
+		StorageResourceOpsAlerts,
+		StorageResourceOpsJobs,
 	} {
 		item, err := s.resourceStorageStats(ctx, resource)
 		if err != nil {
@@ -104,12 +116,15 @@ func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 func (s *Store) FlushStorageResource(ctx context.Context, resource string) ([]StorageFlushResult, error) {
 	resource = NormalizeStorageResource(resource)
 	if resource == StorageResourceAll {
-		results := make([]StorageFlushResult, 0, 4)
+		results := make([]StorageFlushResult, 0, 7)
 		for _, key := range []string{
 			StorageResourceTimeline,
 			StorageResourceActivityLog,
 			StorageResourceGuardrailLog,
 			StorageResourceRecoveryLog,
+			StorageResourceOpsTimeline,
+			StorageResourceOpsAlerts,
+			StorageResourceOpsJobs,
 		} {
 			item, err := s.flushStorageResourceSingle(ctx, key)
 			if err != nil {
@@ -181,6 +196,24 @@ func (s *Store) flushStorageResourceSingle(ctx context.Context, resource string)
 			Resource:    resource,
 			RemovedRows: snapshotsRemoved + jobsRemoved,
 		}, nil
+	case StorageResourceOpsTimeline:
+		removed, err := deleteRows(ctx, s.db, "DELETE FROM ops_timeline_events")
+		if err != nil {
+			return StorageFlushResult{}, err
+		}
+		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
+	case StorageResourceOpsAlerts:
+		removed, err := deleteRows(ctx, s.db, "DELETE FROM ops_alerts")
+		if err != nil {
+			return StorageFlushResult{}, err
+		}
+		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
+	case StorageResourceOpsJobs:
+		removed, err := deleteRows(ctx, s.db, "DELETE FROM ops_runbook_runs")
+		if err != nil {
+			return StorageFlushResult{}, err
+		}
+		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
 	default:
 		return StorageFlushResult{}, ErrInvalidStorageResource
 	}
@@ -268,6 +301,59 @@ func (s *Store) resourceStorageStats(ctx context.Context, resource string) (Stor
 			Label:       storageResourceRecoveryLbl,
 			Rows:        snapRows + jobRows,
 			ApproxBytes: snapBytes + jobBytes,
+		}, nil
+	case StorageResourceOpsTimeline:
+		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
+			COUNT(*),
+			COALESCE(SUM(
+				length(source) + length(event_type) + length(severity) + length(resource) +
+				length(message) + length(details) + length(metadata) + length(created_at)
+			), 0)
+		FROM ops_timeline_events`)
+		if err != nil {
+			return StorageResourceStat{}, err
+		}
+		return StorageResourceStat{
+			Resource:    resource,
+			Label:       storageResourceOpsTimelineLb,
+			Rows:        rows,
+			ApproxBytes: approxBytes,
+		}, nil
+	case StorageResourceOpsAlerts:
+		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
+			COUNT(*),
+			COALESCE(SUM(
+				length(dedupe_key) + length(source) + length(resource) + length(title) +
+				length(message) + length(severity) + length(status) + length(metadata) +
+				length(first_seen_at) + length(last_seen_at) + length(acked_at) + length(resolved_at)
+			), 0)
+		FROM ops_alerts`)
+		if err != nil {
+			return StorageResourceStat{}, err
+		}
+		return StorageResourceStat{
+			Resource:    resource,
+			Label:       storageResourceOpsAlertsLbl,
+			Rows:        rows,
+			ApproxBytes: approxBytes,
+		}, nil
+	case StorageResourceOpsJobs:
+		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
+			COUNT(*),
+			COALESCE(SUM(
+				length(id) + length(runbook_id) + length(runbook_name) + length(status) +
+				length(current_step) + length(error) + length(created_at) +
+				length(started_at) + length(finished_at)
+			), 0)
+		FROM ops_runbook_runs`)
+		if err != nil {
+			return StorageResourceStat{}, err
+		}
+		return StorageResourceStat{
+			Resource:    resource,
+			Label:       storageResourceOpsJobsLbl,
+			Rows:        rows,
+			ApproxBytes: approxBytes,
 		}, nil
 	default:
 		return StorageResourceStat{}, ErrInvalidStorageResource

@@ -15,10 +15,10 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
+	opsplane "github.com/opus-domini/sentinel/internal/ops"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/terminals"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
@@ -157,17 +157,7 @@ func (m *mockTmux) SplitPane(ctx context.Context, paneID, direction string) (str
 	return "%0", nil
 }
 
-type mockSysTerms struct {
-	listSystemFn    func(ctx context.Context) ([]terminals.SystemTerminal, error)
-	listProcessesFn func(ctx context.Context, tty string) ([]terminals.TerminalProcess, error)
-}
-
-func (m *mockSysTerms) ListSystem(ctx context.Context) ([]terminals.SystemTerminal, error) {
-	if m.listSystemFn != nil {
-		return m.listSystemFn(ctx)
-	}
-	return nil, nil
-}
+type mockSysTerms struct{}
 
 type mockRecovery struct {
 	overviewFn             func(ctx context.Context) (recovery.Overview, error)
@@ -228,11 +218,31 @@ func (m *mockRecovery) ArchiveSession(ctx context.Context, name string) error {
 	return nil
 }
 
-func (m *mockSysTerms) ListProcesses(ctx context.Context, tty string) ([]terminals.TerminalProcess, error) {
-	if m.listProcessesFn != nil {
-		return m.listProcessesFn(ctx, tty)
+type mockOpsControlPlane struct {
+	overviewFn     func(ctx context.Context) (opsplane.Overview, error)
+	listServicesFn func(ctx context.Context) ([]opsplane.ServiceStatus, error)
+	actFn          func(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
+}
+
+func (m *mockOpsControlPlane) Overview(ctx context.Context) (opsplane.Overview, error) {
+	if m.overviewFn != nil {
+		return m.overviewFn(ctx)
 	}
-	return nil, nil
+	return opsplane.Overview{}, nil
+}
+
+func (m *mockOpsControlPlane) ListServices(ctx context.Context) ([]opsplane.ServiceStatus, error) {
+	if m.listServicesFn != nil {
+		return m.listServicesFn(ctx)
+	}
+	return []opsplane.ServiceStatus{}, nil
+}
+
+func (m *mockOpsControlPlane) Act(ctx context.Context, name, action string) (opsplane.ServiceStatus, error) {
+	if m.actFn != nil {
+		return m.actFn(ctx, name, action)
+	}
+	return opsplane.ServiceStatus{}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -257,10 +267,13 @@ func newTestHandler(t *testing.T, tm *mockTmux, sys *mockSysTerms) *Handler {
 	if tm == nil {
 		tm = &mockTmux{}
 	}
-	if sys == nil {
-		sys = &mockSysTerms{}
+	_ = sys
+	return &Handler{
+		guard: guard,
+		tmux:  tm,
+		ops:   &mockOpsControlPlane{},
+		store: st,
 	}
-	return &Handler{guard: guard, tmux: tm, sysTerms: sys, terminals: terminals.NewRegistry(), store: st}
 }
 
 // jsonBody is a helper to decode a JSON response body.
@@ -2384,165 +2397,6 @@ func TestSplitPaneHandler(t *testing.T) {
 	})
 }
 
-func TestListTerminalsHandler(t *testing.T) {
-	t.Parallel()
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-
-		sys := &mockSysTerms{
-			listSystemFn: func(_ context.Context) ([]terminals.SystemTerminal, error) {
-				return []terminals.SystemTerminal{
-					{ID: "pts/0", TTY: "pts/0", User: "user", ProcessCount: 2, LeaderPID: 1234, Command: "bash"},
-				}, nil
-			},
-		}
-		h := newTestHandler(t, nil, sys)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/terminals", nil)
-		h.listTerminals(w, r)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", w.Code)
-		}
-		body := jsonBody(t, w)
-		data, _ := body["data"].(map[string]any)
-		terms, _ := data["terminals"].([]any)
-		if len(terms) != 1 {
-			t.Errorf("terminals count = %d, want 1", len(terms))
-		}
-	})
-
-	t.Run("error", func(t *testing.T) {
-		t.Parallel()
-
-		sys := &mockSysTerms{
-			listSystemFn: func(_ context.Context) ([]terminals.SystemTerminal, error) {
-				return nil, fmt.Errorf("ps failed")
-			},
-		}
-		h := newTestHandler(t, nil, sys)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/terminals", nil)
-		h.listTerminals(w, r)
-
-		if w.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want 500", w.Code)
-		}
-	})
-}
-
-func TestGetSystemTerminalHandler(t *testing.T) {
-	t.Parallel()
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-
-		sys := &mockSysTerms{
-			listProcessesFn: func(_ context.Context, tty string) ([]terminals.TerminalProcess, error) {
-				return []terminals.TerminalProcess{
-					{PID: 100, PPID: 1, User: "user", Command: "bash", Args: "bash"},
-				}, nil
-			},
-		}
-		h := newTestHandler(t, nil, sys)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/terminals/system/pts/0", nil)
-		r.SetPathValue("tty", "pts/0")
-		h.getSystemTerminal(w, r)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", w.Code)
-		}
-		body := jsonBody(t, w)
-		data, _ := body["data"].(map[string]any)
-		if data["tty"] != "pts/0" {
-			t.Errorf("tty = %v, want pts/0", data["tty"])
-		}
-	})
-
-	t.Run("empty tty", func(t *testing.T) {
-		t.Parallel()
-
-		h := newTestHandler(t, nil, nil)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/terminals/system/", nil)
-		r.SetPathValue("tty", "")
-		h.getSystemTerminal(w, r)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", w.Code)
-		}
-	})
-
-	t.Run("process list error", func(t *testing.T) {
-		t.Parallel()
-
-		sys := &mockSysTerms{
-			listProcessesFn: func(_ context.Context, _ string) ([]terminals.TerminalProcess, error) {
-				return nil, fmt.Errorf("invalid tty: bad")
-			},
-		}
-		h := newTestHandler(t, nil, sys)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/terminals/system/bad", nil)
-		r.SetPathValue("tty", "bad")
-		h.getSystemTerminal(w, r)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", w.Code)
-		}
-	})
-}
-
-func TestCloseTerminalHandler(t *testing.T) {
-	t.Parallel()
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-
-		h := newTestHandler(t, nil, nil)
-		// Register a terminal so we can close it.
-		id, _ := h.terminals.Register("dev", "127.0.0.1", 80, 24, func(_ string) {})
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/terminals/"+id, nil)
-		r.SetPathValue("terminal", id)
-		h.closeTerminal(w, r)
-
-		if w.Code != http.StatusNoContent {
-			t.Errorf("status = %d, want 204", w.Code)
-		}
-	})
-
-	t.Run("not found", func(t *testing.T) {
-		t.Parallel()
-
-		h := newTestHandler(t, nil, nil)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/terminals/nonexistent", nil)
-		r.SetPathValue("terminal", "nonexistent")
-		h.closeTerminal(w, r)
-
-		if w.Code != http.StatusNotFound {
-			t.Errorf("status = %d, want 404", w.Code)
-		}
-	})
-
-	t.Run("empty id", func(t *testing.T) {
-		t.Parallel()
-
-		h := newTestHandler(t, nil, nil)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/terminals/", nil)
-		r.SetPathValue("terminal", "")
-		h.closeTerminal(w, r)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", w.Code)
-		}
-	})
-}
-
 func TestRecoveryOverviewHandler(t *testing.T) {
 	t.Parallel()
 
@@ -2956,6 +2810,397 @@ func TestTimelineSearchHandler(t *testing.T) {
 			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
 		}
 	})
+}
+
+func TestOpsOverviewAndServicesHandlers(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		overviewFn: func(context.Context) (opsplane.Overview, error) {
+			return opsplane.Overview{
+				Host: opsplane.HostOverview{
+					Hostname: "devbox",
+					OS:       "linux",
+				},
+				UpdatedAt: "2026-02-15T12:00:00Z",
+			}, nil
+		},
+		listServicesFn: func(context.Context) ([]opsplane.ServiceStatus, error) {
+			return []opsplane.ServiceStatus{
+				{
+					Name:         opsplane.ServiceNameSentinel,
+					DisplayName:  "Sentinel service",
+					Manager:      "systemd",
+					Scope:        "user",
+					Unit:         "sentinel",
+					Exists:       true,
+					EnabledState: "enabled",
+					ActiveState:  "active",
+					UpdatedAt:    "2026-02-15T12:00:00Z",
+				},
+			}, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/overview", nil)
+	h.opsOverview(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("opsOverview status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	overview, _ := data["overview"].(map[string]any)
+	host, _ := overview["host"].(map[string]any)
+	if host["hostname"] != "devbox" {
+		t.Fatalf("host.hostname = %v, want devbox", host["hostname"])
+	}
+
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("GET", "/api/ops/services", nil)
+	h.opsServices(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("opsServices status = %d, want 200", w.Code)
+	}
+	body = jsonBody(t, w)
+	data, _ = body["data"].(map[string]any)
+	services, _ := data["services"].([]any)
+	if len(services) != 1 {
+		t.Fatalf("services len = %d, want 1", len(services))
+	}
+}
+
+func TestOpsServiceActionHandler(t *testing.T) {
+	t.Parallel()
+
+	eventHub := events.NewHub()
+	eventsCh, unsubscribe := eventHub.Subscribe(8)
+	defer unsubscribe()
+
+	h := newTestHandler(t, nil, nil)
+	h.events = eventHub
+	h.ops = &mockOpsControlPlane{
+		actFn: func(_ context.Context, name, action string) (opsplane.ServiceStatus, error) {
+			if name != opsplane.ServiceNameSentinel {
+				t.Fatalf("service name = %q, want %q", name, opsplane.ServiceNameSentinel)
+			}
+			if action != opsplane.ActionRestart {
+				t.Fatalf("action = %q, want %q", action, opsplane.ActionRestart)
+			}
+			return opsplane.ServiceStatus{
+				Name:         opsplane.ServiceNameSentinel,
+				DisplayName:  "Sentinel service",
+				Manager:      "systemd",
+				Scope:        "user",
+				Unit:         "sentinel",
+				Exists:       true,
+				EnabledState: "enabled",
+				ActiveState:  "active",
+				UpdatedAt:    "2026-02-15T12:00:00Z",
+			}, nil
+		},
+		listServicesFn: func(context.Context) ([]opsplane.ServiceStatus, error) {
+			return []opsplane.ServiceStatus{
+				{
+					Name:         opsplane.ServiceNameSentinel,
+					DisplayName:  "Sentinel service",
+					Manager:      "systemd",
+					Scope:        "user",
+					Unit:         "sentinel",
+					Exists:       true,
+					EnabledState: "enabled",
+					ActiveState:  "active",
+					UpdatedAt:    "2026-02-15T12:00:00Z",
+				},
+			}, nil
+		},
+		overviewFn: func(context.Context) (opsplane.Overview, error) {
+			return opsplane.Overview{
+				UpdatedAt: "2026-02-15T12:00:00Z",
+			}, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(
+		"POST",
+		"/api/ops/services/sentinel/action",
+		strings.NewReader(`{"action":"restart"}`),
+	)
+	r.SetPathValue("service", "sentinel")
+	h.opsServiceAction(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("opsServiceAction status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	if _, ok := data["globalRev"].(float64); !ok {
+		t.Fatalf("globalRev = %T(%v), want float64", data["globalRev"], data["globalRev"])
+	}
+
+	gotTypes := map[string]bool{}
+	timeout := time.After(500 * time.Millisecond)
+	for len(gotTypes) < 2 {
+		select {
+		case evt := <-eventsCh:
+			gotTypes[evt.Type] = true
+		case <-timeout:
+			t.Fatalf("did not receive ops events, got=%v", gotTypes)
+		}
+	}
+	if !gotTypes[events.TypeOpsServices] || !gotTypes[events.TypeOpsOverview] {
+		t.Fatalf("unexpected event types: %v", gotTypes)
+	}
+}
+
+func TestOpsServiceActionHandlerInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(
+		"POST",
+		"/api/ops/services/sentinel/action",
+		strings.NewReader(`{"action":"invalid"}`),
+	)
+	r.SetPathValue("service", "sentinel")
+	h.opsServiceAction(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+		t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+	}
+}
+
+func TestOpsServiceActionHandlerNotFound(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		actFn: func(context.Context, string, string) (opsplane.ServiceStatus, error) {
+			return opsplane.ServiceStatus{}, opsplane.ErrServiceNotFound
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(
+		"POST",
+		"/api/ops/services/missing/action",
+		strings.NewReader(`{"action":"restart"}`),
+	)
+	r.SetPathValue("service", "missing")
+	h.opsServiceAction(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	body := jsonBody(t, w)
+	if got := errCode(body); got != "OPS_SERVICE_NOT_FOUND" {
+		t.Fatalf("error code = %q, want OPS_SERVICE_NOT_FOUND", got)
+	}
+}
+
+func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	event, err := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+		Source:    "service",
+		EventType: "service.action",
+		Severity:  "warn",
+		Resource:  "sentinel",
+		Message:   "service restarted",
+		Details:   "test",
+		Metadata:  `{"action":"restart"}`,
+		CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsTimelineEvent: %v", err)
+	}
+	alert, err := h.store.UpsertOpsAlert(ctx, store.OpsAlertWrite{
+		DedupeKey: "service:sentinel:failed",
+		Source:    "service",
+		Resource:  "sentinel",
+		Title:     "Sentinel failed",
+		Message:   "service entered failed state",
+		Severity:  "error",
+		Metadata:  `{"state":"failed"}`,
+		CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("UpsertOpsAlert: %v", err)
+	}
+
+	t.Run("list alerts", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/alerts?status=open&limit=5", nil)
+		h.opsAlerts(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		alerts, _ := data["alerts"].([]any)
+		if len(alerts) != 1 {
+			t.Fatalf("len(alerts) = %d, want 1", len(alerts))
+		}
+	})
+
+	t.Run("list timeline", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/timeline?q=restarted&severity=warn&source=service", nil)
+		h.opsTimeline(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		eventsRaw, _ := data["events"].([]any)
+		if len(eventsRaw) != 1 {
+			t.Fatalf("len(events) = %d, want 1", len(eventsRaw))
+		}
+		item, _ := eventsRaw[0].(map[string]any)
+		if int64(item["id"].(float64)) != event.ID {
+			t.Fatalf("event id = %v, want %d", item["id"], event.ID)
+		}
+	})
+
+	t.Run("list timeline invalid severity", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/timeline?severity=invalid", nil)
+		h.opsTimeline(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+		if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+		}
+	})
+
+	t.Run("ack alert publishes events", func(t *testing.T) {
+		t.Parallel()
+
+		hub := events.NewHub()
+		eventsCh, unsubscribe := hub.Subscribe(8)
+		defer unsubscribe()
+		h.events = hub
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", fmt.Sprintf("/api/ops/alerts/%d/ack", alert.ID), nil)
+		r.SetPathValue("alert", fmt.Sprintf("%d", alert.ID))
+		h.ackOpsAlert(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		alertBody, _ := data["alert"].(map[string]any)
+		if alertBody["status"] != "acked" {
+			t.Fatalf("alert.status = %v, want acked", alertBody["status"])
+		}
+
+		gotTypes := map[string]bool{}
+		timeout := time.After(500 * time.Millisecond)
+		for len(gotTypes) < 2 {
+			select {
+			case evt := <-eventsCh:
+				gotTypes[evt.Type] = true
+			case <-timeout:
+				t.Fatalf("did not receive expected ack events, got=%v", gotTypes)
+			}
+		}
+		if !gotTypes[events.TypeOpsAlerts] || !gotTypes[events.TypeOpsTimeline] {
+			t.Fatalf("unexpected ack event types: %v", gotTypes)
+		}
+	})
+}
+
+func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	ctx := context.Background()
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/runbooks", nil)
+	h.opsRunbooks(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("opsRunbooks status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	runbooksRaw, _ := data["runbooks"].([]any)
+	if len(runbooksRaw) == 0 {
+		t.Fatalf("expected seeded runbooks")
+	}
+	firstRunbook, _ := runbooksRaw[0].(map[string]any)
+	runbookID, _ := firstRunbook["id"].(string)
+	if runbookID == "" {
+		t.Fatalf("runbook id should not be empty")
+	}
+
+	eventHub := events.NewHub()
+	eventsCh, unsubscribe := eventHub.Subscribe(8)
+	defer unsubscribe()
+	h.events = eventHub
+
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("POST", "/api/ops/runbooks/"+runbookID+"/run", nil)
+	r.SetPathValue("runbook", runbookID)
+	h.runOpsRunbook(w, r)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("runOpsRunbook status = %d, want 202", w.Code)
+	}
+	body = jsonBody(t, w)
+	data, _ = body["data"].(map[string]any)
+	jobRaw, _ := data["job"].(map[string]any)
+	jobID, _ := jobRaw["id"].(string)
+	if jobID == "" {
+		t.Fatalf("job id should not be empty")
+	}
+
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("GET", "/api/ops/jobs/"+jobID, nil)
+	r.SetPathValue("job", jobID)
+	h.opsJob(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("opsJob status = %d, want 200", w.Code)
+	}
+
+	gotTypes := map[string]bool{}
+	timeout := time.After(500 * time.Millisecond)
+	for len(gotTypes) < 2 {
+		select {
+		case evt := <-eventsCh:
+			gotTypes[evt.Type] = true
+		case <-timeout:
+			t.Fatalf("did not receive expected runbook events, got=%v", gotTypes)
+		}
+	}
+	if !gotTypes[events.TypeOpsJob] || !gotTypes[events.TypeOpsTimeline] {
+		t.Fatalf("unexpected runbook event types: %v", gotTypes)
+	}
+
+	loaded, err := h.store.GetOpsRunbookRun(ctx, jobID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbookRun(%s): %v", jobID, err)
+	}
+	if loaded.RunbookID != runbookID {
+		t.Fatalf("job runbook id = %q, want %q", loaded.RunbookID, runbookID)
+	}
 }
 
 func TestStorageStatsAndFlushHandlers(t *testing.T) {

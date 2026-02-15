@@ -20,6 +20,9 @@ Resources tracked:
 - `activity-journal`
 - `guardrail-audit`
 - `recovery-history`
+- `ops-timeline`
+- `ops-alerts`
+- `ops-jobs`
 
 ## Flush Resource Data
 
@@ -39,6 +42,9 @@ Allowed values:
 - `activity-journal`
 - `guardrail-audit`
 - `recovery-history`
+- `ops-timeline`
+- `ops-alerts`
+- `ops-jobs`
 - `all`
 
 Response includes removed row counts per resource and flush timestamp.

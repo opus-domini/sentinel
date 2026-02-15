@@ -11,6 +11,7 @@ func TestWatchtowerTimelineInsertSearchAndFilters(t *testing.T) {
 	t.Parallel()
 	const (
 		sessionDev    = "dev"
+		sessionOps    = "ops"
 		severityError = "error"
 	)
 
@@ -53,7 +54,7 @@ func TestWatchtowerTimelineInsertSearchAndFilters(t *testing.T) {
 		DurationMS: -10,
 	})
 	insert(WatchtowerTimelineEventWrite{
-		Session:   "ops",
+		Session:   sessionOps,
 		WindowIdx: 2,
 		PaneID:    "%9",
 		EventType: "command.finished",
@@ -72,8 +73,8 @@ func TestWatchtowerTimelineInsertSearchAndFilters(t *testing.T) {
 	if len(allRows.Events) != 3 {
 		t.Fatalf("len(allRows.Events) = %d, want 3", len(allRows.Events))
 	}
-	if allRows.Events[0].Session != "ops" {
-		t.Fatalf("latest event session = %q, want ops", allRows.Events[0].Session)
+	if allRows.Events[0].Session != sessionOps {
+		t.Fatalf("latest event session = %q, want %s", allRows.Events[0].Session, sessionOps)
 	}
 	if allRows.Events[1].Severity != severityError {
 		t.Fatalf("severity normalization failed, got %q want %s", allRows.Events[1].Severity, severityError)

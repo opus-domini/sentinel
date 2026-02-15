@@ -19,7 +19,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/terminals"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/watchtower"
 )
@@ -33,7 +32,6 @@ func serve() int {
 	initLogger(cfg.LogLevel)
 
 	guard := security.New(cfg.Token, cfg.AllowedOrigins)
-	terminalRegistry := terminals.NewRegistry()
 	eventHub := events.NewHub()
 
 	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))
@@ -43,7 +41,7 @@ func serve() int {
 	}
 
 	mux := http.NewServeMux()
-	if err := httpui.Register(mux, guard, terminalRegistry, st, eventHub); err != nil {
+	if err := httpui.Register(mux, guard, st, eventHub); err != nil {
 		slog.Error("frontend init failed", "err", err)
 		return 1
 	}
@@ -71,7 +69,7 @@ func serve() int {
 		recoveryService.Start(context.Background())
 	}
 
-	api.Register(mux, guard, terminalRegistry, st, recoveryService, eventHub, currentVersion())
+	api.Register(mux, guard, st, recoveryService, eventHub, currentVersion())
 
 	exitCode := run(cfg, mux)
 	if cfg.Watchtower.Enabled {

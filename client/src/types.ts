@@ -127,33 +127,139 @@ export type StorageFlushResponse = {
   flushedAt: string
 }
 
-export type TerminalConnection = {
+export type OpsServiceAction = 'start' | 'stop' | 'restart'
+
+export type OpsServiceStatus = {
+  name: string
+  displayName: string
+  manager: string
+  scope: string
+  unit: string
+  exists: boolean
+  enabledState: string
+  activeState: string
+  lastRunState?: string
+  updatedAt: string
+}
+
+export type OpsAlertStatus = 'open' | 'acked' | 'resolved' | string
+
+export type OpsAlert = {
+  id: number
+  dedupeKey: string
+  source: string
+  resource: string
+  title: string
+  message: string
+  severity: string
+  status: OpsAlertStatus
+  occurrences: number
+  metadata: string
+  firstSeenAt: string
+  lastSeenAt: string
+  ackedAt?: string
+  resolvedAt?: string
+}
+
+export type OpsTimelineEvent = {
+  id: number
+  source: string
+  eventType: string
+  severity: string
+  resource: string
+  message: string
+  details: string
+  metadata: string
+  createdAt: string
+}
+
+export type OpsOverview = {
+  host: {
+    hostname: string
+    os: string
+    arch: string
+    cpus: number
+    goVersion: string
+  }
+  sentinel: {
+    pid: number
+    uptimeSec: number
+  }
+  services: {
+    total: number
+    active: number
+    failed: number
+  }
+  updatedAt: string
+}
+
+export type OpsOverviewResponse = {
+  overview: OpsOverview
+}
+
+export type OpsServicesResponse = {
+  services: Array<OpsServiceStatus>
+}
+
+export type OpsAlertsResponse = {
+  alerts: Array<OpsAlert>
+}
+
+export type OpsTimelineResponse = {
+  events: Array<OpsTimelineEvent>
+  hasMore: boolean
+}
+
+export type OpsRunbookStep = {
+  type: string
+  title: string
+  command?: string
+  check?: string
+  description?: string
+}
+
+export type OpsRunbook = {
   id: string
-  tty: string
-  user: string
-  processCount: number
-  leaderPid: number
-  command: string
-  args: string
+  name: string
+  description: string
+  enabled: boolean
+  steps: Array<OpsRunbookStep>
+  createdAt: string
+  updatedAt: string
 }
 
-export type TerminalsResponse = {
-  terminals: Array<TerminalConnection>
+export type OpsRunbookRun = {
+  id: string
+  runbookId: string
+  runbookName: string
+  status: string
+  totalSteps: number
+  completedSteps: number
+  currentStep: string
+  error: string
+  createdAt: string
+  startedAt?: string
+  finishedAt?: string
 }
 
-export type TerminalProcess = {
-  pid: number
-  ppid: number
-  user: string
-  command: string
-  args: string
-  cpu: number
-  mem: number
+export type OpsRunbooksResponse = {
+  runbooks: Array<OpsRunbook>
+  jobs: Array<OpsRunbookRun>
 }
 
-export type SystemTerminalDetailResponse = {
-  tty: string
-  processes: Array<TerminalProcess>
+export type OpsRunbookRunResponse = {
+  job: OpsRunbookRun
+  timelineEvent?: OpsTimelineEvent
+  globalRev?: number
+}
+
+export type OpsServiceActionResponse = {
+  service: OpsServiceStatus
+  services: Array<OpsServiceStatus>
+  overview: OpsOverview
+  timelineEvent?: OpsTimelineEvent
+  alerts?: Array<OpsAlert>
+  globalRev: number
 }
 
 export type RecoverySessionState =

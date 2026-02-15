@@ -6,7 +6,7 @@ const APP_SHELL = '/index.html'
 const CORE_URLS = [
   APP_SHELL,
   '/tmux',
-  '/terminals',
+  '/ops',
   '/assets/app.js',
   '/assets/app.css',
   '/assets/favicon.svg',

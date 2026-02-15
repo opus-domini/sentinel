@@ -5,7 +5,7 @@
 </div>
 
 Sentinel is a terminal-first workspace delivered as a single binary.
-It provides tmux session control, standalone terminals, realtime activity projection, and recovery workflows in a browser UI.
+It provides tmux session control, ops control-plane tooling, realtime activity projection, and recovery workflows in a browser UI.
 
 ## What You Will Find Here
 

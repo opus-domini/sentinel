@@ -12,6 +12,11 @@ const (
 	TypeTmuxActivity     = "tmux.activity.updated"
 	TypeTmuxTimeline     = "tmux.timeline.updated"
 	TypeTmuxGuardrail    = "tmux.guardrail.blocked"
+	TypeOpsOverview      = "ops.overview.updated"
+	TypeOpsServices      = "ops.services.updated"
+	TypeOpsAlerts        = "ops.alerts.updated"
+	TypeOpsTimeline      = "ops.timeline.updated"
+	TypeOpsJob           = "ops.job.updated"
 	TypeRecoveryOverview = "recovery.overview.updated"
 	TypeRecoveryJob      = "recovery.job.updated"
 )

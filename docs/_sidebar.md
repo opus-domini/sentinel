@@ -7,10 +7,10 @@
 
 - Features
   - [Tmux Workspace](/features/tmux-workspace.md)
+  - [Ops Control Plane](/features/ops-control-plane.md)
   - [Timeline and Watchtower](/features/timeline-watchtower.md)
   - [Recovery Engine](/features/recovery.md)
   - [Guardrails](/features/guardrails.md)
-  - [Standalone Terminals](/features/standalone-terminals.md)
   - [Mobile and PWA](/features/mobile-pwa.md)
 
 - Reference

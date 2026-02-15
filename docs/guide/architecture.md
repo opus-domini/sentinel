@@ -21,7 +21,7 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 4. Frontend connects:
    - REST for initial snapshot (`/api/...`)
    - WebSocket for realtime updates (`/ws/events`)
-   - PTY streams (`/ws/tmux`, `/ws/terminals`)
+   - PTY stream (`/ws/tmux`)
 5. UI uses optimistic mutations and reconciles with events/patches.
 
 ## Data Model (Operational)
@@ -45,6 +45,11 @@ Primary path is WS events:
 - `tmux.inspector.updated`
 - `tmux.activity.updated`
 - `tmux.timeline.updated`
+- `ops.overview.updated`
+- `ops.services.updated`
+- `ops.alerts.updated`
+- `ops.timeline.updated`
+- `ops.job.updated`
 - `recovery.overview.updated`
 - `recovery.job.updated`
 

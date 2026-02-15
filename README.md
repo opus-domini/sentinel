@@ -11,7 +11,7 @@
 </div>
 
 Sentinel is a terminal-first workspace delivered as a single binary.
-It gives you a realtime browser interface to operate tmux sessions, standalone terminals, and recovery workflows on your own host.
+It gives you a realtime browser interface to operate tmux sessions, an ops control plane, and recovery workflows on your own host.
 
 No Electron. No cloud relay. Just your machine and your shell.
 
@@ -34,7 +34,7 @@ No Electron. No cloud relay. Just your machine and your shell.
 
 - Interactive PTY terminal in the browser.
 - Tmux workspace management (`Session > Window > Pane`).
-- Standalone terminal tabs not tied to tmux.
+- Ops control plane (`/ops`) with services, alerts, timeline, and runbooks.
 - Event-driven updates over WebSocket (`/ws/events`).
 - Service mode and daily autoupdate (Linux/macOS).
 - Optional token auth and origin allowlist.
