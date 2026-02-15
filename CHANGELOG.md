@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13](https://github.com/opus-domini/sentinel/compare/v0.2.12...v0.2.13) (2026-02-15)
+
+
+### Refactors
+
+* reduce backend cyclomatic complexity ([18862e0](https://github.com/opus-domini/sentinel/commit/18862e027e4a0e18b0d59731c8b0b6ab35df77ee))
+
 ## [0.2.12](https://github.com/opus-domini/sentinel/compare/v0.2.11...v0.2.12) (2026-02-15)
 
 
