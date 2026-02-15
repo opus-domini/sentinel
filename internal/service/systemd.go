@@ -109,16 +109,7 @@ func InstallUser(opts InstallUserOptions) error {
 	if err := runSystemctlUser("daemon-reload"); err != nil {
 		return err
 	}
-	if opts.Enable && opts.Start {
-		return runSystemctlUser("enable", "--now", "sentinel")
-	}
-	if opts.Enable {
-		return runSystemctlUser("enable", "sentinel")
-	}
-	if opts.Start {
-		return runSystemctlUser("start", "sentinel")
-	}
-	return nil
+	return applySystemdUnitState("sentinel", opts.Enable, opts.Start, isSystemctlUserActive, runSystemctlUser)
 }
 
 func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
@@ -508,16 +499,7 @@ func installSystemServiceLinux(opts InstallUserOptions) error {
 	if err := runSystemctlSystem("daemon-reload"); err != nil {
 		return err
 	}
-	switch {
-	case opts.Enable && opts.Start:
-		return runSystemctlSystem("enable", "--now", "sentinel")
-	case opts.Enable:
-		return runSystemctlSystem("enable", "sentinel")
-	case opts.Start:
-		return runSystemctlSystem("start", "sentinel")
-	default:
-		return nil
-	}
+	return applySystemdUnitState("sentinel", opts.Enable, opts.Start, isSystemctlSystemActive, runSystemctlSystem)
 }
 
 func uninstallSystemServiceLinux(opts UninstallUserOptions) error {
@@ -642,6 +624,39 @@ func runSystemctlSystem(args ...string) error {
 		return fmt.Errorf("systemctl %s failed: %s", strings.Join(args, " "), msg)
 	}
 	return nil
+}
+
+func isSystemctlUserActive(unit string) bool {
+	cmd := exec.Command("systemctl", "--user", "is-active", "--quiet", unit)
+	return cmd.Run() == nil
+}
+
+func isSystemctlSystemActive(unit string) bool {
+	cmd := exec.Command("systemctl", "is-active", "--quiet", unit)
+	return cmd.Run() == nil
+}
+
+func applySystemdUnitState(
+	unit string,
+	enable bool,
+	start bool,
+	isActiveFn func(unit string) bool,
+	runFn func(args ...string) error,
+) error {
+	if enable {
+		if err := runFn("enable", unit); err != nil {
+			return err
+		}
+	}
+	if !start {
+		return nil
+	}
+
+	action := "start"
+	if isActiveFn != nil && isActiveFn(unit) {
+		action = "restart"
+	}
+	return runFn(action, unit)
 }
 
 func withSystemdUserBusHint(err error) error {

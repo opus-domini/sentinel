@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"os"
 	"runtime"
 	"strings"
@@ -173,5 +174,124 @@ func TestNormalizeSystemctlErrorState(t *testing.T) {
 				t.Fatalf("normalizeSystemctlErrorState(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestApplySystemdUnitState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		enable    bool
+		start     bool
+		active    bool
+		wantCalls []string
+	}{
+		{
+			name:      "enable and start when inactive",
+			enable:    true,
+			start:     true,
+			active:    false,
+			wantCalls: []string{"enable sentinel", "start sentinel"},
+		},
+		{
+			name:      "enable and restart when active",
+			enable:    true,
+			start:     true,
+			active:    true,
+			wantCalls: []string{"enable sentinel", "restart sentinel"},
+		},
+		{
+			name:      "start only active restarts",
+			enable:    false,
+			start:     true,
+			active:    true,
+			wantCalls: []string{"restart sentinel"},
+		},
+		{
+			name:      "enable only",
+			enable:    true,
+			start:     false,
+			active:    true,
+			wantCalls: []string{"enable sentinel"},
+		},
+		{
+			name:      "noop",
+			enable:    false,
+			start:     false,
+			active:    true,
+			wantCalls: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var calls []string
+			err := applySystemdUnitState(
+				"sentinel",
+				tc.enable,
+				tc.start,
+				func(unit string) bool {
+					if unit != "sentinel" {
+						t.Fatalf("unit = %q, want sentinel", unit)
+					}
+					return tc.active
+				},
+				func(args ...string) error {
+					calls = append(calls, strings.Join(args, " "))
+					return nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("applySystemdUnitState returned error: %v", err)
+			}
+			if strings.Join(calls, "|") != strings.Join(tc.wantCalls, "|") {
+				t.Fatalf("calls = %v, want %v", calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
+func TestApplySystemdUnitStateReturnsEnableError(t *testing.T) {
+	t.Parallel()
+
+	expected := "enable failed"
+	err := applySystemdUnitState(
+		"sentinel",
+		true,
+		true,
+		func(string) bool { return false },
+		func(args ...string) error {
+			if strings.Join(args, " ") == "enable sentinel" {
+				return errors.New(expected)
+			}
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), expected) {
+		t.Fatalf("error = %v, want contains %q", err, expected)
+	}
+}
+
+func TestApplySystemdUnitStateReturnsStartError(t *testing.T) {
+	t.Parallel()
+
+	expected := "restart failed"
+	err := applySystemdUnitState(
+		"sentinel",
+		true,
+		true,
+		func(string) bool { return true },
+		func(args ...string) error {
+			if strings.Join(args, " ") == "restart sentinel" {
+				return errors.New(expected)
+			}
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), expected) {
+		t.Fatalf("error = %v, want contains %q", err, expected)
 	}
 }
