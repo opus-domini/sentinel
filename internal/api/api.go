@@ -21,6 +21,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/guardrails"
 	opsplane "github.com/opus-domini/sentinel/internal/ops"
 	"github.com/opus-domini/sentinel/internal/recovery"
+	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
@@ -61,6 +62,8 @@ type opsControlPlane interface {
 	ListServices(ctx context.Context) ([]opsplane.ServiceStatus, error)
 	Act(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
 	Inspect(ctx context.Context, name string) (opsplane.ServiceInspect, error)
+	Logs(ctx context.Context, name string, lines int) (string, error)
+	Metrics(ctx context.Context) opsplane.HostMetrics
 }
 
 type Handler struct {
@@ -72,12 +75,14 @@ type Handler struct {
 	store      *store.Store
 	guardrails *guardrails.Service
 	version    string
+	configPath string
 }
 
 const (
 	defaultDirectorySuggestLimit = 12
 	maxDirectorySuggestLimit     = 64
 	defaultMetaVersion           = "dev"
+	stateFailed                  = "failed"
 )
 
 func Register(
@@ -87,16 +92,18 @@ func Register(
 	recoverySvc recoveryService,
 	eventsHub *events.Hub,
 	version string,
+	configPath string,
 ) {
 	h := &Handler{
 		guard:      guard,
 		tmux:       tmux.Service{},
 		recovery:   recoverySvc,
-		ops:        opsplane.NewManager(time.Now()),
+		ops:        opsplane.NewManager(time.Now(), st),
 		events:     eventsHub,
 		store:      st,
 		guardrails: guardrails.New(st),
 		version:    strings.TrimSpace(version),
+		configPath: configPath,
 	}
 	mux.HandleFunc("GET /api/meta", h.wrap(h.meta))
 	mux.HandleFunc("GET /api/fs/dirs", h.wrap(h.listDirectories))
@@ -125,9 +132,18 @@ func Register(
 	mux.HandleFunc("GET /api/ops/alerts", h.wrap(h.opsAlerts))
 	mux.HandleFunc("POST /api/ops/alerts/{alert}/ack", h.wrap(h.ackOpsAlert))
 	mux.HandleFunc("GET /api/ops/timeline", h.wrap(h.opsTimeline))
+	mux.HandleFunc("POST /api/ops/services", h.wrap(h.registerOpsService))
+	mux.HandleFunc("DELETE /api/ops/services/{service}", h.wrap(h.unregisterOpsService))
+	mux.HandleFunc("GET /api/ops/services/{service}/logs", h.wrap(h.opsServiceLogs))
+	mux.HandleFunc("GET /api/ops/metrics", h.wrap(h.opsMetrics))
 	mux.HandleFunc("GET /api/ops/runbooks", h.wrap(h.opsRunbooks))
+	mux.HandleFunc("POST /api/ops/runbooks", h.wrap(h.createOpsRunbook))
+	mux.HandleFunc("PUT /api/ops/runbooks/{runbook}", h.wrap(h.updateOpsRunbook))
+	mux.HandleFunc("DELETE /api/ops/runbooks/{runbook}", h.wrap(h.deleteOpsRunbook))
 	mux.HandleFunc("POST /api/ops/runbooks/{runbook}/run", h.wrap(h.runOpsRunbook))
 	mux.HandleFunc("GET /api/ops/jobs/{job}", h.wrap(h.opsJob))
+	mux.HandleFunc("GET /api/ops/config", h.wrap(h.opsConfig))
+	mux.HandleFunc("PATCH /api/ops/config", h.wrap(h.patchOpsConfig))
 	mux.HandleFunc("GET /api/ops/storage/stats", h.wrap(h.storageStats))
 	mux.HandleFunc("POST /api/ops/storage/flush", h.wrap(h.flushStorage))
 	mux.HandleFunc("GET /api/ops/guardrails/rules", h.wrap(h.listGuardrailRules))
@@ -1328,7 +1344,7 @@ func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsp
 	state := strings.ToLower(strings.TrimSpace(serviceStatus.ActiveState))
 	severity := "info"
 	switch {
-	case state == "failed":
+	case state == stateFailed:
 		severity = "error"
 	case normalizedAction == opsplane.ActionStop:
 		severity = "warn"
@@ -1349,7 +1365,7 @@ func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsp
 	}
 
 	alerts := make([]store.OpsAlert, 0, 1)
-	if state == "failed" {
+	if state == stateFailed {
 		alert, err := h.store.UpsertOpsAlert(ctx, store.OpsAlertWrite{
 			DedupeKey: fmt.Sprintf("service:%s:failed", serviceStatus.Name),
 			Source:    "service",
@@ -1544,7 +1560,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	now := time.Now().UTC()
-	job, err := h.store.StartOpsRunbook(ctx, runbookID, now)
+	job, err := h.store.CreateOpsRunbookRun(ctx, runbookID, now)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
@@ -1555,11 +1571,11 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	}
 	timelineEvent, timelineErr := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
 		Source:    "runbook",
-		EventType: "runbook.executed",
+		EventType: "runbook.started",
 		Severity:  "info",
 		Resource:  job.RunbookID,
-		Message:   fmt.Sprintf("Runbook executed: %s", job.RunbookName),
-		Details:   fmt.Sprintf("job=%s status=%s steps=%d/%d", job.ID, job.Status, job.CompletedSteps, job.TotalSteps),
+		Message:   fmt.Sprintf("Runbook started: %s", job.RunbookName),
+		Details:   fmt.Sprintf("job=%s steps=%d", job.ID, job.TotalSteps),
 		Metadata:  fmt.Sprintf(`{"jobId":"%s","runbookId":"%s","status":"%s"}`, job.ID, job.RunbookID, job.Status),
 		CreatedAt: now,
 	})
@@ -1567,6 +1583,9 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist runbook timeline", nil)
 		return
 	}
+
+	// Launch async execution.
+	go h.executeRunbookAsync(job)
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsJob, map[string]any{
@@ -1582,6 +1601,115 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		"job":           job,
 		"timelineEvent": timelineEvent,
 		"globalRev":     globalRev,
+	})
+}
+
+func (h *Handler) executeRunbookAsync(job store.OpsRunbookRun) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// Mark as running (best-effort).
+	now := time.Now().UTC()
+	_, _ = h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+		RunID:          job.ID,
+		Status:         "running",
+		CompletedSteps: 0,
+		CurrentStep:    job.CurrentStep,
+		StartedAt:      now.Format(time.RFC3339),
+	})
+	h.emit(events.TypeOpsJob, map[string]any{
+		"globalRev": now.UnixMilli(),
+		"jobId":     job.ID,
+		"status":    "running",
+	})
+
+	// Fetch runbook steps.
+	rb, err := h.store.ListOpsRunbooks(ctx)
+	if err != nil {
+		h.finishRunbookRun(ctx, job.ID, stateFailed, 0, "", err.Error())
+		return
+	}
+	var steps []runbook.Step
+	for _, r := range rb {
+		if r.ID == job.RunbookID {
+			for _, s := range r.Steps {
+				steps = append(steps, runbook.Step{
+					Type:        s.Type,
+					Title:       s.Title,
+					Command:     s.Command,
+					Check:       s.Check,
+					Description: s.Description,
+				})
+			}
+			break
+		}
+	}
+
+	executor := runbook.NewExecutor(nil, 30*time.Second)
+	progress := func(completed int, stepTitle string, _ runbook.StepResult) {
+		_, _ = h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+			RunID:          job.ID,
+			Status:         "running",
+			CompletedSteps: completed,
+			CurrentStep:    stepTitle,
+			StartedAt:      now.Format(time.RFC3339),
+		})
+		h.emit(events.TypeOpsJob, map[string]any{
+			"globalRev":      time.Now().UTC().UnixMilli(),
+			"jobId":          job.ID,
+			"status":         "running",
+			"completedSteps": completed,
+			"currentStep":    stepTitle,
+		})
+	}
+
+	results, execErr := executor.Execute(ctx, steps, progress)
+
+	finalStatus := "succeeded"
+	errMsg := ""
+	if execErr != nil {
+		finalStatus = stateFailed
+		errMsg = execErr.Error()
+	}
+	lastStep := ""
+	if len(results) > 0 {
+		lastStep = results[len(results)-1].Title
+	}
+
+	h.finishRunbookRun(ctx, job.ID, finalStatus, len(results), lastStep, errMsg)
+}
+
+func (h *Handler) finishRunbookRun(ctx context.Context, runID, status string, completed int, lastStep, errMsg string) {
+	finished := time.Now().UTC()
+	_, _ = h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+		RunID:          runID,
+		Status:         status,
+		CompletedSteps: completed,
+		CurrentStep:    lastStep,
+		Error:          errMsg,
+		FinishedAt:     finished.Format(time.RFC3339),
+	})
+
+	globalRev := finished.UnixMilli()
+	h.emit(events.TypeOpsJob, map[string]any{
+		"globalRev": globalRev,
+		"jobId":     runID,
+		"status":    status,
+	})
+
+	severity := "info"
+	if status == stateFailed {
+		severity = "error"
+	}
+	_, _ = h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+		Source:    "runbook",
+		EventType: "runbook." + status,
+		Severity:  severity,
+		Resource:  runID,
+		Message:   fmt.Sprintf("Runbook run %s", status),
+		Details:   errMsg,
+		Metadata:  fmt.Sprintf(`{"jobId":"%s","status":"%s"}`, runID, status),
+		CreatedAt: finished,
 	})
 }
 
@@ -1609,6 +1737,313 @@ func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
 	}
 	writeData(w, http.StatusOK, map[string]any{
 		"job": job,
+	})
+}
+
+func (h *Handler) opsConfig(w http.ResponseWriter, _ *http.Request) {
+	if h.configPath == "" {
+		writeError(w, http.StatusServiceUnavailable, "CONFIG_UNAVAILABLE", "config path not set", nil)
+		return
+	}
+	content, err := os.ReadFile(h.configPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CONFIG_READ_FAILED", "failed to read config file", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"path":    h.configPath,
+		"content": string(content),
+	})
+}
+
+func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
+	if h.configPath == "" {
+		writeError(w, http.StatusServiceUnavailable, "CONFIG_UNAVAILABLE", "config path not set", nil)
+		return
+	}
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if req.Content == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "content is required", nil)
+		return
+	}
+	if err := os.WriteFile(h.configPath, []byte(req.Content), 0o600); err != nil {
+		writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to write config file", nil)
+		return
+	}
+
+	now := time.Now().UTC()
+	if h.store != nil {
+		_, _ = h.store.InsertOpsTimelineEvent(r.Context(), store.OpsTimelineEventWrite{
+			Source:    "config",
+			EventType: "config.updated",
+			Severity:  "info",
+			Resource:  "config.toml",
+			Message:   "Configuration file updated via API",
+			CreatedAt: now,
+		})
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"path":    h.configPath,
+		"message": "config updated (restart required for changes to take effect)",
+	})
+}
+
+func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	var req struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+		Manager     string `json:"manager"`
+		Unit        string `json:"unit"`
+		Scope       string `json:"scope"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "name is required", nil)
+		return
+	}
+	if strings.TrimSpace(req.Unit) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	svc, err := h.store.InsertOpsCustomService(ctx, store.OpsCustomServiceWrite{
+		Name:        req.Name,
+		DisplayName: req.DisplayName,
+		Manager:     req.Manager,
+		Unit:        req.Unit,
+		Scope:       req.Scope,
+	})
+	if err != nil {
+		writeError(w, http.StatusConflict, "OPS_SERVICE_EXISTS", "service already registered or invalid", nil)
+		return
+	}
+
+	now := time.Now().UTC()
+	_, _ = h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+		Source:    "service",
+		EventType: "service.registered",
+		Severity:  "info",
+		Resource:  svc.Name,
+		Message:   fmt.Sprintf("Custom service registered: %s", svc.DisplayName),
+		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s", svc.Unit, svc.Manager, svc.Scope),
+		CreatedAt: now,
+	})
+
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsServices, map[string]any{
+		"globalRev": globalRev,
+		"action":    "registered",
+		"service":   svc.Name,
+	})
+
+	writeData(w, http.StatusCreated, map[string]any{
+		"service":   svc,
+		"globalRev": globalRev,
+	})
+}
+
+func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	serviceName := strings.TrimSpace(r.PathValue("service"))
+	if serviceName == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service name is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	if err := h.store.DeleteOpsCustomService(ctx, serviceName); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "custom service not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to unregister service", nil)
+		return
+	}
+
+	now := time.Now().UTC()
+	_, _ = h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+		Source:    "service",
+		EventType: "service.unregistered",
+		Severity:  "info",
+		Resource:  serviceName,
+		Message:   fmt.Sprintf("Custom service removed: %s", serviceName),
+		CreatedAt: now,
+	})
+
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsServices, map[string]any{
+		"globalRev": globalRev,
+		"action":    "unregistered",
+		"service":   serviceName,
+	})
+
+	writeData(w, http.StatusOK, map[string]any{
+		"removed":   serviceName,
+		"globalRev": globalRev,
+	})
+}
+
+func (h *Handler) opsServiceLogs(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+	serviceName := strings.TrimSpace(r.PathValue("service"))
+	if serviceName == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service name is required", nil)
+		return
+	}
+
+	lines := 100
+	if raw := strings.TrimSpace(r.URL.Query().Get("lines")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			lines = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	output, err := h.ops.Logs(ctx, serviceName, lines)
+	if err != nil {
+		if errors.Is(err, opsplane.ErrServiceNotFound) {
+			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "OPS_LOGS_FAILED", err.Error(), nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"service": serviceName,
+		"lines":   lines,
+		"output":  output,
+	})
+}
+
+func (h *Handler) opsMetrics(w http.ResponseWriter, r *http.Request) {
+	if h.ops == nil {
+		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	metrics := h.ops.Metrics(ctx)
+	writeData(w, http.StatusOK, map[string]any{
+		"metrics": metrics,
+	})
+}
+
+func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	var req store.OpsRunbookWrite
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook name is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	rb, err := h.store.InsertOpsRunbook(ctx, req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create runbook", nil)
+		return
+	}
+	writeData(w, http.StatusCreated, map[string]any{
+		"runbook": rb,
+	})
+}
+
+func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	runbookID := strings.TrimSpace(r.PathValue("runbook"))
+	if runbookID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook id is required", nil)
+		return
+	}
+	var req store.OpsRunbookWrite
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	req.ID = runbookID
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	rb, err := h.store.UpdateOpsRunbook(ctx, req)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to update runbook", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"runbook": rb,
+	})
+}
+
+func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	runbookID := strings.TrimSpace(r.PathValue("runbook"))
+	if runbookID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook id is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	if err := h.store.DeleteOpsRunbook(ctx, runbookID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete runbook", nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"removed": runbookID,
 	})
 }
 

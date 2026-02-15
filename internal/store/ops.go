@@ -211,6 +211,16 @@ func (s *Store) initOpsSchema() error {
 			datetime('now'),
 			datetime('now')
 		)`,
+		`CREATE TABLE IF NOT EXISTS ops_custom_services (
+			name         TEXT PRIMARY KEY,
+			display_name TEXT NOT NULL,
+			manager      TEXT NOT NULL DEFAULT 'systemd',
+			unit         TEXT NOT NULL,
+			scope        TEXT NOT NULL DEFAULT 'user',
+			enabled      INTEGER NOT NULL DEFAULT 1,
+			created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
 	}
 	for _, stmt := range statements {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -773,6 +783,308 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 		return OpsRunbookRun{}, err
 	}
 	return out, nil
+}
+
+// --- Custom Services CRUD ---
+
+type OpsCustomService struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Manager     string `json:"manager"`
+	Unit        string `json:"unit"`
+	Scope       string `json:"scope"`
+	Enabled     bool   `json:"enabled"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
+}
+
+type OpsCustomServiceWrite struct {
+	Name        string
+	DisplayName string
+	Manager     string
+	Unit        string
+	Scope       string
+}
+
+func (s *Store) InsertOpsCustomService(ctx context.Context, w OpsCustomServiceWrite) (OpsCustomService, error) {
+	name := strings.TrimSpace(w.Name)
+	if name == "" {
+		return OpsCustomService{}, fmt.Errorf("service name is required")
+	}
+	displayName := strings.TrimSpace(w.DisplayName)
+	if displayName == "" {
+		displayName = name
+	}
+	manager := strings.ToLower(strings.TrimSpace(w.Manager))
+	if manager == "" {
+		manager = "systemd"
+	}
+	unit := strings.TrimSpace(w.Unit)
+	if unit == "" {
+		return OpsCustomService{}, fmt.Errorf("service unit is required")
+	}
+	scope := strings.ToLower(strings.TrimSpace(w.Scope))
+	if scope == "" {
+		scope = "user"
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_custom_services (
+		name, display_name, manager, unit, scope, enabled, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+		name, displayName, manager, unit, scope, now, now,
+	); err != nil {
+		return OpsCustomService{}, err
+	}
+	return OpsCustomService{
+		Name:        name,
+		DisplayName: displayName,
+		Manager:     manager,
+		Unit:        unit,
+		Scope:       scope,
+		Enabled:     true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, nil
+}
+
+func (s *Store) ListOpsCustomServices(ctx context.Context) ([]OpsCustomService, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT
+		name, display_name, manager, unit, scope, enabled, created_at, updated_at
+	FROM ops_custom_services
+	WHERE enabled = 1
+	ORDER BY name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]OpsCustomService, 0, 8)
+	for rows.Next() {
+		var item OpsCustomService
+		var enabled int
+		if err := rows.Scan(
+			&item.Name, &item.DisplayName, &item.Manager,
+			&item.Unit, &item.Scope, &enabled,
+			&item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.Enabled = enabled == 1
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteOpsCustomService(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return sql.ErrNoRows
+	}
+	result, err := s.db.ExecContext(ctx, "DELETE FROM ops_custom_services WHERE name = ?", name)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// --- Runbook CRUD ---
+
+type OpsRunbookWrite struct {
+	ID          string
+	Name        string
+	Description string
+	Steps       []OpsRunbookStep
+	Enabled     bool
+}
+
+func (s *Store) InsertOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRunbook, error) {
+	id := strings.TrimSpace(w.ID)
+	if id == "" {
+		id = uuid.NewString()
+	}
+	name := strings.TrimSpace(w.Name)
+	if name == "" {
+		return OpsRunbook{}, fmt.Errorf("runbook name is required")
+	}
+	steps := w.Steps
+	if steps == nil {
+		steps = []OpsRunbookStep{}
+	}
+	stepsJSON, err := json.Marshal(steps)
+	if err != nil {
+		return OpsRunbook{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	enabled := 0
+	if w.Enabled {
+		enabled = 1
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbooks (
+		id, name, description, steps_json, enabled, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, now, now,
+	); err != nil {
+		return OpsRunbook{}, err
+	}
+	return s.getOpsRunbookByID(ctx, id)
+}
+
+func (s *Store) UpdateOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRunbook, error) {
+	id := strings.TrimSpace(w.ID)
+	if id == "" {
+		return OpsRunbook{}, sql.ErrNoRows
+	}
+	name := strings.TrimSpace(w.Name)
+	if name == "" {
+		return OpsRunbook{}, fmt.Errorf("runbook name is required")
+	}
+	steps := w.Steps
+	if steps == nil {
+		steps = []OpsRunbookStep{}
+	}
+	stepsJSON, err := json.Marshal(steps)
+	if err != nil {
+		return OpsRunbook{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	enabled := 0
+	if w.Enabled {
+		enabled = 1
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE ops_runbooks SET
+		name = ?, description = ?, steps_json = ?, enabled = ?, updated_at = ?
+	WHERE id = ?`,
+		name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, now, id,
+	)
+	if err != nil {
+		return OpsRunbook{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return OpsRunbook{}, err
+	}
+	if affected == 0 {
+		return OpsRunbook{}, sql.ErrNoRows
+	}
+	return s.getOpsRunbookByID(ctx, id)
+}
+
+func (s *Store) DeleteOpsRunbook(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return sql.ErrNoRows
+	}
+	result, err := s.db.ExecContext(ctx, "DELETE FROM ops_runbooks WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// --- Runbook Run Updates ---
+
+type OpsRunbookRunUpdate struct {
+	RunID          string
+	Status         string
+	CompletedSteps int
+	CurrentStep    string
+	Error          string
+	StartedAt      string
+	FinishedAt     string
+}
+
+func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) (OpsRunbookRun, error) {
+	runID := strings.TrimSpace(u.RunID)
+	if runID == "" {
+		return OpsRunbookRun{}, sql.ErrNoRows
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE ops_runbook_runs SET
+		status = ?, completed_steps = ?, current_step = ?, error = ?, started_at = ?, finished_at = ?
+	WHERE id = ?`,
+		strings.TrimSpace(u.Status),
+		u.CompletedSteps,
+		strings.TrimSpace(u.CurrentStep),
+		strings.TrimSpace(u.Error),
+		strings.TrimSpace(u.StartedAt),
+		strings.TrimSpace(u.FinishedAt),
+		runID,
+	); err != nil {
+		return OpsRunbookRun{}, err
+	}
+	return s.GetOpsRunbookRun(ctx, runID)
+}
+
+func (s *Store) CreateOpsRunbookRun(ctx context.Context, runbookID string, at time.Time) (OpsRunbookRun, error) {
+	runbookID = strings.TrimSpace(runbookID)
+	if runbookID == "" {
+		return OpsRunbookRun{}, sql.ErrNoRows
+	}
+	runbook, err := s.getOpsRunbookByID(ctx, runbookID)
+	if err != nil {
+		return OpsRunbookRun{}, err
+	}
+	now := at.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	runID := uuid.NewString()
+	totalSteps := len(runbook.Steps)
+	currentStep := ""
+	if totalSteps > 0 {
+		currentStep = runbook.Steps[0].Title
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, 0, ?, '', ?, '', '')`,
+		runID, runbook.ID, runbook.Name, opsRunbookStatusQueued, totalSteps, currentStep, now.Format(time.RFC3339),
+	); err != nil {
+		return OpsRunbookRun{}, err
+	}
+	return s.GetOpsRunbookRun(ctx, runID)
+}
+
+// --- Alert resolve ---
+
+func (s *Store) ResolveOpsAlert(ctx context.Context, dedupeKey string, at time.Time) (OpsAlert, error) {
+	dedupeKey = strings.TrimSpace(dedupeKey)
+	if dedupeKey == "" {
+		return OpsAlert{}, sql.ErrNoRows
+	}
+	now := at.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	nowRFC3339 := now.Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx, `UPDATE ops_alerts
+		SET status = ?, resolved_at = ?, last_seen_at = ?
+		WHERE dedupe_key = ? AND status != ?`,
+		opsAlertStatusResolved, nowRFC3339, nowRFC3339, dedupeKey, opsAlertStatusResolved,
+	)
+	if err != nil {
+		return OpsAlert{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return OpsAlert{}, err
+	}
+	if affected == 0 {
+		return OpsAlert{}, sql.ErrNoRows
+	}
+	return s.getOpsAlertByDedupeKey(ctx, dedupeKey)
 }
 
 func normalizeOpsSeverity(raw string) string {

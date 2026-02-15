@@ -16,6 +16,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/httpui"
+	"github.com/opus-domini/sentinel/internal/ops"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -55,6 +56,19 @@ func serve() int {
 		Publish: func(eventType string, payload map[string]any) {
 			eventHub.Publish(events.NewEvent(eventType, payload))
 		},
+		OpsTimeline: func(ctx context.Context, source, eventType, severity, resource, message, details string) {
+			if _, err := st.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+				Source:    source,
+				EventType: eventType,
+				Severity:  severity,
+				Resource:  resource,
+				Message:   message,
+				Details:   details,
+				CreatedAt: time.Now().UTC(),
+			}); err != nil {
+				slog.Warn("ops timeline write failed", "source", source, "err", err)
+			}
+		},
 	})
 	if cfg.Watchtower.Enabled {
 		watchtowerService.Start(context.Background())
@@ -69,9 +83,17 @@ func serve() int {
 		recoveryService.Start(context.Background())
 	}
 
-	api.Register(mux, guard, st, recoveryService, eventHub, currentVersion())
+	opsManager := ops.NewManager(time.Now(), st)
+	healthChecker := ops.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
+		eventHub.Publish(events.NewEvent(eventType, payload))
+	}, 0)
+	healthChecker.Start()
+
+	configPath := filepath.Join(cfg.DataDir, "config.toml")
+	api.Register(mux, guard, st, recoveryService, eventHub, currentVersion(), configPath)
 
 	exitCode := run(cfg, mux)
+	healthChecker.Stop()
 	if cfg.Watchtower.Enabled {
 		stopWatchtowerCtx, cancelWatchtower := context.WithTimeout(context.Background(), 2*time.Second)
 		watchtowerService.Stop(stopWatchtowerCtx)

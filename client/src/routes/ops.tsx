@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
+  Activity,
   Bell,
   Clock3,
+  FileText,
   Menu,
   Play,
   RefreshCw,
   RotateCw,
+  Settings,
   Square,
 } from 'lucide-react'
 import type {
   ConnectionState,
   OpsAlert,
   OpsAlertsResponse,
+  OpsConfigResponse,
+  OpsHostMetrics,
+  OpsMetricsResponse,
   OpsOverview,
   OpsOverviewResponse,
   OpsRunbook,
@@ -22,6 +28,7 @@ import type {
   OpsServiceAction,
   OpsServiceActionResponse,
   OpsServiceInspect,
+  OpsServiceLogsResponse,
   OpsServiceStatus,
   OpsServiceStatusResponse,
   OpsServicesResponse,
@@ -83,6 +90,47 @@ function opsTabButtonClass(active: boolean): string {
   )
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  )
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
+}
+
+function MetricCard({
+  label,
+  value,
+  sub,
+  alert,
+}: {
+  label: string
+  value: string
+  sub?: string
+  alert?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border p-2.5',
+        alert
+          ? 'border-red-500/40 bg-red-500/10'
+          : 'border-border-subtle bg-surface-elevated',
+      )}
+    >
+      <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-[12px] font-semibold">{value}</p>
+      {sub && (
+        <p className="text-[10px] text-muted-foreground">{sub}</p>
+      )}
+    </div>
+  )
+}
+
 function OpsPage() {
   const { tokenRequired } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -99,7 +147,7 @@ function OpsPage() {
   const [runbooks, setRunbooks] = useState<Array<OpsRunbook>>([])
   const [jobs, setJobs] = useState<Array<OpsRunbookRun>>([])
   const [opsTab, setOpsTab] = useState<
-    'services' | 'alerts' | 'timeline' | 'runbooks'
+    'services' | 'alerts' | 'timeline' | 'runbooks' | 'metrics' | 'config'
   >('services')
   const [overviewLoading, setOverviewLoading] = useState(false)
   const [servicesLoading, setServicesLoading] = useState(false)
@@ -123,6 +171,18 @@ function OpsPage() {
   const [serviceStatusError, setServiceStatusError] = useState('')
   const [serviceStatusData, setServiceStatusData] =
     useState<OpsServiceInspect | null>(null)
+
+  const [metrics, setMetrics] = useState<OpsHostMetrics | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [metricsError, setMetricsError] = useState('')
+  const [configContent, setConfigContent] = useState('')
+  const [configPath, setConfigPath] = useState('')
+  const [configLoading, setConfigLoading] = useState(false)
+  const [configError, setConfigError] = useState('')
+  const [configSaving, setConfigSaving] = useState(false)
+  const [configEdited, setConfigEdited] = useState('')
+  const [serviceLogs, setServiceLogs] = useState('')
+  const [serviceLogsLoading, setServiceLogsLoading] = useState(false)
 
   const previousServiceRef = useRef(new Map<string, OpsServiceStatus>())
 
@@ -217,6 +277,77 @@ function OpsPage() {
         )
       } finally {
         if (!background) setRunbooksLoading(false)
+      }
+    },
+    [api],
+  )
+
+  const refreshMetrics = useCallback(async () => {
+    setMetricsLoading(true)
+    try {
+      const data = await api<OpsMetricsResponse>('/api/ops/metrics')
+      setMetrics(data.metrics)
+      setMetricsError('')
+    } catch (error) {
+      setMetricsError(
+        error instanceof Error ? error.message : 'failed to load metrics',
+      )
+    } finally {
+      setMetricsLoading(false)
+    }
+  }, [api])
+
+  const refreshConfig = useCallback(async () => {
+    setConfigLoading(true)
+    try {
+      const data = await api<OpsConfigResponse>('/api/ops/config')
+      setConfigContent(data.content)
+      setConfigPath(data.path)
+      setConfigEdited(data.content)
+      setConfigError('')
+    } catch (error) {
+      setConfigError(
+        error instanceof Error ? error.message : 'failed to load config',
+      )
+    } finally {
+      setConfigLoading(false)
+    }
+  }, [api])
+
+  const saveConfig = useCallback(async () => {
+    setConfigSaving(true)
+    try {
+      await api('/api/ops/config', {
+        method: 'PATCH',
+        body: JSON.stringify({ content: configEdited }),
+      })
+      setConfigContent(configEdited)
+      pushToast({ title: 'Config', message: 'Saved (restart required)', level: 'info' })
+    } catch (error) {
+      pushToast({
+        title: 'Config',
+        message:
+          error instanceof Error ? error.message : 'failed to save config',
+        level: 'error',
+      })
+    } finally {
+      setConfigSaving(false)
+    }
+  }, [api, configEdited, pushToast])
+
+  const fetchServiceLogs = useCallback(
+    async (serviceName: string) => {
+      setServiceLogsLoading(true)
+      setServiceLogs('')
+      try {
+        const data = await api<OpsServiceLogsResponse>(
+          `/api/ops/services/${encodeURIComponent(serviceName)}/logs?lines=200`,
+        )
+        setServiceLogs(data.output)
+      } catch {
+        setServiceLogs('(failed to fetch logs)')
+      } finally {
+        setServiceLogsLoading(false)
       }
     },
     [api],
@@ -702,6 +833,28 @@ function OpsPage() {
                   >
                     Runbooks
                   </button>
+                  <button
+                    type="button"
+                    className={opsTabButtonClass(opsTab === 'metrics')}
+                    onClick={() => {
+                      setOpsTab('metrics')
+                      void refreshMetrics()
+                    }}
+                  >
+                    <Activity className="h-3 w-3" />
+                    Metrics
+                  </button>
+                  <button
+                    type="button"
+                    className={opsTabButtonClass(opsTab === 'config')}
+                    onClick={() => {
+                      setOpsTab('config')
+                      void refreshConfig()
+                    }}
+                  >
+                    <Settings className="h-3 w-3" />
+                    Config
+                  </button>
                 </nav>
                 <span className="text-[10px] text-muted-foreground">
                   event-driven
@@ -979,6 +1132,124 @@ function OpsPage() {
                   )}
                 </div>
               )}
+
+              {opsTab === 'metrics' && (
+                <div className="grid gap-2 p-2">
+                  {metricsLoading && (
+                    <p className="text-[12px] text-muted-foreground">
+                      Loading metrics...
+                    </p>
+                  )}
+                  {metricsError !== '' && (
+                    <p className="text-[12px] text-destructive-foreground">
+                      {metricsError}
+                    </p>
+                  )}
+                  {!metricsLoading && metrics != null && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                        <MetricCard
+                          label="CPU"
+                          value={`${metrics.cpuPercent >= 0 ? metrics.cpuPercent.toFixed(1) : '—'}%`}
+                          alert={metrics.cpuPercent > 90}
+                        />
+                        <MetricCard
+                          label="Memory"
+                          value={`${metrics.memPercent.toFixed(1)}%`}
+                          sub={`${formatBytes(metrics.memUsedBytes)} / ${formatBytes(metrics.memTotalBytes)}`}
+                          alert={metrics.memPercent > 90}
+                        />
+                        <MetricCard
+                          label="Disk"
+                          value={`${metrics.diskPercent.toFixed(1)}%`}
+                          sub={`${formatBytes(metrics.diskUsedBytes)} / ${formatBytes(metrics.diskTotalBytes)}`}
+                          alert={metrics.diskPercent > 95}
+                        />
+                        <MetricCard
+                          label="Load Avg"
+                          value={`${metrics.loadAvg1.toFixed(2)}`}
+                          sub={`${metrics.loadAvg5.toFixed(2)} / ${metrics.loadAvg15.toFixed(2)}`}
+                        />
+                        <MetricCard
+                          label="Goroutines"
+                          value={`${metrics.numGoroutines}`}
+                        />
+                        <MetricCard
+                          label="Go Heap"
+                          value={`${metrics.goMemAllocMB.toFixed(1)} MB`}
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        collected at {metrics.collectedAt}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-fit text-[11px]"
+                        onClick={() => void refreshMetrics()}
+                      >
+                        <RefreshCw className="mr-1 h-3 w-3" />
+                        Refresh
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {opsTab === 'config' && (
+                <div className="grid gap-2 p-2">
+                  {configLoading && (
+                    <p className="text-[12px] text-muted-foreground">
+                      Loading config...
+                    </p>
+                  )}
+                  {configError !== '' && (
+                    <p className="text-[12px] text-destructive-foreground">
+                      {configError}
+                    </p>
+                  )}
+                  {!configLoading && configContent !== '' && (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        {configPath}
+                      </p>
+                      <textarea
+                        value={configEdited}
+                        onChange={(e) => setConfigEdited(e.target.value)}
+                        className="min-h-[300px] w-full rounded-md border border-border-subtle bg-background p-2 font-mono text-[11px] text-foreground focus:border-primary/60 focus:outline-none"
+                        spellCheck={false}
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px]"
+                          disabled={
+                            configSaving || configEdited === configContent
+                          }
+                          onClick={() => void saveConfig()}
+                        >
+                          {configSaving ? 'Saving...' : 'Save'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-[11px]"
+                          disabled={configEdited === configContent}
+                          onClick={() => setConfigEdited(configContent)}
+                        >
+                          Reset
+                        </Button>
+                        <span className="text-[10px] text-muted-foreground">
+                          {configEdited !== configContent
+                            ? 'unsaved changes'
+                            : 'no changes'}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </section>
           </section>
         </ScrollArea>
@@ -1068,6 +1339,32 @@ function OpsPage() {
                       </pre>
                     </div>
                   )}
+
+                  <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
+                    <div className="mb-1 flex items-center justify-between">
+                      <p className="text-[11px] font-semibold text-foreground">
+                        <FileText className="mr-1 inline-block h-3 w-3" />
+                        Service logs
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px]"
+                        onClick={() =>
+                          void fetchServiceLogs(
+                            serviceStatusData.service.name,
+                          )
+                        }
+                      >
+                        {serviceLogsLoading ? 'Loading...' : 'Fetch logs'}
+                      </Button>
+                    </div>
+                    {serviceLogs !== '' && (
+                      <pre className="max-h-[36vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-background p-2 font-mono text-[11px] text-secondary-foreground">
+                        {serviceLogs}
+                      </pre>
+                    )}
+                  </div>
                 </div>
               </ScrollArea>
             )}

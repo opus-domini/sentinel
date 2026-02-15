@@ -223,6 +223,8 @@ type mockOpsControlPlane struct {
 	listServicesFn func(ctx context.Context) ([]opsplane.ServiceStatus, error)
 	actFn          func(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
 	inspectFn      func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
+	logsFn         func(ctx context.Context, name string, lines int) (string, error)
+	metricsFn      func(ctx context.Context) opsplane.HostMetrics
 }
 
 func (m *mockOpsControlPlane) Overview(ctx context.Context) (opsplane.Overview, error) {
@@ -251,6 +253,20 @@ func (m *mockOpsControlPlane) Inspect(ctx context.Context, name string) (opsplan
 		return m.inspectFn(ctx, name)
 	}
 	return opsplane.ServiceInspect{}, nil
+}
+
+func (m *mockOpsControlPlane) Logs(ctx context.Context, name string, lines int) (string, error) {
+	if m.logsFn != nil {
+		return m.logsFn(ctx, name, lines)
+	}
+	return "", nil
+}
+
+func (m *mockOpsControlPlane) Metrics(ctx context.Context) opsplane.HostMetrics {
+	if m.metricsFn != nil {
+		return m.metricsFn(ctx)
+	}
+	return opsplane.HostMetrics{}
 }
 
 // ---------------------------------------------------------------------------
@@ -3814,4 +3830,363 @@ func TestSetTmuxPresenceHandler(t *testing.T) {
 			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Custom service registration / unregistration tests
+// ---------------------------------------------------------------------------
+
+func TestRegisterAndUnregisterOpsService(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+
+	// Register a custom service.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+		"name":"myapp",
+		"displayName":"My App",
+		"manager":"systemd",
+		"unit":"myapp.service",
+		"scope":"user"
+	}`))
+	h.registerOpsService(w, r)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register status = %d, want 201; body = %s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	svc, _ := data["service"].(map[string]any)
+	if svc["name"] != "myapp" {
+		t.Fatalf("service.name = %v, want myapp", svc["name"])
+	}
+
+	// Duplicate registration should conflict.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+		"name":"myapp",
+		"displayName":"My App",
+		"manager":"systemd",
+		"unit":"myapp.service",
+		"scope":"user"
+	}`))
+	h.registerOpsService(w, r)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate register status = %d, want 409", w.Code)
+	}
+
+	// Unregister the service.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("DELETE", "/api/ops/services/myapp", nil)
+	r.SetPathValue("service", "myapp")
+	h.unregisterOpsService(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("unregister status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	body = jsonBody(t, w)
+	data, _ = body["data"].(map[string]any)
+	if data["removed"] != "myapp" {
+		t.Fatalf("removed = %v, want myapp", data["removed"])
+	}
+
+	// Unregister again should 404.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("DELETE", "/api/ops/services/myapp", nil)
+	r.SetPathValue("service", "myapp")
+	h.unregisterOpsService(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("double-unregister status = %d, want 404", w.Code)
+	}
+}
+
+func TestRegisterOpsServiceValidation(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+
+	// Missing name.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+		"unit":"myapp.service"
+	}`))
+	h.registerOpsService(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+
+	// Missing unit.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+		"name":"myapp"
+	}`))
+	h.registerOpsService(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Service logs handler tests
+// ---------------------------------------------------------------------------
+
+func TestOpsServiceLogsHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		logsFn: func(_ context.Context, name string, lines int) (string, error) {
+			if name != "sentinel" {
+				t.Fatalf("service = %q, want sentinel", name)
+			}
+			if lines != 50 {
+				t.Fatalf("lines = %d, want 50", lines)
+			}
+			return "line1\nline2\nline3", nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/sentinel/logs?lines=50", nil)
+	r.SetPathValue("service", "sentinel")
+	h.opsServiceLogs(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	if data["output"] != "line1\nline2\nline3" {
+		t.Fatalf("output = %v, want log lines", data["output"])
+	}
+}
+
+func TestOpsServiceLogsNotFound(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		logsFn: func(context.Context, string, int) (string, error) {
+			return "", opsplane.ErrServiceNotFound
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/missing/logs", nil)
+	r.SetPathValue("service", "missing")
+	h.opsServiceLogs(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Metrics handler tests
+// ---------------------------------------------------------------------------
+
+func TestOpsMetricsHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		metricsFn: func(context.Context) opsplane.HostMetrics {
+			return opsplane.HostMetrics{
+				CPUPercent:    42.5,
+				MemPercent:    65.2,
+				DiskPercent:   78.0,
+				LoadAvg1:      1.5,
+				NumGoroutines: 120,
+			}
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/metrics", nil)
+	h.opsMetrics(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	metrics, _ := data["metrics"].(map[string]any)
+	if metrics["cpuPercent"] != 42.5 {
+		t.Fatalf("cpuPercent = %v, want 42.5", metrics["cpuPercent"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Config handler tests
+// ---------------------------------------------------------------------------
+
+func TestOpsConfigHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte("[server]\nport = 4040\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	h.configPath = configPath
+
+	// GET config.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/config", nil)
+	h.opsConfig(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET config status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	if data["content"] != "[server]\nport = 4040\n" {
+		t.Fatalf("content = %q, want config content", data["content"])
+	}
+
+	// PATCH config.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("PATCH", "/api/ops/config", strings.NewReader(`{"content":"[server]\nport = 5050\n"}`))
+	h.patchOpsConfig(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH config status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+
+	// Verify written content.
+	got, err := os.ReadFile(configPath) //nolint:gosec // test file with known temp path
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(got) != "[server]\nport = 5050\n" {
+		t.Fatalf("config file content = %q, want updated content", string(got))
+	}
+}
+
+func TestOpsConfigNoPath(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	// configPath is empty by default.
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/config", nil)
+	h.opsConfig(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+func TestOpsPatchConfigValidation(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.configPath = filepath.Join(t.TempDir(), "config.toml")
+
+	// Empty content should fail.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("PATCH", "/api/ops/config", strings.NewReader(`{"content":""}`))
+	h.patchOpsConfig(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Runbook CRUD handler tests
+// ---------------------------------------------------------------------------
+
+func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	ctx := context.Background()
+	_ = ctx
+
+	// Create runbook.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(`{
+		"name":"deploy",
+		"description":"Deploy the app",
+		"steps":[{"type":"shell","title":"Build","command":"make build"}],
+		"enabled":true
+	}`))
+	h.createOpsRunbook(w, r)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201; body = %s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	rb, _ := data["runbook"].(map[string]any)
+	rbID, _ := rb["id"].(string)
+	if rbID == "" {
+		t.Fatal("runbook id should not be empty")
+	}
+	if rb["name"] != "deploy" {
+		t.Fatalf("name = %v, want deploy", rb["name"])
+	}
+
+	// Update runbook.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("PUT", "/api/ops/runbooks/"+rbID, strings.NewReader(`{
+		"name":"deploy-v2",
+		"description":"Deploy v2",
+		"steps":[{"type":"shell","title":"Build","command":"make build-all"}],
+		"enabled":true
+	}`))
+	r.SetPathValue("runbook", rbID)
+	h.updateOpsRunbook(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	body = jsonBody(t, w)
+	data, _ = body["data"].(map[string]any)
+	rb, _ = data["runbook"].(map[string]any)
+	if rb["name"] != "deploy-v2" {
+		t.Fatalf("updated name = %v, want deploy-v2", rb["name"])
+	}
+
+	// Delete runbook.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("DELETE", "/api/ops/runbooks/"+rbID, nil)
+	r.SetPathValue("runbook", rbID)
+	h.deleteOpsRunbook(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+
+	// Delete again should 404.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("DELETE", "/api/ops/runbooks/"+rbID, nil)
+	r.SetPathValue("runbook", rbID)
+	h.deleteOpsRunbook(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("double-delete status = %d, want 404", w.Code)
+	}
+}
+
+func TestCreateOpsRunbookValidation(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+
+	// Missing name.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(`{
+		"description":"no name"
+	}`))
+	h.createOpsRunbook(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestUpdateOpsRunbookNotFound(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("PUT", "/api/ops/runbooks/nonexistent", strings.NewReader(`{
+		"name":"test"
+	}`))
+	r.SetPathValue("runbook", "nonexistent")
+	h.updateOpsRunbook(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
 }

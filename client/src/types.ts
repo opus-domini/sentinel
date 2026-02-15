@@ -274,6 +274,45 @@ export type OpsServiceStatusResponse = {
   status: OpsServiceInspect
 }
 
+export type OpsServiceLogsResponse = {
+  service: string
+  lines: number
+  output: string
+}
+
+export type OpsHostMetrics = {
+  cpuPercent: number
+  memUsedBytes: number
+  memTotalBytes: number
+  memPercent: number
+  diskUsedBytes: number
+  diskTotalBytes: number
+  diskPercent: number
+  loadAvg1: number
+  loadAvg5: number
+  loadAvg15: number
+  numGoroutines: number
+  goMemAllocMB: number
+  collectedAt: string
+}
+
+export type OpsMetricsResponse = {
+  metrics: OpsHostMetrics
+}
+
+export type OpsConfigResponse = {
+  path: string
+  content: string
+}
+
+export type OpsCustomServiceWrite = {
+  name: string
+  displayName: string
+  manager: string
+  unit: string
+  scope: string
+}
+
 export type RecoverySessionState =
   | 'running'
   | 'killed'

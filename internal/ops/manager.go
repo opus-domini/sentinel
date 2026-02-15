@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/store"
 )
 
 const (
@@ -32,6 +33,10 @@ const (
 
 	sentinelLaunchdLabel = "io.opusdomini.sentinel"
 	updaterLaunchdLabel  = "io.opusdomini.sentinel.updater"
+
+	stateActive  = "active"
+	stateRunning = "running"
+	stateUnknown = "unknown"
 )
 
 var (
@@ -94,6 +99,7 @@ type Manager struct {
 	hostname  func() (string, error)
 	uidFn     func() int
 	goos      string
+	store     *store.Store
 
 	userStatusFn       func() (service.UserServiceStatus, error)
 	autoUpdateStatusFn func(scope string) (service.UserAutoUpdateServiceStatus, error)
@@ -103,7 +109,7 @@ type Manager struct {
 	commandRunner      commandRunner
 }
 
-func NewManager(startedAt time.Time) *Manager {
+func NewManager(startedAt time.Time, st *store.Store) *Manager {
 	now := time.Now().UTC()
 	if startedAt.IsZero() {
 		startedAt = now
@@ -114,6 +120,7 @@ func NewManager(startedAt time.Time) *Manager {
 		hostname:           os.Hostname,
 		uidFn:              os.Getuid,
 		goos:               runtime.GOOS,
+		store:              st,
 		userStatusFn:       service.UserStatus,
 		autoUpdateStatusFn: service.UserAutoUpdateStatusForScope,
 		installAutoUpdate:  service.InstallUserAutoUpdate,
@@ -121,6 +128,10 @@ func NewManager(startedAt time.Time) *Manager {
 		autoServicePathFn:  service.UserAutoUpdateServicePathForScope,
 		commandRunner:      runCommand,
 	}
+}
+
+func (m *Manager) Metrics(ctx context.Context) HostMetrics {
+	return CollectMetrics(ctx, "/")
 }
 
 func (m *Manager) Overview(ctx context.Context) (Overview, error) {
@@ -154,7 +165,7 @@ func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 	out.Services.Total = len(services)
 	for _, item := range services {
 		switch strings.ToLower(strings.TrimSpace(item.ActiveState)) {
-		case "active", "running":
+		case stateActive, stateRunning:
 			out.Services.Active++
 		case "failed":
 			out.Services.Failed++
@@ -165,7 +176,6 @@ func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 }
 
 func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
-	_ = ctx
 	baseStatus, err := m.userStatusFn()
 	if err != nil {
 		return nil, err
@@ -180,7 +190,7 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
 	}
 
 	now := m.nowFn().UTC().Format(time.RFC3339)
-	return []ServiceStatus{
+	services := []ServiceStatus{
 		{
 			Name:         ServiceNameSentinel,
 			DisplayName:  "Sentinel service",
@@ -204,7 +214,68 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
 			LastRunState: normalizeState(updaterStatus.LastRunState),
 			UpdatedAt:    now,
 		},
-	}, nil
+	}
+
+	// Merge custom services from store.
+	if m.store != nil {
+		custom, err := m.store.ListOpsCustomServices(ctx)
+		if err == nil {
+			for _, cs := range custom {
+				svc := ServiceStatus{
+					Name:        cs.Name,
+					DisplayName: cs.DisplayName,
+					Manager:     cs.Manager,
+					Unit:        cs.Unit,
+					Scope:       cs.Scope,
+					UpdatedAt:   now,
+				}
+				m.probeCustomService(ctx, &svc)
+				services = append(services, svc)
+			}
+		}
+	}
+
+	return services, nil
+}
+
+func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
+	switch svc.Manager {
+	case managerSystemd:
+		args := make([]string, 0, 6)
+		if strings.EqualFold(svc.Scope, scopeUser) {
+			args = append(args, "--user")
+		}
+		args = append(args, "show", svc.Unit, "--no-pager",
+			"--property=UnitFileState,ActiveState,LoadState")
+		out, err := m.commandRunner(ctx, "systemctl", args...)
+		if err != nil {
+			svc.Exists = false
+			svc.ActiveState = stateUnknown
+			svc.EnabledState = stateUnknown
+			return
+		}
+		props := parseSystemdShow(out)
+		svc.Exists = props["LoadState"] != "not-found"
+		svc.ActiveState = normalizeState(props["ActiveState"])
+		svc.EnabledState = normalizeState(props["UnitFileState"])
+	case managerLaunchd:
+		label := svc.Unit
+		target := launchdTarget(svc.Scope, m.uidFn, label)
+		_, err := m.commandRunner(ctx, "launchctl", "print", target)
+		if err != nil {
+			svc.Exists = false
+			svc.ActiveState = "inactive"
+			svc.EnabledState = "-"
+			return
+		}
+		svc.Exists = true
+		svc.ActiveState = stateRunning
+		svc.EnabledState = "enabled"
+	default:
+		svc.Exists = false
+		svc.ActiveState = stateUnknown
+		svc.EnabledState = stateUnknown
+	}
 }
 
 func (m *Manager) Act(ctx context.Context, name, action string) (ServiceStatus, error) {
@@ -496,13 +567,18 @@ func unitForService(manager, serviceName string) string {
 }
 
 func normalizeServiceName(raw string) (string, bool) {
-	name := strings.ToLower(strings.TrimSpace(raw))
-	switch name {
+	name := strings.TrimSpace(raw)
+	lower := strings.ToLower(name)
+	switch lower {
 	case ServiceNameSentinel, "sentinel.service":
 		return ServiceNameSentinel, true
 	case ServiceNameUpdater, "sentinel-updater.service", "sentinel-updater.timer", "updater":
 		return ServiceNameUpdater, true
 	default:
+		// Accept custom service names (non-empty).
+		if name != "" {
+			return name, true
+		}
 		return "", false
 	}
 }

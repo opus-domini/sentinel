@@ -443,7 +443,7 @@ func TestInspectSystemdService(t *testing.T) {
 func TestInspectServiceNotFound(t *testing.T) {
 	t.Parallel()
 
-	m := NewManager(time.Now())
+	m := NewManager(time.Now(), nil)
 	if _, err := m.Inspect(context.Background(), "missing"); !errors.Is(err, ErrServiceNotFound) {
 		t.Fatalf("error = %v, want ErrServiceNotFound", err)
 	}
@@ -452,7 +452,7 @@ func TestInspectServiceNotFound(t *testing.T) {
 func TestActValidatesInput(t *testing.T) {
 	t.Parallel()
 
-	m := NewManager(time.Now())
+	m := NewManager(time.Now(), nil)
 	if _, err := m.Act(context.Background(), "unknown", ActionStart); !errors.Is(err, ErrServiceNotFound) {
 		t.Fatalf("error = %v, want ErrServiceNotFound", err)
 	}
