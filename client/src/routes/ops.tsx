@@ -63,6 +63,15 @@ function serviceRowTone(service: OpsServiceStatus): string {
   return 'border-border-subtle bg-surface-elevated'
 }
 
+function opsTabButtonClass(active: boolean): string {
+  return cn(
+    'inline-flex cursor-pointer items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
+    active
+      ? 'border-primary/40 bg-primary/15 text-primary-text-bright'
+      : 'border-transparent text-muted-foreground hover:border-border hover:bg-surface-overlay hover:text-foreground',
+  )
+}
+
 function OpsPage() {
   const { tokenRequired } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -563,15 +572,17 @@ function OpsPage() {
             <span className="truncate text-muted-foreground">ops</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <ConnectionBadge state={connectionState} />
             <Button
               variant="outline"
-              size="icon"
+              size="sm"
+              className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
               onClick={refreshPage}
               aria-label="Refresh ops"
             >
               <RefreshCw className="h-4 w-4" />
+              Refresh
             </Button>
+            <ConnectionBadge state={connectionState} />
           </div>
         </header>
 
@@ -610,47 +621,50 @@ function OpsPage() {
 
             <section className="rounded-lg border border-border-subtle bg-secondary">
               <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2">
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    variant={opsTab === 'services' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-7 text-[11px]"
+                <nav className="flex flex-wrap gap-1 rounded-md border border-border-subtle bg-surface-elevated p-1">
+                  <button
+                    type="button"
+                    className={opsTabButtonClass(opsTab === 'services')}
                     onClick={() => setOpsTab('services')}
                   >
                     Services
-                  </Button>
-                  <Button
-                    variant={opsTab === 'alerts' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-7 text-[11px]"
+                  </button>
+                  <button
+                    type="button"
+                    className={opsTabButtonClass(opsTab === 'alerts')}
                     onClick={() => setOpsTab('alerts')}
                   >
                     <Bell className="h-3 w-3" />
                     Alerts
                     {alerts.length > 0 && (
-                      <span className="ml-1 rounded-full bg-amber-500/20 px-1 text-[10px] text-amber-200">
+                      <span
+                        className={cn(
+                          'ml-1 rounded-full px-1 text-[10px]',
+                          opsTab === 'alerts'
+                            ? 'bg-amber-400/20 text-amber-100'
+                            : 'bg-amber-500/20 text-amber-200',
+                        )}
+                      >
                         {alerts.length}
                       </span>
                     )}
-                  </Button>
-                  <Button
-                    variant={opsTab === 'timeline' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-7 text-[11px]"
+                  </button>
+                  <button
+                    type="button"
+                    className={opsTabButtonClass(opsTab === 'timeline')}
                     onClick={() => setOpsTab('timeline')}
                   >
                     <Clock3 className="h-3 w-3" />
                     Timeline
-                  </Button>
-                  <Button
-                    variant={opsTab === 'runbooks' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-7 text-[11px]"
+                  </button>
+                  <button
+                    type="button"
+                    className={opsTabButtonClass(opsTab === 'runbooks')}
                     onClick={() => setOpsTab('runbooks')}
                   >
                     Runbooks
-                  </Button>
-                </div>
+                  </button>
+                </nav>
                 <span className="text-[10px] text-muted-foreground">
                   event-driven
                 </span>

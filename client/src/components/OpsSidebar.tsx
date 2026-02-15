@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { RefreshCw, Wrench } from 'lucide-react'
+import { CircleHelp, RefreshCw, Wrench } from 'lucide-react'
 import type { OpsServiceStatus } from '@/types'
 import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
@@ -59,8 +59,16 @@ export default function OpsSidebar({
         <section className="grid gap-2 rounded-lg border border-border-subtle bg-secondary p-2">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-              Ops
+              Managed Services
             </span>
+            <TooltipHelper content="Services discovered on your host for quick status and actions.">
+              <span
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground"
+                aria-label="About managed services"
+              >
+                <CircleHelp className="h-3 w-3 cursor-help" />
+              </span>
+            </TooltipHelper>
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
               {services.length}
             </span>
@@ -69,7 +77,7 @@ export default function OpsSidebar({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="border border-border bg-surface-hover text-foreground hover:bg-accent"
+                  className="cursor-pointer border border-border bg-surface-hover text-foreground hover:bg-accent"
                   onClick={onRefresh}
                   aria-label="Refresh services"
                 >
@@ -80,7 +88,7 @@ export default function OpsSidebar({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
+                  className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
@@ -100,6 +108,14 @@ export default function OpsSidebar({
         </section>
 
         <section className="min-h-0 overflow-hidden rounded-lg border border-border-subtle bg-secondary">
+          <div className="flex items-center justify-between border-b border-border-subtle px-2 py-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Service Status
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {loading ? 'syncing...' : `${services.length} tracked`}
+            </span>
+          </div>
           <ScrollArea className="h-full">
             <div className="grid min-h-0 gap-1.5 p-2">
               {loading && services.length === 0 && (
