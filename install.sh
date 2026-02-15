@@ -23,9 +23,6 @@ if [ -z "${INSTALL_DIR:-}" ]; then
     fi
 fi
 
-USER_SERVICE_DIR="$HOME/.config/systemd/user"
-SYSTEM_SERVICE_DIR="/etc/systemd/system"
-
 # --- Colors ---
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
@@ -150,105 +147,61 @@ install -m755 "${TMP}/sentinel" "${INSTALL_DIR}/sentinel"
 ok "Installed sentinel to ${INSTALL_DIR}/sentinel"
 
 # --- Install systemd service (Linux only) ---
-if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
+if [ "$OS" = "linux" ]; then
     EXEC_START="${INSTALL_DIR}/sentinel"
-    ESCAPED_EXEC_START=$(printf '%s\n' "${EXEC_START}" | sed 's/[\/&]/\\&/g')
+    if ! command -v systemctl >/dev/null 2>&1; then
+        warn "systemctl not found; skipping service installation"
+        if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
+            warn "autoupdate requires systemctl on Linux; skipping autoupdate setup"
+        fi
+    elif [ "$IS_ROOT" -eq 1 ]; then
+        info "Running as root: installing systemd system service..."
+        if "${INSTALL_DIR}/sentinel" service install --exec "${EXEC_START}" --enable=true --start=true; then
+            echo ""
+            ok "systemd system service installed and started."
+            printf "\n${BOLD}  Service unit:${RESET}      sentinel\n"
+            printf "${BOLD}  Status:${RESET}            systemctl status sentinel\n"
+            printf "${BOLD}  Logs:${RESET}              journalctl -u sentinel -f\n"
+            printf "${BOLD}  Enable on boot:${RESET}    systemctl enable sentinel\n"
 
-    if [ "$IS_ROOT" -eq 1 ]; then
-        TARGET_UNIT="sentinel"
-        SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel.service"
-        TEMPLATE_PATH="${TMP}/sentinel.service"
-        SERVICE_PATH="${SYSTEM_SERVICE_DIR}/sentinel.service"
-
-        info "Running as root: installing system-level unit from ${SERVICE_TEMPLATE_URL}..."
-        if curl -fsSL "${SERVICE_TEMPLATE_URL}" -o "${TEMPLATE_PATH}"; then
-            sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
-
-            if systemctl daemon-reload; then
-                ACTION="start"
-                if systemctl is-active --quiet "${TARGET_UNIT}"; then
-                    ACTION="restart"
-                    SYSTEMCTL_CMD=(systemctl restart "${TARGET_UNIT}")
+            if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
+                info "Enabling daily autoupdate timer (system scope)..."
+                if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${EXEC_START}" --enable=true --start=true --service sentinel --scope system; then
+                    ok "Autoupdate timer enabled"
                 else
-                    SYSTEMCTL_CMD=(systemctl start "${TARGET_UNIT}")
+                    warn "failed to enable autoupdate timer"
+                    warn "you can retry with: sentinel service autoupdate install --scope system"
                 fi
-
-                if "${SYSTEMCTL_CMD[@]}"; then
-                    echo ""
-                    ok "systemd system service installed and ${ACTION}ed."
-                    printf "\n${BOLD}  Service unit:${RESET}      %s\n" "${TARGET_UNIT}"
-                    printf "${BOLD}  Status:${RESET}            systemctl status %s\n" "${TARGET_UNIT}"
-                    printf "${BOLD}  Logs:${RESET}              journalctl -u %s -f\n" "${TARGET_UNIT}"
-                    printf "${BOLD}  Enable on boot:${RESET}    systemctl enable %s\n" "${TARGET_UNIT}"
-                else
-                    warn "installed ${SERVICE_PATH}, but failed to start ${TARGET_UNIT}"
-                    warn "you can try: systemctl start ${TARGET_UNIT}"
-                fi
-
-                if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
-                    info "Enabling daily autoupdate timer (system scope)..."
-                    if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${EXEC_START}" --enable=true --start=true --service sentinel --scope system; then
-                        ok "Autoupdate timer enabled"
-                    else
-                        warn "failed to enable autoupdate timer"
-                        warn "you can retry with: sentinel service autoupdate install --scope system"
-                    fi
-                fi
-            else
-                warn "failed to run 'systemctl daemon-reload'"
-                warn "service file was written to ${SERVICE_PATH}"
             fi
         else
-            warn "failed to download contrib/sentinel.service for ${VERSION}; skipping service installation"
+            warn "failed to install/start system service"
+            warn "you can retry with: sentinel service install --exec \"${EXEC_START}\""
         fi
     else
-        mkdir -p "$USER_SERVICE_DIR"
-        SERVICE_TEMPLATE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/contrib/sentinel.service"
-        TEMPLATE_PATH="${TMP}/sentinel.service"
-        SERVICE_PATH="${USER_SERVICE_DIR}/sentinel.service"
+        info "Installing systemd user service..."
+        if "${INSTALL_DIR}/sentinel" service install --exec "${EXEC_START}" --enable=true --start=true; then
+            echo ""
+            ok "systemd user service installed and started."
 
-        info "Installing systemd user service from ${SERVICE_TEMPLATE_URL}..."
-        if curl -fsSL "${SERVICE_TEMPLATE_URL}" -o "${TEMPLATE_PATH}"; then
-            sed "s|^ExecStart=.*$|ExecStart=${ESCAPED_EXEC_START}|" "${TEMPLATE_PATH}" > "${SERVICE_PATH}"
-
-            if systemctl --user daemon-reload; then
-                ACTION="start"
-                if systemctl --user is-active --quiet sentinel; then
-                    ACTION="restart"
-                    SYSTEMCTL_USER_CMD=(systemctl --user restart sentinel)
+            if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
+                info "Enabling daily autoupdate timer..."
+                if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${EXEC_START}" --enable=true --start=true --service sentinel --scope user; then
+                    ok "Autoupdate timer enabled"
                 else
-                    SYSTEMCTL_USER_CMD=(systemctl --user start sentinel)
+                    warn "failed to enable autoupdate timer"
+                    warn "you can retry with: sentinel service autoupdate install"
                 fi
-
-                if "${SYSTEMCTL_USER_CMD[@]}"; then
-                    echo ""
-                    ok "systemd user service installed and ${ACTION}ed."
-                else
-                    warn "service installed, but failed to start user unit"
-                    warn "you can try: systemctl --user restart sentinel"
-                fi
-
-                if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
-                    info "Enabling daily autoupdate timer..."
-                    if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${EXEC_START}" --enable=true --start=true --service sentinel --scope user; then
-                        ok "Autoupdate timer enabled"
-                    else
-                        warn "failed to enable autoupdate timer"
-                        warn "you can retry with: sentinel service autoupdate install"
-                    fi
-                fi
-
-                printf "\n${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
-                printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
-                printf "${BOLD}  Auto-update status:${RESET} sentinel service autoupdate status\n"
-                printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
-                printf "    sudo loginctl enable-linger \$USER\n"
-            else
-                warn "failed to run 'systemctl --user daemon-reload' (likely no active user bus)"
-                warn "service file was written to ${SERVICE_PATH}"
             fi
+
+            printf "\n${BOLD}  Enable on login:${RESET}   systemctl --user enable sentinel\n"
+            printf "${BOLD}  View logs:${RESET}         journalctl --user -u sentinel -f\n"
+            printf "${BOLD}  Auto-update status:${RESET} sentinel service autoupdate status\n"
+            printf "\n  ${CYAN}Optional (start at boot without login):${RESET}\n"
+            printf "    sudo loginctl enable-linger \$USER\n"
         else
-            warn "failed to download contrib/sentinel.service for ${VERSION}; skipping service installation"
+            warn "failed to install/start user service"
+            warn "you can retry with: sentinel service install --exec \"${EXEC_START}\""
+            warn "if no active user bus is available, login to the target user session and retry"
         fi
     fi
 fi
@@ -256,16 +209,22 @@ fi
 # --- macOS launchd service ---
 if [ "$OS" = "darwin" ]; then
     echo ""
-    info "Installing launchd user service..."
+    LAUNCHD_SCOPE_LABEL="user"
+    LAUNCHD_LOG_PATH="~/.sentinel/logs/sentinel.out.log"
+    if [ "$IS_ROOT" -eq 1 ]; then
+        LAUNCHD_SCOPE_LABEL="system"
+        LAUNCHD_LOG_PATH="/var/log/sentinel/sentinel.out.log"
+    fi
+    info "Installing launchd ${LAUNCHD_SCOPE_LABEL} service..."
     if "${INSTALL_DIR}/sentinel" service install --exec "${INSTALL_DIR}/sentinel" --enable=true --start=true; then
-        ok "launchd user service installed and started."
+        ok "launchd ${LAUNCHD_SCOPE_LABEL} service installed and started."
     else
         warn "failed to install/start launchd service"
         warn "you can retry with: sentinel service install"
     fi
 
     if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
-        info "Enabling daily autoupdate with launchd..."
+        info "Enabling daily autoupdate with launchd (${LAUNCHD_SCOPE_LABEL} scope)..."
         if "${INSTALL_DIR}/sentinel" service autoupdate install --exec "${INSTALL_DIR}/sentinel" --enable=true --start=true --service io.opusdomini.sentinel --scope launchd --on-calendar daily; then
             ok "launchd autoupdate enabled"
         else
@@ -275,7 +234,7 @@ if [ "$OS" = "darwin" ]; then
     fi
 
     printf "\n${BOLD}  Service status:${RESET}    sentinel service status\n"
-    printf "${BOLD}  Service logs:${RESET}      tail -f ~/.sentinel/logs/sentinel.out.log\n"
+    printf "${BOLD}  Service logs:${RESET}      tail -f %s\n" "${LAUNCHD_LOG_PATH}"
     printf "${BOLD}  Auto-update status:${RESET} sentinel service autoupdate status\n"
 fi
 

@@ -74,14 +74,16 @@ What `install.sh` does:
   - starts or restarts the service (`systemctl start|restart sentinel`)
 - macOS:
   - installs binary to `~/.local/bin/sentinel` (or `INSTALL_DIR`)
-  - installs `~/Library/LaunchAgents/io.opusdomini.sentinel.plist`
+  - regular user installs `~/Library/LaunchAgents/io.opusdomini.sentinel.plist`
+  - root installs `/Library/LaunchDaemons/io.opusdomini.sentinel.plist`
   - starts or restarts service via `launchctl`
 - optional persistence:
   - `systemctl --user enable sentinel` (regular user)
   - `systemctl enable sentinel` (root)
-- optional auto-update (regular user):
+- optional auto-update:
   - `ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash`
   - or later: `sentinel service autoupdate install`
+  - to force root/system scope on Linux: `sentinel service autoupdate install --scope system`
 
 ### 2) Go install
 
@@ -141,11 +143,18 @@ systemctl --user enable sentinel
 systemctl enable sentinel
 ```
 
-Optional: enable daily updater timer (regular user install).
+Optional: enable daily updater timer.
 
 ```bash
 sentinel service autoupdate install
 sentinel service autoupdate status
+```
+
+For Linux root/system scope:
+
+```bash
+sentinel service autoupdate install --scope system
+sentinel service autoupdate status --scope system
 ```
 
 ### 2) Open Sentinel
