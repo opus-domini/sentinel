@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import type {
   PaneInfo,
@@ -24,6 +25,7 @@ import type {
   WindowInfo,
   WindowsResponse,
 } from '@/types'
+import type { TmuxInspectorSnapshot } from '@/lib/tmuxQueryCache'
 import type {
   SessionActivityPatch,
   SessionPatchApplyResult,
@@ -70,6 +72,11 @@ import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import { shouldSkipInspectorRefresh } from '@/lib/tmuxInspectorRefresh'
+import {
+  TMUX_SESSIONS_QUERY_KEY,
+  shouldCacheActiveInspectorSnapshot,
+  tmuxInspectorQueryKey,
+} from '@/lib/tmuxQueryCache'
 import {
   buildTimelineQueryString,
   shouldRefreshTimelineFromEvent,
@@ -253,12 +260,16 @@ function TmuxPage() {
   const { token, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
+  const queryClient = useQueryClient()
 
-  const [sessions, setSessions] = useState<Array<Session>>([])
   const [tabsState, rawDispatchTabs] = useReducer(
     tabsReducer,
     undefined,
     loadPersistedTabs,
+  )
+  const [sessions, setSessions] = useState<Array<Session>>(
+    () =>
+      queryClient.getQueryData<Array<Session>>(TMUX_SESSIONS_QUERY_KEY) ?? [],
   )
   const dispatchTabs = useCallback(
     (action: Parameters<typeof rawDispatchTabs>[0]) => {
@@ -281,8 +292,24 @@ function TmuxPage() {
   }, [])
   const [filter, setFilter] = useState('')
 
-  const [windows, setWindows] = useState<Array<WindowInfo>>([])
-  const [panes, setPanes] = useState<Array<PaneInfo>>([])
+  const [windows, setWindows] = useState<Array<WindowInfo>>(() => {
+    const active = tabsState.activeSession.trim()
+    if (active === '') return []
+    return (
+      queryClient.getQueryData<TmuxInspectorSnapshot>(
+        tmuxInspectorQueryKey(active),
+      )?.windows ?? []
+    )
+  })
+  const [panes, setPanes] = useState<Array<PaneInfo>>(() => {
+    const active = tabsState.activeSession.trim()
+    if (active === '') return []
+    return (
+      queryClient.getQueryData<TmuxInspectorSnapshot>(
+        tmuxInspectorQueryKey(active),
+      )?.panes ?? []
+    )
+  })
   const [activeWindowIndexOverride, setActiveWindowIndexOverride] = useState<
     number | null
   >(null)
@@ -437,7 +464,8 @@ function TmuxPage() {
   }, [tabsState])
   useEffect(() => {
     sessionsRef.current = sessions
-  }, [sessions])
+    queryClient.setQueryData(TMUX_SESSIONS_QUERY_KEY, sessions)
+  }, [queryClient, sessions])
   useEffect(() => {
     windowsRef.current = windows
   }, [windows])
@@ -448,12 +476,48 @@ function TmuxPage() {
     inspectorLoadingRef.current = inspectorLoading
   }, [inspectorLoading])
   useEffect(() => {
+    const active = tabsState.activeSession.trim()
+    if (!shouldCacheActiveInspectorSnapshot(active, windows, panes)) {
+      return
+    }
+    queryClient.setQueryData<TmuxInspectorSnapshot>(
+      tmuxInspectorQueryKey(active),
+      {
+        windows,
+        panes,
+      },
+    )
+  }, [panes, queryClient, tabsState.activeSession, windows])
+  useEffect(() => {
     presenceTerminalIDRef.current = resolvePresenceTerminalID()
   }, [])
   useEffect(() => {
+    const active = tabsState.activeSession.trim()
+    if (active === '') {
+      setActiveWindowIndexOverride(null)
+      setActivePaneIDOverride(null)
+      return
+    }
+    const cached = queryClient.getQueryData<TmuxInspectorSnapshot>(
+      tmuxInspectorQueryKey(active),
+    )
+    if (cached) {
+      setWindows((prev) =>
+        sameWindowProjection(prev, cached.windows) ? prev : cached.windows,
+      )
+      setPanes((prev) =>
+        samePaneProjection(prev, cached.panes) ? prev : cached.panes,
+      )
+      setInspectorError('')
+      setInspectorLoading(false)
+      inspectorLoadingRef.current = false
+    } else {
+      setWindows([])
+      setPanes([])
+    }
     setActiveWindowIndexOverride(null)
     setActivePaneIDOverride(null)
-  }, [tabsState.activeSession])
+  }, [queryClient, tabsState.activeSession])
   useEffect(() => {
     activeWindowOverrideRef.current = activeWindowIndexOverride
   }, [activeWindowIndexOverride])
@@ -944,6 +1008,13 @@ function TmuxPage() {
         nextWindows ?? windowsRef.current,
         nextPanes ?? panesRef.current,
       )
+      queryClient.setQueryData<TmuxInspectorSnapshot>(
+        tmuxInspectorQueryKey(activeSession),
+        {
+          windows: merged.windows,
+          panes: merged.panes,
+        },
+      )
 
       setWindows((prev) =>
         sameWindowProjection(prev, merged.windows) ? prev : merged.windows,
@@ -972,7 +1043,7 @@ function TmuxPage() {
 
       return true
     },
-    [mergeInspectorSnapshotWithPending],
+    [mergeInspectorSnapshotWithPending, queryClient],
   )
 
   const settlePendingSeenAcks = useCallback((ok: boolean) => {
@@ -1059,6 +1130,13 @@ function TmuxPage() {
           windowsResponse.windows,
           panesResponse.panes,
         )
+        queryClient.setQueryData<TmuxInspectorSnapshot>(
+          tmuxInspectorQueryKey(session),
+          {
+            windows: merged.windows,
+            panes: merged.panes,
+          },
+        )
         setWindows((prev) =>
           sameWindowProjection(prev, merged.windows) ? prev : merged.windows,
         )
@@ -1117,7 +1195,7 @@ function TmuxPage() {
         }
       }
     },
-    [api, bumpRuntimeMetric, mergeInspectorSnapshotWithPending],
+    [api, bumpRuntimeMetric, mergeInspectorSnapshotWithPending, queryClient],
   )
 
   const markSeen = useCallback(
