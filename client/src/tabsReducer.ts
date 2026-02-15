@@ -13,10 +13,48 @@ export type TabsAction =
   | { type: 'sync'; sessions: Array<string> }
   | { type: 'clear' }
 
+const STORAGE_KEY = 'sentinel_tabs'
+
 export const initialTabsState: TabsState = {
   openTabs: [],
   activeSession: '',
   activeEpoch: 0,
+}
+
+export function loadPersistedTabs(): TabsState {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return initialTabsState
+    const parsed = JSON.parse(raw) as {
+      openTabs?: Array<string>
+      activeSession?: string
+    }
+    if (!Array.isArray(parsed.openTabs)) return initialTabsState
+    return {
+      openTabs: parsed.openTabs.filter(
+        (t) => typeof t === 'string' && t !== '',
+      ),
+      activeSession:
+        typeof parsed.activeSession === 'string' ? parsed.activeSession : '',
+      activeEpoch: 0,
+    }
+  } catch {
+    return initialTabsState
+  }
+}
+
+export function persistTabs(state: TabsState): void {
+  try {
+    sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        openTabs: state.openTabs,
+        activeSession: state.activeSession,
+      }),
+    )
+  } catch {
+    // sessionStorage full or unavailable — ignore.
+  }
 }
 
 export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
