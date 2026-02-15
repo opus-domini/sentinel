@@ -26,6 +26,13 @@ const (
 	defaultAPIBase      = "https://api.github.com"
 	defaultServiceUnit  = "sentinel"
 	defaultLaunchdLabel = "io.opusdomini.sentinel"
+	hostOSLinux         = "linux"
+	hostOSDarwin        = "darwin"
+	restartScopeAuto    = "auto"
+	restartScopeUser    = "user"
+	restartScopeSystem  = "system"
+	restartScopeLaunchd = "launchd"
+	restartScopeNone    = "none"
 	binaryName          = "sentinel"
 	maxExtractedBinSize = int64(128 * 1024 * 1024) // 128 MiB hard limit for extracted binary.
 )
@@ -101,6 +108,12 @@ type asset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Digest             string `json:"digest"`
 }
+
+var (
+	updaterRuntimeGOOS = runtime.GOOS
+	updaterGetuid      = os.Getuid
+	updaterGeteuid     = os.Geteuid
+)
 
 func Check(ctx context.Context, opts CheckOptions) (CheckResult, error) {
 	now := time.Now().UTC()
@@ -291,15 +304,8 @@ func normalizeApplyOptions(opts ApplyOptions) ApplyOptions {
 		cfg.Arch = runtime.GOARCH
 	}
 	cfg.SystemdScope = strings.ToLower(strings.TrimSpace(cfg.SystemdScope))
-	if cfg.SystemdScope == "" {
-		switch runtime.GOOS {
-		case "linux":
-			cfg.SystemdScope = "user"
-		case "darwin":
-			cfg.SystemdScope = "launchd"
-		default:
-			cfg.SystemdScope = "none"
-		}
+	if cfg.SystemdScope == "" || cfg.SystemdScope == restartScopeAuto {
+		cfg.SystemdScope = defaultRestartScope()
 	}
 	cfg.ServiceUnit = strings.TrimSpace(cfg.ServiceUnit)
 	if cfg.ServiceUnit == "" {
@@ -319,19 +325,60 @@ func (o ApplyOptions) buildRestartCommand() []string {
 	if unit == "" {
 		unit = defaultServiceUnit
 	}
-	switch o.SystemdScope {
-	case "none":
+	scope := strings.ToLower(strings.TrimSpace(o.SystemdScope))
+	if scope == "" || scope == restartScopeAuto {
+		scope = defaultRestartScope()
+	}
+
+	switch scope {
+	case restartScopeNone:
 		return nil
-	case "system":
-		return []string{"systemctl", "restart", unit}
-	case "launchd":
-		if unit == defaultServiceUnit {
-			unit = defaultLaunchdLabel
+	case restartScopeSystem:
+		if updaterRuntimeGOOS == hostOSDarwin {
+			return buildLaunchdRestartCommand(restartScopeSystem, unit)
 		}
-		return []string{"launchctl", "kickstart", "-k", fmt.Sprintf("gui/%d/%s", os.Getuid(), unit)}
+		return []string{"systemctl", "restart", unit}
+	case restartScopeUser:
+		if updaterRuntimeGOOS == hostOSDarwin {
+			return buildLaunchdRestartCommand(restartScopeUser, unit)
+		}
+		return []string{"systemctl", "--user", "restart", unit}
+	case restartScopeLaunchd:
+		if updaterGeteuid() == 0 {
+			return buildLaunchdRestartCommand(restartScopeSystem, unit)
+		}
+		return buildLaunchdRestartCommand(restartScopeUser, unit)
 	default:
 		return []string{"systemctl", "--user", "restart", unit}
 	}
+}
+
+func defaultRestartScope() string {
+	switch updaterRuntimeGOOS {
+	case hostOSLinux:
+		if updaterGeteuid() == 0 {
+			return restartScopeSystem
+		}
+		return restartScopeUser
+	case hostOSDarwin:
+		if updaterGeteuid() == 0 {
+			return restartScopeSystem
+		}
+		return restartScopeLaunchd
+	default:
+		return restartScopeNone
+	}
+}
+
+func buildLaunchdRestartCommand(scope, unit string) []string {
+	if unit == defaultServiceUnit {
+		unit = defaultLaunchdLabel
+	}
+	domain := fmt.Sprintf("gui/%d", updaterGetuid())
+	if scope == restartScopeSystem {
+		domain = restartScopeSystem
+	}
+	return []string{"launchctl", "kickstart", "-k", fmt.Sprintf("%s/%s", domain, unit)}
 }
 
 func fetchLatestRelease(ctx context.Context, cfg CheckOptions) (release, error) {

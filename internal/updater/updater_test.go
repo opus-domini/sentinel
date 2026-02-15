@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 const (
 	latestReleasePath = "/repos/opus-domini/sentinel/releases/latest"
 	checksumAssetPath = "/assets/checksums"
+	testOSDarwin      = "darwin"
 )
 
 func TestCompareVersions(t *testing.T) {
@@ -94,8 +96,69 @@ func TestBuildRestartCommandLaunchd(t *testing.T) {
 	if cmd[0] != "launchctl" || cmd[1] != "kickstart" || cmd[2] != "-k" {
 		t.Fatalf("unexpected launchd restart command: %#v", cmd)
 	}
+	if os.Geteuid() == 0 {
+		if cmd[3] != "system/"+defaultLaunchdLabel {
+			t.Fatalf("unexpected launchd target for root: %q", cmd[3])
+		}
+		return
+	}
 	if !strings.HasPrefix(cmd[3], "gui/") || !strings.HasSuffix(cmd[3], "/"+defaultLaunchdLabel) {
-		t.Fatalf("unexpected launchd target: %q", cmd[3])
+		t.Fatalf("unexpected launchd target for user: %q", cmd[3])
+	}
+}
+
+func TestBuildRestartCommandSystemScope(t *testing.T) {
+	t.Parallel()
+
+	cmd := (ApplyOptions{
+		Restart:      true,
+		SystemdScope: "system",
+		ServiceUnit:  "sentinel",
+	}).buildRestartCommand()
+
+	if runtime.GOOS == testOSDarwin {
+		if len(cmd) != 4 {
+			t.Fatalf("len(buildRestartCommand) = %d, want 4", len(cmd))
+		}
+		if cmd[0] != "launchctl" || cmd[1] != "kickstart" || cmd[2] != "-k" || cmd[3] != "system/"+defaultLaunchdLabel {
+			t.Fatalf("unexpected darwin system restart command: %#v", cmd)
+		}
+		return
+	}
+
+	if len(cmd) != 3 {
+		t.Fatalf("len(buildRestartCommand) = %d, want 3", len(cmd))
+	}
+	if cmd[0] != "systemctl" || cmd[1] != "restart" || cmd[2] != "sentinel" {
+		t.Fatalf("unexpected linux system restart command: %#v", cmd)
+	}
+}
+
+func TestNormalizeApplyOptionsDefaultScope(t *testing.T) {
+	t.Parallel()
+
+	cfg := normalizeApplyOptions(ApplyOptions{})
+	switch runtime.GOOS {
+	case "linux":
+		want := "user"
+		if os.Geteuid() == 0 {
+			want = "system"
+		}
+		if cfg.SystemdScope != want {
+			t.Fatalf("normalizeApplyOptions default scope = %q, want %q", cfg.SystemdScope, want)
+		}
+	case testOSDarwin:
+		want := "launchd"
+		if os.Geteuid() == 0 {
+			want = "system"
+		}
+		if cfg.SystemdScope != want {
+			t.Fatalf("normalizeApplyOptions default scope = %q, want %q", cfg.SystemdScope, want)
+		}
+	default:
+		if cfg.SystemdScope != "none" {
+			t.Fatalf("normalizeApplyOptions default scope = %q, want none", cfg.SystemdScope)
+		}
 	}
 }
 

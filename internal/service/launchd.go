@@ -19,10 +19,22 @@ const (
 	launchdServicePlistName = launchdServiceLabel + ".plist"
 	launchdUpdaterPlistName = launchdAutoUpdateLabel + ".plist"
 	launchdStateInactive    = "inactive"
+
+	launchdSystemServicePath = "/Library/LaunchDaemons/" + launchdServicePlistName
+	launchdSystemUpdaterPath = "/Library/LaunchDaemons/" + launchdUpdaterPlistName
+	launchdSystemLogDir      = "/var/log/sentinel"
 )
 
 func installUserLaunchd(opts InstallUserOptions) error {
-	if err := ensureLaunchdUserSupported(); err != nil {
+	if err := ensureLaunchdSupported(); err != nil {
+		return err
+	}
+
+	scope, err := normalizeLaunchdScope(managerScopeAuto)
+	if err != nil {
+		return err
+	}
+	if err := ensureLaunchdScopePrivileges(scope); err != nil {
 		return err
 	}
 
@@ -31,31 +43,31 @@ func installUserLaunchd(opts InstallUserOptions) error {
 		return err
 	}
 
-	servicePath, err := userServicePathLaunchd()
+	servicePath, err := userServicePathLaunchdForScope(scope)
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(servicePath), 0o750); err != nil {
-		return fmt.Errorf("create launchd user directory: %w", err)
+		return fmt.Errorf("create launchd directory: %w", err)
 	}
 
-	stdoutPath, stderrPath, err := launchdLogPaths("sentinel")
+	stdoutPath, stderrPath, err := launchdLogPathsForScope("sentinel", scope)
 	if err != nil {
 		return err
 	}
 	plist := renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath)
-	if err := os.WriteFile(servicePath, []byte(plist), 0o600); err != nil {
+	if err := os.WriteFile(servicePath, []byte(plist), launchdUnitFileMode(scope)); err != nil {
 		return fmt.Errorf("write launchd service plist: %w", err)
 	}
 
 	if opts.Enable || opts.Start {
-		_ = launchdBootout(launchdServiceLabel)
-		if err := launchdBootstrap(servicePath, launchdServiceLabel); err != nil {
+		_ = launchdBootout(scope, launchdServiceLabel)
+		if err := launchdBootstrap(scope, servicePath, launchdServiceLabel); err != nil {
 			return err
 		}
 	}
 	if opts.Start {
-		if err := launchdKickstart(launchdServiceLabel); err != nil {
+		if err := launchdKickstart(scope, launchdServiceLabel); err != nil {
 			return err
 		}
 	}
@@ -63,7 +75,15 @@ func installUserLaunchd(opts InstallUserOptions) error {
 }
 
 func installUserAutoUpdateLaunchd(opts InstallUserAutoUpdateOptions) error {
-	if err := ensureLaunchdUserSupported(); err != nil {
+	if err := ensureLaunchdSupported(); err != nil {
+		return err
+	}
+
+	scope, err := normalizeLaunchdScope(opts.SystemdScope)
+	if err != nil {
+		return err
+	}
+	if err := ensureLaunchdScopePrivileges(scope); err != nil {
 		return err
 	}
 
@@ -80,44 +100,35 @@ func installUserAutoUpdateLaunchd(opts InstallUserAutoUpdateOptions) error {
 	if err != nil {
 		return err
 	}
-	scope := strings.ToLower(strings.TrimSpace(opts.SystemdScope))
-	switch scope {
-	case "", managerScopeLaunchd, managerScopeUser:
-		// Accept "user" for CLI parity with Linux defaults.
-	case managerScopeSystem:
-		return errors.New("launchd autoupdate does not support system scope")
-	default:
-		return fmt.Errorf("invalid launchd scope: %s", opts.SystemdScope)
-	}
 
-	updaterPath, err := userAutoUpdatePathLaunchd()
+	updaterPath, err := userAutoUpdatePathLaunchdForScope(scope)
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(updaterPath), 0o750); err != nil {
-		return fmt.Errorf("create launchd user directory: %w", err)
+		return fmt.Errorf("create launchd directory: %w", err)
 	}
 
-	stdoutPath, stderrPath, err := launchdLogPaths("sentinel-updater")
+	stdoutPath, stderrPath, err := launchdLogPathsForScope("sentinel-updater", scope)
 	if err != nil {
 		return err
 	}
 	// launchd does not provide a direct RandomizedDelaySec equivalent.
 	_ = opts.RandomizedDelay
 
-	plist := renderLaunchdUserAutoUpdatePlist(execPath, serviceLabel, interval, stdoutPath, stderrPath)
-	if err := os.WriteFile(updaterPath, []byte(plist), 0o600); err != nil {
+	plist := renderLaunchdUserAutoUpdatePlist(execPath, serviceLabel, scope, interval, stdoutPath, stderrPath)
+	if err := os.WriteFile(updaterPath, []byte(plist), launchdUnitFileMode(scope)); err != nil {
 		return fmt.Errorf("write launchd autoupdate plist: %w", err)
 	}
 
 	if opts.Enable || opts.Start {
-		_ = launchdBootout(launchdAutoUpdateLabel)
-		if err := launchdBootstrap(updaterPath, launchdAutoUpdateLabel); err != nil {
+		_ = launchdBootout(scope, launchdAutoUpdateLabel)
+		if err := launchdBootstrap(scope, updaterPath, launchdAutoUpdateLabel); err != nil {
 			return err
 		}
 	}
 	if opts.Start {
-		if err := launchdKickstart(launchdAutoUpdateLabel); err != nil {
+		if err := launchdKickstart(scope, launchdAutoUpdateLabel); err != nil {
 			return err
 		}
 	}
@@ -125,16 +136,24 @@ func installUserAutoUpdateLaunchd(opts InstallUserAutoUpdateOptions) error {
 }
 
 func uninstallUserLaunchd(opts UninstallUserOptions) error {
-	if err := ensureLaunchdUserSupported(); err != nil {
+	if err := ensureLaunchdSupported(); err != nil {
+		return err
+	}
+
+	scope, err := normalizeLaunchdScope(managerScopeAuto)
+	if err != nil {
+		return err
+	}
+	if err := ensureLaunchdScopePrivileges(scope); err != nil {
 		return err
 	}
 
 	if opts.Disable || opts.Stop {
-		_ = launchdBootout(launchdServiceLabel)
+		_ = launchdBootout(scope, launchdServiceLabel)
 	}
 
 	if opts.RemoveUnit {
-		servicePath, err := userServicePathLaunchd()
+		servicePath, err := userServicePathLaunchdForScope(scope)
 		if err != nil {
 			return err
 		}
@@ -146,16 +165,24 @@ func uninstallUserLaunchd(opts UninstallUserOptions) error {
 }
 
 func uninstallUserAutoUpdateLaunchd(opts UninstallUserAutoUpdateOptions) error {
-	if err := ensureLaunchdUserSupported(); err != nil {
+	if err := ensureLaunchdSupported(); err != nil {
+		return err
+	}
+
+	scope, err := normalizeLaunchdScope(opts.Scope)
+	if err != nil {
+		return err
+	}
+	if err := ensureLaunchdScopePrivileges(scope); err != nil {
 		return err
 	}
 
 	if opts.Disable || opts.Stop {
-		_ = launchdBootout(launchdAutoUpdateLabel)
+		_ = launchdBootout(scope, launchdAutoUpdateLabel)
 	}
 
 	if opts.RemoveUnit {
-		updaterPath, err := userAutoUpdatePathLaunchd()
+		updaterPath, err := userAutoUpdatePathLaunchdForScope(scope)
 		if err != nil {
 			return err
 		}
@@ -167,7 +194,16 @@ func uninstallUserAutoUpdateLaunchd(opts UninstallUserAutoUpdateOptions) error {
 }
 
 func userStatusLaunchd() (UserServiceStatus, error) {
-	servicePath, err := userServicePathLaunchd()
+	return userStatusLaunchdForScope("")
+}
+
+func userStatusLaunchdForScope(scopeRaw string) (UserServiceStatus, error) {
+	scope, err := normalizeLaunchdScope(scopeRaw)
+	if err != nil {
+		return UserServiceStatus{}, err
+	}
+
+	servicePath, err := userServicePathLaunchdForScope(scope)
 	if err != nil {
 		return UserServiceStatus{}, err
 	}
@@ -186,7 +222,7 @@ func userStatusLaunchd() (UserServiceStatus, error) {
 	}
 
 	st.SystemctlAvailable = true
-	loaded, active, _ := readLaunchdJobState(launchdServiceLabel)
+	loaded, active, _ := readLaunchdJobState(scope, launchdServiceLabel)
 	if loaded {
 		st.EnabledState = "loaded"
 		st.ActiveState = active
@@ -197,8 +233,13 @@ func userStatusLaunchd() (UserServiceStatus, error) {
 	return st, nil
 }
 
-func userAutoUpdateStatusLaunchd() (UserAutoUpdateServiceStatus, error) {
-	updaterPath, err := userAutoUpdatePathLaunchd()
+func userAutoUpdateStatusLaunchdForScope(scopeRaw string) (UserAutoUpdateServiceStatus, error) {
+	scope, err := normalizeLaunchdScope(scopeRaw)
+	if err != nil {
+		return UserAutoUpdateServiceStatus{}, err
+	}
+
+	updaterPath, err := userAutoUpdatePathLaunchdForScope(scope)
 	if err != nil {
 		return UserAutoUpdateServiceStatus{}, err
 	}
@@ -219,7 +260,7 @@ func userAutoUpdateStatusLaunchd() (UserAutoUpdateServiceStatus, error) {
 	}
 
 	st.SystemctlAvailable = true
-	loaded, active, lastRun := readLaunchdJobState(launchdAutoUpdateLabel)
+	loaded, active, lastRun := readLaunchdJobState(scope, launchdAutoUpdateLabel)
 	if loaded {
 		st.TimerEnabledState = "loaded"
 		st.TimerActiveState = active
@@ -232,6 +273,18 @@ func userAutoUpdateStatusLaunchd() (UserAutoUpdateServiceStatus, error) {
 }
 
 func userServicePathLaunchd() (string, error) {
+	return userServicePathLaunchdForScope("")
+}
+
+func userServicePathLaunchdForScope(scopeRaw string) (string, error) {
+	scope, err := normalizeLaunchdScope(scopeRaw)
+	if err != nil {
+		return "", err
+	}
+	if scope == managerScopeSystem {
+		return launchdSystemServicePath, nil
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
@@ -239,7 +292,15 @@ func userServicePathLaunchd() (string, error) {
 	return filepath.Join(home, "Library", "LaunchAgents", launchdServicePlistName), nil
 }
 
-func userAutoUpdatePathLaunchd() (string, error) {
+func userAutoUpdatePathLaunchdForScope(scopeRaw string) (string, error) {
+	scope, err := normalizeLaunchdScope(scopeRaw)
+	if err != nil {
+		return "", err
+	}
+	if scope == managerScopeSystem {
+		return launchdSystemUpdaterPath, nil
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
@@ -247,21 +308,31 @@ func userAutoUpdatePathLaunchd() (string, error) {
 	return filepath.Join(home, "Library", "LaunchAgents", launchdUpdaterPlistName), nil
 }
 
-func launchdLogPaths(baseName string) (string, string, error) {
-	home, err := os.UserHomeDir()
+func launchdLogPathsForScope(baseName, scopeRaw string) (string, string, error) {
+	scope, err := normalizeLaunchdScope(scopeRaw)
 	if err != nil {
-		return "", "", fmt.Errorf("resolve home dir: %w", err)
+		return "", "", err
 	}
-	logDir := filepath.Join(home, ".sentinel", "logs")
+
+	var logDir string
+	if scope == managerScopeSystem {
+		logDir = launchdSystemLogDir
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", "", fmt.Errorf("resolve home dir: %w", err)
+		}
+		logDir = filepath.Join(home, ".sentinel", "logs")
+	}
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return "", "", fmt.Errorf("create sentinel log directory: %w", err)
 	}
 	return filepath.Join(logDir, baseName+".out.log"), filepath.Join(logDir, baseName+".err.log"), nil
 }
 
-func ensureLaunchdUserSupported() error {
+func ensureLaunchdSupported() error {
 	if runtime.GOOS != launchdSupportedOS {
-		return errors.New("launchd user service commands are supported on macOS only")
+		return errors.New("launchd service commands are supported on macOS only")
 	}
 	if _, err := exec.LookPath("launchctl"); err != nil {
 		return errors.New("launchctl was not found in PATH")
@@ -269,9 +340,40 @@ func ensureLaunchdUserSupported() error {
 	return nil
 }
 
-func launchdBootstrap(plistPath, label string) error {
-	if err := runLaunchctl("bootstrap", launchdDomainTarget(), plistPath); err != nil {
-		loaded, _, _ := readLaunchdJobState(label)
+func ensureLaunchdScopePrivileges(scope string) error {
+	if scope == managerScopeSystem && os.Geteuid() != 0 {
+		return errors.New("scope=system requires root privileges")
+	}
+	return nil
+}
+
+func normalizeLaunchdScope(raw string) (string, error) {
+	scope := strings.ToLower(strings.TrimSpace(raw))
+	switch scope {
+	case "", managerScopeAuto, managerScopeLaunchd:
+		if os.Geteuid() == 0 {
+			return managerScopeSystem, nil
+		}
+		return managerScopeUser, nil
+	case managerScopeUser:
+		return managerScopeUser, nil
+	case managerScopeSystem:
+		return managerScopeSystem, nil
+	default:
+		return "", fmt.Errorf("invalid launchd scope: %s", raw)
+	}
+}
+
+func launchdUnitFileMode(scope string) os.FileMode {
+	if scope == managerScopeSystem {
+		return 0o644
+	}
+	return 0o600
+}
+
+func launchdBootstrap(scope, plistPath, label string) error {
+	if err := runLaunchctl("bootstrap", launchdDomainTarget(scope), plistPath); err != nil {
+		loaded, _, _ := readLaunchdJobState(scope, label)
 		if loaded {
 			return nil
 		}
@@ -280,9 +382,9 @@ func launchdBootstrap(plistPath, label string) error {
 	return nil
 }
 
-func launchdBootout(label string) error {
-	if err := runLaunchctl("bootout", launchdJobTarget(label)); err != nil {
-		loaded, _, _ := readLaunchdJobState(label)
+func launchdBootout(scope, label string) error {
+	if err := runLaunchctl("bootout", launchdJobTarget(scope, label)); err != nil {
+		loaded, _, _ := readLaunchdJobState(scope, label)
 		if !loaded {
 			return nil
 		}
@@ -291,16 +393,19 @@ func launchdBootout(label string) error {
 	return nil
 }
 
-func launchdKickstart(label string) error {
-	return runLaunchctl("kickstart", "-k", launchdJobTarget(label))
+func launchdKickstart(scope, label string) error {
+	return runLaunchctl("kickstart", "-k", launchdJobTarget(scope, label))
 }
 
-func launchdDomainTarget() string {
+func launchdDomainTarget(scope string) string {
+	if scope == managerScopeSystem {
+		return managerScopeSystem
+	}
 	return fmt.Sprintf("gui/%d", os.Getuid())
 }
 
-func launchdJobTarget(label string) string {
-	return launchdDomainTarget() + "/" + label
+func launchdJobTarget(scope, label string) string {
+	return launchdDomainTarget(scope) + "/" + label
 }
 
 func runLaunchctl(args ...string) error {
@@ -329,8 +434,8 @@ func runLaunchctlOutput(args ...string) (string, error) {
 	return msg, nil
 }
 
-func readLaunchdJobState(label string) (loaded bool, active string, lastRun string) {
-	out, err := runLaunchctlOutput("print", launchdJobTarget(label))
+func readLaunchdJobState(scope, label string) (loaded bool, active string, lastRun string) {
+	out, err := runLaunchctlOutput("print", launchdJobTarget(scope, label))
 	if err != nil {
 		return false, launchdStateInactive, "-"
 	}
@@ -425,7 +530,14 @@ func renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath string) stri
 `, xmlEscape(launchdServiceLabel), xmlEscape(execPath), xmlEscape(stdoutPath), xmlEscape(stderrPath))
 }
 
-func renderLaunchdUserAutoUpdatePlist(execPath, serviceLabel string, intervalSeconds int, stdoutPath, stderrPath string) string {
+func renderLaunchdUserAutoUpdatePlist(
+	execPath,
+	serviceLabel,
+	restartScope string,
+	intervalSeconds int,
+	stdoutPath,
+	stderrPath string,
+) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -439,7 +551,7 @@ func renderLaunchdUserAutoUpdatePlist(execPath, serviceLabel string, intervalSec
 		<string>apply</string>
 		<string>-restart=true</string>
 		<string>-service=%s</string>
-		<string>-systemd-scope=launchd</string>
+		<string>-systemd-scope=%s</string>
 	</array>
 	<key>StartInterval</key>
 	<integer>%d</integer>
@@ -449,7 +561,7 @@ func renderLaunchdUserAutoUpdatePlist(execPath, serviceLabel string, intervalSec
 	<string>%s</string>
 </dict>
 </plist>
-`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(serviceLabel), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath))
+`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(serviceLabel), xmlEscape(restartScope), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath))
 }
 
 func xmlEscape(raw string) string {

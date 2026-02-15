@@ -16,6 +16,8 @@ import (
 const (
 	testSentinelPath    = "/tmp/sentinel"
 	testCurrentVersion1 = "1.0.0"
+	testScopeUser       = "user"
+	testScopeSystem     = "system"
 )
 
 func TestRunCLIDefaultServe(t *testing.T) {
@@ -205,7 +207,7 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 		"-enable=false",
 		"-start=false",
 		"-service", "sentinel-custom",
-		"-scope", "system",
+		"-scope", testScopeSystem,
 		"-on-calendar", "hourly",
 		"-randomized-delay", "30m",
 	}, &out, &errOut)
@@ -224,8 +226,8 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 	if got.ServiceUnit != "sentinel-custom" {
 		t.Fatalf("ServiceUnit = %q, want sentinel-custom", got.ServiceUnit)
 	}
-	if got.SystemdScope != "system" {
-		t.Fatalf("SystemdScope = %q, want system", got.SystemdScope)
+	if got.SystemdScope != testScopeSystem {
+		t.Fatalf("SystemdScope = %q, want %s", got.SystemdScope, testScopeSystem)
 	}
 	if got.OnCalendar != "hourly" {
 		t.Fatalf("OnCalendar = %q, want hourly", got.OnCalendar)
@@ -239,7 +241,10 @@ func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
 	origStatus := userAutoUpdateStatusFn
 	t.Cleanup(func() { userAutoUpdateStatusFn = origStatus })
 
-	userAutoUpdateStatusFn = func() (service.UserAutoUpdateServiceStatus, error) {
+	userAutoUpdateStatusFn = func(scope string) (service.UserAutoUpdateServiceStatus, error) {
+		if scope != testScopeUser {
+			t.Fatalf("scope = %q, want %s", scope, testScopeUser)
+		}
 		return service.UserAutoUpdateServiceStatus{
 			ServicePath:        "/tmp/sentinel-updater.service",
 			TimerPath:          "/tmp/sentinel-updater.timer",
@@ -254,7 +259,7 @@ func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runCLI([]string{"service", "autoupdate", "status"}, &out, &errOut)
+	code := runCLI([]string{"service", "autoupdate", "status", "-scope", testScopeUser}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
@@ -268,6 +273,46 @@ func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("output missing %q:\n%s", fragment, text)
 		}
+	}
+}
+
+func TestRunCLIServiceAutoUpdateStatusScopeFlag(t *testing.T) {
+	origStatus := userAutoUpdateStatusFn
+	t.Cleanup(func() { userAutoUpdateStatusFn = origStatus })
+
+	userAutoUpdateStatusFn = func(scope string) (service.UserAutoUpdateServiceStatus, error) {
+		if scope != testScopeSystem {
+			t.Fatalf("scope = %q, want %s", scope, testScopeSystem)
+		}
+		return service.UserAutoUpdateServiceStatus{}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"service", "autoupdate", "status", "-scope", testScopeSystem}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+}
+
+func TestRunCLIServiceAutoUpdateUninstallScopeFlag(t *testing.T) {
+	origUninstall := uninstallUserAutoUpdateFn
+	t.Cleanup(func() { uninstallUserAutoUpdateFn = origUninstall })
+
+	var got service.UninstallUserAutoUpdateOptions
+	uninstallUserAutoUpdateFn = func(opts service.UninstallUserAutoUpdateOptions) error {
+		got = opts
+		return nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"service", "autoupdate", "uninstall", "-scope", testScopeSystem}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if got.Scope != testScopeSystem {
+		t.Fatalf("Scope = %q, want %s", got.Scope, testScopeSystem)
 	}
 }
 
@@ -451,5 +496,13 @@ func TestCurrentVersionPrefersBuildVersion(t *testing.T) {
 	buildVersion = "1.9.0"
 	if got := currentVersion(); got != "1.9.0" {
 		t.Fatalf("currentVersion() = %q, want 1.9.0", got)
+	}
+}
+
+func TestDefaultAutoUpdateScopeFlag(t *testing.T) {
+	t.Parallel()
+
+	if got := defaultAutoUpdateScopeFlag(); got != "auto" {
+		t.Fatalf("defaultAutoUpdateScopeFlag() = %q, want auto", got)
 	}
 }

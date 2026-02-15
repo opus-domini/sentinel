@@ -1,6 +1,7 @@
 package service
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,7 @@ func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
 	plist := renderLaunchdUserAutoUpdatePlist(
 		"/usr/local/bin/sentinel",
 		launchdServiceLabel,
+		managerScopeUser,
 		86400,
 		"/tmp/sentinel-updater.out.log",
 		"/tmp/sentinel-updater.err.log",
@@ -35,7 +37,7 @@ func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
 		"<string>apply</string>",
 		"<string>-restart=true</string>",
 		"<string>-service=" + launchdServiceLabel + "</string>",
-		"<string>-systemd-scope=launchd</string>",
+		"<string>-systemd-scope=" + managerScopeUser + "</string>",
 		"<integer>86400</integer>",
 	} {
 		if !strings.Contains(plist, fragment) {
@@ -111,6 +113,67 @@ service = {
 }`
 	if got := parseLaunchdLastRun(raw); got != "0" {
 		t.Fatalf("parseLaunchdLastRun() = %q, want 0", got)
+	}
+}
+
+func TestNormalizeLaunchdScope(t *testing.T) {
+	t.Parallel()
+
+	got, err := normalizeLaunchdScope(managerScopeUser)
+	if err != nil || got != managerScopeUser {
+		t.Fatalf("normalizeLaunchdScope(user) = %q, %v", got, err)
+	}
+
+	got, err = normalizeLaunchdScope(managerScopeSystem)
+	if err != nil || got != managerScopeSystem {
+		t.Fatalf("normalizeLaunchdScope(system) = %q, %v", got, err)
+	}
+
+	if _, err := normalizeLaunchdScope("invalid"); err == nil {
+		t.Fatal("expected error for invalid scope")
+	}
+
+	got, err = normalizeLaunchdScope("")
+	if err != nil {
+		t.Fatalf("normalizeLaunchdScope(\"\") error: %v", err)
+	}
+	want := managerScopeUser
+	if os.Geteuid() == 0 {
+		want = managerScopeSystem
+	}
+	if got != want {
+		t.Fatalf("normalizeLaunchdScope(\"\") = %q, want %q", got, want)
+	}
+}
+
+func TestLaunchdPathsForSystemScope(t *testing.T) {
+	t.Parallel()
+
+	servicePath, err := userServicePathLaunchdForScope(managerScopeSystem)
+	if err != nil {
+		t.Fatalf("userServicePathLaunchdForScope(system) error: %v", err)
+	}
+	if servicePath != launchdSystemServicePath {
+		t.Fatalf("service path = %q, want %q", servicePath, launchdSystemServicePath)
+	}
+
+	updaterPath, err := userAutoUpdatePathLaunchdForScope(managerScopeSystem)
+	if err != nil {
+		t.Fatalf("userAutoUpdatePathLaunchdForScope(system) error: %v", err)
+	}
+	if updaterPath != launchdSystemUpdaterPath {
+		t.Fatalf("updater path = %q, want %q", updaterPath, launchdSystemUpdaterPath)
+	}
+}
+
+func TestLaunchdDomainTarget(t *testing.T) {
+	t.Parallel()
+
+	if got := launchdDomainTarget(managerScopeSystem); got != managerScopeSystem {
+		t.Fatalf("launchdDomainTarget(system) = %q, want %q", got, managerScopeSystem)
+	}
+	if got := launchdDomainTarget(managerScopeUser); !strings.HasPrefix(got, "gui/") {
+		t.Fatalf("launchdDomainTarget(user) = %q, want gui/<uid>", got)
 	}
 }
 
