@@ -202,7 +202,7 @@ sentinel service autoupdate install
 sentinel update check
 sentinel doctor
 sentinel recovery list
-sentinel recovery restore -snapshot 42
+sentinel recovery restore --snapshot 42
 sentinel --help
 sentinel --version
 ```

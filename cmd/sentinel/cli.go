@@ -866,20 +866,20 @@ func printServeHelp(w io.Writer) {
 
 func printServiceHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service install [-exec PATH] [-enable=true] [-start=true]")
-	writeln(w, "  sentinel service uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
+	writeln(w, "  sentinel service install [--exec PATH] [--enable=true] [--start=true]")
+	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true]")
 	writeln(w, "  sentinel service status")
 	writeln(w, "  sentinel service autoupdate <install|uninstall|status>")
 }
 
 func printServiceInstallHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service install [-exec PATH] [-enable=true] [-start=true]")
+	writeln(w, "  sentinel service install [--exec PATH] [--enable=true] [--start=true]")
 }
 
 func printServiceUninstallHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
+	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true]")
 }
 
 func printServiceStatusHelp(w io.Writer) {
@@ -889,24 +889,24 @@ func printServiceStatusHelp(w io.Writer) {
 
 func printServiceAutoUpdateHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope auto|user|system|launchd] [-on-calendar daily] [-randomized-delay 1h]")
-	writeln(w, "  sentinel service autoupdate uninstall [-disable=true] [-stop=true] [-remove-unit=true] [-scope auto|user|system|launchd]")
-	writeln(w, "  sentinel service autoupdate status [-scope auto|user|system|launchd]")
+	writeln(w, "  sentinel service autoupdate install [--exec PATH] [--enable=true] [--start=true] [--service sentinel] [--scope auto|user|system|launchd] [--on-calendar daily] [--randomized-delay 1h]")
+	writeln(w, "  sentinel service autoupdate uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--scope auto|user|system|launchd]")
+	writeln(w, "  sentinel service autoupdate status [--scope auto|user|system|launchd]")
 }
 
 func printServiceAutoUpdateInstallHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope auto|user|system|launchd] [-on-calendar daily] [-randomized-delay 1h]")
+	writeln(w, "  sentinel service autoupdate install [--exec PATH] [--enable=true] [--start=true] [--service sentinel] [--scope auto|user|system|launchd] [--on-calendar daily] [--randomized-delay 1h]")
 }
 
 func printServiceAutoUpdateUninstallHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate uninstall [-disable=true] [-stop=true] [-remove-unit=true] [-scope auto|user|system|launchd]")
+	writeln(w, "  sentinel service autoupdate uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--scope auto|user|system|launchd]")
 }
 
 func printServiceAutoUpdateStatusHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate status [-scope auto|user|system|launchd]")
+	writeln(w, "  sentinel service autoupdate status [--scope auto|user|system|launchd]")
 }
 
 func printDoctorHelp(w io.Writer) {
@@ -916,35 +916,35 @@ func printDoctorHelp(w io.Writer) {
 
 func printRecoveryHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel recovery list [-state killed,restoring,restored] [-limit 100]")
-	writeln(w, "  sentinel recovery restore -snapshot ID [-mode confirm] [-conflict rename] [-target NAME] [-wait=true]")
+	writeln(w, "  sentinel recovery list [--state killed,restoring,restored] [--limit 100]")
+	writeln(w, "  sentinel recovery restore --snapshot ID [--mode confirm] [--conflict rename] [--target NAME] [--wait=true]")
 }
 
 func printRecoveryListHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel recovery list [-state killed,restoring,restored] [-limit 100]")
+	writeln(w, "  sentinel recovery list [--state killed,restoring,restored] [--limit 100]")
 }
 
 func printRecoveryRestoreHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel recovery restore -snapshot ID [-mode confirm] [-conflict rename] [-target NAME] [-wait=true]")
+	writeln(w, "  sentinel recovery restore --snapshot ID [--mode confirm] [--conflict rename] [--target NAME] [--wait=true]")
 }
 
 func printUpdateHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel update check [-repo owner/name] [-api URL] [-os linux] [-arch amd64]")
-	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope auto|user|system|launchd|none]")
+	writeln(w, "  sentinel update check [--repo owner/name] [--api URL] [--os linux] [--arch amd64]")
+	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--systemd-scope auto|user|system|launchd|none]")
 	writeln(w, "  sentinel update status")
 }
 
 func printUpdateCheckHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel update check [-repo owner/name] [-api URL] [-os linux] [-arch amd64]")
+	writeln(w, "  sentinel update check [--repo owner/name] [--api URL] [--os linux] [--arch amd64]")
 }
 
 func printUpdateApplyHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope auto|user|system|launchd|none]")
+	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--systemd-scope auto|user|system|launchd|none]")
 }
 
 func printUpdateStatusHelp(w io.Writer) {

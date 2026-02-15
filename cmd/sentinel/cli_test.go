@@ -53,7 +53,7 @@ func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runCLI([]string{"service", "install", "-exec", testSentinelPath, "-enable=false", "-start=false"}, &out, &errOut)
+	code := runCLI([]string{"service", "install", "--exec", testSentinelPath, "--enable=false", "--start=false"}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
@@ -203,13 +203,13 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 	var errOut bytes.Buffer
 	code := runCLI([]string{
 		"service", "autoupdate", "install",
-		"-exec", testSentinelPath,
-		"-enable=false",
-		"-start=false",
-		"-service", "sentinel-custom",
-		"-scope", testScopeSystem,
-		"-on-calendar", "hourly",
-		"-randomized-delay", "30m",
+		"--exec", testSentinelPath,
+		"--enable=false",
+		"--start=false",
+		"--service", "sentinel-custom",
+		"--scope", testScopeSystem,
+		"--on-calendar", "hourly",
+		"--randomized-delay", "30m",
 	}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
@@ -259,7 +259,7 @@ func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runCLI([]string{"service", "autoupdate", "status", "-scope", testScopeUser}, &out, &errOut)
+	code := runCLI([]string{"service", "autoupdate", "status", "--scope", testScopeUser}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
@@ -289,7 +289,7 @@ func TestRunCLIServiceAutoUpdateStatusScopeFlag(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runCLI([]string{"service", "autoupdate", "status", "-scope", testScopeSystem}, &out, &errOut)
+	code := runCLI([]string{"service", "autoupdate", "status", "--scope", testScopeSystem}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
@@ -307,7 +307,7 @@ func TestRunCLIServiceAutoUpdateUninstallScopeFlag(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runCLI([]string{"service", "autoupdate", "uninstall", "-scope", testScopeSystem}, &out, &errOut)
+	code := runCLI([]string{"service", "autoupdate", "uninstall", "--scope", testScopeSystem}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
@@ -346,7 +346,7 @@ func TestRunCLIUpdateCheck(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runCLI([]string{"update", "check", "-repo", "opus-domini/sentinel", "-api", "http://example", "-os", "linux", "-arch", "amd64"}, &out, &errOut)
+	code := runCLI([]string{"update", "check", "--repo", "opus-domini/sentinel", "--api", "http://example", "--os", "linux", "--arch", "amd64"}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
@@ -395,16 +395,16 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 	var errOut bytes.Buffer
 	code := runCLI([]string{
 		"update", "apply",
-		"-repo", "opus-domini/sentinel",
-		"-api", "http://example",
-		"-os", "linux",
-		"-arch", "amd64",
-		"-exec", testSentinelPath,
-		"-allow-downgrade=true",
-		"-allow-unverified=true",
-		"-restart=true",
-		"-service", "sentinel",
-		"-systemd-scope", "user",
+		"--repo", "opus-domini/sentinel",
+		"--api", "http://example",
+		"--os", "linux",
+		"--arch", "amd64",
+		"--exec", testSentinelPath,
+		"--allow-downgrade=true",
+		"--allow-unverified=true",
+		"--restart=true",
+		"--service", "sentinel",
+		"--systemd-scope", "user",
 	}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
