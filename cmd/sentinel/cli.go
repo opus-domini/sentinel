@@ -278,7 +278,7 @@ func runServiceAutoUpdateInstallCommand(ctx commandContext, args []string) int {
 	enable := fs.Bool("enable", true, "enable autoupdate timer")
 	start := fs.Bool("start", true, "start autoupdate timer now")
 	serviceUnit := fs.String("service", "sentinel", "systemd unit to restart after update")
-	scope := fs.String("scope", "user", "systemd scope for service restart: user|system")
+	scope := fs.String("scope", "user", "restart manager scope: user|system|launchd")
 	onCalendar := fs.String("on-calendar", "daily", "systemd OnCalendar schedule for update timer")
 	randomizedDelay := fs.Duration("randomized-delay", time.Hour, "systemd RandomizedDelaySec")
 	help := fs.Bool("help", false, "show help")
@@ -471,7 +471,7 @@ func runUpdateApplyCommand(ctx commandContext, args []string) int {
 	allowUnverified := fs.Bool("allow-unverified", false, "allow update when checksum is unavailable")
 	restart := fs.Bool("restart", false, "restart systemd service after successful update")
 	serviceUnit := fs.String("service", "sentinel", "service unit name to restart after update")
-	systemdScope := fs.String("systemd-scope", "", "restart scope: user|system|none")
+	systemdScope := fs.String("systemd-scope", "", "restart scope: user|system|launchd|none")
 	help := fs.Bool("help", false, "show help")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -817,7 +817,7 @@ func printRootHelp(w io.Writer) {
 	writeln(w, "")
 	writeln(w, "Commands:")
 	writeln(w, "  serve      Start Sentinel HTTP server (default)")
-	writeln(w, "  service    Manage systemd user service and autoupdate timer (Linux)")
+	writeln(w, "  service    Manage local service and autoupdate timer (systemd/launchd)")
 	writeln(w, "  doctor     Check local environment and runtime config")
 	writeln(w, "  recovery   Inspect and restore persisted tmux snapshots")
 	writeln(w, "  update     Check/apply binary updates from GitHub releases")
@@ -855,14 +855,14 @@ func printServiceStatusHelp(w io.Writer) {
 
 func printServiceAutoUpdateHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope user] [-on-calendar daily] [-randomized-delay 1h]")
+	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope user|system|launchd] [-on-calendar daily] [-randomized-delay 1h]")
 	writeln(w, "  sentinel service autoupdate uninstall [-disable=true] [-stop=true] [-remove-unit=true]")
 	writeln(w, "  sentinel service autoupdate status")
 }
 
 func printServiceAutoUpdateInstallHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope user] [-on-calendar daily] [-randomized-delay 1h]")
+	writeln(w, "  sentinel service autoupdate install [-exec PATH] [-enable=true] [-start=true] [-service sentinel] [-scope user|system|launchd] [-on-calendar daily] [-randomized-delay 1h]")
 }
 
 func printServiceAutoUpdateUninstallHelp(w io.Writer) {
@@ -899,7 +899,7 @@ func printRecoveryRestoreHelp(w io.Writer) {
 func printUpdateHelp(w io.Writer) {
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel update check [-repo owner/name] [-api URL] [-os linux] [-arch amd64]")
-	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope user]")
+	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope user|system|launchd|none]")
 	writeln(w, "  sentinel update status")
 }
 
@@ -910,7 +910,7 @@ func printUpdateCheckHelp(w io.Writer) {
 
 func printUpdateApplyHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope user]")
+	writeln(w, "  sentinel update apply [-repo owner/name] [-api URL] [-exec PATH] [-allow-downgrade=false] [-allow-unverified=false] [-restart=false] [-service sentinel] [-systemd-scope user|system|launchd|none]")
 }
 
 func printUpdateStatusHelp(w io.Writer) {

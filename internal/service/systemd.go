@@ -16,6 +16,9 @@ const (
 	userAutoUpdateServiceName = "sentinel-updater.service"
 	userAutoUpdateTimerName   = "sentinel-updater.timer"
 	systemdSupportedOS        = "linux"
+	managerScopeUser          = "user"
+	managerScopeSystem        = "system"
+	managerScopeLaunchd       = "launchd"
 )
 
 type InstallUserOptions struct {
@@ -66,6 +69,12 @@ type UserAutoUpdateServiceStatus struct {
 }
 
 func InstallUser(opts InstallUserOptions) error {
+	if runtime.GOOS == launchdSupportedOS {
+		return installUserLaunchd(opts)
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return err
+	}
 	if err := ensureSystemdUserSupported(); err != nil {
 		return err
 	}
@@ -104,6 +113,12 @@ func InstallUser(opts InstallUserOptions) error {
 }
 
 func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
+	if runtime.GOOS == launchdSupportedOS {
+		return installUserAutoUpdateLaunchd(opts)
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return err
+	}
 	if err := ensureSystemdUserSupported(); err != nil {
 		return err
 	}
@@ -121,9 +136,9 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 	}
 	scope := strings.ToLower(strings.TrimSpace(opts.SystemdScope))
 	switch scope {
-	case "", "user":
-		scope = "user"
-	case "system":
+	case "", managerScopeUser:
+		scope = managerScopeUser
+	case managerScopeSystem:
 		// supported mostly for privileged/root timer setups.
 	default:
 		return fmt.Errorf("invalid systemd scope: %s", scope)
@@ -176,6 +191,12 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 }
 
 func UninstallUser(opts UninstallUserOptions) error {
+	if runtime.GOOS == launchdSupportedOS {
+		return uninstallUserLaunchd(opts)
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return err
+	}
 	if err := ensureSystemdUserSupported(); err != nil {
 		return err
 	}
@@ -203,6 +224,12 @@ func UninstallUser(opts UninstallUserOptions) error {
 }
 
 func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
+	if runtime.GOOS == launchdSupportedOS {
+		return uninstallUserAutoUpdateLaunchd(opts)
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return err
+	}
 	if err := ensureSystemdUserSupported(); err != nil {
 		return err
 	}
@@ -237,6 +264,12 @@ func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
 }
 
 func UserStatus() (UserServiceStatus, error) {
+	if runtime.GOOS == launchdSupportedOS {
+		return userStatusLaunchd()
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return UserServiceStatus{}, err
+	}
 	servicePath, err := UserServicePath()
 	if err != nil {
 		return UserServiceStatus{}, err
@@ -263,6 +296,12 @@ func UserStatus() (UserServiceStatus, error) {
 }
 
 func UserAutoUpdateStatus() (UserAutoUpdateServiceStatus, error) {
+	if runtime.GOOS == launchdSupportedOS {
+		return userAutoUpdateStatusLaunchd()
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return UserAutoUpdateServiceStatus{}, err
+	}
 	servicePath, err := UserAutoUpdateServicePath()
 	if err != nil {
 		return UserAutoUpdateServiceStatus{}, err
@@ -298,6 +337,12 @@ func UserAutoUpdateStatus() (UserAutoUpdateServiceStatus, error) {
 }
 
 func UserServicePath() (string, error) {
+	if runtime.GOOS == launchdSupportedOS {
+		return userServicePathLaunchd()
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return "", err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
@@ -306,6 +351,12 @@ func UserServicePath() (string, error) {
 }
 
 func UserAutoUpdateServicePath() (string, error) {
+	if runtime.GOOS == launchdSupportedOS {
+		return userAutoUpdatePathLaunchd()
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return "", err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
@@ -314,6 +365,13 @@ func UserAutoUpdateServicePath() (string, error) {
 }
 
 func UserAutoUpdateTimerPath() (string, error) {
+	if runtime.GOOS == launchdSupportedOS {
+		// launchd runs timer semantics inside a single plist.
+		return userAutoUpdatePathLaunchd()
+	}
+	if err := ensureServicePlatformSupported(); err != nil {
+		return "", err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
@@ -329,6 +387,13 @@ func ensureSystemdUserSupported() error {
 		return errors.New("systemctl was not found in PATH")
 	}
 	return nil
+}
+
+func ensureServicePlatformSupported() error {
+	if runtime.GOOS == systemdSupportedOS || runtime.GOOS == launchdSupportedOS {
+		return nil
+	}
+	return errors.New("service commands are supported on Linux and macOS only")
 }
 
 func runSystemctlUser(args ...string) error {

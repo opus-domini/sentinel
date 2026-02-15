@@ -80,6 +80,25 @@ func TestIsCurrentUpToDate(t *testing.T) {
 	}
 }
 
+func TestBuildRestartCommandLaunchd(t *testing.T) {
+	t.Parallel()
+
+	cmd := (ApplyOptions{
+		Restart:      true,
+		SystemdScope: "launchd",
+		ServiceUnit:  "",
+	}).buildRestartCommand()
+	if len(cmd) != 4 {
+		t.Fatalf("len(buildRestartCommand) = %d, want 4", len(cmd))
+	}
+	if cmd[0] != "launchctl" || cmd[1] != "kickstart" || cmd[2] != "-k" {
+		t.Fatalf("unexpected launchd restart command: %#v", cmd)
+	}
+	if !strings.HasPrefix(cmd[3], "gui/") || !strings.HasSuffix(cmd[3], "/"+defaultLaunchdLabel) {
+		t.Fatalf("unexpected launchd target: %q", cmd[3])
+	}
+}
+
 func TestParseChecksums(t *testing.T) {
 	t.Parallel()
 

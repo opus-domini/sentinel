@@ -25,6 +25,7 @@ const (
 	defaultRepo         = "opus-domini/sentinel"
 	defaultAPIBase      = "https://api.github.com"
 	defaultServiceUnit  = "sentinel"
+	defaultLaunchdLabel = "io.opusdomini.sentinel"
 	binaryName          = "sentinel"
 	maxExtractedBinSize = int64(128 * 1024 * 1024) // 128 MiB hard limit for extracted binary.
 )
@@ -62,7 +63,7 @@ type ApplyOptions struct {
 	AllowUnverified bool
 	Restart         bool
 	ServiceUnit     string
-	SystemdScope    string // user, system, none
+	SystemdScope    string // user, system, launchd, none
 	HTTPClient      *http.Client
 }
 
@@ -291,9 +292,12 @@ func normalizeApplyOptions(opts ApplyOptions) ApplyOptions {
 	}
 	cfg.SystemdScope = strings.ToLower(strings.TrimSpace(cfg.SystemdScope))
 	if cfg.SystemdScope == "" {
-		if runtime.GOOS == "linux" {
+		switch runtime.GOOS {
+		case "linux":
 			cfg.SystemdScope = "user"
-		} else {
+		case "darwin":
+			cfg.SystemdScope = "launchd"
+		default:
 			cfg.SystemdScope = "none"
 		}
 	}
@@ -320,6 +324,11 @@ func (o ApplyOptions) buildRestartCommand() []string {
 		return nil
 	case "system":
 		return []string{"systemctl", "restart", unit}
+	case "launchd":
+		if unit == defaultServiceUnit {
+			unit = defaultLaunchdLabel
+		}
+		return []string{"launchctl", "kickstart", "-k", fmt.Sprintf("gui/%d/%s", os.Getuid(), unit)}
 	default:
 		return []string{"systemctl", "--user", "restart", unit}
 	}

@@ -66,7 +66,7 @@ Token authentication setup for protected access.
 curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash
 ```
 
-What `install.sh` does on Linux:
+What `install.sh` does:
 
 - regular user:
   - installs binary to `~/.local/bin/sentinel`
@@ -76,6 +76,10 @@ What `install.sh` does on Linux:
   - installs binary to `/usr/local/bin/sentinel`
   - installs `/etc/systemd/system/sentinel@.service`
   - starts or restarts `sentinel@root` (or `sentinel@$SYSTEMD_TARGET_USER`)
+- macOS:
+  - installs binary to `~/.local/bin/sentinel` (or `INSTALL_DIR`)
+  - installs `~/Library/LaunchAgents/io.opusdomini.sentinel.plist`
+  - starts or restarts service via `launchctl`
 - optional persistence:
   - `systemctl --user enable sentinel` (regular user)
   - `systemctl enable sentinel@root` (root)
@@ -133,6 +137,13 @@ journalctl -u sentinel@root -f
 
 If you used `SYSTEMD_TARGET_USER`, replace `root` with that user in the unit name.
 
+If installed on macOS:
+
+```bash
+sentinel service status
+tail -f ~/.sentinel/logs/sentinel.out.log
+```
+
 Optional: persist across reboot/login.
 
 ```bash
@@ -170,10 +181,10 @@ The config file is created on first startup.
 ## CLI Subcommands
 
 - `sentinel` or `sentinel serve`: start server.
-- `sentinel service install`: install systemd user service (Linux).
-- `sentinel service uninstall`: remove systemd user service (Linux).
+- `sentinel service install`: install local user service (systemd on Linux, launchd on macOS).
+- `sentinel service uninstall`: remove local user service (systemd on Linux, launchd on macOS).
 - `sentinel service status`: show service state.
-- `sentinel service autoupdate install|uninstall|status`: manage daily updater timer (Linux).
+- `sentinel service autoupdate install|uninstall|status`: manage daily updater timer (Linux/macOS).
 - `sentinel doctor`: print environment diagnostics.
 - `sentinel recovery list`: list persisted recovery sessions.
 - `sentinel recovery restore`: restore snapshot from local recovery journal.

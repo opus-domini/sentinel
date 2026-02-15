@@ -250,11 +250,30 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
     fi
 fi
 
-# --- macOS hint ---
+# --- macOS launchd service ---
 if [ "$OS" = "darwin" ]; then
     echo ""
-    info "On macOS, you can create a launchd plist to start Sentinel on login."
-    info "See: https://github.com/${REPO}#after-installation-user-journey"
+    info "Installing launchd user service..."
+    if "${INSTALL_DIR}/sentinel" service install -exec "${INSTALL_DIR}/sentinel" -enable=true -start=true; then
+        ok "launchd user service installed and started."
+    else
+        warn "failed to install/start launchd service"
+        warn "you can retry with: sentinel service install"
+    fi
+
+    if [ "$AUTOUPDATE_ENABLED" -eq 1 ]; then
+        info "Enabling daily autoupdate with launchd..."
+        if "${INSTALL_DIR}/sentinel" service autoupdate install -exec "${INSTALL_DIR}/sentinel" -enable=true -start=true -service io.opusdomini.sentinel -scope launchd -on-calendar daily; then
+            ok "launchd autoupdate enabled"
+        else
+            warn "failed to enable launchd autoupdate"
+            warn "you can retry with: sentinel service autoupdate install -scope launchd"
+        fi
+    fi
+
+    printf "\n${BOLD}  Service status:${RESET}    sentinel service status\n"
+    printf "${BOLD}  Service logs:${RESET}      tail -f ~/.sentinel/logs/sentinel.out.log\n"
+    printf "${BOLD}  Auto-update status:${RESET} sentinel service autoupdate status\n"
 fi
 
 # --- Verify PATH ---
