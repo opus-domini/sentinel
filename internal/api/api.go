@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
+	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -60,14 +61,15 @@ type recoveryService interface {
 }
 
 type Handler struct {
-	guard     *security.Guard
-	tmux      tmuxService
-	sysTerms  systemTerminals
-	recovery  recoveryService
-	events    *events.Hub
-	terminals *terminals.Registry
-	store     *store.Store
-	version   string
+	guard      *security.Guard
+	tmux       tmuxService
+	sysTerms   systemTerminals
+	recovery   recoveryService
+	events     *events.Hub
+	terminals  *terminals.Registry
+	store      *store.Store
+	guardrails *guardrails.Service
+	version    string
 }
 
 const (
@@ -86,14 +88,15 @@ func Register(
 	version string,
 ) {
 	h := &Handler{
-		guard:     guard,
-		tmux:      tmux.Service{},
-		sysTerms:  terminals.SystemService{},
-		recovery:  recoverySvc,
-		events:    eventsHub,
-		terminals: terminalRegistry,
-		store:     st,
-		version:   strings.TrimSpace(version),
+		guard:      guard,
+		tmux:       tmux.Service{},
+		sysTerms:   terminals.SystemService{},
+		recovery:   recoverySvc,
+		events:     eventsHub,
+		terminals:  terminalRegistry,
+		store:      st,
+		guardrails: guardrails.New(st),
+		version:    strings.TrimSpace(version),
 	}
 	mux.HandleFunc("GET /api/meta", h.wrap(h.meta))
 	mux.HandleFunc("GET /api/fs/dirs", h.wrap(h.listDirectories))
@@ -114,6 +117,13 @@ func Register(
 	mux.HandleFunc("GET /api/tmux/sessions/{session}/panes", h.wrap(h.listPanes))
 	mux.HandleFunc("GET /api/tmux/activity/delta", h.wrap(h.activityDelta))
 	mux.HandleFunc("GET /api/tmux/activity/stats", h.wrap(h.activityStats))
+	mux.HandleFunc("GET /api/tmux/timeline", h.wrap(h.timelineSearch))
+	mux.HandleFunc("GET /api/ops/storage/stats", h.wrap(h.storageStats))
+	mux.HandleFunc("POST /api/ops/storage/flush", h.wrap(h.flushStorage))
+	mux.HandleFunc("GET /api/ops/guardrails/rules", h.wrap(h.listGuardrailRules))
+	mux.HandleFunc("PATCH /api/ops/guardrails/rules/{rule}", h.wrap(h.updateGuardrailRule))
+	mux.HandleFunc("GET /api/ops/guardrails/audit", h.wrap(h.listGuardrailAudit))
+	mux.HandleFunc("POST /api/ops/guardrails/evaluate", h.wrap(h.evaluateGuardrail))
 	mux.HandleFunc("POST /api/tmux/sessions/{session}/seen", h.wrap(h.markSessionSeen))
 	mux.HandleFunc("PUT /api/tmux/presence", h.wrap(h.setTmuxPresence))
 	mux.HandleFunc("GET /api/recovery/overview", h.wrap(h.recoveryOverview))
@@ -496,6 +506,14 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	if ok := h.enforceGuardrail(w, r, guardrails.Input{
+		Action:      "session.create",
+		SessionName: req.Name,
+		WindowIndex: -1,
+	}); !ok {
+		return
+	}
+
 	if err := h.tmux.CreateSession(ctx, req.Name, req.Cwd); err != nil {
 		writeTmuxError(w, err)
 		return
@@ -588,6 +606,14 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+
+	if ok := h.enforceGuardrail(w, r, guardrails.Input{
+		Action:      "session.kill",
+		SessionName: session,
+		WindowIndex: -1,
+	}); !ok {
+		return
+	}
 
 	if err := h.tmux.KillSession(ctx, session); err != nil {
 		writeTmuxError(w, err)
@@ -993,6 +1019,374 @@ func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+
+	query := store.WatchtowerTimelineQuery{
+		Session:   strings.TrimSpace(r.URL.Query().Get("session")),
+		PaneID:    strings.TrimSpace(r.URL.Query().Get("paneId")),
+		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
+		Severity:  strings.TrimSpace(r.URL.Query().Get("severity")),
+		EventType: strings.TrimSpace(r.URL.Query().Get("eventType")),
+		Limit:     100,
+	}
+
+	if query.Session != "" && !validate.SessionName(query.Session) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+		return
+	}
+	if query.PaneID != "" && !strings.HasPrefix(query.PaneID, "%") {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId must start with %", nil)
+		return
+	}
+
+	if raw := strings.TrimSpace(r.URL.Query().Get("windowIndex")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "windowIndex must be >= 0", nil)
+			return
+		}
+		query.WindowIdx = &parsed
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "since must be RFC3339", nil)
+			return
+		}
+		query.Since = parsed.UTC()
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("until")); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "until must be RFC3339", nil)
+			return
+		}
+		query.Until = parsed.UTC()
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "limit must be > 0", nil)
+			return
+		}
+		if parsed > 500 {
+			parsed = 500
+		}
+		query.Limit = parsed
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	result, err := h.store.SearchWatchtowerTimelineEvents(ctx, query)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to query timeline", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"events":  result.Events,
+		"hasMore": result.HasMore,
+	})
+}
+
+func (h *Handler) storageStats(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	stats, err := h.store.GetStorageStats(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load storage stats", nil)
+		return
+	}
+	writeData(w, http.StatusOK, stats)
+}
+
+func (h *Handler) flushStorage(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	var req struct {
+		Resource string `json:"resource"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body", nil)
+		return
+	}
+
+	resource := store.NormalizeStorageResource(req.Resource)
+	if resource == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "resource is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	results, err := h.store.FlushStorageResource(ctx, resource)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidStorageResource) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid resource", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to flush storage resource", nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"results":   results,
+		"flushedAt": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (h *Handler) listGuardrailRules(w http.ResponseWriter, r *http.Request) {
+	if h.guardrails == nil {
+		writeData(w, http.StatusOK, map[string]any{"rules": []store.GuardrailRule{}})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	rules, err := h.guardrails.ListRules(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list guardrail rules", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{"rules": rules})
+}
+
+func (h *Handler) updateGuardrailRule(w http.ResponseWriter, r *http.Request) {
+	if h.guardrails == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "guardrails are unavailable", nil)
+		return
+	}
+	ruleID := strings.TrimSpace(r.PathValue("rule"))
+	if ruleID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "rule is required", nil)
+		return
+	}
+
+	var req struct {
+		Name     string `json:"name"`
+		Scope    string `json:"scope"`
+		Pattern  string `json:"pattern"`
+		Mode     string `json:"mode"`
+		Severity string `json:"severity"`
+		Message  string `json:"message"`
+		Enabled  *bool  `json:"enabled"`
+		Priority int    `json:"priority"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if strings.TrimSpace(req.Pattern) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "pattern is required", nil)
+		return
+	}
+	if req.Enabled == nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "enabled is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	if err := h.guardrails.UpsertRule(ctx, store.GuardrailRuleWrite{
+		ID:       ruleID,
+		Name:     req.Name,
+		Scope:    req.Scope,
+		Pattern:  req.Pattern,
+		Mode:     req.Mode,
+		Severity: req.Severity,
+		Message:  req.Message,
+		Enabled:  *req.Enabled,
+		Priority: req.Priority,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to update guardrail rule", nil)
+		return
+	}
+	rules, err := h.guardrails.ListRules(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list guardrail rules", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{"rules": rules})
+}
+
+func (h *Handler) listGuardrailAudit(w http.ResponseWriter, r *http.Request) {
+	if h.guardrails == nil {
+		writeData(w, http.StatusOK, map[string]any{"audit": []store.GuardrailAudit{}})
+		return
+	}
+
+	limit := 100
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "limit must be > 0", nil)
+			return
+		}
+		if parsed > 500 {
+			parsed = 500
+		}
+		limit = parsed
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	auditRows, err := h.guardrails.ListAudit(ctx, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list guardrail audit", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{"audit": auditRows})
+}
+
+func (h *Handler) evaluateGuardrail(w http.ResponseWriter, r *http.Request) {
+	if h.guardrails == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "guardrails are unavailable", nil)
+		return
+	}
+
+	var req struct {
+		Action      string `json:"action"`
+		Command     string `json:"command"`
+		SessionName string `json:"sessionName"`
+		WindowIndex int    `json:"windowIndex"`
+		PaneID      string `json:"paneId"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if req.PaneID != "" && !strings.HasPrefix(strings.TrimSpace(req.PaneID), "%") {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId must start with %", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	decision, err := h.guardrails.Evaluate(ctx, guardrails.Input{
+		Action:      req.Action,
+		Command:     req.Command,
+		SessionName: req.SessionName,
+		WindowIndex: req.WindowIndex,
+		PaneID:      req.PaneID,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to evaluate guardrail policy", nil)
+		return
+	}
+	if err := h.guardrails.RecordAudit(ctx, guardrails.Input{
+		Action:      req.Action,
+		Command:     req.Command,
+		SessionName: req.SessionName,
+		WindowIndex: req.WindowIndex,
+		PaneID:      req.PaneID,
+	}, decision, false, "manual evaluate"); err != nil {
+		slog.Warn("guardrail evaluate audit write failed", "err", err)
+	}
+	writeData(w, http.StatusOK, map[string]any{"decision": decision})
+}
+
+func (h *Handler) enforceGuardrail(
+	w http.ResponseWriter,
+	r *http.Request,
+	input guardrails.Input,
+) bool {
+	if h == nil || h.guardrails == nil {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	decision, err := h.guardrails.Evaluate(ctx, input)
+	if err != nil {
+		slog.Warn("guardrail evaluate failed, allowing request", "action", input.Action, "err", err)
+		return true
+	}
+
+	confirmed := hasGuardrailConfirm(r)
+	auditOverride := false
+	auditReason := ""
+	switch decision.Mode {
+	case store.GuardrailModeBlock:
+		if h.events != nil {
+			h.events.Publish(events.NewEvent(events.TypeTmuxGuardrail, map[string]any{
+				"action":   strings.TrimSpace(input.Action),
+				"session":  strings.TrimSpace(input.SessionName),
+				"paneId":   strings.TrimSpace(input.PaneID),
+				"decision": decision,
+			}))
+		}
+		if err := h.guardrails.RecordAudit(ctx, input, decision, false, "blocked"); err != nil {
+			slog.Warn("guardrail audit write failed", "err", err)
+		}
+		writeError(w, http.StatusConflict, "GUARDRAIL_BLOCKED", decision.Message, map[string]any{
+			"decision": decision,
+		})
+		return false
+	case store.GuardrailModeConfirm:
+		if !confirmed {
+			if h.events != nil {
+				h.events.Publish(events.NewEvent(events.TypeTmuxGuardrail, map[string]any{
+					"action":   strings.TrimSpace(input.Action),
+					"session":  strings.TrimSpace(input.SessionName),
+					"paneId":   strings.TrimSpace(input.PaneID),
+					"decision": decision,
+				}))
+			}
+			if err := h.guardrails.RecordAudit(ctx, input, decision, false, "confirm-required"); err != nil {
+				slog.Warn("guardrail audit write failed", "err", err)
+			}
+			writeError(w, http.StatusPreconditionRequired, "GUARDRAIL_CONFIRM_REQUIRED", decision.Message, map[string]any{
+				"decision": decision,
+			})
+			return false
+		}
+		auditOverride = true
+		auditReason = "confirmed"
+	default:
+		if decision.Mode == store.GuardrailModeWarn {
+			auditReason = "warn"
+		}
+	}
+	if len(decision.MatchedRules) > 0 {
+		if err := h.guardrails.RecordAudit(ctx, input, decision, auditOverride, auditReason); err != nil {
+			slog.Warn("guardrail audit write failed", "err", err)
+		}
+	}
+	return true
+}
+
+func hasGuardrailConfirm(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	candidates := []string{
+		r.Header.Get("X-Sentinel-Guardrail-Confirm"),
+		r.URL.Query().Get("confirm"),
+	}
+	for _, raw := range candidates {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "1", "true", "yes", "confirm", "confirmed":
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) setTmuxPresence(w http.ResponseWriter, r *http.Request) {
 	if h.store == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
@@ -1264,6 +1658,14 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if ok := h.enforceGuardrail(w, r, guardrails.Input{
+		Action:      "window.create",
+		SessionName: session,
+		WindowIndex: -1,
+	}); !ok {
+		return
+	}
+
 	createdWindow, err := h.tmux.NewWindow(ctx, session)
 	if err != nil {
 		writeTmuxError(w, err)
@@ -1329,6 +1731,14 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if ok := h.enforceGuardrail(w, r, guardrails.Input{
+		Action:      "window.kill",
+		SessionName: session,
+		WindowIndex: req.Index,
+	}); !ok {
+		return
+	}
+
 	if err := h.tmux.KillWindow(ctx, session, req.Index); err != nil {
 		writeTmuxError(w, err)
 		return
@@ -1364,6 +1774,15 @@ func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
+
+	if ok := h.enforceGuardrail(w, r, guardrails.Input{
+		Action:      "pane.kill",
+		SessionName: session,
+		WindowIndex: -1,
+		PaneID:      req.PaneID,
+	}); !ok {
+		return
+	}
 
 	if err := h.tmux.KillPane(ctx, req.PaneID); err != nil {
 		writeTmuxError(w, err)
@@ -1406,6 +1825,15 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
+
+	if ok := h.enforceGuardrail(w, r, guardrails.Input{
+		Action:      "pane.split",
+		SessionName: session,
+		WindowIndex: -1,
+		PaneID:      req.PaneID,
+	}); !ok {
+		return
+	}
 
 	createdPaneID, err := h.tmux.SplitPane(ctx, req.PaneID, req.Direction)
 	if err != nil {

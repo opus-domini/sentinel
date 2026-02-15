@@ -2,6 +2,7 @@ package watchtower
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -173,6 +174,7 @@ func TestCollectWritesProjections(t *testing.T) {
 
 func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 	t.Parallel()
+	const sessionName = "dev"
 
 	st := newWatchtowerTestStore(t)
 	defer func() { _ = st.Close() }()
@@ -181,7 +183,7 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 	fake := fakeTmux{
 		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
 			return []tmux.Session{{
-				Name:       "dev",
+				Name:       sessionName,
 				Windows:    1,
 				Attached:   1,
 				CreatedAt:  now,
@@ -190,7 +192,7 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 		},
 		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
 			return []tmux.Window{{
-				Session: "dev",
+				Session: sessionName,
 				Index:   0,
 				Name:    "main",
 				Active:  true,
@@ -200,7 +202,7 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 		},
 		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
 			return []tmux.Pane{{
-				Session:        "dev",
+				Session:        sessionName,
 				WindowIndex:    0,
 				PaneIndex:      0,
 				PaneID:         "%1",
@@ -233,8 +235,8 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 				t.Fatalf("sessionPatches len = %d, want 1", len(patches))
 			}
 			patch := patches[0]
-			if patch["name"] != "dev" {
-				t.Fatalf("session patch name = %v, want dev", patch["name"])
+			if patch["name"] != sessionName {
+				t.Fatalf("session patch name = %v, want %s", patch["name"], sessionName)
 			}
 			if patch["lastContent"] != helloWorldPreview {
 				t.Fatalf("session patch lastContent = %v, want %s", patch["lastContent"], helloWorldPreview)
@@ -254,8 +256,8 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 				t.Fatalf("inspectorPatches len = %d, want 1", len(inspectorPatches))
 			}
 			inspector := inspectorPatches[0]
-			if inspector["session"] != "dev" {
-				t.Fatalf("inspector patch session = %v, want dev", inspector["session"])
+			if inspector["session"] != sessionName {
+				t.Fatalf("inspector patch session = %v, want %s", inspector["session"], sessionName)
 			}
 			rawWindows, ok := inspector["windows"].([]map[string]any)
 			if !ok || len(rawWindows) != 1 {
@@ -556,6 +558,190 @@ func TestCollectIncrementsRevisionOnOutputChange(t *testing.T) {
 	}
 	if panes[0].TailPreview != "second" {
 		t.Fatalf("pane tail preview = %q, want second", panes[0].TailPreview)
+	}
+}
+
+func TestCollectWritesTimelineForCommandLifecycleAndMarkers(t *testing.T) {
+	t.Parallel()
+
+	st := newWatchtowerTestStore(t)
+	defer func() { _ = st.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	var collectCount atomic.Int32
+
+	fake := fakeTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{{
+				Name:       "dev",
+				Windows:    1,
+				Attached:   1,
+				CreatedAt:  now,
+				ActivityAt: now,
+			}}, nil
+		},
+		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
+			return []tmux.Window{{
+				Session: "dev",
+				Index:   0,
+				Name:    "main",
+				Active:  true,
+				Panes:   1,
+				Layout:  "layout",
+			}}, nil
+		},
+		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
+			if collectCount.Load() == 0 {
+				return []tmux.Pane{{
+					Session:        "dev",
+					WindowIndex:    0,
+					PaneIndex:      0,
+					PaneID:         "%1",
+					Title:          "main",
+					Active:         true,
+					CurrentPath:    "/repo",
+					StartCommand:   "zsh",
+					CurrentCommand: "htop",
+				}}, nil
+			}
+			return []tmux.Pane{{
+				Session:        "dev",
+				WindowIndex:    0,
+				PaneIndex:      0,
+				PaneID:         "%1",
+				Title:          "main",
+				Active:         true,
+				CurrentPath:    "/repo",
+				StartCommand:   "zsh",
+				CurrentCommand: "zsh",
+			}}, nil
+		},
+		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
+			if collectCount.Load() == 0 {
+				return "ok", nil
+			}
+			return "panic: boom", nil
+		},
+	}
+
+	svc := New(st, fake, Options{})
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect #1: %v", err)
+	}
+	collectCount.Store(1)
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect #2: %v", err)
+	}
+
+	timeline, err := st.SearchWatchtowerTimelineEvents(context.Background(), store.WatchtowerTimelineQuery{
+		Session: "dev",
+		Limit:   20,
+	})
+	if err != nil {
+		t.Fatalf("SearchWatchtowerTimelineEvents: %v", err)
+	}
+	if len(timeline.Events) < 3 {
+		t.Fatalf("timeline len = %d, want at least 3", len(timeline.Events))
+	}
+
+	seen := map[string]bool{}
+	for _, event := range timeline.Events {
+		seen[event.EventType] = true
+	}
+	for _, want := range []string{"command.started", "command.finished", "output.marker"} {
+		if !seen[want] {
+			t.Fatalf("missing timeline event type %q in %+v", want, timeline.Events)
+		}
+	}
+	markerMetadata := map[string]any{}
+	for _, event := range timeline.Events {
+		if event.EventType != "output.marker" {
+			continue
+		}
+		if err := json.Unmarshal(event.Metadata, &markerMetadata); err != nil {
+			t.Fatalf("unmarshal marker metadata: %v", err)
+		}
+		break
+	}
+	if markerMetadata["windowName"] != "main" {
+		t.Fatalf("marker metadata windowName = %v, want main", markerMetadata["windowName"])
+	}
+	if markerMetadata["paneTitle"] != "main" {
+		t.Fatalf("marker metadata paneTitle = %v, want main", markerMetadata["paneTitle"])
+	}
+
+	runtimeRows, err := st.ListWatchtowerPaneRuntimeBySession(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPaneRuntimeBySession(dev): %v", err)
+	}
+	if len(runtimeRows) != 1 {
+		t.Fatalf("runtime rows len = %d, want 1", len(runtimeRows))
+	}
+	if runtimeRows[0].CurrentCommand != "zsh" {
+		t.Fatalf("runtime current command = %q, want zsh", runtimeRows[0].CurrentCommand)
+	}
+}
+
+func TestCollectPublishesTimelineUpdatedEvent(t *testing.T) {
+	t.Parallel()
+
+	st := newWatchtowerTestStore(t)
+	defer func() { _ = st.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	fake := fakeTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{{
+				Name:       "dev",
+				Windows:    1,
+				Attached:   1,
+				CreatedAt:  now,
+				ActivityAt: now,
+			}}, nil
+		},
+		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
+			return []tmux.Window{{Session: "dev", Index: 0, Name: "main", Active: true, Panes: 1, Layout: "layout"}}, nil
+		},
+		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
+			return []tmux.Pane{{
+				Session:        "dev",
+				WindowIndex:    0,
+				PaneIndex:      0,
+				PaneID:         "%1",
+				Title:          "main",
+				Active:         true,
+				CurrentPath:    "/repo",
+				StartCommand:   "zsh",
+				CurrentCommand: "zsh",
+			}}, nil
+		},
+		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
+			return "warning: deprecated", nil
+		},
+	}
+
+	var timelineEvents atomic.Int32
+	svc := New(st, fake, Options{
+		Publish: func(eventType string, payload map[string]any) {
+			if eventType != "tmux.timeline.updated" {
+				return
+			}
+			rawSessions, ok := payload["sessions"].([]string)
+			if !ok {
+				t.Fatalf("timeline payload sessions type = %T", payload["sessions"])
+			}
+			if len(rawSessions) != 1 || rawSessions[0] != "dev" {
+				t.Fatalf("timeline sessions payload = %+v, want [dev]", rawSessions)
+			}
+			timelineEvents.Add(1)
+		},
+	})
+
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if got := timelineEvents.Load(); got != 1 {
+		t.Fatalf("timeline events published = %d, want 1", got)
 	}
 }
 

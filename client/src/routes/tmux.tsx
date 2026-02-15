@@ -19,6 +19,8 @@ import type {
   RecoverySnapshotsResponse,
   Session,
   SessionsResponse,
+  TimelineEvent,
+  TimelineResponse,
   WindowInfo,
   WindowsResponse,
 } from '@/types'
@@ -58,6 +60,7 @@ import {
 import AppShell from '@/components/layout/AppShell'
 import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
+import TimelineDialog from '@/components/tmux/TimelineDialog'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
@@ -66,6 +69,10 @@ import { useTerminalTmux } from '@/hooks/useTerminalTmux'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { slugifyTmuxName } from '@/lib/tmuxName'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
+import {
+  buildTimelineQueryString,
+  shouldRefreshTimelineFromEvent,
+} from '@/lib/tmuxTimeline'
 import {
   mergePendingCreateSessions,
   upsertOptimisticAttachedSession,
@@ -302,11 +309,21 @@ function TmuxPage() {
     'rename' | 'replace' | 'skip'
   >('rename')
   const [restoreTargetSession, setRestoreTargetSession] = useState('')
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  const [timelineEvents, setTimelineEvents] = useState<Array<TimelineEvent>>([])
+  const [timelineHasMore, setTimelineHasMore] = useState(false)
+  const [timelineLoading, setTimelineLoading] = useState(false)
+  const [timelineError, setTimelineError] = useState('')
+  const [timelineQuery, setTimelineQuery] = useState('')
+  const [timelineSeverity, setTimelineSeverity] = useState('all')
+  const [timelineEventType, setTimelineEventType] = useState('all')
+  const [timelineSessionFilter, setTimelineSessionFilter] = useState('active')
 
   const api = useTmuxApi(token)
   const refreshGenerationRef = useRef(0)
   const inspectorGenerationRef = useRef(0)
   const recoveryGenerationRef = useRef(0)
+  const timelineGenerationRef = useRef(0)
   const pendingCreateSessionsRef = useRef(new Map<string, string>())
   const pendingKillSessionsRef = useRef(new Set<string>())
   const pendingRenameSessionsRef = useRef(new Map<string, string>())
@@ -331,6 +348,11 @@ function TmuxPage() {
   const activeWindowIndexRef = useRef<number | null>(null)
   const activePaneIDRef = useRef<string | null>(null)
   const eventsSocketConnectedRef = useRef(false)
+  const timelineOpenRef = useRef(false)
+  const timelineSessionFilterRef = useRef('active')
+  const loadTimelineRef = useRef<(options?: { quiet?: boolean }) => void>(() => {
+    return
+  })
   const lastSessionsRefreshAtRef = useRef(0)
   const lastGlobalRevRef = useRef(0)
   const lastEventIDRef = useRef(0)
@@ -354,7 +376,8 @@ function TmuxPage() {
     sessions: number | null
     inspector: number | null
     recovery: number | null
-  }>({ sessions: null, inspector: null, recovery: null })
+    timeline: number | null
+  }>({ sessions: null, inspector: null, recovery: null, timeline: null })
 
   const bumpRuntimeMetric = useCallback(
     (
@@ -447,6 +470,11 @@ function TmuxPage() {
     return orderedSessions.filter((s) => s.name.toLowerCase().includes(query))
   }, [filter, orderedSessions])
 
+  const timelineSessionOptions = useMemo(
+    () => orderedSessions.map((item) => item.name),
+    [orderedSessions],
+  )
+
   const activeWindowIndex = useMemo(() => {
     if (activeWindowIndexOverride !== null) return activeWindowIndexOverride
     return windows.find((w) => w.active)?.index ?? null
@@ -468,6 +496,12 @@ function TmuxPage() {
   useEffect(() => {
     eventsSocketConnectedRef.current = eventsSocketConnected
   }, [eventsSocketConnected])
+  useEffect(() => {
+    timelineOpenRef.current = timelineOpen
+  }, [timelineOpen])
+  useEffect(() => {
+    timelineSessionFilterRef.current = timelineSessionFilter
+  }, [timelineSessionFilter])
 
   const pushErrorToast = useCallback(
     (title: string, message: string) => {
@@ -1267,6 +1301,94 @@ function TmuxPage() {
     [api, bumpRuntimeMetric],
   )
 
+  const resolveTimelineSessionScope = useCallback((scope: string): string => {
+    const normalized = scope.trim()
+    if (normalized === '' || normalized === 'all') {
+      return ''
+    }
+    if (normalized === 'active') {
+      return tabsStateRef.current.activeSession.trim()
+    }
+    return normalized
+  }, [])
+
+  const loadTimeline = useCallback(
+    async (options?: { quiet?: boolean }) => {
+      const gen = ++timelineGenerationRef.current
+      if (!options?.quiet) {
+        setTimelineLoading(true)
+      }
+      const session = resolveTimelineSessionScope(timelineSessionFilterRef.current)
+      const queryString = buildTimelineQueryString({
+        session,
+        query: timelineQuery,
+        severity: timelineSeverity,
+        eventType: timelineEventType,
+        limit: 180,
+      })
+      try {
+        const data = await api<TimelineResponse>(`/api/tmux/timeline${queryString}`)
+        if (gen !== timelineGenerationRef.current) return
+        setTimelineEvents(data.events)
+        setTimelineHasMore(data.hasMore)
+        setTimelineError('')
+      } catch (error) {
+        if (gen !== timelineGenerationRef.current) return
+        const message =
+          error instanceof Error ? error.message : 'failed to load timeline'
+        setTimelineError(message)
+      } finally {
+        if (gen === timelineGenerationRef.current) {
+          setTimelineLoading(false)
+        }
+      }
+    },
+    [api, resolveTimelineSessionScope, timelineEventType, timelineQuery, timelineSeverity],
+  )
+  useEffect(() => {
+    loadTimelineRef.current = (options?: { quiet?: boolean }) => {
+      void loadTimeline(options)
+    }
+  }, [loadTimeline])
+
+  useEffect(() => {
+    if (!timelineOpen) {
+      return
+    }
+    const timeoutID = window.setTimeout(() => {
+      void loadTimeline()
+    }, 120)
+    return () => {
+      window.clearTimeout(timeoutID)
+    }
+  }, [
+    loadTimeline,
+    timelineOpen,
+    timelineQuery,
+    timelineSeverity,
+    timelineEventType,
+    timelineSessionFilter,
+    tabsState.activeSession,
+  ])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return
+      }
+      if (event.key.toLowerCase() !== 'k') {
+        return
+      }
+      event.preventDefault()
+      setTimelineOpen(true)
+      void loadTimeline({ quiet: true })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [loadTimeline])
+
   const loadRecoverySnapshot = useCallback(
     async (snapshotID: number) => {
       setSelectedSnapshotID(snapshotID)
@@ -1538,8 +1660,12 @@ function TmuxPage() {
       }
 
       try {
-        await api<void>(`/api/tmux/sessions/${encodeURIComponent(sessionName)}`, {
+        const killURL = `/api/tmux/sessions/${encodeURIComponent(sessionName)}?confirm=1`
+        await api<void>(killURL, {
           method: 'DELETE',
+          headers: {
+            'X-Sentinel-Guardrail-Confirm': 'true',
+          },
         })
 
         void refreshSessions()
@@ -2441,7 +2567,7 @@ function TmuxPage() {
     }
 
     const schedule = (
-      kind: 'sessions' | 'inspector' | 'recovery',
+      kind: 'sessions' | 'inspector' | 'recovery' | 'timeline',
       options?: { minGapMs?: number },
     ) => {
       if (refreshTimerRef.current[kind] !== null) return
@@ -2464,6 +2590,10 @@ function TmuxPage() {
           if (active.trim() !== '') {
             void refreshInspector(active, { background: true })
           }
+          return
+        }
+        if (kind === 'timeline') {
+          loadTimelineRef.current({ quiet: true })
           return
         }
         void refreshRecovery({ quiet: true })
@@ -2499,6 +2629,10 @@ function TmuxPage() {
               globalRev?: number
               sessionPatches?: Array<SessionActivityPatch>
               inspectorPatches?: Array<InspectorSessionPatch>
+              sessions?: Array<string>
+              decision?: {
+                message?: string
+              }
             }
           }
 
@@ -2583,6 +2717,37 @@ function TmuxPage() {
               }
               break
             }
+            case 'tmux.timeline.updated': {
+              if (!timelineOpenRef.current) {
+                break
+              }
+              let trackedSession = ''
+              const rawScope = timelineSessionFilterRef.current.trim()
+              if (rawScope === '' || rawScope === 'all') {
+                trackedSession = 'all'
+              } else if (rawScope === 'active') {
+                const active = tabsStateRef.current.activeSession.trim()
+                trackedSession = active === '' ? 'all' : active
+              } else {
+                trackedSession = rawScope
+              }
+              if (
+                shouldRefreshTimelineFromEvent(
+                  msg.payload?.sessions,
+                  trackedSession,
+                )
+              ) {
+                schedule('timeline')
+              }
+              break
+            }
+            case 'tmux.guardrail.blocked': {
+              const message =
+                msg.payload?.decision?.message ??
+                'Operation blocked by guardrail policy'
+              pushErrorToast('Guardrail', message)
+              break
+            }
             case 'tmux.auth.expired': {
               settlePendingSeenAcks(false)
               if (tokenRequired) {
@@ -2635,7 +2800,7 @@ function TmuxPage() {
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer)
       }
-      for (const key of ['sessions', 'inspector', 'recovery'] as const) {
+      for (const key of ['sessions', 'inspector', 'recovery', 'timeline'] as const) {
         const id = refreshTimerRef.current[key]
         if (id !== null) {
           window.clearTimeout(id)
@@ -2653,6 +2818,7 @@ function TmuxPage() {
     refreshInspector,
     refreshRecovery,
     refreshSessions,
+    pushErrorToast,
     sendPresenceOverWS,
     settlePendingSeenAcks,
     syncActivityDelta,
@@ -2729,6 +2895,31 @@ function TmuxPage() {
         onFocusTerminal={focusTerminal}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
+        onOpenTimeline={() => {
+          setTimelineOpen(true)
+          void loadTimeline({ quiet: true })
+        }}
+      />
+
+      <TimelineDialog
+        open={timelineOpen}
+        onOpenChange={setTimelineOpen}
+        loading={timelineLoading}
+        error={timelineError}
+        events={timelineEvents}
+        hasMore={timelineHasMore}
+        query={timelineQuery}
+        severity={timelineSeverity}
+        eventType={timelineEventType}
+        sessionFilter={timelineSessionFilter}
+        sessionOptions={timelineSessionOptions}
+        onQueryChange={setTimelineQuery}
+        onSeverityChange={setTimelineSeverity}
+        onEventTypeChange={setTimelineEventType}
+        onSessionFilterChange={setTimelineSessionFilter}
+        onRefresh={() => {
+          void loadTimeline()
+        }}
       />
 
       <Dialog

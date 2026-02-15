@@ -1,4 +1,4 @@
-import { Menu, Minus, Plus } from 'lucide-react'
+import { History, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import ConnectionBadge from './ConnectionBadge'
 import HelpDialog from './HelpDialog'
@@ -47,6 +47,7 @@ type TmuxTerminalPanelProps = {
   onFocusTerminal?: () => void
   onZoomIn?: () => void
   onZoomOut?: () => void
+  onOpenTimeline?: () => void
 }
 
 export default function TmuxTerminalPanel({
@@ -83,6 +84,7 @@ export default function TmuxTerminalPanel({
   onFocusTerminal,
   onZoomIn,
   onZoomOut,
+  onOpenTimeline,
 }: TmuxTerminalPanelProps) {
   const isMobileLayout = useIsMobileLayout()
   const lockedTouchIDsRef = useRef<Set<number>>(new Set())
@@ -192,6 +194,18 @@ export default function TmuxTerminalPanel({
           />
         </div>
         <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-6 gap-1 px-2 text-[11px]"
+            onClick={onOpenTimeline}
+            disabled={!onOpenTimeline}
+            aria-label="Open operations timeline"
+          >
+            <History className="h-3 w-3" />
+            Timeline
+          </Button>
           <ConnectionBadge state={connectionState} />
         </div>
       </header>

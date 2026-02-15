@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ const (
 	defaultCaptureLines  = 80
 	defaultCaptureTimout = 150 * time.Millisecond
 	defaultJournalRows   = 5000
+	defaultTimelineRows  = 20000
 
 	runtimeGlobalRevKey          = "global_rev"
 	runtimeCollectTotalKey       = "collect_total"
@@ -45,6 +47,7 @@ type Options struct {
 	CaptureLines   int
 	CaptureTimeout time.Duration
 	JournalRows    int
+	TimelineRows   int
 	Collect        CollectFunc
 	Publish        func(eventType string, payload map[string]any)
 }
@@ -78,6 +81,9 @@ func New(st *store.Store, tm tmuxClient, options Options) *Service {
 	}
 	if options.JournalRows <= 0 {
 		options.JournalRows = defaultJournalRows
+	}
+	if options.TimelineRows <= 0 {
+		options.TimelineRows = defaultTimelineRows
 	}
 	return &Service{
 		store:   st,
@@ -171,8 +177,9 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 
 	active := make([]string, 0, len(sessions))
 	changedSessions := make([]string, 0, len(sessions))
+	timelineChangedSessions := make(map[string]struct{}, len(sessions))
 	for _, sess := range sessions {
-		keep, changed, collectErr := s.collectSession(ctx, sess)
+		keep, changed, timelineChanged, collectErr := s.collectSession(ctx, sess)
 		if collectErr != nil {
 			slog.Warn("watchtower collect session failed", "session", sess.Name, "err", collectErr)
 		}
@@ -181,6 +188,9 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 		}
 		if keep && changed {
 			changedSessions = append(changedSessions, sess.Name)
+		}
+		if keep && timelineChanged {
+			timelineChangedSessions[sess.Name] = struct{}{}
 		}
 	}
 
@@ -218,6 +228,9 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 	if _, err := s.store.PruneWatchtowerJournalRows(ctx, s.options.JournalRows); err != nil {
 		slog.Warn("watchtower prune journal failed", "err", err)
 	}
+	if _, err := s.store.PruneWatchtowerTimelineRows(ctx, s.options.TimelineRows); err != nil {
+		slog.Warn("watchtower prune timeline failed", "err", err)
+	}
 
 	if len(changedSessions) > 0 && s.options.Publish != nil {
 		sessionPatches := s.buildSessionActivityPatches(ctx, changedSessions)
@@ -235,6 +248,22 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 			"sessionPatches":   sessionPatches,
 			"inspectorPatches": inspectorPatches,
 		})
+	}
+	if len(timelineChangedSessions) > 0 && s.options.Publish != nil {
+		sessionsPayload := make([]string, 0, len(timelineChangedSessions))
+		for sessionName := range timelineChangedSessions {
+			trimmed := strings.TrimSpace(sessionName)
+			if trimmed == "" {
+				continue
+			}
+			sessionsPayload = append(sessionsPayload, trimmed)
+		}
+		if len(sessionsPayload) > 0 {
+			sort.Strings(sessionsPayload)
+			s.options.Publish(events.TypeTmuxTimeline, map[string]any{
+				"sessions": sessionsPayload,
+			})
+		}
 	}
 	return nil
 }
@@ -286,25 +315,25 @@ func (s *Service) buildInspectorActivityPatches(ctx context.Context, sessionName
 	return patches
 }
 
-func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, bool, error) {
+func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, bool, bool, error) {
 	name := strings.TrimSpace(sess.Name)
 	if name == "" {
-		return false, false, nil
+		return false, false, false, nil
 	}
 
 	windows, err := s.tmux.ListWindows(ctx, name)
 	if err != nil {
 		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			return false, false, nil
+			return false, false, false, nil
 		}
-		return true, false, err
+		return true, false, false, err
 	}
 	panes, err := s.tmux.ListPanes(ctx, name)
 	if err != nil {
 		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			return false, false, nil
+			return false, false, false, nil
 		}
-		return true, false, err
+		return true, false, false, err
 	}
 
 	now := time.Now().UTC()
@@ -312,12 +341,12 @@ func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, 
 	existingSession, sessionErr := s.store.GetWatchtowerSession(ctx, name)
 	hasExistingSession := sessionErr == nil
 	if sessionErr != nil && !errors.Is(sessionErr, sql.ErrNoRows) {
-		return true, false, sessionErr
+		return true, false, false, sessionErr
 	}
 
 	existingPanes, err := s.store.ListWatchtowerPanes(ctx, name)
 	if err != nil {
-		return true, false, err
+		return true, false, false, err
 	}
 	existingPaneByID := make(map[string]store.WatchtowerPane, len(existingPanes))
 	for _, item := range existingPanes {
@@ -326,16 +355,24 @@ func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, 
 
 	existingWindows, err := s.store.ListWatchtowerWindows(ctx, name)
 	if err != nil {
-		return true, false, err
+		return true, false, false, err
 	}
 	existingWindowByIndex := make(map[int]store.WatchtowerWindow, len(existingWindows))
 	for _, item := range existingWindows {
 		existingWindowByIndex[item.WindowIndex] = item
 	}
+	windowNameByIndex := make(map[int]string, len(windows))
+	for _, window := range windows {
+		name := strings.TrimSpace(window.Name)
+		if name == "" {
+			continue
+		}
+		windowNameByIndex[window.Index] = name
+	}
 
 	presenceRows, err := s.store.ListWatchtowerPresenceBySession(ctx, name)
 	if err != nil {
-		return true, false, err
+		return true, false, false, err
 	}
 	focusedPanes := make(map[string]bool, len(presenceRows))
 	for _, entry := range presenceRows {
@@ -352,15 +389,55 @@ func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, 
 		focusedPanes[paneID] = true
 	}
 
+	runtimeRows, err := s.store.ListWatchtowerPaneRuntimeBySession(ctx, name)
+	if err != nil {
+		return true, false, false, err
+	}
+	runtimeByPaneID := make(map[string]store.WatchtowerPaneRuntime, len(runtimeRows))
+	for _, row := range runtimeRows {
+		paneID := strings.TrimSpace(row.PaneID)
+		if paneID == "" {
+			continue
+		}
+		runtimeByPaneID[paneID] = row
+	}
+
 	windowAgg := make(map[int]*windowAggregate)
 	paneIDs := make([]string, 0, len(panes))
 	bestPreview := strings.TrimSpace(existingSession.LastPreview)
 	bestPreviewAt := existingSession.LastPreviewAt
 	bestPreviewPaneID := strings.TrimSpace(existingSession.LastPreviewPaneID)
 	anyPaneChanged := false
+	timelineChanged := false
+
+	appendTimeline := func(event store.WatchtowerTimelineEventWrite) error {
+		if _, insertErr := s.store.InsertWatchtowerTimelineEvent(ctx, event); insertErr != nil {
+			return insertErr
+		}
+		timelineChanged = true
+		return nil
+	}
 
 	for _, pane := range panes {
 		paneIDs = append(paneIDs, pane.PaneID)
+		command := normalizeRuntimeCommand(pane.CurrentCommand, pane.StartCommand)
+		paneTitle := strings.TrimSpace(pane.Title)
+		windowName := strings.TrimSpace(windowNameByIndex[pane.WindowIndex])
+		if windowName == "" {
+			if previousWindow, ok := existingWindowByIndex[pane.WindowIndex]; ok {
+				windowName = strings.TrimSpace(previousWindow.Name)
+			}
+		}
+		baseTimelineMetadata := map[string]any{
+			"paneIndex": pane.PaneIndex,
+			"title":     paneTitle,
+		}
+		if paneTitle != "" {
+			baseTimelineMetadata["paneTitle"] = paneTitle
+		}
+		if windowName != "" {
+			baseTimelineMetadata["windowName"] = windowName
+		}
 
 		prev, hadPrev := existingPaneByID[pane.PaneID]
 		tailPreview := ""
@@ -407,6 +484,113 @@ func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, 
 				seenRevision = revision
 			}
 		}
+		if paneChanged && strings.TrimSpace(tailPreview) != "" {
+			marker, severity, matched := detectTimelineMarker(tailPreview)
+			if matched {
+				summary := timelineLastLine(tailPreview)
+				if summary == "" {
+					summary = "output marker detected"
+				}
+				outputMetadata := make(map[string]any, len(baseTimelineMetadata)+1)
+				for key, value := range baseTimelineMetadata {
+					outputMetadata[key] = value
+				}
+				outputMetadata["revision"] = revision
+				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
+					Session:   name,
+					WindowIdx: pane.WindowIndex,
+					PaneID:    pane.PaneID,
+					EventType: "output.marker",
+					Severity:  severity,
+					Command:   command,
+					Cwd:       pane.CurrentPath,
+					Summary:   summary,
+					Details:   tailPreview,
+					Marker:    marker,
+					Metadata:  timelineMetadataJSON(outputMetadata),
+					CreatedAt: now,
+				}); err != nil {
+					return true, false, false, err
+				}
+			}
+		}
+
+		runtime, hadRuntime := runtimeByPaneID[pane.PaneID]
+		prevCommand := strings.TrimSpace(runtime.CurrentCommand)
+		startedAt := runtime.StartedAt
+		if startedAt.IsZero() {
+			startedAt = now
+		}
+		nextStartedAt := startedAt
+
+		if !hadRuntime {
+			nextStartedAt = now
+			if command != "" && !isShellLikeCommand(command) {
+				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
+					Session:   name,
+					WindowIdx: pane.WindowIndex,
+					PaneID:    pane.PaneID,
+					EventType: "command.started",
+					Severity:  "info",
+					Command:   command,
+					Cwd:       pane.CurrentPath,
+					Summary:   "command started: " + command,
+					Metadata:  timelineMetadataJSON(baseTimelineMetadata),
+					CreatedAt: now,
+				}); err != nil {
+					return true, false, false, err
+				}
+			}
+		} else if command != prevCommand {
+			if prevCommand != "" && !isShellLikeCommand(prevCommand) {
+				durationMS := now.Sub(startedAt).Milliseconds()
+				if durationMS < 0 {
+					durationMS = 0
+				}
+				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
+					Session:    name,
+					WindowIdx:  pane.WindowIndex,
+					PaneID:     pane.PaneID,
+					EventType:  "command.finished",
+					Severity:   "info",
+					Command:    prevCommand,
+					Cwd:        pane.CurrentPath,
+					DurationMS: durationMS,
+					Summary:    "command finished: " + prevCommand,
+					Metadata:   timelineMetadataJSON(baseTimelineMetadata),
+					CreatedAt:  now,
+				}); err != nil {
+					return true, false, false, err
+				}
+			}
+			nextStartedAt = now
+			if command != "" && !isShellLikeCommand(command) {
+				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
+					Session:   name,
+					WindowIdx: pane.WindowIndex,
+					PaneID:    pane.PaneID,
+					EventType: "command.started",
+					Severity:  "info",
+					Command:   command,
+					Cwd:       pane.CurrentPath,
+					Summary:   "command started: " + command,
+					Metadata:  timelineMetadataJSON(baseTimelineMetadata),
+					CreatedAt: now,
+				}); err != nil {
+					return true, false, false, err
+				}
+			}
+		}
+		if err := s.store.UpsertWatchtowerPaneRuntime(ctx, store.WatchtowerPaneRuntimeWrite{
+			PaneID:         pane.PaneID,
+			SessionName:    name,
+			WindowIdx:      pane.WindowIndex,
+			CurrentCommand: command,
+			StartedAt:      nextStartedAt,
+			UpdatedAt:      now,
+		}); err != nil {
+			return true, false, false, err
+		}
 
 		agg := windowAgg[pane.WindowIndex]
 		if agg == nil {
@@ -444,12 +628,15 @@ func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, 
 			ChangedAt:      changedAt,
 			UpdatedAt:      now,
 		}); err != nil {
-			return true, false, err
+			return true, false, false, err
 		}
 	}
 
 	if err := s.store.PurgeWatchtowerPanes(ctx, name, paneIDs); err != nil {
-		return true, false, err
+		return true, false, false, err
+	}
+	if err := s.store.PurgeWatchtowerPaneRuntime(ctx, name, paneIDs); err != nil {
+		return true, false, false, err
 	}
 
 	windowIndices := make([]int, 0, len(windows))
@@ -512,12 +699,12 @@ func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, 
 			Rev:              windowRev,
 			UpdatedAt:        now,
 		}); err != nil {
-			return true, false, err
+			return true, false, false, err
 		}
 	}
 
 	if err := s.store.PurgeWatchtowerWindows(ctx, name, windowIndices); err != nil {
-		return true, false, err
+		return true, false, false, err
 	}
 
 	sessionRev := int64(0)
@@ -557,10 +744,10 @@ func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, 
 		Rev:               sessionRev,
 		UpdatedAt:         now,
 	}); err != nil {
-		return true, false, err
+		return true, false, false, err
 	}
 
-	return true, sessionChanged, nil
+	return true, sessionChanged, timelineChanged, nil
 }
 
 func (s *Service) currentGlobalRev(ctx context.Context) (int64, error) {

@@ -59,6 +59,74 @@ export type PanesResponse = {
   panes: Array<PaneInfo>
 }
 
+export type TimelineSeverity = 'info' | 'warn' | 'error' | ''
+
+export type TimelineEvent = {
+  id: number
+  session: string
+  windowIndex: number
+  paneId: string
+  eventType: string
+  severity: TimelineSeverity
+  command: string
+  cwd: string
+  durationMs: number
+  summary: string
+  details: string
+  marker: string
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export type TimelineResponse = {
+  events: Array<TimelineEvent>
+  hasMore: boolean
+}
+
+export type GuardrailRule = {
+  id: string
+  name: string
+  scope: 'action' | 'command' | string
+  pattern: string
+  mode: 'allow' | 'warn' | 'confirm' | 'block' | string
+  severity: 'info' | 'warn' | 'error' | string
+  message: string
+  enabled: boolean
+  priority: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type GuardrailRulesResponse = {
+  rules: Array<GuardrailRule>
+}
+
+export type StorageResourceStat = {
+  resource: string
+  label: string
+  rows: number
+  approxBytes: number
+}
+
+export type StorageStatsResponse = {
+  databaseBytes: number
+  walBytes: number
+  shmBytes: number
+  totalBytes: number
+  resources: Array<StorageResourceStat>
+  collectedAt: string
+}
+
+export type StorageFlushResult = {
+  resource: string
+  removedRows: number
+}
+
+export type StorageFlushResponse = {
+  results: Array<StorageFlushResult>
+  flushedAt: string
+}
+
 export type TerminalConnection = {
   id: string
   tty: string

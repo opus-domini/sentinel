@@ -18,7 +18,8 @@ type SessionMeta struct {
 }
 
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	dbPath string
 }
 
 func New(dbPath string) (*Store, error) {
@@ -63,7 +64,7 @@ func New(dbPath string) (*Store, error) {
 	// Migrate: add default naming sequence for tmux windows.
 	_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN next_window_seq INTEGER NOT NULL DEFAULT 1")
 
-	s := &Store{db: db}
+	s := &Store{db: db, dbPath: dbPath}
 	if err := s.initRecoverySchema(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("create recovery schema: %w", err)
@@ -71,6 +72,10 @@ func New(dbPath string) (*Store, error) {
 	if err := s.initWatchtowerSchema(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("create watchtower schema: %w", err)
+	}
+	if err := s.initGuardrailSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create guardrail schema: %w", err)
 	}
 
 	return s, nil

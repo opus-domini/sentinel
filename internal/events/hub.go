@@ -10,6 +10,8 @@ const (
 	TypeTmuxSessions     = "tmux.sessions.updated"
 	TypeTmuxInspector    = "tmux.inspector.updated"
 	TypeTmuxActivity     = "tmux.activity.updated"
+	TypeTmuxTimeline     = "tmux.timeline.updated"
+	TypeTmuxGuardrail    = "tmux.guardrail.blocked"
 	TypeRecoveryOverview = "recovery.overview.updated"
 	TypeRecoveryJob      = "recovery.job.updated"
 )

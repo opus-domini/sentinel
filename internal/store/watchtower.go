@@ -328,6 +328,40 @@ func (s *Store) initWatchtowerSchema() error {
 			value      TEXT NOT NULL,
 			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+		`CREATE TABLE IF NOT EXISTS wt_timeline_events (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_name  TEXT NOT NULL DEFAULT '',
+			window_index  INTEGER NOT NULL DEFAULT -1,
+			pane_id       TEXT NOT NULL DEFAULT '',
+			event_type    TEXT NOT NULL DEFAULT '',
+			severity      TEXT NOT NULL DEFAULT '',
+			command       TEXT NOT NULL DEFAULT '',
+			cwd           TEXT NOT NULL DEFAULT '',
+			duration_ms   INTEGER NOT NULL DEFAULT 0,
+			summary       TEXT NOT NULL DEFAULT '',
+			details       TEXT NOT NULL DEFAULT '',
+			marker        TEXT NOT NULL DEFAULT '',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at    TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wt_timeline_created
+			ON wt_timeline_events (created_at DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_wt_timeline_session
+			ON wt_timeline_events (session_name, created_at DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_wt_timeline_scope
+			ON wt_timeline_events (session_name, window_index, pane_id, created_at DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_wt_timeline_event_type
+			ON wt_timeline_events (event_type, created_at DESC, id DESC)`,
+		`CREATE TABLE IF NOT EXISTS wt_pane_runtime (
+			pane_id          TEXT PRIMARY KEY,
+			session_name     TEXT NOT NULL DEFAULT '',
+			window_index     INTEGER NOT NULL DEFAULT -1,
+			current_command  TEXT NOT NULL DEFAULT '',
+			started_at       TEXT NOT NULL DEFAULT '',
+			updated_at       TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wt_pane_runtime_session
+			ON wt_pane_runtime (session_name, pane_id)`,
 		`INSERT OR IGNORE INTO wt_runtime(key, value)
 		 VALUES ('global_rev', '0')`,
 		`INSERT OR IGNORE INTO wt_sessions(session_name, last_preview, updated_at)

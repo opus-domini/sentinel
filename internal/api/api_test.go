@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
+	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -2626,6 +2627,7 @@ func TestRestoreRecoverySnapshotHandler(t *testing.T) {
 
 func TestActivityDeltaHandler(t *testing.T) {
 	t.Parallel()
+	const sessionName = "dev"
 
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
@@ -2635,7 +2637,7 @@ func TestActivityDeltaHandler(t *testing.T) {
 		t.Fatalf("SetWatchtowerRuntimeValue(global_rev): %v", err)
 	}
 	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
-		SessionName:   "dev",
+		SessionName:   sessionName,
 		Attached:      1,
 		Windows:       1,
 		Panes:         1,
@@ -2648,7 +2650,7 @@ func TestActivityDeltaHandler(t *testing.T) {
 		t.Fatalf("UpsertWatchtowerSession(dev): %v", err)
 	}
 	if err := h.store.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
-		SessionName:      "dev",
+		SessionName:      sessionName,
 		WindowIndex:      0,
 		Name:             "main",
 		Active:           true,
@@ -2662,7 +2664,7 @@ func TestActivityDeltaHandler(t *testing.T) {
 	}
 	if err := h.store.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
 		PaneID:         "%1",
-		SessionName:    "dev",
+		SessionName:    sessionName,
 		WindowIndex:    0,
 		PaneIndex:      0,
 		Title:          "shell",
@@ -2681,7 +2683,7 @@ func TestActivityDeltaHandler(t *testing.T) {
 		if _, err := h.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
 			GlobalRev:  int64(rev),
 			EntityType: "session",
-			Session:    "dev",
+			Session:    sessionName,
 			WindowIdx:  -1,
 			ChangeKind: "activity",
 			ChangedAt:  now.Add(time.Duration(rev) * time.Second),
@@ -2742,16 +2744,16 @@ func TestActivityDeltaHandler(t *testing.T) {
 			t.Fatalf("sessionPatches = %T(%v), want len=1", data["sessionPatches"], data["sessionPatches"])
 		}
 		sessionPatch, _ := sessionPatches[0].(map[string]any)
-		if sessionPatch["name"] != "dev" {
-			t.Fatalf("session patch name = %v, want dev", sessionPatch["name"])
+		if sessionPatch["name"] != sessionName {
+			t.Fatalf("session patch name = %v, want %s", sessionPatch["name"], sessionName)
 		}
 		inspectorPatches, ok := data["inspectorPatches"].([]any)
 		if !ok || len(inspectorPatches) != 1 {
 			t.Fatalf("inspectorPatches = %T(%v), want len=1", data["inspectorPatches"], data["inspectorPatches"])
 		}
 		inspectorPatch, _ := inspectorPatches[0].(map[string]any)
-		if inspectorPatch["session"] != "dev" {
-			t.Fatalf("inspector patch session = %v, want dev", inspectorPatch["session"])
+		if inspectorPatch["session"] != sessionName {
+			t.Fatalf("inspector patch session = %v, want %s", inspectorPatch["session"], sessionName)
 		}
 	})
 
@@ -2821,6 +2823,406 @@ func TestActivityStatsHandler(t *testing.T) {
 	if data["lastCollectAt"] != "2026-02-13T20:00:00Z" {
 		t.Fatalf("lastCollectAt = %v, want 2026-02-13T20:00:00Z", data["lastCollectAt"])
 	}
+}
+
+func TestTimelineSearchHandler(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Second)
+
+	rows := []store.WatchtowerTimelineEventWrite{
+		{
+			Session:   "dev",
+			WindowIdx: 0,
+			PaneID:    "%1",
+			EventType: "command.started",
+			Severity:  "info",
+			Command:   "go test ./...",
+			Cwd:       "/repo",
+			Summary:   "command started",
+			CreatedAt: base.Add(-2 * time.Minute),
+		},
+		{
+			Session:   "dev",
+			WindowIdx: 0,
+			PaneID:    "%1",
+			EventType: "output.marker",
+			Severity:  "error",
+			Marker:    "panic",
+			Summary:   "panic marker",
+			Details:   "panic: boom",
+			CreatedAt: base.Add(-1 * time.Minute),
+		},
+		{
+			Session:   "ops",
+			WindowIdx: 2,
+			PaneID:    "%9",
+			EventType: "command.finished",
+			Severity:  "warn",
+			Command:   "deploy",
+			Summary:   "deploy finished",
+			CreatedAt: base,
+		},
+	}
+	for i, row := range rows {
+		if _, err := h.store.InsertWatchtowerTimelineEvent(ctx, row); err != nil {
+			t.Fatalf("InsertWatchtowerTimelineEvent[%d]: %v", i, err)
+		}
+	}
+
+	t.Run("returns filtered timeline", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(
+			"GET",
+			"/api/tmux/timeline?session=dev&q=panic&severity=error&limit=5",
+			nil,
+		)
+		h.timelineSearch(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		eventsRaw, _ := data["events"].([]any)
+		if len(eventsRaw) != 1 {
+			t.Fatalf("len(events) = %d, want 1", len(eventsRaw))
+		}
+		event, _ := eventsRaw[0].(map[string]any)
+		if event["eventType"] != "output.marker" {
+			t.Fatalf("eventType = %v, want output.marker", event["eventType"])
+		}
+		if data["hasMore"] != false {
+			t.Fatalf("hasMore = %v, want false", data["hasMore"])
+		}
+	})
+
+	t.Run("supports pagination hint", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/timeline?limit=1", nil)
+		h.timelineSearch(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		if data["hasMore"] != true {
+			t.Fatalf("hasMore = %v, want true", data["hasMore"])
+		}
+	})
+
+	t.Run("invalid session", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/timeline?session=bad%20name", nil)
+		h.timelineSearch(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+		if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+		}
+	})
+
+	t.Run("invalid since", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/timeline?since=not-time", nil)
+		h.timelineSearch(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+		if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+		}
+	})
+}
+
+func TestStorageStatsAndFlushHandlers(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Second)
+
+	if _, err := h.store.InsertWatchtowerTimelineEvent(ctx, store.WatchtowerTimelineEventWrite{
+		Session:   "dev",
+		WindowIdx: 0,
+		PaneID:    "%1",
+		EventType: "output.marker",
+		Severity:  "warn",
+		Summary:   "warning marker",
+		Details:   "deprecated warning",
+		CreatedAt: base,
+	}); err != nil {
+		t.Fatalf("InsertWatchtowerTimelineEvent: %v", err)
+	}
+
+	if _, err := h.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
+		GlobalRev:  1,
+		EntityType: "pane",
+		Session:    "dev",
+		WindowIdx:  0,
+		PaneID:     "%1",
+		ChangeKind: "updated",
+		ChangedAt:  base,
+	}); err != nil {
+		t.Fatalf("InsertWatchtowerJournal: %v", err)
+	}
+
+	if _, err := h.store.InsertGuardrailAudit(ctx, store.GuardrailAuditWrite{
+		RuleID:      "rule.test",
+		Decision:    "warn",
+		Action:      "session.kill",
+		Command:     "tmux kill-session -t dev",
+		SessionName: "dev",
+		WindowIndex: 0,
+		PaneID:      "%1",
+		Reason:      "test",
+		MetadataRaw: `{"source":"test"}`,
+		CreatedAt:   base,
+	}); err != nil {
+		t.Fatalf("InsertGuardrailAudit: %v", err)
+	}
+
+	snapshot, _, err := h.store.UpsertRecoverySnapshot(ctx, store.RecoverySnapshotWrite{
+		SessionName:  "dev",
+		BootID:       "boot-1",
+		StateHash:    "hash-1",
+		CapturedAt:   base,
+		ActiveWindow: 0,
+		ActivePaneID: "%1",
+		Windows:      1,
+		Panes:        1,
+		PayloadJSON:  `{"windows":[],"panes":[]}`,
+	})
+	if err != nil {
+		t.Fatalf("UpsertRecoverySnapshot: %v", err)
+	}
+
+	if err := h.store.CreateRecoveryJob(ctx, store.RecoveryJob{
+		ID:             "job-1",
+		SessionName:    "dev",
+		TargetSession:  "dev-restored",
+		SnapshotID:     snapshot.ID,
+		Mode:           "safe",
+		ConflictPolicy: "rename",
+		Status:         store.RecoveryJobQueued,
+		CreatedAt:      base,
+	}); err != nil {
+		t.Fatalf("CreateRecoveryJob: %v", err)
+	}
+
+	getResources := func(t *testing.T) map[string]map[string]any {
+		t.Helper()
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/storage/stats", nil)
+		h.storageStats(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("storageStats status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		rawResources, _ := data["resources"].([]any)
+		resources := make(map[string]map[string]any, len(rawResources))
+		for _, raw := range rawResources {
+			item, _ := raw.(map[string]any)
+			name, _ := item["resource"].(string)
+			resources[name] = item
+		}
+		return resources
+	}
+
+	resources := getResources(t)
+	for _, key := range []string{
+		store.StorageResourceTimeline,
+		store.StorageResourceActivityLog,
+		store.StorageResourceGuardrailLog,
+		store.StorageResourceRecoveryLog,
+	} {
+		item := resources[key]
+		if item == nil {
+			t.Fatalf("missing resource %q in stats", key)
+		}
+		rows, _ := item["rows"].(float64)
+		if rows < 1 {
+			t.Fatalf("resource %q rows = %v, want >= 1", key, item["rows"])
+		}
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(
+		"POST",
+		"/api/ops/storage/flush",
+		strings.NewReader(`{"resource":"timeline"}`),
+	)
+	h.flushStorage(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("flushStorage status = %d, want 200", w.Code)
+	}
+	flushBody := jsonBody(t, w)
+	flushData, _ := flushBody["data"].(map[string]any)
+	flushResults, _ := flushData["results"].([]any)
+	if len(flushResults) != 1 {
+		t.Fatalf("flush results len = %d, want 1", len(flushResults))
+	}
+	firstResult, _ := flushResults[0].(map[string]any)
+	if firstResult["resource"] != store.StorageResourceTimeline {
+		t.Fatalf("flushed resource = %v, want timeline", firstResult["resource"])
+	}
+	removedRows, _ := firstResult["removedRows"].(float64)
+	if removedRows < 1 {
+		t.Fatalf("removedRows = %v, want >= 1", firstResult["removedRows"])
+	}
+
+	resources = getResources(t)
+	timelineRows, _ := resources[store.StorageResourceTimeline]["rows"].(float64)
+	if timelineRows != 0 {
+		t.Fatalf("timeline rows after flush = %v, want 0", timelineRows)
+	}
+	journalRows, _ := resources[store.StorageResourceActivityLog]["rows"].(float64)
+	if journalRows < 1 {
+		t.Fatalf("journal rows after timeline flush = %v, want >= 1", journalRows)
+	}
+}
+
+func TestFlushStorageRejectsInvalidResource(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(
+		"POST",
+		"/api/ops/storage/flush",
+		strings.NewReader(`{"resource":"unknown"}`),
+	)
+
+	h.flushStorage(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	body := jsonBody(t, w)
+	if got := errCode(body); got != invalidRequestCode {
+		t.Fatalf("error code = %q, want %q", got, invalidRequestCode)
+	}
+}
+
+func TestDeleteSessionGuardrailConfirmRequired(t *testing.T) {
+	t.Parallel()
+
+	var killCalls int
+	h := newTestHandler(t, &mockTmux{
+		killSessionFn: func(_ context.Context, session string) error {
+			killCalls++
+			if session != "dev" {
+				t.Fatalf("kill session = %q, want dev", session)
+			}
+			return nil
+		},
+	}, nil)
+	h.guardrails = guardrails.New(h.store)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
+	r.SetPathValue("session", "dev")
+	h.deleteSession(w, r)
+	if w.Code != http.StatusPreconditionRequired {
+		t.Fatalf("status = %d, want 428", w.Code)
+	}
+	if code := errCode(jsonBody(t, w)); code != "GUARDRAIL_CONFIRM_REQUIRED" {
+		t.Fatalf("code = %q, want GUARDRAIL_CONFIRM_REQUIRED", code)
+	}
+	if killCalls != 0 {
+		t.Fatalf("killCalls = %d, want 0", killCalls)
+	}
+
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
+	r.SetPathValue("session", "dev")
+	r.Header.Set("X-Sentinel-Guardrail-Confirm", "true")
+	h.deleteSession(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
+	}
+	if killCalls != 1 {
+		t.Fatalf("killCalls = %d, want 1", killCalls)
+	}
+}
+
+func TestGuardrailEndpoints(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(t, nil, nil)
+	h.guardrails = guardrails.New(h.store)
+
+	t.Run("list rules", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/guardrails/rules", nil)
+		h.listGuardrailRules(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		rules, _ := data["rules"].([]any)
+		if len(rules) < 2 {
+			t.Fatalf("rules len = %d, want >= 2", len(rules))
+		}
+	})
+
+	t.Run("evaluate command", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(`{
+			"command":"rm -rf /",
+			"action":"manual.check",
+			"windowIndex":-1
+		}`))
+		h.evaluateGuardrail(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		decision, _ := data["decision"].(map[string]any)
+		if decision["mode"] != "block" {
+			t.Fatalf("decision.mode = %v, want block", decision["mode"])
+		}
+	})
+
+	t.Run("update rule", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PATCH", "/api/ops/guardrails/rules/action.session.kill.confirm", strings.NewReader(`{
+			"name":"Confirm session kill",
+			"scope":"action",
+			"pattern":"^session\\.kill$",
+			"mode":"confirm",
+			"severity":"warn",
+			"message":"confirm required",
+			"enabled":true,
+			"priority":8
+		}`))
+		r.SetPathValue("rule", "action.session.kill.confirm")
+		h.updateGuardrailRule(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+	})
 }
 
 func TestMarkSessionSeenHandler(t *testing.T) {
