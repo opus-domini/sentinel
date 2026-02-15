@@ -15,73 +15,7 @@ func TestStorageStatsAndFlush(t *testing.T) {
 
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
-
-	if _, err := s.InsertWatchtowerTimelineEvent(ctx, WatchtowerTimelineEventWrite{
-		Session:   "dev",
-		WindowIdx: 0,
-		PaneID:    "%1",
-		EventType: "output.marker",
-		Severity:  "warn",
-		Summary:   "warning marker",
-		Details:   "deprecated warning",
-		CreatedAt: base,
-	}); err != nil {
-		t.Fatalf("InsertWatchtowerTimelineEvent: %v", err)
-	}
-
-	if _, err := s.InsertWatchtowerJournal(ctx, WatchtowerJournalWrite{
-		GlobalRev:  1,
-		EntityType: "pane",
-		Session:    "dev",
-		WindowIdx:  0,
-		PaneID:     "%1",
-		ChangeKind: "updated",
-		ChangedAt:  base,
-	}); err != nil {
-		t.Fatalf("InsertWatchtowerJournal: %v", err)
-	}
-
-	if _, err := s.InsertGuardrailAudit(ctx, GuardrailAuditWrite{
-		RuleID:      "rule.test",
-		Decision:    "warn",
-		Action:      "session.kill",
-		Command:     "tmux kill-session -t dev",
-		SessionName: "dev",
-		WindowIndex: 0,
-		PaneID:      "%1",
-		Reason:      "test",
-		MetadataRaw: `{"source":"test"}`,
-		CreatedAt:   base,
-	}); err != nil {
-		t.Fatalf("InsertGuardrailAudit: %v", err)
-	}
-
-	snapshot, _, err := s.UpsertRecoverySnapshot(ctx, RecoverySnapshotWrite{
-		SessionName:  "dev",
-		BootID:       "boot-1",
-		StateHash:    "hash-1",
-		CapturedAt:   base,
-		ActiveWindow: 0,
-		ActivePaneID: "%1",
-		Windows:      1,
-		Panes:        1,
-		PayloadJSON:  `{"windows":[],"panes":[]}`,
-	})
-	if err != nil {
-		t.Fatalf("UpsertRecoverySnapshot: %v", err)
-	}
-	if err := s.CreateRecoveryJob(ctx, RecoveryJob{
-		ID:             "job-1",
-		SessionName:    "dev",
-		TargetSession:  "dev-restored",
-		SnapshotID:     snapshot.ID,
-		Mode:           "safe",
-		ConflictPolicy: "rename",
-		Status:         RecoveryJobQueued,
-		CreatedAt:      base,
-	}); err != nil {
-		t.Fatalf("CreateRecoveryJob: %v", err)
-	}
+	seedStorageStatsData(t, s, ctx, base)
 
 	stats, err := s.GetStorageStats(ctx)
 	if err != nil {
@@ -122,6 +56,73 @@ func TestStorageStatsAndFlush(t *testing.T) {
 		if item.Rows != 0 {
 			t.Fatalf("resource %q rows after flush = %d, want 0", item.Resource, item.Rows)
 		}
+	}
+}
+
+func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time.Time) {
+	t.Helper()
+	if _, err := s.InsertWatchtowerTimelineEvent(ctx, WatchtowerTimelineEventWrite{
+		Session:   "dev",
+		WindowIdx: 0,
+		PaneID:    "%1",
+		EventType: "output.marker",
+		Severity:  "warn",
+		Summary:   "warning marker",
+		Details:   "deprecated warning",
+		CreatedAt: base,
+	}); err != nil {
+		t.Fatalf("InsertWatchtowerTimelineEvent: %v", err)
+	}
+	if _, err := s.InsertWatchtowerJournal(ctx, WatchtowerJournalWrite{
+		GlobalRev:  1,
+		EntityType: "pane",
+		Session:    "dev",
+		WindowIdx:  0,
+		PaneID:     "%1",
+		ChangeKind: "updated",
+		ChangedAt:  base,
+	}); err != nil {
+		t.Fatalf("InsertWatchtowerJournal: %v", err)
+	}
+	if _, err := s.InsertGuardrailAudit(ctx, GuardrailAuditWrite{
+		RuleID:      "rule.test",
+		Decision:    "warn",
+		Action:      "session.kill",
+		Command:     "tmux kill-session -t dev",
+		SessionName: "dev",
+		WindowIndex: 0,
+		PaneID:      "%1",
+		Reason:      "test",
+		MetadataRaw: `{"source":"test"}`,
+		CreatedAt:   base,
+	}); err != nil {
+		t.Fatalf("InsertGuardrailAudit: %v", err)
+	}
+	snapshot, _, err := s.UpsertRecoverySnapshot(ctx, RecoverySnapshotWrite{
+		SessionName:  "dev",
+		BootID:       "boot-1",
+		StateHash:    "hash-1",
+		CapturedAt:   base,
+		ActiveWindow: 0,
+		ActivePaneID: "%1",
+		Windows:      1,
+		Panes:        1,
+		PayloadJSON:  `{"windows":[],"panes":[]}`,
+	})
+	if err != nil {
+		t.Fatalf("UpsertRecoverySnapshot: %v", err)
+	}
+	if err := s.CreateRecoveryJob(ctx, RecoveryJob{
+		ID:             "job-1",
+		SessionName:    "dev",
+		TargetSession:  "dev-restored",
+		SnapshotID:     snapshot.ID,
+		Mode:           "safe",
+		ConflictPolicy: "rename",
+		Status:         RecoveryJobQueued,
+		CreatedAt:      base,
+	}); err != nil {
+		t.Fatalf("CreateRecoveryJob: %v", err)
 	}
 }
 

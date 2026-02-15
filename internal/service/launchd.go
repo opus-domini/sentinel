@@ -25,6 +25,16 @@ const (
 	launchdSystemLogDir      = "/var/log/sentinel"
 )
 
+type launchdAutoUpdateInstallConfig struct {
+	scope        string
+	execPath     string
+	serviceLabel string
+	interval     int
+	updaterPath  string
+	stdoutPath   string
+	stderrPath   string
+}
+
 func installUserLaunchd(opts InstallUserOptions) error {
 	if err := ensureLaunchdSupported(); err != nil {
 		return err
@@ -79,58 +89,86 @@ func installUserAutoUpdateLaunchd(opts InstallUserAutoUpdateOptions) error {
 		return err
 	}
 
-	scope, err := normalizeLaunchdScope(opts.SystemdScope)
+	cfg, err := resolveLaunchdAutoUpdateInstallConfig(opts)
 	if err != nil {
 		return err
 	}
-	if err := ensureLaunchdScopePrivileges(scope); err != nil {
-		return err
-	}
-
-	execPath, err := resolveExecPath(opts.ExecPath)
-	if err != nil {
-		return err
-	}
-
-	serviceLabel, err := launchdLabelFromServiceUnit(opts.ServiceUnit)
-	if err != nil {
-		return err
-	}
-	interval, err := launchdStartInterval(opts.OnCalendar)
-	if err != nil {
-		return err
-	}
-
-	updaterPath, err := userAutoUpdatePathLaunchdForScope(scope)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(updaterPath), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfg.updaterPath), 0o750); err != nil {
 		return fmt.Errorf("create launchd directory: %w", err)
 	}
-
-	stdoutPath, stderrPath, err := launchdLogPathsForScope("sentinel-updater", scope)
-	if err != nil {
+	if err := writeLaunchdAutoUpdatePlist(cfg); err != nil {
 		return err
-	}
-	// launchd does not provide a direct RandomizedDelaySec equivalent.
-	_ = opts.RandomizedDelay
-
-	plist := renderLaunchdUserAutoUpdatePlist(execPath, serviceLabel, scope, interval, stdoutPath, stderrPath)
-	if err := os.WriteFile(updaterPath, []byte(plist), launchdUnitFileMode(scope)); err != nil {
-		return fmt.Errorf("write launchd autoupdate plist: %w", err)
 	}
 
 	if opts.Enable || opts.Start {
-		_ = launchdBootout(scope, launchdAutoUpdateLabel)
-		if err := launchdBootstrap(scope, updaterPath, launchdAutoUpdateLabel); err != nil {
+		_ = launchdBootout(cfg.scope, launchdAutoUpdateLabel)
+		if err := launchdBootstrap(cfg.scope, cfg.updaterPath, launchdAutoUpdateLabel); err != nil {
 			return err
 		}
 	}
 	if opts.Start {
-		if err := launchdKickstart(scope, launchdAutoUpdateLabel); err != nil {
+		if err := launchdKickstart(cfg.scope, launchdAutoUpdateLabel); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func resolveLaunchdAutoUpdateInstallConfig(opts InstallUserAutoUpdateOptions) (launchdAutoUpdateInstallConfig, error) {
+	scope, err := normalizeLaunchdScope(opts.SystemdScope)
+	if err != nil {
+		return launchdAutoUpdateInstallConfig{}, err
+	}
+	if err := ensureLaunchdScopePrivileges(scope); err != nil {
+		return launchdAutoUpdateInstallConfig{}, err
+	}
+
+	execPath, err := resolveExecPath(opts.ExecPath)
+	if err != nil {
+		return launchdAutoUpdateInstallConfig{}, err
+	}
+	serviceLabel, err := launchdLabelFromServiceUnit(opts.ServiceUnit)
+	if err != nil {
+		return launchdAutoUpdateInstallConfig{}, err
+	}
+	interval, err := launchdStartInterval(opts.OnCalendar)
+	if err != nil {
+		return launchdAutoUpdateInstallConfig{}, err
+	}
+	updaterPath, err := userAutoUpdatePathLaunchdForScope(scope)
+	if err != nil {
+		return launchdAutoUpdateInstallConfig{}, err
+	}
+	stdoutPath, stderrPath, err := launchdLogPathsForScope("sentinel-updater", scope)
+	if err != nil {
+		return launchdAutoUpdateInstallConfig{}, err
+	}
+
+	// launchd does not provide a direct RandomizedDelaySec equivalent.
+	_ = opts.RandomizedDelay
+
+	return launchdAutoUpdateInstallConfig{
+		scope:        scope,
+		execPath:     execPath,
+		serviceLabel: serviceLabel,
+		interval:     interval,
+		updaterPath:  updaterPath,
+		stdoutPath:   stdoutPath,
+		stderrPath:   stderrPath,
+	}, nil
+}
+
+func writeLaunchdAutoUpdatePlist(cfg launchdAutoUpdateInstallConfig) error {
+	plist := renderLaunchdUserAutoUpdatePlist(
+		cfg.execPath,
+		cfg.serviceLabel,
+		cfg.scope,
+		cfg.interval,
+		cfg.stdoutPath,
+		cfg.stderrPath,
+	)
+	if err := os.WriteFile(cfg.updaterPath, []byte(plist), launchdUnitFileMode(cfg.scope)); err != nil {
+		return fmt.Errorf("write launchd autoupdate plist: %w", err)
 	}
 	return nil
 }

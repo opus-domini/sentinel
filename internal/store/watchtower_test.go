@@ -418,16 +418,12 @@ func TestWatchtowerPresenceAccessors(t *testing.T) {
 	}
 }
 
-func TestWatchtowerJournalAndRuntimeAccessors(t *testing.T) {
+func TestWatchtowerRuntimeAccessors(t *testing.T) {
 	t.Parallel()
-
 	s := newTestStore(t)
 	defer func() { _ = s.Close() }()
 
 	ctx := context.Background()
-	now := time.Now().UTC().Truncate(time.Second)
-
-	// runtime
 	missing, err := s.GetWatchtowerRuntimeValue(ctx, "missing")
 	if err != nil {
 		t.Fatalf("GetWatchtowerRuntimeValue(missing): %v", err)
@@ -445,54 +441,33 @@ func TestWatchtowerJournalAndRuntimeAccessors(t *testing.T) {
 	if got != "41" {
 		t.Fatalf("runtime global_rev = %q, want 41", got)
 	}
+}
 
-	// journal
-	if _, err := s.InsertWatchtowerJournal(ctx, WatchtowerJournalWrite{
-		GlobalRev:  1,
-		EntityType: "pane",
-		Session:    "dev",
-		WindowIdx:  1,
-		PaneID:     "%11",
-		ChangeKind: "tail-changed",
-		ChangedAt:  now,
-	}); err != nil {
-		t.Fatalf("InsertWatchtowerJournal #1: %v", err)
-	}
-	if _, err := s.InsertWatchtowerJournal(ctx, WatchtowerJournalWrite{
-		GlobalRev:  2,
-		EntityType: "window",
-		Session:    "dev",
-		WindowIdx:  1,
-		ChangeKind: "unread-updated",
-		ChangedAt:  now.Add(time.Second),
-	}); err != nil {
-		t.Fatalf("InsertWatchtowerJournal #2: %v", err)
-	}
+func TestWatchtowerJournalAccessorsAndPrune(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
 
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	seedWatchtowerJournalRows(t, s, ctx, now)
 	entries, err := s.ListWatchtowerJournalSince(ctx, 1, 10)
 	if err != nil {
 		t.Fatalf("ListWatchtowerJournalSince: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("journal entries len = %d, want 1", len(entries))
+	if len(entries) != 1 || entries[0].GlobalRev != 2 || entries[0].EntityType != "window" {
+		t.Fatalf("unexpected journal entries: %+v", entries)
 	}
-	if entries[0].GlobalRev != 2 || entries[0].EntityType != "window" {
-		t.Fatalf("unexpected journal entry: %+v", entries[0])
-	}
-
 	for i := 3; i <= 8; i++ {
-		if _, err := s.InsertWatchtowerJournal(ctx, WatchtowerJournalWrite{
+		insertWatchtowerJournalEntry(t, s, ctx, WatchtowerJournalWrite{
 			GlobalRev:  int64(i),
 			EntityType: "session",
 			Session:    "dev",
 			WindowIdx:  -1,
 			ChangeKind: "activity",
 			ChangedAt:  now.Add(time.Duration(i) * time.Second),
-		}); err != nil {
-			t.Fatalf("InsertWatchtowerJournal #%d: %v", i, err)
-		}
+		})
 	}
-
 	removed, err := s.PruneWatchtowerJournalRows(ctx, 3)
 	if err != nil {
 		t.Fatalf("PruneWatchtowerJournalRows(3): %v", err)
@@ -500,16 +475,40 @@ func TestWatchtowerJournalAndRuntimeAccessors(t *testing.T) {
 	if removed != 5 {
 		t.Fatalf("PruneWatchtowerJournalRows removed = %d, want 5", removed)
 	}
-
 	remaining, err := s.ListWatchtowerJournalSince(ctx, 0, 10)
 	if err != nil {
 		t.Fatalf("ListWatchtowerJournalSince after prune: %v", err)
 	}
-	if len(remaining) != 3 {
-		t.Fatalf("remaining journal entries len = %d, want 3", len(remaining))
-	}
-	if remaining[0].GlobalRev != 6 || remaining[2].GlobalRev != 8 {
+	if len(remaining) != 3 || remaining[0].GlobalRev != 6 || remaining[2].GlobalRev != 8 {
 		t.Fatalf("unexpected remaining journal range: %+v", remaining)
+	}
+}
+
+func seedWatchtowerJournalRows(t *testing.T, s *Store, ctx context.Context, now time.Time) {
+	t.Helper()
+	insertWatchtowerJournalEntry(t, s, ctx, WatchtowerJournalWrite{
+		GlobalRev:  1,
+		EntityType: "pane",
+		Session:    "dev",
+		WindowIdx:  1,
+		PaneID:     "%11",
+		ChangeKind: "tail-changed",
+		ChangedAt:  now,
+	})
+	insertWatchtowerJournalEntry(t, s, ctx, WatchtowerJournalWrite{
+		GlobalRev:  2,
+		EntityType: "window",
+		Session:    "dev",
+		WindowIdx:  1,
+		ChangeKind: "unread-updated",
+		ChangedAt:  now.Add(time.Second),
+	})
+}
+
+func insertWatchtowerJournalEntry(t *testing.T, s *Store, ctx context.Context, row WatchtowerJournalWrite) {
+	t.Helper()
+	if _, err := s.InsertWatchtowerJournal(ctx, row); err != nil {
+		t.Fatalf("InsertWatchtowerJournal(%d): %v", row.GlobalRev, err)
 	}
 }
 
@@ -522,68 +521,15 @@ func TestWatchtowerPurgeHelpers(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
-	seedSession := func(name string) {
-		t.Helper()
-		if err := s.UpsertWatchtowerSession(ctx, WatchtowerSessionWrite{
-			SessionName:   name,
-			Attached:      1,
-			Windows:       1,
-			Panes:         1,
-			ActivityAt:    now,
-			LastPreview:   name + "-preview",
-			LastPreviewAt: now,
-			Rev:           1,
-		}); err != nil {
-			t.Fatalf("UpsertWatchtowerSession(%s): %v", name, err)
-		}
-		if err := s.UpsertWatchtowerWindow(ctx, WatchtowerWindowWrite{
-			SessionName:      name,
-			WindowIndex:      0,
-			Name:             "w0",
-			Active:           true,
-			Layout:           "layout",
-			WindowActivityAt: now,
-			Rev:              1,
-		}); err != nil {
-			t.Fatalf("UpsertWatchtowerWindow(%s): %v", name, err)
-		}
-		if err := s.UpsertWatchtowerPane(ctx, WatchtowerPaneWrite{
-			PaneID:         "%" + name,
-			SessionName:    name,
-			WindowIndex:    0,
-			PaneIndex:      0,
-			Title:          "pane",
-			Active:         true,
-			TTY:            "/dev/null",
-			TailHash:       "h",
-			TailPreview:    "p",
-			TailCapturedAt: now,
-			Revision:       1,
-			SeenRevision:   0,
-			ChangedAt:      now,
-		}); err != nil {
-			t.Fatalf("UpsertWatchtowerPane(%s): %v", name, err)
-		}
-	}
-
-	seedSession("a")
-	seedSession("b")
-	seedSession("c")
+	seedWatchtowerProjectionSession(t, s, ctx, now, "a")
+	seedWatchtowerProjectionSession(t, s, ctx, now, "b")
+	seedWatchtowerProjectionSession(t, s, ctx, now, "c")
 
 	if err := s.PurgeWatchtowerSessions(ctx, []string{"a", "c"}); err != nil {
 		t.Fatalf("PurgeWatchtowerSessions([a,c]): %v", err)
 	}
 
-	sessions, err := s.ListWatchtowerSessions(ctx)
-	if err != nil {
-		t.Fatalf("ListWatchtowerSessions after purge: %v", err)
-	}
-	if len(sessions) != 2 {
-		t.Fatalf("sessions len after purge = %d, want 2", len(sessions))
-	}
-	if sessions[0].SessionName != "a" || sessions[1].SessionName != "c" {
-		t.Fatalf("sessions = %+v, want [a c]", sessions)
-	}
+	assertWatchtowerSessionNames(t, s, ctx, []string{"a", "c"})
 	if _, err := s.GetWatchtowerSession(ctx, "b"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("GetWatchtowerSession(b) err = %v, want sql.ErrNoRows", err)
 	}
@@ -591,23 +537,93 @@ func TestWatchtowerPurgeHelpers(t *testing.T) {
 	if err := s.PurgeWatchtowerWindows(ctx, "a", []int{}); err != nil {
 		t.Fatalf("PurgeWatchtowerWindows(a, []): %v", err)
 	}
-	windows, err := s.ListWatchtowerWindows(ctx, "a")
-	if err != nil {
-		t.Fatalf("ListWatchtowerWindows(a): %v", err)
-	}
-	if len(windows) != 0 {
-		t.Fatalf("windows len for a after purge = %d, want 0", len(windows))
-	}
+	assertWatchtowerWindowCount(t, s, ctx, "a", 0)
 
 	if err := s.PurgeWatchtowerPanes(ctx, "c", []string{}); err != nil {
 		t.Fatalf("PurgeWatchtowerPanes(c, []): %v", err)
 	}
-	panes, err := s.ListWatchtowerPanes(ctx, "c")
-	if err != nil {
-		t.Fatalf("ListWatchtowerPanes(c): %v", err)
+	assertWatchtowerPaneCount(t, s, ctx, "c", 0)
+}
+
+func seedWatchtowerProjectionSession(t *testing.T, s *Store, ctx context.Context, now time.Time, name string) {
+	t.Helper()
+	if err := s.UpsertWatchtowerSession(ctx, WatchtowerSessionWrite{
+		SessionName:   name,
+		Attached:      1,
+		Windows:       1,
+		Panes:         1,
+		ActivityAt:    now,
+		LastPreview:   name + "-preview",
+		LastPreviewAt: now,
+		Rev:           1,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession(%s): %v", name, err)
 	}
-	if len(panes) != 0 {
-		t.Fatalf("panes len for c after purge = %d, want 0", len(panes))
+	if err := s.UpsertWatchtowerWindow(ctx, WatchtowerWindowWrite{
+		SessionName:      name,
+		WindowIndex:      0,
+		Name:             "w0",
+		Active:           true,
+		Layout:           "layout",
+		WindowActivityAt: now,
+		Rev:              1,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow(%s): %v", name, err)
+	}
+	if err := s.UpsertWatchtowerPane(ctx, WatchtowerPaneWrite{
+		PaneID:         "%" + name,
+		SessionName:    name,
+		WindowIndex:    0,
+		PaneIndex:      0,
+		Title:          "pane",
+		Active:         true,
+		TTY:            "/dev/null",
+		TailHash:       "h",
+		TailPreview:    "p",
+		TailCapturedAt: now,
+		Revision:       1,
+		SeenRevision:   0,
+		ChangedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane(%s): %v", name, err)
+	}
+}
+
+func assertWatchtowerSessionNames(t *testing.T, s *Store, ctx context.Context, want []string) {
+	t.Helper()
+	sessions, err := s.ListWatchtowerSessions(ctx)
+	if err != nil {
+		t.Fatalf("ListWatchtowerSessions: %v", err)
+	}
+	if len(sessions) != len(want) {
+		t.Fatalf("sessions len = %d, want %d", len(sessions), len(want))
+	}
+	for idx, expected := range want {
+		if sessions[idx].SessionName != expected {
+			t.Fatalf("session[%d] = %q, want %q", idx, sessions[idx].SessionName, expected)
+		}
+	}
+}
+
+func assertWatchtowerWindowCount(t *testing.T, s *Store, ctx context.Context, session string, want int) {
+	t.Helper()
+	windows, err := s.ListWatchtowerWindows(ctx, session)
+	if err != nil {
+		t.Fatalf("ListWatchtowerWindows(%s): %v", session, err)
+	}
+	if len(windows) != want {
+		t.Fatalf("windows len for %s = %d, want %d", session, len(windows), want)
+	}
+}
+
+func assertWatchtowerPaneCount(t *testing.T, s *Store, ctx context.Context, session string, want int) {
+	t.Helper()
+	panes, err := s.ListWatchtowerPanes(ctx, session)
+	if err != nil {
+		t.Fatalf("ListWatchtowerPanes(%s): %v", session, err)
+	}
+	if len(panes) != want {
+		t.Fatalf("panes len for %s = %d, want %d", session, len(panes), want)
 	}
 }
 
@@ -619,7 +635,39 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
+	seedWatchtowerSeenScopeState(t, s, ctx, now)
 
+	changed, err := s.MarkWatchtowerPaneSeen(ctx, "dev", "%1")
+	if err != nil {
+		t.Fatalf("MarkWatchtowerPaneSeen: %v", err)
+	}
+	if !changed {
+		t.Fatalf("MarkWatchtowerPaneSeen changed = false, want true")
+	}
+	assertWatchtowerPaneSeenRevision(t, s, ctx, "dev", "%1")
+
+	changed, err = s.MarkWatchtowerWindowSeen(ctx, "dev", 1)
+	if err != nil {
+		t.Fatalf("MarkWatchtowerWindowSeen: %v", err)
+	}
+	if !changed {
+		t.Fatalf("MarkWatchtowerWindowSeen changed = false, want true")
+	}
+	assertWatchtowerPaneSeenRevision(t, s, ctx, "dev", "%3")
+
+	changed, err = s.MarkWatchtowerSessionSeen(ctx, "dev")
+	if err != nil {
+		t.Fatalf("MarkWatchtowerSessionSeen: %v", err)
+	}
+	if changed {
+		t.Fatalf("MarkWatchtowerSessionSeen changed = true, want false (already seen)")
+	}
+
+	assertWatchtowerSessionAndWindowsRead(t, s, ctx, "dev")
+}
+
+func seedWatchtowerSeenScopeState(t *testing.T, s *Store, ctx context.Context, now time.Time) {
+	t.Helper()
 	if err := s.UpsertWatchtowerSession(ctx, WatchtowerSessionWrite{
 		SessionName:   "dev",
 		Attached:      1,
@@ -632,7 +680,6 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpsertWatchtowerSession: %v", err)
 	}
-
 	for _, w := range []WatchtowerWindowWrite{
 		{SessionName: "dev", WindowIndex: 0, Name: "w0", Active: true, Layout: "l0", WindowActivityAt: now, Rev: 1},
 		{SessionName: "dev", WindowIndex: 1, Name: "w1", Active: false, Layout: "l1", WindowActivityAt: now, Rev: 1},
@@ -641,7 +688,6 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 			t.Fatalf("UpsertWatchtowerWindow(%d): %v", w.WindowIndex, err)
 		}
 	}
-
 	for _, p := range []WatchtowerPaneWrite{
 		{PaneID: "%1", SessionName: "dev", WindowIndex: 0, PaneIndex: 0, Active: true, Revision: 3, SeenRevision: 1, ChangedAt: now},
 		{PaneID: "%2", SessionName: "dev", WindowIndex: 0, PaneIndex: 1, Active: false, Revision: 2, SeenRevision: 2, ChangedAt: now},
@@ -651,64 +697,37 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 			t.Fatalf("UpsertWatchtowerPane(%s): %v", p.PaneID, err)
 		}
 	}
+}
 
-	changed, err := s.MarkWatchtowerPaneSeen(ctx, "dev", "%1")
+func assertWatchtowerPaneSeenRevision(t *testing.T, s *Store, ctx context.Context, sessionName, paneID string) {
+	t.Helper()
+	panes, err := s.ListWatchtowerPanes(ctx, sessionName)
 	if err != nil {
-		t.Fatalf("MarkWatchtowerPaneSeen: %v", err)
+		t.Fatalf("ListWatchtowerPanes(%s): %v", sessionName, err)
 	}
-	if !changed {
-		t.Fatalf("MarkWatchtowerPaneSeen changed = false, want true")
+	for _, pane := range panes {
+		if pane.PaneID == paneID {
+			if pane.SeenRevision != pane.Revision {
+				t.Fatalf("pane %s seen/rev mismatch: %+v", paneID, pane)
+			}
+			return
+		}
 	}
-	panes, err := s.ListWatchtowerPanes(ctx, "dev")
-	if err != nil {
-		t.Fatalf("ListWatchtowerPanes(dev): %v", err)
-	}
-	paneByID := map[string]WatchtowerPane{}
-	for _, p := range panes {
-		paneByID[p.PaneID] = p
-	}
-	if paneByID["%1"].SeenRevision != paneByID["%1"].Revision {
-		t.Fatalf("pane %%1 seen/rev mismatch after pane seen: %+v", paneByID["%1"])
-	}
+	t.Fatalf("pane %s not found", paneID)
+}
 
-	changed, err = s.MarkWatchtowerWindowSeen(ctx, "dev", 1)
+func assertWatchtowerSessionAndWindowsRead(t *testing.T, s *Store, ctx context.Context, sessionName string) {
+	t.Helper()
+	session, err := s.GetWatchtowerSession(ctx, sessionName)
 	if err != nil {
-		t.Fatalf("MarkWatchtowerWindowSeen: %v", err)
-	}
-	if !changed {
-		t.Fatalf("MarkWatchtowerWindowSeen changed = false, want true")
-	}
-	panes, err = s.ListWatchtowerPanes(ctx, "dev")
-	if err != nil {
-		t.Fatalf("ListWatchtowerPanes(dev) #2: %v", err)
-	}
-	paneByID = map[string]WatchtowerPane{}
-	for _, p := range panes {
-		paneByID[p.PaneID] = p
-	}
-	if paneByID["%3"].SeenRevision != paneByID["%3"].Revision {
-		t.Fatalf("pane %%3 seen/rev mismatch after window seen: %+v", paneByID["%3"])
-	}
-
-	changed, err = s.MarkWatchtowerSessionSeen(ctx, "dev")
-	if err != nil {
-		t.Fatalf("MarkWatchtowerSessionSeen: %v", err)
-	}
-	if changed {
-		t.Fatalf("MarkWatchtowerSessionSeen changed = true, want false (already seen)")
-	}
-
-	session, err := s.GetWatchtowerSession(ctx, "dev")
-	if err != nil {
-		t.Fatalf("GetWatchtowerSession(dev): %v", err)
+		t.Fatalf("GetWatchtowerSession(%s): %v", sessionName, err)
 	}
 	if session.UnreadPanes != 0 || session.UnreadWindows != 0 {
 		t.Fatalf("session unread counters should be zero: %+v", session)
 	}
-
-	windows, err := s.ListWatchtowerWindows(ctx, "dev")
+	windows, err := s.ListWatchtowerWindows(ctx, sessionName)
 	if err != nil {
-		t.Fatalf("ListWatchtowerWindows(dev): %v", err)
+		t.Fatalf("ListWatchtowerWindows(%s): %v", sessionName, err)
 	}
 	for _, w := range windows {
 		if w.HasUnread || w.UnreadPanes != 0 {

@@ -153,22 +153,10 @@ func (s *Store) initRecoverySchema() error {
 }
 
 func (s *Store) UpsertRecoverySnapshot(ctx context.Context, snap RecoverySnapshotWrite) (RecoverySnapshot, bool, error) {
-	if strings.TrimSpace(snap.SessionName) == "" {
-		return RecoverySnapshot{}, false, errors.New("session name is required")
+	input, err := normalizeRecoverySnapshotInput(snap)
+	if err != nil {
+		return RecoverySnapshot{}, false, err
 	}
-	if strings.TrimSpace(snap.PayloadJSON) == "" {
-		return RecoverySnapshot{}, false, errors.New("payload json is required")
-	}
-	if !json.Valid([]byte(snap.PayloadJSON)) {
-		return RecoverySnapshot{}, false, errors.New("payload json must be valid JSON")
-	}
-
-	capturedAt := snap.CapturedAt.UTC()
-	if capturedAt.IsZero() {
-		capturedAt = time.Now().UTC()
-	}
-	stateHash := strings.TrimSpace(snap.StateHash)
-	bootID := strings.TrimSpace(snap.BootID)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -176,48 +164,14 @@ func (s *Store) UpsertRecoverySnapshot(ctx context.Context, snap RecoverySnapsho
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var (
-		prevSnapshotID int64
-		prevHash       string
-	)
-	switch err := tx.QueryRowContext(ctx,
-		`SELECT latest_snapshot_id, snapshot_hash
-		   FROM recovery_sessions
-		  WHERE name = ?`,
-		snap.SessionName,
-	).Scan(&prevSnapshotID, &prevHash); {
-	case err == nil:
-	case errors.Is(err, sql.ErrNoRows):
-		prevSnapshotID = 0
-		prevHash = ""
-	default:
+	prevSnapshotID, prevHash, err := lookupRecoverySessionSnapshotRefTx(ctx, tx, input.SessionName)
+	if err != nil {
 		return RecoverySnapshot{}, false, err
 	}
 
 	// If nothing changed, keep the same snapshot row and only refresh liveness.
-	if prevSnapshotID > 0 && prevHash == stateHash && stateHash != "" {
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE recovery_sessions
-			    SET state = ?,
-			        snapshot_at = ?,
-			        last_boot_id = ?,
-			        last_seen_at = ?,
-			        restore_error = '',
-			        windows = ?,
-			        panes = ?,
-			        updated_at = datetime('now')
-			  WHERE name = ?`,
-			RecoveryStateRunning,
-			capturedAt.Format(time.RFC3339),
-			bootID,
-			capturedAt.Format(time.RFC3339),
-			snap.Windows,
-			snap.Panes,
-			snap.SessionName,
-		); err != nil {
-			return RecoverySnapshot{}, false, err
-		}
-		row, err := queryRecoverySnapshotTx(ctx, tx, prevSnapshotID)
+	if shouldReuseRecoverySnapshot(prevSnapshotID, prevHash, input.StateHash) {
+		row, err := reuseRecoverySessionSnapshotTx(ctx, tx, input, prevSnapshotID)
 		if err != nil {
 			return RecoverySnapshot{}, false, err
 		}
@@ -227,15 +181,109 @@ func (s *Store) UpsertRecoverySnapshot(ctx context.Context, snap RecoverySnapsho
 		return row, false, nil
 	}
 
+	newID, err := insertRecoverySnapshotTx(ctx, tx, input)
+	if err != nil {
+		return RecoverySnapshot{}, false, err
+	}
+	if err := upsertRecoverySessionSnapshotTx(ctx, tx, input, newID); err != nil {
+		return RecoverySnapshot{}, false, err
+	}
+
+	row, err := queryRecoverySnapshotTx(ctx, tx, newID)
+	if err != nil {
+		return RecoverySnapshot{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return RecoverySnapshot{}, false, err
+	}
+	return row, true, nil
+}
+
+func normalizeRecoverySnapshotInput(snap RecoverySnapshotWrite) (RecoverySnapshotWrite, error) {
+	snap.SessionName = strings.TrimSpace(snap.SessionName)
+	if snap.SessionName == "" {
+		return RecoverySnapshotWrite{}, errors.New("session name is required")
+	}
+	snap.PayloadJSON = strings.TrimSpace(snap.PayloadJSON)
+	if snap.PayloadJSON == "" {
+		return RecoverySnapshotWrite{}, errors.New("payload json is required")
+	}
+	if !json.Valid([]byte(snap.PayloadJSON)) {
+		return RecoverySnapshotWrite{}, errors.New("payload json must be valid JSON")
+	}
+	snap.CapturedAt = normalizeRecoveryCapturedAt(snap.CapturedAt)
+	snap.StateHash = strings.TrimSpace(snap.StateHash)
+	snap.BootID = strings.TrimSpace(snap.BootID)
+	return snap, nil
+}
+
+func normalizeRecoveryCapturedAt(value time.Time) time.Time {
+	at := value.UTC()
+	if at.IsZero() {
+		return time.Now().UTC()
+	}
+	return at
+}
+
+func lookupRecoverySessionSnapshotRefTx(ctx context.Context, tx *sql.Tx, sessionName string) (int64, string, error) {
+	var (
+		prevSnapshotID int64
+		prevHash       string
+	)
+	switch err := tx.QueryRowContext(ctx,
+		`SELECT latest_snapshot_id, snapshot_hash
+		   FROM recovery_sessions
+		  WHERE name = ?`,
+		sessionName,
+	).Scan(&prevSnapshotID, &prevHash); {
+	case err == nil:
+		return prevSnapshotID, prevHash, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return 0, "", nil
+	default:
+		return 0, "", err
+	}
+}
+
+func shouldReuseRecoverySnapshot(prevSnapshotID int64, prevHash, stateHash string) bool {
+	return prevSnapshotID > 0 && stateHash != "" && prevHash == stateHash
+}
+
+func reuseRecoverySessionSnapshotTx(ctx context.Context, tx *sql.Tx, snap RecoverySnapshotWrite, snapshotID int64) (RecoverySnapshot, error) {
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE recovery_sessions
+		    SET state = ?,
+		        snapshot_at = ?,
+		        last_boot_id = ?,
+		        last_seen_at = ?,
+		        restore_error = '',
+		        windows = ?,
+		        panes = ?,
+		        updated_at = datetime('now')
+		  WHERE name = ?`,
+		RecoveryStateRunning,
+		snap.CapturedAt.Format(time.RFC3339),
+		snap.BootID,
+		snap.CapturedAt.Format(time.RFC3339),
+		snap.Windows,
+		snap.Panes,
+		snap.SessionName,
+	); err != nil {
+		return RecoverySnapshot{}, err
+	}
+	return queryRecoverySnapshotTx(ctx, tx, snapshotID)
+}
+
+func insertRecoverySnapshotTx(ctx context.Context, tx *sql.Tx, snap RecoverySnapshotWrite) (int64, error) {
 	result, err := tx.ExecContext(ctx,
 		`INSERT INTO recovery_snapshots (
 			session_name, boot_id, state_hash, captured_at,
 			active_window, active_pane_id, windows, panes, payload_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		snap.SessionName,
-		bootID,
-		stateHash,
-		capturedAt.Format(time.RFC3339),
+		snap.BootID,
+		snap.StateHash,
+		snap.CapturedAt.Format(time.RFC3339),
 		snap.ActiveWindow,
 		snap.ActivePaneID,
 		snap.Windows,
@@ -243,14 +291,13 @@ func (s *Store) UpsertRecoverySnapshot(ctx context.Context, snap RecoverySnapsho
 		snap.PayloadJSON,
 	)
 	if err != nil {
-		return RecoverySnapshot{}, false, err
+		return 0, err
 	}
-	newID, err := result.LastInsertId()
-	if err != nil {
-		return RecoverySnapshot{}, false, err
-	}
+	return result.LastInsertId()
+}
 
-	if _, err := tx.ExecContext(ctx,
+func upsertRecoverySessionSnapshotTx(ctx context.Context, tx *sql.Tx, snap RecoverySnapshotWrite, snapshotID int64) error {
+	_, err := tx.ExecContext(ctx,
 		`INSERT INTO recovery_sessions (
 			name, state, latest_snapshot_id, snapshot_hash, snapshot_at,
 			last_boot_id, last_seen_at, killed_at, restored_at, archived_at,
@@ -272,25 +319,15 @@ func (s *Store) UpsertRecoverySnapshot(ctx context.Context, snap RecoverySnapsho
 			updated_at = excluded.updated_at`,
 		snap.SessionName,
 		RecoveryStateRunning,
-		newID,
-		stateHash,
-		capturedAt.Format(time.RFC3339),
-		bootID,
-		capturedAt.Format(time.RFC3339),
+		snapshotID,
+		snap.StateHash,
+		snap.CapturedAt.Format(time.RFC3339),
+		snap.BootID,
+		snap.CapturedAt.Format(time.RFC3339),
 		snap.Windows,
 		snap.Panes,
-	); err != nil {
-		return RecoverySnapshot{}, false, err
-	}
-
-	row, err := queryRecoverySnapshotTx(ctx, tx, newID)
-	if err != nil {
-		return RecoverySnapshot{}, false, err
-	}
-	if err := tx.Commit(); err != nil {
-		return RecoverySnapshot{}, false, err
-	}
-	return row, true, nil
+	)
+	return err
 }
 
 func (s *Store) GetRecoverySnapshot(ctx context.Context, id int64) (RecoverySnapshot, error) {

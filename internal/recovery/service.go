@@ -160,25 +160,63 @@ func (s *Service) Collect(ctx context.Context) error {
 
 	now := time.Now().UTC()
 	bootID := s.bootID(ctx)
-	lastBootID, err := s.store.GetRuntimeValue(ctx, runtimeBootIDKey)
+	bootChanged, err := s.bootStateChanged(ctx, bootID)
 	if err != nil {
 		return err
 	}
-	bootChanged := strings.TrimSpace(lastBootID) != "" && strings.TrimSpace(bootID) != "" && bootID != lastBootID
 
-	liveSessions, err := s.tmux.ListSessions(ctx)
+	liveSessions, err := s.listLiveSessions(ctx)
 	if err != nil {
-		// If tmux server is not running, treat as no active sessions.
-		if !tmux.IsKind(err, tmux.ErrKindServerNotRunning) {
-			return err
-		}
-		liveSessions = []tmux.Session{}
+		return err
 	}
 
-	liveNames := make(map[string]bool, len(liveSessions))
-	liveSessionList := make([]string, 0, len(liveSessions))
+	liveNames, liveSessionList, changedCount := s.captureLiveSessions(ctx, liveSessions, bootID, now)
+	liveSetChanged, err := s.updateLiveSessionsRuntime(ctx, liveSessionList)
+	if err != nil {
+		return err
+	}
+
+	killedCount, err := s.markKilledSessionsAfterBootChange(ctx, bootChanged, liveNames, bootID, now)
+	if err != nil {
+		return err
+	}
+
+	if err := s.storeCollectRuntime(ctx, bootID, now); err != nil {
+		return err
+	}
+	if err := s.store.TrimRecoverySnapshots(ctx, s.options.MaxSnapshotsPerSess); err != nil {
+		slog.Warn("recovery snapshot trim failed", "err", err)
+	}
+
+	s.publishCollectEvents(liveSetChanged, len(liveSessionList), changedCount, killedCount, bootChanged)
+	return nil
+}
+
+func (s *Service) bootStateChanged(ctx context.Context, bootID string) (bool, error) {
+	lastBootID, err := s.store.GetRuntimeValue(ctx, runtimeBootIDKey)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(lastBootID) != "" && strings.TrimSpace(bootID) != "" && bootID != lastBootID, nil
+}
+
+func (s *Service) listLiveSessions(ctx context.Context) ([]tmux.Session, error) {
+	liveSessions, err := s.tmux.ListSessions(ctx)
+	if err == nil {
+		return liveSessions, nil
+	}
+	// If tmux server is not running, treat as no active sessions.
+	if tmux.IsKind(err, tmux.ErrKindServerNotRunning) {
+		return []tmux.Session{}, nil
+	}
+	return nil, err
+}
+
+func (s *Service) captureLiveSessions(ctx context.Context, sessions []tmux.Session, bootID string, now time.Time) (map[string]bool, []string, int) {
+	liveNames := make(map[string]bool, len(sessions))
+	liveSessionList := make([]string, 0, len(sessions))
 	changedCount := 0
-	for _, session := range liveSessions {
+	for _, session := range sessions {
 		if strings.TrimSpace(session.Name) == "" {
 			continue
 		}
@@ -194,57 +232,63 @@ func (s *Service) Collect(ctx context.Context) error {
 		}
 	}
 	sort.Strings(liveSessionList)
+	return liveNames, liveSessionList, changedCount
+}
+
+func (s *Service) updateLiveSessionsRuntime(ctx context.Context, liveSessionList []string) (bool, error) {
 	liveJoined := strings.Join(liveSessionList, ",")
 	lastLiveJoined, err := s.store.GetRuntimeValue(ctx, runtimeLiveSessionsKey)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := s.store.SetRuntimeValue(ctx, runtimeLiveSessionsKey, liveJoined); err != nil {
-		return err
+		return false, err
 	}
-	liveSetChanged := strings.TrimSpace(lastLiveJoined) != strings.TrimSpace(liveJoined)
+	return strings.TrimSpace(lastLiveJoined) != strings.TrimSpace(liveJoined), nil
+}
 
-	killedCount := 0
-	if bootChanged {
-		tracked, err := s.store.ListRecoverySessions(ctx, []store.RecoverySessionState{
-			store.RecoveryStateRunning,
-			store.RecoveryStateRestoring,
-			store.RecoveryStateRestored,
-		})
-		if err != nil {
-			return err
-		}
-
-		var killed []string
-		for _, item := range tracked {
-			if !liveNames[item.Name] {
-				killed = append(killed, item.Name)
-			}
-		}
-		if len(killed) > 0 {
-			killedCount = len(killed)
-			if err := s.store.MarkRecoverySessionsKilled(ctx, killed, bootID, now); err != nil {
-				return err
-			}
-			_ = s.store.SetRuntimeValue(ctx, runtimeBootChangeKey, now.Format(time.RFC3339))
-			slog.Info("recovery marked sessions as killed after boot change", "count", len(killed))
-		}
+func (s *Service) markKilledSessionsAfterBootChange(ctx context.Context, bootChanged bool, liveNames map[string]bool, bootID string, now time.Time) (int, error) {
+	if !bootChanged {
+		return 0, nil
+	}
+	tracked, err := s.store.ListRecoverySessions(ctx, []store.RecoverySessionState{
+		store.RecoveryStateRunning,
+		store.RecoveryStateRestoring,
+		store.RecoveryStateRestored,
+	})
+	if err != nil {
+		return 0, err
 	}
 
+	killed := make([]string, 0, len(tracked))
+	for _, item := range tracked {
+		if !liveNames[item.Name] {
+			killed = append(killed, item.Name)
+		}
+	}
+	if len(killed) == 0 {
+		return 0, nil
+	}
+	if err := s.store.MarkRecoverySessionsKilled(ctx, killed, bootID, now); err != nil {
+		return 0, err
+	}
+	_ = s.store.SetRuntimeValue(ctx, runtimeBootChangeKey, now.Format(time.RFC3339))
+	slog.Info("recovery marked sessions as killed after boot change", "count", len(killed))
+	return len(killed), nil
+}
+
+func (s *Service) storeCollectRuntime(ctx context.Context, bootID string, now time.Time) error {
 	if err := s.store.SetRuntimeValue(ctx, runtimeBootIDKey, bootID); err != nil {
 		return err
 	}
-	if err := s.store.SetRuntimeValue(ctx, runtimeCollectAtKey, now.Format(time.RFC3339)); err != nil {
-		return err
-	}
-	if err := s.store.TrimRecoverySnapshots(ctx, s.options.MaxSnapshotsPerSess); err != nil {
-		slog.Warn("recovery snapshot trim failed", "err", err)
-	}
+	return s.store.SetRuntimeValue(ctx, runtimeCollectAtKey, now.Format(time.RFC3339))
+}
 
+func (s *Service) publishCollectEvents(liveSetChanged bool, liveCount, changedCount, killedCount int, bootChanged bool) {
 	if liveSetChanged {
 		s.publish(events.TypeTmuxSessions, map[string]any{
 			"changedSessions": changedCount,
-			"liveCount":       len(liveSessionList),
+			"liveCount":       liveCount,
 			"action":          "live-set",
 		})
 	}
@@ -255,7 +299,6 @@ func (s *Service) Collect(ctx context.Context) error {
 			"bootChanged":     bootChanged,
 		})
 	}
-	return nil
 }
 
 func (s *Service) captureSession(ctx context.Context, sess tmux.Session, bootID string, capturedAt time.Time) (bool, error) {

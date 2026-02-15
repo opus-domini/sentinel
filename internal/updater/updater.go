@@ -165,96 +165,149 @@ func Check(ctx context.Context, opts CheckOptions) (CheckResult, error) {
 
 func Apply(ctx context.Context, opts ApplyOptions) (ApplyResult, error) {
 	cfg := normalizeApplyOptions(opts)
-
-	var out ApplyResult
-	err := withUpdateLock(cfg.DataDir, func() error {
-		check, err := Check(ctx, CheckOptions{
-			CurrentVersion: cfg.CurrentVersion,
-			Repo:           cfg.Repo,
-			APIBaseURL:     cfg.APIBaseURL,
-			OS:             cfg.OS,
-			Arch:           cfg.Arch,
-			DataDir:        cfg.DataDir,
-			HTTPClient:     cfg.HTTPClient,
-		})
-		if err != nil {
-			return err
-		}
-
-		out.CheckedAt = check.CheckedAt
-		out.CurrentVersion = check.CurrentVersion
-		out.LatestVersion = check.LatestVersion
-
-		if check.UpToDate {
-			out.Applied = false
-			return nil
-		}
-
-		if !cfg.AllowDowngrade && compareVersions(check.CurrentVersion, check.LatestVersion) > 0 {
-			return fmt.Errorf("current version (%s) is newer than latest release (%s)", check.CurrentVersion, check.LatestVersion)
-		}
-
-		expectedSHA := strings.ToLower(strings.TrimSpace(check.ExpectedSHA256))
-		if expectedSHA == "" && !cfg.AllowUnverified {
-			return errors.New("release asset checksum is unavailable; refusing unverified update")
-		}
-
-		tmpDir, err := os.MkdirTemp("", "sentinel-update-*")
-		if err != nil {
-			return fmt.Errorf("create temp dir: %w", err)
-		}
-		defer func() { _ = os.RemoveAll(tmpDir) }()
-
-		archivePath := filepath.Join(tmpDir, check.AssetName)
-		if err := downloadToFile(ctx, cfg.HTTPClient, check.AssetURL, archivePath); err != nil {
-			return fmt.Errorf("download release archive: %w", err)
-		}
-
-		archiveSHA, err := fileSHA256(archivePath)
-		if err != nil {
-			return fmt.Errorf("calculate archive checksum: %w", err)
-		}
-		if expectedSHA != "" && archiveSHA != expectedSHA {
-			return fmt.Errorf("checksum mismatch for %s", check.AssetName)
-		}
-
-		execPath, err := resolveExecPath(cfg.ExecPath)
-		if err != nil {
-			return err
-		}
-
-		newBinaryPath := execPath + ".new"
-		if err := extractBinaryFromArchive(archivePath, newBinaryPath); err != nil {
-			return fmt.Errorf("extract binary: %w", err)
-		}
-
-		appliedAt := time.Now().UTC()
-		backupPath := execPath + ".bak"
-		if err := installBinary(execPath, newBinaryPath, backupPath); err != nil {
-			return err
-		}
-
-		restartCmd := cfg.buildRestartCommand()
-		if len(restartCmd) > 0 {
-			if err := runCommand(ctx, restartCmd[0], restartCmd[1:]...); err != nil {
-				_ = rollbackBinary(execPath, backupPath)
-				return fmt.Errorf("restart service failed: %w", err)
-			}
-		}
-
-		out.Applied = true
-		out.AppliedAt = appliedAt
-		out.BinaryPath = execPath
-		out.BackupPath = backupPath
-
-		recordApplyState(cfg.DataDir, check, out, "")
-		return nil
-	})
+	out, err := applyWithLock(ctx, cfg)
 	if err != nil {
 		recordStateError(cfg.DataDir, time.Now().UTC(), cfg.CurrentVersion, err)
 		return ApplyResult{}, err
 	}
 	return out, nil
+}
+
+func applyWithLock(ctx context.Context, cfg ApplyOptions) (ApplyResult, error) {
+	var out ApplyResult
+	err := withUpdateLock(cfg.DataDir, func() error {
+		result, err := applyOnce(ctx, cfg)
+		if err != nil {
+			return err
+		}
+		out = result
+		return nil
+	})
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	return out, nil
+}
+
+func applyOnce(ctx context.Context, cfg ApplyOptions) (ApplyResult, error) {
+	check, err := applyCheck(ctx, cfg)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+
+	out := ApplyResult{
+		Applied:        false,
+		CheckedAt:      check.CheckedAt,
+		CurrentVersion: check.CurrentVersion,
+		LatestVersion:  check.LatestVersion,
+	}
+	if check.UpToDate {
+		return out, nil
+	}
+	if err := validateApplyEligibility(cfg, check); err != nil {
+		return ApplyResult{}, err
+	}
+
+	archivePath, cleanup, err := stageApplyArchive(ctx, cfg, check)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	defer cleanup()
+
+	execPath, backupPath, appliedAt, err := installApplyArchive(archivePath, cfg.ExecPath)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	if err := restartAfterApply(ctx, cfg, execPath, backupPath); err != nil {
+		return ApplyResult{}, err
+	}
+
+	out.Applied = true
+	out.AppliedAt = appliedAt
+	out.BinaryPath = execPath
+	out.BackupPath = backupPath
+	recordApplyState(cfg.DataDir, check, out, "")
+	return out, nil
+}
+
+func applyCheck(ctx context.Context, cfg ApplyOptions) (CheckResult, error) {
+	return Check(ctx, CheckOptions{
+		CurrentVersion: cfg.CurrentVersion,
+		Repo:           cfg.Repo,
+		APIBaseURL:     cfg.APIBaseURL,
+		OS:             cfg.OS,
+		Arch:           cfg.Arch,
+		DataDir:        cfg.DataDir,
+		HTTPClient:     cfg.HTTPClient,
+	})
+}
+
+func validateApplyEligibility(cfg ApplyOptions, check CheckResult) error {
+	if !cfg.AllowDowngrade && compareVersions(check.CurrentVersion, check.LatestVersion) > 0 {
+		return fmt.Errorf("current version (%s) is newer than latest release (%s)", check.CurrentVersion, check.LatestVersion)
+	}
+	if expectedSHA := strings.ToLower(strings.TrimSpace(check.ExpectedSHA256)); expectedSHA == "" && !cfg.AllowUnverified {
+		return errors.New("release asset checksum is unavailable; refusing unverified update")
+	}
+	return nil
+}
+
+func stageApplyArchive(ctx context.Context, cfg ApplyOptions, check CheckResult) (string, func(), error) {
+	expectedSHA := strings.ToLower(strings.TrimSpace(check.ExpectedSHA256))
+	tmpDir, err := os.MkdirTemp("", "sentinel-update-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("create temp dir: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(tmpDir) }
+	archivePath := filepath.Join(tmpDir, check.AssetName)
+	if err := downloadAndVerifyArchive(ctx, cfg.HTTPClient, check.AssetURL, archivePath, expectedSHA, check.AssetName); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return archivePath, cleanup, nil
+}
+
+func downloadAndVerifyArchive(ctx context.Context, client *http.Client, assetURL, archivePath, expectedSHA, assetName string) error {
+	if err := downloadToFile(ctx, client, assetURL, archivePath); err != nil {
+		return fmt.Errorf("download release archive: %w", err)
+	}
+	archiveSHA, err := fileSHA256(archivePath)
+	if err != nil {
+		return fmt.Errorf("calculate archive checksum: %w", err)
+	}
+	if expectedSHA != "" && archiveSHA != expectedSHA {
+		return fmt.Errorf("checksum mismatch for %s", assetName)
+	}
+	return nil
+}
+
+func installApplyArchive(archivePath, rawExecPath string) (string, string, time.Time, error) {
+	execPath, err := resolveExecPath(rawExecPath)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	newBinaryPath := execPath + ".new"
+	if err := extractBinaryFromArchive(archivePath, newBinaryPath); err != nil {
+		return "", "", time.Time{}, fmt.Errorf("extract binary: %w", err)
+	}
+	appliedAt := time.Now().UTC()
+	backupPath := execPath + ".bak"
+	if err := installBinary(execPath, newBinaryPath, backupPath); err != nil {
+		return "", "", time.Time{}, err
+	}
+	return execPath, backupPath, appliedAt, nil
+}
+
+func restartAfterApply(ctx context.Context, cfg ApplyOptions, execPath, backupPath string) error {
+	restartCmd := cfg.buildRestartCommand()
+	if len(restartCmd) == 0 {
+		return nil
+	}
+	if err := runCommand(ctx, restartCmd[0], restartCmd[1:]...); err != nil {
+		_ = rollbackBinary(execPath, backupPath)
+		return fmt.Errorf("restart service failed: %w", err)
+	}
+	return nil
 }
 
 func Status(dataDir string) (State, error) {

@@ -349,134 +349,182 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	stored := map[string]store.SessionMeta{}
-	if h.store != nil {
-		if meta, err := h.store.GetAll(ctx); err != nil {
-			slog.Warn("store.GetAll failed", "err", err)
-		} else {
-			stored = meta
-		}
+	stored := h.loadSessionMetaMap(ctx)
+	if sessions, ok := h.listSessionsFromProjection(ctx, stored); ok {
+		writeData(w, http.StatusOK, map[string]any{"sessions": sessions})
+		return
 	}
 
-	if h.store != nil {
-		projected, err := h.store.ListWatchtowerSessions(ctx)
-		if err != nil {
-			slog.Warn("store.ListWatchtowerSessions failed", "err", err)
-		} else if len(projected) > 0 {
-			activeNames := make([]string, 0, len(projected))
-			result := make([]enrichedSession, 0, len(projected))
-
-			for _, row := range projected {
-				activeNames = append(activeNames, row.SessionName)
-
-				meta := stored[row.SessionName]
-				hash := strings.TrimSpace(meta.Hash)
-				if hash == "" {
-					hash = tmux.SessionHash(row.SessionName, row.ActivityAt.Unix())
-				}
-				lastContent := strings.TrimSpace(row.LastPreview)
-				if lastContent == "" {
-					lastContent = strings.TrimSpace(meta.LastContent)
-				}
-				if err := h.store.UpsertSession(ctx, row.SessionName, hash, lastContent); err != nil {
-					slog.Warn("store.UpsertSession failed", "session", row.SessionName, "err", err)
-				}
-
-				createdAt := row.ActivityAt
-				if row.LastPreviewAt.Before(createdAt) {
-					createdAt = row.LastPreviewAt
-				}
-
-				result = append(result, enrichedSession{
-					Name:          row.SessionName,
-					Windows:       row.Windows,
-					Panes:         row.Panes,
-					Attached:      row.Attached,
-					CreatedAt:     createdAt.Format(time.RFC3339),
-					ActivityAt:    row.ActivityAt.Format(time.RFC3339),
-					Command:       "",
-					Hash:          hash,
-					LastContent:   lastContent,
-					Icon:          meta.Icon,
-					UnreadWindows: row.UnreadWindows,
-					UnreadPanes:   row.UnreadPanes,
-					Rev:           row.Rev,
-				})
-			}
-			if err := h.store.Purge(ctx, activeNames); err != nil {
-				slog.Warn("store.Purge failed", "err", err)
-			}
-			writeData(w, http.StatusOK, map[string]any{"sessions": result})
-			return
-		}
-	}
-
-	// Warmup fallback: projections may still be empty right after startup.
-	sessions, err := h.tmux.ListSessions(ctx)
+	sessions, err := h.listSessionsFromTmux(ctx, stored)
 	if err != nil {
 		writeTmuxError(w, err)
 		return
 	}
-	snapshots, err := h.tmux.ListActivePaneCommands(ctx)
-	if err != nil {
-		slog.Warn("list-pane-commands failed", "err", err)
-		snapshots = map[string]tmux.PaneSnapshot{}
+	writeData(w, http.StatusOK, map[string]any{"sessions": sessions})
+}
+
+func (h *Handler) loadSessionMetaMap(ctx context.Context) map[string]store.SessionMeta {
+	if h.store == nil {
+		return map[string]store.SessionMeta{}
 	}
+	meta, err := h.store.GetAll(ctx)
+	if err != nil {
+		slog.Warn("store.GetAll failed", "err", err)
+		return map[string]store.SessionMeta{}
+	}
+	return meta
+}
+
+func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[string]store.SessionMeta) ([]enrichedSession, bool) {
+	if h.store == nil {
+		return nil, false
+	}
+	projected, err := h.store.ListWatchtowerSessions(ctx)
+	if err != nil {
+		slog.Warn("store.ListWatchtowerSessions failed", "err", err)
+		return nil, false
+	}
+	if len(projected) == 0 {
+		return nil, false
+	}
+
+	activeNames := make([]string, 0, len(projected))
+	result := make([]enrichedSession, 0, len(projected))
+	for _, row := range projected {
+		activeNames = append(activeNames, row.SessionName)
+		result = append(result, h.projectedSessionToEnriched(ctx, row, stored[row.SessionName]))
+	}
+	h.purgeStoredSessionsBestEffort(ctx, activeNames)
+	return result, true
+}
+
+func (h *Handler) projectedSessionToEnriched(ctx context.Context, row store.WatchtowerSession, meta store.SessionMeta) enrichedSession {
+	hash := strings.TrimSpace(meta.Hash)
+	if hash == "" {
+		hash = tmux.SessionHash(row.SessionName, row.ActivityAt.Unix())
+	}
+	lastContent := strings.TrimSpace(row.LastPreview)
+	if lastContent == "" {
+		lastContent = strings.TrimSpace(meta.LastContent)
+	}
+	h.upsertSessionMetaBestEffort(ctx, row.SessionName, hash, lastContent)
+	return enrichedSession{
+		Name:          row.SessionName,
+		Windows:       row.Windows,
+		Panes:         row.Panes,
+		Attached:      row.Attached,
+		CreatedAt:     projectedCreatedAt(row).Format(time.RFC3339),
+		ActivityAt:    row.ActivityAt.Format(time.RFC3339),
+		Command:       "",
+		Hash:          hash,
+		LastContent:   lastContent,
+		Icon:          meta.Icon,
+		UnreadWindows: row.UnreadWindows,
+		UnreadPanes:   row.UnreadPanes,
+		Rev:           row.Rev,
+	}
+}
+
+func projectedCreatedAt(row store.WatchtowerSession) time.Time {
+	createdAt := row.ActivityAt
+	if row.LastPreviewAt.Before(createdAt) {
+		return row.LastPreviewAt
+	}
+	return createdAt
+}
+
+func (h *Handler) listSessionsFromTmux(ctx context.Context, stored map[string]store.SessionMeta) ([]enrichedSession, error) {
+	// Warmup fallback: projections may still be empty right after startup.
+	sessions, err := h.tmux.ListSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	snapshots := h.loadActivePaneSnapshots(ctx)
 
 	activeNames := make([]string, 0, len(sessions))
 	result := make([]enrichedSession, 0, len(sessions))
-	for _, s := range sessions {
-		activeNames = append(activeNames, s.Name)
-		snap := snapshots[s.Name]
-		meta := stored[s.Name]
-
-		hash := strings.TrimSpace(meta.Hash)
-		if hash == "" {
-			hash = tmux.SessionHash(s.Name, s.CreatedAt.Unix())
-		}
-		lastContent := strings.TrimSpace(meta.LastContent)
-		if captured, capErr := h.tmux.CapturePane(ctx, s.Name); capErr == nil {
-			if trimmed := strings.TrimSpace(captured); trimmed != "" {
-				lastContent = trimmed
-			}
-		}
-		if h.store != nil {
-			if err := h.store.UpsertSession(ctx, s.Name, hash, lastContent); err != nil {
-				slog.Warn("store.UpsertSession failed", "session", s.Name, "err", err)
-			}
-		}
-
-		panes := snap.Panes
-		if panes == 0 {
-			if paneList, paneErr := h.tmux.ListPanes(ctx, s.Name); paneErr == nil {
-				panes = len(paneList)
-			} else {
-				panes = s.Windows
-			}
-		}
-
-		result = append(result, enrichedSession{
-			Name:          s.Name,
-			Windows:       s.Windows,
-			Panes:         panes,
-			Attached:      s.Attached,
-			CreatedAt:     s.CreatedAt.Format(time.RFC3339),
-			ActivityAt:    s.ActivityAt.Format(time.RFC3339),
-			Command:       snap.Command,
-			Hash:          hash,
-			LastContent:   lastContent,
-			Icon:          meta.Icon,
-			UnreadWindows: 0,
-			UnreadPanes:   0,
-			Rev:           0,
-		})
+	for _, sess := range sessions {
+		activeNames = append(activeNames, sess.Name)
+		result = append(result, h.tmuxSessionToEnriched(ctx, sess, snapshots[sess.Name], stored[sess.Name]))
 	}
-	if h.store != nil {
-		if err := h.store.Purge(ctx, activeNames); err != nil {
-			slog.Warn("store.Purge failed", "err", err)
-		}
+	h.purgeStoredSessionsBestEffort(ctx, activeNames)
+	return result, nil
+}
+
+func (h *Handler) loadActivePaneSnapshots(ctx context.Context) map[string]tmux.PaneSnapshot {
+	snapshots, err := h.tmux.ListActivePaneCommands(ctx)
+	if err != nil {
+		slog.Warn("list-pane-commands failed", "err", err)
+		return map[string]tmux.PaneSnapshot{}
 	}
-	writeData(w, http.StatusOK, map[string]any{"sessions": result})
+	return snapshots
+}
+
+func (h *Handler) tmuxSessionToEnriched(ctx context.Context, sess tmux.Session, snap tmux.PaneSnapshot, meta store.SessionMeta) enrichedSession {
+	hash := strings.TrimSpace(meta.Hash)
+	if hash == "" {
+		hash = tmux.SessionHash(sess.Name, sess.CreatedAt.Unix())
+	}
+	lastContent := h.resolveSessionLastContent(ctx, sess.Name, meta.LastContent)
+	h.upsertSessionMetaBestEffort(ctx, sess.Name, hash, lastContent)
+
+	return enrichedSession{
+		Name:          sess.Name,
+		Windows:       sess.Windows,
+		Panes:         h.resolveSessionPaneCount(ctx, sess.Name, snap.Panes, sess.Windows),
+		Attached:      sess.Attached,
+		CreatedAt:     sess.CreatedAt.Format(time.RFC3339),
+		ActivityAt:    sess.ActivityAt.Format(time.RFC3339),
+		Command:       snap.Command,
+		Hash:          hash,
+		LastContent:   lastContent,
+		Icon:          meta.Icon,
+		UnreadWindows: 0,
+		UnreadPanes:   0,
+		Rev:           0,
+	}
+}
+
+func (h *Handler) resolveSessionLastContent(ctx context.Context, sessionName, fallback string) string {
+	lastContent := strings.TrimSpace(fallback)
+	captured, err := h.tmux.CapturePane(ctx, sessionName)
+	if err != nil {
+		return lastContent
+	}
+	trimmed := strings.TrimSpace(captured)
+	if trimmed == "" {
+		return lastContent
+	}
+	return trimmed
+}
+
+func (h *Handler) resolveSessionPaneCount(ctx context.Context, sessionName string, projectedPanes, windowFallback int) int {
+	if projectedPanes > 0 {
+		return projectedPanes
+	}
+	paneList, err := h.tmux.ListPanes(ctx, sessionName)
+	if err != nil {
+		return windowFallback
+	}
+	return len(paneList)
+}
+
+func (h *Handler) upsertSessionMetaBestEffort(ctx context.Context, sessionName, hash, lastContent string) {
+	if h.store == nil {
+		return
+	}
+	if err := h.store.UpsertSession(ctx, sessionName, hash, lastContent); err != nil {
+		slog.Warn("store.UpsertSession failed", "session", sessionName, "err", err)
+	}
+}
+
+func (h *Handler) purgeStoredSessionsBestEffort(ctx context.Context, activeNames []string) {
+	if h.store == nil {
+		return
+	}
+	if err := h.store.Purge(ctx, activeNames); err != nil {
+		slog.Warn("store.Purge failed", "err", err)
+	}
 }
 
 func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
@@ -780,92 +828,132 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Scope       string `json:"scope"`
-		WindowIndex int    `json:"windowIndex"`
-		PaneID      string `json:"paneId"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
+	req, err := decodeMarkSeenRequest(r)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	req.Scope = strings.TrimSpace(strings.ToLower(req.Scope))
-	req.PaneID = strings.TrimSpace(req.PaneID)
-
-	if req.Scope == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope is required", nil)
+	if err := validateMarkSeenRequest(req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	acked := false
-	var err error
-	switch req.Scope {
-	case "pane":
-		if !strings.HasPrefix(req.PaneID, "%") {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId must start with %", nil)
-			return
-		}
-		acked, err = h.store.MarkWatchtowerPaneSeen(ctx, session, req.PaneID)
-	case "window":
-		if req.WindowIndex < 0 {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "windowIndex must be >= 0", nil)
-			return
-		}
-		acked, err = h.store.MarkWatchtowerWindowSeen(ctx, session, req.WindowIndex)
-	case "session":
-		acked, err = h.store.MarkWatchtowerSessionSeen(ctx, session)
-	default:
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope must be pane, window, or session", nil)
-		return
-	}
+	acked, err := h.applyMarkSeen(ctx, session, req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to mark seen", nil)
 		return
 	}
 
-	globalRev := int64(0)
-	if raw, getErr := h.store.GetWatchtowerRuntimeValue(ctx, "global_rev"); getErr == nil {
-		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil {
-			globalRev = parsed
-		}
+	globalRev := readWatchtowerGlobalRev(ctx, h.store)
+	sessionPatches, inspectorPatches := h.collectSeenPatches(ctx, session)
+	if acked {
+		h.emitMarkSeenEvents(session, req.Scope, globalRev, sessionPatches, inspectorPatches)
 	}
+	writeData(w, http.StatusOK, buildSeenResponsePayload(session, req.Scope, acked, globalRev, sessionPatches, inspectorPatches))
+}
 
-	var sessionPatches []map[string]any
-	if patch, patchErr := h.store.GetWatchtowerSessionActivityPatch(ctx, session); patchErr == nil {
+type markSeenRequest struct {
+	Scope       string `json:"scope"`
+	WindowIndex int    `json:"windowIndex"`
+	PaneID      string `json:"paneId"`
+}
+
+func decodeMarkSeenRequest(r *http.Request) (markSeenRequest, error) {
+	var req markSeenRequest
+	if err := decodeJSON(r, &req); err != nil {
+		return markSeenRequest{}, err
+	}
+	req.Scope = strings.TrimSpace(strings.ToLower(req.Scope))
+	req.PaneID = strings.TrimSpace(req.PaneID)
+	return req, nil
+}
+
+func validateMarkSeenRequest(req markSeenRequest) error {
+	if req.Scope == "" {
+		return errors.New("scope is required")
+	}
+	switch req.Scope {
+	case "pane":
+		if !strings.HasPrefix(req.PaneID, "%") {
+			return errors.New("paneId must start with %")
+		}
+	case "window":
+		if req.WindowIndex < 0 {
+			return errors.New("windowIndex must be >= 0")
+		}
+	case "session":
+	default:
+		return errors.New("scope must be pane, window, or session")
+	}
+	return nil
+}
+
+func (h *Handler) applyMarkSeen(ctx context.Context, session string, req markSeenRequest) (bool, error) {
+	switch req.Scope {
+	case "pane":
+		return h.store.MarkWatchtowerPaneSeen(ctx, session, req.PaneID)
+	case "window":
+		return h.store.MarkWatchtowerWindowSeen(ctx, session, req.WindowIndex)
+	default:
+		return h.store.MarkWatchtowerSessionSeen(ctx, session)
+	}
+}
+
+func readWatchtowerGlobalRev(ctx context.Context, st *store.Store) int64 {
+	if st == nil {
+		return 0
+	}
+	raw, err := st.GetWatchtowerRuntimeValue(ctx, "global_rev")
+	if err != nil {
+		return 0
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
+func (h *Handler) collectSeenPatches(ctx context.Context, session string) ([]map[string]any, []map[string]any) {
+	sessionPatches := make([]map[string]any, 0, 1)
+	inspectorPatches := make([]map[string]any, 0, 1)
+	if patch, err := h.store.GetWatchtowerSessionActivityPatch(ctx, session); err == nil {
 		sessionPatches = append(sessionPatches, patch)
 	}
-	var inspectorPatches []map[string]any
-	if patch, patchErr := h.store.GetWatchtowerInspectorPatch(ctx, session); patchErr == nil {
+	if patch, err := h.store.GetWatchtowerInspectorPatch(ctx, session); err == nil {
 		inspectorPatches = append(inspectorPatches, patch)
 	}
+	return sessionPatches, inspectorPatches
+}
 
-	if acked {
-		h.emit(events.TypeTmuxInspector, map[string]any{
-			"session": session,
-			"action":  "seen",
-			"scope":   req.Scope,
-		})
-		sessionsPayload := map[string]any{
-			"session":   session,
-			"action":    "seen",
-			"scope":     req.Scope,
-			"globalRev": globalRev,
-		}
-		if len(sessionPatches) > 0 {
-			sessionsPayload["sessionPatches"] = sessionPatches
-		}
-		if len(inspectorPatches) > 0 {
-			sessionsPayload["inspectorPatches"] = inspectorPatches
-		}
-		h.emit(events.TypeTmuxSessions, sessionsPayload)
+func (h *Handler) emitMarkSeenEvents(session, scope string, globalRev int64, sessionPatches, inspectorPatches []map[string]any) {
+	h.emit(events.TypeTmuxInspector, map[string]any{
+		"session": session,
+		"action":  "seen",
+		"scope":   scope,
+	})
+	payload := map[string]any{
+		"session":   session,
+		"action":    "seen",
+		"scope":     scope,
+		"globalRev": globalRev,
 	}
+	if len(sessionPatches) > 0 {
+		payload["sessionPatches"] = sessionPatches
+	}
+	if len(inspectorPatches) > 0 {
+		payload["inspectorPatches"] = inspectorPatches
+	}
+	h.emit(events.TypeTmuxSessions, payload)
+}
 
+func buildSeenResponsePayload(session, scope string, acked bool, globalRev int64, sessionPatches, inspectorPatches []map[string]any) map[string]any {
 	response := map[string]any{
 		"session":   session,
-		"scope":     req.Scope,
+		"scope":     scope,
 		"acked":     acked,
 		"globalRev": globalRev,
 	}
@@ -875,7 +963,7 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 	if len(inspectorPatches) > 0 {
 		response["inspectorPatches"] = inspectorPatches
 	}
-	writeData(w, http.StatusOK, response)
+	return response
 }
 
 func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
@@ -884,27 +972,10 @@ func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	since := int64(0)
-	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
-		parsed, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || parsed < 0 {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "since must be >= 0", nil)
-			return
-		}
-		since = parsed
-	}
-
-	limit := 200
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "limit must be > 0", nil)
-			return
-		}
-		if parsed > 1000 {
-			parsed = 1000
-		}
-		limit = parsed
+	since, limit, err := parseActivityDeltaParams(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -921,33 +992,9 @@ func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
 		changes = changes[:limit]
 	}
 
-	globalRev := int64(0)
-	if raw, getErr := h.store.GetWatchtowerRuntimeValue(ctx, "global_rev"); getErr == nil {
-		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil {
-			globalRev = parsed
-		}
-	}
-
-	sessionNames := make(map[string]struct{}, len(changes))
-	for _, change := range changes {
-		session := strings.TrimSpace(change.Session)
-		if session == "" {
-			continue
-		}
-		sessionNames[session] = struct{}{}
-	}
-
-	sessionPatches := make([]map[string]any, 0, len(sessionNames))
-	inspectorPatches := make([]map[string]any, 0, len(sessionNames))
-	for sessionName := range sessionNames {
-		if patch, patchErr := h.store.GetWatchtowerSessionActivityPatch(ctx, sessionName); patchErr == nil {
-			sessionPatches = append(sessionPatches, patch)
-		}
-		if patch, patchErr := h.store.GetWatchtowerInspectorPatch(ctx, sessionName); patchErr == nil {
-			inspectorPatches = append(inspectorPatches, patch)
-		}
-	}
-
+	globalRev := readWatchtowerGlobalRev(ctx, h.store)
+	sessionNames := extractChangedSessionNames(changes)
+	sessionPatches, inspectorPatches := h.collectSessionsPatches(ctx, sessionNames)
 	response := map[string]any{
 		"since":     since,
 		"limit":     limit,
@@ -962,6 +1009,60 @@ func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
 		response["inspectorPatches"] = inspectorPatches
 	}
 	writeData(w, http.StatusOK, response)
+}
+
+func parseActivityDeltaParams(r *http.Request) (int64, int, error) {
+	since := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 0 {
+			return 0, 0, errors.New("since must be >= 0")
+		}
+		since = parsed
+	}
+
+	limit := 200
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			return 0, 0, errors.New("limit must be > 0")
+		}
+		if parsed > 1000 {
+			parsed = 1000
+		}
+		limit = parsed
+	}
+	return since, limit, nil
+}
+
+func extractChangedSessionNames(changes []store.WatchtowerJournal) []string {
+	sessionSet := make(map[string]struct{}, len(changes))
+	for _, change := range changes {
+		session := strings.TrimSpace(change.Session)
+		if session == "" {
+			continue
+		}
+		sessionSet[session] = struct{}{}
+	}
+	names := make([]string, 0, len(sessionSet))
+	for session := range sessionSet {
+		names = append(names, session)
+	}
+	return names
+}
+
+func (h *Handler) collectSessionsPatches(ctx context.Context, sessions []string) ([]map[string]any, []map[string]any) {
+	sessionPatches := make([]map[string]any, 0, len(sessions))
+	inspectorPatches := make([]map[string]any, 0, len(sessions))
+	for _, session := range sessions {
+		if patch, err := h.store.GetWatchtowerSessionActivityPatch(ctx, session); err == nil {
+			sessionPatches = append(sessionPatches, patch)
+		}
+		if patch, err := h.store.GetWatchtowerInspectorPatch(ctx, session); err == nil {
+			inspectorPatches = append(inspectorPatches, patch)
+		}
+	}
+	return sessionPatches, inspectorPatches
 }
 
 func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
@@ -1025,58 +1126,10 @@ func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := store.WatchtowerTimelineQuery{
-		Session:   strings.TrimSpace(r.URL.Query().Get("session")),
-		PaneID:    strings.TrimSpace(r.URL.Query().Get("paneId")),
-		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
-		Severity:  strings.TrimSpace(r.URL.Query().Get("severity")),
-		EventType: strings.TrimSpace(r.URL.Query().Get("eventType")),
-		Limit:     100,
-	}
-
-	if query.Session != "" && !validate.SessionName(query.Session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	query, err := parseTimelineSearchQuery(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
-	}
-	if query.PaneID != "" && !strings.HasPrefix(query.PaneID, "%") {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId must start with %", nil)
-		return
-	}
-
-	if raw := strings.TrimSpace(r.URL.Query().Get("windowIndex")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 0 {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "windowIndex must be >= 0", nil)
-			return
-		}
-		query.WindowIdx = &parsed
-	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "since must be RFC3339", nil)
-			return
-		}
-		query.Since = parsed.UTC()
-	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("until")); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "until must be RFC3339", nil)
-			return
-		}
-		query.Until = parsed.UTC()
-	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "limit must be > 0", nil)
-			return
-		}
-		if parsed > 500 {
-			parsed = 500
-		}
-		query.Limit = parsed
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -1091,6 +1144,87 @@ func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
 		"events":  result.Events,
 		"hasMore": result.HasMore,
 	})
+}
+
+func parseTimelineSearchQuery(r *http.Request) (store.WatchtowerTimelineQuery, error) {
+	query := store.WatchtowerTimelineQuery{
+		Session:   strings.TrimSpace(r.URL.Query().Get("session")),
+		PaneID:    strings.TrimSpace(r.URL.Query().Get("paneId")),
+		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
+		Severity:  strings.TrimSpace(r.URL.Query().Get("severity")),
+		EventType: strings.TrimSpace(r.URL.Query().Get("eventType")),
+		Limit:     100,
+	}
+	if err := validateTimelineScope(query.Session, query.PaneID); err != nil {
+		return store.WatchtowerTimelineQuery{}, err
+	}
+	windowIdx, err := parseTimelineWindowIndexParam(strings.TrimSpace(r.URL.Query().Get("windowIndex")))
+	if err != nil {
+		return store.WatchtowerTimelineQuery{}, err
+	}
+	since, err := parseTimelineRFC3339Param(strings.TrimSpace(r.URL.Query().Get("since")), "since")
+	if err != nil {
+		return store.WatchtowerTimelineQuery{}, err
+	}
+	until, err := parseTimelineRFC3339Param(strings.TrimSpace(r.URL.Query().Get("until")), "until")
+	if err != nil {
+		return store.WatchtowerTimelineQuery{}, err
+	}
+	limit, err := parseTimelineLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), query.Limit)
+	if err != nil {
+		return store.WatchtowerTimelineQuery{}, err
+	}
+	query.WindowIdx = windowIdx
+	query.Since = since
+	query.Until = until
+	query.Limit = limit
+	return query, nil
+}
+
+func validateTimelineScope(session, paneID string) error {
+	if session != "" && !validate.SessionName(session) {
+		return errors.New("invalid session name")
+	}
+	if paneID != "" && !strings.HasPrefix(paneID, "%") {
+		return errors.New("paneId must start with %")
+	}
+	return nil
+}
+
+func parseTimelineWindowIndexParam(raw string) (*int, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < 0 {
+		return nil, errors.New("windowIndex must be >= 0")
+	}
+	return &parsed, nil
+}
+
+func parseTimelineRFC3339Param(raw, field string) (time.Time, error) {
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s must be RFC3339", field)
+	}
+	return parsed.UTC(), nil
+}
+
+func parseTimelineLimitParam(raw string, fallback int) (int, error) {
+	if raw == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return 0, errors.New("limit must be > 0")
+	}
+	if parsed > 500 {
+		parsed = 500
+	}
+	return parsed, nil
 }
 
 func (h *Handler) storageStats(w http.ResponseWriter, r *http.Request) {

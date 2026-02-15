@@ -105,154 +105,162 @@ func Load() Config {
 		},
 	}
 
-	// Resolve DataDir first (needed for config file path).
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_DATA_DIR")); v != "" {
-		cfg.DataDir = v
-	} else if home, err := resolveHomeDir(); err == nil {
-		cfg.DataDir = filepath.Join(home, ".sentinel")
-	} else {
-		// Last-resort fallback for restricted service environments.
-		cfg.DataDir = filepath.Join(osTempDir(), "sentinel")
-	}
-
-	// Create default config file if it does not exist.
+	cfg.DataDir = resolveDataDir()
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
+	ensureDefaultConfig(configPath)
+
+	file := loadFile(configPath)
+	applyCoreConfig(&cfg, file)
+	applyWatchtowerConfig(&cfg, file)
+	applyRecoveryConfig(&cfg, file)
+
+	return cfg
+}
+
+func resolveDataDir() string {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_DATA_DIR")); v != "" {
+		return v
+	}
+	if home, err := resolveHomeDir(); err == nil {
+		return filepath.Join(home, ".sentinel")
+	}
+	// Last-resort fallback for restricted service environments.
+	return filepath.Join(osTempDir(), "sentinel")
+}
+
+func ensureDefaultConfig(configPath string) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		writeDefaultConfig(configPath)
 	}
+}
 
-	// Load config file (values act as defaults).
-	file := loadFile(configPath)
-
-	// Token: env > file
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_TOKEN")); v != "" {
-		cfg.Token = v
-	} else if v := file["token"]; v != "" {
-		cfg.Token = v
+func applyCoreConfig(cfg *Config, file map[string]string) {
+	if cfg == nil {
+		return
 	}
 
-	// Listen: env > file > default
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_LISTEN")); v != "" {
-		cfg.ListenAddr = v
-	} else if v := file["listen"]; v != "" {
-		cfg.ListenAddr = v
+	cfg.Token = readRawEnvOrFile("SENTINEL_TOKEN", "token", file)
+	if listen := readRawEnvOrFile("SENTINEL_LISTEN", "listen", file); listen != "" {
+		cfg.ListenAddr = listen
 	}
-
-	// Allowed origins: env > file
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_ALLOWED_ORIGINS")); raw != "" {
-		cfg.AllowedOrigins = splitCSV(raw)
-	} else if v := file["allowed_origins"]; v != "" {
-		cfg.AllowedOrigins = splitCSV(v)
+	if origins := readRawEnvOrFile("SENTINEL_ALLOWED_ORIGINS", "allowed_origins", file); origins != "" {
+		cfg.AllowedOrigins = splitCSV(origins)
 	}
-
-	// Log level: env > file > default (info)
 	cfg.LogLevel = "info"
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_LOG_LEVEL")); v != "" {
-		cfg.LogLevel = strings.ToLower(v)
-	} else if v := file["log_level"]; v != "" {
-		cfg.LogLevel = strings.ToLower(v)
+	if level := readRawEnvOrFile("SENTINEL_LOG_LEVEL", "log_level", file); level != "" {
+		cfg.LogLevel = strings.ToLower(level)
+	}
+}
+
+func applyWatchtowerConfig(cfg *Config, file map[string]string) {
+	if cfg == nil {
+		return
 	}
 
-	// Watchtower enabled.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_ENABLED")); raw != "" {
-		if parsed, ok := parseBool(raw); ok {
-			cfg.Watchtower.Enabled = parsed
-		}
-	} else if raw := file["watchtower_enabled"]; raw != "" {
-		if parsed, ok := parseBool(raw); ok {
-			cfg.Watchtower.Enabled = parsed
-		}
+	cfg.Watchtower.Enabled = readBoolEnvOrFile(
+		"SENTINEL_WATCHTOWER_ENABLED",
+		"watchtower_enabled",
+		file,
+		cfg.Watchtower.Enabled,
+	)
+	cfg.Watchtower.TickInterval = readDurationEnvOrFile(
+		"SENTINEL_WATCHTOWER_TICK_INTERVAL",
+		"watchtower_tick_interval",
+		file,
+		cfg.Watchtower.TickInterval,
+	)
+	cfg.Watchtower.CaptureLines = readPositiveIntEnvOrFile(
+		"SENTINEL_WATCHTOWER_CAPTURE_LINES",
+		"watchtower_capture_lines",
+		file,
+		cfg.Watchtower.CaptureLines,
+	)
+	cfg.Watchtower.CaptureTimeout = readDurationEnvOrFile(
+		"SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT",
+		"watchtower_capture_timeout",
+		file,
+		cfg.Watchtower.CaptureTimeout,
+	)
+	cfg.Watchtower.JournalRows = readPositiveIntEnvOrFile(
+		"SENTINEL_WATCHTOWER_JOURNAL_ROWS",
+		"watchtower_journal_rows",
+		file,
+		cfg.Watchtower.JournalRows,
+	)
+}
+
+func applyRecoveryConfig(cfg *Config, file map[string]string) {
+	if cfg == nil {
+		return
 	}
 
-	// Watchtower tick interval.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_TICK_INTERVAL")); raw != "" {
-		if parsed, ok := parseDuration(raw); ok {
-			cfg.Watchtower.TickInterval = parsed
-		}
-	} else if raw := file["watchtower_tick_interval"]; raw != "" {
-		if parsed, ok := parseDuration(raw); ok {
-			cfg.Watchtower.TickInterval = parsed
-		}
-	}
+	cfg.Recovery.Enabled = readBoolEnvOrFile(
+		"SENTINEL_RECOVERY_ENABLED",
+		"recovery_enabled",
+		file,
+		cfg.Recovery.Enabled,
+	)
+	cfg.Recovery.SnapshotInterval = readDurationEnvOrFile(
+		"SENTINEL_RECOVERY_SNAPSHOT_INTERVAL",
+		"recovery_snapshot_interval",
+		file,
+		cfg.Recovery.SnapshotInterval,
+	)
+	cfg.Recovery.CaptureLines = readPositiveIntEnvOrFile(
+		"SENTINEL_RECOVERY_CAPTURE_LINES",
+		"recovery_capture_lines",
+		file,
+		cfg.Recovery.CaptureLines,
+	)
+	cfg.Recovery.MaxSnapshots = readPositiveIntEnvOrFile(
+		"SENTINEL_RECOVERY_MAX_SNAPSHOTS",
+		"recovery_max_snapshots",
+		file,
+		cfg.Recovery.MaxSnapshots,
+	)
+}
 
-	// Watchtower capture lines.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_CAPTURE_LINES")); raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Watchtower.CaptureLines = parsed
-		}
-	} else if raw := file["watchtower_capture_lines"]; raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Watchtower.CaptureLines = parsed
-		}
+func readRawEnvOrFile(envKey, fileKey string, file map[string]string) string {
+	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
+		return v
 	}
-
-	// Watchtower capture timeout.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT")); raw != "" {
-		if parsed, ok := parseDuration(raw); ok {
-			cfg.Watchtower.CaptureTimeout = parsed
-		}
-	} else if raw := file["watchtower_capture_timeout"]; raw != "" {
-		if parsed, ok := parseDuration(raw); ok {
-			cfg.Watchtower.CaptureTimeout = parsed
-		}
+	if file == nil {
+		return ""
 	}
+	return strings.TrimSpace(file[fileKey])
+}
 
-	// Watchtower journal max rows.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS")); raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Watchtower.JournalRows = parsed
-		}
-	} else if raw := file["watchtower_journal_rows"]; raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Watchtower.JournalRows = parsed
-		}
+func readBoolEnvOrFile(envKey, fileKey string, file map[string]string, fallback bool) bool {
+	raw := readRawEnvOrFile(envKey, fileKey, file)
+	if raw == "" {
+		return fallback
 	}
-
-	// Recovery enabled.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_ENABLED")); raw != "" {
-		if parsed, ok := parseBool(raw); ok {
-			cfg.Recovery.Enabled = parsed
-		}
-	} else if raw := file["recovery_enabled"]; raw != "" {
-		if parsed, ok := parseBool(raw); ok {
-			cfg.Recovery.Enabled = parsed
-		}
+	if parsed, ok := parseBool(raw); ok {
+		return parsed
 	}
+	return fallback
+}
 
-	// Recovery snapshot interval.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_SNAPSHOT_INTERVAL")); raw != "" {
-		if parsed, ok := parseDuration(raw); ok {
-			cfg.Recovery.SnapshotInterval = parsed
-		}
-	} else if raw := file["recovery_snapshot_interval"]; raw != "" {
-		if parsed, ok := parseDuration(raw); ok {
-			cfg.Recovery.SnapshotInterval = parsed
-		}
+func readDurationEnvOrFile(envKey, fileKey string, file map[string]string, fallback time.Duration) time.Duration {
+	raw := readRawEnvOrFile(envKey, fileKey, file)
+	if raw == "" {
+		return fallback
 	}
-
-	// Recovery capture lines.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_CAPTURE_LINES")); raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Recovery.CaptureLines = parsed
-		}
-	} else if raw := file["recovery_capture_lines"]; raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Recovery.CaptureLines = parsed
-		}
+	if parsed, ok := parseDuration(raw); ok {
+		return parsed
 	}
+	return fallback
+}
 
-	// Recovery max snapshots.
-	if raw := strings.TrimSpace(os.Getenv("SENTINEL_RECOVERY_MAX_SNAPSHOTS")); raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Recovery.MaxSnapshots = parsed
-		}
-	} else if raw := file["recovery_max_snapshots"]; raw != "" {
-		if parsed, ok := parsePositiveInt(raw); ok {
-			cfg.Recovery.MaxSnapshots = parsed
-		}
+func readPositiveIntEnvOrFile(envKey, fileKey string, file map[string]string, fallback int) int {
+	raw := readRawEnvOrFile(envKey, fileKey, file)
+	if raw == "" {
+		return fallback
 	}
-
-	return cfg
+	if parsed, ok := parsePositiveInt(raw); ok {
+		return parsed
+	}
+	return fallback
 }
 
 // loadFile reads a simple key = value config file.

@@ -2625,14 +2625,79 @@ func TestRestoreRecoverySnapshotHandler(t *testing.T) {
 	}
 }
 
-func TestActivityDeltaHandler(t *testing.T) {
+func TestActivityDeltaHandlerOverflow(t *testing.T) {
+	t.Parallel()
+	h := seededActivityDeltaHandler(t)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=0&limit=2", nil)
+	h.activityDelta(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	data, _ := jsonBody(t, w)["data"].(map[string]any)
+	if data["overflow"] != true {
+		t.Fatalf("overflow = %v, want true", data["overflow"])
+	}
+	if int64(data["globalRev"].(float64)) != 3 {
+		t.Fatalf("globalRev = %v, want 3", data["globalRev"])
+	}
+	changes, _ := data["changes"].([]any)
+	if len(changes) != 2 {
+		t.Fatalf("changes len = %d, want 2", len(changes))
+	}
+}
+
+func TestActivityDeltaHandlerWithoutOverflow(t *testing.T) {
 	t.Parallel()
 	const sessionName = "dev"
+	h := seededActivityDeltaHandler(t)
 
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=2&limit=5", nil)
+	h.activityDelta(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	data, _ := jsonBody(t, w)["data"].(map[string]any)
+	if data["overflow"] != false {
+		t.Fatalf("overflow = %v, want false", data["overflow"])
+	}
+	changes, _ := data["changes"].([]any)
+	if len(changes) != 1 {
+		t.Fatalf("changes len = %d, want 1", len(changes))
+	}
+	change, _ := changes[0].(map[string]any)
+	if int64(change["globalRev"].(float64)) != 3 {
+		t.Fatalf("change.globalRev = %v, want 3", change["globalRev"])
+	}
+	assertActivityDeltaPatchPayloads(t, data, sessionName)
+}
+
+func TestActivityDeltaHandlerInvalidSince(t *testing.T) {
+	t.Parallel()
+	h := seededActivityDeltaHandler(t)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=-1", nil)
+	h.activityDelta(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
+		t.Fatalf("code = %q, want %s", code, invalidRequestCode)
+	}
+}
+
+func seededActivityDeltaHandler(t *testing.T) *Handler {
+	t.Helper()
+	const sessionName = "dev"
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	h := newTestHandler(t, nil, nil)
-
 	if err := h.store.SetWatchtowerRuntimeValue(ctx, "global_rev", "3"); err != nil {
 		t.Fatalf("SetWatchtowerRuntimeValue(global_rev): %v", err)
 	}
@@ -2679,6 +2744,12 @@ func TestActivityDeltaHandler(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpsertWatchtowerPane(dev): %v", err)
 	}
+	seedActivityDeltaJournal(t, h, ctx, now, sessionName)
+	return h
+}
+
+func seedActivityDeltaJournal(t *testing.T, h *Handler, ctx context.Context, now time.Time, sessionName string) {
+	t.Helper()
 	for rev := 1; rev <= 3; rev++ {
 		if _, err := h.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
 			GlobalRev:  int64(rev),
@@ -2691,86 +2762,26 @@ func TestActivityDeltaHandler(t *testing.T) {
 			t.Fatalf("InsertWatchtowerJournal(%d): %v", rev, err)
 		}
 	}
+}
 
-	t.Run("overflow", func(t *testing.T) {
-		t.Parallel()
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=0&limit=2", nil)
-		h.activityDelta(w, r)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", w.Code)
-		}
-		body := jsonBody(t, w)
-		data, _ := body["data"].(map[string]any)
-		if data["overflow"] != true {
-			t.Fatalf("overflow = %v, want true", data["overflow"])
-		}
-		if int64(data["globalRev"].(float64)) != 3 {
-			t.Fatalf("globalRev = %v, want 3", data["globalRev"])
-		}
-		changes, _ := data["changes"].([]any)
-		if len(changes) != 2 {
-			t.Fatalf("changes len = %d, want 2", len(changes))
-		}
-	})
-
-	t.Run("success without overflow", func(t *testing.T) {
-		t.Parallel()
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=2&limit=5", nil)
-		h.activityDelta(w, r)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", w.Code)
-		}
-		body := jsonBody(t, w)
-		data, _ := body["data"].(map[string]any)
-		if data["overflow"] != false {
-			t.Fatalf("overflow = %v, want false", data["overflow"])
-		}
-		changes, _ := data["changes"].([]any)
-		if len(changes) != 1 {
-			t.Fatalf("changes len = %d, want 1", len(changes))
-		}
-		change, _ := changes[0].(map[string]any)
-		if int64(change["globalRev"].(float64)) != 3 {
-			t.Fatalf("change.globalRev = %v, want 3", change["globalRev"])
-		}
-		sessionPatches, ok := data["sessionPatches"].([]any)
-		if !ok || len(sessionPatches) != 1 {
-			t.Fatalf("sessionPatches = %T(%v), want len=1", data["sessionPatches"], data["sessionPatches"])
-		}
-		sessionPatch, _ := sessionPatches[0].(map[string]any)
-		if sessionPatch["name"] != sessionName {
-			t.Fatalf("session patch name = %v, want %s", sessionPatch["name"], sessionName)
-		}
-		inspectorPatches, ok := data["inspectorPatches"].([]any)
-		if !ok || len(inspectorPatches) != 1 {
-			t.Fatalf("inspectorPatches = %T(%v), want len=1", data["inspectorPatches"], data["inspectorPatches"])
-		}
-		inspectorPatch, _ := inspectorPatches[0].(map[string]any)
-		if inspectorPatch["session"] != sessionName {
-			t.Fatalf("inspector patch session = %v, want %s", inspectorPatch["session"], sessionName)
-		}
-	})
-
-	t.Run("invalid since", func(t *testing.T) {
-		t.Parallel()
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=-1", nil)
-		h.activityDelta(w, r)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
-		}
-		if code := errCode(jsonBody(t, w)); code != invalidRequestCode {
-			t.Fatalf("code = %q, want %s", code, invalidRequestCode)
-		}
-	})
+func assertActivityDeltaPatchPayloads(t *testing.T, data map[string]any, sessionName string) {
+	t.Helper()
+	sessionPatches, ok := data["sessionPatches"].([]any)
+	if !ok || len(sessionPatches) != 1 {
+		t.Fatalf("sessionPatches = %T(%v), want len=1", data["sessionPatches"], data["sessionPatches"])
+	}
+	sessionPatch, _ := sessionPatches[0].(map[string]any)
+	if sessionPatch["name"] != sessionName {
+		t.Fatalf("session patch name = %v, want %s", sessionPatch["name"], sessionName)
+	}
+	inspectorPatches, ok := data["inspectorPatches"].([]any)
+	if !ok || len(inspectorPatches) != 1 {
+		t.Fatalf("inspectorPatches = %T(%v), want len=1", data["inspectorPatches"], data["inspectorPatches"])
+	}
+	inspectorPatch, _ := inspectorPatches[0].(map[string]any)
+	if inspectorPatch["session"] != sessionName {
+		t.Fatalf("inspector patch session = %v, want %s", inspectorPatch["session"], sessionName)
+	}
 }
 
 func TestActivityStatsHandler(t *testing.T) {
@@ -2953,74 +2964,7 @@ func TestStorageStatsAndFlushHandlers(t *testing.T) {
 	h := newTestHandler(t, nil, nil)
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
-
-	if _, err := h.store.InsertWatchtowerTimelineEvent(ctx, store.WatchtowerTimelineEventWrite{
-		Session:   "dev",
-		WindowIdx: 0,
-		PaneID:    "%1",
-		EventType: "output.marker",
-		Severity:  "warn",
-		Summary:   "warning marker",
-		Details:   "deprecated warning",
-		CreatedAt: base,
-	}); err != nil {
-		t.Fatalf("InsertWatchtowerTimelineEvent: %v", err)
-	}
-
-	if _, err := h.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
-		GlobalRev:  1,
-		EntityType: "pane",
-		Session:    "dev",
-		WindowIdx:  0,
-		PaneID:     "%1",
-		ChangeKind: "updated",
-		ChangedAt:  base,
-	}); err != nil {
-		t.Fatalf("InsertWatchtowerJournal: %v", err)
-	}
-
-	if _, err := h.store.InsertGuardrailAudit(ctx, store.GuardrailAuditWrite{
-		RuleID:      "rule.test",
-		Decision:    "warn",
-		Action:      "session.kill",
-		Command:     "tmux kill-session -t dev",
-		SessionName: "dev",
-		WindowIndex: 0,
-		PaneID:      "%1",
-		Reason:      "test",
-		MetadataRaw: `{"source":"test"}`,
-		CreatedAt:   base,
-	}); err != nil {
-		t.Fatalf("InsertGuardrailAudit: %v", err)
-	}
-
-	snapshot, _, err := h.store.UpsertRecoverySnapshot(ctx, store.RecoverySnapshotWrite{
-		SessionName:  "dev",
-		BootID:       "boot-1",
-		StateHash:    "hash-1",
-		CapturedAt:   base,
-		ActiveWindow: 0,
-		ActivePaneID: "%1",
-		Windows:      1,
-		Panes:        1,
-		PayloadJSON:  `{"windows":[],"panes":[]}`,
-	})
-	if err != nil {
-		t.Fatalf("UpsertRecoverySnapshot: %v", err)
-	}
-
-	if err := h.store.CreateRecoveryJob(ctx, store.RecoveryJob{
-		ID:             "job-1",
-		SessionName:    "dev",
-		TargetSession:  "dev-restored",
-		SnapshotID:     snapshot.ID,
-		Mode:           "safe",
-		ConflictPolicy: "rename",
-		Status:         store.RecoveryJobQueued,
-		CreatedAt:      base,
-	}); err != nil {
-		t.Fatalf("CreateRecoveryJob: %v", err)
-	}
+	seedStorageHandlersData(t, h, ctx, base)
 
 	getResources := func(t *testing.T) map[string]map[string]any {
 		t.Helper()
@@ -3092,6 +3036,73 @@ func TestStorageStatsAndFlushHandlers(t *testing.T) {
 	journalRows, _ := resources[store.StorageResourceActivityLog]["rows"].(float64)
 	if journalRows < 1 {
 		t.Fatalf("journal rows after timeline flush = %v, want >= 1", journalRows)
+	}
+}
+
+func seedStorageHandlersData(t *testing.T, h *Handler, ctx context.Context, base time.Time) {
+	t.Helper()
+	if _, err := h.store.InsertWatchtowerTimelineEvent(ctx, store.WatchtowerTimelineEventWrite{
+		Session:   "dev",
+		WindowIdx: 0,
+		PaneID:    "%1",
+		EventType: "output.marker",
+		Severity:  "warn",
+		Summary:   "warning marker",
+		Details:   "deprecated warning",
+		CreatedAt: base,
+	}); err != nil {
+		t.Fatalf("InsertWatchtowerTimelineEvent: %v", err)
+	}
+	if _, err := h.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
+		GlobalRev:  1,
+		EntityType: "pane",
+		Session:    "dev",
+		WindowIdx:  0,
+		PaneID:     "%1",
+		ChangeKind: "updated",
+		ChangedAt:  base,
+	}); err != nil {
+		t.Fatalf("InsertWatchtowerJournal: %v", err)
+	}
+	if _, err := h.store.InsertGuardrailAudit(ctx, store.GuardrailAuditWrite{
+		RuleID:      "rule.test",
+		Decision:    "warn",
+		Action:      "session.kill",
+		Command:     "tmux kill-session -t dev",
+		SessionName: "dev",
+		WindowIndex: 0,
+		PaneID:      "%1",
+		Reason:      "test",
+		MetadataRaw: `{"source":"test"}`,
+		CreatedAt:   base,
+	}); err != nil {
+		t.Fatalf("InsertGuardrailAudit: %v", err)
+	}
+	snapshot, _, err := h.store.UpsertRecoverySnapshot(ctx, store.RecoverySnapshotWrite{
+		SessionName:  "dev",
+		BootID:       "boot-1",
+		StateHash:    "hash-1",
+		CapturedAt:   base,
+		ActiveWindow: 0,
+		ActivePaneID: "%1",
+		Windows:      1,
+		Panes:        1,
+		PayloadJSON:  `{"windows":[],"panes":[]}`,
+	})
+	if err != nil {
+		t.Fatalf("UpsertRecoverySnapshot: %v", err)
+	}
+	if err := h.store.CreateRecoveryJob(ctx, store.RecoveryJob{
+		ID:             "job-1",
+		SessionName:    "dev",
+		TargetSession:  "dev-restored",
+		SnapshotID:     snapshot.ID,
+		Mode:           "safe",
+		ConflictPolicy: "rename",
+		Status:         store.RecoveryJobQueued,
+		CreatedAt:      base,
+	}); err != nil {
+		t.Fatalf("CreateRecoveryJob: %v", err)
 	}
 }
 
@@ -3227,9 +3238,31 @@ func TestGuardrailEndpoints(t *testing.T) {
 
 func TestMarkSessionSeenHandler(t *testing.T) {
 	t.Parallel()
-
 	const sessionName = "dev"
+	h, eventsCh := seededMarkSessionSeenHandler(t, sessionName)
+	ctx := context.Background()
 
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(
+		"POST",
+		fmt.Sprintf("/api/tmux/sessions/%s/seen", sessionName),
+		strings.NewReader(`{"scope":"pane","paneId":"%1"}`),
+	)
+	r.SetPathValue("session", sessionName)
+	h.markSessionSeen(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	data, _ := jsonBody(t, w)["data"].(map[string]any)
+	assertMarkSeenResponsePayload(t, data, sessionName)
+	assertMarkSeenStoreState(t, h, ctx, sessionName)
+	sessionsEvent := expectMarkSeenEvents(t, eventsCh)
+	assertMarkSeenEventPayload(t, sessionsEvent, sessionName)
+}
+
+func seededMarkSessionSeenHandler(t *testing.T, sessionName string) (*Handler, <-chan events.Event) {
+	t.Helper()
 	h := newTestHandler(t, nil, nil)
 	hub := events.NewHub()
 	eventsCh, unsubscribe := hub.Subscribe(8)
@@ -3237,7 +3270,6 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	h.events = hub
 	now := time.Now().UTC().Truncate(time.Second)
 	ctx := context.Background()
-
 	if err := h.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
 		SessionName:   sessionName,
 		Attached:      1,
@@ -3281,21 +3313,11 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpsertWatchtowerPane: %v", err)
 	}
+	return h, eventsCh
+}
 
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(
-		"POST",
-		fmt.Sprintf("/api/tmux/sessions/%s/seen", sessionName),
-		strings.NewReader(`{"scope":"pane","paneId":"%1"}`),
-	)
-	r.SetPathValue("session", sessionName)
-	h.markSessionSeen(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	body := jsonBody(t, w)
-	data, _ := body["data"].(map[string]any)
+func assertMarkSeenResponsePayload(t *testing.T, data map[string]any, sessionName string) {
+	t.Helper()
 	if data["acked"] != true {
 		t.Fatalf("acked = %v, want true", data["acked"])
 	}
@@ -3303,26 +3325,17 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	if !ok || len(rawPatches) != 1 {
 		t.Fatalf("sessionPatches = %T(%v), want len=1", data["sessionPatches"], data["sessionPatches"])
 	}
-	patch, ok := rawPatches[0].(map[string]any)
-	if !ok {
-		t.Fatalf("session patch type = %T, want map[string]any", rawPatches[0])
-	}
-	if patch["name"] != sessionName {
-		t.Fatalf("session patch name = %v, want dev", patch["name"])
-	}
-	if patch["unreadPanes"] != float64(0) {
-		t.Fatalf("session patch unreadPanes = %v, want 0", patch["unreadPanes"])
+	patch, _ := rawPatches[0].(map[string]any)
+	if patch["name"] != sessionName || patch["unreadPanes"] != float64(0) {
+		t.Fatalf("unexpected session patch: %+v", patch)
 	}
 	rawInspector, ok := data["inspectorPatches"].([]any)
 	if !ok || len(rawInspector) != 1 {
 		t.Fatalf("inspectorPatches = %T(%v), want len=1", data["inspectorPatches"], data["inspectorPatches"])
 	}
-	inspector, ok := rawInspector[0].(map[string]any)
-	if !ok {
-		t.Fatalf("inspector patch type = %T, want map[string]any", rawInspector[0])
-	}
+	inspector, _ := rawInspector[0].(map[string]any)
 	if inspector["session"] != sessionName {
-		t.Fatalf("inspector session = %v, want dev", inspector["session"])
+		t.Fatalf("inspector session = %v, want %s", inspector["session"], sessionName)
 	}
 	if windows, ok := inspector["windows"].([]any); !ok || len(windows) != 1 {
 		t.Fatalf("inspector windows = %T(%v), want len=1", inspector["windows"], inspector["windows"])
@@ -3330,18 +3343,17 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	if panesRaw, ok := inspector["panes"].([]any); !ok || len(panesRaw) != 1 {
 		t.Fatalf("inspector panes = %T(%v), want len=1", inspector["panes"], inspector["panes"])
 	}
+}
 
+func assertMarkSeenStoreState(t *testing.T, h *Handler, ctx context.Context, sessionName string) {
+	t.Helper()
 	panes, err := h.store.ListWatchtowerPanes(ctx, sessionName)
 	if err != nil {
 		t.Fatalf("ListWatchtowerPanes(%s): %v", sessionName, err)
 	}
-	if len(panes) != 1 {
-		t.Fatalf("panes len = %d, want 1", len(panes))
+	if len(panes) != 1 || panes[0].SeenRevision != panes[0].Revision {
+		t.Fatalf("unexpected pane seen state: %+v", panes)
 	}
-	if panes[0].SeenRevision != panes[0].Revision {
-		t.Fatalf("seenRevision = %d, revision = %d, want equal", panes[0].SeenRevision, panes[0].Revision)
-	}
-
 	session, err := h.store.GetWatchtowerSession(ctx, sessionName)
 	if err != nil {
 		t.Fatalf("GetWatchtowerSession(%s): %v", sessionName, err)
@@ -3349,7 +3361,10 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	if session.UnreadPanes != 0 || session.UnreadWindows != 0 {
 		t.Fatalf("unexpected unread counters after seen: %+v", session)
 	}
+}
 
+func expectMarkSeenEvents(t *testing.T, eventsCh <-chan events.Event) events.Event {
+	t.Helper()
 	gotTypes := map[string]bool{}
 	var sessionsEvent events.Event
 	timeout := time.After(500 * time.Millisecond)
@@ -3367,6 +3382,11 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	if !gotTypes[events.TypeTmuxInspector] || !gotTypes[events.TypeTmuxSessions] {
 		t.Fatalf("unexpected seen event types: %v", gotTypes)
 	}
+	return sessionsEvent
+}
+
+func assertMarkSeenEventPayload(t *testing.T, sessionsEvent events.Event, sessionName string) {
+	t.Helper()
 	if sessionsEvent.Payload["action"] != "seen" {
 		t.Fatalf("sessions event action = %v, want seen", sessionsEvent.Payload["action"])
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -31,7 +32,10 @@ type fakePingConn struct {
 	err    error
 }
 
-const testSessionName = "dev"
+const (
+	testSessionName   = "dev"
+	testSeenScopePane = "pane"
+)
 
 func (f *fakePingConn) WritePing(_ []byte) error {
 	f.writes.Add(1)
@@ -405,74 +409,21 @@ func TestHandleEventsClientMessageIgnoresInvalidPresence(t *testing.T) {
 func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 	t.Parallel()
 
-	st := newHTTPUIStore(t)
-	seedWatchtowerSeenState(t, st)
-	hub := events.NewHub()
-	eventsCh, unsubscribe := hub.Subscribe(8)
-	t.Cleanup(unsubscribe)
-	h := &Handler{store: st, events: hub}
+	h, st, eventsCh := newSeenAckTestHandler(t)
 
-	ackPayload := h.handleEventsClientMessage([]byte(`{
+	ackPayload := h.handleEventsClientMessage([]byte(fmt.Sprintf(`{
 		"type":"seen",
 		"requestId":"req-1",
 		"session":"dev",
-		"scope":"pane",
-		"paneId":"%11"
-	}`))
+		"scope":"%s",
+		"paneId":"%%11"
+	}`, testSeenScopePane)))
 	if len(ackPayload) == 0 {
 		t.Fatal("seen ack payload is empty")
 	}
 
-	var ack struct {
-		Type      string `json:"type"`
-		RequestID string `json:"requestId"`
-		Session   string `json:"session"`
-		Scope     string `json:"scope"`
-		PaneID    string `json:"paneId"`
-		Acked     bool   `json:"acked"`
-		GlobalRev int64  `json:"globalRev"`
-		Error     string `json:"error"`
-		Patches   []struct {
-			Name        string `json:"name"`
-			UnreadPanes int    `json:"unreadPanes"`
-		} `json:"sessionPatches"`
-		InspectorPatches []struct {
-			Session string `json:"session"`
-			Windows []struct {
-				Index int `json:"index"`
-			} `json:"windows"`
-			Panes []struct {
-				PaneID string `json:"paneId"`
-			} `json:"panes"`
-		} `json:"inspectorPatches"`
-	}
-	if err := json.Unmarshal(ackPayload, &ack); err != nil {
-		t.Fatalf("seen ack json: %v", err)
-	}
-	if ack.Type != "tmux.seen.ack" || ack.RequestID != "req-1" {
-		t.Fatalf("unexpected seen ack identity: %+v", ack)
-	}
-	if ack.Session != testSessionName || ack.Scope != "pane" || ack.PaneID != "%11" {
-		t.Fatalf("unexpected seen ack payload: %+v", ack)
-	}
-	if !ack.Acked || ack.Error != "" {
-		t.Fatalf("expected acked seen ack without error: %+v", ack)
-	}
-	if len(ack.Patches) != 1 {
-		t.Fatalf("seen ack sessionPatches len = %d, want 1", len(ack.Patches))
-	}
-	if ack.Patches[0].Name != testSessionName || ack.Patches[0].UnreadPanes != 0 {
-		t.Fatalf("unexpected seen ack patch: %+v", ack.Patches[0])
-	}
-	if len(ack.InspectorPatches) != 1 {
-		t.Fatalf("seen ack inspectorPatches len = %d, want 1", len(ack.InspectorPatches))
-	}
-	if ack.InspectorPatches[0].Session != testSessionName {
-		t.Fatalf("unexpected seen ack inspector session: %+v", ack.InspectorPatches[0])
-	}
-	if len(ack.InspectorPatches[0].Windows) != 1 || len(ack.InspectorPatches[0].Panes) != 1 {
-		t.Fatalf("unexpected seen ack inspector payload: %+v", ack.InspectorPatches[0])
-	}
+	ack := mustUnmarshalSeenAck(t, ackPayload)
+	assertSeenAckResponse(t, ack)
 
 	panes, err := st.ListWatchtowerPanes(context.Background(), testSessionName)
 	if err != nil {
@@ -485,6 +436,80 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 		t.Fatalf("pane seen revision not updated: %+v", panes[0])
 	}
 
+	sessionsEvent := waitForSeenEvents(t, eventsCh)
+	assertSeenSessionsEventPayload(t, sessionsEvent)
+}
+
+func newSeenAckTestHandler(t *testing.T) (*Handler, *store.Store, <-chan events.Event) {
+	t.Helper()
+	st := newHTTPUIStore(t)
+	seedWatchtowerSeenState(t, st)
+	hub := events.NewHub()
+	eventsCh, unsubscribe := hub.Subscribe(8)
+	t.Cleanup(unsubscribe)
+	return &Handler{store: st, events: hub}, st, eventsCh
+}
+
+type seenAckResponse struct {
+	Type      string `json:"type"`
+	RequestID string `json:"requestId"`
+	Session   string `json:"session"`
+	Scope     string `json:"scope"`
+	PaneID    string `json:"paneId"`
+	Acked     bool   `json:"acked"`
+	GlobalRev int64  `json:"globalRev"`
+	Error     string `json:"error"`
+	Patches   []struct {
+		Name        string `json:"name"`
+		UnreadPanes int    `json:"unreadPanes"`
+	} `json:"sessionPatches"`
+	InspectorPatches []struct {
+		Session string `json:"session"`
+		Windows []struct {
+			Index int `json:"index"`
+		} `json:"windows"`
+		Panes []struct {
+			PaneID string `json:"paneId"`
+		} `json:"panes"`
+	} `json:"inspectorPatches"`
+}
+
+func mustUnmarshalSeenAck(t *testing.T, payload []byte) seenAckResponse {
+	t.Helper()
+	var ack seenAckResponse
+	if err := json.Unmarshal(payload, &ack); err != nil {
+		t.Fatalf("seen ack json: %v", err)
+	}
+	return ack
+}
+
+func assertSeenAckResponse(t *testing.T, ack seenAckResponse) {
+	t.Helper()
+	if ack.Type != "tmux.seen.ack" || ack.RequestID != "req-1" {
+		t.Fatalf("unexpected seen ack identity: %+v", ack)
+	}
+	if ack.Session != testSessionName || ack.Scope != testSeenScopePane || ack.PaneID != "%11" {
+		t.Fatalf("unexpected seen ack payload: %+v", ack)
+	}
+	if !ack.Acked || ack.Error != "" {
+		t.Fatalf("expected acked seen ack without error: %+v", ack)
+	}
+	if len(ack.Patches) != 1 || ack.Patches[0].Name != testSessionName || ack.Patches[0].UnreadPanes != 0 {
+		t.Fatalf("unexpected seen ack patch payload: %+v", ack.Patches)
+	}
+	if len(ack.InspectorPatches) != 1 {
+		t.Fatalf("seen ack inspectorPatches len = %d, want 1", len(ack.InspectorPatches))
+	}
+	if ack.InspectorPatches[0].Session != testSessionName {
+		t.Fatalf("unexpected seen ack inspector session: %+v", ack.InspectorPatches[0])
+	}
+	if len(ack.InspectorPatches[0].Windows) != 1 || len(ack.InspectorPatches[0].Panes) != 1 {
+		t.Fatalf("unexpected seen ack inspector payload: %+v", ack.InspectorPatches[0])
+	}
+}
+
+func waitForSeenEvents(t *testing.T, eventsCh <-chan events.Event) events.Event {
+	t.Helper()
 	gotTypes := map[string]bool{}
 	var sessionsEvent events.Event
 	timeout := time.After(500 * time.Millisecond)
@@ -502,6 +527,11 @@ func TestHandleEventsClientMessageSeenAck(t *testing.T) {
 	if !gotTypes[events.TypeTmuxInspector] || !gotTypes[events.TypeTmuxSessions] {
 		t.Fatalf("unexpected seen event types: %v", gotTypes)
 	}
+	return sessionsEvent
+}
+
+func assertSeenSessionsEventPayload(t *testing.T, sessionsEvent events.Event) {
+	t.Helper()
 	rawPatches, ok := sessionsEvent.Payload["sessionPatches"].([]map[string]any)
 	if !ok || len(rawPatches) != 1 {
 		t.Fatalf("sessions event patches = %T(%v), want len=1", sessionsEvent.Payload["sessionPatches"], sessionsEvent.Payload["sessionPatches"])
@@ -528,13 +558,13 @@ func TestHandleEventsClientMessageSeenAckValidationError(t *testing.T) {
 	t.Cleanup(unsubscribe)
 	h := &Handler{store: st, events: hub}
 
-	ackPayload := h.handleEventsClientMessage([]byte(`{
+	ackPayload := h.handleEventsClientMessage([]byte(fmt.Sprintf(`{
 		"type":"seen",
 		"requestId":"req-2",
 		"session":"dev",
-		"scope":"pane",
+		"scope":"%s",
 		"paneId":"11"
-	}`))
+	}`, testSeenScopePane)))
 	if len(ackPayload) == 0 {
 		t.Fatal("seen ack payload is empty")
 	}

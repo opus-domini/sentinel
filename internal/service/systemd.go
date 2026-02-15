@@ -74,6 +74,14 @@ type UserAutoUpdateServiceStatus struct {
 	LastRunState       string
 }
 
+type installUserAutoUpdateConfig struct {
+	scope           string
+	execPath        string
+	serviceUnit     string
+	onCalendar      string
+	randomizedDelay time.Duration
+}
+
 func InstallUser(opts InstallUserOptions) error {
 	if runtime.GOOS == launchdSupportedOS {
 		return installUserLaunchd(opts)
@@ -126,22 +134,47 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 		return errors.New("systemctl was not found in PATH")
 	}
 
-	scope, err := normalizeLinuxAutoUpdateScope(opts.SystemdScope)
+	cfg, err := resolveInstallUserAutoUpdateConfig(opts)
 	if err != nil {
 		return err
 	}
 
-	execPath, err := resolveExecPath(opts.ExecPath)
-	if err != nil {
+	if cfg.scope == managerScopeSystem {
+		return installSystemAutoUpdateLinux(
+			cfg.execPath,
+			cfg.serviceUnit,
+			cfg.scope,
+			cfg.onCalendar,
+			cfg.randomizedDelay,
+			opts.Enable,
+			opts.Start,
+		)
+	}
+	if err := ensureSystemdUserSupported(); err != nil {
 		return err
 	}
+	return installUserAutoUpdateLinuxUser(cfg, opts)
+}
+
+func resolveInstallUserAutoUpdateConfig(opts InstallUserAutoUpdateOptions) (installUserAutoUpdateConfig, error) {
+	scope, err := normalizeLinuxAutoUpdateScope(opts.SystemdScope)
+	if err != nil {
+		return installUserAutoUpdateConfig{}, err
+	}
+
+	execPath, err := resolveExecPath(opts.ExecPath)
+	if err != nil {
+		return installUserAutoUpdateConfig{}, err
+	}
+
 	serviceUnit := strings.TrimSpace(opts.ServiceUnit)
 	if serviceUnit == "" {
 		serviceUnit = "sentinel"
 	}
 	if strings.ContainsAny(serviceUnit, "\n\r\t ") {
-		return errors.New("invalid service unit name")
+		return installUserAutoUpdateConfig{}, errors.New("invalid service unit name")
 	}
+
 	onCalendar := strings.TrimSpace(opts.OnCalendar)
 	if onCalendar == "" {
 		onCalendar = "daily"
@@ -151,32 +184,34 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 		randomizedDelay = time.Hour
 	}
 
-	if scope == managerScopeSystem {
-		return installSystemAutoUpdateLinux(execPath, serviceUnit, scope, onCalendar, randomizedDelay, opts.Enable, opts.Start)
-	}
-	if err := ensureSystemdUserSupported(); err != nil {
-		return err
-	}
+	return installUserAutoUpdateConfig{
+		scope:           scope,
+		execPath:        execPath,
+		serviceUnit:     serviceUnit,
+		onCalendar:      onCalendar,
+		randomizedDelay: randomizedDelay,
+	}, nil
+}
 
-	servicePath, err := UserAutoUpdateServicePathForScope(scope)
+func installUserAutoUpdateLinuxUser(cfg installUserAutoUpdateConfig, opts InstallUserAutoUpdateOptions) error {
+	servicePath, err := UserAutoUpdateServicePathForScope(cfg.scope)
 	if err != nil {
 		return err
 	}
-	timerPath, err := UserAutoUpdateTimerPathForScope(scope)
+	timerPath, err := UserAutoUpdateTimerPathForScope(cfg.scope)
 	if err != nil {
 		return err
 	}
 
-	baseDir := filepath.Dir(servicePath)
-	if err := os.MkdirAll(baseDir, 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(servicePath), 0o750); err != nil {
 		return fmt.Errorf("create systemd user directory: %w", err)
 	}
 
-	serviceUnitText := renderUserAutoUpdateUnit(execPath, serviceUnit, scope)
+	serviceUnitText := renderUserAutoUpdateUnit(cfg.execPath, cfg.serviceUnit, cfg.scope)
 	if err := os.WriteFile(servicePath, []byte(serviceUnitText), 0o600); err != nil {
 		return fmt.Errorf("write updater service: %w", err)
 	}
-	timerUnitText := renderUserAutoUpdateTimer(onCalendar, randomizedDelay)
+	timerUnitText := renderUserAutoUpdateTimer(cfg.onCalendar, cfg.randomizedDelay)
 	if err := os.WriteFile(timerPath, []byte(timerUnitText), 0o600); err != nil {
 		return fmt.Errorf("write updater timer: %w", err)
 	}
@@ -184,12 +219,16 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 	if err := runSystemctlUser("daemon-reload"); err != nil {
 		return withSystemdUserBusHint(err)
 	}
+	return applyUserAutoUpdateTimerState(opts.Enable, opts.Start)
+}
+
+func applyUserAutoUpdateTimerState(enable, start bool) error {
 	switch {
-	case opts.Enable && opts.Start:
+	case enable && start:
 		return withSystemdUserBusHint(runSystemctlUser("enable", "--now", "sentinel-updater.timer"))
-	case opts.Enable:
+	case enable:
 		return withSystemdUserBusHint(runSystemctlUser("enable", "sentinel-updater.timer"))
-	case opts.Start:
+	case start:
 		return withSystemdUserBusHint(runSystemctlUser("start", "sentinel-updater.timer"))
 	default:
 		return nil
@@ -252,34 +291,44 @@ func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
 		return err
 	}
 
-	switch {
-	case opts.Disable && opts.Stop:
-		_ = runSystemctlUser("disable", "--now", "sentinel-updater.timer")
-	case opts.Disable:
-		_ = runSystemctlUser("disable", "sentinel-updater.timer")
-	case opts.Stop:
-		_ = runSystemctlUser("stop", "sentinel-updater.timer")
-	}
-
+	stopUserAutoUpdateTimer(opts.Disable, opts.Stop)
 	if opts.RemoveUnit {
-		servicePath, err := UserAutoUpdateServicePath()
-		if err != nil {
+		if err := removeUserAutoUpdateUnits(); err != nil {
 			return err
-		}
-		timerPath, err := UserAutoUpdateTimerPath()
-		if err != nil {
-			return err
-		}
-		if err := os.Remove(servicePath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove updater service: %w", err)
-		}
-		if err := os.Remove(timerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove updater timer: %w", err)
 		}
 	}
 
 	if err := runSystemctlUser("daemon-reload"); err != nil {
 		return withSystemdUserBusHint(err)
+	}
+	return nil
+}
+
+func stopUserAutoUpdateTimer(disable, stop bool) {
+	switch {
+	case disable && stop:
+		_ = runSystemctlUser("disable", "--now", "sentinel-updater.timer")
+	case disable:
+		_ = runSystemctlUser("disable", "sentinel-updater.timer")
+	case stop:
+		_ = runSystemctlUser("stop", "sentinel-updater.timer")
+	}
+}
+
+func removeUserAutoUpdateUnits() error {
+	servicePath, err := UserAutoUpdateServicePath()
+	if err != nil {
+		return err
+	}
+	timerPath, err := UserAutoUpdateTimerPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(servicePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove updater service: %w", err)
+	}
+	if err := os.Remove(timerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove updater timer: %w", err)
 	}
 	return nil
 }

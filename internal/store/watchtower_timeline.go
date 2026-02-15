@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -127,101 +128,16 @@ func (s *Store) InsertWatchtowerTimelineEvent(ctx context.Context, row Watchtowe
 }
 
 func (s *Store) SearchWatchtowerTimelineEvents(ctx context.Context, query WatchtowerTimelineQuery) (WatchtowerTimelineResult, error) {
-	limit := query.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 500 {
-		limit = 500
-	}
-
-	clauses := make([]string, 0, 8)
-	args := make([]any, 0, 16)
-
-	if session := strings.TrimSpace(query.Session); session != "" {
-		clauses = append(clauses, "session_name = ?")
-		args = append(args, session)
-	}
-	if query.WindowIdx != nil {
-		clauses = append(clauses, "window_index = ?")
-		args = append(args, *query.WindowIdx)
-	}
-	if paneID := strings.TrimSpace(query.PaneID); paneID != "" {
-		clauses = append(clauses, "pane_id = ?")
-		args = append(args, paneID)
-	}
-	if severity := normalizeTimelineSeverity(query.Severity); severity != "" {
-		clauses = append(clauses, "severity = ?")
-		args = append(args, severity)
-	}
-	if eventType := strings.TrimSpace(query.EventType); eventType != "" {
-		clauses = append(clauses, "event_type = ?")
-		args = append(args, eventType)
-	}
-	if !query.Since.IsZero() {
-		clauses = append(clauses, "created_at >= ?")
-		args = append(args, query.Since.UTC().Format(time.RFC3339))
-	}
-	if !query.Until.IsZero() {
-		clauses = append(clauses, "created_at <= ?")
-		args = append(args, query.Until.UTC().Format(time.RFC3339))
-	}
-	if needle := strings.ToLower(strings.TrimSpace(query.Query)); needle != "" {
-		like := "%" + needle + "%"
-		clauses = append(clauses, "(lower(summary) LIKE ? OR lower(details) LIKE ? OR lower(command) LIKE ? OR lower(cwd) LIKE ? OR lower(marker) LIKE ?)")
-		args = append(args, like, like, like, like, like)
-	}
-
-	sqlBuilder := strings.Builder{}
-	sqlBuilder.WriteString(`SELECT id, session_name, window_index, pane_id, event_type, severity,
-		command, cwd, duration_ms, summary, details, marker, metadata_json, created_at
-		FROM wt_timeline_events`)
-	if len(clauses) > 0 {
-		sqlBuilder.WriteString(" WHERE ")
-		sqlBuilder.WriteString(strings.Join(clauses, " AND "))
-	}
-	sqlBuilder.WriteString(" ORDER BY created_at DESC, id DESC LIMIT ?")
-	args = append(args, limit+1)
-
-	rows, err := s.db.QueryContext(ctx, sqlBuilder.String(), args...)
+	limit := normalizeTimelineLimit(query.Limit)
+	sqlQuery, args := buildTimelineSearchQuery(query, limit)
+	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return WatchtowerTimelineResult{}, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	events := make([]WatchtowerTimelineEvent, 0, limit+1)
-	for rows.Next() {
-		var (
-			row          WatchtowerTimelineEvent
-			metadataRaw  string
-			createdAtRaw string
-		)
-		if err := rows.Scan(
-			&row.ID,
-			&row.Session,
-			&row.WindowIdx,
-			&row.PaneID,
-			&row.EventType,
-			&row.Severity,
-			&row.Command,
-			&row.Cwd,
-			&row.DurationMS,
-			&row.Summary,
-			&row.Details,
-			&row.Marker,
-			&metadataRaw,
-			&createdAtRaw,
-		); err != nil {
-			return WatchtowerTimelineResult{}, err
-		}
-		row.CreatedAt = parseStoreTime(createdAtRaw)
-		row.Metadata = json.RawMessage(strings.TrimSpace(metadataRaw))
-		if len(row.Metadata) == 0 {
-			row.Metadata = json.RawMessage("{}")
-		}
-		events = append(events, row)
-	}
-	if err := rows.Err(); err != nil {
+	events, err := scanTimelineRows(rows, limit)
+	if err != nil {
 		return WatchtowerTimelineResult{}, err
 	}
 
@@ -234,6 +150,127 @@ func (s *Store) SearchWatchtowerTimelineEvents(ctx context.Context, query Watcht
 		Events:  events,
 		HasMore: hasMore,
 	}, nil
+}
+
+func normalizeTimelineLimit(raw int) int {
+	limit := raw
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	return limit
+}
+
+func buildTimelineSearchQuery(query WatchtowerTimelineQuery, limit int) (string, []any) {
+	clauses, args := buildTimelineSearchFilters(query)
+	sqlBuilder := strings.Builder{}
+	sqlBuilder.WriteString(`SELECT id, session_name, window_index, pane_id, event_type, severity,
+		command, cwd, duration_ms, summary, details, marker, metadata_json, created_at
+		FROM wt_timeline_events`)
+	if len(clauses) > 0 {
+		sqlBuilder.WriteString(" WHERE ")
+		sqlBuilder.WriteString(strings.Join(clauses, " AND "))
+	}
+	sqlBuilder.WriteString(" ORDER BY created_at DESC, id DESC LIMIT ?")
+	args = append(args, limit+1)
+	return sqlBuilder.String(), args
+}
+
+func buildTimelineSearchFilters(query WatchtowerTimelineQuery) ([]string, []any) {
+	clauses := make([]string, 0, 8)
+	args := make([]any, 0, 16)
+	if session := strings.TrimSpace(query.Session); session != "" {
+		appendTimelineFilter(&clauses, &args, "session_name = ?", session)
+	}
+	if query.WindowIdx != nil {
+		appendTimelineFilter(&clauses, &args, "window_index = ?", *query.WindowIdx)
+	}
+	if paneID := strings.TrimSpace(query.PaneID); paneID != "" {
+		appendTimelineFilter(&clauses, &args, "pane_id = ?", paneID)
+	}
+	if severity := normalizeTimelineSeverity(query.Severity); severity != "" {
+		appendTimelineFilter(&clauses, &args, "severity = ?", severity)
+	}
+	if eventType := strings.TrimSpace(query.EventType); eventType != "" {
+		appendTimelineFilter(&clauses, &args, "event_type = ?", eventType)
+	}
+	if !query.Since.IsZero() {
+		appendTimelineFilter(&clauses, &args, "created_at >= ?", query.Since.UTC().Format(time.RFC3339))
+	}
+	if !query.Until.IsZero() {
+		appendTimelineFilter(&clauses, &args, "created_at <= ?", query.Until.UTC().Format(time.RFC3339))
+	}
+	appendTimelineTextQuery(&clauses, &args, query.Query)
+	return clauses, args
+}
+
+func appendTimelineFilter(clauses *[]string, args *[]any, clause string, value any) {
+	*clauses = append(*clauses, clause)
+	*args = append(*args, value)
+}
+
+func appendTimelineTextQuery(clauses *[]string, args *[]any, raw string) {
+	needle := strings.ToLower(strings.TrimSpace(raw))
+	if needle == "" {
+		return
+	}
+	like := "%" + needle + "%"
+	*clauses = append(*clauses, "(lower(summary) LIKE ? OR lower(details) LIKE ? OR lower(command) LIKE ? OR lower(cwd) LIKE ? OR lower(marker) LIKE ?)")
+	*args = append(*args, like, like, like, like, like)
+}
+
+func scanTimelineRows(rows *sql.Rows, limit int) ([]WatchtowerTimelineEvent, error) {
+	events := make([]WatchtowerTimelineEvent, 0, limit+1)
+	for rows.Next() {
+		row, err := scanTimelineRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+func scanTimelineRow(rows *sql.Rows) (WatchtowerTimelineEvent, error) {
+	var (
+		row          WatchtowerTimelineEvent
+		metadataRaw  string
+		createdAtRaw string
+	)
+	if err := rows.Scan(
+		&row.ID,
+		&row.Session,
+		&row.WindowIdx,
+		&row.PaneID,
+		&row.EventType,
+		&row.Severity,
+		&row.Command,
+		&row.Cwd,
+		&row.DurationMS,
+		&row.Summary,
+		&row.Details,
+		&row.Marker,
+		&metadataRaw,
+		&createdAtRaw,
+	); err != nil {
+		return WatchtowerTimelineEvent{}, err
+	}
+	row.CreatedAt = parseStoreTime(createdAtRaw)
+	row.Metadata = normalizeTimelineMetadata(metadataRaw)
+	return row, nil
+}
+
+func normalizeTimelineMetadata(raw string) json.RawMessage {
+	metadata := json.RawMessage(strings.TrimSpace(raw))
+	if len(metadata) == 0 {
+		return json.RawMessage("{}")
+	}
+	return metadata
 }
 
 func (s *Store) PruneWatchtowerTimelineRows(ctx context.Context, maxRows int) (int64, error) {

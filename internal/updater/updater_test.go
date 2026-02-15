@@ -276,49 +276,10 @@ func TestApplyReplacesBinaryAndWritesState(t *testing.T) {
 	t.Parallel()
 
 	tmp := t.TempDir()
-	execPath := filepath.Join(tmp, "sentinel")
-	if err := os.WriteFile(execPath, []byte("old-binary"), 0o600); err != nil {
-		t.Fatalf("write current binary: %v", err)
-	}
-
-	archiveName := "sentinel-1.4.0-linux-amd64.tar.gz"
-	archivePath := filepath.Join(tmp, archiveName)
-	if err := writeArchive(archivePath, []byte("new-binary")); err != nil {
-		t.Fatalf("write archive: %v", err)
-	}
-	sum, err := fileSHA256(archivePath)
-	if err != nil {
-		t.Fatalf("fileSHA256: %v", err)
-	}
-	var serverURL string
-
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case latestReleasePath:
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"tag_name": "v1.4.0",
-				"assets": []map[string]any{
-					{
-						"name":                 archiveName,
-						"browser_download_url": serverURL + "/assets/archive",
-					},
-					{
-						"name":                 "sentinel-1.4.0-checksums.txt",
-						"browser_download_url": serverURL + checksumAssetPath,
-					},
-				},
-			})
-		case "/assets/archive":
-			data, _ := os.ReadFile(archivePath) //nolint:gosec // test file
-			_, _ = w.Write(data)
-		case checksumAssetPath:
-			_, _ = fmt.Fprintf(w, "%s  %s\n", sum, archiveName)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+	execPath := mustWriteCurrentBinary(t, tmp, "old-binary")
+	archiveName, archivePath, sum := mustPrepareUpdateArchive(t, tmp, "1.4.0", "new-binary")
+	ts := newUpdaterReleaseServer(t, "v1.4.0", archiveName, archivePath, sum)
 	defer ts.Close()
-	serverURL = ts.URL
 
 	result, err := Apply(context.Background(), ApplyOptions{
 		CurrentVersion: "1.3.0",
@@ -337,23 +298,88 @@ func TestApplyReplacesBinaryAndWritesState(t *testing.T) {
 		t.Fatal("Apply() reported Applied=false")
 	}
 
+	assertUpdaterInstalledBinary(t, execPath, "new-binary", "old-binary")
+	assertUpdaterApplyState(t, tmp, "1.4.0")
+}
+
+func mustWriteCurrentBinary(t *testing.T, dir, content string) string {
+	t.Helper()
+	execPath := filepath.Join(dir, "sentinel")
+	if err := os.WriteFile(execPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write current binary: %v", err)
+	}
+	return execPath
+}
+
+func mustPrepareUpdateArchive(t *testing.T, dir, version, binary string) (string, string, string) {
+	t.Helper()
+	archiveName := fmt.Sprintf("sentinel-%s-linux-amd64.tar.gz", version)
+	archivePath := filepath.Join(dir, archiveName)
+	if err := writeArchive(archivePath, []byte(binary)); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+	sum, err := fileSHA256(archivePath)
+	if err != nil {
+		t.Fatalf("fileSHA256: %v", err)
+	}
+	return archiveName, archivePath, sum
+}
+
+func newUpdaterReleaseServer(t *testing.T, tagName, archiveName, archivePath, sum string) *httptest.Server {
+	t.Helper()
+	version := strings.TrimPrefix(tagName, "v")
+	checksumName := fmt.Sprintf("sentinel-%s-checksums.txt", version)
+	var serverURL string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case latestReleasePath:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"tag_name": tagName,
+				"assets": []map[string]any{
+					{
+						"name":                 archiveName,
+						"browser_download_url": serverURL + "/assets/archive",
+					},
+					{
+						"name":                 checksumName,
+						"browser_download_url": serverURL + checksumAssetPath,
+					},
+				},
+			})
+		case "/assets/archive":
+			data, _ := os.ReadFile(archivePath) //nolint:gosec // test file
+			_, _ = w.Write(data)
+		case checksumAssetPath:
+			_, _ = fmt.Fprintf(w, "%s  %s\n", sum, archiveName)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	serverURL = ts.URL
+	return ts
+}
+
+func assertUpdaterInstalledBinary(t *testing.T, execPath, wantInstalled, wantBackup string) {
+	t.Helper()
 	gotBinary, err := os.ReadFile(execPath) //nolint:gosec // test file
 	if err != nil {
 		t.Fatalf("read installed binary: %v", err)
 	}
-	if string(gotBinary) != "new-binary" {
-		t.Fatalf("installed binary = %q, want %q", string(gotBinary), "new-binary")
+	if string(gotBinary) != wantInstalled {
+		t.Fatalf("installed binary = %q, want %q", string(gotBinary), wantInstalled)
 	}
-
 	backup, err := os.ReadFile(execPath + ".bak") //nolint:gosec // test file
 	if err != nil {
 		t.Fatalf("read backup binary: %v", err)
 	}
-	if string(backup) != "old-binary" {
-		t.Fatalf("backup binary = %q, want %q", string(backup), "old-binary")
+	if string(backup) != wantBackup {
+		t.Fatalf("backup binary = %q, want %q", string(backup), wantBackup)
 	}
+}
 
-	st, err := Status(tmp)
+func assertUpdaterApplyState(t *testing.T, dataDir, wantVersion string) {
+	t.Helper()
+	st, err := Status(dataDir)
 	if err != nil {
 		t.Fatalf("Status() error = %v", err)
 	}
@@ -363,8 +389,8 @@ func TestApplyReplacesBinaryAndWritesState(t *testing.T) {
 	if st.LastError != "" {
 		t.Fatalf("state.LastError = %q, want empty", st.LastError)
 	}
-	if st.CurrentVersion != "1.4.0" {
-		t.Fatalf("state.CurrentVersion = %q, want 1.4.0", st.CurrentVersion)
+	if st.CurrentVersion != wantVersion {
+		t.Fatalf("state.CurrentVersion = %q, want %s", st.CurrentVersion, wantVersion)
 	}
 }
 

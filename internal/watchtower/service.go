@@ -2,8 +2,6 @@ package watchtower
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"log/slog"
 	"sort"
 	"strconv"
@@ -162,110 +160,165 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 		s.recordCollectMetrics(ctx, startedAt, sessionsCount, changedCount, err)
 	}()
 
-	if _, err := s.store.PruneWatchtowerPresence(ctx, time.Now().UTC()); err != nil {
-		slog.Warn("watchtower prune presence failed", "err", err)
-	}
+	s.prunePresenceBestEffort(ctx)
 
-	sessions, err := s.tmux.ListSessions(ctx)
+	sessions, proceed, err := s.listCollectSessions(ctx)
 	if err != nil {
-		if tmux.IsKind(err, tmux.ErrKindServerNotRunning) || tmux.IsKind(err, tmux.ErrKindNotFound) {
-			return nil
-		}
 		return err
+	}
+	if !proceed {
+		return nil
 	}
 	sessionsCount = len(sessions)
 
-	active := make([]string, 0, len(sessions))
-	changedSessions := make([]string, 0, len(sessions))
-	timelineChangedSessions := make(map[string]struct{}, len(sessions))
+	summary := s.collectSessionsProjection(ctx, sessions)
+	if err := s.store.PurgeWatchtowerSessions(ctx, summary.activeSessions); err != nil {
+		return err
+	}
+	changedCount = len(summary.changedSessions)
+
+	globalRev, err := s.persistActivityJournal(ctx, summary.changedSessions)
+	if err != nil {
+		return err
+	}
+
+	s.pruneRetentionBestEffort(ctx)
+	s.publishCollectEvents(ctx, summary, globalRev)
+	return nil
+}
+
+type collectSummary struct {
+	activeSessions          []string
+	changedSessions         []string
+	timelineChangedSessions map[string]struct{}
+}
+
+func (s *Service) prunePresenceBestEffort(ctx context.Context) {
+	if _, err := s.store.PruneWatchtowerPresence(ctx, time.Now().UTC()); err != nil {
+		slog.Warn("watchtower prune presence failed", "err", err)
+	}
+}
+
+func (s *Service) listCollectSessions(ctx context.Context) ([]tmux.Session, bool, error) {
+	sessions, err := s.tmux.ListSessions(ctx)
+	if err != nil {
+		if tmux.IsKind(err, tmux.ErrKindServerNotRunning) || tmux.IsKind(err, tmux.ErrKindNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return sessions, true, nil
+}
+
+func (s *Service) collectSessionsProjection(ctx context.Context, sessions []tmux.Session) collectSummary {
+	summary := collectSummary{
+		activeSessions:          make([]string, 0, len(sessions)),
+		changedSessions:         make([]string, 0, len(sessions)),
+		timelineChangedSessions: make(map[string]struct{}, len(sessions)),
+	}
 	for _, sess := range sessions {
 		keep, changed, timelineChanged, collectErr := s.collectSession(ctx, sess)
 		if collectErr != nil {
 			slog.Warn("watchtower collect session failed", "session", sess.Name, "err", collectErr)
 		}
-		if keep {
-			active = append(active, sess.Name)
+		if !keep {
+			continue
 		}
-		if keep && changed {
-			changedSessions = append(changedSessions, sess.Name)
+		summary.activeSessions = append(summary.activeSessions, sess.Name)
+		if changed {
+			summary.changedSessions = append(summary.changedSessions, sess.Name)
 		}
-		if keep && timelineChanged {
-			timelineChangedSessions[sess.Name] = struct{}{}
+		if timelineChanged {
+			summary.timelineChangedSessions[sess.Name] = struct{}{}
 		}
 	}
+	return summary
+}
 
-	if err := s.store.PurgeWatchtowerSessions(ctx, active); err != nil {
-		return err
-	}
-	changedCount = len(changedSessions)
-
-	globalRev := int64(0)
-	if len(changedSessions) > 0 {
-		currentRev, err := s.currentGlobalRev(ctx)
-		if err != nil {
-			return err
-		}
-		now := time.Now().UTC()
-		for _, sessionName := range changedSessions {
-			currentRev++
-			if _, err := s.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
-				GlobalRev:  currentRev,
-				EntityType: "session",
-				Session:    sessionName,
-				WindowIdx:  -1,
-				ChangeKind: "activity",
-				ChangedAt:  now,
-			}); err != nil {
-				return err
-			}
-		}
-		if err := s.store.SetWatchtowerRuntimeValue(ctx, runtimeGlobalRevKey, strconv.FormatInt(currentRev, 10)); err != nil {
-			return err
-		}
-		globalRev = currentRev
+func (s *Service) persistActivityJournal(ctx context.Context, changedSessions []string) (int64, error) {
+	if len(changedSessions) == 0 {
+		return 0, nil
 	}
 
+	currentRev, err := s.currentGlobalRev(ctx)
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC()
+	for _, sessionName := range changedSessions {
+		currentRev++
+		if _, err := s.store.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
+			GlobalRev:  currentRev,
+			EntityType: "session",
+			Session:    sessionName,
+			WindowIdx:  -1,
+			ChangeKind: "activity",
+			ChangedAt:  now,
+		}); err != nil {
+			return 0, err
+		}
+	}
+	if err := s.store.SetWatchtowerRuntimeValue(ctx, runtimeGlobalRevKey, strconv.FormatInt(currentRev, 10)); err != nil {
+		return 0, err
+	}
+	return currentRev, nil
+}
+
+func (s *Service) pruneRetentionBestEffort(ctx context.Context) {
 	if _, err := s.store.PruneWatchtowerJournalRows(ctx, s.options.JournalRows); err != nil {
 		slog.Warn("watchtower prune journal failed", "err", err)
 	}
 	if _, err := s.store.PruneWatchtowerTimelineRows(ctx, s.options.TimelineRows); err != nil {
 		slog.Warn("watchtower prune timeline failed", "err", err)
 	}
+}
 
-	if len(changedSessions) > 0 && s.options.Publish != nil {
-		sessionPatches := s.buildSessionActivityPatches(ctx, changedSessions)
-		inspectorPatches := s.buildInspectorActivityPatches(ctx, changedSessions)
+func (s *Service) publishCollectEvents(ctx context.Context, summary collectSummary, globalRev int64) {
+	if s.options.Publish == nil {
+		return
+	}
+
+	if len(summary.changedSessions) > 0 {
+		sessionPatches := s.buildSessionActivityPatches(ctx, summary.changedSessions)
+		inspectorPatches := s.buildInspectorActivityPatches(ctx, summary.changedSessions)
 		s.options.Publish(events.TypeTmuxSessions, map[string]any{
 			"action":           "activity",
-			"sessions":         changedSessions,
+			"sessions":         summary.changedSessions,
 			"globalRev":        globalRev,
 			"sessionPatches":   sessionPatches,
 			"inspectorPatches": inspectorPatches,
 		})
 		s.options.Publish(events.TypeTmuxActivity, map[string]any{
 			"globalRev":        globalRev,
-			"sessions":         changedSessions,
+			"sessions":         summary.changedSessions,
 			"sessionPatches":   sessionPatches,
 			"inspectorPatches": inspectorPatches,
 		})
 	}
-	if len(timelineChangedSessions) > 0 && s.options.Publish != nil {
-		sessionsPayload := make([]string, 0, len(timelineChangedSessions))
-		for sessionName := range timelineChangedSessions {
-			trimmed := strings.TrimSpace(sessionName)
-			if trimmed == "" {
-				continue
-			}
-			sessionsPayload = append(sessionsPayload, trimmed)
-		}
-		if len(sessionsPayload) > 0 {
-			sort.Strings(sessionsPayload)
-			s.options.Publish(events.TypeTmuxTimeline, map[string]any{
-				"sessions": sessionsPayload,
-			})
-		}
+
+	sessionsPayload := sortedNonEmptySessionNames(summary.timelineChangedSessions)
+	if len(sessionsPayload) == 0 {
+		return
 	}
-	return nil
+	s.options.Publish(events.TypeTmuxTimeline, map[string]any{
+		"sessions": sessionsPayload,
+	})
+}
+
+func sortedNonEmptySessionNames(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for sessionName := range values {
+		trimmed := strings.TrimSpace(sessionName)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (s *Service) buildSessionActivityPatches(ctx context.Context, sessionNames []string) []map[string]any {
@@ -316,438 +369,18 @@ func (s *Service) buildInspectorActivityPatches(ctx context.Context, sessionName
 }
 
 func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, bool, bool, error) {
-	name := strings.TrimSpace(sess.Name)
-	if name == "" {
+	state, keep, err := s.prepareCollectSessionState(ctx, sess)
+	if err != nil {
+		return keep, false, false, err
+	}
+	if !keep {
 		return false, false, false, nil
 	}
-
-	windows, err := s.tmux.ListWindows(ctx, name)
-	if err != nil {
-		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			return false, false, false, nil
-		}
-		return true, false, false, err
-	}
-	panes, err := s.tmux.ListPanes(ctx, name)
-	if err != nil {
-		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			return false, false, false, nil
-		}
-		return true, false, false, err
-	}
-
-	now := time.Now().UTC()
-
-	existingSession, sessionErr := s.store.GetWatchtowerSession(ctx, name)
-	hasExistingSession := sessionErr == nil
-	if sessionErr != nil && !errors.Is(sessionErr, sql.ErrNoRows) {
-		return true, false, false, sessionErr
-	}
-
-	existingPanes, err := s.store.ListWatchtowerPanes(ctx, name)
+	sessionChanged, err := state.collect()
 	if err != nil {
 		return true, false, false, err
 	}
-	existingPaneByID := make(map[string]store.WatchtowerPane, len(existingPanes))
-	for _, item := range existingPanes {
-		existingPaneByID[item.PaneID] = item
-	}
-
-	existingWindows, err := s.store.ListWatchtowerWindows(ctx, name)
-	if err != nil {
-		return true, false, false, err
-	}
-	existingWindowByIndex := make(map[int]store.WatchtowerWindow, len(existingWindows))
-	for _, item := range existingWindows {
-		existingWindowByIndex[item.WindowIndex] = item
-	}
-	windowNameByIndex := make(map[int]string, len(windows))
-	for _, window := range windows {
-		name := strings.TrimSpace(window.Name)
-		if name == "" {
-			continue
-		}
-		windowNameByIndex[window.Index] = name
-	}
-
-	presenceRows, err := s.store.ListWatchtowerPresenceBySession(ctx, name)
-	if err != nil {
-		return true, false, false, err
-	}
-	focusedPanes := make(map[string]bool, len(presenceRows))
-	for _, entry := range presenceRows {
-		if !entry.Visible || !entry.Focused {
-			continue
-		}
-		if !entry.ExpiresAt.IsZero() && entry.ExpiresAt.Before(now) {
-			continue
-		}
-		paneID := strings.TrimSpace(entry.PaneID)
-		if paneID == "" {
-			continue
-		}
-		focusedPanes[paneID] = true
-	}
-
-	runtimeRows, err := s.store.ListWatchtowerPaneRuntimeBySession(ctx, name)
-	if err != nil {
-		return true, false, false, err
-	}
-	runtimeByPaneID := make(map[string]store.WatchtowerPaneRuntime, len(runtimeRows))
-	for _, row := range runtimeRows {
-		paneID := strings.TrimSpace(row.PaneID)
-		if paneID == "" {
-			continue
-		}
-		runtimeByPaneID[paneID] = row
-	}
-
-	windowAgg := make(map[int]*windowAggregate)
-	paneIDs := make([]string, 0, len(panes))
-	bestPreview := strings.TrimSpace(existingSession.LastPreview)
-	bestPreviewAt := existingSession.LastPreviewAt
-	bestPreviewPaneID := strings.TrimSpace(existingSession.LastPreviewPaneID)
-	anyPaneChanged := false
-	timelineChanged := false
-
-	appendTimeline := func(event store.WatchtowerTimelineEventWrite) error {
-		if _, insertErr := s.store.InsertWatchtowerTimelineEvent(ctx, event); insertErr != nil {
-			return insertErr
-		}
-		timelineChanged = true
-		return nil
-	}
-
-	for _, pane := range panes {
-		paneIDs = append(paneIDs, pane.PaneID)
-		command := normalizeRuntimeCommand(pane.CurrentCommand, pane.StartCommand)
-		paneTitle := strings.TrimSpace(pane.Title)
-		windowName := strings.TrimSpace(windowNameByIndex[pane.WindowIndex])
-		if windowName == "" {
-			if previousWindow, ok := existingWindowByIndex[pane.WindowIndex]; ok {
-				windowName = strings.TrimSpace(previousWindow.Name)
-			}
-		}
-		baseTimelineMetadata := map[string]any{
-			"paneIndex": pane.PaneIndex,
-			"title":     paneTitle,
-		}
-		if paneTitle != "" {
-			baseTimelineMetadata["paneTitle"] = paneTitle
-		}
-		if windowName != "" {
-			baseTimelineMetadata["windowName"] = windowName
-		}
-
-		prev, hadPrev := existingPaneByID[pane.PaneID]
-		tailPreview := ""
-		tailHash := ""
-		tailCapturedAt := time.Time{}
-
-		capCtx, cancel := context.WithTimeout(ctx, s.options.CaptureTimeout)
-		captured, capErr := s.tmux.CapturePaneLines(capCtx, pane.PaneID, s.options.CaptureLines)
-		cancel()
-		if capErr == nil {
-			tailPreview = normalizePaneTail(captured)
-			tailHash = hashPaneTail(tailPreview)
-			tailCapturedAt = now
-		} else if hadPrev {
-			tailPreview = prev.TailPreview
-			tailHash = prev.TailHash
-			tailCapturedAt = prev.TailCapturedAt
-		}
-
-		revision := int64(0)
-		seenRevision := int64(0)
-		changedAt := time.Time{}
-		if hadPrev {
-			revision = prev.Revision
-			seenRevision = prev.SeenRevision
-			changedAt = prev.ChangedAt
-		}
-
-		paneChanged := false
-		if !hadPrev {
-			if tailHash != "" {
-				revision = 1
-				changedAt = now
-				paneChanged = true
-			}
-		} else if tailHash != prev.TailHash || tailPreview != prev.TailPreview {
-			revision++
-			changedAt = now
-			paneChanged = true
-		}
-		if paneChanged {
-			anyPaneChanged = true
-			if focusedPanes[pane.PaneID] {
-				seenRevision = revision
-			}
-		}
-		if paneChanged && strings.TrimSpace(tailPreview) != "" {
-			marker, severity, matched := detectTimelineMarker(tailPreview)
-			if matched {
-				summary := timelineLastLine(tailPreview)
-				if summary == "" {
-					summary = "output marker detected"
-				}
-				outputMetadata := make(map[string]any, len(baseTimelineMetadata)+1)
-				for key, value := range baseTimelineMetadata {
-					outputMetadata[key] = value
-				}
-				outputMetadata["revision"] = revision
-				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
-					Session:   name,
-					WindowIdx: pane.WindowIndex,
-					PaneID:    pane.PaneID,
-					EventType: "output.marker",
-					Severity:  severity,
-					Command:   command,
-					Cwd:       pane.CurrentPath,
-					Summary:   summary,
-					Details:   tailPreview,
-					Marker:    marker,
-					Metadata:  timelineMetadataJSON(outputMetadata),
-					CreatedAt: now,
-				}); err != nil {
-					return true, false, false, err
-				}
-			}
-		}
-
-		runtime, hadRuntime := runtimeByPaneID[pane.PaneID]
-		prevCommand := strings.TrimSpace(runtime.CurrentCommand)
-		startedAt := runtime.StartedAt
-		if startedAt.IsZero() {
-			startedAt = now
-		}
-		nextStartedAt := startedAt
-
-		if !hadRuntime {
-			nextStartedAt = now
-			if command != "" && !isShellLikeCommand(command) {
-				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
-					Session:   name,
-					WindowIdx: pane.WindowIndex,
-					PaneID:    pane.PaneID,
-					EventType: "command.started",
-					Severity:  "info",
-					Command:   command,
-					Cwd:       pane.CurrentPath,
-					Summary:   "command started: " + command,
-					Metadata:  timelineMetadataJSON(baseTimelineMetadata),
-					CreatedAt: now,
-				}); err != nil {
-					return true, false, false, err
-				}
-			}
-		} else if command != prevCommand {
-			if prevCommand != "" && !isShellLikeCommand(prevCommand) {
-				durationMS := now.Sub(startedAt).Milliseconds()
-				if durationMS < 0 {
-					durationMS = 0
-				}
-				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
-					Session:    name,
-					WindowIdx:  pane.WindowIndex,
-					PaneID:     pane.PaneID,
-					EventType:  "command.finished",
-					Severity:   "info",
-					Command:    prevCommand,
-					Cwd:        pane.CurrentPath,
-					DurationMS: durationMS,
-					Summary:    "command finished: " + prevCommand,
-					Metadata:   timelineMetadataJSON(baseTimelineMetadata),
-					CreatedAt:  now,
-				}); err != nil {
-					return true, false, false, err
-				}
-			}
-			nextStartedAt = now
-			if command != "" && !isShellLikeCommand(command) {
-				if err := appendTimeline(store.WatchtowerTimelineEventWrite{
-					Session:   name,
-					WindowIdx: pane.WindowIndex,
-					PaneID:    pane.PaneID,
-					EventType: "command.started",
-					Severity:  "info",
-					Command:   command,
-					Cwd:       pane.CurrentPath,
-					Summary:   "command started: " + command,
-					Metadata:  timelineMetadataJSON(baseTimelineMetadata),
-					CreatedAt: now,
-				}); err != nil {
-					return true, false, false, err
-				}
-			}
-		}
-		if err := s.store.UpsertWatchtowerPaneRuntime(ctx, store.WatchtowerPaneRuntimeWrite{
-			PaneID:         pane.PaneID,
-			SessionName:    name,
-			WindowIdx:      pane.WindowIndex,
-			CurrentCommand: command,
-			StartedAt:      nextStartedAt,
-			UpdatedAt:      now,
-		}); err != nil {
-			return true, false, false, err
-		}
-
-		agg := windowAgg[pane.WindowIndex]
-		if agg == nil {
-			agg = &windowAggregate{}
-			windowAgg[pane.WindowIndex] = agg
-		}
-		if revision > seenRevision {
-			agg.unreadPanes++
-		}
-		if !changedAt.IsZero() && changedAt.After(agg.latestAt) {
-			agg.latestAt = changedAt
-		}
-		if !changedAt.IsZero() && changedAt.After(bestPreviewAt) && strings.TrimSpace(tailPreview) != "" {
-			bestPreview = tailPreview
-			bestPreviewAt = changedAt
-			bestPreviewPaneID = pane.PaneID
-		}
-
-		if err := s.store.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
-			PaneID:         pane.PaneID,
-			SessionName:    name,
-			WindowIndex:    pane.WindowIndex,
-			PaneIndex:      pane.PaneIndex,
-			Title:          pane.Title,
-			Active:         pane.Active,
-			TTY:            pane.TTY,
-			CurrentPath:    pane.CurrentPath,
-			StartCommand:   pane.StartCommand,
-			CurrentCommand: pane.CurrentCommand,
-			TailHash:       tailHash,
-			TailPreview:    tailPreview,
-			TailCapturedAt: tailCapturedAt,
-			Revision:       revision,
-			SeenRevision:   seenRevision,
-			ChangedAt:      changedAt,
-			UpdatedAt:      now,
-		}); err != nil {
-			return true, false, false, err
-		}
-	}
-
-	if err := s.store.PurgeWatchtowerPanes(ctx, name, paneIDs); err != nil {
-		return true, false, false, err
-	}
-	if err := s.store.PurgeWatchtowerPaneRuntime(ctx, name, paneIDs); err != nil {
-		return true, false, false, err
-	}
-
-	windowIndices := make([]int, 0, len(windows))
-	unreadWindows := 0
-	unreadPanes := 0
-	anyWindowChanged := false
-
-	for _, win := range windows {
-		windowIndices = append(windowIndices, win.Index)
-
-		agg := windowAgg[win.Index]
-		unread := 0
-		windowActivityAt := time.Time{}
-		if agg != nil {
-			unread = agg.unreadPanes
-			windowActivityAt = agg.latestAt
-		}
-		if unread > 0 {
-			unreadWindows++
-		}
-		unreadPanes += unread
-
-		prev, hadPrev := existingWindowByIndex[win.Index]
-		if windowActivityAt.IsZero() && hadPrev {
-			windowActivityAt = prev.WindowActivityAt
-		}
-		if windowActivityAt.IsZero() {
-			windowActivityAt = sess.ActivityAt.UTC()
-		}
-
-		hasUnread := unread > 0
-		windowRev := int64(0)
-		if hadPrev {
-			windowRev = prev.Rev
-		}
-		windowChanged := !hadPrev ||
-			prev.Name != win.Name ||
-			prev.Active != win.Active ||
-			prev.Layout != win.Layout ||
-			prev.UnreadPanes != unread ||
-			prev.HasUnread != hasUnread ||
-			!prev.WindowActivityAt.Equal(windowActivityAt)
-		if windowChanged {
-			windowRev++
-			anyWindowChanged = true
-		}
-		if windowRev == 0 {
-			windowRev = 1
-		}
-
-		if err := s.store.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
-			SessionName:      name,
-			WindowIndex:      win.Index,
-			Name:             win.Name,
-			Active:           win.Active,
-			Layout:           win.Layout,
-			WindowActivityAt: windowActivityAt,
-			UnreadPanes:      unread,
-			HasUnread:        hasUnread,
-			Rev:              windowRev,
-			UpdatedAt:        now,
-		}); err != nil {
-			return true, false, false, err
-		}
-	}
-
-	if err := s.store.PurgeWatchtowerWindows(ctx, name, windowIndices); err != nil {
-		return true, false, false, err
-	}
-
-	sessionRev := int64(0)
-	if hasExistingSession {
-		sessionRev = existingSession.Rev
-	}
-	sessionChanged := !hasExistingSession ||
-		existingSession.Attached != sess.Attached ||
-		existingSession.Windows != sess.Windows ||
-		existingSession.Panes != len(panes) ||
-		existingSession.UnreadWindows != unreadWindows ||
-		existingSession.UnreadPanes != unreadPanes ||
-		existingSession.LastPreview != bestPreview ||
-		existingSession.LastPreviewPaneID != bestPreviewPaneID ||
-		!existingSession.LastPreviewAt.Equal(bestPreviewAt) ||
-		!existingSession.ActivityAt.Equal(sess.ActivityAt.UTC()) ||
-		anyPaneChanged ||
-		anyWindowChanged
-	if sessionChanged {
-		sessionRev++
-	}
-	if sessionRev == 0 {
-		sessionRev = 1
-	}
-
-	if err := s.store.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
-		SessionName:       name,
-		Attached:          sess.Attached,
-		Windows:           sess.Windows,
-		Panes:             len(panes),
-		ActivityAt:        sess.ActivityAt.UTC(),
-		LastPreview:       bestPreview,
-		LastPreviewAt:     bestPreviewAt,
-		LastPreviewPaneID: bestPreviewPaneID,
-		UnreadWindows:     unreadWindows,
-		UnreadPanes:       unreadPanes,
-		Rev:               sessionRev,
-		UpdatedAt:         now,
-	}); err != nil {
-		return true, false, false, err
-	}
-
-	return true, sessionChanged, timelineChanged, nil
+	return true, sessionChanged, state.timelineChanged, nil
 }
 
 func (s *Service) currentGlobalRev(ctx context.Context) (int64, error) {

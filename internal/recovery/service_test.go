@@ -220,7 +220,49 @@ func TestCollectBuildsSnapshotFromWatchtowerProjection(t *testing.T) {
 	st := newRecoveryStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	ctx := context.Background()
+	seedProjectionSnapshotState(t, st, ctx, now)
 
+	fake := &fakeTmux{
+		sessions: []tmux.Session{
+			{
+				Name:       "dev",
+				Attached:   2,
+				CreatedAt:  now,
+				ActivityAt: now,
+			},
+		},
+		windows: map[string][]tmux.Window{
+			"dev": {},
+		},
+		panes: map[string][]tmux.Pane{
+			"dev": {},
+		},
+	}
+
+	svc := New(st, fake, Options{})
+	svc.bootID = func(context.Context) string { return "boot-proj" }
+
+	if err := svc.Collect(ctx); err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	snapshots, err := st.ListRecoverySnapshots(ctx, "dev", 10)
+	if err != nil {
+		t.Fatalf("ListRecoverySnapshots() error = %v", err)
+	}
+	if len(snapshots) != 1 {
+		t.Fatalf("snapshots len = %d, want 1", len(snapshots))
+	}
+
+	view, err := svc.GetSnapshot(ctx, snapshots[0].ID)
+	if err != nil {
+		t.Fatalf("GetSnapshot() error = %v", err)
+	}
+	assertProjectionSnapshotView(t, view)
+}
+
+func seedProjectionSnapshotState(t *testing.T, st *store.Store, ctx context.Context, now time.Time) {
+	t.Helper()
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
 		SessionName:       "dev",
 		Attached:          1,
@@ -236,26 +278,8 @@ func TestCollectBuildsSnapshotFromWatchtowerProjection(t *testing.T) {
 		t.Fatalf("UpsertWatchtowerSession: %v", err)
 	}
 	for _, win := range []store.WatchtowerWindowWrite{
-		{
-			SessionName:      "dev",
-			WindowIndex:      0,
-			Name:             "editor",
-			Active:           true,
-			Layout:           "layout-a",
-			WindowActivityAt: now,
-			Rev:              2,
-			UpdatedAt:        now,
-		},
-		{
-			SessionName:      "dev",
-			WindowIndex:      1,
-			Name:             "logs",
-			Active:           false,
-			Layout:           "layout-b",
-			WindowActivityAt: now,
-			Rev:              2,
-			UpdatedAt:        now,
-		},
+		{SessionName: "dev", WindowIndex: 0, Name: "editor", Active: true, Layout: "layout-a", WindowActivityAt: now, Rev: 2, UpdatedAt: now},
+		{SessionName: "dev", WindowIndex: 1, Name: "logs", Active: false, Layout: "layout-b", WindowActivityAt: now, Rev: 2, UpdatedAt: now},
 	} {
 		if err := st.UpsertWatchtowerWindow(ctx, win); err != nil {
 			t.Fatalf("UpsertWatchtowerWindow(%d): %v", win.WindowIndex, err)
@@ -301,43 +325,10 @@ func TestCollectBuildsSnapshotFromWatchtowerProjection(t *testing.T) {
 			t.Fatalf("UpsertWatchtowerPane(%s): %v", pane.PaneID, err)
 		}
 	}
+}
 
-	fake := &fakeTmux{
-		sessions: []tmux.Session{
-			{
-				Name:       "dev",
-				Attached:   2,
-				CreatedAt:  now,
-				ActivityAt: now,
-			},
-		},
-		windows: map[string][]tmux.Window{
-			"dev": {},
-		},
-		panes: map[string][]tmux.Pane{
-			"dev": {},
-		},
-	}
-
-	svc := New(st, fake, Options{})
-	svc.bootID = func(context.Context) string { return "boot-proj" }
-
-	if err := svc.Collect(ctx); err != nil {
-		t.Fatalf("Collect() error = %v", err)
-	}
-
-	snapshots, err := st.ListRecoverySnapshots(ctx, "dev", 10)
-	if err != nil {
-		t.Fatalf("ListRecoverySnapshots() error = %v", err)
-	}
-	if len(snapshots) != 1 {
-		t.Fatalf("snapshots len = %d, want 1", len(snapshots))
-	}
-
-	view, err := svc.GetSnapshot(ctx, snapshots[0].ID)
-	if err != nil {
-		t.Fatalf("GetSnapshot() error = %v", err)
-	}
+func assertProjectionSnapshotView(t *testing.T, view SnapshotView) {
+	t.Helper()
 	if view.Payload.Attached != 2 {
 		t.Fatalf("payload.Attached = %d, want 2", view.Payload.Attached)
 	}

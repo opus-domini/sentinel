@@ -87,82 +87,76 @@ func TestUpsertAndGetAll(t *testing.T) {
 	}
 }
 
-func TestPurge(t *testing.T) {
+func TestPurgeRemovesInactive(t *testing.T) {
 	t.Parallel()
-
 	ctx := context.Background()
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
 
-	t.Run("purge removes inactive", func(t *testing.T) {
-		t.Parallel()
-		s := newTestStore(t)
-		defer func() { _ = s.Close() }()
+	seedSessionsForPurgeTest(t, s, ctx, []string{"a", "b", "c"})
+	if err := s.Purge(ctx, []string{"a", "c"}); err != nil {
+		t.Fatalf("Purge([a,c]) error = %v", err)
+	}
 
-		for _, name := range []string{"a", "b", "c"} {
-			if err := s.UpsertSession(ctx, name, "h", "c"); err != nil {
-				t.Fatalf("UpsertSession(%s) error = %v", name, err)
-			}
-		}
+	got := mustGetAllSessions(t, s, ctx)
+	if len(got) != 2 {
+		t.Fatalf("after purge got %d entries, want 2", len(got))
+	}
+	if _, ok := got["b"]; ok {
+		t.Errorf("session 'b' should have been purged")
+	}
+}
 
-		if err := s.Purge(ctx, []string{"a", "c"}); err != nil {
-			t.Fatalf("Purge([a,c]) error = %v", err)
-		}
-		got, err := s.GetAll(ctx)
-		if err != nil {
-			t.Fatalf("GetAll() error = %v", err)
-		}
-		if len(got) != 2 {
-			t.Fatalf("after purge got %d entries, want 2", len(got))
-		}
-		if _, ok := got["b"]; ok {
-			t.Errorf("session 'b' should have been purged")
-		}
-	})
+func TestPurgeWithEmptyActiveRemovesAll(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
 
-	t.Run("purge empty removes all", func(t *testing.T) {
-		t.Parallel()
-		s := newTestStore(t)
-		defer func() { _ = s.Close() }()
+	seedSessionsForPurgeTest(t, s, ctx, []string{"a", "b", "c"})
+	if err := s.Purge(ctx, []string{}); err != nil {
+		t.Fatalf("Purge([]) error = %v", err)
+	}
 
-		for _, name := range []string{"a", "b", "c"} {
-			if err := s.UpsertSession(ctx, name, "h", "c"); err != nil {
-				t.Fatalf("UpsertSession(%s) error = %v", name, err)
-			}
-		}
+	got := mustGetAllSessions(t, s, ctx)
+	if len(got) != 0 {
+		t.Fatalf("after purge-all got %d entries, want 0", len(got))
+	}
+}
 
-		if err := s.Purge(ctx, []string{}); err != nil {
-			t.Fatalf("Purge([]) error = %v", err)
-		}
-		got, err := s.GetAll(ctx)
-		if err != nil {
-			t.Fatalf("GetAll() error = %v", err)
-		}
-		if len(got) != 0 {
-			t.Fatalf("after purge-all got %d entries, want 0", len(got))
-		}
-	})
+func TestPurgeKeepsAllActive(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
 
-	t.Run("purge keeps all active", func(t *testing.T) {
-		t.Parallel()
-		s := newTestStore(t)
-		defer func() { _ = s.Close() }()
+	seedSessionsForPurgeTest(t, s, ctx, []string{"x", "y"})
+	if err := s.Purge(ctx, []string{"x", "y"}); err != nil {
+		t.Fatalf("Purge([x,y]) error = %v", err)
+	}
 
-		for _, name := range []string{"x", "y"} {
-			if err := s.UpsertSession(ctx, name, "h", "c"); err != nil {
-				t.Fatalf("UpsertSession(%s) error = %v", name, err)
-			}
-		}
+	got := mustGetAllSessions(t, s, ctx)
+	if len(got) != 2 {
+		t.Fatalf("after purge-none got %d entries, want 2", len(got))
+	}
+}
 
-		if err := s.Purge(ctx, []string{"x", "y"}); err != nil {
-			t.Fatalf("Purge([x,y]) error = %v", err)
+func seedSessionsForPurgeTest(t *testing.T, s *Store, ctx context.Context, names []string) {
+	t.Helper()
+	for _, name := range names {
+		if err := s.UpsertSession(ctx, name, "h", "c"); err != nil {
+			t.Fatalf("UpsertSession(%s) error = %v", name, err)
 		}
-		got, err := s.GetAll(ctx)
-		if err != nil {
-			t.Fatalf("GetAll() error = %v", err)
-		}
-		if len(got) != 2 {
-			t.Fatalf("after purge-none got %d entries, want 2", len(got))
-		}
-	})
+	}
+}
+
+func mustGetAllSessions(t *testing.T, s *Store, ctx context.Context) map[string]SessionMeta {
+	t.Helper()
+	got, err := s.GetAll(ctx)
+	if err != nil {
+		t.Fatalf("GetAll() error = %v", err)
+	}
+	return got
 }
 
 func TestRename(t *testing.T) {

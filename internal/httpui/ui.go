@@ -198,16 +198,7 @@ func (h *Handler) attachTerminalWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
-	if err := h.guard.CheckOrigin(r); err != nil {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if err := h.guard.RequireWSToken(r); err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if h.events == nil {
-		http.Error(w, "events unavailable", http.StatusServiceUnavailable)
+	if !h.authorizeEventsWS(w, r) {
 		return
 	}
 
@@ -220,11 +211,35 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 	eventsCh, unsubscribe := h.events.Subscribe(64)
 	defer unsubscribe()
 
+	writeEventsReadyPayload(wsConn)
+	readErrCh := startEventsWSReader(wsConn, h.handleEventsClientMessage)
+	runEventsWSLoop(wsConn, eventsCh, readErrCh)
+}
+
+func (h *Handler) authorizeEventsWS(w http.ResponseWriter, r *http.Request) bool {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+	if err := h.guard.RequireWSToken(r); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	if h.events == nil {
+		http.Error(w, "events unavailable", http.StatusServiceUnavailable)
+		return false
+	}
+	return true
+}
+
+func writeEventsReadyPayload(wsConn *ws.Conn) {
 	readyPayload, _ := json.Marshal(events.NewEvent(events.TypeReady, map[string]any{
 		"message": "subscribed",
 	}))
 	_ = wsConn.WriteText(readyPayload)
+}
 
+func startEventsWSReader(wsConn *ws.Conn, handleMessage func([]byte) []byte) <-chan error {
 	readErrCh := make(chan error, 1)
 	sendReadErr := func(err error) {
 		select {
@@ -242,7 +257,7 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 			if opcode != ws.OpText {
 				continue
 			}
-			if responsePayload := h.handleEventsClientMessage(payload); len(responsePayload) > 0 {
+			if responsePayload := handleMessage(payload); len(responsePayload) > 0 {
 				if err := wsConn.WriteText(responsePayload); err != nil {
 					sendReadErr(err)
 					return
@@ -250,7 +265,10 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+	return readErrCh
+}
 
+func runEventsWSLoop(wsConn *ws.Conn, eventsCh <-chan events.Event, readErrCh <-chan error) {
 	pingTicker := time.NewTicker(20 * time.Second)
 	defer pingTicker.Stop()
 
@@ -356,88 +374,29 @@ func (h *Handler) handleEventsSeenClientMessage(payload []byte) []byte {
 		return nil
 	}
 
-	var msg struct {
-		RequestID string `json:"requestId"`
-		Session   string `json:"session"`
-		Scope     string `json:"scope"`
-		WindowIdx int    `json:"windowIndex"`
-		PaneID    string `json:"paneId"`
-	}
-	if err := json.Unmarshal(payload, &msg); err != nil {
+	msg, err := decodeEventsSeenMessage(payload)
+	if err != nil {
 		return nil
 	}
 
-	requestID := strings.TrimSpace(msg.RequestID)
-	sessionName := strings.TrimSpace(msg.Session)
-	scope := strings.ToLower(strings.TrimSpace(msg.Scope))
-	paneID := strings.TrimSpace(msg.PaneID)
-
-	ack := map[string]any{
-		"type":      "tmux.seen.ack",
-		"requestId": requestID,
-		"session":   sessionName,
-		"scope":     scope,
-		"acked":     false,
-		"globalRev": int64(0),
-	}
-	if paneID != "" {
-		ack["paneId"] = paneID
-	}
-	if msg.WindowIdx >= 0 {
-		ack["windowIndex"] = msg.WindowIdx
-	}
-
-	if !validate.SessionName(sessionName) {
-		ack["error"] = "invalid session name"
+	ack := newEventsSeenAck(msg)
+	if err := validateEventsSeenMessage(msg); err != nil {
+		ack["error"] = err.Error()
 		return marshalEventsWSMessage(ack)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	acked := false
-	var err error
-	switch scope {
-	case "pane":
-		if !strings.HasPrefix(paneID, "%") {
-			ack["error"] = "paneId must start with %"
-			return marshalEventsWSMessage(ack)
-		}
-		acked, err = h.store.MarkWatchtowerPaneSeen(ctx, sessionName, paneID)
-	case "window":
-		if msg.WindowIdx < 0 {
-			ack["error"] = "windowIndex must be >= 0"
-			return marshalEventsWSMessage(ack)
-		}
-		acked, err = h.store.MarkWatchtowerWindowSeen(ctx, sessionName, msg.WindowIdx)
-	case "session":
-		acked, err = h.store.MarkWatchtowerSessionSeen(ctx, sessionName)
-	default:
-		ack["error"] = "scope must be pane, window, or session"
-		return marshalEventsWSMessage(ack)
-	}
+	acked, err := h.markEventsSeen(ctx, msg)
 	if err != nil {
 		ack["error"] = "failed to mark seen"
-		slog.Warn("events ws seen write failed", "session", sessionName, "scope", scope, "err", err)
+		slog.Warn("events ws seen write failed", "session", msg.Session, "scope", msg.Scope, "err", err)
 		return marshalEventsWSMessage(ack)
 	}
 
-	globalRev := int64(0)
-	if raw, getErr := h.store.GetWatchtowerRuntimeValue(ctx, "global_rev"); getErr == nil {
-		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil {
-			globalRev = parsed
-		}
-	}
-
-	var sessionPatches []map[string]any
-	if patch, patchErr := h.store.GetWatchtowerSessionActivityPatch(ctx, sessionName); patchErr == nil {
-		sessionPatches = append(sessionPatches, patch)
-	}
-	var inspectorPatches []map[string]any
-	if patch, patchErr := h.store.GetWatchtowerInspectorPatch(ctx, sessionName); patchErr == nil {
-		inspectorPatches = append(inspectorPatches, patch)
-	}
-
+	globalRev := readWatchtowerGlobalRevision(ctx, h.store)
+	sessionPatches, inspectorPatches := collectSeenPatches(ctx, h.store, msg.Session)
 	ack["acked"] = acked
 	ack["globalRev"] = globalRev
 	if len(sessionPatches) > 0 {
@@ -448,27 +407,127 @@ func (h *Handler) handleEventsSeenClientMessage(payload []byte) []byte {
 	}
 
 	if acked && h.events != nil {
-		h.events.Publish(events.NewEvent(events.TypeTmuxInspector, map[string]any{
-			"session": sessionName,
-			"action":  "seen",
-			"scope":   scope,
-		}))
-		sessionsPayload := map[string]any{
-			"session":   sessionName,
-			"action":    "seen",
-			"scope":     scope,
-			"globalRev": globalRev,
-		}
-		if len(sessionPatches) > 0 {
-			sessionsPayload["sessionPatches"] = sessionPatches
-		}
-		if len(inspectorPatches) > 0 {
-			sessionsPayload["inspectorPatches"] = inspectorPatches
-		}
-		h.events.Publish(events.NewEvent(events.TypeTmuxSessions, sessionsPayload))
+		publishEventsSeenAck(h.events, msg.Session, msg.Scope, globalRev, sessionPatches, inspectorPatches)
 	}
 
 	return marshalEventsWSMessage(ack)
+}
+
+type eventsSeenMessage struct {
+	RequestID string `json:"requestId"`
+	Session   string `json:"session"`
+	Scope     string `json:"scope"`
+	WindowIdx int    `json:"windowIndex"`
+	PaneID    string `json:"paneId"`
+}
+
+func decodeEventsSeenMessage(payload []byte) (eventsSeenMessage, error) {
+	var msg eventsSeenMessage
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return eventsSeenMessage{}, err
+	}
+	msg.RequestID = strings.TrimSpace(msg.RequestID)
+	msg.Session = strings.TrimSpace(msg.Session)
+	msg.Scope = strings.ToLower(strings.TrimSpace(msg.Scope))
+	msg.PaneID = strings.TrimSpace(msg.PaneID)
+	return msg, nil
+}
+
+func newEventsSeenAck(msg eventsSeenMessage) map[string]any {
+	ack := map[string]any{
+		"type":      "tmux.seen.ack",
+		"requestId": msg.RequestID,
+		"session":   msg.Session,
+		"scope":     msg.Scope,
+		"acked":     false,
+		"globalRev": int64(0),
+	}
+	if msg.PaneID != "" {
+		ack["paneId"] = msg.PaneID
+	}
+	if msg.WindowIdx >= 0 {
+		ack["windowIndex"] = msg.WindowIdx
+	}
+	return ack
+}
+
+func validateEventsSeenMessage(msg eventsSeenMessage) error {
+	if !validate.SessionName(msg.Session) {
+		return errors.New("invalid session name")
+	}
+	switch msg.Scope {
+	case "pane":
+		if !strings.HasPrefix(msg.PaneID, "%") {
+			return errors.New("paneId must start with %")
+		}
+	case "window":
+		if msg.WindowIdx < 0 {
+			return errors.New("windowIndex must be >= 0")
+		}
+	case "session":
+	default:
+		return errors.New("scope must be pane, window, or session")
+	}
+	return nil
+}
+
+func (h *Handler) markEventsSeen(ctx context.Context, msg eventsSeenMessage) (bool, error) {
+	switch msg.Scope {
+	case "pane":
+		return h.store.MarkWatchtowerPaneSeen(ctx, msg.Session, msg.PaneID)
+	case "window":
+		return h.store.MarkWatchtowerWindowSeen(ctx, msg.Session, msg.WindowIdx)
+	default:
+		return h.store.MarkWatchtowerSessionSeen(ctx, msg.Session)
+	}
+}
+
+func readWatchtowerGlobalRevision(ctx context.Context, st *store.Store) int64 {
+	if st == nil {
+		return 0
+	}
+	raw, err := st.GetWatchtowerRuntimeValue(ctx, "global_rev")
+	if err != nil {
+		return 0
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
+func collectSeenPatches(ctx context.Context, st *store.Store, sessionName string) ([]map[string]any, []map[string]any) {
+	sessionPatches := make([]map[string]any, 0, 1)
+	inspectorPatches := make([]map[string]any, 0, 1)
+	if patch, err := st.GetWatchtowerSessionActivityPatch(ctx, sessionName); err == nil {
+		sessionPatches = append(sessionPatches, patch)
+	}
+	if patch, err := st.GetWatchtowerInspectorPatch(ctx, sessionName); err == nil {
+		inspectorPatches = append(inspectorPatches, patch)
+	}
+	return sessionPatches, inspectorPatches
+}
+
+func publishEventsSeenAck(hub *events.Hub, sessionName, scope string, globalRev int64, sessionPatches, inspectorPatches []map[string]any) {
+	hub.Publish(events.NewEvent(events.TypeTmuxInspector, map[string]any{
+		"session": sessionName,
+		"action":  "seen",
+		"scope":   scope,
+	}))
+	sessionsPayload := map[string]any{
+		"session":   sessionName,
+		"action":    "seen",
+		"scope":     scope,
+		"globalRev": globalRev,
+	}
+	if len(sessionPatches) > 0 {
+		sessionsPayload["sessionPatches"] = sessionPatches
+	}
+	if len(inspectorPatches) > 0 {
+		sessionsPayload["inspectorPatches"] = inspectorPatches
+	}
+	hub.Publish(events.NewEvent(events.TypeTmuxSessions, sessionsPayload))
 }
 
 func marshalEventsWSMessage(payload map[string]any) []byte {
@@ -497,44 +556,87 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 	attachCtx, cancelAttach := context.WithCancel(context.Background())
 	defer cancelAttach()
 
+	pty, ok := startAttachPTY(wsConn, opts, attachCtx)
+	if !ok {
+		return
+	}
+	defer func() { _ = pty.Close() }()
+
+	shutdown := attachShutdown(cancelAttach, pty, wsConn, opts.label)
+	defer shutdown("connection closed")
+
+	terminalID, unregisterTerminal := registerAttachTerminal(opts, shutdown)
+	defer unregisterTerminal()
+
+	if !writeAttachStatus(wsConn, opts.statusMsg, opts.label) {
+		return
+	}
+
+	errCh, sendErr := newAttachErrChannel()
+	startPTYReadLoop(pty, wsConn, sendErr)
+	startWSReadLoop(wsConn, pty, terminalID, h.terminals, sendErr)
+	startPTYWaitLoop(pty, sendErr)
+
+	// Keepalive pings
+	pingTicker := time.NewTicker(30 * time.Second)
+	defer pingTicker.Stop()
+	go runPingLoop(attachCtx, wsConn, pingTicker.C, sendErr)
+
+	err := <-errCh
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, ws.ErrClosed) {
+		slog.Warn("ws error", "label", opts.label, "err", err)
+		_ = wsConn.WriteClose(ws.CloseInternal, "connection error")
+		return
+	}
+	_ = wsConn.WriteClose(ws.CloseNormal, "done")
+}
+
+func startAttachPTY(wsConn *ws.Conn, opts attachPTYOptions, attachCtx context.Context) (*term.PTY, bool) {
 	pty, err := opts.startPTY(attachCtx)
 	if err != nil {
 		slog.Error("pty start failed", "label", opts.label, "err", err)
 		_ = wsConn.WriteText([]byte(`{"type":"error","code":"PTY_FAILED","message":"unable to start terminal"}`))
 		_ = wsConn.WriteClose(ws.CloseInternal, "pty start failed")
-		return
+		return nil, false
 	}
-	defer func() { _ = pty.Close() }()
+	return pty, true
+}
 
+func attachShutdown(cancelAttach context.CancelFunc, pty *term.PTY, wsConn *ws.Conn, label string) func(string) {
 	var shutdownOnce sync.Once
-	shutdown := func(reason string) {
+	return func(reason string) {
 		shutdownOnce.Do(func() {
 			cancelAttach()
 			_ = pty.Close()
 			_ = wsConn.Close()
-			slog.Info("terminal closed", "label", opts.label, "reason", reason)
+			slog.Info("terminal closed", "label", label, "reason", reason)
 		})
 	}
-	defer shutdown("connection closed")
+}
 
-	terminalID := ""
-	unregisterTerminal := func() {}
-	if opts.registerFn != nil {
-		terminalID, unregisterTerminal = opts.registerFn(func(reason string) {
-			shutdown(reason)
-		})
-		opts.statusMsg["terminalId"] = terminalID
+func registerAttachTerminal(opts attachPTYOptions, shutdown func(string)) (string, func()) {
+	if opts.registerFn == nil {
+		return "", func() {}
 	}
-	defer unregisterTerminal()
+	terminalID, unregisterTerminal := opts.registerFn(func(reason string) {
+		shutdown(reason)
+	})
+	opts.statusMsg["terminalId"] = terminalID
+	return terminalID, unregisterTerminal
+}
 
-	statusPayload, err := json.Marshal(opts.statusMsg)
+func writeAttachStatus(wsConn *ws.Conn, status map[string]any, label string) bool {
+	statusPayload, err := json.Marshal(status)
 	if err != nil {
-		slog.Error("marshal status failed", "label", opts.label, "err", err)
+		slog.Error("marshal status failed", "label", label, "err", err)
 		_ = wsConn.WriteClose(ws.CloseInternal, "internal error")
-		return
+		return false
 	}
 	_ = wsConn.WriteText(statusPayload)
+	return true
+}
 
+func newAttachErrChannel() (chan error, func(error)) {
 	errCh := make(chan error, 1)
 	sendErr := func(err error) {
 		select {
@@ -542,8 +644,10 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 		default:
 		}
 	}
+	return errCh, sendErr
+}
 
-	// PTY → WebSocket
+func startPTYReadLoop(pty *term.PTY, wsConn *ws.Conn, sendErr func(error)) {
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -562,8 +666,9 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 			}
 		}
 	}()
+}
 
-	// WebSocket → PTY
+func startWSReadLoop(wsConn *ws.Conn, pty *term.PTY, terminalID string, registry *terminals.Registry, sendErr func(error)) {
 	go func() {
 		for {
 			opcode, payload, readErr := wsConn.ReadMessage()
@@ -583,14 +688,15 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 					sendErr(ctrlErr)
 					return
 				}
-				if terminalID != "" && cols > 0 && rows > 0 && h.terminals != nil {
-					h.terminals.UpdateSize(terminalID, cols, rows)
+				if terminalID != "" && cols > 0 && rows > 0 && registry != nil {
+					registry.UpdateSize(terminalID, cols, rows)
 				}
 			}
 		}
 	}()
+}
 
-	// Wait for PTY exit
+func startPTYWaitLoop(pty *term.PTY, sendErr func(error)) {
 	go func() {
 		waitErr := pty.Wait()
 		if waitErr != nil {
@@ -599,19 +705,6 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 		}
 		sendErr(io.EOF)
 	}()
-
-	// Keepalive pings
-	pingTicker := time.NewTicker(30 * time.Second)
-	defer pingTicker.Stop()
-	go runPingLoop(attachCtx, wsConn, pingTicker.C, sendErr)
-
-	err = <-errCh
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, ws.ErrClosed) {
-		slog.Warn("ws error", "label", opts.label, "err", err)
-		_ = wsConn.WriteClose(ws.CloseInternal, "connection error")
-		return
-	}
-	_ = wsConn.WriteClose(ws.CloseNormal, "done")
 }
 
 func runPingLoop(ctx context.Context, conn pingWriter, ticks <-chan time.Time, sendErr func(error)) {

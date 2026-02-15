@@ -31,6 +31,14 @@ type terminalGroup struct {
 	score        int
 }
 
+type parsedPSTerminalLine struct {
+	pid     int
+	tty     string
+	user    string
+	command string
+	args    string
+}
+
 func ListSystem(ctx context.Context) ([]SystemTerminal, error) {
 	cmd := exec.CommandContext(ctx, "ps", "-axo", "pid=,ppid=,tty=,user=,comm=,args=")
 	out, err := cmd.Output()
@@ -52,54 +60,11 @@ func parsePSOutput(out []byte) ([]SystemTerminal, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		line, ok := parsePSTerminalLine(scanner.Text())
+		if !ok {
 			continue
 		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			continue
-		}
-
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid <= 0 {
-			continue
-		}
-
-		tty := fields[2]
-		if !isInteractiveTTY(tty) {
-			continue
-		}
-
-		user := fields[3]
-		command := fields[4]
-		args := command
-		if len(fields) > 5 {
-			args = strings.Join(fields[5:], " ")
-		}
-
-		group := groups[tty]
-		if group == nil {
-			group = &terminalGroup{
-				tty:       tty,
-				user:      user,
-				leaderPID: pid,
-			}
-			groups[tty] = group
-		}
-
-		group.processCount++
-		score := commandScore(command, args)
-		if score > group.score || (score == group.score && pid < group.leaderPID) || group.command == "" {
-			group.score = score
-			group.command = command
-			group.args = args
-			group.leaderPID = pid
-			if user != "" {
-				group.user = user
-			}
-		}
+		updateTerminalGroup(groups, line)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
@@ -123,6 +88,70 @@ func parsePSOutput(out []byte) ([]SystemTerminal, error) {
 	})
 
 	return outList, nil
+}
+
+func parsePSTerminalLine(raw string) (parsedPSTerminalLine, bool) {
+	line := strings.TrimSpace(raw)
+	if line == "" {
+		return parsedPSTerminalLine{}, false
+	}
+
+	fields := strings.Fields(line)
+	if len(fields) < 5 {
+		return parsedPSTerminalLine{}, false
+	}
+
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil || pid <= 0 {
+		return parsedPSTerminalLine{}, false
+	}
+
+	tty := fields[2]
+	if !isInteractiveTTY(tty) {
+		return parsedPSTerminalLine{}, false
+	}
+
+	user := fields[3]
+	command := fields[4]
+	args := command
+	if len(fields) > 5 {
+		args = strings.Join(fields[5:], " ")
+	}
+
+	return parsedPSTerminalLine{
+		pid:     pid,
+		tty:     tty,
+		user:    user,
+		command: command,
+		args:    args,
+	}, true
+}
+
+func updateTerminalGroup(groups map[string]*terminalGroup, line parsedPSTerminalLine) {
+	group := groups[line.tty]
+	if group == nil {
+		group = &terminalGroup{
+			tty:       line.tty,
+			user:      line.user,
+			leaderPID: line.pid,
+		}
+		groups[line.tty] = group
+	}
+
+	group.processCount++
+	score := commandScore(line.command, line.args)
+	isBetterCandidate := group.command == "" || score > group.score || (score == group.score && line.pid < group.leaderPID)
+	if !isBetterCandidate {
+		return
+	}
+
+	group.score = score
+	group.command = line.command
+	group.args = line.args
+	group.leaderPID = line.pid
+	if line.user != "" {
+		group.user = line.user
+	}
 }
 
 func isInteractiveTTY(tty string) bool {

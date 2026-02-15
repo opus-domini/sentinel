@@ -20,7 +20,10 @@ type fakeTmux struct {
 	capturePaneLinesFn func(context.Context, string, int) (string, error)
 }
 
-const helloWorldPreview = "hello world"
+const (
+	helloWorldPreview = "hello world"
+	shellCommand      = "zsh"
+)
 
 func (f fakeTmux) ListSessions(ctx context.Context) ([]tmux.Session, error) {
 	if f.listSessionsFn != nil {
@@ -127,8 +130,8 @@ func TestCollectWritesProjections(t *testing.T) {
 				Active:         true,
 				TTY:            "/dev/pts/1",
 				CurrentPath:    "/tmp",
-				StartCommand:   "zsh",
-				CurrentCommand: "zsh",
+				StartCommand:   shellCommand,
+				CurrentCommand: shellCommand,
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
@@ -210,8 +213,8 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 				Active:         true,
 				TTY:            "/dev/pts/1",
 				CurrentPath:    "/tmp",
-				StartCommand:   "zsh",
-				CurrentCommand: "zsh",
+				StartCommand:   shellCommand,
+				CurrentCommand: shellCommand,
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
@@ -219,95 +222,117 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 		},
 	}
 
-	var publishCount atomic.Int32
-	var activityEventCount atomic.Int32
+	asserter := newActivityEventAsserter(t, sessionName)
 	svc := New(st, fake, Options{
-		Publish: func(eventType string, payload map[string]any) {
-			rawPatches, ok := payload["sessionPatches"]
-			if !ok {
-				t.Fatalf("missing sessionPatches payload: %+v", payload)
-			}
-			patches, ok := rawPatches.([]map[string]any)
-			if !ok {
-				t.Fatalf("sessionPatches type = %T, want []map[string]any", rawPatches)
-			}
-			if len(patches) != 1 {
-				t.Fatalf("sessionPatches len = %d, want 1", len(patches))
-			}
-			patch := patches[0]
-			if patch["name"] != sessionName {
-				t.Fatalf("session patch name = %v, want %s", patch["name"], sessionName)
-			}
-			if patch["lastContent"] != helloWorldPreview {
-				t.Fatalf("session patch lastContent = %v, want %s", patch["lastContent"], helloWorldPreview)
-			}
-			if patch["unreadPanes"] != 1 {
-				t.Fatalf("session patch unreadPanes = %v, want 1", patch["unreadPanes"])
-			}
-			rawInspector, ok := payload["inspectorPatches"]
-			if !ok {
-				t.Fatalf("missing inspectorPatches payload: %+v", payload)
-			}
-			inspectorPatches, ok := rawInspector.([]map[string]any)
-			if !ok {
-				t.Fatalf("inspectorPatches type = %T, want []map[string]any", rawInspector)
-			}
-			if len(inspectorPatches) != 1 {
-				t.Fatalf("inspectorPatches len = %d, want 1", len(inspectorPatches))
-			}
-			inspector := inspectorPatches[0]
-			if inspector["session"] != sessionName {
-				t.Fatalf("inspector patch session = %v, want %s", inspector["session"], sessionName)
-			}
-			rawWindows, ok := inspector["windows"].([]map[string]any)
-			if !ok || len(rawWindows) != 1 {
-				t.Fatalf("inspector windows = %T(%v), want len=1", inspector["windows"], inspector["windows"])
-			}
-			rawPanes, ok := inspector["panes"].([]map[string]any)
-			if !ok || len(rawPanes) != 1 {
-				t.Fatalf("inspector panes = %T(%v), want len=1", inspector["panes"], inspector["panes"])
-			}
-			if rawPanes[0]["paneId"] != "%1" {
-				t.Fatalf("inspector paneId = %v, want %%1", rawPanes[0]["paneId"])
-			}
-			switch eventType {
-			case "tmux.sessions.updated":
-				if payload["action"] != "activity" {
-					t.Fatalf("unexpected action payload: %+v", payload)
-				}
-				if _, ok := payload["globalRev"]; !ok {
-					t.Fatalf("missing globalRev payload: %+v", payload)
-				}
-				publishCount.Add(1)
-			case "tmux.activity.updated":
-				if _, ok := payload["globalRev"]; !ok {
-					t.Fatalf("missing globalRev payload: %+v", payload)
-				}
-				activityEventCount.Add(1)
-			default:
-				t.Fatalf("unexpected event type: %s", eventType)
-			}
-		},
+		Publish: asserter.Handle,
 	})
 
 	if err := svc.collect(context.Background()); err != nil {
 		t.Fatalf("collect #1: %v", err)
 	}
-	if got := publishCount.Load(); got != 1 {
-		t.Fatalf("publish count after first collect = %d, want 1", got)
-	}
-	if got := activityEventCount.Load(); got != 1 {
-		t.Fatalf("activity event count after first collect = %d, want 1", got)
-	}
+	asserter.AssertCounts(t, 1, 1, "first collect")
 
 	if err := svc.collect(context.Background()); err != nil {
 		t.Fatalf("collect #2: %v", err)
 	}
-	if got := publishCount.Load(); got != 1 {
-		t.Fatalf("publish count after second collect = %d, want 1", got)
+	asserter.AssertCounts(t, 1, 1, "second collect")
+}
+
+type activityEventAsserter struct {
+	t           *testing.T
+	sessionName string
+	publish     atomic.Int32
+	activity    atomic.Int32
+}
+
+func newActivityEventAsserter(t *testing.T, sessionName string) *activityEventAsserter {
+	t.Helper()
+	return &activityEventAsserter{t: t, sessionName: sessionName}
+}
+
+func (a *activityEventAsserter) Handle(eventType string, payload map[string]any) {
+	a.t.Helper()
+	a.assertSessionAndInspectorPatches(payload)
+	switch eventType {
+	case "tmux.sessions.updated":
+		if payload["action"] != "activity" {
+			a.t.Fatalf("unexpected action payload: %+v", payload)
+		}
+		if _, ok := payload["globalRev"]; !ok {
+			a.t.Fatalf("missing globalRev payload: %+v", payload)
+		}
+		a.publish.Add(1)
+	case "tmux.activity.updated":
+		if _, ok := payload["globalRev"]; !ok {
+			a.t.Fatalf("missing globalRev payload: %+v", payload)
+		}
+		a.activity.Add(1)
+	default:
+		a.t.Fatalf("unexpected event type: %s", eventType)
 	}
-	if got := activityEventCount.Load(); got != 1 {
-		t.Fatalf("activity event count after second collect = %d, want 1", got)
+}
+
+func (a *activityEventAsserter) assertSessionAndInspectorPatches(payload map[string]any) {
+	a.t.Helper()
+	patches := mustSessionPatches(a.t, payload)
+	if len(patches) != 1 {
+		a.t.Fatalf("sessionPatches len = %d, want 1", len(patches))
+	}
+	patch := patches[0]
+	if patch["name"] != a.sessionName {
+		a.t.Fatalf("session patch name = %v, want %s", patch["name"], a.sessionName)
+	}
+	if patch["lastContent"] != helloWorldPreview || patch["unreadPanes"] != 1 {
+		a.t.Fatalf("unexpected session patch payload: %+v", patch)
+	}
+	inspector := mustInspectorPatch(a.t, payload, a.sessionName)
+	rawPanes, ok := inspector["panes"].([]map[string]any)
+	if !ok || len(rawPanes) != 1 || rawPanes[0]["paneId"] != "%1" {
+		a.t.Fatalf("unexpected inspector panes payload: %T(%v)", inspector["panes"], inspector["panes"])
+	}
+}
+
+func mustSessionPatches(t *testing.T, payload map[string]any) []map[string]any {
+	t.Helper()
+	rawPatches, ok := payload["sessionPatches"]
+	if !ok {
+		t.Fatalf("missing sessionPatches payload: %+v", payload)
+	}
+	patches, ok := rawPatches.([]map[string]any)
+	if !ok {
+		t.Fatalf("sessionPatches type = %T, want []map[string]any", rawPatches)
+	}
+	return patches
+}
+
+func mustInspectorPatch(t *testing.T, payload map[string]any, sessionName string) map[string]any {
+	t.Helper()
+	rawInspector, ok := payload["inspectorPatches"]
+	if !ok {
+		t.Fatalf("missing inspectorPatches payload: %+v", payload)
+	}
+	inspectorPatches, ok := rawInspector.([]map[string]any)
+	if !ok || len(inspectorPatches) != 1 {
+		t.Fatalf("inspectorPatches invalid payload: %T(%v)", rawInspector, rawInspector)
+	}
+	inspector := inspectorPatches[0]
+	if inspector["session"] != sessionName {
+		t.Fatalf("inspector patch session = %v, want %s", inspector["session"], sessionName)
+	}
+	rawWindows, ok := inspector["windows"].([]map[string]any)
+	if !ok || len(rawWindows) != 1 {
+		t.Fatalf("inspector windows = %T(%v), want len=1", inspector["windows"], inspector["windows"])
+	}
+	return inspector
+}
+
+func (a *activityEventAsserter) AssertCounts(t *testing.T, wantPublish, wantActivity int32, stage string) {
+	t.Helper()
+	if got := a.publish.Load(); got != wantPublish {
+		t.Fatalf("publish count after %s = %d, want %d", stage, got, wantPublish)
+	}
+	if got := a.activity.Load(); got != wantActivity {
+		t.Fatalf("activity event count after %s = %d, want %d", stage, got, wantActivity)
 	}
 }
 
@@ -349,8 +374,8 @@ func TestCollectUpdatesGlobalRevAndJournal(t *testing.T) {
 				Active:         true,
 				TTY:            "/dev/pts/1",
 				CurrentPath:    "/tmp",
-				StartCommand:   "zsh",
-				CurrentCommand: "zsh",
+				StartCommand:   shellCommand,
+				CurrentCommand: shellCommand,
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
@@ -526,8 +551,8 @@ func TestCollectIncrementsRevisionOnOutputChange(t *testing.T) {
 				Active:         true,
 				TTY:            "/dev/pts/1",
 				CurrentPath:    "/tmp",
-				StartCommand:   "zsh",
-				CurrentCommand: "zsh",
+				StartCommand:   shellCommand,
+				CurrentCommand: shellCommand,
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
@@ -569,8 +594,21 @@ func TestCollectWritesTimelineForCommandLifecycleAndMarkers(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 	var collectCount atomic.Int32
+	fake := newTimelineLifecycleFakeTmux(now, &collectCount)
 
-	fake := fakeTmux{
+	svc := New(st, fake, Options{})
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect #1: %v", err)
+	}
+	collectCount.Store(1)
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect #2: %v", err)
+	}
+	assertTimelineLifecycleRows(t, st)
+}
+
+func newTimelineLifecycleFakeTmux(now time.Time, collectCount *atomic.Int32) fakeTmux {
+	return fakeTmux{
 		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
 			return []tmux.Session{{
 				Name:       "dev",
@@ -591,18 +629,9 @@ func TestCollectWritesTimelineForCommandLifecycleAndMarkers(t *testing.T) {
 			}}, nil
 		},
 		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
+			currentCommand := shellCommand
 			if collectCount.Load() == 0 {
-				return []tmux.Pane{{
-					Session:        "dev",
-					WindowIndex:    0,
-					PaneIndex:      0,
-					PaneID:         "%1",
-					Title:          "main",
-					Active:         true,
-					CurrentPath:    "/repo",
-					StartCommand:   "zsh",
-					CurrentCommand: "htop",
-				}}, nil
+				currentCommand = "htop"
 			}
 			return []tmux.Pane{{
 				Session:        "dev",
@@ -612,8 +641,8 @@ func TestCollectWritesTimelineForCommandLifecycleAndMarkers(t *testing.T) {
 				Title:          "main",
 				Active:         true,
 				CurrentPath:    "/repo",
-				StartCommand:   "zsh",
-				CurrentCommand: "zsh",
+				StartCommand:   shellCommand,
+				CurrentCommand: currentCommand,
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
@@ -623,16 +652,10 @@ func TestCollectWritesTimelineForCommandLifecycleAndMarkers(t *testing.T) {
 			return "panic: boom", nil
 		},
 	}
+}
 
-	svc := New(st, fake, Options{})
-	if err := svc.collect(context.Background()); err != nil {
-		t.Fatalf("collect #1: %v", err)
-	}
-	collectCount.Store(1)
-	if err := svc.collect(context.Background()); err != nil {
-		t.Fatalf("collect #2: %v", err)
-	}
-
+func assertTimelineLifecycleRows(t *testing.T, st *store.Store) {
+	t.Helper()
 	timeline, err := st.SearchWatchtowerTimelineEvents(context.Background(), store.WatchtowerTimelineQuery{
 		Session: "dev",
 		Limit:   20,
@@ -677,7 +700,7 @@ func TestCollectWritesTimelineForCommandLifecycleAndMarkers(t *testing.T) {
 	if len(runtimeRows) != 1 {
 		t.Fatalf("runtime rows len = %d, want 1", len(runtimeRows))
 	}
-	if runtimeRows[0].CurrentCommand != "zsh" {
+	if runtimeRows[0].CurrentCommand != shellCommand {
 		t.Fatalf("runtime current command = %q, want zsh", runtimeRows[0].CurrentCommand)
 	}
 }
@@ -711,8 +734,8 @@ func TestCollectPublishesTimelineUpdatedEvent(t *testing.T) {
 				Title:          "main",
 				Active:         true,
 				CurrentPath:    "/repo",
-				StartCommand:   "zsh",
-				CurrentCommand: "zsh",
+				StartCommand:   shellCommand,
+				CurrentCommand: shellCommand,
 			}}, nil
 		},
 		capturePaneLinesFn: func(context.Context, string, int) (string, error) {

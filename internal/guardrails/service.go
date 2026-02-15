@@ -32,6 +32,13 @@ type Service struct {
 	store *store.Store
 }
 
+type evaluatedSelection struct {
+	mode    string
+	ruleID  string
+	message string
+	matched []store.GuardrailRule
+}
+
 func New(st *store.Store) *Service {
 	return &Service{store: st}
 }
@@ -50,71 +57,90 @@ func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
 		return Decision{}, err
 	}
 
-	winningRank := decisionRank(store.GuardrailModeAllow)
-	winningRuleID := ""
-	winningMessage := ""
-	winningMode := store.GuardrailModeAllow
-	matched := make([]store.GuardrailRule, 0, 4)
+	selection := evaluateSelection(rules, input)
+	message := strings.TrimSpace(selection.message)
+	if message == "" {
+		message = defaultDecisionMessage(selection.mode)
+	}
 
+	decision := Decision{
+		Mode:           selection.mode,
+		Allowed:        selection.mode != store.GuardrailModeBlock,
+		RequireConfirm: selection.mode == store.GuardrailModeConfirm,
+		Message:        message,
+		MatchedRuleID:  selection.ruleID,
+		MatchedRules:   selection.matched,
+	}
+	return decision, nil
+}
+
+func evaluateSelection(rules []store.GuardrailRule, input Input) evaluatedSelection {
+	selection := evaluatedSelection{
+		mode:    store.GuardrailModeAllow,
+		matched: make([]store.GuardrailRule, 0, 4),
+	}
+	winningRank := decisionRank(store.GuardrailModeAllow)
 	action := strings.TrimSpace(input.Action)
 	command := strings.TrimSpace(input.Command)
 
 	for _, rule := range rules {
-		if !rule.Enabled {
+		mode, ok := evaluateRuleMatch(rule, action, command)
+		if !ok {
 			continue
 		}
-		target := command
-		if strings.EqualFold(rule.Scope, store.GuardrailScopeAction) {
-			target = action
-		}
-		if strings.TrimSpace(target) == "" {
-			continue
-		}
-		matchedRule, compileErr := ruleMatches(rule, target)
-		if compileErr != nil {
-			slog.Warn("guardrail regex compile failed", "rule", rule.ID, "pattern", rule.Pattern, "err", compileErr)
-			continue
-		}
-		if !matchedRule {
-			continue
-		}
-
-		matched = append(matched, rule)
-		mode := store.GuardrailModeAllow
-		if strings.TrimSpace(rule.Mode) != "" {
-			mode = rule.Mode
-		}
+		selection.matched = append(selection.matched, rule)
 		rank := decisionRank(mode)
-		if rank > winningRank {
-			winningRank = rank
-			winningMode = mode
-			winningRuleID = rule.ID
-			winningMessage = strings.TrimSpace(rule.Message)
+		if rank <= winningRank {
+			continue
 		}
+		winningRank = rank
+		selection.mode = mode
+		selection.ruleID = rule.ID
+		selection.message = strings.TrimSpace(rule.Message)
+	}
+	return selection
+}
+
+func evaluateRuleMatch(rule store.GuardrailRule, action, command string) (string, bool) {
+	if !rule.Enabled {
+		return "", false
 	}
 
-	if strings.TrimSpace(winningMessage) == "" {
-		switch winningMode {
-		case store.GuardrailModeBlock:
-			winningMessage = "operation blocked by guardrail policy"
-		case store.GuardrailModeConfirm:
-			winningMessage = "operation requires explicit confirmation"
-		case store.GuardrailModeWarn:
-			winningMessage = "operation matched warning policy"
-		default:
-			winningMessage = ""
-		}
+	target := command
+	if strings.EqualFold(rule.Scope, store.GuardrailScopeAction) {
+		target = action
+	}
+	if strings.TrimSpace(target) == "" {
+		return "", false
 	}
 
-	decision := Decision{
-		Mode:           winningMode,
-		Allowed:        winningMode != store.GuardrailModeBlock,
-		RequireConfirm: winningMode == store.GuardrailModeConfirm,
-		Message:        winningMessage,
-		MatchedRuleID:  winningRuleID,
-		MatchedRules:   matched,
+	matchedRule, compileErr := ruleMatches(rule, target)
+	if compileErr != nil {
+		slog.Warn("guardrail regex compile failed", "rule", rule.ID, "pattern", rule.Pattern, "err", compileErr)
+		return "", false
 	}
-	return decision, nil
+	if !matchedRule {
+		return "", false
+	}
+
+	mode := store.GuardrailModeAllow
+	if strings.TrimSpace(rule.Mode) != "" {
+		mode = rule.Mode
+	}
+	return mode, true
+}
+
+func defaultDecisionMessage(mode string) string {
+	switch mode {
+	case store.GuardrailModeBlock:
+		return "operation blocked by guardrail policy"
+	case store.GuardrailModeConfirm:
+		return "operation requires explicit confirmation"
+	case store.GuardrailModeWarn:
+		return "operation matched warning policy"
+	default:
+		return ""
+	}
 }
 
 func (s *Service) ListRules(ctx context.Context) ([]store.GuardrailRule, error) {
