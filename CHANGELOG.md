@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.9](https://github.com/opus-domini/sentinel/compare/v0.2.8...v0.2.9) (2026-02-15)
+
+
+### Bug Fixes
+
+* **install:** unify service install behavior across scopes ([8d99587](https://github.com/opus-domini/sentinel/commit/8d99587cc012664171eff187317e9ca5cf11255a))
+* **install:** use sentinel service name for root installs ([eb76405](https://github.com/opus-domini/sentinel/commit/eb76405224e1a4b76102ac8b303469de5db8944c))
+
 ## [0.2.8](https://github.com/opus-domini/sentinel/compare/v0.2.7...v0.2.8) (2026-02-15)
 
 
