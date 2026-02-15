@@ -89,11 +89,48 @@ func TestRunCLIServiceStatus(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
 	text := out.String()
+	managerLabel := runtimeServiceManagerLabel()
 	for _, fragment := range []string{
-		"service file: /tmp/sentinel.service",
-		"unit exists: true",
-		"enabled: enabled",
-		"active: active",
+		"user unit file: /tmp/sentinel.service",
+		"user unit exists: true",
+		managerLabel + " available: true",
+		"user unit enabled: enabled",
+		"user unit active: active",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("output missing %q:\n%s", fragment, text)
+		}
+	}
+}
+
+func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
+	origStatus := userStatusFn
+	t.Cleanup(func() { userStatusFn = origStatus })
+
+	userStatusFn = func() (service.UserServiceStatus, error) {
+		return service.UserServiceStatus{
+			ServicePath:        "/etc/systemd/system/sentinel.service",
+			UnitFileExists:     false,
+			SystemctlAvailable: true,
+			EnabledState:       "not-found",
+			ActiveState:        "inactive",
+		}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"service", "status"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	text := out.String()
+	managerLabel := runtimeServiceManagerLabel()
+	for _, fragment := range []string{
+		"system unit file: /etc/systemd/system/sentinel.service",
+		"system unit exists: false",
+		managerLabel + " available: true",
+		"system unit enabled: not-found",
+		"system unit active: inactive",
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("output missing %q:\n%s", fragment, text)
@@ -139,6 +176,50 @@ func TestRunCLIDoctor(t *testing.T) {
 		"data dir: /tmp/.sentinel",
 		"token required: true",
 		"user unit file: /tmp/sentinel.service",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("output missing %q:\n%s", fragment, text)
+		}
+	}
+}
+
+func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
+	origLoad := loadConfigFn
+	origStatus := userStatusFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		userStatusFn = origStatus
+	})
+
+	loadConfigFn = func() config.Config {
+		return config.Config{
+			ListenAddr: "127.0.0.1:4040",
+			DataDir:    "/tmp/.sentinel",
+			Token:      "",
+		}
+	}
+	userStatusFn = func() (service.UserServiceStatus, error) {
+		return service.UserServiceStatus{
+			ServicePath:        "/etc/systemd/system/sentinel.service",
+			UnitFileExists:     false,
+			EnabledState:       "not-found",
+			ActiveState:        "inactive",
+			SystemctlAvailable: true,
+		}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"doctor"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	text := out.String()
+	for _, fragment := range []string{
+		"system unit file: /etc/systemd/system/sentinel.service",
+		"system unit exists: false",
+		"system unit enabled: not-found",
+		"system unit active: inactive",
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("output missing %q:\n%s", fragment, text)
@@ -404,7 +485,7 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 		"--allow-unverified=true",
 		"--restart=true",
 		"--service", "sentinel",
-		"--systemd-scope", "user",
+		"--scope", "user",
 	}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
@@ -426,6 +507,53 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "updated from: 1.0.0") || !strings.Contains(out.String(), "updated to: 1.1.0") {
 		t.Fatalf("unexpected output: %s", out.String())
+	}
+}
+
+func TestRunCLIUpdateApplyParsesLegacySystemdScopeFlag(t *testing.T) {
+	origLoad := loadConfigFn
+	origVersion := currentVersionFn
+	origApply := updateApplyFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		currentVersionFn = origVersion
+		updateApplyFn = origApply
+	})
+
+	loadConfigFn = func() config.Config {
+		return config.Config{DataDir: testSentinelPath}
+	}
+	currentVersionFn = func() string { return testCurrentVersion1 }
+
+	var got updater.ApplyOptions
+	updateApplyFn = func(_ context.Context, opts updater.ApplyOptions) (updater.ApplyResult, error) {
+		got = opts
+		return updater.ApplyResult{
+			Applied:        false,
+			CurrentVersion: testCurrentVersion1,
+		}, nil
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"update", "apply", "--systemd-scope", "system"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if got.SystemdScope != testScopeSystem {
+		t.Fatalf("SystemdScope = %q, want %s", got.SystemdScope, testScopeSystem)
+	}
+}
+
+func TestRunCLIUpdateApplyRejectsConflictingScopeFlags(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runCLI([]string{"update", "apply", "--scope", testScopeUser, "--systemd-scope", testScopeSystem}, &out, &errOut)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if !strings.Contains(errOut.String(), "invalid scope flags") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }
 

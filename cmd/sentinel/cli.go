@@ -140,7 +140,7 @@ func runServiceInstallCommand(ctx commandContext, args []string) int {
 	fs := flag.NewFlagSet("service install", flag.ContinueOnError)
 	fs.SetOutput(ctx.stderr)
 	execPath := fs.String("exec", "", "path to sentinel binary for ExecStart (defaults to current executable)")
-	enable := fs.Bool("enable", true, "enable service at login")
+	enable := fs.Bool("enable", true, "enable service at startup")
 	start := fs.Bool("start", true, "start service now")
 	help := fs.Bool("help", false, "show help")
 	if err := fs.Parse(args); err != nil {
@@ -188,7 +188,7 @@ func runServiceUninstallCommand(ctx commandContext, args []string) int {
 	fs.SetOutput(ctx.stderr)
 	disable := fs.Bool("disable", true, "disable service from auto-start")
 	stop := fs.Bool("stop", true, "stop running service")
-	removeUnit := fs.Bool("remove-unit", true, "remove user unit file")
+	removeUnit := fs.Bool("remove-unit", true, "remove managed unit file")
 	help := fs.Bool("help", false, "show help")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -238,15 +238,17 @@ func runServiceStatusCommand(ctx commandContext, args []string) int {
 		writef(ctx.stderr, "service status failed: %v\n", err)
 		return 1
 	}
+	unitScope := unitScopeLabel(status.ServicePath)
+	managerLabel := runtimeServiceManagerLabel()
 	rows := []outputRow{
-		{Key: "service file", Value: status.ServicePath},
-		{Key: "unit exists", Value: fmt.Sprintf("%t", status.UnitFileExists)},
-		{Key: "systemctl", Value: fmt.Sprintf("%t", status.SystemctlAvailable)},
+		{Key: fmt.Sprintf("%s unit file", unitScope), Value: status.ServicePath},
+		{Key: fmt.Sprintf("%s unit exists", unitScope), Value: fmt.Sprintf("%t", status.UnitFileExists)},
+		{Key: fmt.Sprintf("%s available", managerLabel), Value: fmt.Sprintf("%t", status.SystemctlAvailable)},
 	}
 	if status.SystemctlAvailable {
 		rows = append(rows,
-			outputRow{Key: "enabled", Value: status.EnabledState},
-			outputRow{Key: "active", Value: status.ActiveState},
+			outputRow{Key: fmt.Sprintf("%s unit enabled", unitScope), Value: status.EnabledState},
+			outputRow{Key: fmt.Sprintf("%s unit active", unitScope), Value: status.ActiveState},
 		)
 	}
 	printRows(ctx.stdout, rows)
@@ -282,10 +284,10 @@ func runServiceAutoUpdateInstallCommand(ctx commandContext, args []string) int {
 	execPath := fs.String("exec", "", "path to sentinel binary for updater ExecStart (defaults to current executable)")
 	enable := fs.Bool("enable", true, "enable autoupdate timer")
 	start := fs.Bool("start", true, "start autoupdate timer now")
-	serviceUnit := fs.String("service", "sentinel", "systemd unit to restart after update")
+	serviceUnit := fs.String("service", "sentinel", "service unit/label to restart after update")
 	scope := fs.String("scope", defaultAutoUpdateScopeFlag(), "restart manager scope: auto|user|system|launchd")
-	onCalendar := fs.String("on-calendar", "daily", "systemd OnCalendar schedule for update timer")
-	randomizedDelay := fs.Duration("randomized-delay", time.Hour, "systemd RandomizedDelaySec")
+	onCalendar := fs.String("on-calendar", "daily", "update schedule (daily|hourly|weekly|duration|seconds)")
+	randomizedDelay := fs.Duration("randomized-delay", time.Hour, "randomized delay before update (systemd only)")
 	help := fs.Bool("help", false, "show help")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -388,12 +390,13 @@ func runServiceAutoUpdateStatusCommand(ctx commandContext, args []string) int {
 		writef(ctx.stderr, "service autoupdate status failed: %v\n", err)
 		return 1
 	}
+	managerLabel := runtimeServiceManagerLabel()
 	rows := []outputRow{
 		{Key: "service file", Value: status.ServicePath},
 		{Key: "timer file", Value: status.TimerPath},
 		{Key: "service unit exists", Value: fmt.Sprintf("%t", status.ServiceUnitExists)},
 		{Key: "timer unit exists", Value: fmt.Sprintf("%t", status.TimerUnitExists)},
-		{Key: "systemctl", Value: fmt.Sprintf("%t", status.SystemctlAvailable)},
+		{Key: fmt.Sprintf("%s available", managerLabel), Value: fmt.Sprintf("%t", status.SystemctlAvailable)},
 	}
 	if status.SystemctlAvailable {
 		rows = append(rows,
@@ -484,9 +487,10 @@ func runUpdateApplyCommand(ctx commandContext, args []string) int {
 	execPath := fs.String("exec", "", "path to sentinel binary to replace (defaults to current executable)")
 	allowDowngrade := fs.Bool("allow-downgrade", false, "allow installing an older release")
 	allowUnverified := fs.Bool("allow-unverified", false, "allow update when checksum is unavailable")
-	restart := fs.Bool("restart", false, "restart systemd service after successful update")
-	serviceUnit := fs.String("service", "sentinel", "service unit name to restart after update")
-	systemdScope := fs.String("systemd-scope", "", "restart scope: auto|user|system|launchd|none")
+	restart := fs.Bool("restart", false, "restart managed service after successful update")
+	serviceUnit := fs.String("service", "sentinel", "service unit/label name to restart after update")
+	scope := fs.String("scope", "", "restart scope: auto|user|system|launchd|none")
+	systemdScope := fs.String("systemd-scope", "", "deprecated alias for --scope")
 	help := fs.Bool("help", false, "show help")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -498,6 +502,11 @@ func runUpdateApplyCommand(ctx commandContext, args []string) int {
 	if fs.NArg() > 0 {
 		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
 		printUpdateApplyHelp(ctx.stderr)
+		return 2
+	}
+	resolvedScope, scopeErr := resolveRestartScopeFlag(*scope, *systemdScope)
+	if scopeErr != nil {
+		writef(ctx.stderr, "invalid scope flags: %v\n", scopeErr)
 		return 2
 	}
 
@@ -514,7 +523,7 @@ func runUpdateApplyCommand(ctx commandContext, args []string) int {
 		AllowUnverified: *allowUnverified,
 		Restart:         *restart,
 		ServiceUnit:     strings.TrimSpace(*serviceUnit),
-		SystemdScope:    strings.TrimSpace(*systemdScope),
+		SystemdScope:    resolvedScope,
 	})
 	if err != nil {
 		writef(ctx.stderr, "update apply failed: %v\n", err)
@@ -595,7 +604,8 @@ func runDoctorCommand(ctx commandContext, args []string) int {
 
 	cfg := loadConfigFn()
 	tmuxPath, tmuxErr := exec.LookPath("tmux")
-	systemctlPath, systemctlErr := exec.LookPath("systemctl")
+	managerLabel := runtimeServiceManagerLabel()
+	managerPath, managerErr := exec.LookPath(managerLabel)
 	status, statusErr := userStatusFn()
 	printHeading(ctx.stdout, "Sentinel doctor report")
 	if !shouldUsePrettyOutput(ctx.stdout) {
@@ -613,20 +623,21 @@ func runDoctorCommand(ctx commandContext, args []string) int {
 	} else {
 		rows = append(rows, outputRow{Key: "tmux", Value: "not found"})
 	}
-	if systemctlErr == nil {
-		rows = append(rows, outputRow{Key: "systemctl", Value: systemctlPath})
+	if managerErr == nil {
+		rows = append(rows, outputRow{Key: managerLabel, Value: managerPath})
 	} else {
-		rows = append(rows, outputRow{Key: "systemctl", Value: "not found"})
+		rows = append(rows, outputRow{Key: managerLabel, Value: "not found"})
 	}
 	if statusErr == nil {
+		unitScope := unitScopeLabel(status.ServicePath)
 		rows = append(rows,
-			outputRow{Key: "user unit file", Value: status.ServicePath},
-			outputRow{Key: "user unit exists", Value: fmt.Sprintf("%t", status.UnitFileExists)},
+			outputRow{Key: fmt.Sprintf("%s unit file", unitScope), Value: status.ServicePath},
+			outputRow{Key: fmt.Sprintf("%s unit exists", unitScope), Value: fmt.Sprintf("%t", status.UnitFileExists)},
 		)
 		if status.SystemctlAvailable {
 			rows = append(rows,
-				outputRow{Key: "user unit enabled", Value: status.EnabledState},
-				outputRow{Key: "user unit active", Value: status.ActiveState},
+				outputRow{Key: fmt.Sprintf("%s unit enabled", unitScope), Value: status.EnabledState},
+				outputRow{Key: fmt.Sprintf("%s unit active", unitScope), Value: status.ActiveState},
 			)
 		}
 	} else {
@@ -634,6 +645,44 @@ func runDoctorCommand(ctx commandContext, args []string) int {
 	}
 	printRows(ctx.stdout, rows)
 	return 0
+}
+
+func unitScopeLabel(servicePath string) string {
+	path := strings.TrimSpace(servicePath)
+	if path == "" {
+		return "user"
+	}
+
+	normalized := filepath.Clean(path)
+	if strings.HasPrefix(normalized, "/etc/systemd/system/") ||
+		strings.HasPrefix(normalized, "/Library/LaunchDaemons/") {
+		return "system"
+	}
+	return "user"
+}
+
+func runtimeServiceManagerLabel() string {
+	if runtime.GOOS == "darwin" {
+		return "launchctl"
+	}
+	return "systemctl"
+}
+
+func resolveRestartScopeFlag(scope, legacyScope string) (string, error) {
+	primary := strings.TrimSpace(scope)
+	legacy := strings.TrimSpace(legacyScope)
+	switch {
+	case primary == "" && legacy == "":
+		return "", nil
+	case primary == "":
+		return legacy, nil
+	case legacy == "":
+		return primary, nil
+	case strings.EqualFold(primary, legacy):
+		return primary, nil
+	default:
+		return "", fmt.Errorf("--scope=%s conflicts with --systemd-scope=%s", primary, legacy)
+	}
 }
 
 func runRecoveryCommand(ctx commandContext, args []string) int {
@@ -933,7 +982,7 @@ func printRecoveryRestoreHelp(w io.Writer) {
 func printUpdateHelp(w io.Writer) {
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel update check [--repo owner/name] [--api URL] [--os linux] [--arch amd64]")
-	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--systemd-scope auto|user|system|launchd|none]")
+	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--scope auto|user|system|launchd|none]")
 	writeln(w, "  sentinel update status")
 }
 
@@ -944,7 +993,7 @@ func printUpdateCheckHelp(w io.Writer) {
 
 func printUpdateApplyHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--systemd-scope auto|user|system|launchd|none]")
+	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--scope auto|user|system|launchd|none]")
 }
 
 func printUpdateStatusHelp(w io.Writer) {
