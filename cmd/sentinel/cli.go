@@ -238,13 +238,18 @@ func runServiceStatusCommand(ctx commandContext, args []string) int {
 		writef(ctx.stderr, "service status failed: %v\n", err)
 		return 1
 	}
-	writef(ctx.stdout, "service file: %s\n", status.ServicePath)
-	writef(ctx.stdout, "unit exists: %t\n", status.UnitFileExists)
-	writef(ctx.stdout, "systemctl: %t\n", status.SystemctlAvailable)
-	if status.SystemctlAvailable {
-		writef(ctx.stdout, "enabled: %s\n", status.EnabledState)
-		writef(ctx.stdout, "active: %s\n", status.ActiveState)
+	rows := []outputRow{
+		{Key: "service file", Value: status.ServicePath},
+		{Key: "unit exists", Value: fmt.Sprintf("%t", status.UnitFileExists)},
+		{Key: "systemctl", Value: fmt.Sprintf("%t", status.SystemctlAvailable)},
 	}
+	if status.SystemctlAvailable {
+		rows = append(rows,
+			outputRow{Key: "enabled", Value: status.EnabledState},
+			outputRow{Key: "active", Value: status.ActiveState},
+		)
+	}
+	printRows(ctx.stdout, rows)
 	return 0
 }
 
@@ -379,16 +384,21 @@ func runServiceAutoUpdateStatusCommand(ctx commandContext, args []string) int {
 		writef(ctx.stderr, "service autoupdate status failed: %v\n", err)
 		return 1
 	}
-	writef(ctx.stdout, "service file: %s\n", status.ServicePath)
-	writef(ctx.stdout, "timer file: %s\n", status.TimerPath)
-	writef(ctx.stdout, "service unit exists: %t\n", status.ServiceUnitExists)
-	writef(ctx.stdout, "timer unit exists: %t\n", status.TimerUnitExists)
-	writef(ctx.stdout, "systemctl: %t\n", status.SystemctlAvailable)
-	if status.SystemctlAvailable {
-		writef(ctx.stdout, "timer enabled: %s\n", status.TimerEnabledState)
-		writef(ctx.stdout, "timer active: %s\n", status.TimerActiveState)
-		writef(ctx.stdout, "last run: %s\n", status.LastRunState)
+	rows := []outputRow{
+		{Key: "service file", Value: status.ServicePath},
+		{Key: "timer file", Value: status.TimerPath},
+		{Key: "service unit exists", Value: fmt.Sprintf("%t", status.ServiceUnitExists)},
+		{Key: "timer unit exists", Value: fmt.Sprintf("%t", status.TimerUnitExists)},
+		{Key: "systemctl", Value: fmt.Sprintf("%t", status.SystemctlAvailable)},
 	}
+	if status.SystemctlAvailable {
+		rows = append(rows,
+			outputRow{Key: "timer enabled", Value: status.TimerEnabledState},
+			outputRow{Key: "timer active", Value: status.TimerActiveState},
+			outputRow{Key: "last run", Value: status.LastRunState},
+		)
+	}
+	printRows(ctx.stdout, rows)
 	return 0
 }
 
@@ -449,13 +459,14 @@ func runUpdateCheckCommand(ctx commandContext, args []string) int {
 		writef(ctx.stderr, "update check failed: %v\n", err)
 		return 1
 	}
-
-	writef(ctx.stdout, "current version: %s\n", valueOrDash(result.CurrentVersion))
-	writef(ctx.stdout, "latest version: %s\n", valueOrDash(result.LatestVersion))
-	writef(ctx.stdout, "up to date: %t\n", result.UpToDate)
-	writef(ctx.stdout, "release: %s\n", valueOrDash(result.ReleaseURL))
-	writef(ctx.stdout, "asset: %s\n", valueOrDash(result.AssetName))
-	writef(ctx.stdout, "sha256: %s\n", valueOrDash(result.ExpectedSHA256))
+	printRows(ctx.stdout, []outputRow{
+		{Key: "current version", Value: valueOrDash(result.CurrentVersion)},
+		{Key: "latest version", Value: valueOrDash(result.LatestVersion)},
+		{Key: "up to date", Value: fmt.Sprintf("%t", result.UpToDate)},
+		{Key: "release", Value: valueOrDash(result.ReleaseURL)},
+		{Key: "asset", Value: valueOrDash(result.AssetName)},
+		{Key: "sha256", Value: valueOrDash(result.ExpectedSHA256)},
+	})
 	return 0
 }
 
@@ -507,13 +518,19 @@ func runUpdateApplyCommand(ctx commandContext, args []string) int {
 	}
 
 	if !result.Applied {
-		writef(ctx.stdout, "already up to date: %s\n", valueOrDash(result.CurrentVersion))
+		printRows(ctx.stdout, []outputRow{
+			{Key: "already up to date", Value: valueOrDash(result.CurrentVersion)},
+		})
 		return 0
 	}
 
-	writef(ctx.stdout, "updated from %s to %s\n", valueOrDash(result.CurrentVersion), valueOrDash(result.LatestVersion))
-	writef(ctx.stdout, "binary: %s\n", valueOrDash(result.BinaryPath))
-	writef(ctx.stdout, "backup: %s\n", valueOrDash(result.BackupPath))
+	printNotice(ctx.stdout, "update applied successfully")
+	printRows(ctx.stdout, []outputRow{
+		{Key: "updated from", Value: valueOrDash(result.CurrentVersion)},
+		{Key: "updated to", Value: valueOrDash(result.LatestVersion)},
+		{Key: "binary", Value: valueOrDash(result.BinaryPath)},
+		{Key: "backup", Value: valueOrDash(result.BackupPath)},
+	})
 	return 0
 }
 
@@ -540,17 +557,18 @@ func runUpdateStatusCommand(ctx commandContext, args []string) int {
 		writef(ctx.stderr, "update status failed: %v\n", err)
 		return 1
 	}
-
-	writef(ctx.stdout, "current version: %s\n", valueOrDash(state.CurrentVersion))
-	writef(ctx.stdout, "latest version: %s\n", valueOrDash(state.LatestVersion))
-	writef(ctx.stdout, "up to date: %t\n", state.UpToDate)
-	writef(ctx.stdout, "last checked: %s\n", formatTime(state.LastCheckedAt))
-	writef(ctx.stdout, "last applied: %s\n", formatTime(state.LastAppliedAt))
-	writef(ctx.stdout, "release: %s\n", valueOrDash(state.LastReleaseURL))
-	writef(ctx.stdout, "binary: %s\n", valueOrDash(state.LastAppliedBinary))
-	writef(ctx.stdout, "backup: %s\n", valueOrDash(state.LastAppliedBackup))
-	writef(ctx.stdout, "sha256: %s\n", valueOrDash(state.LastExpectedSHA256))
-	writef(ctx.stdout, "last error: %s\n", valueOrDash(state.LastError))
+	printRows(ctx.stdout, []outputRow{
+		{Key: "current version", Value: valueOrDash(state.CurrentVersion)},
+		{Key: "latest version", Value: valueOrDash(state.LatestVersion)},
+		{Key: "up to date", Value: fmt.Sprintf("%t", state.UpToDate)},
+		{Key: "last checked", Value: formatTime(state.LastCheckedAt)},
+		{Key: "last applied", Value: formatTime(state.LastAppliedAt)},
+		{Key: "release", Value: valueOrDash(state.LastReleaseURL)},
+		{Key: "binary", Value: valueOrDash(state.LastAppliedBinary)},
+		{Key: "backup", Value: valueOrDash(state.LastAppliedBackup)},
+		{Key: "sha256", Value: valueOrDash(state.LastExpectedSHA256)},
+		{Key: "last error", Value: valueOrDash(state.LastError)},
+	})
 	return 0
 }
 
@@ -575,34 +593,42 @@ func runDoctorCommand(ctx commandContext, args []string) int {
 	tmuxPath, tmuxErr := exec.LookPath("tmux")
 	systemctlPath, systemctlErr := exec.LookPath("systemctl")
 	status, statusErr := userStatusFn()
-
-	writeln(ctx.stdout, "Sentinel doctor report")
-	writeln(ctx.stdout, "---------------------")
-	writef(ctx.stdout, "os: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	writef(ctx.stdout, "supported host: %t\n", runtime.GOOS == "linux" || runtime.GOOS == "darwin")
-	if tmuxErr == nil {
-		writef(ctx.stdout, "tmux: %s\n", tmuxPath)
-	} else {
-		writeln(ctx.stdout, "tmux: not found")
+	printHeading(ctx.stdout, "Sentinel doctor report")
+	if !shouldUsePrettyOutput(ctx.stdout) {
+		writeln(ctx.stdout, "---------------------")
 	}
-	writef(ctx.stdout, "listen: %s\n", cfg.ListenAddr)
-	writef(ctx.stdout, "data dir: %s\n", cfg.DataDir)
-	writef(ctx.stdout, "token required: %t\n", cfg.Token != "")
-	if systemctlErr == nil {
-		writef(ctx.stdout, "systemctl: %s\n", systemctlPath)
+	rows := []outputRow{
+		{Key: "os", Value: fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)},
+		{Key: "supported host", Value: fmt.Sprintf("%t", runtime.GOOS == "linux" || runtime.GOOS == "darwin")},
+		{Key: "listen", Value: cfg.ListenAddr},
+		{Key: "data dir", Value: cfg.DataDir},
+		{Key: "token required", Value: fmt.Sprintf("%t", cfg.Token != "")},
+	}
+	if tmuxErr == nil {
+		rows = append(rows, outputRow{Key: "tmux", Value: tmuxPath})
 	} else {
-		writeln(ctx.stdout, "systemctl: not found")
+		rows = append(rows, outputRow{Key: "tmux", Value: "not found"})
+	}
+	if systemctlErr == nil {
+		rows = append(rows, outputRow{Key: "systemctl", Value: systemctlPath})
+	} else {
+		rows = append(rows, outputRow{Key: "systemctl", Value: "not found"})
 	}
 	if statusErr == nil {
-		writef(ctx.stdout, "user unit file: %s\n", status.ServicePath)
-		writef(ctx.stdout, "user unit exists: %t\n", status.UnitFileExists)
+		rows = append(rows,
+			outputRow{Key: "user unit file", Value: status.ServicePath},
+			outputRow{Key: "user unit exists", Value: fmt.Sprintf("%t", status.UnitFileExists)},
+		)
 		if status.SystemctlAvailable {
-			writef(ctx.stdout, "user unit enabled: %s\n", status.EnabledState)
-			writef(ctx.stdout, "user unit active: %s\n", status.ActiveState)
+			rows = append(rows,
+				outputRow{Key: "user unit enabled", Value: status.EnabledState},
+				outputRow{Key: "user unit active", Value: status.ActiveState},
+			)
 		}
 	} else {
-		writef(ctx.stdout, "service status: unavailable (%v)\n", statusErr)
+		rows = append(rows, outputRow{Key: "service status", Value: fmt.Sprintf("unavailable (%v)", statusErr)})
 	}
+	printRows(ctx.stdout, rows)
 	return 0
 }
 

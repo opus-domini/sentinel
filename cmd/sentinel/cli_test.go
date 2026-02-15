@@ -379,7 +379,7 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 	if !got.Restart {
 		t.Fatal("Restart = false, want true")
 	}
-	if !strings.Contains(out.String(), "updated from 1.0.0 to 1.1.0") {
+	if !strings.Contains(out.String(), "updated from: 1.0.0") || !strings.Contains(out.String(), "updated to: 1.1.0") {
 		t.Fatalf("unexpected output: %s", out.String())
 	}
 }
