@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.5](https://github.com/opus-domini/sentinel/compare/v0.2.4...v0.2.5) (2026-02-15)
+
+
+### Features
+
+* add launchd service and autoupdate support for macos ([5d08b34](https://github.com/opus-domini/sentinel/commit/5d08b34b7a4eb108b2580f120ec78be11822e0bd))
+* add secure autoupdate workflow for service installs ([25b7774](https://github.com/opus-domini/sentinel/commit/25b77740c984980013eb53acf786347f5d810e27))
+* improve cli output readability with pretty status formatting ([07f87b1](https://github.com/opus-domini/sentinel/commit/07f87b141fa2c7720711e41ae26f61d11b1a5ee5))
+
+
+### CI
+
+* publish checksums and embed release version in binaries ([a1d508d](https://github.com/opus-domini/sentinel/commit/a1d508dae06c05ed08971040aae3546234907e04))
+
+
+### Documentation
+
+* document autoupdate commands and install options ([f968733](https://github.com/opus-domini/sentinel/commit/f968733d0b72f9676ac8c78afcb27ffb4f1e4e56))
+
 ## [0.2.4](https://github.com/opus-domini/sentinel/compare/v0.2.3...v0.2.4) (2026-02-14)
 
 
