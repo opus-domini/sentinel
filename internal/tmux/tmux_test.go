@@ -200,6 +200,8 @@ func TestClassifyError(t *testing.T) {
 		{"duplicate_session", baseErr, "duplicate session: baz", ErrKindSessionExists},
 		{"already_exists", baseErr, "session already exists: qux", ErrKindSessionExists},
 		{"server_not_running", baseErr, "failed to connect to server", ErrKindServerNotRunning},
+		{"no_server_running", baseErr, "no server running on /tmp/tmux-1000/default", ErrKindServerNotRunning},
+		{"error_connecting_nosuchfile", baseErr, "error connecting to /tmp/tmux-1000/default (No such file or directory)", ErrKindServerNotRunning},
 		{"default", baseErr, "some other error", ErrKindCommandFailed},
 	}
 
@@ -218,6 +220,51 @@ func TestClassifyError(t *testing.T) {
 				t.Errorf("classifyError wrapped err = %v, want %v", terr.Err, tt.err)
 			}
 		})
+	}
+}
+
+func TestParseSessionListOutput(t *testing.T) {
+	t.Parallel()
+
+	withActivity := "app\t3\t1\t1700000000\t1700000300"
+	sessions := parseSessionListOutput(withActivity)
+	if len(sessions) != 1 {
+		t.Fatalf("len(parseSessionListOutput) = %d, want 1", len(sessions))
+	}
+	if sessions[0].Name != "app" || sessions[0].Windows != 3 || sessions[0].Attached != 1 {
+		t.Fatalf("unexpected parsed session: %+v", sessions[0])
+	}
+	if sessions[0].CreatedAt.Unix() != 1700000000 {
+		t.Fatalf("CreatedAt = %d, want 1700000000", sessions[0].CreatedAt.Unix())
+	}
+	if sessions[0].ActivityAt.Unix() != 1700000300 {
+		t.Fatalf("ActivityAt = %d, want 1700000300", sessions[0].ActivityAt.Unix())
+	}
+
+	withoutActivity := "legacy\t2\t0\t1700000500"
+	sessions = parseSessionListOutput(withoutActivity)
+	if len(sessions) != 1 {
+		t.Fatalf("len(parseSessionListOutput legacy) = %d, want 1", len(sessions))
+	}
+	if sessions[0].ActivityAt.Unix() != 1700000500 {
+		t.Fatalf("legacy ActivityAt = %d, want fallback created epoch", sessions[0].ActivityAt.Unix())
+	}
+}
+
+func TestShouldRetryListSessionsWithoutActivity(t *testing.T) {
+	t.Parallel()
+
+	if !shouldRetryListSessionsWithoutActivity(errors.New("unknown format: session_activity")) {
+		t.Fatal("expected retry for unknown session_activity format")
+	}
+	if !shouldRetryListSessionsWithoutActivity(errors.New("bad format #{session_activity}")) {
+		t.Fatal("expected retry for bad session_activity format")
+	}
+	if shouldRetryListSessionsWithoutActivity(errors.New("some other error")) {
+		t.Fatal("did not expect retry for generic error")
+	}
+	if shouldRetryListSessionsWithoutActivity(nil) {
+		t.Fatal("did not expect retry for nil error")
 	}
 }
 

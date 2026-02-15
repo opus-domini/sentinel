@@ -612,17 +612,23 @@ func TestMetaHandler(t *testing.T) {
 	tests := []struct {
 		name         string
 		token        string
+		version      string
 		wantRequired bool
+		wantVersion  string
 	}{
 		{
 			name:         "token configured",
 			token:        "secret",
+			version:      "1.2.3",
 			wantRequired: true,
+			wantVersion:  "1.2.3",
 		},
 		{
 			name:         "no token",
 			token:        "",
+			version:      "",
 			wantRequired: false,
+			wantVersion:  defaultMetaVersion,
 		},
 	}
 	for _, tt := range tests {
@@ -630,7 +636,7 @@ func TestMetaHandler(t *testing.T) {
 			t.Parallel()
 
 			guard := security.New(tt.token, nil)
-			h := &Handler{guard: guard}
+			h := &Handler{guard: guard, version: tt.version}
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "/api/meta", nil)
@@ -640,6 +646,7 @@ func TestMetaHandler(t *testing.T) {
 				Data struct {
 					TokenRequired bool   `json:"tokenRequired"`
 					DefaultCwd    string `json:"defaultCwd"`
+					Version       string `json:"version"`
 				} `json:"data"`
 			}
 			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -650,6 +657,9 @@ func TestMetaHandler(t *testing.T) {
 			}
 			if body.Data.DefaultCwd != defaultSessionCWD() {
 				t.Errorf("defaultCwd = %q, want %q", body.Data.DefaultCwd, defaultSessionCWD())
+			}
+			if body.Data.Version != tt.wantVersion {
+				t.Errorf("version = %q, want %q", body.Data.Version, tt.wantVersion)
 			}
 		})
 	}

@@ -28,6 +28,7 @@ describe('useSentinelMeta', () => {
     const { result } = renderHook(() => useSentinelMeta(''))
     expect(result.current.tokenRequired).toBe(false)
     expect(result.current.defaultCwd).toBe('')
+    expect(result.current.version).toBe('dev')
     expect(result.current.unauthorized).toBe(false)
   })
 
@@ -52,6 +53,16 @@ describe('useSentinelMeta', () => {
     })
   })
 
+  it('sets version from API response', async () => {
+    mockFetch(200, { data: { tokenRequired: false, version: '1.2.3' } })
+
+    const { result } = renderHook(() => useSentinelMeta(''))
+
+    await waitFor(() => {
+      expect(result.current.version).toBe('1.2.3')
+    })
+  })
+
   it('sets unauthorized on 401', async () => {
     mockFetch(401, {})
 
@@ -62,6 +73,7 @@ describe('useSentinelMeta', () => {
     })
     expect(result.current.tokenRequired).toBe(true)
     expect(result.current.defaultCwd).toBe('')
+    expect(result.current.version).toBe('dev')
   })
 
   it('sends bearer token in request', async () => {
@@ -105,6 +117,7 @@ describe('useSentinelMeta', () => {
 
     expect(result.current.tokenRequired).toBe(false)
     expect(result.current.defaultCwd).toBe('')
+    expect(result.current.version).toBe('dev')
     expect(result.current.unauthorized).toBe(false)
   })
 
@@ -123,6 +136,7 @@ describe('useSentinelMeta', () => {
 
     expect(result.current.tokenRequired).toBe(false)
     expect(result.current.defaultCwd).toBe('')
+    expect(result.current.version).toBe('dev')
     expect(result.current.unauthorized).toBe(false)
   })
 })

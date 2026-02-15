@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react'
 type MetaResponse = {
   tokenRequired?: boolean
   defaultCwd?: string
+  version?: string
 }
 
 export function useSentinelMeta(token: string) {
   const [tokenRequired, setTokenRequired] = useState(false)
   const [defaultCwd, setDefaultCwd] = useState('')
+  const [version, setVersion] = useState('dev')
   const [unauthorized, setUnauthorized] = useState(false)
 
   useEffect(() => {
@@ -38,6 +40,7 @@ export function useSentinelMeta(token: string) {
         const payload = (await response.json()) as { data?: MetaResponse }
         setTokenRequired(Boolean(payload.data?.tokenRequired))
         setDefaultCwd((payload.data?.defaultCwd ?? '').trim())
+        setVersion((payload.data?.version ?? 'dev').trim() || 'dev')
         setUnauthorized(false)
       } catch {
         if (abortController.signal.aborted) {
@@ -55,6 +58,7 @@ export function useSentinelMeta(token: string) {
   return {
     tokenRequired,
     defaultCwd,
+    version,
     unauthorized,
   }
 }

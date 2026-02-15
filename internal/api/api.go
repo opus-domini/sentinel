@@ -67,14 +67,24 @@ type Handler struct {
 	events    *events.Hub
 	terminals *terminals.Registry
 	store     *store.Store
+	version   string
 }
 
 const (
 	defaultDirectorySuggestLimit = 12
 	maxDirectorySuggestLimit     = 64
+	defaultMetaVersion           = "dev"
 )
 
-func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *terminals.Registry, st *store.Store, recoverySvc recoveryService, eventsHub *events.Hub) {
+func Register(
+	mux *http.ServeMux,
+	guard *security.Guard,
+	terminalRegistry *terminals.Registry,
+	st *store.Store,
+	recoverySvc recoveryService,
+	eventsHub *events.Hub,
+	version string,
+) {
 	h := &Handler{
 		guard:     guard,
 		tmux:      tmux.Service{},
@@ -83,6 +93,7 @@ func Register(mux *http.ServeMux, guard *security.Guard, terminalRegistry *termi
 		events:    eventsHub,
 		terminals: terminalRegistry,
 		store:     st,
+		version:   strings.TrimSpace(version),
 	}
 	mux.HandleFunc("GET /api/meta", h.wrap(h.meta))
 	mux.HandleFunc("GET /api/fs/dirs", h.wrap(h.listDirectories))
@@ -126,9 +137,14 @@ func (h *Handler) emit(eventType string, payload map[string]any) {
 
 func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	defaultCwd := defaultSessionCWD()
+	version := strings.TrimSpace(h.version)
+	if version == "" {
+		version = defaultMetaVersion
+	}
 	writeData(w, http.StatusOK, map[string]any{
 		"tokenRequired": h.guard.TokenRequired(),
 		"defaultCwd":    defaultCwd,
+		"version":       version,
 	})
 }
 

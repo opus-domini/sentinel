@@ -71,7 +71,7 @@ func serve() int {
 		recoveryService.Start(context.Background())
 	}
 
-	api.Register(mux, guard, terminalRegistry, st, recoveryService, eventHub)
+	api.Register(mux, guard, terminalRegistry, st, recoveryService, eventHub, currentVersion())
 
 	exitCode := run(cfg, mux)
 	if cfg.Watchtower.Enabled {

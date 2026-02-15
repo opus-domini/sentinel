@@ -62,6 +62,11 @@ type PaneSnapshot struct {
 	Panes   int
 }
 
+const (
+	listSessionsFormatWithActivity    = "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{session_activity}"
+	listSessionsFormatWithoutActivity = "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}"
+)
+
 type Window struct {
 	Session string `json:"session"`
 	Index   int    `json:"index"`
@@ -94,36 +99,24 @@ type NewWindowResult struct {
 }
 
 func ListSessions(ctx context.Context) ([]Session, error) {
-	out, err := run(ctx, "list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{session_activity}")
+	out, err := run(ctx, "list-sessions", "-F", listSessionsFormatWithActivity)
 	if err != nil {
 		if IsKind(err, ErrKindServerNotRunning) {
 			return []Session{}, nil
 		}
-		return nil, err
-	}
-	if strings.TrimSpace(out) == "" {
-		return []Session{}, nil
-	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	sessions := make([]Session, 0, len(lines))
-	for _, line := range lines {
-		parts := strings.Split(line, "\t")
-		if len(parts) != 5 {
-			continue
+		if !shouldRetryListSessionsWithoutActivity(err) {
+			return nil, err
 		}
-		windows, _ := strconv.Atoi(parts[1])
-		attached, _ := strconv.Atoi(parts[2])
-		createdEpoch, _ := strconv.ParseInt(parts[3], 10, 64)
-		activityEpoch, _ := strconv.ParseInt(parts[4], 10, 64)
-		sessions = append(sessions, Session{
-			Name:       parts[0],
-			Windows:    windows,
-			Attached:   attached,
-			CreatedAt:  time.Unix(createdEpoch, 0).UTC(),
-			ActivityAt: time.Unix(activityEpoch, 0).UTC(),
-		})
+
+		out, err = run(ctx, "list-sessions", "-F", listSessionsFormatWithoutActivity)
+		if err != nil {
+			if IsKind(err, ErrKindServerNotRunning) {
+				return []Session{}, nil
+			}
+			return nil, err
+		}
 	}
-	return sessions, nil
+	return parseSessionListOutput(out), nil
 }
 
 // runners are package runners / prefixes that should be skipped when
@@ -694,7 +687,7 @@ func classifyError(err error, stderr string, args []string) error {
 		return &Error{Kind: ErrKindSessionNotFound, Msg: strings.TrimSpace(stderr), Err: err}
 	case strings.Contains(msg, "duplicate session"), strings.Contains(msg, "already exists"):
 		return &Error{Kind: ErrKindSessionExists, Msg: strings.TrimSpace(stderr), Err: err}
-	case strings.Contains(msg, "failed to connect to server"):
+	case isServerNotRunningMessage(msg):
 		return &Error{Kind: ErrKindServerNotRunning, Msg: strings.TrimSpace(stderr), Err: err}
 	default:
 		return &Error{
@@ -703,4 +696,53 @@ func classifyError(err error, stderr string, args []string) error {
 			Err:  err,
 		}
 	}
+}
+
+func parseSessionListOutput(out string) []Session {
+	if strings.TrimSpace(out) == "" {
+		return []Session{}
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	sessions := make([]Session, 0, len(lines))
+	for _, line := range lines {
+		parts := strings.Split(line, "\t")
+		if len(parts) < 4 {
+			continue
+		}
+		windows, _ := strconv.Atoi(parts[1])
+		attached, _ := strconv.Atoi(parts[2])
+		createdEpoch, _ := strconv.ParseInt(parts[3], 10, 64)
+		activityEpoch := createdEpoch
+		if len(parts) >= 5 {
+			activityEpoch, _ = strconv.ParseInt(parts[4], 10, 64)
+		}
+		sessions = append(sessions, Session{
+			Name:       parts[0],
+			Windows:    windows,
+			Attached:   attached,
+			CreatedAt:  time.Unix(createdEpoch, 0).UTC(),
+			ActivityAt: time.Unix(activityEpoch, 0).UTC(),
+		})
+	}
+	return sessions
+}
+
+func shouldRetryListSessionsWithoutActivity(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "session_activity") {
+		return false
+	}
+	return strings.Contains(msg, "unknown format") ||
+		strings.Contains(msg, "bad format") ||
+		strings.Contains(msg, "invalid format")
+}
+
+func isServerNotRunningMessage(msg string) bool {
+	return strings.Contains(msg, "failed to connect to server") ||
+		strings.Contains(msg, "can't connect to server") ||
+		strings.Contains(msg, "no server running") ||
+		(strings.Contains(msg, "error connecting to") && strings.Contains(msg, "no such file or directory"))
 }

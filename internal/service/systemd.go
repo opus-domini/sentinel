@@ -662,19 +662,7 @@ func readSystemctlState(args ...string) string {
 	out, err := cmd.CombinedOutput()
 	state := strings.TrimSpace(string(out))
 	if err != nil {
-		normalized := strings.ToLower(state)
-		switch {
-		case strings.Contains(normalized, "failed to connect"):
-			return "unavailable"
-		case strings.Contains(normalized, "could not be found"):
-			return "not-found"
-		case state == "":
-			return systemdStateUnknown
-		case strings.Contains(state, "\n"):
-			return systemdStateUnknown
-		default:
-			return state
-		}
+		return normalizeSystemctlErrorState(state)
 	}
 	if state == "" {
 		return "-"
@@ -687,24 +675,30 @@ func readSystemctlSystemState(args ...string) string {
 	out, err := cmd.CombinedOutput()
 	state := strings.TrimSpace(string(out))
 	if err != nil {
-		normalized := strings.ToLower(state)
-		switch {
-		case strings.Contains(normalized, "failed to connect"):
-			return "unavailable"
-		case strings.Contains(normalized, "could not be found"):
-			return "not-found"
-		case state == "":
-			return systemdStateUnknown
-		case strings.Contains(state, "\n"):
-			return systemdStateUnknown
-		default:
-			return state
-		}
+		return normalizeSystemctlErrorState(state)
 	}
 	if state == "" {
 		return "-"
 	}
 	return state
+}
+
+func normalizeSystemctlErrorState(state string) string {
+	normalized := strings.ToLower(strings.TrimSpace(state))
+	switch {
+	case strings.Contains(normalized, "failed to connect"):
+		return "unavailable"
+	case strings.Contains(normalized, "could not be found"),
+		strings.Contains(normalized, "no such file or directory"),
+		strings.Contains(normalized, "failed to get unit file state"):
+		return "not-found"
+	case normalized == "":
+		return systemdStateUnknown
+	case strings.Contains(normalized, "\n"):
+		return systemdStateUnknown
+	default:
+		return strings.TrimSpace(state)
+	}
 }
 
 func renderUserUnit(execPath string) string {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import ThemeSelector from '@/components/settings/ThemeSelector'
+import { useMetaContext } from '@/contexts/MetaContext'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { cn } from '@/lib/utils'
 import {
@@ -23,6 +24,7 @@ export default function SettingsDialog({
   open,
   onOpenChange,
 }: SettingsDialogProps) {
+  const { version } = useMetaContext()
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
@@ -109,6 +111,13 @@ export default function SettingsDialog({
               </span>
             )}
           </div>
+        </section>
+
+        <section className="mt-4 border-t border-border-subtle pt-4">
+          <h3 className="mb-1 text-xs font-medium">Sentinel</h3>
+          <p className="text-xs text-muted-foreground">
+            Version: <span className="font-mono">{version || 'dev'}</span>
+          </p>
         </section>
       </DialogContent>
     </Dialog>

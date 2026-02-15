@@ -120,3 +120,55 @@ func TestUserAutoUpdatePathsForSystemScope(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeSystemctlErrorState(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "failed to connect",
+			in:   "Failed to connect to bus: No medium found",
+			want: "unavailable",
+		},
+		{
+			name: "not found legacy",
+			in:   "Unit sentinel.service could not be found.",
+			want: "not-found",
+		},
+		{
+			name: "not found missing file",
+			in:   "Failed to get unit file state for sentinel.service: No such file or directory",
+			want: "not-found",
+		},
+		{
+			name: "empty",
+			in:   "",
+			want: systemdStateUnknown,
+		},
+		{
+			name: "multiline",
+			in:   "line1\nline2",
+			want: systemdStateUnknown,
+		},
+		{
+			name: "pass through",
+			in:   "inactive",
+			want: "inactive",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := normalizeSystemctlErrorState(tc.in)
+			if got != tc.want {
+				t.Fatalf("normalizeSystemctlErrorState(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
