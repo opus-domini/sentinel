@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/opus-domini/sentinel/compare/v0.3.0...v0.3.1) (2026-02-15)
+
+
+### Features
+
+* **client:** refine ops and session sidebar UX ([0941f21](https://github.com/opus-domini/sentinel/commit/0941f21f140957c0674c6f9b53e17e3e74841de8))
+* **ops:** add browsed services and unit-level controls ([b8e7e23](https://github.com/opus-domini/sentinel/commit/b8e7e23f1168c6b57ca00bd903e999fcd6e81383))
+
 ## [0.3.0](https://github.com/opus-domini/sentinel/compare/v0.2.13...v0.3.0) (2026-02-15)
 
 
