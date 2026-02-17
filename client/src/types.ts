@@ -236,6 +236,15 @@ export type OpsRunbook = {
   updatedAt: string
 }
 
+export type OpsRunbookStepResult = {
+  stepIndex: number
+  title: string
+  type: string
+  output: string
+  error: string
+  durationMs: number
+}
+
 export type OpsRunbookRun = {
   id: string
   runbookId: string
@@ -245,6 +254,7 @@ export type OpsRunbookRun = {
   completedSteps: number
   currentStep: string
   error: string
+  stepResults: Array<OpsRunbookStepResult>
   createdAt: string
   startedAt?: string
   finishedAt?: string

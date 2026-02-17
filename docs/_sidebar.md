@@ -8,6 +8,8 @@
 - Features
   - [Tmux Workspace](/features/tmux-workspace.md)
   - [Ops Control Plane](/features/ops-control-plane.md)
+  - [Services](/features/services.md)
+  - [Runbooks](/features/runbooks.md)
   - [Timeline and Watchtower](/features/timeline-watchtower.md)
   - [Recovery Engine](/features/recovery.md)
   - [Guardrails](/features/guardrails.md)

@@ -25,6 +25,8 @@ export default function SideRail({
     select: (state) => state.location.pathname,
   })
   const tmuxActive = pathname === '/tmux'
+  const servicesActive = pathname === '/services'
+  const runbooksActive = pathname === '/runbooks'
   const opsActive = pathname === '/ops'
 
   const navItemClass = (isActive: boolean) =>
@@ -49,6 +51,24 @@ export default function SideRail({
       <TooltipHelper content="Tmux" side="right">
         <Link className={navItemClass(tmuxActive)} to="/tmux" aria-label="Tmux">
           TM
+        </Link>
+      </TooltipHelper>
+      <TooltipHelper content="Services" side="right">
+        <Link
+          className={navItemClass(servicesActive)}
+          to="/services"
+          aria-label="Services"
+        >
+          SV
+        </Link>
+      </TooltipHelper>
+      <TooltipHelper content="Runbooks" side="right">
+        <Link
+          className={navItemClass(runbooksActive)}
+          to="/runbooks"
+          aria-label="Runbooks"
+        >
+          RB
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Ops" side="right">

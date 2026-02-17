@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { X } from 'lucide-react'
+import { Settings, X } from 'lucide-react'
 import type { ReactNode } from 'react'
+import SettingsDialog from '@/components/settings/SettingsDialog'
 import { Button } from '@/components/ui/button'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { cn } from '@/lib/utils'
@@ -14,6 +16,7 @@ type SidebarShellProps = {
 
 function MobileNav() {
   const { setSidebarOpen } = useLayoutContext()
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -48,6 +51,22 @@ function MobileNav() {
           TM
         </Link>
         <Link
+          className={navItemClass(pathname === '/services')}
+          to="/services"
+          onClick={handleNav}
+          aria-label="Services"
+        >
+          SV
+        </Link>
+        <Link
+          className={navItemClass(pathname === '/runbooks')}
+          to="/runbooks"
+          onClick={handleNav}
+          aria-label="Runbooks"
+        >
+          RB
+        </Link>
+        <Link
           className={navItemClass(pathname === '/ops')}
           to="/ops"
           onClick={handleNav}
@@ -56,15 +75,27 @@ function MobileNav() {
           OP
         </Link>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-secondary-foreground hover:text-foreground"
-        onClick={() => setSidebarOpen(false)}
-        aria-label="Close menu"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-secondary-foreground hover:text-foreground"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-secondary-foreground hover:text-foreground"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close menu"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }

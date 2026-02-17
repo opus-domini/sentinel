@@ -119,18 +119,39 @@ Payload:
 
 ## Operations: Control Plane
 
+### Overview, Alerts and Timeline
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/ops/overview` | Host + Sentinel + services summary |
-| `GET` | `/api/ops/services` | Service list and runtime status |
-| `GET` | `/api/ops/services/{service}/status` | Detailed manager status for one service |
-| `POST` | `/api/ops/services/{service}/action` | Execute `start`, `stop`, or `restart` |
+| `GET` | `/api/ops/metrics` | Host resource metrics (CPU, memory, disk) |
 | `GET` | `/api/ops/alerts` | List active/recent ops alerts |
 | `POST` | `/api/ops/alerts/{alert}/ack` | Acknowledge one alert |
 | `GET` | `/api/ops/timeline` | Ops timeline search/filter |
-| `GET` | `/api/ops/runbooks` | List runbooks and latest jobs |
-| `POST` | `/api/ops/runbooks/{runbook}/run` | Execute runbook asynchronously |
-| `GET` | `/api/ops/jobs/{job}` | Query one runbook execution |
+| `GET` | `/api/ops/config` | Read config file |
+| `PATCH` | `/api/ops/config` | Update config file |
+
+Timeline query params:
+
+- `q` text filter
+- `severity` (`info`, `warn`, `error`)
+- `limit` (1..500)
+
+### Services
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/ops/services` | Tracked service list and runtime status |
+| `GET` | `/api/ops/services/browse` | Browse all host units with tracked status |
+| `GET` | `/api/ops/services/discover` | Discover available services |
+| `POST` | `/api/ops/services` | Register custom service |
+| `DELETE` | `/api/ops/services/{service}` | Unregister custom service |
+| `POST` | `/api/ops/services/{service}/action` | Execute `start`, `stop`, or `restart` |
+| `GET` | `/api/ops/services/{service}/status` | Detailed manager status for one service |
+| `GET` | `/api/ops/services/{service}/logs` | Service logs |
+| `POST` | `/api/ops/services/unit/action` | Act on unit directly by name |
+| `GET` | `/api/ops/services/unit/status` | Inspect unit directly |
+| `GET` | `/api/ops/services/unit/logs` | Unit logs directly |
 
 Service action payload:
 
@@ -138,11 +159,57 @@ Service action payload:
 { "action": "restart" }
 ```
 
-Timeline query params:
+Custom service registration payload:
 
-- `q` text filter
-- `severity` (`info`, `warn`, `error`)
-- `limit` (1..500)
+```json
+{
+  "name": "myapp",
+  "displayName": "My App",
+  "manager": "systemd",
+  "unit": "myapp.service",
+  "scope": "user"
+}
+```
+
+Unit action payload:
+
+```json
+{
+  "unit": "myapp.service",
+  "scope": "user",
+  "manager": "systemd",
+  "action": "restart"
+}
+```
+
+Unit query params (status and logs): `unit`, `scope`, `manager`, `lines`.
+
+### Runbooks
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/ops/runbooks` | List runbooks and recent jobs |
+| `POST` | `/api/ops/runbooks` | Create custom runbook |
+| `PUT` | `/api/ops/runbooks/{runbook}` | Update runbook |
+| `DELETE` | `/api/ops/runbooks/{runbook}` | Delete runbook |
+| `POST` | `/api/ops/runbooks/{runbook}/run` | Execute runbook asynchronously (202) |
+| `GET` | `/api/ops/jobs/{job}` | Query one runbook job |
+| `DELETE` | `/api/ops/jobs/{job}` | Delete a runbook job |
+
+Runbook create/update payload:
+
+```json
+{
+  "name": "Health Check",
+  "description": "Verify service health",
+  "enabled": true,
+  "steps": [
+    { "type": "command", "title": "Check status", "command": "systemctl --user is-active myapp" },
+    { "type": "check", "title": "Verify response", "check": "curl -sf http://localhost:8080/health" },
+    { "type": "manual", "title": "Review", "description": "Inspect output above." }
+  ]
+}
+```
 
 ## Operations: Storage
 
@@ -207,6 +274,7 @@ Restore payload (optional body):
 - `STORE_ERROR`
 - `UNAVAILABLE`
 - `TMUX_*` (`TMUX_NOT_FOUND`, `SESSION_NOT_FOUND`, etc.)
+- `OPS_RUNBOOK_NOT_FOUND`, `OPS_JOB_NOT_FOUND`
 - `GUARDRAIL_BLOCKED`
 - `GUARDRAIL_CONFIRM_REQUIRED`
 - `RECOVERY_DISABLED`, `RECOVERY_ERROR`

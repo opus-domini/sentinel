@@ -49,20 +49,17 @@ func New(dbPath string) (*Store, error) {
 	}
 
 	schema := `CREATE TABLE IF NOT EXISTS sessions (
-		name         TEXT PRIMARY KEY,
-		hash         TEXT NOT NULL,
-		last_content TEXT DEFAULT '',
-		updated_at   TEXT DEFAULT (datetime('now'))
+		name           TEXT PRIMARY KEY,
+		hash           TEXT NOT NULL,
+		last_content   TEXT DEFAULT '',
+		icon           TEXT DEFAULT '',
+		next_window_seq INTEGER NOT NULL DEFAULT 1,
+		updated_at     TEXT DEFAULT (datetime('now'))
 	)`
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
-
-	// Migrate: add icon column (idempotent — ignore "duplicate column" error).
-	_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN icon TEXT DEFAULT ''")
-	// Migrate: add default naming sequence for tmux windows.
-	_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN next_window_seq INTEGER NOT NULL DEFAULT 1")
 
 	s := &Store{db: db, dbPath: dbPath}
 	if err := s.initRecoverySchema(); err != nil {

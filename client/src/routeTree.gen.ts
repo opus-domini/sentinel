@@ -10,12 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TmuxRouteImport } from './routes/tmux'
+import { Route as ServicesRouteImport } from './routes/services'
+import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as OpsRouteImport } from './routes/ops'
 import { Route as IndexRouteImport } from './routes/index'
 
 const TmuxRoute = TmuxRouteImport.update({
   id: '/tmux',
   path: '/tmux',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RunbooksRoute = RunbooksRouteImport.update({
+  id: '/runbooks',
+  path: '/runbooks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OpsRoute = OpsRouteImport.update({
@@ -32,30 +44,38 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ops': typeof OpsRoute
+  '/runbooks': typeof RunbooksRoute
+  '/services': typeof ServicesRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ops': typeof OpsRoute
+  '/runbooks': typeof RunbooksRoute
+  '/services': typeof ServicesRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ops': typeof OpsRoute
+  '/runbooks': typeof RunbooksRoute
+  '/services': typeof ServicesRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ops' | '/tmux'
+  fullPaths: '/' | '/ops' | '/runbooks' | '/services' | '/tmux'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ops' | '/tmux'
-  id: '__root__' | '/' | '/ops' | '/tmux'
+  to: '/' | '/ops' | '/runbooks' | '/services' | '/tmux'
+  id: '__root__' | '/' | '/ops' | '/runbooks' | '/services' | '/tmux'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OpsRoute: typeof OpsRoute
+  RunbooksRoute: typeof RunbooksRoute
+  ServicesRoute: typeof ServicesRoute
   TmuxRoute: typeof TmuxRoute
 }
 
@@ -66,6 +86,20 @@ declare module '@tanstack/react-router' {
       path: '/tmux'
       fullPath: '/tmux'
       preLoaderRoute: typeof TmuxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runbooks': {
+      id: '/runbooks'
+      path: '/runbooks'
+      fullPath: '/runbooks'
+      preLoaderRoute: typeof RunbooksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ops': {
@@ -88,6 +122,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OpsRoute: OpsRoute,
+  RunbooksRoute: RunbooksRoute,
+  ServicesRoute: ServicesRoute,
   TmuxRoute: TmuxRoute,
 }
 export const routeTree = rootRouteImport

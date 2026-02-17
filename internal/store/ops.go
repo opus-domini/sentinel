@@ -110,18 +110,28 @@ type OpsRunbook struct {
 	UpdatedAt   string           `json:"updatedAt"`
 }
 
+type OpsRunbookStepResult struct {
+	StepIndex  int    `json:"stepIndex"`
+	Title      string `json:"title"`
+	Type       string `json:"type"`
+	Output     string `json:"output"`
+	Error      string `json:"error"`
+	DurationMs int64  `json:"durationMs"`
+}
+
 type OpsRunbookRun struct {
-	ID             string `json:"id"`
-	RunbookID      string `json:"runbookId"`
-	RunbookName    string `json:"runbookName"`
-	Status         string `json:"status"`
-	TotalSteps     int    `json:"totalSteps"`
-	CompletedSteps int    `json:"completedSteps"`
-	CurrentStep    string `json:"currentStep"`
-	Error          string `json:"error"`
-	CreatedAt      string `json:"createdAt"`
-	StartedAt      string `json:"startedAt,omitempty"`
-	FinishedAt     string `json:"finishedAt,omitempty"`
+	ID             string                 `json:"id"`
+	RunbookID      string                 `json:"runbookId"`
+	RunbookName    string                 `json:"runbookName"`
+	Status         string                 `json:"status"`
+	TotalSteps     int                    `json:"totalSteps"`
+	CompletedSteps int                    `json:"completedSteps"`
+	CurrentStep    string                 `json:"currentStep"`
+	Error          string                 `json:"error"`
+	StepResults    []OpsRunbookStepResult `json:"stepResults"`
+	CreatedAt      string                 `json:"createdAt"`
+	StartedAt      string                 `json:"startedAt,omitempty"`
+	FinishedAt     string                 `json:"finishedAt,omitempty"`
 }
 
 func (s *Store) initOpsSchema() error {
@@ -181,6 +191,7 @@ func (s *Store) initOpsSchema() error {
 			completed_steps INTEGER NOT NULL DEFAULT 0,
 			current_step    TEXT NOT NULL DEFAULT '',
 			error           TEXT NOT NULL DEFAULT '',
+			step_results    TEXT NOT NULL DEFAULT '[]',
 			created_at      TEXT NOT NULL,
 			started_at      TEXT NOT NULL DEFAULT '',
 			finished_at     TEXT NOT NULL DEFAULT ''
@@ -626,8 +637,8 @@ func (s *Store) StartOpsRunbook(ctx context.Context, runbookID string, at time.T
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, '', '')`,
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, '', '[]', ?, '', '')`,
 		runID,
 		runbook.ID,
 		runbook.Name,
@@ -682,7 +693,7 @@ func (s *Store) ListOpsRunbookRuns(ctx context.Context, limit int) ([]OpsRunbook
 		limit = 500
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
 	FROM ops_runbook_runs
 	ORDER BY created_at DESC, id DESC
 	LIMIT ?`, limit)
@@ -711,7 +722,7 @@ func (s *Store) GetOpsRunbookRun(ctx context.Context, runID string) (OpsRunbookR
 		return OpsRunbookRun{}, sql.ErrNoRows
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
 	FROM ops_runbook_runs
 	WHERE id = ?
 	LIMIT 1`, runID)
@@ -766,7 +777,10 @@ type opsRunbookRunScanner interface {
 }
 
 func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
-	var out OpsRunbookRun
+	var (
+		out            OpsRunbookRun
+		stepResultsRaw string
+	)
 	if err := scanner.Scan(
 		&out.ID,
 		&out.RunbookID,
@@ -776,11 +790,15 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 		&out.CompletedSteps,
 		&out.CurrentStep,
 		&out.Error,
+		&stepResultsRaw,
 		&out.CreatedAt,
 		&out.StartedAt,
 		&out.FinishedAt,
 	); err != nil {
 		return OpsRunbookRun{}, err
+	}
+	if err := json.Unmarshal([]byte(stepResultsRaw), &out.StepResults); err != nil || out.StepResults == nil {
+		out.StepResults = []OpsRunbookStepResult{}
 	}
 	return out, nil
 }
@@ -1003,6 +1021,7 @@ type OpsRunbookRunUpdate struct {
 	CompletedSteps int
 	CurrentStep    string
 	Error          string
+	StepResults    string
 	StartedAt      string
 	FinishedAt     string
 }
@@ -1012,13 +1031,18 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 	if runID == "" {
 		return OpsRunbookRun{}, sql.ErrNoRows
 	}
+	stepResults := strings.TrimSpace(u.StepResults)
+	if stepResults == "" {
+		stepResults = "[]"
+	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE ops_runbook_runs SET
-		status = ?, completed_steps = ?, current_step = ?, error = ?, started_at = ?, finished_at = ?
+		status = ?, completed_steps = ?, current_step = ?, error = ?, step_results = ?, started_at = ?, finished_at = ?
 	WHERE id = ?`,
 		strings.TrimSpace(u.Status),
 		u.CompletedSteps,
 		strings.TrimSpace(u.CurrentStep),
 		strings.TrimSpace(u.Error),
+		stepResults,
 		strings.TrimSpace(u.StartedAt),
 		strings.TrimSpace(u.FinishedAt),
 		runID,
@@ -1048,13 +1072,32 @@ func (s *Store) CreateOpsRunbookRun(ctx context.Context, runbookID string, at ti
 		currentStep = runbook.Steps[0].Title
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
-	) VALUES (?, ?, ?, ?, ?, 0, ?, '', ?, '', '')`,
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, 0, ?, '', '[]', ?, '', '')`,
 		runID, runbook.ID, runbook.Name, opsRunbookStatusQueued, totalSteps, currentStep, now.Format(time.RFC3339),
 	); err != nil {
 		return OpsRunbookRun{}, err
 	}
 	return s.GetOpsRunbookRun(ctx, runID)
+}
+
+func (s *Store) DeleteOpsRunbookRun(ctx context.Context, runID string) error {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return sql.ErrNoRows
+	}
+	result, err := s.db.ExecContext(ctx, "DELETE FROM ops_runbook_runs WHERE id = ?", runID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // --- Alert resolve ---

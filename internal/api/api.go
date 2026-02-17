@@ -152,6 +152,7 @@ func Register(
 	mux.HandleFunc("DELETE /api/ops/runbooks/{runbook}", h.wrap(h.deleteOpsRunbook))
 	mux.HandleFunc("POST /api/ops/runbooks/{runbook}/run", h.wrap(h.runOpsRunbook))
 	mux.HandleFunc("GET /api/ops/jobs/{job}", h.wrap(h.opsJob))
+	mux.HandleFunc("DELETE /api/ops/jobs/{job}", h.wrap(h.deleteOpsJob))
 	mux.HandleFunc("GET /api/ops/config", h.wrap(h.opsConfig))
 	mux.HandleFunc("PATCH /api/ops/config", h.wrap(h.patchOpsConfig))
 	mux.HandleFunc("GET /api/ops/storage/stats", h.wrap(h.storageStats))
@@ -1620,7 +1621,7 @@ func (h *Handler) executeRunbookAsync(job store.OpsRunbookRun) {
 
 	// Mark as running (best-effort).
 	now := time.Now().UTC()
-	_, _ = h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+	runningJob, _ := h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          job.ID,
 		Status:         "running",
 		CompletedSteps: 0,
@@ -1629,14 +1630,13 @@ func (h *Handler) executeRunbookAsync(job store.OpsRunbookRun) {
 	})
 	h.emit(events.TypeOpsJob, map[string]any{
 		"globalRev": now.UnixMilli(),
-		"jobId":     job.ID,
-		"status":    "running",
+		"job":       runningJob,
 	})
 
 	// Fetch runbook steps.
 	rb, err := h.store.ListOpsRunbooks(ctx)
 	if err != nil {
-		h.finishRunbookRun(ctx, job.ID, stateFailed, 0, "", err.Error())
+		h.finishRunbookRun(ctx, job.ID, stateFailed, 0, "", err.Error(), "[]")
 		return
 	}
 	var steps []runbook.Step
@@ -1656,20 +1656,29 @@ func (h *Handler) executeRunbookAsync(job store.OpsRunbookRun) {
 	}
 
 	executor := runbook.NewExecutor(nil, 30*time.Second)
-	progress := func(completed int, stepTitle string, _ runbook.StepResult) {
-		_, _ = h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+	var accumulated []store.OpsRunbookStepResult
+	progress := func(completed int, stepTitle string, result runbook.StepResult) {
+		sr := store.OpsRunbookStepResult{
+			StepIndex:  result.StepIndex,
+			Title:      result.Title,
+			Type:       result.Type,
+			Output:     result.Output,
+			Error:      result.Error,
+			DurationMs: result.Duration.Milliseconds(),
+		}
+		accumulated = append(accumulated, sr)
+		stepResultsJSON, _ := json.Marshal(accumulated)
+		updated, _ := h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 			RunID:          job.ID,
 			Status:         "running",
 			CompletedSteps: completed,
 			CurrentStep:    stepTitle,
+			StepResults:    string(stepResultsJSON),
 			StartedAt:      now.Format(time.RFC3339),
 		})
 		h.emit(events.TypeOpsJob, map[string]any{
-			"globalRev":      time.Now().UTC().UnixMilli(),
-			"jobId":          job.ID,
-			"status":         "running",
-			"completedSteps": completed,
-			"currentStep":    stepTitle,
+			"globalRev": time.Now().UTC().UnixMilli(),
+			"job":       updated,
 		})
 	}
 
@@ -1685,11 +1694,12 @@ func (h *Handler) executeRunbookAsync(job store.OpsRunbookRun) {
 	if len(results) > 0 {
 		lastStep = results[len(results)-1].Title
 	}
+	stepResultsJSON, _ := json.Marshal(accumulated)
 
-	h.finishRunbookRun(ctx, job.ID, finalStatus, len(results), lastStep, errMsg)
+	h.finishRunbookRun(ctx, job.ID, finalStatus, len(results), lastStep, errMsg, string(stepResultsJSON))
 }
 
-func (h *Handler) finishRunbookRun(ctx context.Context, runID, status string, completed int, lastStep, errMsg string) {
+func (h *Handler) finishRunbookRun(ctx context.Context, runID, status string, completed int, lastStep, errMsg, stepResultsJSON string) {
 	finished := time.Now().UTC()
 	_, _ = h.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          runID,
@@ -1697,14 +1707,15 @@ func (h *Handler) finishRunbookRun(ctx context.Context, runID, status string, co
 		CompletedSteps: completed,
 		CurrentStep:    lastStep,
 		Error:          errMsg,
+		StepResults:    stepResultsJSON,
 		FinishedAt:     finished.Format(time.RFC3339),
 	})
 
 	globalRev := finished.UnixMilli()
+	updatedJob, _ := h.store.GetOpsRunbookRun(ctx, runID)
 	h.emit(events.TypeOpsJob, map[string]any{
 		"globalRev": globalRev,
-		"jobId":     runID,
-		"status":    status,
+		"job":       updatedJob,
 	})
 
 	severity := "info"
@@ -1748,6 +1759,30 @@ func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]any{
 		"job": job,
 	})
+}
+
+func (h *Handler) deleteOpsJob(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	jobID := strings.TrimSpace(r.PathValue("job"))
+	if jobID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "job id is required", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	if err := h.store.DeleteOpsRunbookRun(ctx, jobID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_JOB_NOT_FOUND", "job not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete job", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
 func (h *Handler) opsConfig(w http.ResponseWriter, _ *http.Request) {

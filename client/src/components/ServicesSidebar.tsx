@@ -11,7 +11,7 @@ import { TooltipHelper } from '@/components/TooltipHelper'
 import { cn } from '@/lib/utils'
 import { filterOpsServicesByQuery, isOpsServiceActive } from '@/lib/opsServices'
 
-type OpsSidebarProps = {
+type ServicesSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
@@ -34,7 +34,7 @@ function statusDot(service: OpsServiceStatus): string {
 /** Names reserved by the backend (built-in services). */
 const builtinNames = new Set(['sentinel', 'sentinel-updater'])
 
-export default function OpsSidebar({
+export default function ServicesSidebar({
   isOpen,
   collapsed,
   tokenRequired,
@@ -45,7 +45,7 @@ export default function OpsSidebar({
   onTokenChange,
   onRemoveService,
   onNavigateToService,
-}: OpsSidebarProps) {
+}: ServicesSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [removing, setRemoving] = useState<string | null>(null)
@@ -157,7 +157,7 @@ export default function OpsSidebar({
                   <span>
                     {hasFilter
                       ? 'No tracked services match filter.'
-                      : 'No tracked services. Use the Services tab to track services.'}
+                      : 'No tracked services. Use the browse panel to pin services.'}
                   </span>
                   {hasFilter && (
                     <Button

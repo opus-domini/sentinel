@@ -39,6 +39,7 @@ function buildJob(id: string): OpsRunbookRun {
     completedSteps: 0,
     currentStep: 'init',
     error: '',
+    stepResults: [],
     createdAt: '2026-01-01T00:00:00Z',
   }
 }
