@@ -23,7 +23,12 @@ import {
   OPS_METRICS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
 } from '@/lib/opsQueryCache'
-import { formatBytes, formatUptime, toErrorMessage } from '@/lib/opsUtils'
+import {
+  formatBytes,
+  formatTimeAgo,
+  formatUptime,
+  toErrorMessage,
+} from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 
 function ProgressBar({ percent }: { percent: number }) {
@@ -338,7 +343,9 @@ function MetricsPage() {
                 : 'Metrics connected'}
           </span>
           <span className="shrink-0 whitespace-nowrap">
-            {overview?.updatedAt ? `updated ${overview.updatedAt}` : 'waiting'}
+            {metrics?.collectedAt
+              ? `updated ${formatTimeAgo(metrics.collectedAt)}`
+              : 'waiting'}
           </span>
         </footer>
       </main>

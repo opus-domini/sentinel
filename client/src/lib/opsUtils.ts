@@ -24,6 +24,18 @@ export function toErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
+export function formatTimeAgo(iso: string): string {
+  const diff = Math.max(
+    0,
+    Math.trunc((Date.now() - new Date(iso).getTime()) / 1000),
+  )
+  if (diff < 60) return `${diff}s ago`
+  const minutes = Math.floor(diff / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ago`
+}
+
 export function browsedServiceDot(state: string): string {
   const s = state.trim().toLowerCase()
   if (s === 'active' || s === 'running') return 'bg-emerald-500'
