@@ -1250,6 +1250,7 @@ func TestParseStoreTimePtr(t *testing.T) {
 		ts := parseStoreTimePtr("2025-06-01T12:00:00Z")
 		if ts == nil {
 			t.Fatal("expected non-nil")
+			return
 		}
 		if ts.Year() != 2025 || ts.Month() != 6 || ts.Day() != 1 {
 			t.Fatalf("unexpected time: %v", *ts)
@@ -1260,6 +1261,7 @@ func TestParseStoreTimePtr(t *testing.T) {
 		ts := parseStoreTimePtr("2025-06-01 12:00:00")
 		if ts == nil {
 			t.Fatal("expected non-nil")
+			return
 		}
 		if ts.Year() != 2025 || ts.Month() != 6 {
 			t.Fatalf("unexpected time: %v", *ts)

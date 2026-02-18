@@ -89,6 +89,7 @@ func TestGuardrailRuleUpsert(t *testing.T) {
 	}
 	if found == nil {
 		t.Fatalf("expected rule action.window.kill.warn in %+v", rules)
+		return
 	}
 	if found.Mode != GuardrailModeConfirm {
 		t.Fatalf("rule mode = %q, want confirm", found.Mode)
