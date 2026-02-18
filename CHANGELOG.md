@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.7](https://github.com/opus-domini/sentinel/compare/v0.3.6...v0.3.7) (2026-02-18)
+
+
+### Bug Fixes
+
+* enable clipboard copy for mouse-selected text in web terminal ([6b0ab83](https://github.com/opus-domini/sentinel/commit/6b0ab83c40f2f348d77faed700581987c8531c2c))
+* enable clipboard copy for mouse-selected text in web terminal ([8a18c74](https://github.com/opus-domini/sentinel/commit/8a18c74d85a810a06941e035b5e52b22a2ddcc77))
+
 ## [0.3.6](https://github.com/opus-domini/sentinel/compare/v0.3.5...v0.3.6) (2026-02-18)
 
 
