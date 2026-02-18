@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/opus-domini/sentinel/compare/v0.3.3...v0.3.4) (2026-02-18)
+
+
+### Bug Fixes
+
+* resolve lint issues in new test files ([763e99a](https://github.com/opus-domini/sentinel/commit/763e99a58c9a6c5e36d253a30714bd55cdf3d9be))
+
 ## [0.3.3](https://github.com/opus-domini/sentinel/compare/v0.3.2...v0.3.3) (2026-02-18)
 
 
