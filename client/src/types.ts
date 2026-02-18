@@ -310,11 +310,6 @@ export type OpsMetricsResponse = {
   metrics: OpsHostMetrics
 }
 
-export type OpsConfigResponse = {
-  path: string
-  content: string
-}
-
 export type OpsCustomServiceWrite = {
   name: string
   displayName: string

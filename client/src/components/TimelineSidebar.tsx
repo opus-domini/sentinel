@@ -1,41 +1,40 @@
 import { useMemo, useState } from 'react'
 import { Lock, LockOpen } from 'lucide-react'
 import type { OpsOverview } from '@/types'
-import AlertsHelpDialog from '@/components/AlertsHelpDialog'
 import SidebarShell from '@/components/sidebar/SidebarShell'
+import TimelineHelpDialog from '@/components/TimelineHelpDialog'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { formatUptime } from '@/lib/opsUtils'
-import { cn } from '@/lib/utils'
 
-type AlertsSidebarProps = {
+type TimelineSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
   token: string
-  alertCount: number
-  openCount: number
   overview: OpsOverview | null
-  selectedSeverity: string
-  onSeverityChange: (value: string) => void
+  eventCount: number
+  timelineQuery: string
+  onTimelineQueryChange: (value: string) => void
+  timelineSeverity: string
+  onTimelineSeverityChange: (value: string) => void
   onTokenChange: (value: string) => void
 }
 
-const severities = ['all', 'warn', 'error'] as const
-
-export default function AlertsSidebar({
+export default function TimelineSidebar({
   isOpen,
   collapsed,
   tokenRequired,
   token,
-  alertCount,
-  openCount,
   overview,
-  selectedSeverity,
-  onSeverityChange,
+  eventCount,
+  timelineQuery,
+  onTimelineQueryChange,
+  timelineSeverity,
+  onTimelineSeverityChange,
   onTokenChange,
-}: AlertsSidebarProps) {
+}: TimelineSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
   const hasToken = token.trim() !== ''
 
@@ -59,18 +58,13 @@ export default function AlertsSidebar({
         <section className="grid gap-2 rounded-lg border border-border-subtle bg-secondary p-2">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-              Alerts
+              Timeline
             </span>
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
-              {alertCount}
+              {eventCount}
             </span>
-            {openCount > 0 && (
-              <span className="rounded-full bg-amber-500/20 px-1.5 text-[10px] text-amber-200">
-                {openCount} open
-              </span>
-            )}
             <div className="ml-auto flex items-center gap-1.5">
-              <AlertsHelpDialog />
+              <TimelineHelpDialog />
               <TooltipHelper content={lockLabel}>
                 <Button
                   variant="ghost"
@@ -120,6 +114,10 @@ export default function AlertsSidebar({
               </p>
             </div>
             <div className="rounded-md border border-border-subtle bg-surface-elevated p-2">
+              <p className="text-[10px] text-muted-foreground">Events</p>
+              <p className="mt-0.5 text-[11px] font-medium">{eventCount}</p>
+            </div>
+            <div className="rounded-md border border-border-subtle bg-surface-elevated p-2">
               <p className="text-[10px] text-muted-foreground">Health</p>
               <p className="mt-0.5 text-[11px] font-medium">{health}</p>
             </div>
@@ -128,25 +126,24 @@ export default function AlertsSidebar({
 
         <section className="grid gap-2 rounded-lg border border-border-subtle bg-secondary p-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Severity
+            Filters
           </span>
-          <div className="flex gap-1">
-            {severities.map((sev) => (
-              <button
-                key={sev}
-                type="button"
-                onClick={() => onSeverityChange(sev)}
-                className={cn(
-                  'flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
-                  selectedSeverity === sev
-                    ? 'border-foreground/20 bg-foreground/10 text-foreground'
-                    : 'border-border-subtle bg-surface-elevated text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {sev}
-              </button>
-            ))}
-          </div>
+          <input
+            value={timelineQuery}
+            onChange={(e) => onTimelineQueryChange(e.target.value)}
+            placeholder="search timeline"
+            className="h-8 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
+          />
+          <select
+            value={timelineSeverity}
+            onChange={(e) => onTimelineSeverityChange(e.target.value)}
+            className="h-8 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
+          >
+            <option value="all">all severities</option>
+            <option value="info">info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+          </select>
         </section>
       </div>
     </SidebarShell>

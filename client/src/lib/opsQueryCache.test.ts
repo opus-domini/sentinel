@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   OPS_ALERTS_QUERY_KEY,
-  OPS_CONFIG_QUERY_KEY,
   OPS_GUARDRAILS_QUERY_KEY,
   OPS_METRICS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
@@ -51,7 +50,6 @@ describe('opsQueryCache', () => {
     expect(OPS_ALERTS_QUERY_KEY).toEqual(['ops', 'alerts'])
     expect(OPS_RUNBOOKS_QUERY_KEY).toEqual(['ops', 'runbooks'])
     expect(OPS_METRICS_QUERY_KEY).toEqual(['ops', 'metrics'])
-    expect(OPS_CONFIG_QUERY_KEY).toEqual(['ops', 'config'])
     expect(OPS_GUARDRAILS_QUERY_KEY).toEqual(['ops', 'guardrails'])
     expect(OPS_STORAGE_STATS_QUERY_KEY).toEqual(['ops', 'storage-stats'])
   })

@@ -6,7 +6,6 @@ export const OPS_SERVICES_QUERY_KEY = ['ops', 'services'] as const
 export const OPS_ALERTS_QUERY_KEY = ['ops', 'alerts'] as const
 export const OPS_RUNBOOKS_QUERY_KEY = ['ops', 'runbooks'] as const
 export const OPS_METRICS_QUERY_KEY = ['ops', 'metrics'] as const
-export const OPS_CONFIG_QUERY_KEY = ['ops', 'config'] as const
 export const OPS_GUARDRAILS_QUERY_KEY = ['ops', 'guardrails'] as const
 export const OPS_STORAGE_STATS_QUERY_KEY = ['ops', 'storage-stats'] as const
 

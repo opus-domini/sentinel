@@ -1,5 +1,3 @@
-import { cn } from '@/lib/utils'
-
 export function formatUptime(totalSeconds: number): string {
   const seconds = Math.max(0, Math.trunc(totalSeconds))
   const hours = Math.floor(seconds / 3600)
@@ -33,11 +31,3 @@ export function browsedServiceDot(state: string): string {
   return 'bg-muted-foreground/50'
 }
 
-export function opsTabButtonClass(active: boolean): string {
-  return cn(
-    'inline-flex cursor-pointer items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
-    active
-      ? 'border-primary/40 bg-primary/15 text-primary-text-bright'
-      : 'border-transparent text-muted-foreground hover:border-border hover:bg-surface-overlay hover:text-foreground',
-  )
-}

@@ -10,14 +10,22 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TmuxRouteImport } from './routes/tmux'
+import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as ServicesRouteImport } from './routes/services'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as OpsRouteImport } from './routes/ops'
+import { Route as MetricsRouteImport } from './routes/metrics'
+import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as IndexRouteImport } from './routes/index'
 
 const TmuxRoute = TmuxRouteImport.update({
   id: '/tmux',
   path: '/tmux',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TimelineRoute = TimelineRouteImport.update({
+  id: '/timeline',
+  path: '/timeline',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ServicesRoute = ServicesRouteImport.update({
@@ -35,6 +43,16 @@ const OpsRoute = OpsRouteImport.update({
   path: '/ops',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MetricsRoute = MetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlertsRoute = AlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,39 +61,76 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
+  '/metrics': typeof MetricsRoute
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
+  '/timeline': typeof TimelineRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
+  '/metrics': typeof MetricsRoute
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
+  '/timeline': typeof TimelineRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
+  '/metrics': typeof MetricsRoute
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
+  '/timeline': typeof TimelineRoute
   '/tmux': typeof TmuxRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ops' | '/runbooks' | '/services' | '/tmux'
+  fullPaths:
+    | '/'
+    | '/alerts'
+    | '/metrics'
+    | '/ops'
+    | '/runbooks'
+    | '/services'
+    | '/timeline'
+    | '/tmux'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ops' | '/runbooks' | '/services' | '/tmux'
-  id: '__root__' | '/' | '/ops' | '/runbooks' | '/services' | '/tmux'
+  to:
+    | '/'
+    | '/alerts'
+    | '/metrics'
+    | '/ops'
+    | '/runbooks'
+    | '/services'
+    | '/timeline'
+    | '/tmux'
+  id:
+    | '__root__'
+    | '/'
+    | '/alerts'
+    | '/metrics'
+    | '/ops'
+    | '/runbooks'
+    | '/services'
+    | '/timeline'
+    | '/tmux'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AlertsRoute: typeof AlertsRoute
+  MetricsRoute: typeof MetricsRoute
   OpsRoute: typeof OpsRoute
   RunbooksRoute: typeof RunbooksRoute
   ServicesRoute: typeof ServicesRoute
+  TimelineRoute: typeof TimelineRoute
   TmuxRoute: typeof TmuxRoute
 }
 
@@ -86,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/tmux'
       fullPath: '/tmux'
       preLoaderRoute: typeof TmuxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/timeline': {
+      id: '/timeline'
+      path: '/timeline'
+      fullPath: '/timeline'
+      preLoaderRoute: typeof TimelineRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/services': {
@@ -109,6 +171,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OpsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/metrics': {
+      id: '/metrics'
+      path: '/metrics'
+      fullPath: '/metrics'
+      preLoaderRoute: typeof MetricsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alerts': {
+      id: '/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -121,9 +197,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AlertsRoute: AlertsRoute,
+  MetricsRoute: MetricsRoute,
   OpsRoute: OpsRoute,
   RunbooksRoute: RunbooksRoute,
   ServicesRoute: ServicesRoute,
+  TimelineRoute: TimelineRoute,
   TmuxRoute: TmuxRoute,
 }
 export const routeTree = rootRouteImport

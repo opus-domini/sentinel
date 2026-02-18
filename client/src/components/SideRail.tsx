@@ -27,7 +27,9 @@ export default function SideRail({
   const tmuxActive = pathname === '/tmux'
   const servicesActive = pathname === '/services'
   const runbooksActive = pathname === '/runbooks'
-  const opsActive = pathname === '/ops'
+  const alertsActive = pathname === '/alerts'
+  const timelineActive = pathname === '/timeline'
+  const metricsActive = pathname === '/metrics'
 
   const navItemClass = (isActive: boolean) =>
     cn(
@@ -71,9 +73,27 @@ export default function SideRail({
           RB
         </Link>
       </TooltipHelper>
-      <TooltipHelper content="Ops" side="right">
-        <Link className={navItemClass(opsActive)} to="/ops" aria-label="Ops">
-          OP
+      <TooltipHelper content="Alerts" side="right">
+        <Link className={navItemClass(alertsActive)} to="/alerts" aria-label="Alerts">
+          AL
+        </Link>
+      </TooltipHelper>
+      <TooltipHelper content="Timeline" side="right">
+        <Link
+          className={navItemClass(timelineActive)}
+          to="/timeline"
+          aria-label="Timeline"
+        >
+          TL
+        </Link>
+      </TooltipHelper>
+      <TooltipHelper content="Metrics" side="right">
+        <Link
+          className={navItemClass(metricsActive)}
+          to="/metrics"
+          aria-label="Metrics"
+        >
+          MT
         </Link>
       </TooltipHelper>
       <div className="flex-1" />

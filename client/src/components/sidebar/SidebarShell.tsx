@@ -67,12 +67,28 @@ function MobileNav() {
           RB
         </Link>
         <Link
-          className={navItemClass(pathname === '/ops')}
-          to="/ops"
+          className={navItemClass(pathname === '/alerts')}
+          to="/alerts"
           onClick={handleNav}
-          aria-label="Ops"
+          aria-label="Alerts"
         >
-          OP
+          AL
+        </Link>
+        <Link
+          className={navItemClass(pathname === '/timeline')}
+          to="/timeline"
+          onClick={handleNav}
+          aria-label="Timeline"
+        >
+          TL
+        </Link>
+        <Link
+          className={navItemClass(pathname === '/metrics')}
+          to="/metrics"
+          onClick={handleNav}
+          aria-label="Metrics"
+        >
+          MT
         </Link>
       </div>
       <div className="flex items-center gap-1">
