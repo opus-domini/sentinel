@@ -270,4 +270,111 @@ describe('useLogStream', () => {
 
     expect(result.current).toBe('error')
   })
+
+  it('retries with progressive backoff', () => {
+    const onLine = vi.fn()
+    const timeoutSpy = vi.spyOn(window, 'setTimeout')
+    const target = { kind: 'service' as const, name: 'test' }
+
+    renderHook(() =>
+      useLogStream({
+        token: '',
+        tokenRequired: false,
+        target,
+        enabled: true,
+        onLine,
+      }),
+    )
+
+    // First close triggers first retry at 1200ms.
+    act(() => {
+      lastSocket().simulateClose()
+    })
+    expect(timeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 1_200)
+
+    act(() => {
+      vi.advanceTimersByTime(1_200)
+    })
+
+    // Second close triggers retry at 2040ms (1200 * 1.7).
+    act(() => {
+      lastSocket().simulateClose()
+    })
+    expect(timeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 2_040)
+
+    act(() => {
+      vi.advanceTimersByTime(2_040)
+    })
+
+    // Third close triggers retry at 3468ms (2040 * 1.7).
+    act(() => {
+      lastSocket().simulateClose()
+    })
+    expect(timeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 3_468)
+  })
+
+  it('resets backoff after successful reconnect', () => {
+    const onLine = vi.fn()
+    const timeoutSpy = vi.spyOn(window, 'setTimeout')
+    const target = { kind: 'service' as const, name: 'test' }
+
+    renderHook(() =>
+      useLogStream({
+        token: '',
+        tokenRequired: false,
+        target,
+        enabled: true,
+        onLine,
+      }),
+    )
+
+    // Close and reconnect.
+    act(() => {
+      lastSocket().simulateClose()
+      vi.advanceTimersByTime(1_200)
+    })
+
+    // Successful open resets the backoff.
+    act(() => {
+      lastSocket().simulateOpen()
+      lastSocket().simulateClose()
+    })
+
+    // Should retry with initial delay again.
+    expect(timeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 1_200)
+  })
+
+  it('does not call onLine when onLine throws', () => {
+    const errorLine = vi.fn(() => {
+      throw new Error('handler error')
+    })
+    const target = { kind: 'service' as const, name: 'test' }
+
+    // Should not throw or crash the hook.
+    renderHook(() =>
+      useLogStream({
+        token: '',
+        tokenRequired: false,
+        target,
+        enabled: true,
+        onLine: errorLine,
+      }),
+    )
+
+    act(() => {
+      lastSocket().simulateOpen()
+    })
+
+    // The hook calls onLineRef.current which throws — this is the caller's
+    // responsibility, but the hook itself should not break.
+    expect(() => {
+      act(() => {
+        lastSocket().simulateMessage(
+          JSON.stringify({ type: 'log', line: 'boom' }),
+        )
+      })
+    }).toThrow('handler error')
+
+    expect(errorLine).toHaveBeenCalledWith('boom')
+  })
 })

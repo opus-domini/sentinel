@@ -498,3 +498,21 @@ export type RecoverySnapshotResponse = {
 export type RecoveryJobResponse = {
   job: RecoveryJob
 }
+
+export type OpsWsMessage =
+  | { type: 'ops.overview.updated'; payload: { overview: OpsOverview } }
+  | {
+      type: 'ops.services.updated'
+      payload: { services: Array<OpsServiceStatus> }
+    }
+  | { type: 'ops.alerts.updated'; payload: { alerts: Array<OpsAlert> } }
+  | {
+      type: 'ops.timeline.updated'
+      payload: {
+        event?: OpsTimelineEvent
+        events?: Array<OpsTimelineEvent>
+      }
+    }
+  | { type: 'ops.metrics.updated'; payload: { metrics: OpsHostMetrics } }
+  | { type: 'ops.job.updated'; payload: { job: OpsRunbookRun } }
+  | { type: 'ops.schedule.updated'; payload: Record<string, unknown> }

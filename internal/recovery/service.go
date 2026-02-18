@@ -457,7 +457,10 @@ func (s *Service) persistSnapshot(ctx context.Context, snap SessionSnapshot, cap
 		return false, err
 	}
 
-	hash := snapshotHash(snap)
+	hash, err := snapshotHash(snap)
+	if err != nil {
+		return false, err
+	}
 	_, changed, err := s.store.UpsertRecoverySnapshot(ctx, store.RecoverySnapshotWrite{
 		SessionName:  snap.SessionName,
 		BootID:       snap.BootID,
@@ -901,7 +904,7 @@ func randomJobID() string {
 	return hex.EncodeToString(raw[:])
 }
 
-func snapshotHash(snap SessionSnapshot) string {
+func snapshotHash(snap SessionSnapshot) (string, error) {
 	type windowHash struct {
 		Index  int
 		Name   string
@@ -962,9 +965,12 @@ func snapshotHash(snap SessionSnapshot) string {
 		Panes:        panes,
 	}
 
-	blob, _ := json.Marshal(flat)
+	blob, err := json.Marshal(flat)
+	if err != nil {
+		return "", fmt.Errorf("marshal snapshot for hashing: %w", err)
+	}
 	sum := sha256.Sum256(blob)
-	return hex.EncodeToString(sum[:8])
+	return hex.EncodeToString(sum[:8]), nil
 }
 
 func (s *Service) publish(eventType string, payload map[string]any) {

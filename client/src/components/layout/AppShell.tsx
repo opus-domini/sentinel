@@ -41,7 +41,6 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
         <SideRail
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
-          onToggleSidebarOpen={() => setSidebarOpen((prev) => !prev)}
         />
 
         {sidebar}

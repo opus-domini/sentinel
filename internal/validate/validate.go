@@ -15,6 +15,22 @@ func SessionName(name string) bool {
 	return sessionNameRE.MatchString(name)
 }
 
+// windowNameRE allows letters, digits, dots, hyphens, underscores, and spaces.
+var windowNameRE = regexp.MustCompile(`^[A-Za-z0-9._\- ]{1,64}$`)
+
+// WindowName reports whether name is a valid tmux window name.
+func WindowName(name string) bool {
+	return windowNameRE.MatchString(name)
+}
+
+// paneTitleRE allows printable ASCII and common Unicode up to 128 chars.
+var paneTitleRE = regexp.MustCompile(`^.{1,128}$`)
+
+// PaneTitle reports whether title is a valid tmux pane title.
+func PaneTitle(title string) bool {
+	return paneTitleRE.MatchString(title)
+}
+
 var iconKeyRE = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
 
 // IconKey reports whether key is a valid session icon key.

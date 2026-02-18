@@ -57,7 +57,8 @@ func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
 		return Decision{}, err
 	}
 
-	selection := evaluateSelection(rules, input)
+	compiled := compileRulePatterns(rules)
+	selection := evaluateSelection(rules, input, compiled)
 	message := strings.TrimSpace(selection.message)
 	if message == "" {
 		message = defaultDecisionMessage(selection.mode)
@@ -74,7 +75,26 @@ func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
 	return decision, nil
 }
 
-func evaluateSelection(rules []store.GuardrailRule, input Input) evaluatedSelection {
+// compileRulePatterns pre-compiles regex patterns for all rules.
+// Rules with invalid patterns are skipped with a warning log.
+func compileRulePatterns(rules []store.GuardrailRule) map[string]*regexp.Regexp {
+	compiled := make(map[string]*regexp.Regexp, len(rules))
+	for _, rule := range rules {
+		pattern := strings.TrimSpace(rule.Pattern)
+		if pattern == "" {
+			continue
+		}
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			slog.Warn("guardrail regex pre-compile failed, skipping rule", "rule", rule.ID, "pattern", pattern, "err", err)
+			continue
+		}
+		compiled[rule.ID] = re
+	}
+	return compiled
+}
+
+func evaluateSelection(rules []store.GuardrailRule, input Input, compiled map[string]*regexp.Regexp) evaluatedSelection {
 	selection := evaluatedSelection{
 		mode:    store.GuardrailModeAllow,
 		matched: make([]store.GuardrailRule, 0, 4),
@@ -84,7 +104,7 @@ func evaluateSelection(rules []store.GuardrailRule, input Input) evaluatedSelect
 	command := strings.TrimSpace(input.Command)
 
 	for _, rule := range rules {
-		mode, ok := evaluateRuleMatch(rule, action, command)
+		mode, ok := evaluateRuleMatch(rule, action, command, compiled)
 		if !ok {
 			continue
 		}
@@ -101,7 +121,7 @@ func evaluateSelection(rules []store.GuardrailRule, input Input) evaluatedSelect
 	return selection
 }
 
-func evaluateRuleMatch(rule store.GuardrailRule, action, command string) (string, bool) {
+func evaluateRuleMatch(rule store.GuardrailRule, action, command string, compiled map[string]*regexp.Regexp) (string, bool) {
 	if !rule.Enabled {
 		return "", false
 	}
@@ -114,12 +134,11 @@ func evaluateRuleMatch(rule store.GuardrailRule, action, command string) (string
 		return "", false
 	}
 
-	matchedRule, compileErr := ruleMatches(rule, target)
-	if compileErr != nil {
-		slog.Warn("guardrail regex compile failed", "rule", rule.ID, "pattern", rule.Pattern, "err", compileErr)
+	re, ok := compiled[rule.ID]
+	if !ok {
 		return "", false
 	}
-	if !matchedRule {
+	if !re.MatchString(target) {
 		return "", false
 	}
 
@@ -187,18 +206,6 @@ func (s *Service) RecordAudit(ctx context.Context, input Input, decision Decisio
 		CreatedAt:   time.Now().UTC(),
 	})
 	return err
-}
-
-func ruleMatches(rule store.GuardrailRule, target string) (bool, error) {
-	pattern := strings.TrimSpace(rule.Pattern)
-	if pattern == "" {
-		return false, nil
-	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return false, err
-	}
-	return re.MatchString(target), nil
 }
 
 func decisionRank(mode string) int {

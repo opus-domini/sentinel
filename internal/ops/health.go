@@ -2,6 +2,9 @@ package ops
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -49,10 +52,10 @@ func NewHealthChecker(mgr *Manager, st *store.Store, publish HealthPublisher, in
 }
 
 // Start begins the periodic health check loop.
-func (hc *HealthChecker) Start() {
-	ctx, cancel := context.WithCancel(context.Background())
+func (hc *HealthChecker) Start(ctx context.Context) {
+	childCtx, cancel := context.WithCancel(ctx)
 	hc.stopFn = cancel
-	go hc.loop(ctx)
+	go hc.loop(childCtx)
 }
 
 // Stop gracefully stops the health checker.
@@ -109,7 +112,7 @@ func (hc *HealthChecker) checkServices(ctx context.Context) {
 				Title:     fmt.Sprintf("Service %s failed", svc.DisplayName),
 				Message:   fmt.Sprintf("Service %s is in failed state (unit=%s)", svc.DisplayName, svc.Unit),
 				Severity:  "error",
-				Metadata:  fmt.Sprintf(`{"service":"%s","unit":"%s","state":"%s"}`, svc.Name, svc.Unit, state),
+				Metadata:  marshalMetadata(map[string]string{"service": svc.Name, "unit": svc.Unit, "state": state}),
 				CreatedAt: now,
 			})
 		case stateActive, stateRunning:
@@ -133,7 +136,7 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 			Title:     "High CPU usage",
 			Message:   fmt.Sprintf("CPU usage is %.1f%% (threshold: %.0f%%)", metrics.CPUPercent, cpuAlertThreshold),
 			Severity:  "warn",
-			Metadata:  fmt.Sprintf(`{"cpuPercent":%.1f}`, metrics.CPUPercent),
+			Metadata:  marshalMetadata(map[string]any{"cpuPercent": metrics.CPUPercent}),
 			CreatedAt: now,
 		})
 	} else if metrics.CPUPercent >= 0 {
@@ -148,7 +151,7 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 			Title:     "High memory usage",
 			Message:   fmt.Sprintf("Memory usage is %.1f%% (threshold: %.0f%%)", metrics.MemPercent, memAlertThreshold),
 			Severity:  "warn",
-			Metadata:  fmt.Sprintf(`{"memPercent":%.1f}`, metrics.MemPercent),
+			Metadata:  marshalMetadata(map[string]any{"memPercent": metrics.MemPercent}),
 			CreatedAt: now,
 		})
 	} else {
@@ -163,7 +166,7 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 			Title:     "High disk usage",
 			Message:   fmt.Sprintf("Disk usage is %.1f%% (threshold: %.0f%%)", metrics.DiskPercent, diskAlertThreshold),
 			Severity:  "error",
-			Metadata:  fmt.Sprintf(`{"diskPercent":%.1f}`, metrics.DiskPercent),
+			Metadata:  marshalMetadata(map[string]any{"diskPercent": metrics.DiskPercent}),
 			CreatedAt: now,
 		})
 	} else {
@@ -194,7 +197,10 @@ func (hc *HealthChecker) resolveAlert(ctx context.Context, dedupeKey string, at 
 	}
 	alert, err := hc.store.ResolveOpsAlert(ctx, dedupeKey, at)
 	if err != nil {
-		return // Not found is expected when no prior alert exists.
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("health check: resolve alert failed", "dedupeKey", dedupeKey, "error", err)
+		}
+		return
 	}
 	if hc.publish != nil {
 		hc.publish("ops.alerts.updated", map[string]any{
@@ -202,4 +208,13 @@ func (hc *HealthChecker) resolveAlert(ctx context.Context, dedupeKey string, at 
 			"alert":     alert,
 		})
 	}
+}
+
+func marshalMetadata(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Warn("failed to marshal metadata", "error", err)
+		return "{}"
+	}
+	return string(b)
 }

@@ -4,6 +4,9 @@ LINT        = golangci-lint
 BINARY      = build/sentinel
 ENTRY       = ./cmd/sentinel
 CLIENT      = client
+DOCS_CHECK  = ./scripts/docs-check.sh
+LINT_GOCACHE ?= /tmp/go-cache
+LINT_CACHE   ?= /tmp/golangci-lint-cache
 
 .DEFAULT_GOAL := help
 
@@ -49,12 +52,31 @@ client-install: check-npm ## Install frontend dependencies
 
 .PHONY: test
 test: check-go ## Run Go tests
-	$(GOCMD) test -v ./...
+	$(GOCMD) test ./...
+
+.PHONY: test-unit
+test-unit: check-go check-npm ## Run fast unit test layer (Go + client)
+	$(GOCMD) test ./...
+	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
+	$(NPM) --prefix $(CLIENT) run test:unit
+
+.PHONY: test-contract
+test-contract: check-go ## Run API contract tests
+	$(GOCMD) test -tags=contract -run '^TestContract' ./...
+
+.PHONY: test-integration
+test-integration: check-go ## Run integration test layer
+	$(GOCMD) test -tags=integration -run '^TestIntegration' ./...
 
 .PHONY: test-client
 test-client: check-npm ## Run frontend tests
 	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
 	$(NPM) --prefix $(CLIENT) test
+
+.PHONY: test-e2e
+test-e2e: check-npm ## Run frontend end-to-end component flows
+	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
+	$(NPM) --prefix $(CLIENT) run test:e2e
 
 .PHONY: test-coverage
 test-coverage: check-go ## Run tests with race detection and coverage
@@ -64,21 +86,42 @@ test-coverage: check-go ## Run tests with race detection and coverage
 benchmark: check-go ## Run Go benchmarks
 	$(GOCMD) test -run=^$$ -bench=. -benchmem ./...
 
+.PHONY: test-perf
+test-perf: benchmark ## Run performance benchmark suite
+
 .PHONY: fmt
 fmt: check-go check-lint ## Format Go code
-	$(LINT) fmt
+	GOCACHE=$(LINT_GOCACHE) GOLANGCI_LINT_CACHE=$(LINT_CACHE) $(LINT) fmt
 
 .PHONY: lint
 lint: check-go check-lint ## Lint Go code
-	$(LINT) run
+	GOCACHE=$(LINT_GOCACHE) GOLANGCI_LINT_CACHE=$(LINT_CACHE) $(LINT) run
 
 .PHONY: lint-client
 lint-client: check-npm ## Lint frontend code
 	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
 	$(NPM) --prefix $(CLIENT) run lint
 
+.PHONY: tidy
+tidy: check-go ## Tidy go.mod and go.sum
+	$(GOCMD) mod tidy
+
+.PHONY: vuln
+vuln: check-go ## Run vulnerability scanner
+	govulncheck ./...
+
+.PHONY: check-docs
+check-docs: ## Validate docs navigation and file references
+	$(DOCS_CHECK)
+
+.PHONY: ci-fast
+ci-fast: fmt lint lint-client test-unit test-contract build-server check-docs ## Fast PR gate
+
+.PHONY: ci-full
+ci-full: ci-fast test-integration test-e2e test-coverage test-perf ## Full mainline gate
+
 .PHONY: ci
-ci: fmt lint lint-client test test-client build-server ## Run full CI pipeline
+ci: ci-full ## Run full CI pipeline
 
 # ─── Install ─────────────────────────────────────────────────
 

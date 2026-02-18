@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -650,7 +651,7 @@ func uninstallSystemAutoUpdateLinux(opts UninstallUserAutoUpdateOptions) error {
 }
 
 func runSystemctlUser(args ...string) error {
-	cmd := exec.Command("systemctl", append([]string{"--user"}, args...)...)
+	cmd := exec.CommandContext(context.Background(), "systemctl", append([]string{"--user"}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
@@ -663,7 +664,7 @@ func runSystemctlUser(args ...string) error {
 }
 
 func runSystemctlSystem(args ...string) error {
-	cmd := exec.Command("systemctl", args...)
+	cmd := exec.CommandContext(context.Background(), "systemctl", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
@@ -676,12 +677,12 @@ func runSystemctlSystem(args ...string) error {
 }
 
 func isSystemctlUserActive(unit string) bool {
-	cmd := exec.Command("systemctl", "--user", "is-active", "--quiet", unit)
+	cmd := exec.CommandContext(context.Background(), "systemctl", "--user", "is-active", "--quiet", unit)
 	return cmd.Run() == nil
 }
 
 func isSystemctlSystemActive(unit string) bool {
-	cmd := exec.Command("systemctl", "is-active", "--quiet", unit)
+	cmd := exec.CommandContext(context.Background(), "systemctl", "is-active", "--quiet", unit)
 	return cmd.Run() == nil
 }
 
@@ -722,7 +723,7 @@ func withSystemdUserBusHint(err error) error {
 }
 
 func readSystemctlState(args ...string) string {
-	cmd := exec.Command("systemctl", append([]string{"--user"}, args...)...)
+	cmd := exec.CommandContext(context.Background(), "systemctl", append([]string{"--user"}, args...)...)
 	out, err := cmd.CombinedOutput()
 	state := strings.TrimSpace(string(out))
 	if err != nil {
@@ -735,7 +736,7 @@ func readSystemctlState(args ...string) string {
 }
 
 func readSystemctlSystemState(args ...string) string {
-	cmd := exec.Command("systemctl", args...)
+	cmd := exec.CommandContext(context.Background(), "systemctl", args...)
 	out, err := cmd.CombinedOutput()
 	state := strings.TrimSpace(string(out))
 	if err != nil {

@@ -1,0 +1,35 @@
+name: Nightly Quality
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - run: npm ci --prefix client
+      - run: npm --prefix client run lint
+      - run: npm --prefix client run test:all
+      - run: go test -v ./...
+      - run: go test -tags=contract -run '^TestContract' -v ./...
+      - run: go test -tags=integration -run '^TestIntegration' -v ./...
+      - run: go test -race ./...
+      - run: go test -run=^$ -bench=. -benchmem ./...
+      - run: ./scripts/docs-check.sh

@@ -26,18 +26,21 @@ Thank you for contributing to Sentinel. We prioritize reliability, clear UX, and
 - Add or update tests alongside code changes.
 - Run the quality pipeline before opening or updating a PR:
   ```bash
-  make fmt
-  make lint
-  make lint-client
-  make test
-  make test-client
+  make ci-fast
   ```
 - For broader verification, also run:
   ```bash
-  make test-coverage
-  make build
+  make ci-full
   ```
-- `make ci` is the full local gate and should pass before merge.
+- Targeted test layers are available when iterating:
+  ```bash
+  make test-unit
+  make test-contract
+  make test-integration
+  make test-e2e
+  make test-perf
+  ```
+- `make ci` remains the full local gate and should pass before merge.
 
 ## Coding and Testing Expectations
 

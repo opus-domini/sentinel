@@ -2,8 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -16,10 +14,8 @@ import (
 
 const (
 	defaultTickInterval = 5 * time.Second
-	executionTimeout    = 5 * time.Minute
 	stepTimeout         = 30 * time.Second
 	catchUpWindow       = 24 * time.Hour
-	stateFailed         = "failed"
 )
 
 // Options configures the scheduler service.
@@ -135,139 +131,30 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 }
 
 func (s *Service) executeRunbook(job store.OpsRunbookRun, scheduleID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), executionTimeout)
-	defer cancel()
-
-	now := time.Now().UTC()
-
-	// Mark as running.
-	runningJob, _ := s.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
-		RunID:          job.ID,
-		Status:         "running",
-		CompletedSteps: 0,
-		CurrentStep:    job.CurrentStep,
-		StartedAt:      now.Format(time.RFC3339),
-	})
-	s.publish(events.TypeOpsJob, map[string]any{
-		"globalRev": now.UnixMilli(),
-		"job":       runningJob,
-	})
-
-	// Fetch runbook steps.
-	runbooks, err := s.store.ListOpsRunbooks(ctx)
-	if err != nil {
-		s.finishRunbookRun(ctx, job.ID, scheduleID, stateFailed, 0, "", err.Error(), "[]")
-		return
-	}
-	var steps []runbook.Step
-	for _, rb := range runbooks {
-		if rb.ID == job.RunbookID {
-			for _, st := range rb.Steps {
-				steps = append(steps, runbook.Step{
-					Type:        st.Type,
-					Title:       st.Title,
-					Command:     st.Command,
-					Check:       st.Check,
-					Description: st.Description,
-				})
+	runbook.Run(s.store, s.emitEvent, runbook.RunParams{
+		Job:         job,
+		Source:      "scheduler",
+		StepTimeout: stepTimeout,
+		ExtraMetadata: map[string]string{
+			"scheduleId": scheduleID,
+		},
+		OnFinish: func(ctx context.Context, status string) {
+			finished := time.Now().UTC()
+			if err := s.store.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, "", true); err != nil {
+				slog.Warn("scheduler: update schedule after run", "err", err)
 			}
-			break
-		}
-	}
-
-	executor := runbook.NewExecutor(nil, stepTimeout)
-	var accumulated []store.OpsRunbookStepResult
-	progress := func(completed int, stepTitle string, result runbook.StepResult) {
-		sr := store.OpsRunbookStepResult{
-			StepIndex:  result.StepIndex,
-			Title:      result.Title,
-			Type:       result.Type,
-			Output:     result.Output,
-			Error:      result.Error,
-			DurationMs: result.Duration.Milliseconds(),
-		}
-		accumulated = append(accumulated, sr)
-		stepResultsJSON, _ := json.Marshal(accumulated)
-		updated, _ := s.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
-			RunID:          job.ID,
-			Status:         "running",
-			CompletedSteps: completed,
-			CurrentStep:    stepTitle,
-			StepResults:    string(stepResultsJSON),
-			StartedAt:      now.Format(time.RFC3339),
-		})
-		s.publish(events.TypeOpsJob, map[string]any{
-			"globalRev": time.Now().UTC().UnixMilli(),
-			"job":       updated,
-		})
-	}
-
-	results, execErr := executor.Execute(ctx, steps, progress)
-
-	finalStatus := "succeeded"
-	errMsg := ""
-	if execErr != nil {
-		finalStatus = stateFailed
-		errMsg = execErr.Error()
-	}
-	lastStep := ""
-	if len(results) > 0 {
-		lastStep = results[len(results)-1].Title
-	}
-	stepResultsJSON, _ := json.Marshal(accumulated)
-
-	s.finishRunbookRun(ctx, job.ID, scheduleID, finalStatus, len(results), lastStep, errMsg, string(stepResultsJSON))
+			s.publish(events.TypeScheduleUpdated, map[string]any{
+				"action":   "run_completed",
+				"schedule": scheduleID,
+				"jobId":    job.ID,
+				"status":   status,
+			})
+		},
+	})
 }
 
-func (s *Service) finishRunbookRun(ctx context.Context, runID, scheduleID, status string, completed int, lastStep, errMsg, stepResultsJSON string) {
-	finished := time.Now().UTC()
-	_, _ = s.store.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
-		RunID:          runID,
-		Status:         status,
-		CompletedSteps: completed,
-		CurrentStep:    lastStep,
-		Error:          errMsg,
-		StepResults:    stepResultsJSON,
-		FinishedAt:     finished.Format(time.RFC3339),
-	})
-
-	globalRev := finished.UnixMilli()
-	updatedJob, _ := s.store.GetOpsRunbookRun(ctx, runID)
-	s.publish(events.TypeOpsJob, map[string]any{
-		"globalRev": globalRev,
-		"job":       updatedJob,
-	})
-
-	severity := "info"
-	if status == stateFailed {
-		severity = "error"
-	}
-	te, _ := s.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
-		Source:    "scheduler",
-		EventType: "runbook." + status,
-		Severity:  severity,
-		Resource:  runID,
-		Message:   fmt.Sprintf("Scheduled runbook run %s", status),
-		Details:   errMsg,
-		Metadata:  fmt.Sprintf(`{"jobId":"%s","scheduleId":"%s","status":"%s"}`, runID, scheduleID, status),
-		CreatedAt: finished,
-	})
-	if te.ID > 0 {
-		s.publish(events.TypeOpsTimeline, map[string]any{
-			"globalRev": globalRev,
-			"event":     te,
-		})
-	}
-
-	// Update schedule with final run status.
-	_ = s.store.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, "", true)
-
-	s.publish(events.TypeScheduleUpdated, map[string]any{
-		"action":   "run_completed",
-		"schedule": scheduleID,
-		"jobId":    runID,
-		"status":   status,
-	})
+func (s *Service) emitEvent(eventType string, payload map[string]any) {
+	s.publish(eventType, payload)
 }
 
 func (s *Service) computeNextRun(sched store.OpsSchedule) (string, bool) {
@@ -324,7 +211,9 @@ func (s *Service) catchUpMissedRuns(ctx context.Context) {
 func (s *Service) recomputeNextRun(ctx context.Context, sched store.OpsSchedule) {
 	if sched.ScheduleType == "once" {
 		// One-time schedule that's past due and beyond catch-up: disable it.
-		_ = s.store.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false)
+		if err := s.store.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); err != nil {
+			slog.Warn("scheduler: disable one-time schedule", "schedule", sched.ID, "err", err)
+		}
 		return
 	}
 
@@ -338,7 +227,9 @@ func (s *Service) recomputeNextRun(ctx context.Context, sched store.OpsSchedule)
 		return
 	}
 	nextRun := cronSched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
-	_ = s.store.UpdateScheduleAfterRun(ctx, sched.ID, sched.LastRunAt, sched.LastRunStatus, nextRun, true)
+	if err := s.store.UpdateScheduleAfterRun(ctx, sched.ID, sched.LastRunAt, sched.LastRunStatus, nextRun, true); err != nil {
+		slog.Warn("scheduler: recompute next run", "schedule", sched.ID, "err", err)
+	}
 }
 
 func (s *Service) publish(eventType string, payload map[string]any) {

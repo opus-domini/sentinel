@@ -5,8 +5,8 @@ import { Menu, RefreshCw } from 'lucide-react'
 import type {
   OpsHostMetrics,
   OpsMetricsResponse,
-  OpsOverview,
   OpsOverviewResponse,
+  OpsWsMessage,
 } from '@/types'
 import type { MetricsSnapshot } from '@/lib/MetricsHistory'
 import AppShell from '@/components/layout/AppShell'
@@ -50,6 +50,46 @@ function toSnapshot(m: OpsHostMetrics): MetricsSnapshot {
     numGoroutines: m.numGoroutines,
     goMemAllocMB: m.goMemAllocMB,
   }
+}
+
+function formatCollectedAt(value: string): string {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return '-'
+  }
+  return new Date(parsed).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+}
+
+type MetricsFooterSummaryParams = {
+  overviewError: string
+  metricsError: string
+  overviewLoading: boolean
+  metricsLoading: boolean
+  collectedAt: string
+}
+
+function buildMetricsFooterSummary({
+  overviewError,
+  metricsError,
+  overviewLoading,
+  metricsLoading,
+  collectedAt,
+}: MetricsFooterSummaryParams): string {
+  if (overviewError.trim() !== '') {
+    return overviewError
+  }
+  if (metricsError.trim() !== '') {
+    return metricsError
+  }
+  if (overviewLoading || metricsLoading) {
+    return 'Loading metrics...'
+  }
+  return `Sample ${formatCollectedAt(collectedAt)}`
 }
 
 type MetricsTab = 'system' | 'runtime'
@@ -122,34 +162,27 @@ function MetricsPage() {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const typed = message as {
-        type?: string
-        payload?: { overview?: OpsOverview; metrics?: OpsHostMetrics }
-      }
-      switch (typed.type) {
+      const msg = message as OpsWsMessage
+      switch (msg.type) {
         case 'ops.overview.updated':
           if (
-            typed.payload?.overview != null &&
-            typeof typed.payload.overview === 'object'
+            msg.payload.overview != null &&
+            typeof msg.payload.overview === 'object'
           ) {
             queryClient.setQueryData(
               OPS_OVERVIEW_QUERY_KEY,
-              typed.payload.overview,
+              msg.payload.overview,
             )
           } else {
             void refreshOverview()
           }
           break
-        case 'ops.metrics.updated':
-          if (
-            typed.payload?.metrics != null &&
-            typeof typed.payload.metrics === 'object'
-          ) {
-            const m = typed.payload.metrics
-            historyRef.current.push(toSnapshot(m))
-            queryClient.setQueryData(OPS_METRICS_QUERY_KEY, m)
-          }
+        case 'ops.metrics.updated': {
+          const m = msg.payload.metrics
+          historyRef.current.push(toSnapshot(m))
+          queryClient.setQueryData(OPS_METRICS_QUERY_KEY, m)
           break
+        }
         default:
           break
       }
@@ -162,6 +195,14 @@ function MetricsPage() {
     tokenRequired,
     onMessage: handleWSMessage,
   })
+  const footerSummary = buildMetricsFooterSummary({
+    overviewError,
+    metricsError,
+    overviewLoading,
+    metricsLoading,
+    collectedAt: metrics?.collectedAt ?? '',
+  })
+  const footerCadence = metrics != null ? 'Live · 2s' : 'waiting'
 
   const history = historyRef.current
   const cpuData = history.field('cpuPercent')
@@ -217,11 +258,13 @@ function MetricsPage() {
         </header>
 
         <div className="grid min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden p-3">
-          <div className="flex gap-1">
+          <div className="flex gap-1" role="tablist">
             {(['system', 'runtime'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
+                role="tab"
+                aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   'rounded-md border px-3 py-1 text-[11px] font-medium capitalize transition-colors',
@@ -239,14 +282,44 @@ function MetricsPage() {
             <ScrollArea className="h-full min-h-0">
               <div className="grid gap-3 p-2">
                 {metricsLoading && (
-                  <p className="text-[12px] text-muted-foreground">
-                    Loading metrics...
-                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {Array.from({ length: activeTab === 'system' ? 4 : 4 }).map(
+                      (_, idx) => (
+                        <div
+                          key={`metrics-skeleton-${idx}`}
+                          className="h-28 animate-pulse rounded-lg border border-border-subtle bg-surface-elevated"
+                        />
+                      ),
+                    )}
+                  </div>
                 )}
                 {metricsError !== '' && (
-                  <p className="text-[12px] text-destructive-foreground">
-                    {metricsError}
-                  </p>
+                  <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3">
+                    <p className="text-[12px] text-destructive-foreground">
+                      {metricsError}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-fit text-[11px]"
+                      onClick={refreshPage}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                )}
+                {!metricsLoading && metrics == null && metricsError === '' && (
+                  <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
+                    <p>No metric sample received yet.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-fit text-[11px]"
+                      onClick={refreshPage}
+                    >
+                      Refresh metrics
+                    </Button>
+                  </div>
                 )}
                 {!metricsLoading &&
                   metrics != null &&
@@ -413,16 +486,8 @@ function MetricsPage() {
         </div>
 
         <footer className="flex items-center justify-between gap-2 overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground">
-          <span className="min-w-0 flex-1 truncate">
-            {overviewError !== ''
-              ? overviewError
-              : overviewLoading
-                ? 'Loading metrics...'
-                : 'Metrics connected'}
-          </span>
-          <span className="shrink-0 whitespace-nowrap">
-            {metrics != null ? 'Live · 2s' : 'waiting'}
-          </span>
+          <span className="min-w-0 flex-1 truncate">{footerSummary}</span>
+          <span className="shrink-0 whitespace-nowrap">{footerCadence}</span>
         </footer>
       </main>
     </AppShell>

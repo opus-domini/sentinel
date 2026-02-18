@@ -60,7 +60,7 @@ func (s *Store) initSchedulerSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_ops_schedules_runbook
 		ON ops_schedules (runbook_id)`
 
-	_, err := s.db.Exec(schema)
+	_, err := s.db.ExecContext(context.Background(), schema)
 	return err
 }
 

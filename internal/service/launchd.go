@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -447,7 +448,7 @@ func launchdJobTarget(scope, label string) string {
 }
 
 func runLaunchctl(args ...string) error {
-	cmd := exec.Command("launchctl", args...)
+	cmd := exec.CommandContext(context.Background(), "launchctl", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
@@ -460,7 +461,7 @@ func runLaunchctl(args ...string) error {
 }
 
 func runLaunchctlOutput(args ...string) (string, error) {
-	cmd := exec.Command("launchctl", args...)
+	cmd := exec.CommandContext(context.Background(), "launchctl", args...)
 	out, err := cmd.CombinedOutput()
 	msg := strings.TrimSpace(string(out))
 	if err != nil {

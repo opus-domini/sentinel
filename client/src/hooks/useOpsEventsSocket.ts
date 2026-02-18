@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ConnectionState } from '@/types'
 import { buildWSProtocols } from '@/lib/wsAuth'
+import { createReconnect } from '@/lib/wsReconnect'
 
 type UseOpsEventsSocketOptions = {
   token: string
@@ -16,6 +17,11 @@ export function useOpsEventsSocket({
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('connecting')
 
+  const onMessageRef = useRef(onMessage)
+  useEffect(() => {
+    onMessageRef.current = onMessage
+  }, [onMessage])
+
   useEffect(() => {
     if (tokenRequired && token.trim() === '') {
       setConnectionState('disconnected')
@@ -25,6 +31,7 @@ export function useOpsEventsSocket({
     let disposed = false
     let socket: WebSocket | null = null
     let retryTimer: number | null = null
+    const reconnect = createReconnect()
 
     const clearRetry = () => {
       if (retryTimer != null) {
@@ -45,6 +52,7 @@ export function useOpsEventsSocket({
 
       socket.onopen = () => {
         if (disposed) return
+        reconnect.reset()
         setConnectionState('connected')
       }
 
@@ -57,7 +65,7 @@ export function useOpsEventsSocket({
           return
         }
         if (typeof message !== 'object' || message === null) return
-        onMessage(message)
+        onMessageRef.current(message)
       }
 
       socket.onerror = () => {
@@ -70,7 +78,7 @@ export function useOpsEventsSocket({
         if (disposed) return
         setConnectionState('disconnected')
         clearRetry()
-        retryTimer = window.setTimeout(connect, 1_200)
+        retryTimer = window.setTimeout(connect, reconnect.next())
       }
     }
 
@@ -86,7 +94,7 @@ export function useOpsEventsSocket({
         }
       }
     }
-  }, [token, tokenRequired, onMessage])
+  }, [token, tokenRequired])
 
   return connectionState
 }

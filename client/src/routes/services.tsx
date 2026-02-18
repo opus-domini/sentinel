@@ -23,7 +23,6 @@ import {
 import type {
   OpsBrowseServicesResponse,
   OpsBrowsedService,
-  OpsOverview,
   OpsOverviewResponse,
   OpsServiceAction,
   OpsServiceActionResponse,
@@ -35,6 +34,7 @@ import type {
   OpsTimelineEvent,
   OpsUnitActionResponse,
   OpsUnitLogsResponse,
+  OpsWsMessage,
 } from '@/types'
 import type { ParsedLogLine } from '@/lib/log-parser'
 import AppShell from '@/components/layout/AppShell'
@@ -160,6 +160,11 @@ function ServicesPage() {
     servicesQuery.error != null
       ? toErrorMessage(servicesQuery.error, 'failed to load services')
       : ''
+  const overviewLoading = overviewQuery.isLoading
+  const overviewError =
+    overviewQuery.error != null
+      ? toErrorMessage(overviewQuery.error, 'failed to load overview')
+      : ''
   const browseLoading = browseQuery.isLoading
   const browseError =
     browseQuery.error != null
@@ -224,19 +229,13 @@ function ServicesPage() {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const typed = message as {
-        type?: string
-        payload?: {
-          services?: Array<OpsServiceStatus>
-          overview?: OpsOverview
-        }
-      }
-      switch (typed.type) {
+      const msg = message as OpsWsMessage
+      switch (msg.type) {
         case 'ops.services.updated':
-          if (Array.isArray(typed.payload?.services)) {
+          if (Array.isArray(msg.payload.services)) {
             queryClient.setQueryData(
               OPS_SERVICES_QUERY_KEY,
-              typed.payload.services,
+              msg.payload.services,
             )
           } else {
             void refreshServices()
@@ -245,12 +244,12 @@ function ServicesPage() {
           break
         case 'ops.overview.updated':
           if (
-            typed.payload?.overview != null &&
-            typeof typed.payload.overview === 'object'
+            msg.payload.overview != null &&
+            typeof msg.payload.overview === 'object'
           ) {
             queryClient.setQueryData(
               OPS_OVERVIEW_QUERY_KEY,
-              typed.payload.overview,
+              msg.payload.overview,
             )
           } else {
             void refreshOverview()
@@ -701,41 +700,57 @@ function ServicesPage() {
 
         <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2 overflow-hidden p-2 md:gap-3 md:p-3">
           <section>
-            <div className="hidden gap-2 md:grid md:grid-cols-3">
-              <MetricCard label="Total" value={stats.total} />
-              <MetricCard label="Active" value={stats.active} />
-              <MetricCard
-                label="Failed"
-                value={stats.failed}
-                alert={Number(stats.failed) > 0}
-              />
-            </div>
-            <div className="flex items-center justify-center gap-4 rounded-lg border border-border-subtle bg-surface-elevated px-2 py-1.5 md:hidden">
-              <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Layers className="h-3.5 w-3.5" />
-                <span className="font-semibold text-foreground">
-                  {stats.total}
-                </span>
-                total
-              </span>
-              <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                <span className="font-semibold">{stats.active}</span>
-                active
-              </span>
-              <span
-                className={cn(
-                  'flex items-center gap-1.5 text-[11px]',
-                  Number(stats.failed) > 0
-                    ? 'text-red-400'
-                    : 'text-muted-foreground',
-                )}
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-                <span className="font-semibold">{stats.failed}</span>
-                failed
-              </span>
-            </div>
+            {overviewLoading ? (
+              <>
+                <div className="hidden gap-2 md:grid md:grid-cols-3">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <div
+                      key={`svc-metric-skeleton-${idx}`}
+                      className="h-20 animate-pulse rounded-lg border border-border-subtle bg-surface-elevated"
+                    />
+                  ))}
+                </div>
+                <div className="h-9 animate-pulse rounded-lg border border-border-subtle bg-surface-elevated md:hidden" />
+              </>
+            ) : (
+              <>
+                <div className="hidden gap-2 md:grid md:grid-cols-3">
+                  <MetricCard label="Total" value={stats.total} />
+                  <MetricCard label="Active" value={stats.active} />
+                  <MetricCard
+                    label="Failed"
+                    value={stats.failed}
+                    alert={Number(stats.failed) > 0}
+                  />
+                </div>
+                <div className="flex items-center justify-center gap-4 rounded-lg border border-border-subtle bg-surface-elevated px-2 py-1.5 md:hidden">
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Layers className="h-3.5 w-3.5" />
+                    <span className="font-semibold text-foreground">
+                      {stats.total}
+                    </span>
+                    total
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{stats.active}</span>
+                    active
+                  </span>
+                  <span
+                    className={cn(
+                      'flex items-center gap-1.5 text-[11px]',
+                      Number(stats.failed) > 0
+                        ? 'text-red-400'
+                        : 'text-muted-foreground',
+                    )}
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{stats.failed}</span>
+                    failed
+                  </span>
+                </div>
+              </>
+            )}
           </section>
 
           <section className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
@@ -744,6 +759,7 @@ function ServicesPage() {
                 value={svcStateFilter}
                 onChange={(e) => setSvcStateFilter(e.target.value)}
                 className="h-7 flex-1 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
+                aria-label="Filter by state"
               >
                 <option value="all">All states</option>
                 <option value="active">Active</option>
@@ -754,6 +770,7 @@ function ServicesPage() {
                 value={svcScopeFilter}
                 onChange={(e) => setSvcScopeFilter(e.target.value)}
                 className="h-7 flex-1 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
+                aria-label="Filter by scope"
               >
                 <option value="all">All scopes</option>
                 <option value="user">user</option>
@@ -799,6 +816,13 @@ function ServicesPage() {
             </div>
             <ScrollArea className="h-full min-h-0">
               <div className="grid gap-1 p-2">
+                {browseLoading &&
+                  Array.from({ length: 6 }).map((_, idx) => (
+                    <div
+                      key={`svc-row-skeleton-${idx}`}
+                      className="h-24 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+                    />
+                  ))}
                 {filteredBrowseServices.map((svc) => {
                   const pending = browsePendingActions[svc.unit]
                   const rowBusy = pending !== undefined
@@ -941,11 +965,37 @@ function ServicesPage() {
                   )
                 })}
                 {!browseLoading && filteredBrowseServices.length === 0 && (
-                  <p className="p-2 text-[12px] text-muted-foreground">
-                    {browseServices.length === 0
-                      ? 'No services discovered on this host.'
-                      : 'No services match filters.'}
-                  </p>
+                  <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
+                    <p>
+                      {browseServices.length === 0
+                        ? 'No services discovered on this host yet.'
+                        : 'No services match the current filters.'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {browseServices.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px]"
+                          onClick={() => {
+                            setSvcSearch('')
+                            setSvcStateFilter('all')
+                            setSvcScopeFilter('all')
+                          }}
+                        >
+                          Clear filters
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px]"
+                        onClick={() => void refreshBrowse()}
+                      >
+                        Refresh discovery
+                      </Button>
+                    </div>
+                  </div>
                 )}
                 {browseError !== '' && (
                   <p className="px-2 pb-2 text-[12px] text-destructive-foreground">
@@ -957,11 +1007,12 @@ function ServicesPage() {
           </section>
         </div>
 
-        <footer className="flex items-center justify-between gap-2 overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground">
+        <footer className="flex items-center overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground">
           <span className="min-w-0 flex-1 truncate">
-            {filteredBrowseServices.length}/{browseServices.length} services
+            {overviewError !== ''
+              ? overviewError
+              : `${filteredBrowseServices.length}/${browseServices.length} services`}
           </span>
-          <ConnectionBadge state={connectionState} />
         </footer>
       </main>
 

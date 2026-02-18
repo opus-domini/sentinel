@@ -7,12 +7,18 @@ type ConnectionBadgeProps = {
 }
 
 export default function ConnectionBadge({ state }: ConnectionBadgeProps) {
+  const label = connectionLabel(state)
   return (
-    <TooltipHelper content={connectionLabel(state)}>
+    <TooltipHelper content={label}>
       <span
-        className={`inline-block h-2 w-2 cursor-pointer rounded-full ${connectionDotClass(state)}`}
-        aria-label={connectionLabel(state)}
-      />
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border-subtle bg-surface-elevated"
+        role="status"
+        aria-label={label}
+      >
+        <span
+          className={`inline-block h-2 w-2 rounded-full ${connectionDotClass(state)}`}
+        />
+      </span>
     </TooltipHelper>
   )
 }

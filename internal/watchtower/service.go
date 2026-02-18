@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	defaultTickInterval  = time.Second
-	defaultCaptureLines  = 80
-	defaultCaptureTimout = 150 * time.Millisecond
-	defaultJournalRows   = 5000
-	defaultTimelineRows  = 20000
+	defaultTickInterval   = time.Second
+	defaultCaptureLines   = 80
+	defaultCaptureTimeout = 150 * time.Millisecond
+	defaultJournalRows    = 5000
+	defaultTimelineRows   = 20000
 
 	runtimeGlobalRevKey          = "global_rev"
 	runtimeCollectTotalKey       = "collect_total"
@@ -79,7 +79,7 @@ func New(st *store.Store, tm tmuxClient, options Options) *Service {
 		options.CaptureLines = defaultCaptureLines
 	}
 	if options.CaptureTimeout <= 0 {
-		options.CaptureTimeout = defaultCaptureTimout
+		options.CaptureTimeout = defaultCaptureTimeout
 	}
 	if options.JournalRows <= 0 {
 		options.JournalRows = defaultJournalRows

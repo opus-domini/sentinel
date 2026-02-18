@@ -293,3 +293,72 @@ func TestBearerToken(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRemoteExposure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		listenAddr     string
+		token          string
+		allowedOrigins []string
+		wantErr        error
+	}{
+		{
+			name:           "localhost without token is allowed",
+			listenAddr:     "127.0.0.1:4040",
+			token:          "",
+			allowedOrigins: nil,
+		},
+		{
+			name:           "localhost hostname is allowed",
+			listenAddr:     "localhost:4040",
+			token:          "",
+			allowedOrigins: nil,
+		},
+		{
+			name:           "all interfaces requires token and origin",
+			listenAddr:     ":4040",
+			token:          "",
+			allowedOrigins: nil,
+			wantErr:        ErrRemoteToken,
+		},
+		{
+			name:           "remote ip requires token and origin",
+			listenAddr:     "192.168.1.12:4040",
+			token:          "",
+			allowedOrigins: []string{},
+			wantErr:        ErrRemoteToken,
+		},
+		{
+			name:           "remote with token only still invalid",
+			listenAddr:     "0.0.0.0:4040",
+			token:          "secret",
+			allowedOrigins: nil,
+			wantErr:        ErrRemoteOrigin,
+		},
+		{
+			name:           "remote with token and origin is valid",
+			listenAddr:     "0.0.0.0:4040",
+			token:          "secret",
+			allowedOrigins: []string{"https://sentinel.example.com"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateRemoteExposure(tt.listenAddr, tt.token, tt.allowedOrigins)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("ValidateRemoteExposure() unexpected error = %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ValidateRemoteExposure() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}

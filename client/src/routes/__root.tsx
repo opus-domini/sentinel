@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import ToastViewport from '@/components/toast/ToastViewport'
 import { Button } from '@/components/ui/button'
 import {
@@ -48,6 +49,7 @@ function TokenGateDialog({ onSubmit }: { onSubmit: (token: string) => void }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
+            aria-label="Authentication token"
           />
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={!draft.trim()}>
@@ -88,7 +90,9 @@ function RootComponent() {
         <ToastContext.Provider value={{ toasts, pushToast, dismissToast }}>
           <LayoutContext.Provider value={layout}>
             <TooltipProvider delayDuration={300}>
-              <Outlet />
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
               <ToastViewport toasts={toasts} onDismiss={dismissToast} />
             </TooltipProvider>
           </LayoutContext.Provider>

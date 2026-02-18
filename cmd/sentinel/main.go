@@ -33,6 +33,24 @@ func serve() int {
 	cfg := config.Load()
 	initLogger(cfg.LogLevel)
 
+	if err := security.ValidateRemoteExposure(cfg.ListenAddr, cfg.Token, cfg.AllowedOrigins); err != nil {
+		if errors.Is(err, security.ErrRemoteToken) {
+			slog.Error("security baseline check failed",
+				"listen", cfg.ListenAddr,
+				"token_required", cfg.Token != "",
+				"allowed_origins", len(cfg.AllowedOrigins),
+				"err", err,
+			)
+			return 1
+		}
+		slog.Warn("security baseline warning",
+			"listen", cfg.ListenAddr,
+			"token_required", cfg.Token != "",
+			"allowed_origins", len(cfg.AllowedOrigins),
+			"err", err,
+		)
+	}
+
 	guard := security.New(cfg.Token, cfg.AllowedOrigins)
 	eventHub := events.NewHub()
 
@@ -88,7 +106,7 @@ func serve() int {
 	healthChecker := ops.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
 		eventHub.Publish(events.NewEvent(eventType, payload))
 	}, 0)
-	healthChecker.Start()
+	healthChecker.Start(context.Background())
 
 	schedulerService := scheduler.New(st, scheduler.Options{
 		TickInterval: 5 * time.Second,

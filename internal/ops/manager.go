@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -693,7 +694,10 @@ func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, err
 	switch manager {
 	case managerSystemd:
 		for _, scope := range []string{scopeUser, scopeSystem} {
-			units, _ := m.discoverSystemdUnits(ctx, scope)
+			units, err := m.discoverSystemdUnits(ctx, scope)
+			if err != nil {
+				slog.Warn("service discovery failed", "manager", "systemd", "scope", scope, "err", err)
+			}
 			for _, u := range units {
 				if trackedUnits[strings.ToLower(u.Unit)] {
 					continue
@@ -704,7 +708,10 @@ func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, err
 			}
 		}
 	case managerLaunchd:
-		units, _ := m.discoverLaunchdUnits(ctx)
+		units, err := m.discoverLaunchdUnits(ctx)
+		if err != nil {
+			slog.Warn("service discovery failed", "manager", "launchd", "err", err)
+		}
 		for _, u := range units {
 			if trackedUnits[strings.ToLower(u.Unit)] {
 				continue
@@ -822,7 +829,10 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 	switch manager {
 	case managerSystemd:
 		for _, scope := range []string{scopeUser, scopeSystem} {
-			units, _ := m.discoverSystemdUnits(ctx, scope)
+			units, err := m.discoverSystemdUnits(ctx, scope)
+			if err != nil {
+				slog.Warn("service discovery failed", "manager", "systemd", "scope", scope, "err", err)
+			}
 			for _, u := range units {
 				key := strings.ToLower(u.Unit) + "\x00" + strings.ToLower(scope)
 				if seen[key] {
@@ -844,7 +854,10 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 			}
 		}
 	case managerLaunchd:
-		units, _ := m.discoverLaunchdUnits(ctx)
+		units, err := m.discoverLaunchdUnits(ctx)
+		if err != nil {
+			slog.Warn("service discovery failed", "manager", "launchd", "err", err)
+		}
 		for _, u := range units {
 			key := strings.ToLower(u.Unit) + "\x00" + strings.ToLower(scopeUser)
 			if seen[key] {

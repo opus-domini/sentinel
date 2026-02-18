@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// PresenceExpiry is the TTL for client presence heartbeats.
+const PresenceExpiry = 30 * time.Second
+
 const (
 	TypeReady            = "events.ready"
 	TypeTmuxSessions     = "tmux.sessions.updated"

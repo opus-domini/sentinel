@@ -7,7 +7,10 @@
     "dev": "vite dev --host",
     "build": "vite build && cp public/index.html dist/index.html && cp public/manifest.webmanifest dist/manifest.webmanifest && cp public/sw.js dist/sw.js && mkdir -p dist/icons && cp public/icons/* dist/icons/",
     "preview": "vite preview",
-    "test": "vitest run --passWithNoTests",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run --passWithNoTests --exclude \"src/**/*.e2e.test.ts?(x)\"",
+    "test:e2e": "vitest run --passWithNoTests --config vitest.e2e.config.ts",
+    "test:all": "npm run test:unit && npm run test:e2e",
     "lint": "eslint",
     "format": "prettier",
     "check": "prettier --write . && eslint --fix"

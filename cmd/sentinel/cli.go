@@ -840,6 +840,8 @@ func runRecoveryRestoreCommand(ctx commandContext, args []string) int {
 		case store.RecoveryJobFailed, store.RecoveryJobPartial:
 			writef(ctx.stderr, "restore finished with errors: %s\n", current.Error)
 			return 1
+		case store.RecoveryJobQueued, store.RecoveryJobRunning:
+			// Still in progress — continue polling.
 		}
 		time.Sleep(900 * time.Millisecond)
 	}

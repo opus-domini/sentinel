@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -370,7 +371,7 @@ func (s *Store) initWatchtowerSchema() error {
 	}
 
 	for _, stmt := range statements {
-		if _, err := s.db.Exec(stmt); err != nil {
+		if _, err := s.db.ExecContext(context.Background(), stmt); err != nil {
 			return err
 		}
 	}
@@ -963,6 +964,20 @@ func (s *Store) GetWatchtowerRuntimeValue(ctx context.Context, key string) (stri
 		return "", nil
 	}
 	return value, err
+}
+
+// WatchtowerGlobalRevision returns the current global revision counter,
+// or 0 if the value is absent or unparseable.
+func (s *Store) WatchtowerGlobalRevision(ctx context.Context) (int64, error) {
+	raw, err := s.GetWatchtowerRuntimeValue(ctx, "global_rev")
+	if err != nil {
+		return 0, err
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	return strconv.ParseInt(raw, 10, 64)
 }
 
 func (s *Store) InsertWatchtowerJournal(ctx context.Context, row WatchtowerJournalWrite) (int64, error) {

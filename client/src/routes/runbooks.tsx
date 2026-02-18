@@ -17,11 +17,11 @@ import {
 } from 'lucide-react'
 import type {
   OpsRunbook,
-  OpsRunbookRun,
   OpsRunbookRunResponse,
   OpsRunbooksResponse,
   OpsSchedule,
   OpsTimelineEvent,
+  OpsWsMessage,
 } from '@/types'
 import type { RunbookDraft } from '@/components/RunbookEditor'
 import type { RunbookStepDraft } from '@/components/RunbookStepEditor'
@@ -210,15 +210,10 @@ function RunbooksPage() {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const typed = message as {
-        type?: string
-        payload?: {
-          job?: OpsRunbookRun
-        }
-      }
-      if (typed.type === 'ops.job.updated') {
-        if (typed.payload?.job != null) {
-          const job = typed.payload.job
+      const msg = message as OpsWsMessage
+      switch (msg.type) {
+        case 'ops.job.updated': {
+          const job = msg.payload.job
           queryClient.setQueryData<OpsRunbooksResponse>(
             OPS_RUNBOOKS_QUERY_KEY,
             (previous) => {
@@ -229,12 +224,13 @@ function RunbooksPage() {
               }
             },
           )
-        } else {
-          void refreshRunbooks()
+          break
         }
-      }
-      if (typed.type === 'ops.schedule.updated') {
-        void refreshRunbooks()
+        case 'ops.schedule.updated':
+          void refreshRunbooks()
+          break
+        default:
+          break
       }
     },
     [queryClient, refreshRunbooks],

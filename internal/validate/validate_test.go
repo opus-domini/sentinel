@@ -84,3 +84,69 @@ func TestIconKey(t *testing.T) {
 		})
 	}
 }
+
+func TestWindowName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"alphanumeric", "mywindow", true},
+		{"with_space", "my window", true},
+		{"with_dots", "my.window", true},
+		{"with_hyphens", "my-window", true},
+		{"with_underscores", "my_window", true},
+		{"max_length_64", strings.Repeat("w", 64), true},
+		{"single_char", "a", true},
+		{"mixed", "Window 2.0-beta_rc", true},
+
+		{"empty", "", false},
+		{"too_long_65", strings.Repeat("w", 65), false},
+		{"with_slash", "win/dow", false},
+		{"with_semicolon", "win;dow", false},
+		{"with_colon", "win:dow", false},
+		{"with_at", "win@dow", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := WindowName(tt.input)
+			if got != tt.want {
+				t.Errorf("WindowName(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPaneTitle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"simple", "mytitle", true},
+		{"with_spaces", "my pane title", true},
+		{"with_special_chars", "pane: main (ssh)", true},
+		{"with_unicode", "café-terminal", true},
+		{"max_length_128", strings.Repeat("t", 128), true},
+		{"single_char", "x", true},
+
+		{"empty", "", false},
+		{"too_long_129", strings.Repeat("t", 129), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := PaneTitle(tt.input)
+			if got != tt.want {
+				t.Errorf("PaneTitle(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}

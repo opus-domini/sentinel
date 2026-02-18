@@ -44,6 +44,8 @@ If `listen = "0.0.0.0:4040"`:
 
 - Always set `token`.
 - Always set `allowed_origins`.
+- Sentinel refuses startup when `token` is missing on non-loopback binds.
+- Missing `allowed_origins` now emits a startup warning (recommended to configure).
 - Prefer private network overlay (VPN/Tailscale) or authenticated tunnel.
 - Avoid direct public exposure without additional network controls.
 

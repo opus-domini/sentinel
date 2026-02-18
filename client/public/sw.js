@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'sentinel-v1'
+const CACHE_VERSION = 'sentinel-v3'
 const CORE_CACHE = `${CACHE_VERSION}-core`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 const APP_SHELL = '/index.html'
@@ -33,6 +33,7 @@ self.addEventListener('activate', (event) => {
           .filter((key) => key !== CORE_CACHE && key !== RUNTIME_CACHE)
           .map((key) => caches.delete(key)),
       )
+      await pruneInvalidRuntimeCache()
       await self.clients.claim()
     })(),
   )
@@ -52,14 +53,77 @@ function shouldBypass(requestUrl) {
   )
 }
 
+function isRuntimeAssetPath(pathname) {
+  return (
+    pathname.startsWith('/assets/') ||
+    pathname.startsWith('/icons/') ||
+    pathname === '/manifest.webmanifest'
+  )
+}
+
+function isHTMLResponse(response) {
+  const contentType = response.headers.get('content-type') || ''
+  return contentType.toLowerCase().includes('text/html')
+}
+
+function shouldCacheResponse(request, response) {
+  if (!response || !response.ok) {
+    return false
+  }
+  if (request.mode === 'navigate') {
+    return true
+  }
+  const requestUrl = new URL(request.url)
+  if (isRuntimeAssetPath(requestUrl.pathname) && isHTMLResponse(response)) {
+    return false
+  }
+  return true
+}
+
+async function readValidCachedResponse(cache, request) {
+  const cached = await cache.match(request)
+  if (!cached) {
+    return null
+  }
+  const requestUrl = new URL(request.url)
+  if (
+    isRuntimeAssetPath(requestUrl.pathname) &&
+    (!cached.ok || isHTMLResponse(cached))
+  ) {
+    await cache.delete(request)
+    return null
+  }
+  return cached
+}
+
+async function pruneInvalidRuntimeCache() {
+  const cache = await caches.open(RUNTIME_CACHE)
+  const keys = await cache.keys()
+  await Promise.all(
+    keys.map(async (request) => {
+      const requestUrl = new URL(request.url)
+      if (!isRuntimeAssetPath(requestUrl.pathname)) {
+        return
+      }
+      const response = await cache.match(request)
+      if (!response || !response.ok || isHTMLResponse(response)) {
+        await cache.delete(request)
+      }
+    }),
+  )
+}
+
 async function networkFirst(request) {
   try {
     const response = await fetch(request)
-    const cache = await caches.open(RUNTIME_CACHE)
-    cache.put(request, response.clone())
+    if (shouldCacheResponse(request, response)) {
+      const cache = await caches.open(RUNTIME_CACHE)
+      cache.put(request, response.clone())
+    }
     return response
   } catch {
-    const cached = await caches.match(request)
+    const cache = await caches.open(RUNTIME_CACHE)
+    const cached = await readValidCachedResponse(cache, request)
     if (cached) {
       return cached
     }
@@ -69,10 +133,12 @@ async function networkFirst(request) {
 
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(RUNTIME_CACHE)
-  const cached = await cache.match(request)
+  const cached = await readValidCachedResponse(cache, request)
   const networkPromise = fetch(request)
     .then((response) => {
-      cache.put(request, response.clone())
+      if (shouldCacheResponse(request, response)) {
+        cache.put(request, response.clone())
+      }
       return response
     })
     .catch(() => null)
@@ -85,7 +151,10 @@ async function staleWhileRevalidate(request) {
   if (network) {
     return network
   }
-  return caches.match(APP_SHELL)
+  return new Response('offline', {
+    status: 503,
+    statusText: 'Service Unavailable',
+  })
 }
 
 self.addEventListener('fetch', (event) => {
@@ -103,11 +172,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  if (
-    requestUrl.pathname.startsWith('/assets/') ||
-    requestUrl.pathname.startsWith('/icons/') ||
-    requestUrl.pathname === '/manifest.webmanifest'
-  ) {
+  if (isRuntimeAssetPath(requestUrl.pathname)) {
     event.respondWith(staleWhileRevalidate(event.request))
   }
 })

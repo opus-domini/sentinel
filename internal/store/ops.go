@@ -247,7 +247,7 @@ func (s *Store) initOpsSchema() error {
 		)`,
 	}
 	for _, stmt := range statements {
-		if _, err := s.db.Exec(stmt); err != nil {
+		if _, err := s.db.ExecContext(context.Background(), stmt); err != nil {
 			return err
 		}
 	}
@@ -755,6 +755,15 @@ func (s *Store) GetOpsRunbookRun(ctx context.Context, runID string) (OpsRunbookR
 		return OpsRunbookRun{}, err
 	}
 	return item, nil
+}
+
+// GetOpsRunbook returns a single runbook by ID using a direct DB lookup.
+func (s *Store) GetOpsRunbook(ctx context.Context, id string) (OpsRunbook, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return OpsRunbook{}, sql.ErrNoRows
+	}
+	return s.getOpsRunbookByID(ctx, id)
 }
 
 func (s *Store) getOpsRunbookByID(ctx context.Context, runbookID string) (OpsRunbook, error) {

@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -399,7 +398,7 @@ func (h *Handler) handleEventsPresenceClientMessage(payload []byte) {
 		Visible:     msg.Visible,
 		Focused:     msg.Focused,
 		UpdatedAt:   now,
-		ExpiresAt:   now.Add(30 * time.Second),
+		ExpiresAt:   now.Add(events.PresenceExpiry),
 	}); err != nil {
 		slog.Warn("events ws presence write failed", "terminal", terminalID, "err", err)
 	}
@@ -431,7 +430,7 @@ func (h *Handler) handleEventsSeenClientMessage(payload []byte) []byte {
 		return marshalEventsWSMessage(ack)
 	}
 
-	globalRev := readWatchtowerGlobalRevision(ctx, h.store)
+	globalRev, _ := h.store.WatchtowerGlobalRevision(ctx)
 	sessionPatches, inspectorPatches := collectSeenPatches(ctx, h.store, msg.Session)
 	ack["acked"] = acked
 	ack["globalRev"] = globalRev
@@ -516,21 +515,6 @@ func (h *Handler) markEventsSeen(ctx context.Context, msg eventsSeenMessage) (bo
 	default:
 		return h.store.MarkWatchtowerSessionSeen(ctx, msg.Session)
 	}
-}
-
-func readWatchtowerGlobalRevision(ctx context.Context, st *store.Store) int64 {
-	if st == nil {
-		return 0
-	}
-	raw, err := st.GetWatchtowerRuntimeValue(ctx, "global_rev")
-	if err != nil {
-		return 0
-	}
-	parsed, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil {
-		return 0
-	}
-	return parsed
 }
 
 func collectSeenPatches(ctx context.Context, st *store.Store, sessionName string) ([]map[string]any, []map[string]any) {

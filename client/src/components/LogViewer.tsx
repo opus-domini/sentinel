@@ -162,7 +162,7 @@ export function LogViewer({
         className,
       )}
     >
-      <div className="p-2 font-mono text-[11px]">
+      <div className="p-2 font-mono text-[11px]" role="log">
         {filteredLines.map((line) => (
           <LogLine
             key={line.lineNumber}

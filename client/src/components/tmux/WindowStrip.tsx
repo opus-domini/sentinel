@@ -106,6 +106,7 @@ export default function WindowStrip({
                   className="inline-flex cursor-pointer items-center gap-1 px-1.5 py-0.5 whitespace-nowrap hover:text-foreground"
                   type="button"
                   onClick={() => onSelectWindow(windowInfo.index)}
+                  aria-label={isMobile ? `Select window ${windowInfo.name}` : undefined}
                 >
                   {isMobile ? windowInfo.index : windowInfo.name}
                 </button>

@@ -72,9 +72,11 @@ export function registerSentinelPwa(): void {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/',
+        updateViaCache: 'none',
       })
       bindControllerChangeReload()
       watchRegistrationForUpdates(registration)
+      void registration.update()
     } catch {
       // PWA registration is best-effort and should never block app boot.
     }

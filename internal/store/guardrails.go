@@ -140,7 +140,7 @@ func (s *Store) initGuardrailSchema() error {
 	}
 
 	for _, stmt := range statements {
-		if _, err := s.db.Exec(stmt); err != nil {
+		if _, err := s.db.ExecContext(context.Background(), stmt); err != nil {
 			return err
 		}
 	}

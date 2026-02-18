@@ -2,6 +2,7 @@ package ws
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
@@ -207,7 +208,8 @@ func dialWebSocket(t *testing.T, serverURL string) net.Conn {
 
 	// Parse host:port from http://host:port
 	addr := strings.TrimPrefix(serverURL, "http://")
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	dialer := net.Dialer{Timeout: 2 * time.Second}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("net.Dial(%s) error = %v", addr, err)
 	}
@@ -296,7 +298,8 @@ func TestUpgrade(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		dialer := net.Dialer{Timeout: 2 * time.Second}
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("dial error = %v", err)
 		}
@@ -321,7 +324,8 @@ func TestUpgrade(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		dialer := net.Dialer{Timeout: 2 * time.Second}
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("dial error = %v", err)
 		}
@@ -351,7 +355,8 @@ func TestUpgrade(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		dialer := net.Dialer{Timeout: 2 * time.Second}
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("dial error = %v", err)
 		}
@@ -381,7 +386,8 @@ func TestUpgrade(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		dialer := net.Dialer{Timeout: 2 * time.Second}
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("dial error = %v", err)
 		}
@@ -413,7 +419,8 @@ func TestUpgrade(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		dialer := net.Dialer{Timeout: 2 * time.Second}
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("dial error = %v", err)
 		}

@@ -27,6 +27,7 @@
 
 !install.sh
 !/contrib/**/*
+!/scripts/**/*
 
 # ...even if they are in subdirectories
 !*/

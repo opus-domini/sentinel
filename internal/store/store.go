@@ -42,7 +42,7 @@ func New(dbPath string) (*Store, error) {
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA busy_timeout=5000",
 	} {
-		if _, err := db.Exec(pragma); err != nil {
+		if _, err := db.ExecContext(context.Background(), pragma); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("set %s: %w", pragma, err)
 		}
@@ -56,7 +56,7 @@ func New(dbPath string) (*Store, error) {
 		next_window_seq INTEGER NOT NULL DEFAULT 1,
 		updated_at     TEXT DEFAULT (datetime('now'))
 	)`
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
 	}

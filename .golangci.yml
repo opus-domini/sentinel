@@ -1,5 +1,8 @@
 version: "2"
 
+run:
+  timeout: 5m
+
 linters:
   enable:
     - errcheck
@@ -12,6 +15,9 @@ linters:
     - whitespace
     - bodyclose
     - gosec
+    - noctx
+    - exhaustive
+    - misspell
   settings:
     gosec:
       excludes:
@@ -24,6 +30,10 @@ linters:
         # crypto/sha1 is mandated by RFC 6455 (WebSocket handshake)
         - G401
         - G505
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
 formatters:
   enable:
