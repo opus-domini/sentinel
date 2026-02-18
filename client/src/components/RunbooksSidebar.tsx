@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Lock, LockOpen, Plus } from 'lucide-react'
-import type { OpsRunbook, OpsRunbookRun } from '@/types'
+import { Clock, Lock, LockOpen, Plus } from 'lucide-react'
+import type { OpsRunbook, OpsRunbookRun, OpsSchedule } from '@/types'
 import RunbooksHelpDialog from '@/components/RunbooksHelpDialog'
 import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
@@ -19,6 +19,7 @@ type RunbooksSidebarProps = {
   loading: boolean
   runbooks: Array<OpsRunbook>
   jobs: Array<OpsRunbookRun>
+  schedules: Array<OpsSchedule>
   selectedRunbookId: string | null
   onTokenChange: (value: string) => void
   onSelectRunbook: (id: string | null) => void
@@ -46,6 +47,7 @@ export default function RunbooksSidebar({
   loading,
   runbooks,
   jobs,
+  schedules,
   selectedRunbookId,
   onTokenChange,
   onSelectRunbook,
@@ -204,6 +206,9 @@ export default function RunbooksSidebar({
                           runbookStatusDot(runbook, jobs),
                         )}
                       />
+                      {schedules.some((s) => s.runbookId === runbook.id) && (
+                        <Clock className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
+                      )}
                       <span className="min-w-0 flex-1 truncate font-semibold">
                         {runbook.name}
                       </span>

@@ -255,7 +255,9 @@ function TimelinePage() {
                 : 'Timeline connected'}
           </span>
           <span className="shrink-0 whitespace-nowrap">
-            {overview?.updatedAt ? `updated ${overview.updatedAt}` : 'waiting'}
+            {timelineEvents.length > 0 || timelineEventsQuery.isSuccess
+              ? 'Live'
+              : 'waiting'}
           </span>
         </footer>
       </main>

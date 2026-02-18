@@ -260,9 +260,26 @@ export type OpsRunbookRun = {
   finishedAt?: string
 }
 
+export type OpsSchedule = {
+  id: string
+  runbookId: string
+  name: string
+  scheduleType: string
+  cronExpr: string
+  timezone: string
+  runAt: string
+  enabled: boolean
+  lastRunAt: string
+  lastRunStatus: string
+  nextRunAt: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type OpsRunbooksResponse = {
   runbooks: Array<OpsRunbook>
   jobs: Array<OpsRunbookRun>
+  schedules: Array<OpsSchedule>
 }
 
 export type OpsRunbookRunResponse = {

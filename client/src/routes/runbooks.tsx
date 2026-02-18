@@ -1,11 +1,14 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import cronstrue from 'cronstrue'
 import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Menu,
+  Pause,
   Pencil,
   Play,
   RefreshCw,
@@ -17,14 +20,17 @@ import type {
   OpsRunbookRun,
   OpsRunbookRunResponse,
   OpsRunbooksResponse,
+  OpsSchedule,
   OpsTimelineEvent,
 } from '@/types'
 import type { RunbookDraft } from '@/components/RunbookEditor'
 import type { RunbookStepDraft } from '@/components/RunbookStepEditor'
+import type { ScheduleDraft } from '@/components/RunbookScheduleEditor'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { RunbookDeleteDialog } from '@/components/RunbookDeleteDialog'
 import { RunbookEditor, createBlankStep } from '@/components/RunbookEditor'
+import { RunbookScheduleEditor } from '@/components/RunbookScheduleEditor'
 import RunbooksSidebar from '@/components/RunbooksSidebar'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -125,6 +131,37 @@ function runbookJobStatusClass(status: string): string {
   return 'text-muted-foreground'
 }
 
+function scheduleDescription(schedule: OpsSchedule): string {
+  if (schedule.scheduleType === 'cron' && schedule.cronExpr) {
+    try {
+      return cronstrue.toString(schedule.cronExpr)
+    } catch {
+      return schedule.cronExpr
+    }
+  }
+  if (schedule.scheduleType === 'once' && schedule.runAt) {
+    return `Once at ${new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: schedule.timezone || undefined }).format(new Date(schedule.runAt))}`
+  }
+  return schedule.name
+}
+
+function formatScheduleDate(iso: string, tz?: string): string {
+  if (!iso) return ''
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: tz || undefined,
+      timeZoneName: 'short',
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
 function RunbooksPage() {
   const { tokenRequired } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -146,6 +183,11 @@ function RunbooksPage() {
     new Set(),
   )
   const [deleteJobTarget, setDeleteJobTarget] = useState<string | null>(null)
+  const [editingSchedule, setEditingSchedule] = useState<{
+    runbookId: string
+    schedule: OpsSchedule | null
+  } | null>(null)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
 
   const runbooksQuery = useQuery({
     queryKey: OPS_RUNBOOKS_QUERY_KEY,
@@ -156,6 +198,7 @@ function RunbooksPage() {
 
   const runbooks = runbooksQuery.data?.runbooks ?? []
   const jobs = runbooksQuery.data?.jobs ?? []
+  const schedules = runbooksQuery.data?.schedules ?? []
   const runbooksLoading = runbooksQuery.isLoading
 
   const refreshRunbooks = useCallback(async () => {
@@ -189,6 +232,9 @@ function RunbooksPage() {
         } else {
           void refreshRunbooks()
         }
+      }
+      if (typed.type === 'ops.schedule.updated') {
+        void refreshRunbooks()
       }
     },
     [queryClient, refreshRunbooks],
@@ -398,6 +444,146 @@ function RunbooksPage() {
     [api, expandedJobId, pushToast, queryClient],
   )
 
+  const saveSchedule = useCallback(
+    async (draft: ScheduleDraft) => {
+      if (editingSchedule == null) return
+      setScheduleSaving(true)
+      try {
+        const payload = {
+          runbookId: editingSchedule.runbookId,
+          name: draft.name.trim(),
+          scheduleType: draft.scheduleType,
+          cronExpr: draft.cronExpr,
+          timezone: draft.timezone,
+          runAt: draft.runAt,
+          enabled: draft.enabled,
+        }
+        if (editingSchedule.schedule != null) {
+          await api(
+            `/api/ops/schedules/${encodeURIComponent(editingSchedule.schedule.id)}`,
+            { method: 'PUT', body: JSON.stringify(payload) },
+          )
+          pushToast({
+            level: 'success',
+            title: 'Schedule updated',
+            message: payload.name,
+          })
+        } else {
+          await api('/api/ops/schedules', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          })
+          pushToast({
+            level: 'success',
+            title: 'Schedule created',
+            message: payload.name,
+          })
+        }
+        await refreshRunbooks()
+        setEditingSchedule(null)
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: 'Schedule save failed',
+          message:
+            error instanceof Error ? error.message : 'failed to save schedule',
+        })
+      } finally {
+        setScheduleSaving(false)
+      }
+    },
+    [api, editingSchedule, pushToast, refreshRunbooks],
+  )
+
+  const deleteSchedule = useCallback(
+    async (scheduleId: string) => {
+      try {
+        await api(`/api/ops/schedules/${encodeURIComponent(scheduleId)}`, {
+          method: 'DELETE',
+        })
+        await refreshRunbooks()
+        setEditingSchedule(null)
+        pushToast({
+          level: 'success',
+          title: 'Schedule deleted',
+          message: 'Schedule removed',
+        })
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: 'Delete failed',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'failed to delete schedule',
+        })
+      }
+    },
+    [api, pushToast, refreshRunbooks],
+  )
+
+  const toggleScheduleEnabled = useCallback(
+    async (schedule: OpsSchedule) => {
+      try {
+        await api(`/api/ops/schedules/${encodeURIComponent(schedule.id)}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            runbookId: schedule.runbookId,
+            name: schedule.name,
+            scheduleType: schedule.scheduleType,
+            cronExpr: schedule.cronExpr,
+            timezone: schedule.timezone,
+            runAt: schedule.runAt,
+            enabled: !schedule.enabled,
+          }),
+        })
+        await refreshRunbooks()
+        pushToast({
+          level: 'success',
+          title: schedule.enabled ? 'Schedule paused' : 'Schedule resumed',
+          message: schedule.name,
+        })
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: 'Update failed',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'failed to update schedule',
+        })
+      }
+    },
+    [api, pushToast, refreshRunbooks],
+  )
+
+  const triggerSchedule = useCallback(
+    async (scheduleId: string) => {
+      try {
+        await api(
+          `/api/ops/schedules/${encodeURIComponent(scheduleId)}/trigger`,
+          { method: 'POST' },
+        )
+        await refreshRunbooks()
+        pushToast({
+          level: 'success',
+          title: 'Schedule triggered',
+          message: 'Manual trigger submitted',
+        })
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: 'Trigger failed',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'failed to trigger schedule',
+        })
+      }
+    },
+    [api, pushToast, refreshRunbooks],
+  )
+
   const selectedRunbook = useMemo(
     () => runbooks.find((rb) => rb.id === selectedRunbookId) ?? null,
     [runbooks, selectedRunbookId],
@@ -417,6 +603,14 @@ function RunbooksPage() {
     [jobs, selectedRunbookId],
   )
 
+  const selectedSchedule = useMemo(
+    () =>
+      selectedRunbookId
+        ? (schedules.find((s) => s.runbookId === selectedRunbookId) ?? null)
+        : null,
+    [schedules, selectedRunbookId],
+  )
+
   // Determine which view to render
   const showEditor = editingDraft != null
   const showDetail = !showEditor && selectedRunbook != null
@@ -432,12 +626,14 @@ function RunbooksPage() {
           loading={runbooksLoading}
           runbooks={runbooks}
           jobs={jobs}
+          schedules={schedules}
           selectedRunbookId={selectedRunbookId}
           onTokenChange={setToken}
           onSelectRunbook={(id) => {
             setSelectedRunbookId(id)
             setEditingDraft(null)
             setEditorErrors({})
+            setEditingSchedule(null)
           }}
           onCreateRunbook={startCreate}
         />
@@ -572,6 +768,139 @@ function RunbooksPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* Schedule section */}
+                <div className="grid gap-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                    Schedule
+                  </p>
+                  {editingSchedule != null &&
+                  editingSchedule.runbookId === selectedRunbook.id ? (
+                    <RunbookScheduleEditor
+                      runbookId={selectedRunbook.id}
+                      schedule={editingSchedule.schedule}
+                      saving={scheduleSaving}
+                      onSave={(draft) => void saveSchedule(draft)}
+                      onCancel={() => setEditingSchedule(null)}
+                      onDelete={
+                        editingSchedule.schedule
+                          ? () =>
+                              void deleteSchedule(editingSchedule.schedule!.id)
+                          : undefined
+                      }
+                    />
+                  ) : selectedSchedule ? (
+                    <div className="rounded border border-border-subtle bg-surface-overlay px-2.5 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-[11px] font-medium">
+                          {scheduleDescription(selectedSchedule)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          ({selectedSchedule.timezone})
+                        </span>
+                        {!selectedSchedule.enabled && (
+                          <span className="rounded bg-amber-500/20 px-1 text-[9px] font-medium text-amber-400">
+                            paused
+                          </span>
+                        )}
+                      </div>
+                      {selectedSchedule.nextRunAt && (
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          Next:{' '}
+                          {formatScheduleDate(
+                            selectedSchedule.nextRunAt,
+                            selectedSchedule.timezone,
+                          )}
+                        </p>
+                      )}
+                      {selectedSchedule.lastRunAt && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Last:{' '}
+                          {formatScheduleDate(
+                            selectedSchedule.lastRunAt,
+                            selectedSchedule.timezone,
+                          )}
+                          {selectedSchedule.lastRunStatus &&
+                            ` \u00b7 ${selectedSchedule.lastRunStatus}`}
+                        </p>
+                      )}
+                      <div className="mt-1.5 flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 cursor-pointer gap-1 px-2 text-[10px]"
+                          onClick={() =>
+                            setEditingSchedule({
+                              runbookId: selectedRunbook.id,
+                              schedule: selectedSchedule,
+                            })
+                          }
+                        >
+                          <Pencil className="h-2.5 w-2.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 cursor-pointer gap-1 px-2 text-[10px]"
+                          onClick={() =>
+                            void toggleScheduleEnabled(selectedSchedule)
+                          }
+                        >
+                          {selectedSchedule.enabled ? (
+                            <>
+                              <Pause className="h-2.5 w-2.5" />
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-2.5 w-2.5" />
+                              Resume
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 cursor-pointer gap-1 px-2 text-[10px]"
+                          onClick={() =>
+                            void triggerSchedule(selectedSchedule.id)
+                          }
+                        >
+                          <Play className="h-2.5 w-2.5" />
+                          Trigger
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 cursor-pointer gap-1 px-2 text-[10px] text-red-400 hover:text-red-300"
+                          onClick={() =>
+                            void deleteSchedule(selectedSchedule.id)
+                          }
+                        >
+                          <Trash2 className="h-2.5 w-2.5" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-fit cursor-pointer gap-1 px-3 text-[11px]"
+                      onClick={() =>
+                        setEditingSchedule({
+                          runbookId: selectedRunbook.id,
+                          schedule: null,
+                        })
+                      }
+                    >
+                      <Clock className="h-3 w-3" />
+                      Add Schedule
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -798,8 +1127,14 @@ function RunbooksPage() {
                           Run
                         </Button>
                       </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {runbook.steps.length} steps
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <span>{runbook.steps.length} steps</span>
+                        {schedules.some((s) => s.runbookId === runbook.id) && (
+                          <span className="inline-flex items-center gap-0.5 rounded border border-border-subtle px-1 text-[9px]">
+                            <Clock className="h-2.5 w-2.5" />
+                            Scheduled
+                          </span>
+                        )}
                       </div>
                       <div className="rounded border border-border-subtle bg-surface-overlay px-2 py-1 text-[10px] text-muted-foreground">
                         {lastJob

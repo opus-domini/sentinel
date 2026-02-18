@@ -78,6 +78,10 @@ func New(dbPath string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("create ops schema: %w", err)
 	}
+	if err := s.initSchedulerSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create scheduler schema: %w", err)
+	}
 
 	return s, nil
 }

@@ -307,7 +307,7 @@ function AlertsPage() {
                 : 'Alerts connected'}
           </span>
           <span className="shrink-0 whitespace-nowrap">
-            {overview?.updatedAt ? `updated ${overview.updatedAt}` : 'waiting'}
+            {alertsQuery.isSuccess ? 'Live · 30s' : 'waiting'}
           </span>
         </footer>
       </main>

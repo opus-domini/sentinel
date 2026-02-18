@@ -18,6 +18,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/httpui"
 	"github.com/opus-domini/sentinel/internal/ops"
 	"github.com/opus-domini/sentinel/internal/recovery"
+	"github.com/opus-domini/sentinel/internal/scheduler"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
@@ -89,6 +90,12 @@ func serve() int {
 	}, 0)
 	healthChecker.Start()
 
+	schedulerService := scheduler.New(st, scheduler.Options{
+		TickInterval: 5 * time.Second,
+		EventHub:     eventHub,
+	})
+	schedulerService.Start(context.Background())
+
 	metricsCtx, stopMetrics := context.WithCancel(context.Background())
 	go startMetricsTicker(metricsCtx, opsManager, eventHub)
 
@@ -97,6 +104,9 @@ func serve() int {
 
 	exitCode := run(cfg, mux)
 	stopMetrics()
+	stopSchedulerCtx, cancelScheduler := context.WithTimeout(context.Background(), 2*time.Second)
+	schedulerService.Stop(stopSchedulerCtx)
+	cancelScheduler()
 	healthChecker.Stop()
 	if cfg.Watchtower.Enabled {
 		stopWatchtowerCtx, cancelWatchtower := context.WithTimeout(context.Background(), 2*time.Second)

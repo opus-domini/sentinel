@@ -88,6 +88,8 @@ const (
 	maxDirectorySuggestLimit     = 64
 	defaultMetaVersion           = "dev"
 	stateFailed                  = "failed"
+	scheduleTypeCron             = "cron"
+	scheduleTypeOnce             = "once"
 )
 
 func Register(
@@ -153,6 +155,11 @@ func Register(
 	mux.HandleFunc("POST /api/ops/runbooks/{runbook}/run", h.wrap(h.runOpsRunbook))
 	mux.HandleFunc("GET /api/ops/jobs/{job}", h.wrap(h.opsJob))
 	mux.HandleFunc("DELETE /api/ops/jobs/{job}", h.wrap(h.deleteOpsJob))
+	mux.HandleFunc("GET /api/ops/schedules", h.wrap(h.listSchedules))
+	mux.HandleFunc("POST /api/ops/schedules", h.wrap(h.createSchedule))
+	mux.HandleFunc("PUT /api/ops/schedules/{schedule}", h.wrap(h.updateSchedule))
+	mux.HandleFunc("DELETE /api/ops/schedules/{schedule}", h.wrap(h.deleteSchedule))
+	mux.HandleFunc("POST /api/ops/schedules/{schedule}/trigger", h.wrap(h.triggerSchedule))
 	mux.HandleFunc("GET /api/ops/config", h.wrap(h.opsConfig))
 	mux.HandleFunc("PATCH /api/ops/config", h.wrap(h.patchOpsConfig))
 	mux.HandleFunc("GET /api/ops/storage/stats", h.wrap(h.storageStats))
@@ -1550,9 +1557,15 @@ func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load runbook jobs", nil)
 		return
 	}
+	schedules, err := h.store.ListOpsSchedules(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load schedules", nil)
+		return
+	}
 	writeData(w, http.StatusOK, map[string]any{
-		"runbooks": runbooks,
-		"jobs":     jobs,
+		"runbooks":  runbooks,
+		"jobs":      jobs,
+		"schedules": schedules,
 	})
 }
 
@@ -1722,7 +1735,7 @@ func (h *Handler) finishRunbookRun(ctx context.Context, runID, status string, co
 	if status == stateFailed {
 		severity = "error"
 	}
-	_, _ = h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	te, _ := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
 		Source:    "runbook",
 		EventType: "runbook." + status,
 		Severity:  severity,
@@ -1732,6 +1745,12 @@ func (h *Handler) finishRunbookRun(ctx context.Context, runID, status string, co
 		Metadata:  fmt.Sprintf(`{"jobId":"%s","status":"%s"}`, runID, status),
 		CreatedAt: finished,
 	})
+	if te.ID > 0 {
+		h.emit(events.TypeOpsTimeline, map[string]any{
+			"globalRev": globalRev,
+			"event":     te,
+		})
+	}
 }
 
 func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
@@ -1824,7 +1843,7 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	if h.store != nil {
-		_, _ = h.store.InsertOpsTimelineEvent(r.Context(), store.OpsTimelineEventWrite{
+		te, _ := h.store.InsertOpsTimelineEvent(r.Context(), store.OpsTimelineEventWrite{
 			Source:    "config",
 			EventType: "config.updated",
 			Severity:  "info",
@@ -1832,6 +1851,12 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 			Message:   "Configuration file updated via API",
 			CreatedAt: now,
 		})
+		if te.ID > 0 {
+			h.emit(events.TypeOpsTimeline, map[string]any{
+				"globalRev": now.UnixMilli(),
+				"event":     te,
+			})
+		}
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
@@ -1880,7 +1905,7 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	_, _ = h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	te, _ := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
 		Source:    "service",
 		EventType: "service.registered",
 		Severity:  "info",
@@ -1900,6 +1925,12 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	globalRev := now.UnixMilli()
+	if te.ID > 0 {
+		h.emit(events.TypeOpsTimeline, map[string]any{
+			"globalRev": globalRev,
+			"event":     te,
+		})
+	}
 	h.emit(events.TypeOpsServices, map[string]any{
 		"globalRev": globalRev,
 		"action":    "registered",
@@ -1936,7 +1967,7 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	_, _ = h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	te, _ := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
 		Source:    "service",
 		EventType: "service.unregistered",
 		Severity:  "info",
@@ -1946,6 +1977,12 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	})
 
 	globalRev := now.UnixMilli()
+	if te.ID > 0 {
+		h.emit(events.TypeOpsTimeline, map[string]any{
+			"globalRev": globalRev,
+			"event":     te,
+		})
+	}
 	h.emit(events.TypeOpsServices, map[string]any{
 		"globalRev": globalRev,
 		"action":    "unregistered",
@@ -2298,6 +2335,353 @@ func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
 
 	writeData(w, http.StatusOK, map[string]any{
 		"removed": runbookID,
+	})
+}
+
+func (h *Handler) listSchedules(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	schedules, err := h.store.ListOpsSchedules(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load schedules", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"schedules": schedules,
+	})
+}
+
+func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+
+	var req struct {
+		RunbookID    string `json:"runbookId"`
+		Name         string `json:"name"`
+		ScheduleType string `json:"scheduleType"`
+		CronExpr     string `json:"cronExpr"`
+		Timezone     string `json:"timezone"`
+		RunAt        string `json:"runAt"`
+		Enabled      bool   `json:"enabled"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	if strings.TrimSpace(req.RunbookID) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbookId is required", nil)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "name is required", nil)
+		return
+	}
+	if req.ScheduleType != scheduleTypeCron && req.ScheduleType != scheduleTypeOnce {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scheduleType must be \"cron\" or \"once\"", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	// Verify runbook exists.
+	runbooks, err := h.store.ListOpsRunbooks(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to verify runbook", nil)
+		return
+	}
+	found := false
+	for _, rb := range runbooks {
+		if rb.ID == req.RunbookID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook not found", nil)
+		return
+	}
+
+	var nextRunAt string
+	switch req.ScheduleType {
+	case scheduleTypeCron:
+		if err := validate.CronExpression(req.CronExpr); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
+		tz := req.Timezone
+		if tz == "" {
+			tz = "UTC"
+		}
+		if err := validate.Timezone(tz); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
+		req.Timezone = tz
+		loc, _ := time.LoadLocation(tz)
+		sched, _ := validate.ParseCron(req.CronExpr)
+		nextRunAt = sched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
+	case scheduleTypeOnce:
+		runAt, parseErr := time.Parse(time.RFC3339, req.RunAt)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runAt must be a valid RFC3339 timestamp", nil)
+			return
+		}
+		if !runAt.After(time.Now().UTC()) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runAt must be in the future", nil)
+			return
+		}
+		nextRunAt = runAt.UTC().Format(time.RFC3339)
+	}
+
+	schedule, err := h.store.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    req.RunbookID,
+		Name:         req.Name,
+		ScheduleType: req.ScheduleType,
+		CronExpr:     req.CronExpr,
+		Timezone:     req.Timezone,
+		RunAt:        req.RunAt,
+		Enabled:      req.Enabled,
+		NextRunAt:    nextRunAt,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create schedule", nil)
+		return
+	}
+
+	h.emit(events.TypeScheduleUpdated, map[string]any{
+		"action":   "created",
+		"schedule": schedule,
+	})
+
+	writeData(w, http.StatusCreated, map[string]any{
+		"schedule": schedule,
+	})
+}
+
+func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	scheduleID := strings.TrimSpace(r.PathValue("schedule"))
+	if scheduleID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "schedule id is required", nil)
+		return
+	}
+
+	var req struct {
+		RunbookID    string `json:"runbookId"`
+		Name         string `json:"name"`
+		ScheduleType string `json:"scheduleType"`
+		CronExpr     string `json:"cronExpr"`
+		Timezone     string `json:"timezone"`
+		RunAt        string `json:"runAt"`
+		Enabled      bool   `json:"enabled"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	if strings.TrimSpace(req.RunbookID) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbookId is required", nil)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "name is required", nil)
+		return
+	}
+	if req.ScheduleType != scheduleTypeCron && req.ScheduleType != scheduleTypeOnce {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scheduleType must be \"cron\" or \"once\"", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	// Verify runbook exists.
+	runbooks, err := h.store.ListOpsRunbooks(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to verify runbook", nil)
+		return
+	}
+	found := false
+	for _, rb := range runbooks {
+		if rb.ID == req.RunbookID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook not found", nil)
+		return
+	}
+
+	var nextRunAt string
+	switch req.ScheduleType {
+	case scheduleTypeCron:
+		if err := validate.CronExpression(req.CronExpr); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
+		tz := req.Timezone
+		if tz == "" {
+			tz = "UTC"
+		}
+		if err := validate.Timezone(tz); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
+		req.Timezone = tz
+		loc, _ := time.LoadLocation(tz)
+		sched, _ := validate.ParseCron(req.CronExpr)
+		nextRunAt = sched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
+	case scheduleTypeOnce:
+		runAt, parseErr := time.Parse(time.RFC3339, req.RunAt)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runAt must be a valid RFC3339 timestamp", nil)
+			return
+		}
+		if !runAt.After(time.Now().UTC()) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runAt must be in the future", nil)
+			return
+		}
+		nextRunAt = runAt.UTC().Format(time.RFC3339)
+	}
+
+	schedule, err := h.store.UpdateOpsSchedule(ctx, store.OpsScheduleWrite{
+		ID:           scheduleID,
+		RunbookID:    req.RunbookID,
+		Name:         req.Name,
+		ScheduleType: req.ScheduleType,
+		CronExpr:     req.CronExpr,
+		Timezone:     req.Timezone,
+		RunAt:        req.RunAt,
+		Enabled:      req.Enabled,
+		NextRunAt:    nextRunAt,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "SCHEDULE_NOT_FOUND", "schedule not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to update schedule", nil)
+		return
+	}
+
+	h.emit(events.TypeScheduleUpdated, map[string]any{
+		"action":   "updated",
+		"schedule": schedule,
+	})
+
+	writeData(w, http.StatusOK, map[string]any{
+		"schedule": schedule,
+	})
+}
+
+func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	scheduleID := strings.TrimSpace(r.PathValue("schedule"))
+	if scheduleID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "schedule id is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	if err := h.store.DeleteOpsSchedule(ctx, scheduleID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "SCHEDULE_NOT_FOUND", "schedule not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete schedule", nil)
+		return
+	}
+
+	h.emit(events.TypeScheduleUpdated, map[string]any{
+		"action":  "deleted",
+		"removed": scheduleID,
+	})
+
+	writeData(w, http.StatusOK, map[string]any{
+		"removed": scheduleID,
+	})
+}
+
+func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+	scheduleID := strings.TrimSpace(r.PathValue("schedule"))
+	if scheduleID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "schedule id is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	// Fetch the schedule to get the runbook ID.
+	schedules, err := h.store.ListOpsSchedules(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load schedules", nil)
+		return
+	}
+	var sched *store.OpsSchedule
+	for i := range schedules {
+		if schedules[i].ID == scheduleID {
+			sched = &schedules[i]
+			break
+		}
+	}
+	if sched == nil {
+		writeError(w, http.StatusNotFound, "SCHEDULE_NOT_FOUND", "schedule not found", nil)
+		return
+	}
+
+	now := time.Now().UTC()
+	job, err := h.store.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to trigger schedule run", nil)
+		return
+	}
+
+	// Update schedule last run info.
+	_ = h.store.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", sched.NextRunAt, sched.Enabled)
+
+	go h.executeRunbookAsync(job)
+
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsJob, map[string]any{
+		"globalRev": globalRev,
+		"job":       job,
+	})
+	h.emit(events.TypeScheduleUpdated, map[string]any{
+		"action":   "triggered",
+		"schedule": scheduleID,
+		"jobId":    job.ID,
+	})
+
+	writeData(w, http.StatusAccepted, map[string]any{
+		"job": job,
 	})
 }
 
