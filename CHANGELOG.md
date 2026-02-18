@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.9](https://github.com/opus-domini/sentinel/compare/v0.3.8...v0.3.9) (2026-02-18)
+
+
+### Features
+
+* add built-in Apply Update runbook ([ab4aa39](https://github.com/opus-domini/sentinel/commit/ab4aa394aa94c6c152ea75849dbf427c550dc1a3))
+
+
+### Bug Fixes
+
+* add return after t.Fatal in nil guards to satisfy staticcheck SA5011 ([fc21299](https://github.com/opus-domini/sentinel/commit/fc212990b7ff0018b8d60ec6eeb4ebb0edd45466))
+* clipboard crash and silent failure on plain HTTP ([02c94e2](https://github.com/opus-domini/sentinel/commit/02c94e2ce89818a7d9cc7f90243231aec0893c24))
+* replace crypto.randomUUID with fallback for non-HTTPS contexts ([a8b6b93](https://github.com/opus-domini/sentinel/commit/a8b6b939de090024da40e9e6c7947f7c15f05ced))
+
 ## [0.3.8](https://github.com/opus-domini/sentinel/compare/v0.3.7...v0.3.8) (2026-02-18)
 
 
