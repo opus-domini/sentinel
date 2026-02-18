@@ -25,6 +25,8 @@ const (
 	opsRunbookStatusRunning   = "running"
 	opsRunbookStatusSucceeded = "succeeded"
 	opsRunbookStatusFailed    = "failed"
+
+	opsDefaultSource = "ops"
 )
 
 var ErrInvalidOpsFilter = errors.New("invalid ops filter")
@@ -248,7 +250,7 @@ func (s *Store) InsertOpsTimelineEvent(ctx context.Context, write OpsTimelineEve
 	}
 	source := strings.TrimSpace(write.Source)
 	if source == "" {
-		source = "ops"
+		source = opsDefaultSource
 	}
 	eventType := strings.TrimSpace(write.EventType)
 	if eventType == "" {
@@ -380,7 +382,7 @@ func (s *Store) UpsertOpsAlert(ctx context.Context, write OpsAlertWrite) (OpsAle
 	}
 	source := strings.TrimSpace(write.Source)
 	if source == "" {
-		source = "ops"
+		source = opsDefaultSource
 	}
 	resource := strings.TrimSpace(write.Resource)
 	title := strings.TrimSpace(write.Title)

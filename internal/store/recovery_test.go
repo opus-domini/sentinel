@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const testSessionDev = "dev"
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
@@ -55,7 +57,7 @@ func TestUpsertRecoverySnapshot(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := validSnapshotWrite("dev")
+		snap := validSnapshotWrite(testSessionDev)
 		row, isNew, err := s.UpsertRecoverySnapshot(ctx, snap)
 		if err != nil {
 			t.Fatalf("UpsertRecoverySnapshot error = %v", err)
@@ -66,7 +68,7 @@ func TestUpsertRecoverySnapshot(t *testing.T) {
 		if row.ID == 0 {
 			t.Fatal("expected non-zero snapshot ID")
 		}
-		if row.SessionName != "dev" || row.StateHash != "hash-1" {
+		if row.SessionName != testSessionDev || row.StateHash != "hash-1" {
 			t.Fatalf("unexpected snapshot: %+v", row)
 		}
 		if row.Windows != 2 || row.Panes != 3 {
@@ -78,7 +80,7 @@ func TestUpsertRecoverySnapshot(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := validSnapshotWrite("dev")
+		snap := validSnapshotWrite(testSessionDev)
 		first, isNew, err := s.UpsertRecoverySnapshot(ctx, snap)
 		if err != nil {
 			t.Fatalf("first upsert error = %v", err)
@@ -105,7 +107,7 @@ func TestUpsertRecoverySnapshot(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := validSnapshotWrite("dev")
+		snap := validSnapshotWrite(testSessionDev)
 		first, _, err := s.UpsertRecoverySnapshot(ctx, snap)
 		if err != nil {
 			t.Fatalf("first upsert error = %v", err)
@@ -129,7 +131,7 @@ func TestUpsertRecoverySnapshot(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := validSnapshotWrite("dev")
+		snap := validSnapshotWrite(testSessionDev)
 		snap.StateHash = ""
 		_, isNew1, err := s.UpsertRecoverySnapshot(ctx, snap)
 		if err != nil {
@@ -159,9 +161,9 @@ func TestUpsertRecoverySnapshot(t *testing.T) {
 		}{
 			{"empty session name", RecoverySnapshotWrite{SessionName: "", PayloadJSON: `{}`}},
 			{"whitespace session name", RecoverySnapshotWrite{SessionName: "  ", PayloadJSON: `{}`}},
-			{"empty payload", RecoverySnapshotWrite{SessionName: "dev", PayloadJSON: ""}},
-			{"whitespace payload", RecoverySnapshotWrite{SessionName: "dev", PayloadJSON: "   "}},
-			{"invalid JSON payload", RecoverySnapshotWrite{SessionName: "dev", PayloadJSON: "not-json"}},
+			{"empty payload", RecoverySnapshotWrite{SessionName: testSessionDev, PayloadJSON: ""}},
+			{"whitespace payload", RecoverySnapshotWrite{SessionName: testSessionDev, PayloadJSON: "   "}},
+			{"invalid JSON payload", RecoverySnapshotWrite{SessionName: testSessionDev, PayloadJSON: "not-json"}},
 		}
 
 		for _, tt := range tests {
@@ -176,7 +178,7 @@ func TestUpsertRecoverySnapshot(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := validSnapshotWrite("dev")
+		snap := validSnapshotWrite(testSessionDev)
 		snap.CapturedAt = time.Time{}
 		row, _, err := s.UpsertRecoverySnapshot(ctx, snap)
 		if err != nil {
@@ -201,13 +203,13 @@ func TestGetRecoverySnapshot(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		created := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		created := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 
 		got, err := s.GetRecoverySnapshot(ctx, created.ID)
 		if err != nil {
 			t.Fatalf("GetRecoverySnapshot error = %v", err)
 		}
-		if got.ID != created.ID || got.SessionName != "dev" {
+		if got.ID != created.ID || got.SessionName != testSessionDev {
 			t.Fatalf("unexpected snapshot: %+v", got)
 		}
 		if got.PayloadJSON != `{"windows":[]}` {
@@ -239,7 +241,7 @@ func TestListRecoverySnapshots(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		base := validSnapshotWrite("dev")
+		base := validSnapshotWrite(testSessionDev)
 		// Insert 3 snapshots with different hashes so no dedup.
 		for i := 0; i < 3; i++ {
 			snap := base
@@ -248,7 +250,7 @@ func TestListRecoverySnapshots(t *testing.T) {
 			mustUpsertSnapshot(t, s, ctx, snap)
 		}
 
-		list, err := s.ListRecoverySnapshots(ctx, "dev", 10)
+		list, err := s.ListRecoverySnapshots(ctx, testSessionDev, 10)
 		if err != nil {
 			t.Fatalf("ListRecoverySnapshots error = %v", err)
 		}
@@ -265,7 +267,7 @@ func TestListRecoverySnapshots(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		base := validSnapshotWrite("dev")
+		base := validSnapshotWrite(testSessionDev)
 		for i := 0; i < 5; i++ {
 			snap := base
 			snap.StateHash = ""
@@ -273,7 +275,7 @@ func TestListRecoverySnapshots(t *testing.T) {
 			mustUpsertSnapshot(t, s, ctx, snap)
 		}
 
-		list, err := s.ListRecoverySnapshots(ctx, "dev", 2)
+		list, err := s.ListRecoverySnapshots(ctx, testSessionDev, 2)
 		if err != nil {
 			t.Fatalf("ListRecoverySnapshots error = %v", err)
 		}
@@ -287,7 +289,7 @@ func TestListRecoverySnapshots(t *testing.T) {
 		defer func() { _ = s.Close() }()
 
 		// Just verify it doesn't error.
-		list, err := s.ListRecoverySnapshots(ctx, "dev", 0)
+		list, err := s.ListRecoverySnapshots(ctx, testSessionDev, 0)
 		if err != nil {
 			t.Fatalf("ListRecoverySnapshots error = %v", err)
 		}
@@ -410,13 +412,13 @@ func TestGetRecoverySession(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 
-		session, err := s.GetRecoverySession(ctx, "dev")
+		session, err := s.GetRecoverySession(ctx, testSessionDev)
 		if err != nil {
 			t.Fatalf("GetRecoverySession error = %v", err)
 		}
-		if session.Name != "dev" || session.State != RecoveryStateRunning {
+		if session.Name != testSessionDev || session.State != RecoveryStateRunning {
 			t.Fatalf("unexpected session: %+v", session)
 		}
 		if session.SnapshotHash != "hash-1" || session.Windows != 2 || session.Panes != 3 {
@@ -751,7 +753,7 @@ func TestTrimRecoverySnapshots(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		base := validSnapshotWrite("dev")
+		base := validSnapshotWrite(testSessionDev)
 		for i := 0; i < 5; i++ {
 			snap := base
 			snap.StateHash = "" // no dedup
@@ -763,7 +765,7 @@ func TestTrimRecoverySnapshots(t *testing.T) {
 			t.Fatalf("TrimRecoverySnapshots error = %v", err)
 		}
 
-		remaining, err := s.ListRecoverySnapshots(ctx, "dev", 100)
+		remaining, err := s.ListRecoverySnapshots(ctx, testSessionDev, 100)
 		if err != nil {
 			t.Fatalf("ListRecoverySnapshots error = %v", err)
 		}
@@ -785,13 +787,13 @@ func TestTrimRecoverySnapshots(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 
 		if err := s.TrimRecoverySnapshots(ctx, 10); err != nil {
 			t.Fatalf("TrimRecoverySnapshots error = %v", err)
 		}
 
-		remaining, err := s.ListRecoverySnapshots(ctx, "dev", 100)
+		remaining, err := s.ListRecoverySnapshots(ctx, testSessionDev, 100)
 		if err != nil {
 			t.Fatalf("ListRecoverySnapshots error = %v", err)
 		}
@@ -903,12 +905,12 @@ func TestCreateAndGetRecoveryJob(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 		createdAt := time.Date(2025, 6, 5, 12, 0, 0, 0, time.UTC)
 
 		mustCreateJob(t, s, ctx, RecoveryJob{
 			ID:             "job-1",
-			SessionName:    "dev",
+			SessionName:    testSessionDev,
 			TargetSession:  "dev-restored",
 			SnapshotID:     snap.ID,
 			Mode:           "full",
@@ -922,7 +924,7 @@ func TestCreateAndGetRecoveryJob(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetRecoveryJob error = %v", err)
 		}
-		if job.ID != "job-1" || job.SessionName != "dev" {
+		if job.ID != "job-1" || job.SessionName != testSessionDev {
 			t.Fatalf("unexpected job identity: %+v", job)
 		}
 		if job.Status != RecoveryJobQueued {
@@ -953,10 +955,10 @@ func TestCreateAndGetRecoveryJob(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 		mustCreateJob(t, s, ctx, RecoveryJob{
 			ID:             "job-z",
-			SessionName:    "dev",
+			SessionName:    testSessionDev,
 			SnapshotID:     snap.ID,
 			Mode:           "full",
 			ConflictPolicy: "rename",
@@ -982,10 +984,10 @@ func TestRecoveryJobStateTransitions(t *testing.T) {
 	setupJob := func(t *testing.T) (*Store, RecoveryJob) {
 		t.Helper()
 		s := newTestStore(t)
-		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 		job := RecoveryJob{
 			ID:             "job-1",
-			SessionName:    "dev",
+			SessionName:    testSessionDev,
 			SnapshotID:     snap.ID,
 			Mode:           "full",
 			ConflictPolicy: "rename",
@@ -1138,11 +1140,11 @@ func TestListRecoveryJobs(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 		for i := 0; i < 3; i++ {
 			mustCreateJob(t, s, ctx, RecoveryJob{
 				ID:             "job-" + string(rune('a'+i)),
-				SessionName:    "dev",
+				SessionName:    testSessionDev,
 				SnapshotID:     snap.ID,
 				Mode:           "full",
 				ConflictPolicy: "rename",
@@ -1168,14 +1170,14 @@ func TestListRecoveryJobs(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 		mustCreateJob(t, s, ctx, RecoveryJob{
-			ID: "j1", SessionName: "dev", SnapshotID: snap.ID,
+			ID: "j1", SessionName: testSessionDev, SnapshotID: snap.ID,
 			Mode: "full", ConflictPolicy: "rename", Status: RecoveryJobQueued,
 			CreatedAt: time.Now(),
 		})
 		mustCreateJob(t, s, ctx, RecoveryJob{
-			ID: "j2", SessionName: "dev", SnapshotID: snap.ID,
+			ID: "j2", SessionName: testSessionDev, SnapshotID: snap.ID,
 			Mode: "full", ConflictPolicy: "rename", Status: RecoveryJobSucceeded,
 			CreatedAt: time.Now(),
 		})
@@ -1193,10 +1195,10 @@ func TestListRecoveryJobs(t *testing.T) {
 		s := newTestStore(t)
 		defer func() { _ = s.Close() }()
 
-		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("dev"))
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
 		for i := 0; i < 5; i++ {
 			mustCreateJob(t, s, ctx, RecoveryJob{
-				ID: "j" + string(rune('0'+i)), SessionName: "dev", SnapshotID: snap.ID,
+				ID: "j" + string(rune('0'+i)), SessionName: testSessionDev, SnapshotID: snap.ID,
 				Mode: "full", ConflictPolicy: "rename", Status: RecoveryJobQueued,
 				CreatedAt: time.Date(2025, 6, 5, 12, i, 0, 0, time.UTC),
 			})
@@ -1318,14 +1320,14 @@ func TestUpsertRecoverySnapshotResetsKilledSession(t *testing.T) {
 	s := newTestStore(t)
 	defer func() { _ = s.Close() }()
 
-	snap := validSnapshotWrite("dev")
+	snap := validSnapshotWrite(testSessionDev)
 	mustUpsertSnapshot(t, s, ctx, snap)
 
-	if err := s.MarkRecoverySessionsKilled(ctx, []string{"dev"}, "boot-2", time.Now()); err != nil {
+	if err := s.MarkRecoverySessionsKilled(ctx, []string{testSessionDev}, "boot-2", time.Now()); err != nil {
 		t.Fatalf("MarkRecoverySessionsKilled error = %v", err)
 	}
 
-	session, err := s.GetRecoverySession(ctx, "dev")
+	session, err := s.GetRecoverySession(ctx, testSessionDev)
 	if err != nil {
 		t.Fatalf("GetRecoverySession error = %v", err)
 	}
@@ -1338,7 +1340,7 @@ func TestUpsertRecoverySnapshotResetsKilledSession(t *testing.T) {
 	snap.CapturedAt = snap.CapturedAt.Add(time.Hour)
 	mustUpsertSnapshot(t, s, ctx, snap)
 
-	session, err = s.GetRecoverySession(ctx, "dev")
+	session, err = s.GetRecoverySession(ctx, testSessionDev)
 	if err != nil {
 		t.Fatalf("GetRecoverySession error = %v", err)
 	}

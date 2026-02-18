@@ -1136,7 +1136,7 @@ func TestReadMessageUnsupportedOpcode(t *testing.T) {
 	wsConn, rawConn := newTestServerConn(t)
 	go func() {
 		_ = writeMaskedFrame(rawConn, true, 0, 0x3, []byte("data")) // 0x3 is reserved
-		_, _, _ = readServerFrame(rawConn)                           // drain close reply
+		_, _, _ = readServerFrame(rawConn)                          // drain close reply
 	}()
 
 	_, _, err := wsConn.ReadMessage()
@@ -1175,9 +1175,9 @@ func TestReadMessageRSVBits(t *testing.T) {
 	go func() {
 		// RSV1 bit set (0x40).
 		_, _ = rawConn.Write([]byte{
-			0xC1,          // FIN + RSV1 + text
-			0x80,          // masked + length 0
-			0, 0, 0, 0,   // mask key
+			0xC1,       // FIN + RSV1 + text
+			0x80,       // masked + length 0
+			0, 0, 0, 0, // mask key
 		})
 		_, _, _ = readServerFrame(rawConn) // drain close reply
 	}()
@@ -1198,9 +1198,9 @@ func TestReadMessageFragmentedFrame(t *testing.T) {
 	go func() {
 		// FIN=0 (fragmented).
 		_, _ = rawConn.Write([]byte{
-			0x01,          // NO FIN + text
-			0x80,          // masked + length 0
-			0, 0, 0, 0,   // mask key
+			0x01,       // NO FIN + text
+			0x80,       // masked + length 0
+			0, 0, 0, 0, // mask key
 		})
 		_, _, _ = readServerFrame(rawConn) // drain close reply
 	}()

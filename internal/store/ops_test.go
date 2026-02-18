@@ -161,6 +161,8 @@ func TestOpsRunbooksAndRuns(t *testing.T) {
 
 // --- Custom Services CRUD ---
 
+const testManager = "systemd"
+
 func TestInsertOpsCustomService(t *testing.T) {
 	t.Parallel()
 
@@ -171,7 +173,7 @@ func TestInsertOpsCustomService(t *testing.T) {
 		svc, err := s.InsertOpsCustomService(ctx, OpsCustomServiceWrite{
 			Name:        "nginx",
 			DisplayName: "Nginx Web Server",
-			Manager:     "systemd",
+			Manager:     testManager,
 			Unit:        "nginx.service",
 			Scope:       "system",
 		})
@@ -184,7 +186,7 @@ func TestInsertOpsCustomService(t *testing.T) {
 		if svc.DisplayName != "Nginx Web Server" {
 			t.Fatalf("displayName = %q, want Nginx Web Server", svc.DisplayName)
 		}
-		if svc.Manager != "systemd" {
+		if svc.Manager != testManager {
 			t.Fatalf("manager = %q, want systemd", svc.Manager)
 		}
 		if svc.Unit != "nginx.service" {
@@ -212,7 +214,7 @@ func TestInsertOpsCustomService(t *testing.T) {
 		if svc.DisplayName != "redis" {
 			t.Fatalf("displayName should default to name, got %q", svc.DisplayName)
 		}
-		if svc.Manager != "systemd" {
+		if svc.Manager != testManager {
 			t.Fatalf("manager should default to systemd, got %q", svc.Manager)
 		}
 		if svc.Scope != "user" {
@@ -473,9 +475,10 @@ func TestUpdateOpsRunbook(t *testing.T) {
 		if len(updated.Steps) != 1 || updated.Steps[0].Type != "check" {
 			t.Fatalf("unexpected steps: %+v", updated.Steps)
 		}
-		if updated.UpdatedAt == orig.CreatedAt {
-			// UpdatedAt should be refreshed (not strictly equal to creation time).
-			// This is a best-effort check; clock granularity may make them equal.
+		// UpdatedAt should be refreshed (not strictly equal to creation time).
+		// Clock granularity may make them equal, so this is a best-effort check.
+		if updated.UpdatedAt != orig.CreatedAt && updated.UpdatedAt == "" {
+			t.Fatal("expected non-empty updatedAt")
 		}
 	})
 
