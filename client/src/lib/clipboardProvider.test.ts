@@ -1,6 +1,10 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createWebClipboardProvider } from './clipboardProvider'
+import {
+  createWebClipboardProvider,
+  writeClipboardText,
+} from './clipboardProvider'
 
 describe('createWebClipboardProvider', () => {
   const originalNavigator = globalThis.navigator
@@ -93,5 +97,59 @@ describe('createWebClipboardProvider', () => {
       const result = await provider.readText('c' as never)
       expect(result).toBe('')
     })
+  })
+})
+
+describe('writeClipboardText', () => {
+  const originalNavigator = globalThis.navigator
+  let mockWriteText: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    mockWriteText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        ...originalNavigator,
+        clipboard: { writeText: mockWriteText },
+      },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: originalNavigator,
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('uses navigator.clipboard when available', () => {
+    writeClipboardText('test')
+    expect(mockWriteText).toHaveBeenCalledWith('test')
+  })
+
+  it('falls back to execCommand when clipboard API is missing', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { ...originalNavigator, clipboard: undefined },
+      writable: true,
+      configurable: true,
+    })
+    const mockExecCommand = vi.fn().mockReturnValue(true)
+    document.execCommand = mockExecCommand
+    writeClipboardText('fallback text')
+    expect(mockExecCommand).toHaveBeenCalledWith('copy')
+  })
+
+  it('does not throw when both clipboard API and execCommand fail', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { ...originalNavigator, clipboard: undefined },
+      writable: true,
+      configurable: true,
+    })
+    document.execCommand = () => {
+      throw new Error('not supported')
+    }
+    expect(() => writeClipboardText('test')).not.toThrow()
   })
 })

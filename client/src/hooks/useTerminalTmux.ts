@@ -9,7 +9,10 @@ import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
-import { createWebClipboardProvider } from '@/lib/clipboardProvider'
+import {
+  createWebClipboardProvider,
+  writeClipboardText,
+} from '@/lib/clipboardProvider'
 import { attachTouchWheelBridge } from '@/lib/touchWheelBridge'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
 import { buildWSProtocols } from '@/lib/wsAuth'
@@ -615,7 +618,7 @@ export function useTerminalTmux({
       runtime.onSelectionDispose = terminal.onSelectionChange(() => {
         const text = terminal.getSelection()
         if (text) {
-          navigator.clipboard.writeText(text).catch(() => {})
+          writeClipboardText(text)
         }
       })
 
