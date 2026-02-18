@@ -4,8 +4,8 @@
   <p><strong>Your terminal watchtower</strong></p>
 </div>
 
-Sentinel is a terminal-first workspace delivered as a single binary.
-It provides tmux session control, ops control-plane tooling, realtime activity projection, and recovery workflows in a browser UI.
+Sentinel is a host operations platform delivered as a single binary.
+It provides tmux session control, service monitoring, alerts, metrics, runbooks, and recovery workflows in a realtime browser UI.
 
 ## What You Will Find Here
 

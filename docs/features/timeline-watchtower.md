@@ -57,7 +57,7 @@ Filters:
 
 ## Timeline Page
 
-The dedicated `/timeline` route provides a standalone view of the operational audit log. Previously part of the `/ops` page, it is now a full-page experience.
+The dedicated `/timeline` route provides a full-page view of the operational audit log.
 
 - The sidebar displays overview stats (host, uptime, events count, health), a search query input, and a severity filter dropdown (all/info/warn/error). A `?` help dialog button and token/lock controls are available at the top of the sidebar.
 - The main panel shows a scrollable list of timeline events. Each event displays: message, severity badge, source/resource, timestamp, and optional details.

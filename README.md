@@ -10,10 +10,10 @@
     </p>
 </div>
 
-Sentinel is a terminal-first workspace delivered as a single binary.
-It gives you a realtime browser interface to operate tmux sessions, an ops control plane, and recovery workflows on your own host.
+Sentinel is a host operations platform delivered as a single binary.
+It gives you a realtime browser interface to manage tmux sessions, monitor services, track alerts, run operational procedures, and recover from failures — all on your own machine.
 
-No Electron. No cloud relay. Just your machine and your shell.
+No Electron. No cloud relay. Just your host and your shell.
 
 <p align="center">
   <a href="https://opus-domini.github.io/sentinel/">Documentation</a> •
@@ -25,16 +25,23 @@ No Electron. No cloud relay. Just your machine and your shell.
 
 - One binary, fast setup, low operational overhead.
 - Realtime tmux control with session, window, and pane visibility.
-- Optimistic and responsive UI tuned for desktop and mobile.
-- Built-in watchtower activity tracking and timeline.
-- Built-in recovery snapshots and restore jobs.
+- Service monitoring and control for systemd and launchd.
+- Alerts, timeline, and metrics for host-level observability.
+- Runbooks for executable operational procedures with job tracking.
+- Recovery snapshots and restore workflows.
 - Guardrails for safer destructive terminal actions.
+- Optimistic and responsive UI tuned for desktop and mobile.
 
 ## Core Capabilities
 
-- Interactive PTY terminal in the browser.
-- Tmux workspace management (`Session > Window > Pane`).
-- Ops control plane (`/ops`) with services, alerts, timeline, and runbooks.
+- **Tmux** — Interactive PTY in the browser with tmux workspace management.
+- **Services** — Monitor and control systemd/launchd units from `/services`.
+- **Alerts** — Deduplicated alert feed from watchtower and service health at `/alerts`.
+- **Timeline** — Searchable operational audit log at `/timeline`.
+- **Metrics** — System and runtime resource dashboard at `/metrics`.
+- **Runbooks** — Step-by-step operational procedures with job history at `/runbooks`.
+- **Recovery** — Session snapshots and restore workflows.
+- **Guardrails** — Safety rules for destructive terminal actions.
 - Event-driven updates over WebSocket (`/ws/events`).
 - Service mode and daily autoupdate (Linux/macOS).
 - Optional token auth and origin allowlist.

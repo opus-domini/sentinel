@@ -34,7 +34,7 @@ A toggle in the sidebar enables or disables automatic polling:
 
 ## UI Features
 
-- Dedicated `/metrics` route (previously part of the monolithic `/ops` page).
+- Dedicated `/metrics` route with full-page metrics dashboard.
 - Two tabs: **System** (host resource gauges) and **Runtime** (Go process stats).
 - Sidebar displays host info (hostname, OS/arch, CPU count, Go version), Sentinel info (PID, uptime, last collected timestamp), and the auto-refresh toggle.
 - Real-time overview updates via WebSocket (`ops.overview.updated`).

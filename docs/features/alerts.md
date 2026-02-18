@@ -35,7 +35,7 @@ POST /api/ops/alerts/{alert}/ack
 
 ## UI Features
 
-- Dedicated `/alerts` route (previously part of the monolithic `/ops` page).
+- Dedicated `/alerts` route with full-page alert management.
 - Sidebar displays overview stats: host identity, uptime, and health summary.
 - Severity filter buttons (`all` / `warn` / `error`) narrow the visible feed.
 - Open alert count badge in the sidebar reflects unacknowledged alerts.
