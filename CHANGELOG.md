@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/opus-domini/sentinel/compare/v0.3.4...v0.3.5) (2026-02-18)
+
+
+### Features
+
+* **client:** improve mobile responsiveness and runbook consistency ([9b2f984](https://github.com/opus-domini/sentinel/commit/9b2f984cb6e1d23339cd7dd931e3dfe3718fc76d))
+
 ## [0.3.4](https://github.com/opus-domini/sentinel/compare/v0.3.3...v0.3.4) (2026-02-18)
 
 
