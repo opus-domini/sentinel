@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.6](https://github.com/opus-domini/sentinel/compare/v0.3.5...v0.3.6) (2026-02-18)
+
+
+### Features
+
+* add runbook scheduling and live indicators for timeline/alerts ([2f38a78](https://github.com/opus-domini/sentinel/commit/2f38a786c343f42ce5414a7d1ba025659c41f459))
+* push metrics over WebSocket and fix settings dialog on mobile ([411a078](https://github.com/opus-domini/sentinel/commit/411a07841c1541b164a479296ba547ae7b2e8bb4))
+
+
+### Bug Fixes
+
+* align live indicators with backend 5s push tickers ([a4b8427](https://github.com/opus-domini/sentinel/commit/a4b84278a4c3cacef64f2986c5b5c7565ab93d10))
+* **client:** replace timestamps with static refresh rate indicator ([c1a597f](https://github.com/opus-domini/sentinel/commit/c1a597fde8bb6869e4cba5b3d09d12318b1892e4))
+* **client:** show relative time for metrics timestamps ([78b34c5](https://github.com/opus-domini/sentinel/commit/78b34c53ee440cc2ade2e5777717b4851f1db029))
+
+
+### Documentation
+
+* add screenshots and captions across all feature docs and README ([bfc374e](https://github.com/opus-domini/sentinel/commit/bfc374e5830e62b743e15be53516ea210fd1c301))
+* prefix ops control plane captions with feature names ([7311a21](https://github.com/opus-domini/sentinel/commit/7311a21a56bb769076eec74906aac6de582c08a4))
+* rewrite README facecard and remove legacy /ops references ([8ddda33](https://github.com/opus-domini/sentinel/commit/8ddda33d899249977f35ccdc8f550a1df1860ee3))
+
 ## [0.3.5](https://github.com/opus-domini/sentinel/compare/v0.3.4...v0.3.5) (2026-02-18)
 
 
