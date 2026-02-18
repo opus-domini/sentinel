@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.2](https://github.com/opus-domini/sentinel/compare/v0.3.1...v0.3.2) (2026-02-18)
+
+
+### Features
+
+* **client:** add help dialog to tmux, services, and runbooks sidebars ([27a87e5](https://github.com/opus-domini/sentinel/commit/27a87e54c2f212c6c75669343b8a45ab08f52bf8))
+* **client:** split ops into dedicated alerts, timeline, and metrics pages ([d53233b](https://github.com/opus-domini/sentinel/commit/d53233b7b012b36986ec1ea04e749cdf9d9106d9))
+* **ops:** persist runbook step output and add dedicated pages ([aaf1a88](https://github.com/opus-domini/sentinel/commit/aaf1a88de404e02dfa92981a860fd117965fcdba))
+
+
+### Documentation
+
+* update documentation for ops page breakup and new features ([83979fd](https://github.com/opus-domini/sentinel/commit/83979fd46140931698348746282b542dc6f1f217))
+
 ## [0.3.1](https://github.com/opus-domini/sentinel/compare/v0.3.0...v0.3.1) (2026-02-15)
 
 
