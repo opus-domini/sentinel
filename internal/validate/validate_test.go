@@ -45,3 +45,42 @@ func TestSessionName(t *testing.T) {
 		})
 	}
 }
+
+func TestIconKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"lowercase", "terminal", true},
+		{"with hyphens", "arrow-left", true},
+		{"with numbers", "h2", true},
+		{"all numbers", "123", true},
+		{"single char", "a", true},
+		{"max length 32", strings.Repeat("a", 32), true},
+		{"mixed hyphens numbers", "icon-v2-alt", true},
+
+		{"empty", "", false},
+		{"too long 33", strings.Repeat("a", 33), false},
+		{"uppercase", "Terminal", false},
+		{"all caps", "ICON", false},
+		{"with spaces", "arrow left", false},
+		{"with underscore", "arrow_left", false},
+		{"with dot", "icon.name", false},
+		{"with at sign", "icon@name", false},
+		{"with slash", "icon/name", false},
+		{"with unicode", "café", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := IconKey(tt.input)
+			if got != tt.want {
+				t.Errorf("IconKey(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}

@@ -3178,8 +3178,6 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 	}
 
 	t.Run("list alerts", func(t *testing.T) {
-		t.Parallel()
-
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("GET", "/api/ops/alerts?status=open&limit=5", nil)
 		h.opsAlerts(w, r)
@@ -3195,8 +3193,6 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 	})
 
 	t.Run("list timeline", func(t *testing.T) {
-		t.Parallel()
-
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("GET", "/api/ops/timeline?q=restarted&severity=warn&source=service", nil)
 		h.opsTimeline(w, r)
@@ -3216,8 +3212,6 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 	})
 
 	t.Run("list timeline invalid severity", func(t *testing.T) {
-		t.Parallel()
-
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("GET", "/api/ops/timeline?severity=invalid", nil)
 		h.opsTimeline(w, r)
@@ -3230,8 +3224,6 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 	})
 
 	t.Run("ack alert publishes events", func(t *testing.T) {
-		t.Parallel()
-
 		hub := events.NewHub()
 		eventsCh, unsubscribe := hub.Subscribe(8)
 		defer unsubscribe()
