@@ -6,7 +6,7 @@ import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
-import { formatTimeAgo, formatUptime } from '@/lib/opsUtils'
+import { formatUptime } from '@/lib/opsUtils'
 
 type MetricsSidebarProps = {
   isOpen: boolean
@@ -124,14 +124,6 @@ export default function MetricsSidebar({
               <p className="mt-0.5 text-[11px] font-medium">
                 {overview != null
                   ? formatUptime(overview.sentinel.uptimeSec)
-                  : '-'}
-              </p>
-            </div>
-            <div className="rounded-md border border-border-subtle bg-surface-elevated p-2">
-              <p className="text-[10px] text-muted-foreground">Last update</p>
-              <p className="mt-0.5 min-w-0 truncate text-[11px] font-medium">
-                {metrics?.collectedAt
-                  ? formatTimeAgo(metrics.collectedAt)
                   : '-'}
               </p>
             </div>
