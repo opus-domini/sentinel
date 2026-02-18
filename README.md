@@ -100,23 +100,23 @@ If you expose Sentinel outside localhost (`0.0.0.0`), always configure:
 
 ### Ops Control Plane
 
-> Monitor and control systemd/launchd services with live status, logs, and one-click actions.
+> **Services:** Monitor and control systemd/launchd services with live status, logs, and one-click actions.
 
 ![Desktop services](docs/assets/images/desktop-services.png)
 
-> Catch failures early with deduplicated alerts from watchtower and service health checks.
+> **Alerts:** Catch failures early with deduplicated alerts from watchtower and service health checks.
 
 ![Desktop alerts](docs/assets/images/desktop-alerts.png)
 
-> CPU, memory, disk, and runtime stats at a glance — no external agents needed.
+> **Metrics:** CPU, memory, disk, and runtime stats at a glance — no external agents needed.
 
 ![Desktop metrics](docs/assets/images/desktop-metrics.png)
 
-> Searchable audit log of every operation, alert, and service event on your host.
+> **Timeline:** Searchable audit log of every operation, alert, and service event on your host.
 
 ![Desktop timeline](docs/assets/images/desktop-timeline.png)
 
-> Executable step-by-step procedures with job tracking and per-step output history.
+> **Runbooks:** Executable step-by-step procedures with job tracking and per-step output history.
 
 ![Desktop runbooks](docs/assets/images/desktop-runbooks.png)
 
