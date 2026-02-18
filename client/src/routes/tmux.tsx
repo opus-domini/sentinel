@@ -104,6 +104,7 @@ import {
   removePendingWindowCreate,
   setPendingWindowPaneFloor,
 } from '@/lib/tmuxInspectorOptimistic'
+import { randomId } from '@/lib/utils'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
@@ -119,11 +120,7 @@ function resolvePresenceTerminalID(): string {
     return fromStorage
   }
 
-  const generated =
-    typeof window.crypto !== 'undefined' &&
-    typeof window.crypto.randomUUID === 'function'
-      ? window.crypto.randomUUID()
-      : `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  const generated = randomId()
   window.sessionStorage.setItem(key, generated)
   return generated
 }

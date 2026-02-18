@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { cn, randomId } from '@/lib/utils'
 
 export type RunbookDraft = {
   id: string | null
@@ -26,7 +26,7 @@ type RunbookEditorProps = {
 
 function createBlankStep(): RunbookStepDraft {
   return {
-    key: crypto.randomUUID(),
+    key: randomId(),
     type: 'command',
     title: '',
     command: '',

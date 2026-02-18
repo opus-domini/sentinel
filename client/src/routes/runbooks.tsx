@@ -47,7 +47,7 @@ import {
   prependOpsTimelineEvent,
   upsertOpsRunbookJob,
 } from '@/lib/opsQueryCache'
-import { cn } from '@/lib/utils'
+import { cn, randomId } from '@/lib/utils'
 
 function isBuiltinRunbook(id: string): boolean {
   return id.startsWith('ops.')
@@ -61,7 +61,7 @@ function runbookToDraft(runbook: OpsRunbook): RunbookDraft {
     enabled: runbook.enabled,
     steps: runbook.steps.map(
       (step): RunbookStepDraft => ({
-        key: crypto.randomUUID(),
+        key: randomId(),
         type: step.type as RunbookStepDraft['type'],
         title: step.title,
         command: step.command ?? '',
