@@ -111,6 +111,7 @@ function TimelinePage() {
         payload?: {
           overview?: OpsOverview
           event?: OpsTimelineEvent
+          events?: Array<OpsTimelineEvent>
         }
       }
       switch (typed.type) {
@@ -128,7 +129,15 @@ function TimelinePage() {
           }
           break
         case 'ops.timeline.updated':
-          if (typed.payload?.event != null) {
+          if (Array.isArray(typed.payload?.events)) {
+            queryClient.setQueryData<Array<OpsTimelineEvent>>(
+              opsTimelineQueryKey(
+                timelineQueryRef.current,
+                timelineSeverityRef.current,
+              ),
+              typed.payload.events,
+            )
+          } else if (typed.payload?.event != null) {
             const timelineEvent = typed.payload.event
             queryClient.setQueryData<Array<OpsTimelineEvent>>(
               opsTimelineQueryKey(
@@ -256,7 +265,7 @@ function TimelinePage() {
           </span>
           <span className="shrink-0 whitespace-nowrap">
             {timelineEvents.length > 0 || timelineEventsQuery.isSuccess
-              ? 'Live'
+              ? 'Live · 5s'
               : 'waiting'}
           </span>
         </footer>

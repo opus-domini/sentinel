@@ -99,10 +99,18 @@ func serve() int {
 	metricsCtx, stopMetrics := context.WithCancel(context.Background())
 	go startMetricsTicker(metricsCtx, opsManager, eventHub)
 
+	alertsCtx, stopAlerts := context.WithCancel(context.Background())
+	go startAlertsTicker(alertsCtx, st, eventHub)
+
+	timelineCtx, stopTimeline := context.WithCancel(context.Background())
+	go startTimelineTicker(timelineCtx, st, eventHub)
+
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
 	api.Register(mux, guard, st, recoveryService, eventHub, currentVersion(), configPath)
 
 	exitCode := run(cfg, mux)
+	stopTimeline()
+	stopAlerts()
 	stopMetrics()
 	stopSchedulerCtx, cancelScheduler := context.WithTimeout(context.Background(), 2*time.Second)
 	schedulerService.Stop(stopSchedulerCtx)
@@ -183,6 +191,50 @@ func startMetricsTicker(ctx context.Context, mgr *ops.Manager, hub *events.Hub) 
 			cancel()
 			hub.Publish(events.NewEvent(events.TypeOpsMetrics, map[string]any{
 				"metrics": m,
+			}))
+		}
+	}
+}
+
+func startAlertsTicker(ctx context.Context, st *store.Store, hub *events.Hub) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			alerts, err := st.ListOpsAlerts(collectCtx, 100, "")
+			cancel()
+			if err != nil {
+				continue
+			}
+			hub.Publish(events.NewEvent(events.TypeOpsAlerts, map[string]any{
+				"alerts": alerts,
+			}))
+		}
+	}
+}
+
+func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			result, err := st.SearchOpsTimelineEvents(collectCtx, store.OpsTimelineQuery{
+				Limit: 200,
+			})
+			cancel()
+			if err != nil {
+				continue
+			}
+			hub.Publish(events.NewEvent(events.TypeOpsTimeline, map[string]any{
+				"events": result.Events,
 			}))
 		}
 	}

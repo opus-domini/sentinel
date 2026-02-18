@@ -137,7 +137,7 @@ export default function AlertsSidebar({
                 type="button"
                 onClick={() => onSeverityChange(sev)}
                 className={cn(
-                  'flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
+                  'flex-1 cursor-pointer rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
                   selectedSeverity === sev
                     ? 'border-foreground/20 bg-foreground/10 text-foreground'
                     : 'border-border-subtle bg-surface-elevated text-muted-foreground hover:text-foreground',

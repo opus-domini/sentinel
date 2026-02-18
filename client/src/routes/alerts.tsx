@@ -307,7 +307,7 @@ function AlertsPage() {
                 : 'Alerts connected'}
           </span>
           <span className="shrink-0 whitespace-nowrap">
-            {alertsQuery.isSuccess ? 'Live · 30s' : 'waiting'}
+            {alertsQuery.isSuccess ? 'Live · 5s' : 'waiting'}
           </span>
         </footer>
       </main>
