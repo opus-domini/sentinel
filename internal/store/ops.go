@@ -224,6 +224,17 @@ func (s *Store) initOpsSchema() error {
 			datetime('now'),
 			datetime('now')
 		)`,
+		`INSERT OR IGNORE INTO ops_runbooks(
+			id, name, description, steps_json, enabled, created_at, updated_at
+		) VALUES (
+			'ops.update.apply',
+			'Apply Update',
+			'Check for updates, download and install the latest version, and restart the service.',
+			'[{"type":"command","title":"Check for updates","command":"sentinel update check"},{"type":"command","title":"Apply update and restart","command":"sentinel update apply --restart"}]',
+			1,
+			datetime('now'),
+			datetime('now')
+		)`,
 		`CREATE TABLE IF NOT EXISTS ops_custom_services (
 			name         TEXT PRIMARY KEY,
 			display_name TEXT NOT NULL,
