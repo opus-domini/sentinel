@@ -54,10 +54,10 @@ export default function MetricsHelpDialog() {
               </p>
             </section>
             <section>
-              <h3 className="mb-1 font-medium text-foreground">Auto-refresh</h3>
+              <h3 className="mb-1 font-medium text-foreground">Live Updates</h3>
               <p>
-                When enabled, metrics are polled every 5 seconds. Toggle the
-                switch in the sidebar to start or stop automatic updates.
+                Metrics are pushed from the server every 2 seconds over
+                WebSocket. No manual refresh is needed while connected.
               </p>
             </section>
             <section>

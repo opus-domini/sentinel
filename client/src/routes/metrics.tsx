@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu, RefreshCw } from 'lucide-react'
 import type {
+  OpsHostMetrics,
   OpsMetricsResponse,
   OpsOverview,
   OpsOverviewResponse,
@@ -53,7 +54,6 @@ function MetricsPage() {
   const api = useTmuxApi(token)
   const queryClient = useQueryClient()
 
-  const [metricsAutoRefresh, setMetricsAutoRefresh] = useState(false)
   const [activeTab, setActiveTab] = useState<MetricsTab>('system')
 
   const overviewQuery = useQuery({
@@ -70,7 +70,6 @@ function MetricsPage() {
       const data = await api<OpsMetricsResponse>('/api/ops/metrics')
       return data.metrics
     },
-    refetchInterval: metricsAutoRefresh ? 5_000 : false,
   })
 
   const overview = overviewQuery.data ?? null
@@ -109,7 +108,7 @@ function MetricsPage() {
     (message: unknown) => {
       const typed = message as {
         type?: string
-        payload?: { overview?: OpsOverview }
+        payload?: { overview?: OpsOverview; metrics?: OpsHostMetrics }
       }
       switch (typed.type) {
         case 'ops.overview.updated':
@@ -123,6 +122,17 @@ function MetricsPage() {
             )
           } else {
             void refreshOverview()
+          }
+          break
+        case 'ops.metrics.updated':
+          if (
+            typed.payload?.metrics != null &&
+            typeof typed.payload.metrics === 'object'
+          ) {
+            queryClient.setQueryData(
+              OPS_METRICS_QUERY_KEY,
+              typed.payload.metrics,
+            )
           }
           break
         default:
@@ -148,8 +158,6 @@ function MetricsPage() {
           token={token}
           overview={overview}
           metrics={metrics}
-          autoRefresh={metricsAutoRefresh}
-          onAutoRefreshChange={setMetricsAutoRefresh}
           onTokenChange={setToken}
         />
       }

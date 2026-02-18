@@ -89,10 +89,14 @@ func serve() int {
 	}, 0)
 	healthChecker.Start()
 
+	metricsCtx, stopMetrics := context.WithCancel(context.Background())
+	go startMetricsTicker(metricsCtx, opsManager, eventHub)
+
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
 	api.Register(mux, guard, st, recoveryService, eventHub, currentVersion(), configPath)
 
 	exitCode := run(cfg, mux)
+	stopMetrics()
 	healthChecker.Stop()
 	if cfg.Watchtower.Enabled {
 		stopWatchtowerCtx, cancelWatchtower := context.WithTimeout(context.Background(), 2*time.Second)
@@ -154,6 +158,24 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 	}
 	slog.Info("sentinel stopped")
 	return 0
+}
+
+func startMetricsTicker(ctx context.Context, mgr *ops.Manager, hub *events.Hub) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			collectCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			m := mgr.Metrics(collectCtx)
+			cancel()
+			hub.Publish(events.NewEvent(events.TypeOpsMetrics, map[string]any{
+				"metrics": m,
+			}))
+		}
+	}
 }
 
 func requestLog(next http.Handler) http.Handler {

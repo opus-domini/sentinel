@@ -7,7 +7,6 @@ import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { formatUptime } from '@/lib/opsUtils'
-import { cn } from '@/lib/utils'
 
 type MetricsSidebarProps = {
   isOpen: boolean
@@ -16,8 +15,6 @@ type MetricsSidebarProps = {
   token: string
   overview: OpsOverview | null
   metrics: OpsHostMetrics | null
-  autoRefresh: boolean
-  onAutoRefreshChange: (value: boolean) => void
   onTokenChange: (value: string) => void
 }
 
@@ -28,8 +25,6 @@ export default function MetricsSidebar({
   token,
   overview,
   metrics,
-  autoRefresh,
-  onAutoRefreshChange,
   onTokenChange,
 }: MetricsSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
@@ -141,36 +136,6 @@ export default function MetricsSidebar({
               </p>
             </div>
           </div>
-        </section>
-
-        <section className="rounded-lg border border-border-subtle bg-secondary p-2">
-          <label className="flex cursor-pointer items-center justify-between gap-2 select-none">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              Auto-refresh
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={autoRefresh}
-                onClick={() => onAutoRefreshChange(!autoRefresh)}
-                className={cn(
-                  'relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border transition-colors',
-                  autoRefresh
-                    ? 'border-emerald-500/60 bg-emerald-500/30'
-                    : 'border-border bg-surface-elevated',
-                )}
-              >
-                <span
-                  className={cn(
-                    'pointer-events-none block h-3 w-3 rounded-full bg-foreground shadow transition-transform',
-                    autoRefresh ? 'translate-x-3' : 'translate-x-0',
-                  )}
-                />
-              </button>
-              <span className="text-[10px] text-muted-foreground">5s</span>
-            </div>
-          </label>
         </section>
       </div>
     </SidebarShell>

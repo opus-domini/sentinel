@@ -17,6 +17,7 @@ const (
 	TypeOpsAlerts        = "ops.alerts.updated"
 	TypeOpsTimeline      = "ops.timeline.updated"
 	TypeOpsJob           = "ops.job.updated"
+	TypeOpsMetrics       = "ops.metrics.updated"
 	TypeRecoveryOverview = "recovery.overview.updated"
 	TypeRecoveryJob      = "recovery.job.updated"
 )

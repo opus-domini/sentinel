@@ -234,7 +234,7 @@ export default function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex min-w-0 max-w-[calc(100vw-1rem)] flex-col overflow-x-hidden sm:min-h-[680px] sm:max-w-2xl">
+      <DialogContent className="inset-0 flex h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col overflow-x-hidden rounded-none sm:inset-auto sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:min-h-[680px]">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
