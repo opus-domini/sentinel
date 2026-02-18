@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   AlertTriangle,
+  ArrowDownToLine,
   CheckCircle2,
   Clock3,
   FileText,
@@ -11,10 +12,12 @@ import {
   Pin,
   PinOff,
   Play,
+  Radio,
   RefreshCw,
   RotateCw,
   Search,
   Square,
+  WrapText,
   X,
 } from 'lucide-react'
 import type {
@@ -33,8 +36,10 @@ import type {
   OpsUnitActionResponse,
   OpsUnitLogsResponse,
 } from '@/types'
+import type { ParsedLogLine } from '@/lib/log-parser'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
+import { LogViewer } from '@/components/LogViewer'
 import ServicesSidebar from '@/components/ServicesSidebar'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,13 +50,22 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
+import { useLogStream } from '@/hooks/useLogStream'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
+import { parseLogLines, parseSingleLine } from '@/lib/log-parser'
 import {
   canStartOpsService,
   canStopOpsService,
@@ -70,6 +84,8 @@ import {
 import { browsedServiceDot, toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 
+const LOG_BUFFER_MAX = 5_000
+
 function ServicesPage() {
   const { tokenRequired } = useMetaContext()
   const { token, setToken } = useTokenContext()
@@ -87,10 +103,18 @@ function ServicesPage() {
   const [serviceStatusData, setServiceStatusData] =
     useState<OpsServiceInspect | null>(null)
 
-  const [serviceLogs, setServiceLogs] = useState('')
+  const [serviceLogLines, setServiceLogLines] = useState<
+    Array<ParsedLogLine>
+  >([])
   const [serviceLogsLoading, setServiceLogsLoading] = useState(false)
   const [serviceLogsOpen, setServiceLogsOpen] = useState(false)
   const [serviceLogsTitle, setServiceLogsTitle] = useState('')
+  const [serviceLogsSearch, setServiceLogsSearch] = useState('')
+  const [serviceLogsWrap, setServiceLogsWrap] = useState(false)
+  const [serviceLogsFollow, setServiceLogsFollow] = useState(true)
+  const [streamEnabled, setStreamEnabled] = useState(false)
+  const serviceLogsServiceRef = useRef<OpsBrowsedService | null>(null)
+  const lineCounterRef = useRef(0)
 
   const [svcStateFilter, setSvcStateFilter] = useState('all')
   const [svcScopeFilter, setSvcScopeFilter] = useState('all')
@@ -449,16 +473,22 @@ function ServicesPage() {
 
   const fetchBrowsedServiceLogs = useCallback(
     async (svc: OpsBrowsedService) => {
+      serviceLogsServiceRef.current = svc
       setServiceLogsOpen(true)
       setServiceLogsTitle(svc.unit)
       setServiceLogsLoading(true)
-      setServiceLogs('')
+      setServiceLogLines([])
+      setServiceLogsSearch('')
+      setServiceLogsFollow(true)
+      setStreamEnabled(false)
+      lineCounterRef.current = 0
       try {
+        let output = ''
         if (svc.tracked && svc.trackedName) {
           const data = await api<OpsServiceLogsResponse>(
             `/api/ops/services/${encodeURIComponent(svc.trackedName)}/logs?lines=200`,
           )
-          setServiceLogs(data.output)
+          output = data.output
         } else {
           const params = new URLSearchParams({
             unit: svc.unit,
@@ -469,16 +499,97 @@ function ServicesPage() {
           const data = await api<OpsUnitLogsResponse>(
             `/api/ops/services/unit/logs?${params.toString()}`,
           )
-          setServiceLogs(data.output)
+          output = data.output
         }
+        const parsed = parseLogLines(output)
+        lineCounterRef.current = parsed.length
+        setServiceLogLines(parsed)
+        setStreamEnabled(true)
       } catch {
-        setServiceLogs('(failed to fetch logs)')
+        setServiceLogLines([
+          {
+            lineNumber: 1,
+            raw: '(failed to fetch logs)',
+            timestamp: '',
+            hostname: '',
+            unit: '',
+            message: '(failed to fetch logs)',
+            level: 'error',
+          },
+        ])
       } finally {
         setServiceLogsLoading(false)
       }
     },
     [api],
   )
+
+  const refreshServiceLogs = useCallback(async () => {
+    const svc = serviceLogsServiceRef.current
+    if (!svc) return
+    setStreamEnabled(false)
+    try {
+      let output = ''
+      if (svc.tracked && svc.trackedName) {
+        const data = await api<OpsServiceLogsResponse>(
+          `/api/ops/services/${encodeURIComponent(svc.trackedName)}/logs?lines=200`,
+        )
+        output = data.output
+      } else {
+        const params = new URLSearchParams({
+          unit: svc.unit,
+          scope: svc.scope,
+          manager: svc.manager,
+          lines: '200',
+        })
+        const data = await api<OpsUnitLogsResponse>(
+          `/api/ops/services/unit/logs?${params.toString()}`,
+        )
+        output = data.output
+      }
+      const parsed = parseLogLines(output)
+      lineCounterRef.current = parsed.length
+      setServiceLogLines(parsed)
+      setServiceLogsFollow(true)
+      setStreamEnabled(true)
+    } catch {
+      // keep existing lines on refresh failure
+    }
+  }, [api])
+
+  const handleStreamLine = useCallback((line: string) => {
+    lineCounterRef.current += 1
+    const parsed = parseSingleLine(line, lineCounterRef.current)
+    setServiceLogLines((prev) => {
+      const next = [...prev, parsed]
+      if (next.length > LOG_BUFFER_MAX) {
+        return next.slice(next.length - LOG_BUFFER_MAX)
+      }
+      return next
+    })
+  }, [])
+
+  const streamTarget = useMemo(() => {
+    const svc = serviceLogsServiceRef.current
+    if (!svc || !serviceLogsOpen) return null
+    if (svc.tracked && svc.trackedName) {
+      return { kind: 'service' as const, name: svc.trackedName }
+    }
+    return {
+      kind: 'unit' as const,
+      unit: svc.unit,
+      scope: svc.scope,
+      manager: svc.manager,
+    }
+  }, [serviceLogsOpen])
+
+  const streamStatus = useLogStream({
+    token,
+    tokenRequired,
+    target: streamTarget,
+    enabled: streamEnabled && serviceLogsOpen,
+    onLine: handleStreamLine,
+  })
 
   const toggleTrack = useCallback(
     async (svc: OpsBrowsedService) => {
@@ -933,33 +1044,123 @@ function ServicesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={serviceLogsOpen} onOpenChange={setServiceLogsOpen}>
-        <DialogContent className="max-h-[85vh] max-w-[calc(100vw-1rem)] overflow-hidden sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{serviceLogsTitle || 'Service logs'}</DialogTitle>
-            <DialogDescription>Recent log output</DialogDescription>
-          </DialogHeader>
-          <div className="grid min-h-0 gap-2 overflow-hidden">
-            {serviceLogsLoading && (
-              <p className="text-[12px] text-muted-foreground">
-                Loading logs...
-              </p>
-            )}
-            {!serviceLogsLoading && serviceLogs !== '' && (
-              <div className="max-h-[60vh] min-h-0 overflow-auto rounded border border-border-subtle bg-background">
-                <pre className="whitespace-pre p-2 font-mono text-[11px] text-secondary-foreground">
-                  {serviceLogs}
-                </pre>
-              </div>
-            )}
-            {!serviceLogsLoading && serviceLogs === '' && (
-              <p className="text-[12px] text-muted-foreground">
-                No logs available.
-              </p>
-            )}
+      <Sheet
+        open={serviceLogsOpen}
+        onOpenChange={(open) => {
+          setServiceLogsOpen(open)
+          if (!open) {
+            setStreamEnabled(false)
+            serviceLogsServiceRef.current = null
+          }
+        }}
+      >
+        <SheetContent className="flex flex-col gap-0 p-0">
+          <SheetHeader className="shrink-0 border-b border-border-subtle px-4 py-3">
+            <SheetTitle>{serviceLogsTitle || 'Service logs'}</SheetTitle>
+            <SheetDescription>
+              {streamEnabled && streamStatus === 'connected' ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                  </span>
+                  Streaming live
+                </span>
+              ) : (
+                'Recent log output'
+              )}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border-subtle px-4 py-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                value={serviceLogsSearch}
+                onChange={(e) => setServiceLogsSearch(e.target.value)}
+                placeholder="Search logs..."
+                className={cn(
+                  'h-7 w-full rounded-md border border-border-subtle bg-surface-overlay pl-7 text-[11px] placeholder:text-muted-foreground',
+                  serviceLogsSearch ? 'pr-7' : 'pr-2',
+                )}
+              />
+              {serviceLogsSearch && (
+                <button
+                  type="button"
+                  className="absolute right-1.5 top-1 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                  onClick={() => setServiceLogsSearch('')}
+                  aria-label="Clear search"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <TooltipHelper content="Word wrap">
+              <Button
+                variant={serviceLogsWrap ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 w-7 cursor-pointer p-0"
+                onClick={() => setServiceLogsWrap((v) => !v)}
+                aria-label="Toggle word wrap"
+              >
+                <WrapText className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipHelper>
+            <TooltipHelper content="Refresh logs">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 w-7 cursor-pointer p-0"
+                onClick={refreshServiceLogs}
+                aria-label="Refresh logs"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipHelper>
+            <TooltipHelper
+              content={streamEnabled ? 'Stop streaming' : 'Stream live'}
+            >
+              <Button
+                variant={streamEnabled ? 'default' : 'outline'}
+                size="sm"
+                className={cn(
+                  'h-7 w-7 cursor-pointer p-0',
+                  streamEnabled && streamStatus === 'connected'
+                    ? 'text-emerald-400'
+                    : '',
+                )}
+                onClick={() => setStreamEnabled((v) => !v)}
+                aria-label={
+                  streamEnabled ? 'Stop streaming' : 'Stream live'
+                }
+              >
+                <Radio className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipHelper>
+            <TooltipHelper content="Follow output">
+              <Button
+                variant={serviceLogsFollow ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 w-7 cursor-pointer p-0"
+                onClick={() => setServiceLogsFollow((v) => !v)}
+                aria-label="Toggle follow"
+              >
+                <ArrowDownToLine className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipHelper>
           </div>
-        </DialogContent>
-      </Dialog>
+
+          <LogViewer
+            lines={serviceLogLines}
+            loading={serviceLogsLoading}
+            searchQuery={serviceLogsSearch}
+            wordWrap={serviceLogsWrap}
+            follow={serviceLogsFollow}
+            onFollowChange={setServiceLogsFollow}
+            className="min-h-0 flex-1 rounded-none border-0"
+          />
+        </SheetContent>
+      </Sheet>
     </AppShell>
   )
 }

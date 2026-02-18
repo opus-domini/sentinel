@@ -320,6 +320,19 @@
   }
 }
 
+/* Sheet slide animations */
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slide-out-to-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,

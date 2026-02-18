@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,19 +34,27 @@ var (
 	startTmuxAttachFn   = term.StartTmuxAttach
 )
 
+// OpsLogStreamer provides streaming log access for managed services.
+type OpsLogStreamer interface {
+	StreamLogs(ctx context.Context, name string) (io.ReadCloser, error)
+	StreamLogsByUnit(ctx context.Context, unit, scope, manager string) (io.ReadCloser, error)
+}
+
 type Handler struct {
 	guard  *security.Guard
 	events *events.Hub
 	store  *store.Store
+	ops    OpsLogStreamer
 }
 
-func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, eventsHub *events.Hub) error {
-	h := &Handler{guard: guard, events: eventsHub, store: st}
+func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, eventsHub *events.Hub, ops OpsLogStreamer) error {
+	h := &Handler{guard: guard, events: eventsHub, store: st, ops: ops}
 	if err := registerAssetRoutes(mux); err != nil {
 		return err
 	}
 	mux.HandleFunc("GET /ws/tmux", h.attachWS)
 	mux.HandleFunc("GET /ws/events", h.attachEventsWS)
+	mux.HandleFunc("GET /ws/logs", h.attachLogsWS)
 	mux.HandleFunc("GET /{path...}", h.spaPage)
 	return nil
 }
@@ -152,6 +161,95 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 	writeEventsReadyPayload(wsConn)
 	readErrCh := startEventsWSReader(wsConn, h.handleEventsClientMessage)
 	runEventsWSLoop(wsConn, eventsCh, readErrCh)
+}
+
+func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := h.guard.RequireWSToken(r); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	service := strings.TrimSpace(r.URL.Query().Get("service"))
+	unit := strings.TrimSpace(r.URL.Query().Get("unit"))
+	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	manager := strings.TrimSpace(r.URL.Query().Get("manager"))
+
+	if service == "" && unit == "" {
+		http.Error(w, "service or unit required", http.StatusBadRequest)
+		return
+	}
+
+	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
+	if err != nil {
+		return
+	}
+	defer func() { _ = wsConn.Close() }()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	var stream io.ReadCloser
+	if service != "" {
+		stream, err = h.ops.StreamLogs(ctx, service)
+	} else {
+		stream, err = h.ops.StreamLogsByUnit(ctx, unit, scope, manager)
+	}
+	if err != nil {
+		errMsg, _ := json.Marshal(map[string]string{"type": "error", "message": err.Error()})
+		_ = wsConn.WriteText(errMsg)
+		_ = wsConn.WriteClose(ws.CloseInternal, "stream start failed")
+		return
+	}
+	defer func() { _ = stream.Close() }()
+
+	statusMsg, _ := json.Marshal(map[string]string{"type": "status", "state": "streaming"})
+	_ = wsConn.WriteText(statusMsg)
+
+	errCh, sendErr := newAttachErrChannel()
+
+	go func() {
+		scanner := bufio.NewScanner(stream)
+		scanner.Buffer(make([]byte, 64*1024), 64*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			msg, _ := json.Marshal(map[string]string{"type": "log", "line": line})
+			if writeErr := wsConn.WriteText(msg); writeErr != nil {
+				sendErr(writeErr)
+				return
+			}
+		}
+		if scanErr := scanner.Err(); scanErr != nil {
+			sendErr(scanErr)
+		} else {
+			sendErr(io.EOF)
+		}
+	}()
+
+	go func() {
+		for {
+			_, _, readErr := wsConn.ReadMessage()
+			if readErr != nil {
+				sendErr(readErr)
+				return
+			}
+		}
+	}()
+
+	pingTicker := time.NewTicker(20 * time.Second)
+	defer pingTicker.Stop()
+	go runPingLoop(ctx, wsConn, pingTicker.C, sendErr)
+
+	finalErr := <-errCh
+	if finalErr != nil && !errors.Is(finalErr, io.EOF) && !errors.Is(finalErr, ws.ErrClosed) {
+		slog.Warn("log stream error", "service", service, "unit", unit, "err", finalErr)
+		_ = wsConn.WriteClose(ws.CloseInternal, "stream error")
+		return
+	}
+	_ = wsConn.WriteClose(ws.CloseNormal, "done")
 }
 
 func (h *Handler) authorizeEventsWS(w http.ResponseWriter, r *http.Request) bool {

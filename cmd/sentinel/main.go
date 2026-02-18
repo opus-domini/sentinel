@@ -43,7 +43,7 @@ func serve() int {
 	}
 
 	mux := http.NewServeMux()
-	if err := httpui.Register(mux, guard, st, eventHub); err != nil {
+	if err := httpui.Register(mux, guard, st, eventHub, ops.NewManager(time.Now(), st)); err != nil {
 		slog.Error("frontend init failed", "err", err)
 		return 1
 	}
