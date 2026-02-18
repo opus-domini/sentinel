@@ -130,7 +130,7 @@ DELETE /api/ops/jobs/{job}
 
 ## Frontend
 
-The Runbooks page (`/runbooks`) provides:
+The dedicated `/runbooks` route provides a standalone page for runbook execution and job history:
 
 - Sidebar listing all runbooks with run counts
 - Detail view showing step overview and a run button

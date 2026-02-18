@@ -1,6 +1,6 @@
 # Services
 
-Services management within the Ops Control Plane. Sentinel monitors and controls host services via systemd (Linux) and launchd (macOS).
+Dedicated service management page at `/services`, part of the [Ops Control Plane](/features/ops-control-plane.md). Sentinel monitors and controls host services via systemd (Linux) and launchd (macOS).
 
 ## Tracked Services
 
@@ -131,6 +131,17 @@ Service state changes emit events over the `/ws/events` WebSocket:
 - Every service action creates a timeline entry.
 - The browse view supports filtering by state (active, inactive, failed), scope (user, system), and free-text search.
 - Services can be pinned (tracked) or unpinned directly from the browse list.
+
+## Frontend
+
+The dedicated `/services` route provides a full-page service management experience.
+
+- The sidebar (`ServicesSidebar`) lists pinned/tracked services with live status indicators. A `?` help dialog button and token/lock controls are available at the top of the sidebar.
+- The main panel has a stats header showing total, active, and failed service counts, followed by a browse panel.
+- The browse panel discovers all host services and supports filtering by state (active/inactive/failed), scope (user/system), and free-text search.
+- Per-service actions include start, stop, restart, status inspect, and logs view. Services can be pinned or unpinned directly from the browse list.
+- Service status and logs open in modal dialogs.
+- Real-time updates arrive via WebSocket events (`ops.services.updated`, `ops.overview.updated`), keeping the sidebar and browse panel in sync without polling.
 
 ## API Endpoints
 

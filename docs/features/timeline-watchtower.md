@@ -53,6 +53,19 @@ Filters:
 - `since`, `until` (RFC3339)
 - `limit` (up to 500)
 
+## Timeline Page
+
+The dedicated `/timeline` route provides a standalone view of the operational audit log. Previously part of the `/ops` page, it is now a full-page experience.
+
+- The sidebar displays overview stats (host, uptime, events count, health), a search query input, and a severity filter dropdown (all/info/warn/error). A `?` help dialog button and token/lock controls are available at the top of the sidebar.
+- The main panel shows a scrollable list of timeline events. Each event displays: message, severity badge, source/resource, timestamp, and optional details.
+- New events prepend in real-time via `ops.timeline.updated` WebSocket events.
+- Filters support text search query and severity level.
+
+Endpoint:
+
+- `GET /api/ops/timeline` -- search and filter operational timeline events
+
 ## Performance Notes
 
 - Event-first architecture drastically reduces REST polling pressure.

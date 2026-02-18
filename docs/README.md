@@ -11,7 +11,7 @@ It provides tmux session control, ops control-plane tooling, realtime activity p
 
 - Installation and first-run flow.
 - Architecture and security model.
-- Deep feature guides for tmux/watchtower/recovery/guardrails.
+- Deep feature guides for tmux, services, runbooks, alerts, timeline, metrics, recovery, and guardrails.
 - Full CLI and API reference.
 - Operations runbooks for services, autoupdate, and storage management.
 - Mobile/PWA behavior and known troubleshooting patterns.
@@ -45,8 +45,9 @@ Suggested reading order:
 1. `Guide > Getting Started`
 2. `Guide > Architecture`
 3. `Features > Tmux Workspace`
-4. `Reference > CLI Reference`
-5. `Operations > Service and Autoupdate`
+4. `Features > Ops Control Plane`
+5. `Reference > CLI Reference`
+6. `Operations > Service and Autoupdate`
 
 ## Screenshots
 

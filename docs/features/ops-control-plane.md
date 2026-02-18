@@ -1,16 +1,20 @@
 # Ops Control Plane
 
-The `/ops` route centralizes host operations in a single event-driven panel.
+The ops control plane is Sentinel's host operations management layer. It provides visibility into system services, operational procedures, alerts, activity timelines, and runtime metrics through a set of dedicated pages accessible from the side rail.
 
-## What You Get
+## Pages
 
-- **Overview**: host identity, Sentinel uptime, service health summary.
-- **[Services](/features/services.md)**: monitor, start/stop/restart, browse and register host services.
-- **[Runbooks](/features/runbooks.md)**: executable operational procedures with step-level output tracking.
-- **Alerts**: deduplicated alert feed with acknowledge action.
-- **Timeline**: searchable operational timeline by severity/text.
+| Route | Feature | Description | Documentation |
+|---|---|---|---|
+| `/services` | Service Management | Monitor, start/stop/restart, browse and register systemd/launchd services | [Services](/features/services.md) |
+| `/runbooks` | Runbook Execution | Executable operational procedures with step-level output tracking and job history | [Runbooks](/features/runbooks.md) |
+| `/alerts` | Alert Monitoring | Deduplicated alert feed with acknowledge action | [Alerts](/features/alerts.md) |
+| `/timeline` | Operations Timeline | Searchable operational audit log filtered by severity and text | [Timeline and Watchtower](/features/timeline-watchtower.md) |
+| `/metrics` | System Metrics | System and runtime metrics dashboard | [Metrics](/features/metrics.md) |
 
-## Realtime Model
+## Shared Infrastructure
+
+### Realtime Model
 
 - Initial state loads from HTTP API.
 - Continuous updates come from `/ws/events`.
@@ -21,17 +25,26 @@ The `/ops` route centralizes host operations in a single event-driven panel.
   - `ops.timeline.updated`
   - `ops.job.updated`
 
-## API Surface
+### API Surface
 
-Overview and alerts:
+Overview and configuration:
 
 - `GET /api/ops/overview`
-- `GET /api/ops/alerts`
-- `POST /api/ops/alerts/{alert}/ack`
-- `GET /api/ops/timeline`
-- `GET /api/ops/metrics`
 - `GET /api/ops/config`
 - `PATCH /api/ops/config`
+
+Alerts (see [Alerts](/features/alerts.md)):
+
+- `GET /api/ops/alerts`
+- `POST /api/ops/alerts/{alert}/ack`
+
+Timeline (see [Timeline and Watchtower](/features/timeline-watchtower.md)):
+
+- `GET /api/ops/timeline`
+
+Metrics (see [Metrics](/features/metrics.md)):
+
+- `GET /api/ops/metrics`
 
 Services (see [Services](/features/services.md)):
 
@@ -57,9 +70,6 @@ Runbooks (see [Runbooks](/features/runbooks.md)):
 - `GET /api/ops/jobs/{job}`
 - `DELETE /api/ops/jobs/{job}`
 
-## UX Notes
+## Navigation
 
-- Service actions are optimistic and reconcile with API/events.
-- Alert ack is optimistic with rollback on failure.
-- Timeline prepends new events without full list refetch.
-- Runbook jobs are updated in place as events arrive via WebSocket.
+The `/ops` path redirects to `/alerts` for backward compatibility.

@@ -11,7 +11,7 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/watchtower`: activity collector and unread projection engine.
 - `internal/recovery`: periodic snapshot and restore orchestration.
 - `internal/store`: SQLite schema and persistence (sessions metadata, watchtower, recovery, guardrails).
-- `client`: React/Vite frontend with optimistic UX and event-driven sync.
+- `client`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/runbooks`, `/alerts`, `/timeline`, `/metrics`.
 
 ## Runtime Flow
 
@@ -23,6 +23,7 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
    - WebSocket for realtime updates (`/ws/events`)
    - PTY stream (`/ws/tmux`)
 5. UI uses optimistic mutations and reconciles with events/patches.
+6. UI routes provide dedicated pages: terminal workspace (`/tmux`), service management (`/services`), runbook execution (`/runbooks`), alert monitoring (`/alerts`), operations timeline (`/timeline`), and system metrics (`/metrics`).
 
 ## Data Model (Operational)
 
@@ -62,3 +63,4 @@ Fallback HTTP polling is used only when events channel is disconnected.
 - Optimistic frontend interactions for responsiveness.
 - Server remains source of truth through projections and event patches.
 - Feature gates via config for watchtower and recovery subsystems.
+- Dedicated pages per concern: each operational feature has its own route, sidebar, and help dialog for focused workflows.
