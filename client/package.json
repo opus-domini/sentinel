@@ -34,7 +34,7 @@
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
     "cronstrue": "^3.12.0",
-    "lucide-react": "^0.564.0",
+    "lucide-react": "^0.574.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -43,7 +43,7 @@
     "vite-tsconfig-paths": "^6.1.1"
   },
   "devDependencies": {
-    "@tanstack/eslint-config": "^0.3.4",
+    "@tanstack/eslint-config": "^0.4.0",
     "@tanstack/react-devtools": "^0.9.5",
     "@tanstack/react-router-devtools": "^1.159.10",
     "@tanstack/router-plugin": "^1.159.12",

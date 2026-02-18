@@ -103,9 +103,9 @@ function ServicesPage() {
   const [serviceStatusData, setServiceStatusData] =
     useState<OpsServiceInspect | null>(null)
 
-  const [serviceLogLines, setServiceLogLines] = useState<
-    Array<ParsedLogLine>
-  >([])
+  const [serviceLogLines, setServiceLogLines] = useState<Array<ParsedLogLine>>(
+    [],
+  )
   const [serviceLogsLoading, setServiceLogsLoading] = useState(false)
   const [serviceLogsOpen, setServiceLogsOpen] = useState(false)
   const [serviceLogsTitle, setServiceLogsTitle] = useState('')
@@ -243,17 +243,7 @@ function ServicesPage() {
           void refreshBrowse()
           break
         case 'ops.overview.updated':
-          if (
-            msg.payload.overview != null &&
-            typeof msg.payload.overview === 'object'
-          ) {
-            queryClient.setQueryData(
-              OPS_OVERVIEW_QUERY_KEY,
-              msg.payload.overview,
-            )
-          } else {
-            void refreshOverview()
-          }
+          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, msg.payload.overview)
           break
         default:
           break
@@ -1181,9 +1171,7 @@ function ServicesPage() {
                     : '',
                 )}
                 onClick={() => setStreamEnabled((v) => !v)}
-                aria-label={
-                  streamEnabled ? 'Stop streaming' : 'Stream live'
-                }
+                aria-label={streamEnabled ? 'Stop streaming' : 'Stream live'}
               >
                 <Radio className="h-3.5 w-3.5" />
               </Button>

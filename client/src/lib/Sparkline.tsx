@@ -65,8 +65,7 @@ export function Sparkline({
 
   const hoverXPct =
     hoverIndex !== null ? (hoverIndex / (data.length - 1)) * 100 : 0
-  const hoverYPct =
-    hoverIndex !== null ? (coords[hoverIndex].y / 40) * 100 : 0
+  const hoverYPct = hoverIndex !== null ? (coords[hoverIndex].y / 40) * 100 : 0
 
   return (
     <div

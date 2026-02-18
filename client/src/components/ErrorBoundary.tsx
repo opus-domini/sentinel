@@ -31,7 +31,9 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
           <p className="text-sm text-muted">Something went wrong</p>
-          <p className="text-xs text-muted-foreground">{this.state.error?.message}</p>
+          <p className="text-xs text-muted-foreground">
+            {this.state.error?.message}
+          </p>
           <button
             type="button"
             className="rounded bg-surface-hover px-3 py-1.5 text-xs"

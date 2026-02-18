@@ -9,14 +9,7 @@ vi.mock('@/components/TooltipHelper', () => ({
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({
-    children,
-    to,
-    ...rest
-  }: {
-    children: ReactNode
-    to: string
-  }) => (
+  Link: ({ children, to, ...rest }: { children: ReactNode; to: string }) => (
     <a href={to} {...rest}>
       {children}
     </a>
@@ -35,10 +28,7 @@ vi.mock('@/components/settings/SettingsDialog', () => ({
 describe('SideRail', () => {
   it('keeps desktop side rail icon-only with accessible labels', () => {
     const { container } = render(
-      <SideRail
-        sidebarCollapsed={false}
-        onToggleSidebarCollapsed={() => {}}
-      />,
+      <SideRail sidebarCollapsed={false} onToggleSidebarCollapsed={() => {}} />,
     )
 
     const aside = container.querySelector('aside')

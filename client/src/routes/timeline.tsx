@@ -136,17 +136,7 @@ function TimelinePage() {
       const msg = message as OpsWsMessage
       switch (msg.type) {
         case 'ops.overview.updated':
-          if (
-            msg.payload.overview != null &&
-            typeof msg.payload.overview === 'object'
-          ) {
-            queryClient.setQueryData(
-              OPS_OVERVIEW_QUERY_KEY,
-              msg.payload.overview,
-            )
-          } else {
-            void refreshOverview()
-          }
+          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, msg.payload.overview)
           break
         case 'ops.timeline.updated':
           if (Array.isArray(msg.payload.events)) {

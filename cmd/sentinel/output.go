@@ -4,8 +4,6 @@ import (
 	"io"
 	"os"
 	"strings"
-
-	isatty "github.com/mattn/go-isatty"
 )
 
 const (
@@ -33,7 +31,7 @@ func shouldUsePrettyOutput(w io.Writer) bool {
 	if !ok {
 		return false
 	}
-	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+	return isTerminal(fd)
 }
 
 func fileDescriptor(w io.Writer) (uintptr, bool) {

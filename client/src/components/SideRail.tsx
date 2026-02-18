@@ -123,7 +123,9 @@ export default function SideRail({
             size="icon-lg"
             className="hidden w-full text-secondary-foreground hover:text-foreground md:flex"
             onClick={onToggleSidebarCollapsed}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={
+              sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+            }
           >
             {sidebarCollapsed ? (
               <ChevronsRight className="size-4" />
