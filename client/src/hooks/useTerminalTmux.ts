@@ -9,6 +9,7 @@ import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { createWebClipboardProvider } from '@/lib/clipboardProvider'
 import { attachTouchWheelBridge } from '@/lib/touchWheelBridge'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
 import { buildWSProtocols } from '@/lib/wsAuth'
@@ -45,6 +46,7 @@ type SessionRuntime = {
   isComposing: boolean
   onDataDispose: Disposable
   onResizeDispose: Disposable
+  onSelectionDispose: Disposable
   contextMenuDispose: Disposable
   touchWheelDispose: Disposable
   webglContextLossDispose: Disposable
@@ -542,7 +544,10 @@ export function useTerminalTmux({
       }
 
       const fitAddon = new FitAddon()
-      const clipboardAddon = new ClipboardAddon()
+      const clipboardAddon = new ClipboardAddon(
+        undefined,
+        createWebClipboardProvider(),
+      )
       const searchAddon = new SearchAddon({ highlightLimit: 2_000 })
       const serializeAddon = new SerializeAddon()
       const webLinksAddon = new WebLinksAddon((event, uri) => {
@@ -573,6 +578,7 @@ export function useTerminalTmux({
         isComposing: false,
         onDataDispose: { dispose: () => undefined },
         onResizeDispose: { dispose: () => undefined },
+        onSelectionDispose: { dispose: () => undefined },
         contextMenuDispose: { dispose: () => undefined },
         touchWheelDispose: { dispose: () => undefined },
         webglContextLossDispose: webglAddon.onContextLoss(() => {
@@ -605,6 +611,14 @@ export function useTerminalTmux({
         setTermRows(rows)
       })
 
+      // Copy xterm.js native selection (Shift+drag) to the system clipboard.
+      runtime.onSelectionDispose = terminal.onSelectionChange(() => {
+        const text = terminal.getSelection()
+        if (text) {
+          navigator.clipboard.writeText(text).catch(() => {})
+        }
+      })
+
       runtimesRef.current.set(session, runtime)
 
       const host = hostsRef.current.get(session)
@@ -632,6 +646,7 @@ export function useTerminalTmux({
       cleanupHostResizeObserver(runtime)
       runtime.onDataDispose.dispose()
       runtime.onResizeDispose.dispose()
+      runtime.onSelectionDispose.dispose()
       runtime.contextMenuDispose.dispose()
       runtime.touchWheelDispose.dispose()
       runtime.webglContextLossDispose.dispose()

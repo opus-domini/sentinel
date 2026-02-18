@@ -344,6 +344,79 @@ func TestPatchTripleClick1PaneBinding(t *testing.T) {
 	}
 }
 
+func TestPatchCopyModeDragEndBinding(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		line    string
+		want    string
+		changed bool
+	}{
+		{
+			name:    "patches_copy_pipe_and_cancel",
+			line:    `bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel`,
+			want:    `bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-no-clear`,
+			changed: true,
+		},
+		{
+			name:    "patches_copy_selection_and_cancel",
+			line:    `bind-key -T copy-mode MouseDragEnd1Pane send-keys -X copy-selection-and-cancel`,
+			want:    `bind-key -T copy-mode MouseDragEnd1Pane send-keys -X copy-selection-no-clear`,
+			changed: true,
+		},
+		{
+			name:    "already_patched_pipe",
+			line:    `bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-no-clear`,
+			want:    `bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-no-clear`,
+			changed: false,
+		},
+		{
+			name:    "already_patched_selection",
+			line:    `bind-key -T copy-mode MouseDragEnd1Pane send-keys -X copy-selection-no-clear`,
+			want:    `bind-key -T copy-mode MouseDragEnd1Pane send-keys -X copy-selection-no-clear`,
+			changed: false,
+		},
+		{
+			name:    "patches_copy_pipe_with_command_arg",
+			line:    `bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"`,
+			want:    `bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-no-clear "pbcopy"`,
+			changed: true,
+		},
+		{
+			name:    "patches_copy_selection_in_compound_binding",
+			line:    `bind-key -T copy-mode MouseDragEnd1Pane select-pane \; send-keys -X copy-selection-and-cancel`,
+			want:    `bind-key -T copy-mode MouseDragEnd1Pane select-pane \; send-keys -X copy-selection-no-clear`,
+			changed: true,
+		},
+		{
+			name:    "no_cancel_suffix_unchanged",
+			line:    `bind-key -T copy-mode MouseDragEnd1Pane send-keys -X cancel`,
+			want:    `bind-key -T copy-mode MouseDragEnd1Pane send-keys -X cancel`,
+			changed: false,
+		},
+		{
+			name:    "unrelated_binding",
+			line:    `bind-key -T copy-mode MouseDrag1Pane select-pane \; send-keys -X begin-selection`,
+			want:    `bind-key -T copy-mode MouseDrag1Pane select-pane \; send-keys -X begin-selection`,
+			changed: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, changed := patchCopyModeDragEndBinding(tt.line)
+			if changed != tt.changed {
+				t.Fatalf("changed = %v, want %v", changed, tt.changed)
+			}
+			if got != tt.want {
+				t.Fatalf("got = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseNewWindowOutput(t *testing.T) {
 	t.Parallel()
 
