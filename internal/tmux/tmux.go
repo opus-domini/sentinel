@@ -252,37 +252,51 @@ func SetSessionMouse(ctx context.Context, session string, enabled bool) error {
 
 // EnsureWebMouseBindings patches a subset of tmux default mouse bindings to
 // behave consistently in browser terminals:
-// 1) Keep pane context menu open after button release (-O).
-// 2) Disable default double/triple-click auto-copy popup behavior.
+//  1. Keep pane context menu open after button release (-O).
+//  2. Disable default double/triple-click auto-copy popup behavior.
+//  3. Prevent drag-select from exiting copy-mode on mouse release, which
+//     would cause the view to jump to the bottom and clear the selection.
+//
+// It also enables OSC 52 clipboard output so that copy-mode operations
+// propagate to the system clipboard via the browser terminal (xterm.js).
 //
 // The patch is idempotent and only rewrites known default patterns.
 func EnsureWebMouseBindings(ctx context.Context) error {
+	// Enable OSC 52 clipboard output for copy-mode operations.
+	// The default "external" (tmux 3.2+) only passes through application
+	// OSC 52 but does not emit it for tmux's own copy commands.
+	_, _ = run(ctx, "set-option", "-s", "set-clipboard", "on")
+
 	patchers := []struct {
+		table string
 		key   string
 		patch func(string) (string, bool)
 	}{
-		{key: "MouseDown3Pane", patch: patchMouseDown3PaneBinding},
-		{key: "DoubleClick1Pane", patch: patchDoubleClick1PaneBinding},
-		{key: "TripleClick1Pane", patch: patchTripleClick1PaneBinding},
+		{table: "root", key: "MouseDown3Pane", patch: patchMouseDown3PaneBinding},
+		{table: "root", key: "DoubleClick1Pane", patch: patchDoubleClick1PaneBinding},
+		{table: "root", key: "TripleClick1Pane", patch: patchTripleClick1PaneBinding},
+		{table: "copy-mode", key: "MouseDragEnd1Pane", patch: patchCopyModeDragEndBinding},
+		{table: "copy-mode-vi", key: "MouseDragEnd1Pane", patch: patchCopyModeDragEndBinding},
 	}
 
 	var firstErr error
 	for _, item := range patchers {
-		if err := patchRootBinding(ctx, item.key, item.patch); err != nil && firstErr == nil {
+		if err := patchBinding(ctx, item.table, item.key, item.patch); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 	return firstErr
 }
 
-func patchRootBinding(
+func patchBinding(
 	ctx context.Context,
-	key string,
+	table, key string,
 	patch func(line string) (string, bool),
 ) error {
-	out, err := run(ctx, "list-keys", "-T", "root", key)
+	out, err := run(ctx, "list-keys", "-T", table, key)
 	if err != nil {
-		return err
+		// Binding may not exist in this table; nothing to patch.
+		return nil
 	}
 
 	line := strings.TrimSpace(out)
@@ -351,6 +365,20 @@ func patchTripleClick1PaneBinding(line string) (string, bool) {
 		return line, false
 	}
 	patched := strings.Replace(line, before, after, 1)
+	return patched, patched != line
+}
+
+// patchCopyModeDragEndBinding replaces -and-cancel variants in
+// copy-mode MouseDragEnd1Pane bindings with -no-clear so that
+// releasing the mouse after a drag-select keeps copy-mode active
+// and the selection visible instead of jumping to the bottom.
+func patchCopyModeDragEndBinding(line string) (string, bool) {
+	if !strings.Contains(line, "MouseDragEnd1Pane") {
+		return line, false
+	}
+	patched := line
+	patched = strings.Replace(patched, "copy-pipe-and-cancel", "copy-pipe-no-clear", 1)
+	patched = strings.Replace(patched, "copy-selection-and-cancel", "copy-selection-no-clear", 1)
 	return patched, patched != line
 }
 
