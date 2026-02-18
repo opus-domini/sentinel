@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/opus-domini/sentinel/compare/v0.3.2...v0.3.3) (2026-02-18)
+
+
+### Features
+
+* **client:** redesign SideRail with lucide icons and active indicator ([83b5c3c](https://github.com/opus-domini/sentinel/commit/83b5c3c69ca848b69d67ef70864884cbef625e6e))
+
 ## [0.3.2](https://github.com/opus-domini/sentinel/compare/v0.3.1...v0.3.2) (2026-02-18)
 
 
