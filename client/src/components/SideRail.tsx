@@ -1,5 +1,16 @@
 import { useState } from 'react'
-import { ChevronsLeft, ChevronsRight, Menu, Settings } from 'lucide-react'
+import {
+  Activity,
+  Bell,
+  Blocks,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock,
+  Menu,
+  ScrollText,
+  Settings,
+  SquareTerminal,
+} from 'lucide-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import SettingsDialog from '@/components/settings/SettingsDialog'
 import { Button } from '@/components/ui/button'
@@ -33,26 +44,17 @@ export default function SideRail({
 
   const navItemClass = (isActive: boolean) =>
     cn(
-      'grid h-7 w-8 place-items-center rounded-md border text-[11px] no-underline',
+      'relative grid size-8 place-items-center rounded-md no-underline',
       isActive
-        ? 'border-primary/40 bg-primary/15 text-primary-text-bright'
-        : 'border-transparent text-secondary-foreground hover:border-border hover:bg-accent hover:text-foreground',
+        ? 'bg-primary/10 text-primary-text-bright before:absolute before:inset-y-1 before:-left-2 before:w-0.5 before:rounded-full before:bg-primary'
+        : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
     )
 
   return (
-    <aside className="hidden md:flex flex-col items-center gap-2 border-r border-border-subtle bg-surface-raised px-1.5 py-2">
-      <TooltipHelper content="Sentinel home" side="right">
-        <a
-          className="brand-logo grid h-8 w-8 place-items-center rounded-md border border-border text-[12px] font-bold text-primary-text-light no-underline"
-          href="/"
-          aria-label="Sentinel home"
-        >
-          S
-        </a>
-      </TooltipHelper>
+    <aside className="hidden md:flex flex-col items-center gap-1 border-r border-border-subtle bg-surface-raised px-2 py-2">
       <TooltipHelper content="Tmux" side="right">
         <Link className={navItemClass(tmuxActive)} to="/tmux" aria-label="Tmux">
-          TM
+          <SquareTerminal className="size-4" />
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Services" side="right">
@@ -61,7 +63,7 @@ export default function SideRail({
           to="/services"
           aria-label="Services"
         >
-          SV
+          <Blocks className="size-4" />
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Runbooks" side="right">
@@ -70,12 +72,12 @@ export default function SideRail({
           to="/runbooks"
           aria-label="Runbooks"
         >
-          RB
+          <ScrollText className="size-4" />
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Alerts" side="right">
         <Link className={navItemClass(alertsActive)} to="/alerts" aria-label="Alerts">
-          AL
+          <Bell className="size-4" />
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Timeline" side="right">
@@ -84,7 +86,7 @@ export default function SideRail({
           to="/timeline"
           aria-label="Timeline"
         >
-          TL
+          <Clock className="size-4" />
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Metrics" side="right">
@@ -93,19 +95,20 @@ export default function SideRail({
           to="/metrics"
           aria-label="Metrics"
         >
-          MT
+          <Activity className="size-4" />
         </Link>
       </TooltipHelper>
       <div className="flex-1" />
+      <hr className="w-5 border-t border-border-subtle" />
       <TooltipHelper content="Settings" side="right">
         <Button
           variant="ghost"
-          size="icon"
-          className="h-7 w-8 text-secondary-foreground hover:text-foreground"
+          size="icon-lg"
+          className="text-secondary-foreground hover:text-foreground"
           onClick={() => setSettingsOpen(true)}
           aria-label="Settings"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="size-4" />
         </Button>
       </TooltipHelper>
       {showSidebarToggles && (
@@ -116,29 +119,29 @@ export default function SideRail({
           >
             <Button
               variant="ghost"
-              size="icon"
-              className="hidden h-7 w-8 text-secondary-foreground hover:text-foreground md:grid"
+              size="icon-lg"
+              className="hidden text-secondary-foreground hover:text-foreground md:grid"
               onClick={onToggleSidebarCollapsed}
               aria-label={
                 sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
               }
             >
               {sidebarCollapsed ? (
-                <ChevronsRight className="h-4 w-4" />
+                <ChevronsRight className="size-4" />
               ) : (
-                <ChevronsLeft className="h-4 w-4" />
+                <ChevronsLeft className="size-4" />
               )}
             </Button>
           </TooltipHelper>
           <TooltipHelper content="Open menu" side="right">
             <Button
               variant="ghost"
-              size="icon"
-              className="h-7 w-8 text-secondary-foreground hover:text-foreground md:hidden"
+              size="icon-lg"
+              className="text-secondary-foreground hover:text-foreground md:hidden"
               onClick={onToggleSidebarOpen}
               aria-label="Open menu"
             >
-              <Menu className="h-4 w-4" />
+              <Menu className="size-4" />
             </Button>
           </TooltipHelper>
         </>
