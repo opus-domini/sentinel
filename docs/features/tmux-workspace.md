@@ -1,5 +1,7 @@
 # Tmux Workspace
 
+![Desktop tmux sessions](assets/images/desktop-tmux-sessions.png)
+
 Sentinel models tmux as:
 
 - Session
@@ -16,6 +18,8 @@ The UI and API are built to keep this hierarchy consistent with realtime updates
 - Attach to any session over WebSocket PTY stream.
 - Rename window and pane labels.
 - Session icon metadata.
+
+![Desktop tmux fullscreen](assets/images/desktop-tmux-fullscreen.png)
 
 ## Realtime Interaction
 

@@ -1,5 +1,7 @@
 # Metrics
 
+![Desktop metrics](assets/images/desktop-metrics.png)
+
 The Metrics page (`/metrics`) provides real-time system and runtime metrics for the host machine and the Sentinel process. All data is collected locally by Sentinel with no external monitoring agents required.
 
 ## System Metrics

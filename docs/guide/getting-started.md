@@ -53,6 +53,8 @@ sentinel service status
 - Token/auth state
 - Storage and guardrail tabs
 
+![Desktop settings token](assets/images/desktop-settings-token.png)
+
 ## Configure Listen and Token
 
 Edit `~/.sentinel/config.toml` (or root data dir when running as root):

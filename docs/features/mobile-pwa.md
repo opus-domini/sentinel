@@ -1,5 +1,9 @@
 # Mobile and PWA
 
+<p align="center">
+  <img src="assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
+</p>
+
 Sentinel includes mobile-focused terminal interaction and Progressive Web App support.
 
 ## PWA Support

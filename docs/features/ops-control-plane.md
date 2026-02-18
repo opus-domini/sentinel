@@ -1,5 +1,7 @@
 # Ops Control Plane
 
+![Desktop alerts](assets/images/desktop-alerts.png)
+
 The ops control plane is Sentinel's host operations management layer. It provides visibility into system services, operational procedures, alerts, activity timelines, and runtime metrics through a set of dedicated pages accessible from the side rail.
 
 ## Pages

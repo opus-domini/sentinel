@@ -2,6 +2,8 @@
 
 Sentinel is local-first, but can be exposed remotely when properly configured.
 
+![Desktop settings token](assets/images/desktop-settings-token.png)
+
 ## Authentication
 
 When `token` is configured, all HTTP and WS requests require authentication.

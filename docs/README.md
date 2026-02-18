@@ -53,10 +53,50 @@ Suggested reading order:
 
 Tip: click any image to zoom.
 
+### Terminal Workspace
+
+> Manage tmux sessions, windows, and panes with realtime sync — no terminal tab juggling.
+
 ![Desktop tmux sessions](assets/images/desktop-tmux-sessions.png)
 
+> Attach to any pane with a full interactive PTY, right in the browser.
+
 ![Desktop tmux fullscreen](assets/images/desktop-tmux-fullscreen.png)
+
+> Full terminal control on mobile — touch-optimized with gesture-safe zones.
 
 <p align="center">
   <img src="assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
 </p>
+
+### Ops Control Plane
+
+> Monitor and control systemd/launchd services with live status, logs, and one-click actions.
+
+![Desktop services](assets/images/desktop-services.png)
+
+> Catch failures early with deduplicated alerts from watchtower and service health checks.
+
+![Desktop alerts](assets/images/desktop-alerts.png)
+
+> CPU, memory, disk, and runtime stats at a glance — no external agents needed.
+
+![Desktop metrics](assets/images/desktop-metrics.png)
+
+> Searchable audit log of every operation, alert, and service event on your host.
+
+![Desktop timeline](assets/images/desktop-timeline.png)
+
+> Executable step-by-step procedures with job tracking and per-step output history.
+
+![Desktop runbooks](assets/images/desktop-runbooks.png)
+
+### Settings
+
+> Theme, token auth, storage management, and guardrails — all configurable from the UI.
+
+![Desktop settings theme](assets/images/desktop-settings-theme.png)
+
+> Secure your instance with bearer token authentication and origin allowlists.
+
+![Desktop settings token](assets/images/desktop-settings-token.png)

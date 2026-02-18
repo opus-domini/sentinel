@@ -1,5 +1,7 @@
 # Runbooks
 
+![Desktop runbooks](assets/images/desktop-runbooks.png)
+
 Runbooks are executable operational procedures — sequences of steps that run against the host. Each execution is tracked as a job with step-level output persistence.
 
 ## Step Types

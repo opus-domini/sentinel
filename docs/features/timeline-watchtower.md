@@ -1,5 +1,7 @@
 # Timeline and Watchtower
 
+![Desktop timeline](assets/images/desktop-timeline.png)
+
 Watchtower is the background projection engine that converts tmux runtime output into structured activity state.
 
 ## Responsibilities
