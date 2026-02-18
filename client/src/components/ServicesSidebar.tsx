@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { CircleHelp, Lock, LockOpen, Trash2 } from 'lucide-react'
+import { Lock, LockOpen, Trash2 } from 'lucide-react'
 import type { OpsServiceStatus } from '@/types'
+import ServicesHelpDialog from '@/components/ServicesHelpDialog'
 import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
@@ -80,18 +81,11 @@ export default function ServicesSidebar({
             <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
               Tracked Services
             </span>
-            <TooltipHelper content="Services pinned from the Browse panel for quick sidebar access.">
-              <span
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground"
-                aria-label="About tracked services"
-              >
-                <CircleHelp className="h-3 w-3 cursor-help" />
-              </span>
-            </TooltipHelper>
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
               {services.length}
             </span>
             <div className="ml-auto flex items-center gap-1.5">
+              <ServicesHelpDialog />
               <TooltipHelper content={lockLabel}>
                 <Button
                   variant="ghost"

@@ -1,7 +1,6 @@
 import { History, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import ConnectionBadge from './ConnectionBadge'
-import HelpDialog from './HelpDialog'
 import SessionTabs from './SessionTabs'
 import TerminalControls from './terminal/TerminalControls'
 import PaneStrip from './tmux/PaneStrip'
@@ -187,11 +186,6 @@ export default function TmuxTerminalPanel({
           <span className="truncate">Sentinel</span>
           <span className="text-muted-foreground">/</span>
           <span className="truncate text-muted-foreground">tmux</span>
-          <HelpDialog
-            context="tmux"
-            triggerClassName="relative top-px size-5 cursor-pointer rounded-sm p-0 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
-            iconClassName="size-3"
-          />
         </div>
         <div className="flex items-center gap-1.5">
           <Button

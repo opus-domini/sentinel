@@ -8,6 +8,7 @@ type SidebarHeaderProps = {
   hasToken: boolean
   lockTitle: string
   canCreate: boolean
+  helpDialog?: React.ReactNode
   onToggleAdd: () => void
   onToggleLock: () => void
 }
@@ -18,6 +19,7 @@ export default function SidebarHeader({
   hasToken,
   lockTitle,
   canCreate,
+  helpDialog,
   onToggleAdd,
   onToggleLock,
 }: SidebarHeaderProps) {
@@ -30,6 +32,7 @@ export default function SidebarHeader({
         {count}
       </span>
       <div className="ml-auto flex items-center gap-1.5">
+        {helpDialog}
         <TooltipHelper
           content={canCreate ? 'New session' : 'tmux not available'}
         >

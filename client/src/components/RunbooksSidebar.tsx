@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Lock, LockOpen, Plus } from 'lucide-react'
 import type { OpsRunbook, OpsRunbookRun } from '@/types'
+import RunbooksHelpDialog from '@/components/RunbooksHelpDialog'
 import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
@@ -85,6 +86,7 @@ export default function RunbooksSidebar({
               {runbooks.length}
             </span>
             <div className="ml-auto flex items-center gap-1.5">
+              <RunbooksHelpDialog />
               {onCreateRunbook && (
                 <TooltipHelper content="New runbook">
                   <Button

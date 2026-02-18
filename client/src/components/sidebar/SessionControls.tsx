@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import CreateSessionDialog from './CreateSessionDialog'
 import SidebarHeader from './SidebarHeader'
 import TokenDialog from './TokenDialog'
+import TmuxHelpDialog from '@/components/TmuxHelpDialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
@@ -51,6 +52,7 @@ export default function SessionControls({
         hasToken={hasToken}
         lockTitle={lockLabel}
         canCreate={!tmuxUnavailable}
+        helpDialog={<TmuxHelpDialog />}
         onToggleAdd={() => setIsCreateOpen(true)}
         onToggleLock={() => setIsTokenOpen(true)}
       />
