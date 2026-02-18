@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.8](https://github.com/opus-domini/sentinel/compare/v0.3.7...v0.3.8) (2026-02-18)
+
+
+### Features
+
+* add rich log viewer with streaming for services page ([37cecdb](https://github.com/opus-domini/sentinel/commit/37cecdb0dacd92aa001478f23de469cbb2289977))
+* add sparklines with hover tooltips to metrics page ([268f213](https://github.com/opus-domini/sentinel/commit/268f213d301ff90885c86e554632cbb3c59fd120))
+
 ## [0.3.7](https://github.com/opus-domini/sentinel/compare/v0.3.6...v0.3.7) (2026-02-18)
 
 
