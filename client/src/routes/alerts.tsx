@@ -119,10 +119,7 @@ function AlertsPage() {
           break
         case 'ops.alerts.updated':
           if (Array.isArray(typed.payload?.alerts)) {
-            queryClient.setQueryData(
-              OPS_ALERTS_QUERY_KEY,
-              typed.payload.alerts,
-            )
+            queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, typed.payload.alerts)
           } else {
             void refreshAlerts()
           }

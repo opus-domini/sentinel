@@ -77,9 +77,8 @@ export default function TmuxHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Terminal</h3>
               <p>
-                The terminal is rendered with xterm.js and connected to the
-                host via a WebSocket PTY. Input and output are streamed in
-                real time.
+                The terminal is rendered with xterm.js and connected to the host
+                via a WebSocket PTY. Input and output are streamed in real time.
               </p>
             </section>
             <section>

@@ -31,9 +31,7 @@ export function RunbookDeleteDialog({
           <AlertDialogTitle>Delete runbook</AlertDialogTitle>
           <AlertDialogDescription>
             Are you sure you want to delete{' '}
-            <span className="font-semibold text-foreground">
-              {runbookName}
-            </span>
+            <span className="font-semibold text-foreground">{runbookName}</span>
             ? This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>

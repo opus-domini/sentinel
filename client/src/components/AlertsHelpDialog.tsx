@@ -50,8 +50,8 @@ export default function AlertsHelpDialog() {
                 state or unusual activity that may need attention.
               </p>
               <p className="mt-1">
-                <strong className="text-red-400">error</strong> — a failure
-                that requires immediate action (e.g. a service crash).
+                <strong className="text-red-400">error</strong> — a failure that
+                requires immediate action (e.g. a service crash).
               </p>
             </section>
             <section>
@@ -68,10 +68,9 @@ export default function AlertsHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Limitations</h3>
               <p>
-                Alerts are local to this Sentinel instance and are not
-                forwarded to external systems. Duplicate alerts on the same
-                resource are deduplicated by key and increment the occurrence
-                counter.
+                Alerts are local to this Sentinel instance and are not forwarded
+                to external systems. Duplicate alerts on the same resource are
+                deduplicated by key and increment the occurrence counter.
               </p>
             </section>
           </div>

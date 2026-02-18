@@ -118,7 +118,7 @@ export default function RunbooksSidebar({
             </div>
           </div>
           <Input
-            className="h-8 bg-surface-overlay text-[12px]"
+            className="bg-surface-overlay text-[12px] md:h-8"
             placeholder="filter runbooks..."
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
@@ -211,11 +211,11 @@ export default function RunbooksSidebar({
                         {runbook.steps.length} steps
                       </span>
                     </div>
-                    {lastJob && (
-                      <span className="truncate text-[10px] text-muted-foreground">
-                        last: {lastJob.status} · {lastJob.createdAt}
-                      </span>
-                    )}
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {lastJob
+                        ? `last: ${lastJob.status} · ${lastJob.createdAt}`
+                        : 'never ran'}
+                    </span>
                   </button>
                 )
               })}

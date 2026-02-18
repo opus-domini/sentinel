@@ -123,9 +123,7 @@ export function RunbookEditor({
                 }
               />
               {errors.name && (
-                <p className="mt-0.5 text-[10px] text-red-400">
-                  {errors.name}
-                </p>
+                <p className="mt-0.5 text-[10px] text-red-400">{errors.name}</p>
               )}
             </div>
             <div>

@@ -53,9 +53,9 @@ export default function TimelineHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Filtering</h3>
               <p>
-                Use the search field to filter events by text content, or
-                narrow by severity level (info, warn, error) to focus on
-                specific event types.
+                Use the search field to filter events by text content, or narrow
+                by severity level (info, warn, error) to focus on specific event
+                types.
               </p>
             </section>
             <section>

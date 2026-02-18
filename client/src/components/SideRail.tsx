@@ -76,7 +76,11 @@ export default function SideRail({
         </Link>
       </TooltipHelper>
       <TooltipHelper content="Alerts" side="right">
-        <Link className={navItemClass(alertsActive)} to="/alerts" aria-label="Alerts">
+        <Link
+          className={navItemClass(alertsActive)}
+          to="/alerts"
+          aria-label="Alerts"
+        >
           <Bell className="size-4" />
         </Link>
       </TooltipHelper>

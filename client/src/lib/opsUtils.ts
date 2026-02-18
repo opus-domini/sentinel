@@ -30,4 +30,3 @@ export function browsedServiceDot(state: string): string {
   if (s === 'failed') return 'bg-red-500'
   return 'bg-muted-foreground/50'
 }
-

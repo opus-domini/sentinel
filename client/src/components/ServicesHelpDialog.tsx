@@ -56,9 +56,9 @@ export default function ServicesHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Actions</h3>
               <p>
-                Start, stop, and restart services directly from the detail
-                view. Actions are executed through the ops control plane and
-                recorded in the timeline.
+                Start, stop, and restart services directly from the detail view.
+                Actions are executed through the ops control plane and recorded
+                in the timeline.
               </p>
             </section>
             <section>
@@ -76,8 +76,8 @@ export default function ServicesHelpDialog() {
               <p>
                 The <strong className="text-foreground">sentinel</strong> and{' '}
                 <strong className="text-foreground">sentinel-updater</strong>{' '}
-                services are built-in and always tracked. They cannot be
-                removed from the sidebar.
+                services are built-in and always tracked. They cannot be removed
+                from the sidebar.
               </p>
             </section>
           </div>

@@ -132,12 +132,12 @@ export default function TimelineSidebar({
             value={timelineQuery}
             onChange={(e) => onTimelineQueryChange(e.target.value)}
             placeholder="search timeline"
-            className="h-8 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
+            className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
           />
           <select
             value={timelineSeverity}
             onChange={(e) => onTimelineSeverityChange(e.target.value)}
-            className="h-8 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
+            className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
           >
             <option value="all">all severities</option>
             <option value="info">info</option>

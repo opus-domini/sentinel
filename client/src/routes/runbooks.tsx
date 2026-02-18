@@ -290,13 +290,10 @@ function RunbooksPage() {
           message: payload.name,
         })
       } else {
-        await api(
-          `/api/ops/runbooks/${encodeURIComponent(editingDraft.id)}`,
-          {
-            method: 'PUT',
-            body: JSON.stringify(payload),
-          },
-        )
+        await api(`/api/ops/runbooks/${encodeURIComponent(editingDraft.id)}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        })
         await refreshRunbooks()
         pushToast({
           level: 'success',
@@ -332,10 +329,9 @@ function RunbooksPage() {
     if (deleteTarget == null) return
     setDeleting(true)
     try {
-      await api(
-        `/api/ops/runbooks/${encodeURIComponent(deleteTarget.id)}`,
-        { method: 'DELETE' },
-      )
+      await api(`/api/ops/runbooks/${encodeURIComponent(deleteTarget.id)}`, {
+        method: 'DELETE',
+      })
       await refreshRunbooks()
       pushToast({
         level: 'success',
@@ -357,14 +353,11 @@ function RunbooksPage() {
     }
   }, [api, deleteTarget, pushToast, refreshRunbooks])
 
-  const toggleJobExpand = useCallback(
-    (jobId: string) => {
-      setExpandedJobId((prev) => (prev === jobId ? null : jobId))
-      setExpandedStepIndices(new Set())
-      setDeleteJobTarget(null)
-    },
-    [],
-  )
+  const toggleJobExpand = useCallback((jobId: string) => {
+    setExpandedJobId((prev) => (prev === jobId ? null : jobId))
+    setExpandedStepIndices(new Set())
+    setDeleteJobTarget(null)
+  }, [])
 
   const toggleStepExpand = useCallback((index: number) => {
     setExpandedStepIndices((prev) => {
@@ -687,8 +680,9 @@ function RunbooksPage() {
                           {isExpanded && steps.length > 0 && (
                             <div className="grid gap-0.5 border-t border-border-subtle px-2.5 py-2">
                               {steps.map((sr) => {
-                                const stepOpen =
-                                  expandedStepIndices.has(sr.stepIndex)
+                                const stepOpen = expandedStepIndices.has(
+                                  sr.stepIndex,
+                                )
                                 return (
                                   <div
                                     key={sr.stepIndex}
@@ -807,12 +801,11 @@ function RunbooksPage() {
                       <div className="text-[10px] text-muted-foreground">
                         {runbook.steps.length} steps
                       </div>
-                      {lastJob && (
-                        <div className="rounded border border-border-subtle bg-surface-overlay px-2 py-1 text-[10px] text-muted-foreground">
-                          last run: {lastJob.status} · {lastJob.completedSteps}/
-                          {lastJob.totalSteps} · {lastJob.createdAt}
-                        </div>
-                      )}
+                      <div className="rounded border border-border-subtle bg-surface-overlay px-2 py-1 text-[10px] text-muted-foreground">
+                        {lastJob
+                          ? `last run: ${lastJob.status} · ${lastJob.completedSteps}/${lastJob.totalSteps} · ${lastJob.createdAt}`
+                          : 'never ran'}
+                      </div>
                     </button>
                   )
                 })}

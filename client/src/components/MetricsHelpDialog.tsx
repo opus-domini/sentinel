@@ -40,8 +40,8 @@ export default function MetricsHelpDialog() {
                 System Metrics
               </h3>
               <p>
-                CPU usage, memory consumption, disk utilization, and system
-                load averages are collected from the host operating system.
+                CPU usage, memory consumption, disk utilization, and system load
+                averages are collected from the host operating system.
               </p>
             </section>
             <section>
@@ -54,9 +54,7 @@ export default function MetricsHelpDialog() {
               </p>
             </section>
             <section>
-              <h3 className="mb-1 font-medium text-foreground">
-                Auto-refresh
-              </h3>
+              <h3 className="mb-1 font-medium text-foreground">Auto-refresh</h3>
               <p>
                 When enabled, metrics are polled every 5 seconds. Toggle the
                 switch in the sidebar to start or stop automatic updates.
@@ -65,8 +63,8 @@ export default function MetricsHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Data Source</h3>
               <p>
-                All metrics are collected locally by the Sentinel backend.
-                No external monitoring agents or services are required.
+                All metrics are collected locally by the Sentinel backend. No
+                external monitoring agents or services are required.
               </p>
             </section>
           </div>

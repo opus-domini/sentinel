@@ -145,9 +145,7 @@ export function RunbookStepEditor({
               onChange={(e) => onChange({ ...step, check: e.target.value })}
             />
             {errors.check && (
-              <p className="mt-0.5 text-[10px] text-red-400">
-                {errors.check}
-              </p>
+              <p className="mt-0.5 text-[10px] text-red-400">{errors.check}</p>
             )}
           </div>
         )}

@@ -1,6 +1,15 @@
 import { useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Settings, X } from 'lucide-react'
+import {
+  Activity,
+  Bell,
+  Blocks,
+  Clock,
+  ScrollText,
+  Settings,
+  SquareTerminal,
+  X,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import SettingsDialog from '@/components/settings/SettingsDialog'
 import { Button } from '@/components/ui/button'
@@ -14,6 +23,15 @@ type SidebarShellProps = {
   widthClassName?: string
 }
 
+const mobileNavItems = [
+  { to: '/tmux', label: 'Tmux', icon: SquareTerminal },
+  { to: '/services', label: 'Services', icon: Blocks },
+  { to: '/runbooks', label: 'Runbooks', icon: ScrollText },
+  { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/timeline', label: 'Timeline', icon: Clock },
+  { to: '/metrics', label: 'Metrics', icon: Activity },
+] as const
+
 function MobileNav() {
   const { setSidebarOpen } = useLayoutContext()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -23,92 +41,47 @@ function MobileNav() {
 
   const navItemClass = (isActive: boolean) =>
     cn(
-      'grid h-7 w-8 place-items-center rounded-md border text-[11px] no-underline',
+      'relative grid size-8 place-items-center rounded-md no-underline',
       isActive
-        ? 'border-primary/40 bg-primary/15 text-primary-text-bright'
-        : 'border-transparent text-secondary-foreground hover:border-border hover:bg-accent hover:text-foreground',
+        ? 'bg-primary/10 text-primary-text-bright before:absolute before:inset-x-1 before:-bottom-2 before:h-0.5 before:rounded-full before:bg-primary'
+        : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
     )
 
   const handleNav = () => setSidebarOpen(false)
 
   return (
     <div className="flex items-center justify-between border-b border-border pb-2 md:hidden">
-      <div className="flex items-center gap-1.5">
-        <a
-          className="brand-logo grid h-7 w-8 place-items-center rounded-md border border-border text-[11px] font-bold text-primary-text-light no-underline"
-          href="/"
-          onClick={handleNav}
-          aria-label="Sentinel home"
-        >
-          S
-        </a>
-        <Link
-          className={navItemClass(pathname === '/tmux')}
-          to="/tmux"
-          onClick={handleNav}
-          aria-label="Tmux"
-        >
-          TM
-        </Link>
-        <Link
-          className={navItemClass(pathname === '/services')}
-          to="/services"
-          onClick={handleNav}
-          aria-label="Services"
-        >
-          SV
-        </Link>
-        <Link
-          className={navItemClass(pathname === '/runbooks')}
-          to="/runbooks"
-          onClick={handleNav}
-          aria-label="Runbooks"
-        >
-          RB
-        </Link>
-        <Link
-          className={navItemClass(pathname === '/alerts')}
-          to="/alerts"
-          onClick={handleNav}
-          aria-label="Alerts"
-        >
-          AL
-        </Link>
-        <Link
-          className={navItemClass(pathname === '/timeline')}
-          to="/timeline"
-          onClick={handleNav}
-          aria-label="Timeline"
-        >
-          TL
-        </Link>
-        <Link
-          className={navItemClass(pathname === '/metrics')}
-          to="/metrics"
-          onClick={handleNav}
-          aria-label="Metrics"
-        >
-          MT
-        </Link>
+      <div className="flex items-center gap-1">
+        {mobileNavItems.map(({ to, label, icon: Icon }) => (
+          <Link
+            key={to}
+            className={navItemClass(pathname === to)}
+            to={to}
+            onClick={handleNav}
+            aria-label={label}
+          >
+            <Icon className="size-4" />
+          </Link>
+        ))}
       </div>
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-secondary-foreground hover:text-foreground"
+          className="size-7 text-secondary-foreground hover:text-foreground"
           onClick={() => setSettingsOpen(true)}
           aria-label="Settings"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="size-4" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-secondary-foreground hover:text-foreground"
+          className="size-7 text-secondary-foreground hover:text-foreground"
           onClick={() => setSidebarOpen(false)}
           aria-label="Close menu"
         >
-          <X className="h-4 w-4" />
+          <X className="size-4" />
         </Button>
       </div>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />

@@ -2,7 +2,11 @@ import { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu, RefreshCw } from 'lucide-react'
-import type { OpsMetricsResponse, OpsOverview, OpsOverviewResponse } from '@/types'
+import type {
+  OpsMetricsResponse,
+  OpsOverview,
+  OpsOverviewResponse,
+} from '@/types'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import MetricsSidebar from '@/components/MetricsSidebar'
@@ -14,7 +18,10 @@ import { useTokenContext } from '@/contexts/TokenContext'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { MetricCard } from '@/lib/MetricCard'
-import { OPS_METRICS_QUERY_KEY, OPS_OVERVIEW_QUERY_KEY } from '@/lib/opsQueryCache'
+import {
+  OPS_METRICS_QUERY_KEY,
+  OPS_OVERVIEW_QUERY_KEY,
+} from '@/lib/opsQueryCache'
 import { formatBytes, formatUptime, toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 
@@ -210,77 +217,79 @@ function MetricsPage() {
                     {metricsError}
                   </p>
                 )}
-                {!metricsLoading && metrics != null && activeTab === 'system' && (
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    <div
-                      className={cn(
-                        'rounded-lg border p-2.5',
-                        metrics.cpuPercent > 90
-                          ? 'border-red-500/40 bg-red-500/10'
-                          : 'border-border-subtle bg-surface-elevated',
-                      )}
-                    >
-                      <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-                        CPU
-                      </p>
-                      <p className="mt-1 text-[12px] font-semibold">
-                        {metrics.cpuPercent >= 0
-                          ? `${metrics.cpuPercent.toFixed(1)}%`
-                          : '-'}
-                      </p>
-                      <ProgressBar
-                        percent={
-                          metrics.cpuPercent >= 0 ? metrics.cpuPercent : 0
-                        }
+                {!metricsLoading &&
+                  metrics != null &&
+                  activeTab === 'system' && (
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                      <div
+                        className={cn(
+                          'rounded-lg border p-2.5',
+                          metrics.cpuPercent > 90
+                            ? 'border-red-500/40 bg-red-500/10'
+                            : 'border-border-subtle bg-surface-elevated',
+                        )}
+                      >
+                        <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                          CPU
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold">
+                          {metrics.cpuPercent >= 0
+                            ? `${metrics.cpuPercent.toFixed(1)}%`
+                            : '-'}
+                        </p>
+                        <ProgressBar
+                          percent={
+                            metrics.cpuPercent >= 0 ? metrics.cpuPercent : 0
+                          }
+                        />
+                      </div>
+                      <div
+                        className={cn(
+                          'rounded-lg border p-2.5',
+                          metrics.memPercent > 90
+                            ? 'border-red-500/40 bg-red-500/10'
+                            : 'border-border-subtle bg-surface-elevated',
+                        )}
+                      >
+                        <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                          Memory
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold">
+                          {metrics.memPercent.toFixed(1)}%
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {formatBytes(metrics.memUsedBytes)} /{' '}
+                          {formatBytes(metrics.memTotalBytes)}
+                        </p>
+                        <ProgressBar percent={metrics.memPercent} />
+                      </div>
+                      <div
+                        className={cn(
+                          'rounded-lg border p-2.5',
+                          metrics.diskPercent > 95
+                            ? 'border-red-500/40 bg-red-500/10'
+                            : 'border-border-subtle bg-surface-elevated',
+                        )}
+                      >
+                        <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                          Disk
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold">
+                          {metrics.diskPercent.toFixed(1)}%
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {formatBytes(metrics.diskUsedBytes)} /{' '}
+                          {formatBytes(metrics.diskTotalBytes)}
+                        </p>
+                        <ProgressBar percent={metrics.diskPercent} />
+                      </div>
+                      <MetricCard
+                        label="Load Avg"
+                        value={`${metrics.loadAvg1.toFixed(2)}`}
+                        sub={`${metrics.loadAvg5.toFixed(2)} / ${metrics.loadAvg15.toFixed(2)}`}
                       />
                     </div>
-                    <div
-                      className={cn(
-                        'rounded-lg border p-2.5',
-                        metrics.memPercent > 90
-                          ? 'border-red-500/40 bg-red-500/10'
-                          : 'border-border-subtle bg-surface-elevated',
-                      )}
-                    >
-                      <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-                        Memory
-                      </p>
-                      <p className="mt-1 text-[12px] font-semibold">
-                        {metrics.memPercent.toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {formatBytes(metrics.memUsedBytes)} /{' '}
-                        {formatBytes(metrics.memTotalBytes)}
-                      </p>
-                      <ProgressBar percent={metrics.memPercent} />
-                    </div>
-                    <div
-                      className={cn(
-                        'rounded-lg border p-2.5',
-                        metrics.diskPercent > 95
-                          ? 'border-red-500/40 bg-red-500/10'
-                          : 'border-border-subtle bg-surface-elevated',
-                      )}
-                    >
-                      <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-                        Disk
-                      </p>
-                      <p className="mt-1 text-[12px] font-semibold">
-                        {metrics.diskPercent.toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {formatBytes(metrics.diskUsedBytes)} /{' '}
-                        {formatBytes(metrics.diskTotalBytes)}
-                      </p>
-                      <ProgressBar percent={metrics.diskPercent} />
-                    </div>
-                    <MetricCard
-                      label="Load Avg"
-                      value={`${metrics.loadAvg1.toFixed(2)}`}
-                      sub={`${metrics.loadAvg5.toFixed(2)} / ${metrics.loadAvg15.toFixed(2)}`}
-                    />
-                  </div>
-                )}
+                  )}
                 {!metricsLoading &&
                   metrics != null &&
                   activeTab === 'runtime' && (

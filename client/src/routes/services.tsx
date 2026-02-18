@@ -588,7 +588,7 @@ function ServicesPage() {
           </div>
         </header>
 
-        <div className="grid min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden p-3">
+        <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2 overflow-hidden p-2 md:gap-3 md:p-3">
           <section>
             <div className="hidden gap-2 md:grid md:grid-cols-3">
               <MetricCard label="Total" value={stats.total} />
@@ -599,7 +599,7 @@ function ServicesPage() {
                 alert={Number(stats.failed) > 0}
               />
             </div>
-            <div className="flex items-center justify-center gap-4 rounded-lg border border-border-subtle bg-surface-elevated px-3 py-2 md:hidden">
+            <div className="flex items-center justify-center gap-4 rounded-lg border border-border-subtle bg-surface-elevated px-2 py-1.5 md:hidden">
               <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <Layers className="h-3.5 w-3.5" />
                 <span className="font-semibold text-foreground">
@@ -632,7 +632,7 @@ function ServicesPage() {
               <select
                 value={svcStateFilter}
                 onChange={(e) => setSvcStateFilter(e.target.value)}
-                className="h-8 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
+                className="h-7 flex-1 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
               >
                 <option value="all">All states</option>
                 <option value="active">Active</option>
@@ -642,45 +642,47 @@ function ServicesPage() {
               <select
                 value={svcScopeFilter}
                 onChange={(e) => setSvcScopeFilter(e.target.value)}
-                className="h-8 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]"
+                className="h-7 flex-1 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
               >
                 <option value="all">All scopes</option>
                 <option value="user">user</option>
                 <option value="system">system</option>
               </select>
-              <div className="relative min-w-44 flex-1">
-                <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-                <input
-                  value={svcSearch}
-                  onChange={(e) => setSvcSearch(e.target.value)}
-                  placeholder="Search services..."
-                  className={cn(
-                    'h-8 w-full rounded-md border border-border-subtle bg-surface-overlay pl-8 text-[12px] placeholder:text-muted-foreground',
-                    svcSearch ? 'pr-7' : 'pr-2',
+              <div className="flex w-full items-center gap-2 md:w-auto md:min-w-44 md:flex-1">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="absolute left-2 top-1.5 h-4 w-4 text-muted-foreground md:top-2" />
+                  <input
+                    value={svcSearch}
+                    onChange={(e) => setSvcSearch(e.target.value)}
+                    placeholder="Search services..."
+                    className={cn(
+                      'h-7 w-full rounded-md border border-border-subtle bg-surface-overlay pl-8 text-[12px] placeholder:text-muted-foreground md:h-8',
+                      svcSearch ? 'pr-7' : 'pr-2',
+                    )}
+                  />
+                  {svcSearch && (
+                    <button
+                      type="button"
+                      className="absolute right-1.5 top-1 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground md:top-1.5"
+                      onClick={() => setSvcSearch('')}
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   )}
-                />
-                {svcSearch && (
-                  <button
-                    type="button"
-                    className="absolute right-1.5 top-1.5 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                    onClick={() => setSvcSearch('')}
-                    aria-label="Clear search"
+                </div>
+                <TooltipHelper content="Refresh service list">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 cursor-pointer text-[11px] md:h-8"
+                    onClick={() => void refreshBrowse()}
                   >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                </TooltipHelper>
               </div>
-              <TooltipHelper content="Refresh service list">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 cursor-pointer text-[11px]"
-                  onClick={() => void refreshBrowse()}
-                >
-                  <RefreshCw className="h-3 w-3" />
-                </Button>
-              </TooltipHelper>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="hidden text-[10px] text-muted-foreground md:inline">
                 {filteredBrowseServices.length}/{browseServices.length} services
               </span>
             </div>
