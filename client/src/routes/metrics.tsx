@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu, RefreshCw } from 'lucide-react'
@@ -8,6 +8,7 @@ import type {
   OpsOverview,
   OpsOverviewResponse,
 } from '@/types'
+import type { MetricsSnapshot } from '@/lib/MetricsHistory'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import MetricsSidebar from '@/components/MetricsSidebar'
@@ -19,30 +20,36 @@ import { useTokenContext } from '@/contexts/TokenContext'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { MetricCard } from '@/lib/MetricCard'
+import { MetricsHistory } from '@/lib/MetricsHistory'
 import {
   OPS_METRICS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
 } from '@/lib/opsQueryCache'
 import { formatBytes, formatUptime, toErrorMessage } from '@/lib/opsUtils'
+import { ProgressBar } from '@/lib/ProgressBar'
+import { Sparkline } from '@/lib/Sparkline'
 import { cn } from '@/lib/utils'
 
-function ProgressBar({ percent }: { percent: number }) {
-  const clamped = Math.min(percent, 100)
-  const color =
-    percent > 90
-      ? 'bg-red-500'
-      : percent > 80
-        ? 'bg-amber-500'
-        : 'bg-emerald-500'
+const SPARKLINE_COLORS = {
+  cpu: '#10b981',
+  memory: '#3b82f6',
+  disk: '#f59e0b',
+  loadAvg: '#8b5cf6',
+  goroutines: '#06b6d4',
+  goHeap: '#f97316',
+} as const
 
-  return (
-    <div className="mt-1.5 h-1.5 w-full rounded-full bg-surface-overlay">
-      <div
-        className={cn('h-1.5 rounded-full', color)}
-        style={{ width: `${clamped}%` }}
-      />
-    </div>
-  )
+const round1 = (n: number) => Math.round(n * 10) / 10
+
+function toSnapshot(m: OpsHostMetrics): MetricsSnapshot {
+  return {
+    cpuPercent: round1(m.cpuPercent),
+    memPercent: round1(m.memPercent),
+    diskPercent: round1(m.diskPercent),
+    loadAvg1: m.loadAvg1,
+    numGoroutines: m.numGoroutines,
+    goMemAllocMB: m.goMemAllocMB,
+  }
 }
 
 type MetricsTab = 'system' | 'runtime'
@@ -55,6 +62,8 @@ function MetricsPage() {
   const queryClient = useQueryClient()
 
   const [activeTab, setActiveTab] = useState<MetricsTab>('system')
+  const historyRef = useRef(new MetricsHistory())
+  const seededRef = useRef(false)
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -84,6 +93,13 @@ function MetricsPage() {
     metricsQuery.error != null
       ? toErrorMessage(metricsQuery.error, 'failed to load metrics')
       : ''
+
+  useEffect(() => {
+    if (metrics != null && !seededRef.current) {
+      historyRef.current.push(toSnapshot(metrics))
+      seededRef.current = true
+    }
+  }, [metrics])
 
   const refreshOverview = useCallback(async () => {
     await queryClient.refetchQueries({
@@ -129,10 +145,9 @@ function MetricsPage() {
             typed.payload?.metrics != null &&
             typeof typed.payload.metrics === 'object'
           ) {
-            queryClient.setQueryData(
-              OPS_METRICS_QUERY_KEY,
-              typed.payload.metrics,
-            )
+            const m = typed.payload.metrics
+            historyRef.current.push(toSnapshot(m))
+            queryClient.setQueryData(OPS_METRICS_QUERY_KEY, m)
           }
           break
         default:
@@ -148,6 +163,15 @@ function MetricsPage() {
     onMessage: handleWSMessage,
   })
 
+  const history = historyRef.current
+  const cpuData = history.field('cpuPercent')
+  const memData = history.field('memPercent')
+  const diskData = history.field('diskPercent')
+  const loadData = history.field('loadAvg1')
+  const goroutineData = history.field('numGoroutines')
+  const heapData = history.field('goMemAllocMB')
+  const ts = history.timestamps()
+
   return (
     <AppShell
       sidebar={
@@ -157,7 +181,6 @@ function MetricsPage() {
           tokenRequired={tokenRequired}
           token={token}
           overview={overview}
-          metrics={metrics}
           onTokenChange={setToken}
         />
       }
@@ -214,7 +237,7 @@ function MetricsPage() {
 
           <section className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
             <ScrollArea className="h-full min-h-0">
-              <div className="grid gap-2 p-2">
+              <div className="grid gap-3 p-2">
                 {metricsLoading && (
                   <p className="text-[12px] text-muted-foreground">
                     Loading metrics...
@@ -228,7 +251,7 @@ function MetricsPage() {
                 {!metricsLoading &&
                   metrics != null &&
                   activeTab === 'system' && (
-                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <div
                         className={cn(
                           'rounded-lg border p-2.5',
@@ -250,6 +273,14 @@ function MetricsPage() {
                             metrics.cpuPercent >= 0 ? metrics.cpuPercent : 0
                           }
                         />
+                        <Sparkline
+                          data={cpuData}
+                          timestamps={ts}
+                          color={SPARKLINE_COLORS.cpu}
+                          domain={[0, 100]}
+                          formatValue={(v) => `${v.toFixed(1)}%`}
+                          className="mt-2 h-10 w-full"
+                        />
                       </div>
                       <div
                         className={cn(
@@ -270,6 +301,14 @@ function MetricsPage() {
                           {formatBytes(metrics.memTotalBytes)}
                         </p>
                         <ProgressBar percent={metrics.memPercent} />
+                        <Sparkline
+                          data={memData}
+                          timestamps={ts}
+                          color={SPARKLINE_COLORS.memory}
+                          domain={[0, 100]}
+                          formatValue={(v) => `${v.toFixed(1)}%`}
+                          className="mt-2 h-10 w-full"
+                        />
                       </div>
                       <div
                         className={cn(
@@ -290,26 +329,70 @@ function MetricsPage() {
                           {formatBytes(metrics.diskTotalBytes)}
                         </p>
                         <ProgressBar percent={metrics.diskPercent} />
+                        <Sparkline
+                          data={diskData}
+                          timestamps={ts}
+                          color={SPARKLINE_COLORS.disk}
+                          domain={[0, 100]}
+                          formatValue={(v) => `${v.toFixed(1)}%`}
+                          className="mt-2 h-10 w-full"
+                        />
                       </div>
-                      <MetricCard
-                        label="Load Avg"
-                        value={`${metrics.loadAvg1.toFixed(2)}`}
-                        sub={`${metrics.loadAvg5.toFixed(2)} / ${metrics.loadAvg15.toFixed(2)}`}
-                      />
+                      <div className="rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
+                        <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                          Load Avg
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold">
+                          {metrics.loadAvg1.toFixed(2)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {metrics.loadAvg5.toFixed(2)} /{' '}
+                          {metrics.loadAvg15.toFixed(2)}
+                        </p>
+                        <Sparkline
+                          data={loadData}
+                          timestamps={ts}
+                          color={SPARKLINE_COLORS.loadAvg}
+                          formatValue={(v) => v.toFixed(2)}
+                          className="mt-2 h-10 w-full"
+                        />
+                      </div>
                     </div>
                   )}
                 {!metricsLoading &&
                   metrics != null &&
                   activeTab === 'runtime' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <MetricCard
-                        label="Goroutines"
-                        value={`${metrics.numGoroutines}`}
-                      />
-                      <MetricCard
-                        label="Go Heap"
-                        value={`${metrics.goMemAllocMB.toFixed(1)} MB`}
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
+                        <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                          Goroutines
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold">
+                          {metrics.numGoroutines}
+                        </p>
+                        <Sparkline
+                          data={goroutineData}
+                          timestamps={ts}
+                          color={SPARKLINE_COLORS.goroutines}
+                          formatValue={(v) => `${v}`}
+                          className="mt-2 h-10 w-full"
+                        />
+                      </div>
+                      <div className="rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
+                        <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                          Go Heap
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold">
+                          {metrics.goMemAllocMB.toFixed(1)} MB
+                        </p>
+                        <Sparkline
+                          data={heapData}
+                          timestamps={ts}
+                          color={SPARKLINE_COLORS.goHeap}
+                          formatValue={(v) => `${v.toFixed(1)} MB`}
+                          className="mt-2 h-10 w-full"
+                        />
+                      </div>
                       <MetricCard
                         label="PID"
                         value={`${overview?.sentinel.pid ?? '-'}`}

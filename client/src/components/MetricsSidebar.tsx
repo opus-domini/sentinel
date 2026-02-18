@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Lock, LockOpen } from 'lucide-react'
-import type { OpsHostMetrics, OpsOverview } from '@/types'
+import type { OpsOverview } from '@/types'
 import MetricsHelpDialog from '@/components/MetricsHelpDialog'
 import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
@@ -14,7 +14,6 @@ type MetricsSidebarProps = {
   tokenRequired: boolean
   token: string
   overview: OpsOverview | null
-  metrics: OpsHostMetrics | null
   onTokenChange: (value: string) => void
 }
 
@@ -24,7 +23,6 @@ export default function MetricsSidebar({
   tokenRequired,
   token,
   overview,
-  metrics,
   onTokenChange,
 }: MetricsSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
