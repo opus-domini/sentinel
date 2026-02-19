@@ -1,0 +1,28 @@
+[Unit]
+Description=Sentinel - terminal workspace for %I
+Documentation=https://github.com/opus-domini/sentinel
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=4
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/usr/local/bin/sentinel
+Restart=on-failure
+RestartSec=2
+KillMode=process
+Environment=SENTINEL_LOG_LEVEL=info
+Environment=TERM=xterm-256color
+Environment=LANG=C.UTF-8
+
+# Hardening
+SystemCallArchitectures=native
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

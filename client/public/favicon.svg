@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" role="img" aria-label="Sentinel">
+  <rect x="14" y="18" width="116" height="108" rx="18" fill="#0B0F14"/>
+  <rect x="14" y="18" width="116" height="108" rx="18" fill="none" stroke="#1B2430" stroke-width="6"/>
+
+  <path d="M44 58 L62 72 L44 86" fill="none" stroke="#7CFFB2" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M72 84 H100" fill="none" stroke="#7CFFB2" stroke-width="10" stroke-linecap="round"/>
+</svg>
