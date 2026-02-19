@@ -267,6 +267,72 @@ func TestSplitCSV(t *testing.T) {
 	}
 }
 
+func TestCookieSecureDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_COOKIE_SECURE", "")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_LOG_LEVEL", "")
+
+	cfg := Load()
+	if cfg.CookieSecure != "auto" {
+		t.Fatalf("CookieSecure = %q, want auto", cfg.CookieSecure)
+	}
+}
+
+func TestCookieSecureEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_COOKIE_SECURE", "always")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_LOG_LEVEL", "")
+
+	cfg := Load()
+	if cfg.CookieSecure != "always" {
+		t.Fatalf("CookieSecure = %q, want always", cfg.CookieSecure)
+	}
+}
+
+func TestCookieSecureInvalidFallback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_COOKIE_SECURE", "bogus")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_LOG_LEVEL", "")
+
+	cfg := Load()
+	if cfg.CookieSecure != "auto" {
+		t.Fatalf("CookieSecure = %q, want auto (fallback)", cfg.CookieSecure)
+	}
+}
+
+func TestCookieSecureFromFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+	content := `cookie_secure = "never"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_COOKIE_SECURE", "")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_LOG_LEVEL", "")
+
+	cfg := Load()
+	if cfg.CookieSecure != "never" {
+		t.Fatalf("CookieSecure = %q, want never from file", cfg.CookieSecure)
+	}
+}
+
 func TestLoadWatchtowerConfigFromEnvAndFile(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")

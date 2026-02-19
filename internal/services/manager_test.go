@@ -9,7 +9,17 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/store"
 )
+
+type stubCustomServicesRepo struct {
+	services []store.CustomService
+	err      error
+}
+
+func (s *stubCustomServicesRepo) ListCustomServices(_ context.Context) ([]store.CustomService, error) {
+	return s.services, s.err
+}
 
 const testHostname = "host-a"
 
@@ -458,5 +468,98 @@ func TestActValidatesInput(t *testing.T) {
 	}
 	if _, err := m.Act(context.Background(), ServiceNameSentinel, "invalid"); !errors.Is(err, ErrInvalidAction) {
 		t.Fatalf("error = %v, want ErrInvalidAction", err)
+	}
+}
+
+func TestListServicesMergesCustomServices(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
+	repo := &stubCustomServicesRepo{
+		services: []store.CustomService{
+			{Name: "nginx", DisplayName: "Nginx", Manager: "systemd", Unit: "nginx.service", Scope: "system"},
+		},
+	}
+	m := &Manager{
+		startedAt:      fixedNow.Add(-10 * time.Minute),
+		nowFn:          func() time.Time { return fixedNow },
+		hostname:       func() (string, error) { return testHostname, nil },
+		uidFn:          func() int { return 1000 },
+		goos:           "linux",
+		customServices: repo,
+		userStatusFn: func() (service.UserServiceStatus, error) {
+			return service.UserServiceStatus{
+				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
+				UnitFileExists: true,
+				EnabledState:   "enabled",
+				ActiveState:    "active",
+			}, nil
+		},
+		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
+			return service.UserAutoUpdateServiceStatus{
+				ServiceUnitExists: true,
+				TimerUnitExists:   true,
+				TimerEnabledState: "enabled",
+				TimerActiveState:  "active",
+			}, nil
+		},
+		commandRunner: func(_ context.Context, _ string, _ ...string) (string, error) {
+			return "ActiveState=active\nLoadState=loaded\nUnitFileState=enabled", nil
+		},
+	}
+
+	services, err := m.ListServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if len(services) != 3 {
+		t.Fatalf("len(services) = %d, want 3 (sentinel + updater + nginx)", len(services))
+	}
+	if services[2].Name != "nginx" {
+		t.Fatalf("services[2].Name = %q, want nginx", services[2].Name)
+	}
+	if services[2].Manager != "systemd" {
+		t.Fatalf("services[2].Manager = %q, want systemd", services[2].Manager)
+	}
+}
+
+func TestListServicesCustomServicesError(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
+	repo := &stubCustomServicesRepo{
+		err: errors.New("db locked"),
+	}
+	m := &Manager{
+		startedAt:      fixedNow.Add(-10 * time.Minute),
+		nowFn:          func() time.Time { return fixedNow },
+		hostname:       func() (string, error) { return testHostname, nil },
+		uidFn:          func() int { return 1000 },
+		goos:           "linux",
+		customServices: repo,
+		userStatusFn: func() (service.UserServiceStatus, error) {
+			return service.UserServiceStatus{
+				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
+				UnitFileExists: true,
+				EnabledState:   "enabled",
+				ActiveState:    "active",
+			}, nil
+		},
+		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
+			return service.UserAutoUpdateServiceStatus{
+				ServiceUnitExists: true,
+				TimerUnitExists:   true,
+				TimerEnabledState: "enabled",
+				TimerActiveState:  "active",
+			}, nil
+		},
+	}
+
+	services, err := m.ListServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListServices should not fail when custom services error: %v", err)
+	}
+	if len(services) != 2 {
+		t.Fatalf("len(services) = %d, want 2 (graceful degradation)", len(services))
 	}
 }

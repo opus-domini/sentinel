@@ -470,6 +470,80 @@ func TestBearerToken(t *testing.T) {
 	}
 }
 
+func TestCookieSecurePolicy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		policy     CookieSecurePolicy
+		tls        bool
+		forwarded  string
+		wantSecure bool
+	}{
+		{"always over http", CookieSecureAlways, false, "", true},
+		{"always over https", CookieSecureAlways, true, "", true},
+		{"never over http", CookieSecureNever, false, "", false},
+		{"never over https", CookieSecureNever, true, "", false},
+		{"never over forwarded https", CookieSecureNever, false, "https", false},
+		{"auto over http", CookieSecureAuto, false, "", false},
+		{"auto over https", CookieSecureAuto, true, "", true},
+		{"auto over forwarded https", CookieSecureAuto, false, "https", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			g := New("secret", nil, tt.policy)
+
+			req := httptest.NewRequest("GET", "http://localhost/", nil)
+			if tt.tls {
+				req.TLS = &tls.ConnectionState{}
+			}
+			if tt.forwarded != "" {
+				req.Header.Set("X-Forwarded-Proto", tt.forwarded)
+			}
+			rec := httptest.NewRecorder()
+			g.SetAuthCookie(rec, req)
+
+			res := rec.Result()
+			defer func() { _ = res.Body.Close() }()
+
+			cookies := res.Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("cookies len = %d, want 1", len(cookies))
+			}
+			if cookies[0].Secure != tt.wantSecure {
+				t.Fatalf("cookie Secure = %v, want %v", cookies[0].Secure, tt.wantSecure)
+			}
+		})
+	}
+}
+
+func TestParseCookieSecurePolicy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  CookieSecurePolicy
+	}{
+		{"auto", CookieSecureAuto},
+		{"always", CookieSecureAlways},
+		{"never", CookieSecureNever},
+		{"ALWAYS", CookieSecureAlways},
+		{"  Never  ", CookieSecureNever},
+		{"", CookieSecureAuto},
+		{"invalid", CookieSecureAuto},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := ParseCookieSecurePolicy(tt.input); got != tt.want {
+				t.Errorf("ParseCookieSecurePolicy(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateRemoteExposure(t *testing.T) {
 	t.Parallel()
 
