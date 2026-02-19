@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -176,6 +177,10 @@ func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook name is required", nil)
 		return
 	}
+	if err := validateRunbookSteps(req.Steps); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -206,6 +211,10 @@ func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.ID = runbookID
+	if err := validateRunbookSteps(req.Steps); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -238,6 +247,13 @@ func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	// Remove associated schedules before deleting the runbook to avoid
+	// orphan schedules that would cause the scheduler to loop on errors.
+	if err := h.repo.DeleteSchedulesByRunbook(ctx, runbookID); err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to remove associated schedules", nil)
+		return
+	}
+
 	if err := h.repo.DeleteOpsRunbook(ctx, runbookID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
@@ -250,4 +266,22 @@ func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]any{
 		"removed": runbookID,
 	})
+}
+
+var validStepTypes = map[string]bool{
+	"command": true,
+	"check":   true,
+	"manual":  true,
+}
+
+func validateRunbookSteps(steps []store.OpsRunbookStep) error {
+	for i, step := range steps {
+		if !validStepTypes[step.Type] {
+			return fmt.Errorf("step %d: type must be command, check, or manual", i)
+		}
+		if strings.TrimSpace(step.Title) == "" {
+			return fmt.Errorf("step %d: title is required", i)
+		}
+	}
+	return nil
 }

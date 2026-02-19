@@ -260,15 +260,33 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update schedule last run info.
-	if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", sched.NextRunAt, sched.Enabled); err != nil {
-		slog.Warn("trigger schedule: update after run failed", "schedule", scheduleID, "err", err)
+	// Recompute next_run_at/enabled using the same policy as the scheduler
+	// to avoid re-triggering from a stale past-due value.
+	var finalNextRunAt string
+	var finalEnabled bool
+	switch sched.ScheduleType {
+	case scheduleTypeOnce:
+		finalNextRunAt = ""
+		finalEnabled = false
+	case scheduleTypeCron:
+		loc, locErr := time.LoadLocation(sched.Timezone)
+		if locErr != nil {
+			loc = time.UTC
+		}
+		cronSched, cronErr := validate.ParseCron(sched.CronExpr)
+		if cronErr != nil {
+			slog.Warn("trigger schedule: invalid cron, disabling", "schedule", scheduleID, "err", cronErr)
+			finalNextRunAt = ""
+			finalEnabled = false
+		} else {
+			finalNextRunAt = cronSched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
+			finalEnabled = true
+		}
 	}
 
-	// Capture schedule state for the OnFinish closure so the async run
-	// can finalise schedule metadata after completion.
-	finalNextRunAt := sched.NextRunAt
-	finalEnabled := sched.Enabled
+	if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", finalNextRunAt, finalEnabled); err != nil {
+		slog.Warn("trigger schedule: update after run failed", "schedule", scheduleID, "err", err)
+	}
 
 	h.wg.Add(1)
 	go func() {

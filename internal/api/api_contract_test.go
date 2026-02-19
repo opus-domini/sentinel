@@ -54,8 +54,8 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "metrics", method: http.MethodGet, path: "/api/ops/metrics"},
 
 		{name: "runbooks-list", method: http.MethodGet, path: "/api/ops/runbooks"},
-		{name: "runbooks-create", method: http.MethodPost, path: "/api/ops/runbooks", body: `{"id":"noop","name":"Noop","description":"noop","steps":[{"name":"echo","shell":"echo ok"}]}`},
-		{name: "runbooks-update", method: http.MethodPut, path: "/api/ops/runbooks/noop", body: `{"name":"Noop","description":"noop","steps":[{"name":"echo","shell":"echo ok"}]}`},
+		{name: "runbooks-create", method: http.MethodPost, path: "/api/ops/runbooks", body: `{"id":"noop","name":"Noop","description":"noop","steps":[{"type":"command","title":"echo","command":"echo ok"}]}`},
+		{name: "runbooks-update", method: http.MethodPut, path: "/api/ops/runbooks/noop", body: `{"name":"Noop","description":"noop","steps":[{"type":"command","title":"echo","command":"echo ok"}]}`},
 		{name: "runbooks-delete", method: http.MethodDelete, path: "/api/ops/runbooks/noop"},
 		{name: "runbooks-run", method: http.MethodPost, path: "/api/ops/runbooks/noop/run", body: `{"trigger":"manual"}`},
 		{name: "runbooks-job", method: http.MethodGet, path: "/api/ops/jobs/noop"},

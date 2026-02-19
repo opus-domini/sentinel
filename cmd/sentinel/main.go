@@ -65,6 +65,7 @@ func serve() int {
 		slog.Error("store init failed", "err", err)
 		return 1
 	}
+	defer func() { _ = st.Close() }()
 
 	opsManager := services.NewManager(time.Now(), st)
 
@@ -167,7 +168,6 @@ func serve() int {
 		recoveryService.Stop(stopCtx)
 		cancel()
 	}
-	_ = st.Close()
 	return exitCode
 }
 

@@ -4408,7 +4408,7 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 	r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(`{
 		"name":"deploy",
 		"description":"Deploy the app",
-		"steps":[{"type":"shell","title":"Build","command":"make build"}],
+		"steps":[{"type":"command","title":"Build","command":"make build"}],
 		"enabled":true
 	}`))
 	h.createOpsRunbook(w, r)
@@ -4431,7 +4431,7 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 	r = httptest.NewRequest("PUT", "/api/ops/runbooks/"+rbID, strings.NewReader(`{
 		"name":"deploy-v2",
 		"description":"Deploy v2",
-		"steps":[{"type":"shell","title":"Build","command":"make build-all"}],
+		"steps":[{"type":"command","title":"Build","command":"make build-all"}],
 		"enabled":true
 	}`))
 	r.SetPathValue("runbook", rbID)
@@ -4508,7 +4508,7 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
 		Name: "trigger-test-rb",
 		Steps: []store.OpsRunbookStep{
-			{Type: "shell", Title: "echo", Command: "echo ok"},
+			{Type: "command", Title: "echo", Command: "echo ok"},
 		},
 	})
 	if err != nil {
@@ -4566,8 +4566,17 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 	if !got.Enabled {
 		t.Fatal("cron schedule should remain enabled after manual trigger")
 	}
-	if got.NextRunAt != future {
-		t.Fatalf("cron schedule next_run_at = %q, want %q (preserved)", got.NextRunAt, future)
+	// Manual trigger recomputes next_run_at via cron.Next(now) — it must
+	// differ from the original future value and point to the next hour boundary.
+	if got.NextRunAt == future {
+		t.Fatal("cron schedule next_run_at should be recomputed, not preserved")
+	}
+	recomputed, err := time.Parse(time.RFC3339, got.NextRunAt)
+	if err != nil {
+		t.Fatalf("next_run_at is not valid RFC3339: %q", got.NextRunAt)
+	}
+	if !recomputed.After(time.Now().UTC()) {
+		t.Fatalf("recomputed next_run_at %s should be in the future", got.NextRunAt)
 	}
 }
 
@@ -4581,7 +4590,7 @@ func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
 		Name: "once-trigger-rb",
 		Steps: []store.OpsRunbookStep{
-			{Type: "shell", Title: "echo", Command: "echo ok"},
+			{Type: "command", Title: "echo", Command: "echo ok"},
 		},
 	})
 	if err != nil {
@@ -4627,5 +4636,180 @@ func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
 	}
 	if got.LastRunStatus == "running" {
 		t.Fatalf("once schedule stuck in running; expected terminal status")
+	}
+}
+
+func TestDeleteRunbookCascadesSchedules(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.events = events.NewHub()
+	ctx := context.Background()
+
+	// Create runbook.
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:  "cascade-rb",
+		Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+
+	// Create two schedules for this runbook.
+	future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
+	for _, name := range []string{"sched-a", "sched-b"} {
+		_, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+			RunbookID:    rb.ID,
+			Name:         name,
+			ScheduleType: "cron",
+			CronExpr:     "0 * * * *",
+			Timezone:     "UTC",
+			Enabled:      true,
+			NextRunAt:    future,
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsSchedule(%s): %v", name, err)
+		}
+	}
+
+	// Delete the runbook.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("DELETE", "/api/ops/runbooks/"+rb.ID, nil)
+	r.SetPathValue("runbook", rb.ID)
+	h.deleteOpsRunbook(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+
+	// Verify schedules were removed.
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatalf("ListOpsSchedules: %v", err)
+	}
+	for _, s := range schedules {
+		if s.RunbookID == rb.ID {
+			t.Fatalf("orphan schedule %s still exists after runbook delete", s.ID)
+		}
+	}
+}
+
+func TestCreateRunbookRejectsInvalidStepType(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"invalid type", `{"name":"bad","steps":[{"type":"shell","title":"Build","command":"make"}]}`},
+		{"empty type", `{"name":"bad","steps":[{"type":"","title":"Build","command":"make"}]}`},
+		{"missing title", `{"name":"bad","steps":[{"type":"command","title":"","command":"make"}]}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(tc.body))
+			h.createOpsRunbook(w, r)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestTriggerCronScheduleRecomputesNextRunAt(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.events = events.NewHub()
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:  "recompute-rb",
+		Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+
+	// Create a cron schedule with a stale (past) next_run_at.
+	stale := time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "recompute-sched",
+		ScheduleType: "cron",
+		CronExpr:     "0 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    stale,
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsSchedule: %v", err)
+	}
+
+	// Trigger manually.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+	r.SetPathValue("schedule", sched.ID)
+	h.triggerSchedule(w, r)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("triggerSchedule status = %d, want 202; body=%s", w.Code, w.Body.String())
+	}
+
+	h.wg.Wait()
+
+	// Verify next_run_at was recomputed to the future (not the stale value).
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatalf("ListOpsSchedules: %v", err)
+	}
+	var got *store.OpsSchedule
+	for i := range schedules {
+		if schedules[i].ID == sched.ID {
+			got = &schedules[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatal("schedule not found")
+	}
+	if got.NextRunAt == stale {
+		t.Fatal("next_run_at was not recomputed; still has stale value")
+	}
+	nextRun, err := time.Parse(time.RFC3339, got.NextRunAt)
+	if err != nil {
+		t.Fatalf("invalid next_run_at: %v", err)
+	}
+	if !nextRun.After(time.Now().UTC()) {
+		t.Fatalf("next_run_at = %s, expected future timestamp", got.NextRunAt)
+	}
+	if !got.Enabled {
+		t.Fatal("cron schedule should remain enabled after manual trigger")
+	}
+}
+
+func TestGuardrailFailClosedOnEvaluateError(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.guardrails = guardrails.New(st)
+
+	// Close the store to force Evaluate to fail.
+	_ = st.Close()
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
+	r.SetPathValue("session", "dev")
+
+	allowed := h.enforceGuardrail(w, r, guardrails.Input{
+		Action:      "kill-session",
+		SessionName: "dev",
+	})
+	if allowed {
+		t.Fatal("expected guardrail to block when Evaluate fails, but it allowed")
+	}
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
 	}
 }

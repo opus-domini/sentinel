@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -158,6 +160,15 @@ func (s *Service) tick(ctx context.Context) {
 func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedule, now time.Time) {
 	job, err := s.repo.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
 	if err != nil {
+		// Auto-heal: if the runbook no longer exists, disable the orphan
+		// schedule so it stops appearing as due on every tick.
+		if errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("scheduler auto-heal: disabling orphan schedule", "schedule", sched.ID, "runbook", sched.RunbookID)
+			if healErr := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); healErr != nil {
+				slog.Warn("scheduler auto-heal: update failed", "schedule", sched.ID, "err", healErr)
+			}
+			return
+		}
 		slog.Warn("scheduler create run failed", "schedule", sched.ID, "runbook", sched.RunbookID, "err", err)
 		return
 	}

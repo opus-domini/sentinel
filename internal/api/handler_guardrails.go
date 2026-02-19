@@ -179,8 +179,9 @@ func (h *Handler) enforceGuardrail(
 
 	decision, err := h.guardrails.Evaluate(ctx, input)
 	if err != nil {
-		slog.Warn("guardrail evaluate failed, allowing request", "action", input.Action, "err", err)
-		return true
+		slog.Warn("guardrail evaluate failed, blocking request", "action", input.Action, "err", err)
+		writeError(w, http.StatusServiceUnavailable, "GUARDRAIL_UNAVAILABLE", "guardrail policy could not be evaluated; action blocked for safety", nil)
+		return false
 	}
 
 	confirmed := hasGuardrailConfirm(r)

@@ -127,6 +127,7 @@ type opsScheduleRepo interface {
 	InsertOpsSchedule(ctx context.Context, w store.OpsScheduleWrite) (store.OpsSchedule, error)
 	UpdateOpsSchedule(ctx context.Context, w store.OpsScheduleWrite) (store.OpsSchedule, error)
 	DeleteOpsSchedule(ctx context.Context, id string) error
+	DeleteSchedulesByRunbook(ctx context.Context, runbookID string) error
 	UpdateScheduleAfterRun(ctx context.Context, id, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
 }
 

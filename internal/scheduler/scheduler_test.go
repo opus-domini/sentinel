@@ -670,3 +670,52 @@ func TestStart_NilService(t *testing.T) {
 	svc.Start(ctx)
 	svc.Stop(ctx)
 }
+
+func TestExecuteDueSchedule_AutoHealsOrphanRunbook(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	ctx := context.Background()
+	hub := events.NewHub()
+
+	svc := New(st, st, Options{TickInterval: time.Hour, EventHub: hub})
+
+	// Create a schedule pointing to a nonexistent runbook.
+	due := time.Now().UTC().Add(-1 * time.Minute).Format(time.RFC3339)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    "nonexistent-runbook-id",
+		Name:         "orphan-schedule",
+		ScheduleType: "cron",
+		CronExpr:     "0 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    due,
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsSchedule: %v", err)
+	}
+
+	// Execute tick — should auto-heal the orphan.
+	svc.tick(ctx)
+
+	// Verify the schedule was disabled.
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatalf("ListOpsSchedules: %v", err)
+	}
+	var got *store.OpsSchedule
+	for i := range schedules {
+		if schedules[i].ID == sched.ID {
+			got = &schedules[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatal("schedule not found")
+	}
+	if got.Enabled {
+		t.Fatal("orphan schedule should be disabled after auto-heal")
+	}
+	if got.NextRunAt != "" {
+		t.Fatalf("orphan schedule next_run_at should be empty, got %q", got.NextRunAt)
+	}
+}
