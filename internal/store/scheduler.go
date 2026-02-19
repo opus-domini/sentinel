@@ -79,15 +79,21 @@ func (s *Store) ListOpsSchedules(ctx context.Context) ([]OpsSchedule, error) {
 }
 
 // ListDueSchedules returns enabled schedules whose next_run_at <= now.
-func (s *Store) ListDueSchedules(ctx context.Context, now time.Time) ([]OpsSchedule, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, runbook_id, name, schedule_type, cron_expr, timezone,
+// When limit > 0, at most limit rows are returned (oldest first).
+// Remaining due schedules are naturally picked up on the next tick.
+func (s *Store) ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]OpsSchedule, error) {
+	query := `SELECT id, runbook_id, name, schedule_type, cron_expr, timezone,
 		        run_at, enabled, last_run_at, last_run_status, next_run_at,
 		        created_at, updated_at
 		 FROM ops_schedules
 		 WHERE enabled = 1 AND next_run_at != '' AND next_run_at <= ?
-		 ORDER BY next_run_at ASC`,
-		now.UTC().Format(time.RFC3339))
+		 ORDER BY next_run_at ASC`
+	args := []any{now.UTC().Format(time.RFC3339)}
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

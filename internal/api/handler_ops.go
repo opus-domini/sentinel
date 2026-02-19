@@ -18,6 +18,11 @@ import (
 	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
+var (
+	validManagers = []string{"systemd", "launchd"}
+	validScopes   = []string{"user", "system", ""}
+)
+
 func (h *Handler) opsOverview(w http.ResponseWriter, r *http.Request) {
 	if h.ops == nil {
 		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
@@ -516,6 +521,14 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "action must be start, stop, or restart", nil)
 		return
 	}
+	if !slices.Contains(validManagers, req.Manager) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "manager must be systemd or launchd", nil)
+		return
+	}
+	if !slices.Contains(validScopes, req.Scope) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope must be user or system", nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
@@ -593,6 +606,14 @@ func (h *Handler) opsUnitStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is required", nil)
 		return
 	}
+	if !slices.Contains(validManagers, manager) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "manager must be systemd or launchd", nil)
+		return
+	}
+	if !slices.Contains(validScopes, scope) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope must be user or system", nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -621,6 +642,14 @@ func (h *Handler) opsUnitLogs(w http.ResponseWriter, r *http.Request) {
 
 	if unit == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is required", nil)
+		return
+	}
+	if !slices.Contains(validManagers, manager) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "manager must be systemd or launchd", nil)
+		return
+	}
+	if !slices.Contains(validScopes, scope) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope must be user or system", nil)
 		return
 	}
 

@@ -20,7 +20,7 @@ const (
 )
 
 type schedulerRepo interface {
-	ListDueSchedules(ctx context.Context, now time.Time) ([]store.OpsSchedule, error)
+	ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]store.OpsSchedule, error)
 	ListOpsSchedules(ctx context.Context) ([]store.OpsSchedule, error)
 	CreateOpsRunbookRun(ctx context.Context, runbookID string, now time.Time) (store.OpsRunbookRun, error)
 	UpdateScheduleAfterRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
@@ -140,7 +140,8 @@ func (s *Service) Stop(ctx context.Context) {
 
 func (s *Service) tick(ctx context.Context) {
 	now := time.Now().UTC()
-	due, err := s.repo.ListDueSchedules(ctx, now)
+	maxConc := cap(s.sem)
+	due, err := s.repo.ListDueSchedules(ctx, now, maxConc)
 	if err != nil {
 		slog.Warn("scheduler list due schedules failed", "err", err)
 		return
