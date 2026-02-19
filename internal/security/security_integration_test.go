@@ -11,11 +11,10 @@ func TestIntegrationRemoteExposureBaseline(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name           string
-		listenAddr     string
-		token          string
-		allowedOrigins []string
-		wantErr        error
+		name       string
+		listenAddr string
+		token      string
+		wantErr    error
 	}{
 		{
 			name:       "local bind can run without auth baseline",
@@ -27,16 +26,9 @@ func TestIntegrationRemoteExposureBaseline(t *testing.T) {
 			wantErr:    ErrRemoteToken,
 		},
 		{
-			name:       "public bind fails without origins",
+			name:       "public bind with token only is valid",
 			listenAddr: "0.0.0.0:4040",
 			token:      "secret",
-			wantErr:    ErrRemoteOrigin,
-		},
-		{
-			name:           "public bind passes with complete baseline",
-			listenAddr:     "0.0.0.0:4040",
-			token:          "secret",
-			allowedOrigins: []string{"https://ops.example.com"},
 		},
 	}
 
@@ -44,7 +36,7 @@ func TestIntegrationRemoteExposureBaseline(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateRemoteExposure(tc.listenAddr, tc.token, tc.allowedOrigins)
+			err := ValidateRemoteExposure(tc.listenAddr, tc.token)
 			if tc.wantErr == nil {
 				if err != nil {
 					t.Fatalf("ValidateRemoteExposure(%q) unexpected error: %v", tc.listenAddr, err)
