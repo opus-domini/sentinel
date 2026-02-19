@@ -112,28 +112,41 @@ func serve() int {
 	schedulerService.Start(context.Background())
 
 	metricsCtx, stopMetrics := context.WithCancel(context.Background())
-	go startMetricsTicker(metricsCtx, opsManager, eventHub)
+	metricsDone := startMetricsTicker(metricsCtx, opsManager, eventHub)
 
 	alertsCtx, stopAlerts := context.WithCancel(context.Background())
-	go startAlertsTicker(alertsCtx, st, eventHub)
+	alertsDone := startAlertsTicker(alertsCtx, st, eventHub)
 
 	timelineCtx, stopTimeline := context.WithCancel(context.Background())
-	go startTimelineTicker(timelineCtx, st, eventHub)
+	timelineDone := startTimelineTicker(timelineCtx, st, eventHub)
 
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
 	apiHandler := api.Register(mux, guard, st, opsManager, recoveryService, eventHub, currentVersion(), configPath)
 
 	exitCode := run(cfg, mux)
+
+	// Shutdown in LIFO order: API handler first (drains in-flight requests),
+	// then tickers (wait for doneCh so no queries race with st.Close),
+	// then services, then store.
 	apiShutdownCtx, cancelAPI := context.WithTimeout(context.Background(), 5*time.Second)
 	apiHandler.Shutdown(apiShutdownCtx)
 	cancelAPI()
+
 	stopTimeline()
 	stopAlerts()
 	stopMetrics()
+	<-timelineDone
+	<-alertsDone
+	<-metricsDone
+
 	stopSchedulerCtx, cancelScheduler := context.WithTimeout(context.Background(), 2*time.Second)
 	schedulerService.Stop(stopSchedulerCtx)
 	cancelScheduler()
-	healthChecker.Stop()
+
+	stopHealthCtx, cancelHealth := context.WithTimeout(context.Background(), 2*time.Second)
+	healthChecker.Stop(stopHealthCtx)
+	cancelHealth()
+
 	if cfg.Watchtower.Enabled {
 		stopWatchtowerCtx, cancelWatchtower := context.WithTimeout(context.Background(), 2*time.Second)
 		watchtowerService.Stop(stopWatchtowerCtx)
@@ -197,66 +210,83 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 	return 0
 }
 
-func startMetricsTicker(ctx context.Context, mgr *services.Manager, hub *events.Hub) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			collectCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-			m := mgr.Metrics(collectCtx)
-			cancel()
-			hub.Publish(events.NewEvent(events.TypeOpsMetrics, map[string]any{
-				"metrics": m,
-			}))
+func startMetricsTicker(ctx context.Context, mgr *services.Manager, hub *events.Hub) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				collectCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+				m := mgr.Metrics(collectCtx)
+				cancel()
+				hub.Publish(events.NewEvent(events.TypeOpsMetrics, map[string]any{
+					"metrics": m,
+				}))
+			}
 		}
-	}
+	}()
+	return done
 }
 
-func startAlertsTicker(ctx context.Context, st *store.Store, hub *events.Hub) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			alerts, err := st.ListAlerts(collectCtx, 100, "")
-			cancel()
-			if err != nil {
-				continue
+func startAlertsTicker(ctx context.Context, st *store.Store, hub *events.Hub) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				alerts, err := st.ListAlerts(collectCtx, 100, "")
+				cancel()
+				if err != nil {
+					slog.Warn("alerts tick failed", "err", err)
+					continue
+				}
+				hub.Publish(events.NewEvent(events.TypeOpsAlerts, map[string]any{
+					"alerts": alerts,
+				}))
 			}
-			hub.Publish(events.NewEvent(events.TypeOpsAlerts, map[string]any{
-				"alerts": alerts,
-			}))
 		}
-	}
+	}()
+	return done
 }
 
-func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			result, err := st.SearchTimelineEvents(collectCtx, timeline.Query{
-				Limit: 200,
-			})
-			cancel()
-			if err != nil {
-				continue
+func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				result, err := st.SearchTimelineEvents(collectCtx, timeline.Query{
+					Limit: 200,
+				})
+				cancel()
+				if err != nil {
+					slog.Warn("timeline tick failed", "err", err)
+					continue
+				}
+				hub.Publish(events.NewEvent(events.TypeOpsTimeline, map[string]any{
+					"events": result.Events,
+				}))
 			}
-			hub.Publish(events.NewEvent(events.TypeOpsTimeline, map[string]any{
-				"events": result.Events,
-			}))
 		}
-	}
+	}()
+	return done
 }
 
 func requestLog(next http.Handler) http.Handler {

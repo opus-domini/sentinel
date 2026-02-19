@@ -38,9 +38,10 @@ type HealthChecker struct {
 	publish  HealthPublisher
 	interval time.Duration
 
-	stopOnce sync.Once
-	stopFn   context.CancelFunc
-	doneCh   chan struct{}
+	startOnce sync.Once
+	stopOnce  sync.Once
+	stopFn    context.CancelFunc
+	doneCh    chan struct{}
 }
 
 // NewHealthChecker creates a health checker.
@@ -59,18 +60,24 @@ func NewHealthChecker(mgr *Manager, alertsRepo healthAlertsRepo, publish HealthP
 
 // Start begins the periodic health check loop.
 func (hc *HealthChecker) Start(ctx context.Context) {
-	childCtx, cancel := context.WithCancel(ctx)
-	hc.stopFn = cancel
-	go hc.loop(childCtx)
+	hc.startOnce.Do(func() {
+		childCtx, cancel := context.WithCancel(ctx)
+		hc.stopFn = cancel
+		go hc.loop(childCtx)
+	})
 }
 
-// Stop gracefully stops the health checker.
-func (hc *HealthChecker) Stop() {
+// Stop gracefully stops the health checker. It accepts a context for
+// timeout control so it does not block shutdown indefinitely.
+func (hc *HealthChecker) Stop(ctx context.Context) {
 	hc.stopOnce.Do(func() {
 		if hc.stopFn != nil {
 			hc.stopFn()
 		}
-		<-hc.doneCh
+		select {
+		case <-hc.doneCh:
+		case <-ctx.Done():
+		}
 	})
 }
 

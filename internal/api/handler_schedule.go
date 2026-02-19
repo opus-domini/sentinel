@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -259,7 +260,9 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update schedule last run info.
-	_ = h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", sched.NextRunAt, sched.Enabled)
+	if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", sched.NextRunAt, sched.Enabled); err != nil {
+		slog.Warn("trigger schedule: update after run failed", "schedule", scheduleID, "err", err)
+	}
 
 	h.wg.Add(1)
 	go func() {
