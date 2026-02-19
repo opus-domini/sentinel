@@ -146,6 +146,11 @@ func (s *Service) tick(ctx context.Context) {
 		return
 	}
 	for _, sched := range due {
+		nextRun, parseErr := time.Parse(time.RFC3339, sched.NextRunAt)
+		if parseErr == nil && now.Sub(nextRun) > catchUpWindow {
+			s.recomputeNextRun(ctx, sched)
+			continue
+		}
 		s.executeDueSchedule(ctx, sched, now)
 	}
 }
@@ -182,11 +187,11 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		case <-s.runCtx.Done():
 			return
 		}
-		s.executeRunbook(s.runCtx, job, sched.ID, enabled)
+		s.executeRunbook(s.runCtx, job, sched.ID, nextRunAt, enabled)
 	}()
 }
 
-func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string, finalEnabled bool) {
+func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID, finalNextRunAt string, finalEnabled bool) {
 	runbook.Run(ctx, s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
 		Source:      "scheduler",
@@ -196,7 +201,7 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 		},
 		OnFinish: func(ctx context.Context, status string) {
 			finished := time.Now().UTC()
-			if err := s.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, "", finalEnabled); err != nil {
+			if err := s.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, finalNextRunAt, finalEnabled); err != nil {
 				slog.Warn("scheduler: update schedule after run", "err", err)
 			}
 			s.publish(events.TypeScheduleUpdated, map[string]any{

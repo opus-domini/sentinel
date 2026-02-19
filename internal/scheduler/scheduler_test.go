@@ -442,6 +442,187 @@ func TestCatchUpMissedRuns_OnceScheduleBeyondWindowDisabled(t *testing.T) {
 	t.Fatal("schedule not found")
 }
 
+func TestCronRecurrence_AfterRunCompletion(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	hub := events.NewHub()
+	svc := New(st, st, Options{EventHub: hub})
+
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:    "cron-recurrence-test",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Schedule already due.
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "recurring-cron",
+		ScheduleType: "cron",
+		CronExpr:     "*/5 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    past.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Tick triggers the run.
+	svc.tick(ctx)
+
+	// Wait for async run to complete (0 steps = instant).
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify: schedule must still be enabled AND have a valid future next_run_at.
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *store.OpsSchedule
+	for i := range schedules {
+		if schedules[i].ID == sched.ID {
+			found = &schedules[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("schedule not found after run")
+	}
+	if !found.Enabled {
+		t.Fatal("cron schedule should remain enabled after run")
+	}
+	if found.NextRunAt == "" {
+		t.Fatal("cron schedule next_run_at should not be empty after run")
+	}
+	parsed, parseErr := time.Parse(time.RFC3339, found.NextRunAt)
+	if parseErr != nil {
+		t.Fatalf("next_run_at is not valid RFC3339: %v", parseErr)
+	}
+	if !parsed.After(time.Now().UTC().Add(-1 * time.Minute)) {
+		t.Fatalf("next_run_at should be recent/future, got %v", parsed)
+	}
+	if found.LastRunStatus == "running" {
+		t.Fatal("last_run_status should be terminal (not 'running') after completion")
+	}
+}
+
+func TestOnceSchedule_DisabledAfterRunCompletion(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	hub := events.NewHub()
+	svc := New(st, st, Options{EventHub: hub})
+
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:    "once-completion-test",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "one-time",
+		ScheduleType: "once",
+		RunAt:        past.Format(time.RFC3339),
+		Enabled:      true,
+		NextRunAt:    past.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc.tick(ctx)
+	time.Sleep(500 * time.Millisecond)
+
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range schedules {
+		if s.ID == sched.ID {
+			if s.Enabled {
+				t.Fatal("once schedule should be disabled after run completion")
+			}
+			if s.NextRunAt != "" {
+				t.Fatalf("once schedule next_run_at should be empty, got %q", s.NextRunAt)
+			}
+			return
+		}
+	}
+	t.Fatal("schedule not found")
+}
+
+func TestTick_StaleScheduleRecomputed(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{})
+
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:    "stale-tick-test",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Schedule due 48h ago — beyond catchUpWindow.
+	stale := time.Now().UTC().Add(-48 * time.Hour)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "stale-cron",
+		ScheduleType: "cron",
+		CronExpr:     "*/5 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    stale.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// tick should recompute, not execute.
+	svc.tick(ctx)
+
+	runs, err := st.ListOpsRunbookRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected 0 runs for stale schedule in tick, got %d", len(runs))
+	}
+
+	// Verify next_run_at was recomputed to the future.
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range schedules {
+		if s.ID == sched.ID {
+			parsed, parseErr := time.Parse(time.RFC3339, s.NextRunAt)
+			if parseErr != nil {
+				t.Fatalf("recomputed next_run_at not valid: %v", parseErr)
+			}
+			if !parsed.After(time.Now().UTC()) {
+				t.Fatalf("recomputed next_run_at should be in the future, got %v", parsed)
+			}
+			return
+		}
+	}
+	t.Fatal("schedule not found")
+}
+
 func TestPublish_NilHub(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)

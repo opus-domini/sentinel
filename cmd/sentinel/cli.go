@@ -790,6 +790,12 @@ func runRecoveryRestoreCommand(ctx commandContext, args []string) int {
 		writeln(ctx.stderr, "snapshot id is required and must be > 0")
 		return 2
 	}
+	if !*wait {
+		writeln(ctx.stderr, "--wait=false is not supported for local CLI restore")
+		writeln(ctx.stderr, "  restore runs in-process; the job would be terminated when the CLI exits")
+		writeln(ctx.stderr, "  remove --wait=false to run restore with progress reporting")
+		return 2
+	}
 
 	cfg := loadConfigFn()
 	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))

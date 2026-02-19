@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
+	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
@@ -264,10 +265,32 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("trigger schedule: update after run failed", "schedule", scheduleID, "err", err)
 	}
 
+	// Capture schedule state for the OnFinish closure so the async run
+	// can finalise schedule metadata after completion.
+	finalNextRunAt := sched.NextRunAt
+	finalEnabled := sched.Enabled
+
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
-		h.executeRunbookAsync(h.runCtx, job)
+		runbook.Run(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
+			Job:           job,
+			Source:        "schedule",
+			StepTimeout:   30 * time.Second,
+			ExtraMetadata: map[string]string{"scheduleId": scheduleID},
+			OnFinish: func(ctx context.Context, status string) {
+				finished := time.Now().UTC()
+				if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, finalNextRunAt, finalEnabled); err != nil {
+					slog.Warn("trigger schedule: update after completion", "schedule", scheduleID, "err", err)
+				}
+				h.emit(events.TypeScheduleUpdated, map[string]any{
+					"action":   "run_completed",
+					"schedule": scheduleID,
+					"jobId":    job.ID,
+					"status":   status,
+				})
+			},
+		})
 	}()
 
 	globalRev := now.UnixMilli()

@@ -4496,3 +4496,136 @@ func TestUpdateOpsRunbookNotFound(t *testing.T) {
 		t.Fatalf("status = %d, want 404", w.Code)
 	}
 }
+
+func TestTriggerScheduleFinalisesState(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.events = events.NewHub()
+	ctx := context.Background()
+
+	// Create a runbook with a simple echo step.
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name: "trigger-test-rb",
+		Steps: []store.OpsRunbookStep{
+			{Type: "shell", Title: "echo", Command: "echo ok"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+
+	// Create a cron schedule with a valid next_run_at.
+	future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "trigger-test-sched",
+		ScheduleType: "cron",
+		CronExpr:     "0 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    future,
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsSchedule: %v", err)
+	}
+
+	// Trigger the schedule.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+	r.SetPathValue("schedule", sched.ID)
+	h.triggerSchedule(w, r)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("triggerSchedule status = %d, want 202; body=%s", w.Code, w.Body.String())
+	}
+
+	// Wait for async run to complete.
+	h.wg.Wait()
+
+	// Reload schedule and verify state is terminal.
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatalf("ListOpsSchedules: %v", err)
+	}
+	var got *store.OpsSchedule
+	for i := range schedules {
+		if schedules[i].ID == sched.ID {
+			got = &schedules[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatal("schedule not found after trigger")
+	}
+	if got.LastRunStatus == "running" {
+		t.Fatalf("schedule stuck in running; expected terminal status")
+	}
+	if got.LastRunStatus != "succeeded" && got.LastRunStatus != "failed" {
+		t.Fatalf("schedule last_run_status = %q, want succeeded or failed", got.LastRunStatus)
+	}
+	if !got.Enabled {
+		t.Fatal("cron schedule should remain enabled after manual trigger")
+	}
+	if got.NextRunAt != future {
+		t.Fatalf("cron schedule next_run_at = %q, want %q (preserved)", got.NextRunAt, future)
+	}
+}
+
+func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.events = events.NewHub()
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name: "once-trigger-rb",
+		Steps: []store.OpsRunbookStep{
+			{Type: "shell", Title: "echo", Command: "echo ok"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+
+	future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "once-trigger-sched",
+		ScheduleType: "once",
+		RunAt:        future,
+		Enabled:      false,
+		NextRunAt:    future,
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsSchedule: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+	r.SetPathValue("schedule", sched.ID)
+	h.triggerSchedule(w, r)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("triggerSchedule status = %d, want 202; body=%s", w.Code, w.Body.String())
+	}
+
+	h.wg.Wait()
+
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatalf("ListOpsSchedules: %v", err)
+	}
+	var got *store.OpsSchedule
+	for i := range schedules {
+		if schedules[i].ID == sched.ID {
+			got = &schedules[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatal("schedule not found after trigger")
+	}
+	if got.LastRunStatus == "running" {
+		t.Fatalf("once schedule stuck in running; expected terminal status")
+	}
+}
