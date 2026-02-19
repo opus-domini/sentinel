@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
@@ -69,16 +67,8 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to run runbook", nil)
 		return
 	}
-	timelineEvent, timelineErr := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
-		Source:    "runbook",
-		EventType: "runbook.started",
-		Severity:  "info",
-		Resource:  job.RunbookID,
-		Message:   fmt.Sprintf("Runbook started: %s", job.RunbookName),
-		Details:   fmt.Sprintf("job=%s steps=%d", job.ID, job.TotalSteps),
-		Metadata:  marshalMetadata(map[string]string{"jobId": job.ID, "runbookId": job.RunbookID, "status": job.Status}),
-		CreatedAt: now,
-	})
+
+	timelineEvent, timelineErr := h.orch.RecordRunbookStarted(ctx, job, now)
 	if timelineErr != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist runbook timeline", nil)
 		return

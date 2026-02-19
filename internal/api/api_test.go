@@ -340,6 +340,7 @@ func newTestHandler(t *testing.T, tm *mockTmux, sys *mockSysTerms) *Handler {
 		tmux:  tm,
 		ops:   &mockOpsControlPlane{},
 		store: st,
+		orch:  &opsOrchestrator{repo: st},
 	}
 }
 

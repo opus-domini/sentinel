@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -114,7 +113,7 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	timelineEvent, timelineRecorded, alerts, err := h.recordOpsServiceAction(ctx, serviceStatus, req.Action, now)
+	timelineEvent, timelineRecorded, firedAlerts, err := h.orch.RecordServiceAction(ctx, serviceStatus, req.Action, now)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist ops action", nil)
 		return
@@ -137,10 +136,10 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 			"event":     timelineEvent,
 		})
 	}
-	if len(alerts) > 0 {
+	if len(firedAlerts) > 0 {
 		h.emit(events.TypeOpsAlerts, map[string]any{
 			"globalRev": globalRev,
-			"alerts":    alerts,
+			"alerts":    firedAlerts,
 		})
 	}
 
@@ -148,7 +147,7 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 		"service":   serviceStatus,
 		"services":  services,
 		"overview":  overview,
-		"alerts":    alerts,
+		"alerts":    firedAlerts,
 		"globalRev": globalRev,
 	}
 	if timelineRecorded {
@@ -188,55 +187,6 @@ func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsplane.ServiceStatus, action string, at time.Time) (timeline.Event, bool, []alerts.Alert, error) {
-	if h.store == nil {
-		return timeline.Event{}, false, nil, nil
-	}
-	normalizedAction := strings.ToLower(strings.TrimSpace(action))
-	state := strings.ToLower(strings.TrimSpace(serviceStatus.ActiveState))
-	severity := "info"
-	switch {
-	case state == stateFailed:
-		severity = "error"
-	case normalizedAction == opsplane.ActionStop:
-		severity = "warn"
-	}
-
-	event, err := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
-		Source:    "service",
-		EventType: "service.action",
-		Severity:  severity,
-		Resource:  serviceStatus.Name,
-		Message:   fmt.Sprintf("%s %s", serviceStatus.DisplayName, normalizedAction),
-		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s state=%s", serviceStatus.Unit, serviceStatus.Manager, serviceStatus.Scope, serviceStatus.ActiveState),
-		Metadata:  marshalMetadata(map[string]string{"action": normalizedAction, "service": serviceStatus.Name, "manager": serviceStatus.Manager, "scope": serviceStatus.Scope, "state": serviceStatus.ActiveState}),
-		CreatedAt: at,
-	})
-	if err != nil {
-		return timeline.Event{}, false, nil, err
-	}
-
-	firedAlerts := make([]alerts.Alert, 0, 1)
-	if state == stateFailed {
-		alert, err := h.store.UpsertAlert(ctx, alerts.AlertWrite{
-			DedupeKey: fmt.Sprintf("service:%s:failed", serviceStatus.Name),
-			Source:    "service",
-			Resource:  serviceStatus.Name,
-			Title:     fmt.Sprintf("%s entered failed state", serviceStatus.DisplayName),
-			Message:   fmt.Sprintf("%s is failed after %s", serviceStatus.DisplayName, normalizedAction),
-			Severity:  "error",
-			Metadata:  marshalMetadata(map[string]string{"action": normalizedAction, "service": serviceStatus.Name, "unit": serviceStatus.Unit}),
-			CreatedAt: at,
-		})
-		if err != nil {
-			return timeline.Event{}, false, nil, err
-		}
-		firedAlerts = append(firedAlerts, alert)
-	}
-
-	return event, true, firedAlerts, nil
-}
-
 func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 	if h.store == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
@@ -267,10 +217,6 @@ func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
-		return
-	}
 	alertRaw := strings.TrimSpace(r.PathValue("alert"))
 	alertID, err := strconv.ParseInt(alertRaw, 10, 64)
 	if err != nil || alertID <= 0 {
@@ -282,19 +228,13 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	now := time.Now().UTC()
-	alert, err := h.store.AckAlert(ctx, alertID, now)
+	alert, timelineEvent, timelineRecorded, err := h.orch.AckAlert(ctx, alertID, now)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_ALERT_NOT_FOUND", "alert not found", nil)
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to ack alert", nil)
-		return
-	}
-
-	timelineEvent, timelineRecorded, timelineErr := h.recordOpsAlertAck(ctx, alert, now)
-	if timelineErr != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to write alert timeline event", nil)
 		return
 	}
 
@@ -316,26 +256,6 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 		"timelineEvent": timelineEvent,
 		"globalRev":     globalRev,
 	})
-}
-
-func (h *Handler) recordOpsAlertAck(ctx context.Context, alert alerts.Alert, at time.Time) (timeline.Event, bool, error) {
-	if h.store == nil {
-		return timeline.Event{}, false, nil
-	}
-	event, err := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
-		Source:    "alert",
-		EventType: "alert.acked",
-		Severity:  "info",
-		Resource:  alert.Resource,
-		Message:   fmt.Sprintf("Alert acknowledged: %s", alert.Title),
-		Details:   alert.Message,
-		Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey}),
-		CreatedAt: at,
-	})
-	if err != nil {
-		return timeline.Event{}, false, err
-	}
-	return event, true, nil
 }
 
 func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
@@ -374,10 +294,6 @@ func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
-		return
-	}
 	var req struct {
 		Name        string `json:"name"`
 		DisplayName string `json:"displayName"`
@@ -401,13 +317,15 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if _, err := h.store.InsertCustomService(ctx, store.CustomServiceWrite{
+	now := time.Now().UTC()
+	te, err := h.orch.RegisterService(ctx, store.CustomServiceWrite{
 		Name:        req.Name,
 		DisplayName: req.DisplayName,
 		Manager:     req.Manager,
 		Unit:        req.Unit,
 		Scope:       req.Scope,
-	}); err != nil {
+	}, now)
+	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			writeError(w, http.StatusConflict, "OPS_SERVICE_EXISTS", "service already registered", nil)
 		} else {
@@ -416,17 +334,6 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
-	now := time.Now().UTC()
-	te, _ := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
-		Source:    "service",
-		EventType: "service.registered",
-		Severity:  "info",
-		Resource:  req.Name,
-		Message:   fmt.Sprintf("Custom service registered: %s", req.DisplayName),
-		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s", req.Unit, req.Manager, req.Scope),
-		CreatedAt: now,
-	})
 
 	// Re-fetch the full services list so the new service is probed.
 	var services []opsplane.ServiceStatus
@@ -457,10 +364,6 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
-		return
-	}
 	serviceName := strings.TrimSpace(r.PathValue("service"))
 	if serviceName == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service name is required", nil)
@@ -470,7 +373,9 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.store.DeleteCustomService(ctx, serviceName); err != nil {
+	now := time.Now().UTC()
+	te, err := h.orch.UnregisterService(ctx, serviceName, now)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "custom service not found", nil)
 			return
@@ -478,16 +383,6 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to unregister service", nil)
 		return
 	}
-
-	now := time.Now().UTC()
-	te, _ := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
-		Source:    "service",
-		EventType: "service.unregistered",
-		Severity:  "info",
-		Resource:  serviceName,
-		Message:   fmt.Sprintf("Custom service removed: %s", serviceName),
-		CreatedAt: now,
-	})
 
 	globalRev := now.UnixMilli()
 	if te.ID > 0 {
@@ -644,7 +539,7 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 		Manager:     req.Manager,
 	}
 
-	timelineEvent, timelineRecorded, alerts, err := h.recordOpsServiceAction(ctx, serviceStatus, req.Action, now)
+	timelineEvent, timelineRecorded, firedAlerts, err := h.orch.RecordServiceAction(ctx, serviceStatus, req.Action, now)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist ops action", nil)
 		return
@@ -675,7 +570,7 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]any{
 		"overview":  overview,
-		"alerts":    alerts,
+		"alerts":    firedAlerts,
 		"globalRev": globalRev,
 	}
 	if timelineRecorded {

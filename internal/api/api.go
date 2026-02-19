@@ -72,6 +72,7 @@ type Handler struct {
 	ops        opsControlPlane
 	events     *events.Hub
 	store      *store.Store
+	orch       *opsOrchestrator
 	guardrails *guardrails.Service
 	version    string
 	configPath string
@@ -112,6 +113,7 @@ func Register(
 		ops:        ops,
 		events:     eventsHub,
 		store:      st,
+		orch:       &opsOrchestrator{repo: st},
 		guardrails: guardrails.New(st),
 		version:    strings.TrimSpace(version),
 		configPath: configPath,

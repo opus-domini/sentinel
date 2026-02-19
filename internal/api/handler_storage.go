@@ -10,7 +10,6 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func (h *Handler) opsConfig(w http.ResponseWriter, _ *http.Request) {
@@ -51,21 +50,12 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	if h.store != nil {
-		te, _ := h.store.InsertTimelineEvent(r.Context(), timeline.EventWrite{
-			Source:    "config",
-			EventType: "config.updated",
-			Severity:  "info",
-			Resource:  "config.toml",
-			Message:   "Configuration file updated via API",
-			CreatedAt: now,
+	te, _ := h.orch.RecordConfigUpdated(r.Context(), now)
+	if te.ID > 0 {
+		h.emit(events.TypeOpsTimeline, map[string]any{
+			"globalRev": now.UnixMilli(),
+			"event":     te,
 		})
-		if te.ID > 0 {
-			h.emit(events.TypeOpsTimeline, map[string]any{
-				"globalRev": now.UnixMilli(),
-				"event":     te,
-			})
-		}
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
