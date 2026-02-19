@@ -275,7 +275,7 @@ function MetricsPage() {
             <ScrollArea className="h-full min-h-0">
               <div className="grid gap-3 p-2">
                 {metricsLoading && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {Array.from({ length: activeTab === 'system' ? 4 : 4 }).map(
                       (_, idx) => (
                         <div
@@ -317,7 +317,7 @@ function MetricsPage() {
                 {!metricsLoading &&
                   metrics != null &&
                   activeTab === 'system' && (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div
                         className={cn(
                           'rounded-lg border p-2.5',
@@ -428,7 +428,7 @@ function MetricsPage() {
                 {!metricsLoading &&
                   metrics != null &&
                   activeTab === 'runtime' && (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
                         <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
                           Goroutines

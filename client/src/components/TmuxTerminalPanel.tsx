@@ -47,6 +47,7 @@ type TmuxTerminalPanelProps = {
   onZoomIn?: () => void
   onZoomOut?: () => void
   onOpenTimeline?: () => void
+  onOpenCreateSession?: () => void
 }
 
 export default function TmuxTerminalPanel({
@@ -84,6 +85,7 @@ export default function TmuxTerminalPanel({
   onZoomIn,
   onZoomOut,
   onOpenTimeline,
+  onOpenCreateSession,
 }: TmuxTerminalPanelProps) {
   const isMobileLayout = useIsMobileLayout()
   const lockedTouchIDsRef = useRef<Set<number>>(new Set())
@@ -214,31 +216,56 @@ export default function TmuxTerminalPanel({
         onReorder={onReorderTabs}
       />
 
-      <section className="grid min-h-0 min-w-0 grid-cols-1 grid-rows-[36px_1fr] border-x border-border-subtle">
-        <div className="min-w-0 overflow-hidden border-b border-border-subtle bg-surface-overlay px-2.5 py-1">
-          <WindowStrip
-            hasActiveSession={hasActiveSession}
-            inspectorLoading={inspectorLoading}
-            inspectorError={inspectorError}
-            windows={windows}
-            activeWindowIndex={activeWindowIndex}
-            onSelectWindow={(idx) => {
-              onSelectWindow(idx)
-              onFocusTerminal?.()
-            }}
-            onCloseWindow={onCloseWindow}
-            onRenameWindow={onRenameWindow}
-            onCreateWindow={onCreateWindow}
-          />
-        </div>
+      <section
+        className={cn(
+          'min-h-0 min-w-0 border-x border-border-subtle',
+          hasActiveSession
+            ? 'grid grid-cols-1 grid-rows-[36px_1fr]'
+            : 'flex items-center justify-center',
+        )}
+      >
+        {hasActiveSession ? (
+          <>
+            <div className="min-w-0 overflow-hidden border-b border-border-subtle bg-surface-overlay px-2.5 py-1">
+              <WindowStrip
+                hasActiveSession={hasActiveSession}
+                inspectorLoading={inspectorLoading}
+                inspectorError={inspectorError}
+                windows={windows}
+                activeWindowIndex={activeWindowIndex}
+                onSelectWindow={(idx) => {
+                  onSelectWindow(idx)
+                  onFocusTerminal?.()
+                }}
+                onCloseWindow={onCloseWindow}
+                onRenameWindow={onRenameWindow}
+                onCreateWindow={onCreateWindow}
+              />
+            </div>
 
-        <div className="relative min-h-0 overflow-hidden">
-          <TerminalHost
-            openTabs={openTabs}
-            activeSession={activeSession}
-            getTerminalHostRef={getTerminalHostRef}
-          />
-        </div>
+            <div className="relative min-h-0 overflow-hidden">
+              <TerminalHost
+                openTabs={openTabs}
+                activeSession={activeSession}
+                getTerminalHostRef={getTerminalHostRef}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="text-center">
+            <p className="text-[13px] text-muted-foreground">
+              Attach to a session from the sidebar
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 h-7 cursor-pointer text-[11px]"
+              onClick={onOpenCreateSession}
+            >
+              Create new session
+            </Button>
+          </div>
+        )}
       </section>
 
       {showControls && (

@@ -681,7 +681,7 @@ function RunbooksPage() {
           {showDetail && (
             <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden">
               <div className="grid gap-2 rounded-lg border border-border-subtle bg-surface-elevated p-3">
-                <div className="flex items-center justify-between gap-2">
+                <div className="grid gap-2 sm:flex sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <h2 className="truncate text-[14px] font-semibold">
                       {selectedRunbook.name}
@@ -917,7 +917,7 @@ function RunbooksPage() {
                       return (
                         <div
                           key={job.id}
-                          className="group/job rounded border border-border-subtle bg-surface-elevated"
+                          className="group/job overflow-hidden rounded border border-border-subtle bg-surface-elevated"
                         >
                           <div className="flex items-start gap-1.5 px-2.5 py-2">
                             <button
@@ -954,7 +954,7 @@ function RunbooksPage() {
                                   {job.completedSteps}/{job.totalSteps} steps
                                 </span>
                               </div>
-                              <p className="text-[10px] text-muted-foreground">
+                              <p className="truncate text-[10px] text-muted-foreground">
                                 {job.createdAt}
                                 {job.currentStep && ` · ${job.currentStep}`}
                               </p>
@@ -1003,7 +1003,7 @@ function RunbooksPage() {
                             </div>
                           )}
                           {isExpanded && steps.length > 0 && (
-                            <div className="grid gap-0.5 border-t border-border-subtle px-2.5 py-2">
+                            <div className="grid min-w-0 gap-0.5 border-t border-border-subtle px-2.5 py-2">
                               {steps.map((sr) => {
                                 const stepOpen = expandedStepIndices.has(
                                   sr.stepIndex,
@@ -1011,7 +1011,7 @@ function RunbooksPage() {
                                 return (
                                   <div
                                     key={sr.stepIndex}
-                                    className="rounded border border-border-subtle bg-surface-overlay"
+                                    className="min-w-0 overflow-hidden rounded border border-border-subtle bg-surface-overlay"
                                   >
                                     <button
                                       type="button"
@@ -1089,74 +1089,23 @@ function RunbooksPage() {
           )}
 
           {!showEditor && !showDetail && (
-            <ScrollArea className="h-full min-h-0">
-              <div className="grid gap-2">
-                {runbooks.map((runbook) => {
-                  const lastJob = jobs.find(
-                    (job) => job.runbookId === runbook.id,
-                  )
-                  return (
-                    <button
-                      key={runbook.id}
-                      type="button"
-                      className="grid cursor-pointer gap-2 rounded-lg border border-border-subtle bg-surface-elevated px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-surface-overlay"
-                      onClick={() => setSelectedRunbookId(runbook.id)}
-                    >
-                      <div className="flex min-w-0 items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-[12px] font-semibold">
-                            {runbook.name}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {runbook.description}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 cursor-pointer text-[11px]"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void runRunbook(runbook.id)
-                          }}
-                        >
-                          Run
-                        </Button>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span>{runbook.steps.length} steps</span>
-                        {schedules.some((s) => s.runbookId === runbook.id) && (
-                          <span className="inline-flex items-center gap-0.5 rounded border border-border-subtle px-1 text-[9px]">
-                            <Clock className="h-2.5 w-2.5" />
-                            Scheduled
-                          </span>
-                        )}
-                      </div>
-                      <div className="rounded border border-border-subtle bg-surface-overlay px-2 py-1 text-[10px] text-muted-foreground">
-                        {lastJob
-                          ? `last run: ${lastJob.status} · ${lastJob.completedSteps}/${lastJob.totalSteps} · ${lastJob.createdAt}`
-                          : 'never ran'}
-                      </div>
-                    </button>
-                  )
-                })}
-                {!runbooksLoading && runbooks.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-border-subtle p-6 text-center">
-                    <p className="text-[12px] text-muted-foreground">
-                      No runbooks available.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-2 h-7 cursor-pointer text-[11px]"
-                      onClick={startCreate}
-                    >
-                      Create your first runbook
-                    </Button>
-                  </div>
-                )}
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <p className="text-[13px] text-muted-foreground">
+                  {runbooks.length > 0
+                    ? 'Select a runbook from the sidebar'
+                    : 'No runbooks yet'}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 h-7 cursor-pointer text-[11px]"
+                  onClick={startCreate}
+                >
+                  Create new runbook
+                </Button>
               </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
 

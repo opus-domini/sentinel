@@ -361,6 +361,7 @@ function TmuxPage() {
           timeline.setTimelineOpen(true)
           void timeline.loadTimeline({ quiet: true })
         }}
+        onOpenCreateSession={() => layout.setSidebarOpen(true)}
       />
 
       <TimelineDialog
