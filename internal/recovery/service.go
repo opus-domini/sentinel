@@ -30,6 +30,59 @@ const (
 	defaultMaxSnapshots    = 300
 )
 
+// recoveryStore sub-interfaces — each has at most 5 methods.
+
+type runtimeKV interface {
+	GetRuntimeValue(ctx context.Context, key string) (string, error)
+	SetRuntimeValue(ctx context.Context, key, value string) error
+}
+
+type snapshotRepo interface {
+	UpsertRecoverySnapshot(ctx context.Context, snap store.RecoverySnapshotWrite) (store.RecoverySnapshot, bool, error)
+	TrimRecoverySnapshots(ctx context.Context, maxPerSession int) error
+	GetRecoverySnapshot(ctx context.Context, id int64) (store.RecoverySnapshot, error)
+	ListRecoverySnapshots(ctx context.Context, sessionName string, limit int) ([]store.RecoverySnapshot, error)
+}
+
+type sessionRepo interface {
+	ListRecoverySessions(ctx context.Context, states []store.RecoverySessionState) ([]store.RecoverySession, error)
+	MarkRecoverySessionsKilled(ctx context.Context, names []string, bootID string, killedAt time.Time) error
+	MarkRecoverySessionRestoring(ctx context.Context, name string) error
+	MarkRecoverySessionRestored(ctx context.Context, name string, restoredAt time.Time) error
+	MarkRecoverySessionArchived(ctx context.Context, name string, archivedAt time.Time) error
+}
+
+type restoreRepo interface {
+	MarkRecoverySessionRestoreFailed(ctx context.Context, name, errMsg string) error
+	UpdateRecoveryJobProgress(ctx context.Context, id string, completedSteps, totalSteps int, currentStep string) error
+	UpdateRecoveryJobTarget(ctx context.Context, id, target string) error
+}
+
+type jobRepo interface {
+	CreateRecoveryJob(ctx context.Context, job store.RecoveryJob) error
+	GetRecoveryJob(ctx context.Context, id string) (store.RecoveryJob, error)
+	ListRecoveryJobs(ctx context.Context, statuses []store.RecoveryJobStatus, limit int) ([]store.RecoveryJob, error)
+	SetRecoveryJobRunning(ctx context.Context, id string, startedAt time.Time) error
+	FinishRecoveryJob(ctx context.Context, id string, status store.RecoveryJobStatus, errMsg string, finishedAt time.Time) error
+}
+
+type watchtowerReader interface {
+	GetWatchtowerSession(ctx context.Context, sessionName string) (store.WatchtowerSession, error)
+	ListWatchtowerWindows(ctx context.Context, sessionName string) ([]store.WatchtowerWindow, error)
+	ListWatchtowerPanes(ctx context.Context, sessionName string) ([]store.WatchtowerPane, error)
+}
+
+type recoveryStore interface {
+	runtimeKV
+	snapshotRepo
+	sessionRepo
+	restoreRepo
+	jobRepo
+	watchtowerReader
+}
+
+var _ recoveryStore = (*store.Store)(nil)
+
 type tmuxClient interface {
 	ListSessions(ctx context.Context) ([]tmux.Session, error)
 	ListWindows(ctx context.Context, session string) ([]tmux.Window, error)
@@ -69,7 +122,7 @@ type SnapshotView struct {
 }
 
 type Service struct {
-	store   *store.Store
+	store   recoveryStore
 	tmux    tmuxClient
 	options Options
 	bootID  func(context.Context) string
@@ -83,7 +136,7 @@ type Service struct {
 	collectMu sync.Mutex
 }
 
-func New(st *store.Store, tm tmuxClient, options Options) *Service {
+func New(st recoveryStore, tm tmuxClient, options Options) *Service {
 	if options.SnapshotInterval <= 0 {
 		options.SnapshotInterval = defaultSnapshotPeriod
 	}

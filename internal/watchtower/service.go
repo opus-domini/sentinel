@@ -38,6 +38,58 @@ type tmuxClient interface {
 	CapturePaneLines(ctx context.Context, target string, lines int) (string, error)
 }
 
+// projectionRepo covers session/window upsert and purge operations.
+type projectionRepo interface {
+	UpsertWatchtowerSession(ctx context.Context, row store.WatchtowerSessionWrite) error
+	UpsertWatchtowerWindow(ctx context.Context, row store.WatchtowerWindowWrite) error
+	PurgeWatchtowerSessions(ctx context.Context, activeSessions []string) error
+	PurgeWatchtowerWindows(ctx context.Context, sessionName string, activeWindowIndices []int) error
+	PurgeWatchtowerPanes(ctx context.Context, sessionName string, activePaneIDs []string) error
+}
+
+// paneRepo covers pane state reads and presence lookups.
+type paneRepo interface {
+	UpsertWatchtowerPane(ctx context.Context, row store.WatchtowerPaneWrite) error
+	ListWatchtowerPanes(ctx context.Context, sessionName string) ([]store.WatchtowerPane, error)
+	GetWatchtowerSession(ctx context.Context, sessionName string) (store.WatchtowerSession, error)
+	ListWatchtowerWindows(ctx context.Context, sessionName string) ([]store.WatchtowerWindow, error)
+	ListWatchtowerPresenceBySession(ctx context.Context, sessionName string) ([]store.WatchtowerPresence, error)
+}
+
+// paneRuntimeRepo covers pane runtime tracking.
+type paneRuntimeRepo interface {
+	UpsertWatchtowerPaneRuntime(ctx context.Context, row store.WatchtowerPaneRuntimeWrite) error
+	ListWatchtowerPaneRuntimeBySession(ctx context.Context, sessionName string) ([]store.WatchtowerPaneRuntime, error)
+	PurgeWatchtowerPaneRuntime(ctx context.Context, sessionName string, activePaneIDs []string) error
+}
+
+// journalRepo covers journal/timeline insert, prune, and timeline events.
+type journalRepo interface {
+	InsertWatchtowerJournal(ctx context.Context, row store.WatchtowerJournalWrite) (int64, error)
+	InsertWatchtowerTimelineEvent(ctx context.Context, row store.WatchtowerTimelineEventWrite) (int64, error)
+	PruneWatchtowerJournalRows(ctx context.Context, maxRows int) (int64, error)
+	PruneWatchtowerTimelineRows(ctx context.Context, maxRows int) (int64, error)
+	PruneWatchtowerPresence(ctx context.Context, now time.Time) (int64, error)
+}
+
+// runtimeRepo covers key-value runtime state.
+type runtimeRepo interface {
+	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
+	SetWatchtowerRuntimeValue(ctx context.Context, key, value string) error
+}
+
+// watchtowerStore is the composite data-access interface used by Service.
+type watchtowerStore interface {
+	projectionRepo
+	paneRepo
+	paneRuntimeRepo
+	journalRepo
+	runtimeRepo
+}
+
+// Compile-time check: *store.Store satisfies watchtowerStore.
+var _ watchtowerStore = (*store.Store)(nil)
+
 type CollectFunc func(ctx context.Context) error
 
 // OpsTimelineFunc is called to record significant watchtower events in the ops timeline.
@@ -55,7 +107,7 @@ type Options struct {
 }
 
 type Service struct {
-	store   *store.Store
+	store   watchtowerStore
 	tmux    tmuxClient
 	options Options
 
@@ -71,7 +123,7 @@ type windowAggregate struct {
 	latestAt    time.Time
 }
 
-func New(st *store.Store, tm tmuxClient, options Options) *Service {
+func New(st watchtowerStore, tm tmuxClient, options Options) *Service {
 	if options.TickInterval <= 0 {
 		options.TickInterval = defaultTickInterval
 	}
