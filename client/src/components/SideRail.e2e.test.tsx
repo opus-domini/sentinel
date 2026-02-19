@@ -42,7 +42,10 @@ describe('SideRail', () => {
   it('keeps desktop side rail icon-only with accessible labels', () => {
     const { container } = render(
       <LayoutContext.Provider value={layoutValue}>
-        <SideRail sidebarCollapsed={false} onToggleSidebarCollapsed={() => {}} />
+        <SideRail
+          sidebarCollapsed={false}
+          onToggleSidebarCollapsed={() => {}}
+        />
       </LayoutContext.Provider>,
     )
 

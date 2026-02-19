@@ -222,7 +222,10 @@ export default function TmuxTerminalPanel({
             inspectorError={inspectorError}
             windows={windows}
             activeWindowIndex={activeWindowIndex}
-            onSelectWindow={onSelectWindow}
+            onSelectWindow={(idx) => {
+              onSelectWindow(idx)
+              onFocusTerminal?.()
+            }}
             onCloseWindow={onCloseWindow}
             onRenameWindow={onRenameWindow}
             onCreateWindow={onCreateWindow}
