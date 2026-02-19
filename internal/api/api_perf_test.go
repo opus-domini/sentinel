@@ -54,6 +54,7 @@ func newPerfMux(tb testing.TB) *http.ServeMux {
 		mux,
 		security.New("", nil),
 		st,
+		&mockOpsControlPlane{},
 		&mockRecovery{},
 		events.NewHub(),
 		"test",

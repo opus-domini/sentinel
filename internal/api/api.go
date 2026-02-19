@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
@@ -100,6 +99,7 @@ func Register(
 	mux *http.ServeMux,
 	guard *security.Guard,
 	st *store.Store,
+	ops opsControlPlane,
 	recoverySvc recoveryService,
 	eventsHub *events.Hub,
 	version string,
@@ -109,7 +109,7 @@ func Register(
 		guard:      guard,
 		tmux:       tmux.Service{},
 		recovery:   recoverySvc,
-		ops:        opsplane.NewManager(time.Now(), st),
+		ops:        ops,
 		events:     eventsHub,
 		store:      st,
 		guardrails: guardrails.New(st),

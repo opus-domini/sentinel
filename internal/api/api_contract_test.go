@@ -117,6 +117,7 @@ func newContractMux(t *testing.T) *http.ServeMux {
 		mux,
 		security.New("", nil),
 		newTestStore(t),
+		&mockOpsControlPlane{},
 		&mockRecovery{},
 		events.NewHub(),
 		"test",

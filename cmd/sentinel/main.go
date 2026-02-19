@@ -51,8 +51,10 @@ func serve() int {
 		return 1
 	}
 
+	opsManager := services.NewManager(time.Now(), st)
+
 	mux := http.NewServeMux()
-	if err := httpui.Register(mux, guard, st, eventHub, services.NewManager(time.Now(), st)); err != nil {
+	if err := httpui.Register(mux, guard, st, eventHub, opsManager); err != nil {
 		slog.Error("frontend init failed", "err", err)
 		return 1
 	}
@@ -93,7 +95,6 @@ func serve() int {
 		recoveryService.Start(context.Background())
 	}
 
-	opsManager := services.NewManager(time.Now(), st)
 	healthChecker := services.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
 		eventHub.Publish(events.NewEvent(eventType, payload))
 	}, 0)
@@ -115,7 +116,7 @@ func serve() int {
 	go startTimelineTicker(timelineCtx, st, eventHub)
 
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
-	api.Register(mux, guard, st, recoveryService, eventHub, currentVersion(), configPath)
+	api.Register(mux, guard, st, opsManager, recoveryService, eventHub, currentVersion(), configPath)
 
 	exitCode := run(cfg, mux)
 	stopTimeline()
