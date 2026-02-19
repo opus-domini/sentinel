@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
-import { QueryClient, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
+import type { QueryClient } from '@tanstack/react-query'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import ToastViewport from '@/components/toast/ToastViewport'
 import { Button } from '@/components/ui/button'
