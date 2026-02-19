@@ -12,13 +12,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/recovery"
+	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/timeline"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
@@ -65,13 +69,98 @@ type opsControlPlane interface {
 	LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error)
 }
 
+// ---------------------------------------------------------------------------
+// handlerRepo – repository interface consumed by API handlers.
+// Each sub-interface has at most 5 methods.
+// ---------------------------------------------------------------------------
+
+type sessionMetaRepo interface {
+	GetAll(ctx context.Context) (map[string]store.SessionMeta, error)
+	UpsertSession(ctx context.Context, name, hash, content string) error
+	Purge(ctx context.Context, activeNames []string) error
+	Rename(ctx context.Context, oldName, newName string) error
+	SetIcon(ctx context.Context, name, icon string) error
+}
+
+type watchtowerReadRepo interface {
+	ListWatchtowerSessions(ctx context.Context) ([]store.WatchtowerSession, error)
+	GetWatchtowerSession(ctx context.Context, sessionName string) (store.WatchtowerSession, error)
+	ListWatchtowerWindows(ctx context.Context, sessionName string) ([]store.WatchtowerWindow, error)
+	ListWatchtowerPanes(ctx context.Context, sessionName string) ([]store.WatchtowerPane, error)
+	GetWatchtowerSessionActivityPatch(ctx context.Context, sessionName string) (map[string]any, error)
+}
+
+type watchtowerMarkRepo interface {
+	MarkWatchtowerPaneSeen(ctx context.Context, sessionName, paneID string) (bool, error)
+	MarkWatchtowerWindowSeen(ctx context.Context, sessionName string, windowIndex int) (bool, error)
+	MarkWatchtowerSessionSeen(ctx context.Context, sessionName string) (bool, error)
+	GetWatchtowerInspectorPatch(ctx context.Context, sessionName string) (map[string]any, error)
+	AllocateNextWindowSequence(ctx context.Context, name string, minimum int) (int, error)
+}
+
+type presenceRepo interface {
+	UpsertWatchtowerPresence(ctx context.Context, row store.WatchtowerPresenceWrite) error
+	ListWatchtowerJournalSince(ctx context.Context, sinceRev int64, limit int) ([]store.WatchtowerJournal, error)
+	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
+	SearchWatchtowerTimelineEvents(ctx context.Context, query store.WatchtowerTimelineQuery) (store.WatchtowerTimelineResult, error)
+	RenameRecoverySession(ctx context.Context, oldName, newName string) error
+}
+
+type opsRunbookRepo interface {
+	ListOpsRunbooks(ctx context.Context) ([]store.OpsRunbook, error)
+	InsertOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
+	UpdateOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
+	DeleteOpsRunbook(ctx context.Context, id string) error
+	// GetOpsRunbook is provided by runbook.Repo (embedded in handlerRepo).
+}
+
+type opsJobRepo interface {
+	ListOpsRunbookRuns(ctx context.Context, limit int) ([]store.OpsRunbookRun, error)
+	CreateOpsRunbookRun(ctx context.Context, runbookID string, at time.Time) (store.OpsRunbookRun, error)
+	// GetOpsRunbookRun is provided by runbook.Repo (embedded in handlerRepo).
+	DeleteOpsRunbookRun(ctx context.Context, runID string) error
+}
+
+type opsScheduleRepo interface {
+	ListOpsSchedules(ctx context.Context) ([]store.OpsSchedule, error)
+	InsertOpsSchedule(ctx context.Context, w store.OpsScheduleWrite) (store.OpsSchedule, error)
+	UpdateOpsSchedule(ctx context.Context, w store.OpsScheduleWrite) (store.OpsSchedule, error)
+	DeleteOpsSchedule(ctx context.Context, id string) error
+	UpdateScheduleAfterRun(ctx context.Context, id, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
+}
+
+type alertsTimelineRepo interface {
+	ListAlerts(ctx context.Context, limit int, status string) ([]alerts.Alert, error)
+	SearchTimelineEvents(ctx context.Context, query timeline.Query) (timeline.Result, error)
+	GetStorageStats(ctx context.Context) (store.StorageStats, error)
+	FlushStorageResource(ctx context.Context, resource string) ([]store.StorageFlushResult, error)
+}
+
+// handlerRepo is the composite repository interface used by Handler.
+// It embeds runbook.Repo for async runbook execution (which provides
+// UpdateOpsRunbookRun, GetOpsRunbook, GetOpsRunbookRun, InsertTimelineEvent).
+type handlerRepo interface {
+	runbook.Repo
+	sessionMetaRepo
+	watchtowerReadRepo
+	watchtowerMarkRepo
+	presenceRepo
+	opsRunbookRepo
+	opsJobRepo
+	opsScheduleRepo
+	alertsTimelineRepo
+}
+
+// Compile-time check: *store.Store satisfies handlerRepo.
+var _ handlerRepo = (*store.Store)(nil)
+
 type Handler struct {
 	guard      *security.Guard
 	tmux       tmuxService
 	recovery   recoveryService
 	ops        opsControlPlane
 	events     *events.Hub
-	store      *store.Store
+	repo       handlerRepo
 	orch       *opsOrchestrator
 	guardrails *guardrails.Service
 	version    string
@@ -112,7 +201,7 @@ func Register(
 		recovery:   recoverySvc,
 		ops:        ops,
 		events:     eventsHub,
-		store:      st,
+		repo:       st,
 		orch:       &opsOrchestrator{repo: st},
 		guardrails: guardrails.New(st),
 		version:    strings.TrimSpace(version),

@@ -14,24 +14,24 @@ import (
 )
 
 func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	runbooks, err := h.store.ListOpsRunbooks(ctx)
+	runbooks, err := h.repo.ListOpsRunbooks(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load runbooks", nil)
 		return
 	}
-	jobs, err := h.store.ListOpsRunbookRuns(ctx, 20)
+	jobs, err := h.repo.ListOpsRunbookRuns(ctx, 20)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load runbook jobs", nil)
 		return
 	}
-	schedules, err := h.store.ListOpsSchedules(ctx)
+	schedules, err := h.repo.ListOpsSchedules(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load schedules", nil)
 		return
@@ -44,7 +44,7 @@ func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -58,7 +58,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	now := time.Now().UTC()
-	job, err := h.store.CreateOpsRunbookRun(ctx, runbookID, now)
+	job, err := h.repo.CreateOpsRunbookRun(ctx, runbookID, now)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
@@ -95,7 +95,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) executeRunbookAsync(job store.OpsRunbookRun) {
-	runbook.Run(h.store, h.emitEvent, runbook.RunParams{
+	runbook.Run(h.repo, h.emitEvent, runbook.RunParams{
 		Job:           job,
 		Source:        "runbook",
 		StepTimeout:   30 * time.Second,
@@ -108,7 +108,7 @@ func (h *Handler) emitEvent(eventType string, payload map[string]any) {
 }
 
 func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -120,7 +120,7 @@ func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	job, err := h.store.GetOpsRunbookRun(ctx, jobID)
+	job, err := h.repo.GetOpsRunbookRun(ctx, jobID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_JOB_NOT_FOUND", "job not found", nil)
@@ -135,7 +135,7 @@ func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteOpsJob(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -147,7 +147,7 @@ func (h *Handler) deleteOpsJob(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.store.DeleteOpsRunbookRun(ctx, jobID); err != nil {
+	if err := h.repo.DeleteOpsRunbookRun(ctx, jobID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_JOB_NOT_FOUND", "job not found", nil)
 			return
@@ -159,7 +159,7 @@ func (h *Handler) deleteOpsJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -176,7 +176,7 @@ func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	rb, err := h.store.InsertOpsRunbook(ctx, req)
+	rb, err := h.repo.InsertOpsRunbook(ctx, req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create runbook", nil)
 		return
@@ -187,7 +187,7 @@ func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -206,7 +206,7 @@ func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	rb, err := h.store.UpdateOpsRunbook(ctx, req)
+	rb, err := h.repo.UpdateOpsRunbook(ctx, req)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
@@ -221,7 +221,7 @@ func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -234,7 +234,7 @@ func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.store.DeleteOpsRunbook(ctx, runbookID); err != nil {
+	if err := h.repo.DeleteOpsRunbook(ctx, runbookID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
 			return

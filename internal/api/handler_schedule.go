@@ -15,14 +15,14 @@ import (
 )
 
 func (h *Handler) listSchedules(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	schedules, err := h.store.ListOpsSchedules(ctx)
+	schedules, err := h.repo.ListOpsSchedules(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load schedules", nil)
 		return
@@ -33,7 +33,7 @@ func (h *Handler) listSchedules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -68,7 +68,7 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	nextRunAt, err := validateScheduleRequest(ctx, h.store, req.RunbookID, req.ScheduleType, req.CronExpr, req.Timezone, req.RunAt)
+	nextRunAt, err := validateScheduleRequest(ctx, h.repo, req.RunbookID, req.ScheduleType, req.CronExpr, req.Timezone, req.RunAt)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
@@ -77,7 +77,7 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		req.Timezone = "UTC" //nolint:goconst // UTC is clearer inline than a constant
 	}
 
-	schedule, err := h.store.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+	schedule, err := h.repo.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
 		RunbookID:    req.RunbookID,
 		Name:         req.Name,
 		ScheduleType: req.ScheduleType,
@@ -103,7 +103,7 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -143,7 +143,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	nextRunAt, err := validateScheduleRequest(ctx, h.store, req.RunbookID, req.ScheduleType, req.CronExpr, req.Timezone, req.RunAt)
+	nextRunAt, err := validateScheduleRequest(ctx, h.repo, req.RunbookID, req.ScheduleType, req.CronExpr, req.Timezone, req.RunAt)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
@@ -152,7 +152,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		req.Timezone = "UTC"
 	}
 
-	schedule, err := h.store.UpdateOpsSchedule(ctx, store.OpsScheduleWrite{
+	schedule, err := h.repo.UpdateOpsSchedule(ctx, store.OpsScheduleWrite{
 		ID:           scheduleID,
 		RunbookID:    req.RunbookID,
 		Name:         req.Name,
@@ -183,7 +183,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -196,7 +196,7 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.store.DeleteOpsSchedule(ctx, scheduleID); err != nil {
+	if err := h.repo.DeleteOpsSchedule(ctx, scheduleID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "SCHEDULE_NOT_FOUND", "schedule not found", nil)
 			return
@@ -216,7 +216,7 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -230,7 +230,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Fetch the schedule to get the runbook ID.
-	schedules, err := h.store.ListOpsSchedules(ctx)
+	schedules, err := h.repo.ListOpsSchedules(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load schedules", nil)
 		return
@@ -248,7 +248,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	job, err := h.store.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
+	job, err := h.repo.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
@@ -259,7 +259,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update schedule last run info.
-	_ = h.store.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", sched.NextRunAt, sched.Enabled)
+	_ = h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", sched.NextRunAt, sched.Enabled)
 
 	go h.executeRunbookAsync(job)
 
@@ -282,8 +282,12 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 // validateScheduleRequest checks runbook existence, parses cron/once fields,
 // and returns the computed nextRunAt. It returns a user-facing error message
 // on any validation failure.
-func validateScheduleRequest(ctx context.Context, st *store.Store, runbookID, scheduleType, cronExpr, timezone, runAt string) (string, error) {
-	if _, err := st.GetOpsRunbook(ctx, runbookID); err != nil {
+type runbookLookup interface {
+	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
+}
+
+func validateScheduleRequest(ctx context.Context, repo runbookLookup, runbookID, scheduleType, cronExpr, timezone, runAt string) (string, error) {
+	if _, err := repo.GetOpsRunbook(ctx, runbookID); err != nil {
 		return "", fmt.Errorf("runbook not found")
 	}
 

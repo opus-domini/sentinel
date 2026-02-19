@@ -15,7 +15,7 @@ import (
 )
 
 func (h *Handler) setTmuxPresence(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -59,7 +59,7 @@ func (h *Handler) setTmuxPresence(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	expiresAt := now.Add(events.PresenceExpiry)
-	if err := h.store.UpsertWatchtowerPresence(ctx, store.WatchtowerPresenceWrite{
+	if err := h.repo.UpsertWatchtowerPresence(ctx, store.WatchtowerPresenceWrite{
 		TerminalID:  req.TerminalID,
 		SessionName: req.SessionName,
 		WindowIndex: req.WindowIndex,
@@ -80,7 +80,7 @@ func (h *Handler) setTmuxPresence(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -94,7 +94,7 @@ func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	changes, err := h.store.ListWatchtowerJournalSince(ctx, since, limit+1)
+	changes, err := h.repo.ListWatchtowerJournalSince(ctx, since, limit+1)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to read activity delta", nil)
 		return
@@ -105,7 +105,7 @@ func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
 		changes = changes[:limit]
 	}
 
-	globalRev := readWatchtowerGlobalRev(ctx, h.store)
+	globalRev := readWatchtowerGlobalRev(ctx, h.repo)
 	sessionNames := extractChangedSessionNames(changes)
 	sessionPatches, inspectorPatches := h.collectSessionsPatches(ctx, sessionNames)
 	response := map[string]any{
@@ -168,10 +168,10 @@ func (h *Handler) collectSessionsPatches(ctx context.Context, sessions []string)
 	sessionPatches := make([]map[string]any, 0, len(sessions))
 	inspectorPatches := make([]map[string]any, 0, len(sessions))
 	for _, session := range sessions {
-		if patch, err := h.store.GetWatchtowerSessionActivityPatch(ctx, session); err == nil {
+		if patch, err := h.repo.GetWatchtowerSessionActivityPatch(ctx, session); err == nil {
 			sessionPatches = append(sessionPatches, patch)
 		}
-		if patch, err := h.store.GetWatchtowerInspectorPatch(ctx, session); err == nil {
+		if patch, err := h.repo.GetWatchtowerInspectorPatch(ctx, session); err == nil {
 			inspectorPatches = append(inspectorPatches, patch)
 		}
 	}
@@ -179,7 +179,7 @@ func (h *Handler) collectSessionsPatches(ctx context.Context, sessions []string)
 }
 
 func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -200,7 +200,7 @@ func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
 
 	runtime := make(map[string]string, len(keys))
 	for _, key := range keys {
-		value, err := h.store.GetWatchtowerRuntimeValue(ctx, key)
+		value, err := h.repo.GetWatchtowerRuntimeValue(ctx, key)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to read activity stats", nil)
 			return
@@ -234,7 +234,7 @@ func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -248,7 +248,7 @@ func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	result, err := h.store.SearchWatchtowerTimelineEvents(ctx, query)
+	result, err := h.repo.SearchWatchtowerTimelineEvents(ctx, query)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to query timeline", nil)
 		return

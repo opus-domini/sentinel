@@ -65,14 +65,14 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) storageStats(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	stats, err := h.store.GetStorageStats(ctx)
+	stats, err := h.repo.GetStorageStats(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load storage stats", nil)
 		return
@@ -81,7 +81,7 @@ func (h *Handler) storageStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) flushStorage(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -102,7 +102,7 @@ func (h *Handler) flushStorage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	results, err := h.store.FlushStorageResource(ctx, resource)
+	results, err := h.repo.FlushStorageResource(ctx, resource)
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidStorageResource) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid resource", nil)

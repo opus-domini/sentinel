@@ -37,10 +37,10 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) loadSessionMetaMap(ctx context.Context) map[string]store.SessionMeta {
-	if h.store == nil {
+	if h.repo == nil {
 		return map[string]store.SessionMeta{}
 	}
-	meta, err := h.store.GetAll(ctx)
+	meta, err := h.repo.GetAll(ctx)
 	if err != nil {
 		slog.Warn("store.GetAll failed", "err", err)
 		return map[string]store.SessionMeta{}
@@ -49,10 +49,10 @@ func (h *Handler) loadSessionMetaMap(ctx context.Context) map[string]store.Sessi
 }
 
 func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[string]store.SessionMeta) ([]enrichedSession, bool) {
-	if h.store == nil {
+	if h.repo == nil {
 		return nil, false
 	}
-	projected, err := h.store.ListWatchtowerSessions(ctx)
+	projected, err := h.repo.ListWatchtowerSessions(ctx)
 	if err != nil {
 		slog.Warn("store.ListWatchtowerSessions failed", "err", err)
 		return nil, false
@@ -183,19 +183,19 @@ func (h *Handler) resolveSessionPaneCount(ctx context.Context, sessionName strin
 }
 
 func (h *Handler) upsertSessionMetaBestEffort(ctx context.Context, sessionName, hash, lastContent string) {
-	if h.store == nil {
+	if h.repo == nil {
 		return
 	}
-	if err := h.store.UpsertSession(ctx, sessionName, hash, lastContent); err != nil {
+	if err := h.repo.UpsertSession(ctx, sessionName, hash, lastContent); err != nil {
 		slog.Warn("store.UpsertSession failed", "session", sessionName, "err", err)
 	}
 }
 
 func (h *Handler) purgeStoredSessionsBestEffort(ctx context.Context, activeNames []string) {
-	if h.store == nil {
+	if h.repo == nil {
 		return
 	}
-	if err := h.store.Purge(ctx, activeNames); err != nil {
+	if err := h.repo.Purge(ctx, activeNames); err != nil {
 		slog.Warn("store.Purge failed", "err", err)
 	}
 }
@@ -270,10 +270,10 @@ func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
-	if err := h.store.Rename(ctx, session, req.NewName); err != nil {
+	if err := h.repo.Rename(ctx, session, req.NewName); err != nil {
 		slog.Warn("store.Rename failed", "from", session, "to", req.NewName, "err", err)
 	}
-	if err := h.store.RenameRecoverySession(ctx, session, req.NewName); err != nil {
+	if err := h.repo.RenameRecoverySession(ctx, session, req.NewName); err != nil {
 		slog.Warn("store.RenameRecoverySession failed", "from", session, "to", req.NewName, "err", err)
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{
@@ -307,7 +307,7 @@ func (h *Handler) setSessionIcon(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.store.SetIcon(ctx, session, req.Icon); err != nil {
+	if err := h.repo.SetIcon(ctx, session, req.Icon); err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to set icon", nil)
 		return
 	}
@@ -359,15 +359,15 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if h.store != nil {
-		projected, err := h.store.ListWatchtowerWindows(ctx, session)
+	if h.repo != nil {
+		projected, err := h.repo.ListWatchtowerWindows(ctx, session)
 		if err != nil {
 			slog.Warn("store.ListWatchtowerWindows failed", "session", session, "err", err)
 		} else {
-			_, sessionErr := h.store.GetWatchtowerSession(ctx, session)
+			_, sessionErr := h.repo.GetWatchtowerSession(ctx, session)
 			hasSession := sessionErr == nil
 			if len(projected) > 0 || hasSession {
-				panes, panesErr := h.store.ListWatchtowerPanes(ctx, session)
+				panes, panesErr := h.repo.ListWatchtowerPanes(ctx, session)
 				if panesErr != nil {
 					writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list windows", nil)
 					return
@@ -430,12 +430,12 @@ func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if h.store != nil {
-		projected, err := h.store.ListWatchtowerPanes(ctx, session)
+	if h.repo != nil {
+		projected, err := h.repo.ListWatchtowerPanes(ctx, session)
 		if err != nil {
 			slog.Warn("store.ListWatchtowerPanes failed", "session", session, "err", err)
 		} else {
-			_, sessionErr := h.store.GetWatchtowerSession(ctx, session)
+			_, sessionErr := h.repo.GetWatchtowerSession(ctx, session)
 			hasSession := sessionErr == nil
 			if len(projected) > 0 || hasSession {
 				resp := make([]enrichedPane, 0, len(projected))
@@ -496,7 +496,7 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
 	}
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -520,7 +520,7 @@ func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	globalRev := readWatchtowerGlobalRev(ctx, h.store)
+	globalRev := readWatchtowerGlobalRev(ctx, h.repo)
 	sessionPatches, inspectorPatches := h.collectSeenPatches(ctx, session)
 	if acked {
 		h.emitMarkSeenEvents(session, req.Scope, globalRev, sessionPatches, inspectorPatches)
@@ -567,19 +567,23 @@ func validateMarkSeenRequest(req markSeenRequest) error {
 func (h *Handler) applyMarkSeen(ctx context.Context, session string, req markSeenRequest) (bool, error) {
 	switch req.Scope {
 	case "pane":
-		return h.store.MarkWatchtowerPaneSeen(ctx, session, req.PaneID)
+		return h.repo.MarkWatchtowerPaneSeen(ctx, session, req.PaneID)
 	case "window":
-		return h.store.MarkWatchtowerWindowSeen(ctx, session, req.WindowIndex)
+		return h.repo.MarkWatchtowerWindowSeen(ctx, session, req.WindowIndex)
 	default:
-		return h.store.MarkWatchtowerSessionSeen(ctx, session)
+		return h.repo.MarkWatchtowerSessionSeen(ctx, session)
 	}
 }
 
-func readWatchtowerGlobalRev(ctx context.Context, st *store.Store) int64 {
-	if st == nil {
+type runtimeValueReader interface {
+	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
+}
+
+func readWatchtowerGlobalRev(ctx context.Context, r runtimeValueReader) int64 {
+	if r == nil {
 		return 0
 	}
-	raw, err := st.GetWatchtowerRuntimeValue(ctx, "global_rev")
+	raw, err := r.GetWatchtowerRuntimeValue(ctx, "global_rev")
 	if err != nil {
 		return 0
 	}
@@ -593,10 +597,10 @@ func readWatchtowerGlobalRev(ctx context.Context, st *store.Store) int64 {
 func (h *Handler) collectSeenPatches(ctx context.Context, session string) ([]map[string]any, []map[string]any) {
 	sessionPatches := make([]map[string]any, 0, 1)
 	inspectorPatches := make([]map[string]any, 0, 1)
-	if patch, err := h.store.GetWatchtowerSessionActivityPatch(ctx, session); err == nil {
+	if patch, err := h.repo.GetWatchtowerSessionActivityPatch(ctx, session); err == nil {
 		sessionPatches = append(sessionPatches, patch)
 	}
-	if patch, err := h.store.GetWatchtowerInspectorPatch(ctx, session); err == nil {
+	if patch, err := h.repo.GetWatchtowerInspectorPatch(ctx, session); err == nil {
 		inspectorPatches = append(inspectorPatches, patch)
 	}
 	return sessionPatches, inspectorPatches
@@ -868,8 +872,8 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 	} else if next := nextWindowNameSequence(windows); next > windowNameSequence {
 		windowNameSequence = next
 	}
-	if h.store != nil {
-		allocatedSequence, allocErr := h.store.AllocateNextWindowSequence(ctx, session, windowNameSequence)
+	if h.repo != nil {
+		allocatedSequence, allocErr := h.repo.AllocateNextWindowSequence(ctx, session, windowNameSequence)
 		if allocErr != nil {
 			slog.Warn("failed to allocate default window sequence", "session", session, "min", windowNameSequence, "err", allocErr)
 		} else {

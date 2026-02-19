@@ -188,7 +188,7 @@ func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -202,7 +202,7 @@ func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	alertsList, err := h.store.ListAlerts(ctx, limit, status)
+	alertsList, err := h.repo.ListAlerts(ctx, limit, status)
 	if err != nil {
 		if errors.Is(err, alerts.ErrInvalidFilter) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
@@ -259,7 +259,7 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
+	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
@@ -278,7 +278,7 @@ func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	result, err := h.store.SearchTimelineEvents(ctx, query)
+	result, err := h.repo.SearchTimelineEvents(ctx, query)
 	if err != nil {
 		if errors.Is(err, timeline.ErrInvalidFilter) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
