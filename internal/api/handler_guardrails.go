@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -320,7 +321,7 @@ func (h *Handler) enforceGuardrail(
 		auditReason = "confirmed"
 	default:
 		if decision.Mode == store.GuardrailModeWarn {
-			auditReason = "warn"
+			auditReason = activity.SeverityWarn
 		}
 	}
 	if len(decision.MatchedRules) > 0 {

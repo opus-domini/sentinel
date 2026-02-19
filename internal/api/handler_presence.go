@@ -283,7 +283,7 @@ func parseTimelineSearchQuery(r *http.Request) (store.WatchtowerTimelineQuery, e
 	if err != nil {
 		return store.WatchtowerTimelineQuery{}, err
 	}
-	limit, err := parseTimelineLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), query.Limit)
+	limit, err := parseActivityLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), query.Limit)
 	if err != nil {
 		return store.WatchtowerTimelineQuery{}, err
 	}

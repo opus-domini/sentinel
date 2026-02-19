@@ -1,4 +1,4 @@
-import type { OpsRunbookRun, OpsTimelineEvent, OpsWsMessage } from '@/types'
+import type { OpsActivityEvent, OpsRunbookRun, OpsWsMessage } from '@/types'
 
 export const OPS_BROWSE_QUERY_KEY = ['ops', 'browse'] as const
 export const OPS_OVERVIEW_QUERY_KEY = ['ops', 'overview'] as const
@@ -23,19 +23,19 @@ export function isOpsWsMessage(msg: unknown): msg is OpsWsMessage {
   return isRecord(msg.payload)
 }
 
-export function opsTimelineQueryKey(query: string, severity: string) {
+export function opsActivityQueryKey(query: string, severity: string) {
   return [
     'ops',
-    'timeline',
+    'activity',
     query.trim(),
     severity.trim().toLowerCase(),
   ] as const
 }
 
-export function prependOpsTimelineEvent(
-  events: Array<OpsTimelineEvent>,
-  next: OpsTimelineEvent,
-): Array<OpsTimelineEvent> {
+export function prependOpsActivityEvent(
+  events: Array<OpsActivityEvent>,
+  next: OpsActivityEvent,
+): Array<OpsActivityEvent> {
   return [next, ...events.filter((item) => item.id !== next.id)]
 }
 

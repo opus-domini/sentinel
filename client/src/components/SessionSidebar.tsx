@@ -15,13 +15,9 @@ type SessionSidebarProps = {
   defaultCwd: string
   filter: string
   tmuxUnavailable: boolean
-  recoveryKilledCount: number
-  recoverySessionCount: number
-  lastCollectAt: string
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string) => void
-  onOpenRecovery: () => void
   onAttach: (session: string) => void
   onRename: (session: string) => void
   onDetach: (session: string) => void
@@ -41,13 +37,9 @@ export default function SessionSidebar({
   defaultCwd,
   filter,
   tmuxUnavailable,
-  recoveryKilledCount,
-  recoverySessionCount,
-  lastCollectAt,
   onFilterChange,
   onTokenChange,
   onCreate,
-  onOpenRecovery,
   onAttach,
   onRename,
   onDetach,
@@ -64,13 +56,9 @@ export default function SessionSidebar({
           defaultCwd={defaultCwd}
           filter={filter}
           tmuxUnavailable={tmuxUnavailable}
-          recoveryKilledCount={recoveryKilledCount}
-          recoverySessionCount={recoverySessionCount}
-          lastCollectAt={lastCollectAt}
           onFilterChange={onFilterChange}
           onTokenChange={onTokenChange}
           onCreate={onCreate}
-          onOpenRecovery={onOpenRecovery}
         />
 
         <div className="min-h-0 flex-1">

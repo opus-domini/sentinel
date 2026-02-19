@@ -3,10 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Eye, EyeOff, Menu, RefreshCw, Trash2 } from 'lucide-react'
 import type {
+  OpsActivityEvent,
   OpsAlert,
   OpsAlertsResponse,
   OpsOverviewResponse,
-  OpsTimelineEvent,
 } from '@/types'
 import AppShell from '@/components/layout/AppShell'
 import AlertsSidebar from '@/components/AlertsSidebar'
@@ -23,8 +23,8 @@ import {
   OPS_ALERTS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
   isOpsWsMessage,
-  opsTimelineQueryKey,
-  prependOpsTimelineEvent,
+  opsActivityQueryKey,
+  prependOpsActivityEvent,
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
@@ -194,7 +194,7 @@ function AlertsPage() {
       try {
         const data = await api<{
           alert: OpsAlert
-          timelineEvent?: OpsTimelineEvent
+          timelineEvent?: OpsActivityEvent
         }>(`/api/ops/alerts/${alertID}/ack`, {
           method: 'POST',
         })
@@ -204,12 +204,12 @@ function AlertsPage() {
             current.map((item) => (item.id === alertID ? data.alert : item)),
         )
         if (data.timelineEvent != null) {
-          queryClient.setQueryData<Array<OpsTimelineEvent>>(
-            opsTimelineQueryKey('', 'all'),
+          queryClient.setQueryData<Array<OpsActivityEvent>>(
+            opsActivityQueryKey('', 'all'),
             (current = []) =>
-              prependOpsTimelineEvent(
+              prependOpsActivityEvent(
                 current,
-                data.timelineEvent as OpsTimelineEvent,
+                data.timelineEvent as OpsActivityEvent,
               ),
           )
         }

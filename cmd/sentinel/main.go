@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/api"
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
@@ -26,7 +27,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/watchtower"
 )
@@ -120,8 +120,8 @@ func serve() int {
 	alertsCtx, stopAlerts := context.WithCancel(context.Background())
 	alertsDone := startAlertsTicker(alertsCtx, st, eventHub)
 
-	timelineCtx, stopTimeline := context.WithCancel(context.Background())
-	timelineDone := startTimelineTicker(timelineCtx, st, eventHub)
+	activityCtx, stopActivity := context.WithCancel(context.Background())
+	activityDone := startActivityTicker(activityCtx, st, eventHub)
 
 	pruneCtx, stopPrune := context.WithCancel(context.Background())
 	pruneDone := startOpsPruneTicker(pruneCtx, st)
@@ -139,11 +139,11 @@ func serve() int {
 	cancelAPI()
 
 	stopPrune()
-	stopTimeline()
+	stopActivity()
 	stopAlerts()
 	stopMetrics()
 	<-pruneDone
-	<-timelineDone
+	<-activityDone
 	<-alertsDone
 	<-metricsDone
 
@@ -267,7 +267,7 @@ func startAlertsTicker(ctx context.Context, st *store.Store, hub *events.Hub) <-
 	return done
 }
 
-func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) <-chan struct{} {
+func startActivityTicker(ctx context.Context, st *store.Store, hub *events.Hub) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -279,15 +279,15 @@ func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) 
 				return
 			case <-ticker.C:
 				collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-				result, err := st.SearchTimelineEvents(collectCtx, timeline.Query{
+				result, err := st.SearchActivityEvents(collectCtx, activity.Query{
 					Limit: 200,
 				})
 				cancel()
 				if err != nil {
-					slog.Warn("timeline tick failed", "err", err)
+					slog.Warn("activity tick failed", "err", err)
 					continue
 				}
-				hub.Publish(events.NewEvent(events.TypeOpsTimeline, map[string]any{
+				hub.Publish(events.NewEvent(events.TypeOpsActivity, map[string]any{
 					"events": result.Events,
 				}))
 			}
@@ -308,10 +308,10 @@ func startOpsPruneTicker(ctx context.Context, st *store.Store) <-chan struct{} {
 				return
 			case <-ticker.C:
 				pruneCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				if n, err := st.PruneOpsTimelineRows(pruneCtx, 10000); err != nil {
-					slog.Warn("ops timeline prune failed", "err", err)
+				if n, err := st.PruneOpsActivityRows(pruneCtx, 10000); err != nil {
+					slog.Warn("ops activity prune failed", "err", err)
 				} else if n > 0 {
-					slog.Info("ops timeline pruned", "removed", n)
+					slog.Info("ops activity pruned", "removed", n)
 				}
 				cancel()
 			}

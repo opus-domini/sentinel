@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func (s *Store) initAlertsSchema() error {
@@ -53,7 +53,7 @@ func (s *Store) UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alert
 	}
 	source := strings.TrimSpace(write.Source)
 	if source == "" {
-		source = timeline.DefaultSource
+		source = activity.DefaultSource
 	}
 	resource := strings.TrimSpace(write.Resource)
 	title := strings.TrimSpace(write.Title)
@@ -64,7 +64,7 @@ func (s *Store) UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alert
 	if message == "" {
 		message = title
 	}
-	severity := timeline.NormalizeSeverity(write.Severity)
+	severity := activity.NormalizeSeverity(write.Severity)
 	metadata := strings.TrimSpace(write.Metadata)
 	nowRFC3339 := now.Format(time.RFC3339)
 

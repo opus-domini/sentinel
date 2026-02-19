@@ -188,7 +188,7 @@ export type OpsAlert = {
   resolvedAt?: string
 }
 
-export type OpsTimelineEvent = {
+export type OpsActivityEvent = {
   id: number
   source: string
   eventType: string
@@ -232,8 +232,8 @@ export type OpsAlertsResponse = {
   alerts: Array<OpsAlert>
 }
 
-export type OpsTimelineResponse = {
-  events: Array<OpsTimelineEvent>
+export type OpsActivityResponse = {
+  events: Array<OpsActivityEvent>
   hasMore: boolean
 }
 
@@ -303,7 +303,7 @@ export type OpsRunbooksResponse = {
 
 export type OpsRunbookRunResponse = {
   job: OpsRunbookRun
-  timelineEvent?: OpsTimelineEvent
+  timelineEvent?: OpsActivityEvent
   globalRev?: number
 }
 
@@ -311,7 +311,7 @@ export type OpsServiceActionResponse = {
   service: OpsServiceStatus
   services: Array<OpsServiceStatus>
   overview: OpsOverview
-  timelineEvent?: OpsTimelineEvent
+  timelineEvent?: OpsActivityEvent
   alerts?: Array<OpsAlert>
   globalRev: number
 }
@@ -383,7 +383,7 @@ export type OpsBrowseServicesResponse = {
 
 export type OpsUnitActionResponse = {
   overview: OpsOverview
-  timelineEvent?: OpsTimelineEvent
+  timelineEvent?: OpsActivityEvent
   alerts?: Array<OpsAlert>
   globalRev: number
 }
@@ -526,10 +526,10 @@ export type OpsWsMessage =
     }
   | { type: 'ops.alerts.updated'; payload: { alerts: Array<OpsAlert> } }
   | {
-      type: 'ops.timeline.updated'
+      type: 'ops.activity.updated'
       payload: {
-        event?: OpsTimelineEvent
-        events?: Array<OpsTimelineEvent>
+        event?: OpsActivityEvent
+        events?: Array<OpsActivityEvent>
       }
     }
   | { type: 'ops.metrics.updated'; payload: { metrics: OpsHostMetrics } }

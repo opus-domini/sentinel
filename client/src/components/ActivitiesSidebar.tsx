@@ -2,39 +2,39 @@ import { useMemo, useState } from 'react'
 import { Lock, LockOpen } from 'lucide-react'
 import type { OpsOverview } from '@/types'
 import SidebarShell from '@/components/sidebar/SidebarShell'
-import TimelineHelpDialog from '@/components/TimelineHelpDialog'
+import ActivitiesHelpDialog from '@/components/ActivitiesHelpDialog'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { formatUptime } from '@/lib/opsUtils'
 
-type TimelineSidebarProps = {
+type ActivitiesSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
   authenticated: boolean
   overview: OpsOverview | null
   eventCount: number
-  timelineQuery: string
-  onTimelineQueryChange: (value: string) => void
-  timelineSeverity: string
-  onTimelineSeverityChange: (value: string) => void
+  activityQuery: string
+  onActivityQueryChange: (value: string) => void
+  activitySeverity: string
+  onActivitySeverityChange: (value: string) => void
   onTokenChange: (value: string) => void
 }
 
-export default function TimelineSidebar({
+export default function ActivitiesSidebar({
   isOpen,
   collapsed,
   tokenRequired,
   authenticated,
   overview,
   eventCount,
-  timelineQuery,
-  onTimelineQueryChange,
-  timelineSeverity,
-  onTimelineSeverityChange,
+  activityQuery,
+  onActivityQueryChange,
+  activitySeverity,
+  onActivitySeverityChange,
   onTokenChange,
-}: TimelineSidebarProps) {
+}: ActivitiesSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
 
   const lockLabel = useMemo(() => {
@@ -57,13 +57,13 @@ export default function TimelineSidebar({
         <section className="grid gap-2 rounded-lg border border-border-subtle bg-secondary p-2">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-              Activity Log
+              Activities
             </span>
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
               {eventCount}
             </span>
             <div className="ml-auto flex items-center gap-1.5">
-              <TimelineHelpDialog />
+              <ActivitiesHelpDialog />
               <TooltipHelper content={lockLabel}>
                 <Button
                   variant="ghost"
@@ -128,14 +128,14 @@ export default function TimelineSidebar({
             Filters
           </span>
           <input
-            value={timelineQuery}
-            onChange={(e) => onTimelineQueryChange(e.target.value)}
-            placeholder="search activity log"
+            value={activityQuery}
+            onChange={(e) => onActivityQueryChange(e.target.value)}
+            placeholder="search activities"
             className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
           />
           <select
-            value={timelineSeverity}
-            onChange={(e) => onTimelineSeverityChange(e.target.value)}
+            value={activitySeverity}
+            onChange={(e) => onActivitySeverityChange(e.target.value)}
             className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
           >
             <option value="all">all severities</option>

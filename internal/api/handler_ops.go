@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 var (
@@ -136,7 +136,7 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 		"overview":  overview,
 	})
 	if timelineRecorded {
-		h.emit(events.TypeOpsTimeline, map[string]any{
+		h.emit(events.TypeOpsActivity, map[string]any{
 			"globalRev": globalRev,
 			"event":     timelineEvent,
 		})
@@ -197,7 +197,7 @@ func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	limit, err := parseTimelineLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
+	limit, err := parseActivityLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
@@ -250,7 +250,7 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 		"action":    "ack",
 	})
 	if timelineRecorded {
-		h.emit(events.TypeOpsTimeline, map[string]any{
+		h.emit(events.TypeOpsActivity, map[string]any{
 			"globalRev": globalRev,
 			"event":     timelineEvent,
 		})
@@ -296,17 +296,17 @@ func (h *Handler) deleteOpsAlert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) opsActivity(w http.ResponseWriter, r *http.Request) {
 	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	limit, err := parseTimelineLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
+	limit, err := parseActivityLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	query := timeline.Query{
+	query := activity.Query{
 		Query:    strings.TrimSpace(r.URL.Query().Get("q")),
 		Severity: strings.TrimSpace(r.URL.Query().Get("severity")),
 		Source:   strings.TrimSpace(r.URL.Query().Get("source")),
@@ -316,13 +316,13 @@ func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	result, err := h.repo.SearchTimelineEvents(ctx, query)
+	result, err := h.repo.SearchActivityEvents(ctx, query)
 	if err != nil {
-		if errors.Is(err, timeline.ErrInvalidFilter) {
+		if errors.Is(err, activity.ErrInvalidFilter) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to query ops timeline", nil)
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to query ops activity", nil)
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
@@ -384,7 +384,7 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	if te.ID > 0 {
-		h.emit(events.TypeOpsTimeline, map[string]any{
+		h.emit(events.TypeOpsActivity, map[string]any{
 			"globalRev": globalRev,
 			"event":     te,
 		})
@@ -424,7 +424,7 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	if te.ID > 0 {
-		h.emit(events.TypeOpsTimeline, map[string]any{
+		h.emit(events.TypeOpsActivity, map[string]any{
 			"globalRev": globalRev,
 			"event":     te,
 		})
@@ -608,7 +608,7 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 		"overview":  overview,
 	})
 	if timelineRecorded {
-		h.emit(events.TypeOpsTimeline, map[string]any{
+		h.emit(events.TypeOpsActivity, map[string]any{
 			"globalRev": globalRev,
 			"event":     timelineEvent,
 		})

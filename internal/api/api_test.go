@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
@@ -21,7 +22,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/security"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
@@ -3262,14 +3262,14 @@ func TestOpsServiceActionHandlerNotFound(t *testing.T) {
 	}
 }
 
-func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
+func TestOpsAlertsAndActivityHandlers(t *testing.T) {
 	t.Parallel()
 
 	h, st := newTestHandler(t, nil, nil)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
-	event, err := st.InsertTimelineEvent(ctx, timeline.EventWrite{
+	event, err := st.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "service",
 		EventType: "service.action",
 		Severity:  "warn",
@@ -3280,7 +3280,7 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 		CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("InsertTimelineEvent: %v", err)
+		t.Fatalf("InsertActivityEvent: %v", err)
 	}
 	alert, err := st.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "service:sentinel:failed",
@@ -3311,10 +3311,10 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("list timeline", func(t *testing.T) {
+	t.Run("list activity", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/timeline?q=restarted&severity=warn&source=service", nil)
-		h.opsTimeline(w, r)
+		r := httptest.NewRequest("GET", "/api/ops/activity?q=restarted&severity=warn&source=service", nil)
+		h.opsActivity(w, r)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
@@ -3330,10 +3330,10 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("list timeline invalid severity", func(t *testing.T) {
+	t.Run("list activity invalid severity", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/timeline?severity=invalid", nil)
-		h.opsTimeline(w, r)
+		r := httptest.NewRequest("GET", "/api/ops/activity?severity=invalid", nil)
+		h.opsActivity(w, r)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
 		}
@@ -3373,7 +3373,7 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 				t.Fatalf("did not receive expected ack events, got=%v", gotTypes)
 			}
 		}
-		if !gotTypes[events.TypeOpsAlerts] || !gotTypes[events.TypeOpsTimeline] {
+		if !gotTypes[events.TypeOpsAlerts] || !gotTypes[events.TypeOpsActivity] {
 			t.Fatalf("unexpected ack event types: %v", gotTypes)
 		}
 	})
@@ -3441,7 +3441,7 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 			t.Fatalf("did not receive expected runbook events, got=%v", gotTypes)
 		}
 	}
-	if !gotTypes[events.TypeOpsJob] || !gotTypes[events.TypeOpsTimeline] {
+	if !gotTypes[events.TypeOpsJob] || !gotTypes[events.TypeOpsActivity] {
 		t.Fatalf("unexpected runbook event types: %v", gotTypes)
 	}
 

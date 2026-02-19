@@ -52,7 +52,7 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	te, _ := h.orch.RecordConfigUpdated(r.Context(), now)
 	if te.ID > 0 {
-		h.emit(events.TypeOpsTimeline, map[string]any{
+		h.emit(events.TypeOpsActivity, map[string]any{
 			"globalRev": now.UnixMilli(),
 			"event":     te,
 		})

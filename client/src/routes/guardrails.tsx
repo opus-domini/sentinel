@@ -8,6 +8,7 @@ import type {
   GuardrailRule,
   GuardrailRulesResponse,
 } from '@/types'
+import GuardrailsHelpDialog from '@/components/GuardrailsHelpDialog'
 import AppShell from '@/components/layout/AppShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -253,6 +254,7 @@ function GuardrailsPage() {
             <span className="truncate text-muted-foreground">guardrails</span>
           </div>
           <div className="flex items-center gap-1.5">
+            <GuardrailsHelpDialog />
             <Button
               variant="outline"
               size="sm"
@@ -368,7 +370,6 @@ function GuardrailsPage() {
                               <SelectValue placeholder="Mode" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="allow">allow</SelectItem>
                               <SelectItem value="warn">warn</SelectItem>
                               <SelectItem value="confirm">confirm</SelectItem>
                               <SelectItem value="block">block</SelectItem>
@@ -492,7 +493,6 @@ function GuardrailsPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="allow">allow</SelectItem>
                                 <SelectItem value="warn">warn</SelectItem>
                                 <SelectItem value="confirm">confirm</SelectItem>
                                 <SelectItem value="block">block</SelectItem>

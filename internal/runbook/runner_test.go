@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 // mockRepo implements Repo for testing the runner.
@@ -19,7 +19,7 @@ type mockRepo struct {
 
 	updatedRuns []store.OpsRunbookRunUpdate
 	gotRunIDs   []string
-	insertedTL  []timeline.EventWrite
+	insertedTL  []activity.EventWrite
 
 	// getRunbookErr, if set, is returned by GetOpsRunbook.
 	getRunbookErr error
@@ -51,11 +51,11 @@ func (m *mockRepo) GetOpsRunbookRun(_ context.Context, id string) (store.OpsRunb
 	return store.OpsRunbookRun{ID: id}, nil
 }
 
-func (m *mockRepo) InsertTimelineEvent(_ context.Context, event timeline.EventWrite) (timeline.Event, error) {
+func (m *mockRepo) InsertActivityEvent(_ context.Context, event activity.EventWrite) (activity.Event, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.insertedTL = append(m.insertedTL, event)
-	return timeline.Event{ID: 1, Source: event.Source}, nil
+	return activity.Event{ID: 1, Source: event.Source}, nil
 }
 
 func (m *mockRepo) lastUpdate() store.OpsRunbookRunUpdate {

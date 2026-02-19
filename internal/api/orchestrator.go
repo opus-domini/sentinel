@@ -6,14 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 type opsOrchestratorRepo interface {
-	InsertTimelineEvent(ctx context.Context, event timeline.EventWrite) (timeline.Event, error)
+	InsertActivityEvent(ctx context.Context, event activity.EventWrite) (activity.Event, error)
 	UpsertAlert(ctx context.Context, alert alerts.AlertWrite) (alerts.Alert, error)
 	AckAlert(ctx context.Context, id int64, ackAt time.Time) (alerts.Alert, error)
 	InsertCustomService(ctx context.Context, svc store.CustomServiceWrite) (store.CustomService, error)
@@ -26,9 +26,9 @@ type opsOrchestrator struct {
 
 // RecordServiceAction persists a timeline event for a service action and,
 // if the service entered a failed state, upserts an alert.
-func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus opsplane.ServiceStatus, action string, at time.Time) (timeline.Event, bool, []alerts.Alert, error) {
+func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus opsplane.ServiceStatus, action string, at time.Time) (activity.Event, bool, []alerts.Alert, error) {
 	if o == nil || o.repo == nil {
-		return timeline.Event{}, false, nil, nil
+		return activity.Event{}, false, nil, nil
 	}
 	normalizedAction := strings.ToLower(strings.TrimSpace(action))
 	state := strings.ToLower(strings.TrimSpace(serviceStatus.ActiveState))
@@ -37,10 +37,10 @@ func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus
 	case state == stateFailed:
 		severity = "error"
 	case normalizedAction == opsplane.ActionStop:
-		severity = "warn"
+		severity = activity.SeverityWarn
 	}
 
-	event, err := o.repo.InsertTimelineEvent(ctx, timeline.EventWrite{
+	event, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "service",
 		EventType: "service.action",
 		Severity:  severity,
@@ -51,7 +51,7 @@ func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus
 		CreatedAt: at,
 	})
 	if err != nil {
-		return timeline.Event{}, false, nil, err
+		return activity.Event{}, false, nil, err
 	}
 
 	firedAlerts := make([]alerts.Alert, 0, 1)
@@ -67,7 +67,7 @@ func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus
 			CreatedAt: at,
 		})
 		if alertErr != nil {
-			return timeline.Event{}, false, nil, alertErr
+			return activity.Event{}, false, nil, alertErr
 		}
 		firedAlerts = append(firedAlerts, alert)
 	}
@@ -76,15 +76,15 @@ func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus
 }
 
 // AckAlert acknowledges an alert and records a timeline event.
-func (o *opsOrchestrator) AckAlert(ctx context.Context, alertID int64, at time.Time) (alerts.Alert, timeline.Event, bool, error) {
+func (o *opsOrchestrator) AckAlert(ctx context.Context, alertID int64, at time.Time) (alerts.Alert, activity.Event, bool, error) {
 	if o == nil || o.repo == nil {
-		return alerts.Alert{}, timeline.Event{}, false, nil
+		return alerts.Alert{}, activity.Event{}, false, nil
 	}
 	alert, err := o.repo.AckAlert(ctx, alertID, at)
 	if err != nil {
-		return alerts.Alert{}, timeline.Event{}, false, err
+		return alerts.Alert{}, activity.Event{}, false, err
 	}
-	event, err := o.repo.InsertTimelineEvent(ctx, timeline.EventWrite{
+	event, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "alert",
 		EventType: "alert.acked",
 		Severity:  "info",
@@ -95,20 +95,20 @@ func (o *opsOrchestrator) AckAlert(ctx context.Context, alertID int64, at time.T
 		CreatedAt: at,
 	})
 	if err != nil {
-		return alerts.Alert{}, timeline.Event{}, false, err
+		return alerts.Alert{}, activity.Event{}, false, err
 	}
 	return alert, event, true, nil
 }
 
 // RegisterService persists a custom service and records a timeline event.
-func (o *opsOrchestrator) RegisterService(ctx context.Context, svc store.CustomServiceWrite, at time.Time) (timeline.Event, error) {
+func (o *opsOrchestrator) RegisterService(ctx context.Context, svc store.CustomServiceWrite, at time.Time) (activity.Event, error) {
 	if o == nil || o.repo == nil {
-		return timeline.Event{}, nil
+		return activity.Event{}, nil
 	}
 	if _, err := o.repo.InsertCustomService(ctx, svc); err != nil {
-		return timeline.Event{}, err
+		return activity.Event{}, err
 	}
-	te, _ := o.repo.InsertTimelineEvent(ctx, timeline.EventWrite{
+	te, _ := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "service",
 		EventType: "service.registered",
 		Severity:  "info",
@@ -121,14 +121,14 @@ func (o *opsOrchestrator) RegisterService(ctx context.Context, svc store.CustomS
 }
 
 // UnregisterService removes a custom service and records a timeline event.
-func (o *opsOrchestrator) UnregisterService(ctx context.Context, name string, at time.Time) (timeline.Event, error) {
+func (o *opsOrchestrator) UnregisterService(ctx context.Context, name string, at time.Time) (activity.Event, error) {
 	if o == nil || o.repo == nil {
-		return timeline.Event{}, nil
+		return activity.Event{}, nil
 	}
 	if err := o.repo.DeleteCustomService(ctx, name); err != nil {
-		return timeline.Event{}, err
+		return activity.Event{}, err
 	}
-	te, _ := o.repo.InsertTimelineEvent(ctx, timeline.EventWrite{
+	te, _ := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "service",
 		EventType: "service.unregistered",
 		Severity:  "info",
@@ -140,11 +140,11 @@ func (o *opsOrchestrator) UnregisterService(ctx context.Context, name string, at
 }
 
 // RecordRunbookStarted persists a timeline event for a runbook execution start.
-func (o *opsOrchestrator) RecordRunbookStarted(ctx context.Context, job store.OpsRunbookRun, at time.Time) (timeline.Event, error) {
+func (o *opsOrchestrator) RecordRunbookStarted(ctx context.Context, job store.OpsRunbookRun, at time.Time) (activity.Event, error) {
 	if o == nil || o.repo == nil {
-		return timeline.Event{}, nil
+		return activity.Event{}, nil
 	}
-	return o.repo.InsertTimelineEvent(ctx, timeline.EventWrite{
+	return o.repo.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "runbook",
 		EventType: "runbook.started",
 		Severity:  "info",
@@ -157,11 +157,11 @@ func (o *opsOrchestrator) RecordRunbookStarted(ctx context.Context, job store.Op
 }
 
 // RecordConfigUpdated persists a timeline event for a configuration file update.
-func (o *opsOrchestrator) RecordConfigUpdated(ctx context.Context, at time.Time) (timeline.Event, error) {
+func (o *opsOrchestrator) RecordConfigUpdated(ctx context.Context, at time.Time) (activity.Event, error) {
 	if o == nil || o.repo == nil {
-		return timeline.Event{}, nil
+		return activity.Event{}, nil
 	}
-	return o.repo.InsertTimelineEvent(ctx, timeline.EventWrite{
+	return o.repo.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "config",
 		EventType: "config.updated",
 		Severity:  "info",

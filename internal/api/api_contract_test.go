@@ -51,7 +51,7 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "alerts-list", method: http.MethodGet, path: "/api/ops/alerts"},
 		{name: "alerts-ack", method: http.MethodPost, path: "/api/ops/alerts/1/ack"},
 		{name: "alerts-delete", method: http.MethodDelete, path: "/api/ops/alerts/1"},
-		{name: "timeline", method: http.MethodGet, path: "/api/ops/timeline"},
+		{name: "activity", method: http.MethodGet, path: "/api/ops/activity"},
 		{name: "metrics", method: http.MethodGet, path: "/api/ops/metrics"},
 
 		{name: "runbooks-list", method: http.MethodGet, path: "/api/ops/runbooks"},

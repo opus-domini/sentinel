@@ -12,7 +12,6 @@ const (
 	GuardrailScopeAction  = "action"
 	GuardrailScopeCommand = "command"
 
-	GuardrailModeAllow   = "allow"
 	GuardrailModeWarn    = "warn"
 	GuardrailModeConfirm = "confirm"
 	GuardrailModeBlock   = "block"
@@ -84,7 +83,7 @@ func (s *Store) initGuardrailSchema() error {
 			name       TEXT NOT NULL DEFAULT '',
 			scope      TEXT NOT NULL DEFAULT 'command',
 			pattern    TEXT NOT NULL DEFAULT '',
-			mode       TEXT NOT NULL DEFAULT 'allow',
+			mode       TEXT NOT NULL DEFAULT 'warn',
 			severity   TEXT NOT NULL DEFAULT 'warn',
 			message    TEXT NOT NULL DEFAULT '',
 			enabled    INTEGER NOT NULL DEFAULT 1,
@@ -354,7 +353,7 @@ func normalizeGuardrailMode(raw string) string {
 	case GuardrailModeWarn:
 		return GuardrailModeWarn
 	default:
-		return GuardrailModeAllow
+		return GuardrailModeWarn
 	}
 }
 

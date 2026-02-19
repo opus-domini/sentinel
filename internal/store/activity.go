@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/timeline"
+	"github.com/opus-domini/sentinel/internal/activity"
 )
 
-func (s *Store) initTimelineSchema() error {
+func (s *Store) initActivitySchema() error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS ops_timeline_events (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,20 +37,20 @@ func (s *Store) initTimelineSchema() error {
 	return nil
 }
 
-func (s *Store) InsertTimelineEvent(ctx context.Context, write timeline.EventWrite) (timeline.Event, error) {
+func (s *Store) InsertActivityEvent(ctx context.Context, write activity.EventWrite) (activity.Event, error) {
 	now := write.CreatedAt.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	source := strings.TrimSpace(write.Source)
 	if source == "" {
-		source = timeline.DefaultSource
+		source = activity.DefaultSource
 	}
 	eventType := strings.TrimSpace(write.EventType)
 	if eventType == "" {
 		eventType = "ops.event"
 	}
-	severity := timeline.NormalizeSeverity(write.Severity)
+	severity := activity.NormalizeSeverity(write.Severity)
 
 	res, err := s.db.ExecContext(ctx, `INSERT INTO ops_timeline_events (
 		source, event_type, severity, resource, message, details, metadata, created_at
@@ -65,17 +65,17 @@ func (s *Store) InsertTimelineEvent(ctx context.Context, write timeline.EventWri
 		now.Format(time.RFC3339),
 	)
 	if err != nil {
-		return timeline.Event{}, err
+		return activity.Event{}, err
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return timeline.Event{}, err
+		return activity.Event{}, err
 	}
-	return s.getTimelineEventByID(ctx, id)
+	return s.getActivityEventByID(ctx, id)
 }
 
-func (s *Store) getTimelineEventByID(ctx context.Context, id int64) (timeline.Event, error) {
-	var out timeline.Event
+func (s *Store) getActivityEventByID(ctx context.Context, id int64) (activity.Event, error) {
+	var out activity.Event
 	err := s.db.QueryRowContext(ctx, `SELECT
 		id, source, event_type, severity, resource, message, details, metadata, created_at
 	FROM ops_timeline_events
@@ -91,12 +91,12 @@ func (s *Store) getTimelineEventByID(ctx context.Context, id int64) (timeline.Ev
 		&out.CreatedAt,
 	)
 	if err != nil {
-		return timeline.Event{}, err
+		return activity.Event{}, err
 	}
 	return out, nil
 }
 
-func (s *Store) PruneOpsTimelineRows(ctx context.Context, maxRows int) (int64, error) {
+func (s *Store) PruneOpsActivityRows(ctx context.Context, maxRows int) (int64, error) {
 	if maxRows <= 0 {
 		return 0, nil
 	}
@@ -116,7 +116,7 @@ func (s *Store) PruneOpsTimelineRows(ctx context.Context, maxRows int) (int64, e
 	return result.RowsAffected()
 }
 
-func (s *Store) SearchTimelineEvents(ctx context.Context, query timeline.Query) (timeline.Result, error) {
+func (s *Store) SearchActivityEvents(ctx context.Context, query activity.Query) (activity.Result, error) {
 	limit := query.Limit
 	if limit <= 0 {
 		limit = 100
@@ -130,10 +130,10 @@ func (s *Store) SearchTimelineEvents(ctx context.Context, query timeline.Query) 
 	switch rawSeverity {
 	case "", "all":
 		severity = ""
-	case timeline.SeverityInfo, timeline.SeverityWarn, "warning", timeline.SeverityError, "err":
-		severity = timeline.NormalizeSeverity(rawSeverity)
+	case activity.SeverityInfo, activity.SeverityWarn, "warning", activity.SeverityError, "err":
+		severity = activity.NormalizeSeverity(rawSeverity)
 	default:
-		return timeline.Result{}, fmt.Errorf("%w: severity", timeline.ErrInvalidFilter)
+		return activity.Result{}, fmt.Errorf("%w: severity", activity.ErrInvalidFilter)
 	}
 	source := strings.ToLower(strings.TrimSpace(query.Source))
 
@@ -151,13 +151,13 @@ func (s *Store) SearchTimelineEvents(ctx context.Context, query timeline.Query) 
 	ORDER BY created_at DESC, id DESC
 	LIMIT ?`, severity, severity, source, source, search, search, search, search, search, limit+1)
 	if err != nil {
-		return timeline.Result{}, err
+		return activity.Result{}, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	events := make([]timeline.Event, 0, limit+1)
+	events := make([]activity.Event, 0, limit+1)
 	for rows.Next() {
-		var item timeline.Event
+		var item activity.Event
 		if err := rows.Scan(
 			&item.ID,
 			&item.Source,
@@ -169,15 +169,15 @@ func (s *Store) SearchTimelineEvents(ctx context.Context, query timeline.Query) 
 			&item.Metadata,
 			&item.CreatedAt,
 		); err != nil {
-			return timeline.Result{}, err
+			return activity.Result{}, err
 		}
 		events = append(events, item)
 	}
 	if err := rows.Err(); err != nil {
-		return timeline.Result{}, err
+		return activity.Result{}, err
 	}
 
-	result := timeline.Result{Events: events}
+	result := activity.Result{Events: events}
 	if len(result.Events) > limit {
 		result.HasMore = true
 		result.Events = result.Events[:limit]

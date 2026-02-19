@@ -1,12 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Shield } from 'lucide-react'
 import CreateSessionDialog from './CreateSessionDialog'
 import SidebarHeader from './SidebarHeader'
 import TokenDialog from './TokenDialog'
 import TmuxHelpDialog from '@/components/TmuxHelpDialog'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { formatRelativeTime } from '@/lib/formatRelativeTime'
 
 type SessionControlsProps = {
   sessionCount: number
@@ -14,14 +11,10 @@ type SessionControlsProps = {
   authenticated: boolean
   defaultCwd: string
   tmuxUnavailable: boolean
-  recoveryKilledCount: number
-  recoverySessionCount: number
-  lastCollectAt: string
   filter: string
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string) => void
-  onOpenRecovery: () => void
 }
 
 export default function SessionControls({
@@ -30,14 +23,10 @@ export default function SessionControls({
   authenticated,
   defaultCwd,
   tmuxUnavailable,
-  recoveryKilledCount,
-  recoverySessionCount,
-  lastCollectAt,
   filter,
   onFilterChange,
   onTokenChange,
   onCreate,
-  onOpenRecovery,
 }: SessionControlsProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isTokenOpen, setIsTokenOpen] = useState(false)
@@ -73,26 +62,6 @@ export default function SessionControls({
         </div>
       )}
 
-      {recoveryKilledCount > 0 && (
-        <div className="rounded-md border border-destructive/45 bg-destructive/10 px-2.5 py-2 text-[11px]">
-          <p className="font-semibold uppercase tracking-[0.06em] text-destructive-foreground">
-            Recovery available
-          </p>
-          <p className="mt-1 text-secondary-foreground">
-            {recoveryKilledCount} session
-            {recoveryKilledCount > 1 ? 's' : ''} interrupted.
-          </p>
-          <Button
-            className="mt-2 h-7"
-            variant="outline"
-            type="button"
-            onClick={onOpenRecovery}
-          >
-            Open Recovery Center
-          </Button>
-        </div>
-      )}
-
       <Input
         className="bg-surface-overlay"
         placeholder="filter sessions..."
@@ -114,17 +83,6 @@ export default function SessionControls({
         onTokenChange={onTokenChange}
         tokenRequired={tokenRequired}
       />
-
-      {recoverySessionCount > 0 && lastCollectAt && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Shield className="size-3" />
-          <span>
-            Protected · {recoverySessionCount} session
-            {recoverySessionCount !== 1 ? 's' : ''} · snapshot{' '}
-            {formatRelativeTime(lastCollectAt)}
-          </span>
-        </div>
-      )}
     </section>
   )
 }

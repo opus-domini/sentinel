@@ -304,19 +304,10 @@ function TmuxPage() {
           defaultCwd={defaultCwd}
           filter={filter}
           tmuxUnavailable={tmuxUnavailable}
-          recoveryKilledCount={
-            recovery.recoverySessions.filter((item) => item.state === 'killed')
-              .length
-          }
-          recoverySessionCount={sessions.length}
-          lastCollectAt={recovery.lastCollectAt}
           onFilterChange={setFilter}
           onTokenChange={setToken}
           onCreate={(name, cwd) => {
             void sessionCRUD.createSession(name, cwd)
-          }}
-          onOpenRecovery={() => {
-            recovery.setRecoveryDialogOpen(true)
           }}
           onAttach={sessionCRUD.activateSession}
           onRename={sessionCRUD.handleOpenRenameDialogForSession}
@@ -360,6 +351,7 @@ function TmuxPage() {
         onFocusTerminal={focusTerminal}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
+        onOpenSnapshots={() => recovery.setRecoveryDialogOpen(true)}
         onOpenTimeline={() => {
           timeline.setTimelineOpen(true)
           void timeline.loadTimeline({ quiet: true })

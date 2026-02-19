@@ -1,4 +1,4 @@
-package timeline
+package activity
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Severity levels for timeline events.
+// Severity levels for activity events.
 const (
 	SeverityInfo  = "info"
 	SeverityWarn  = "warn"
@@ -17,9 +17,9 @@ const (
 )
 
 // ErrInvalidFilter is returned when a filter value (e.g. severity) is not recognized.
-var ErrInvalidFilter = errors.New("invalid timeline filter")
+var ErrInvalidFilter = errors.New("invalid activity filter")
 
-// Event represents a recorded timeline event.
+// Event represents a recorded activity event.
 type Event struct {
 	ID        int64  `json:"id"`
 	Source    string `json:"source"`
@@ -32,7 +32,7 @@ type Event struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-// EventWrite contains the fields needed to create a timeline event.
+// EventWrite contains the fields needed to create an activity event.
 type EventWrite struct {
 	Source    string
 	EventType string
@@ -44,7 +44,7 @@ type EventWrite struct {
 	CreatedAt time.Time
 }
 
-// Query specifies search parameters for timeline events.
+// Query specifies search parameters for activity events.
 type Query struct {
 	Query    string
 	Severity string
@@ -73,8 +73,8 @@ func NormalizeSeverity(raw string) string {
 	}
 }
 
-// Repo defines the persistence operations consumed by the timeline service.
+// Repo defines the persistence operations consumed by the activity service.
 type Repo interface {
-	InsertTimelineEvent(ctx context.Context, write EventWrite) (Event, error)
-	SearchTimelineEvents(ctx context.Context, query Query) (Result, error)
+	InsertActivityEvent(ctx context.Context, write EventWrite) (Event, error)
+	SearchActivityEvents(ctx context.Context, query Query) (Result, error)
 }

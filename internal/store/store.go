@@ -74,9 +74,9 @@ func New(dbPath string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("create guardrail schema: %w", err)
 	}
-	if err := s.initTimelineSchema(); err != nil {
+	if err := s.initActivitySchema(); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("create timeline schema: %w", err)
+		return nil, fmt.Errorf("create activity schema: %w", err)
 	}
 	if err := s.initAlertsSchema(); err != nil {
 		_ = db.Close()

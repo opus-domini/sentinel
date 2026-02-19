@@ -3,13 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu, RefreshCw } from 'lucide-react'
 import type {
+  OpsActivityEvent,
+  OpsActivityResponse,
   OpsOverviewResponse,
-  OpsTimelineEvent,
-  OpsTimelineResponse,
 } from '@/types'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
-import TimelineSidebar from '@/components/TimelineSidebar'
+import ActivitiesSidebar from '@/components/ActivitiesSidebar'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -20,60 +20,60 @@ import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_OVERVIEW_QUERY_KEY,
   isOpsWsMessage,
-  opsTimelineQueryKey,
-  prependOpsTimelineEvent,
+  opsActivityQueryKey,
+  prependOpsActivityEvent,
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 
-type TimelineFooterSummaryParams = {
+type ActivitiesFooterSummaryParams = {
   overviewError: string
-  timelineError: string
+  activityError: string
   overviewLoading: boolean
-  timelineLoading: boolean
+  activityLoading: boolean
   eventCount: number
 }
 
-function buildTimelineFooterSummary({
+function buildActivitiesFooterSummary({
   overviewError,
-  timelineError,
+  activityError,
   overviewLoading,
-  timelineLoading,
+  activityLoading,
   eventCount,
-}: TimelineFooterSummaryParams): string {
+}: ActivitiesFooterSummaryParams): string {
   if (overviewError.trim() !== '') {
     return overviewError
   }
-  if (timelineError.trim() !== '') {
-    return timelineError
+  if (activityError.trim() !== '') {
+    return activityError
   }
-  if (overviewLoading || timelineLoading) {
-    return 'Loading activity log...'
+  if (overviewLoading || activityLoading) {
+    return 'Loading activities...'
   }
   return `${eventCount} events`
 }
 
-function TimelinePage() {
+function ActivitiesPage() {
   const { tokenRequired } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const layout = useLayoutContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
 
-  const [timelineQuery, setTimelineQuery] = useState('')
-  const [timelineSeverity, setTimelineSeverity] = useState('all')
+  const [activityQuery, setActivityQuery] = useState('')
+  const [activitySeverity, setActivitySeverity] = useState('all')
 
-  const timelineQueryKey = useMemo(
-    () => opsTimelineQueryKey(timelineQuery, timelineSeverity),
-    [timelineQuery, timelineSeverity],
+  const activityQueryKey = useMemo(
+    () => opsActivityQueryKey(activityQuery, activitySeverity),
+    [activityQuery, activitySeverity],
   )
-  const timelineQueryRef = useRef(timelineQuery)
-  const timelineSeverityRef = useRef(timelineSeverity)
+  const activityQueryRef = useRef(activityQuery)
+  const activitySeverityRef = useRef(activitySeverity)
   useEffect(() => {
-    timelineQueryRef.current = timelineQuery
-  }, [timelineQuery])
+    activityQueryRef.current = activityQuery
+  }, [activityQuery])
   useEffect(() => {
-    timelineSeverityRef.current = timelineSeverity
-  }, [timelineSeverity])
+    activitySeverityRef.current = activitySeverity
+  }, [activitySeverity])
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -83,30 +83,30 @@ function TimelinePage() {
     },
   })
 
-  const timelineEventsQuery = useQuery({
-    queryKey: timelineQueryKey,
+  const activityEventsQuery = useQuery({
+    queryKey: activityQueryKey,
     queryFn: async () => {
       const params = new URLSearchParams({ limit: '200' })
-      if (timelineQuery.trim() !== '') params.set('q', timelineQuery.trim())
-      if (timelineSeverity !== 'all') params.set('severity', timelineSeverity)
-      const data = await api<OpsTimelineResponse>(
-        `/api/ops/timeline?${params.toString()}`,
+      if (activityQuery.trim() !== '') params.set('q', activityQuery.trim())
+      if (activitySeverity !== 'all') params.set('severity', activitySeverity)
+      const data = await api<OpsActivityResponse>(
+        `/api/ops/activity?${params.toString()}`,
       )
       return data.events
     },
   })
 
   const overview = overviewQuery.data ?? null
-  const timelineEvents = timelineEventsQuery.data ?? []
+  const activityEvents = activityEventsQuery.data ?? []
   const overviewLoading = overviewQuery.isLoading
-  const timelineLoading = timelineEventsQuery.isLoading
+  const activityLoading = activityEventsQuery.isLoading
   const overviewError =
     overviewQuery.error != null
       ? toErrorMessage(overviewQuery.error, 'failed to load overview')
       : ''
-  const timelineError =
-    timelineEventsQuery.error != null
-      ? toErrorMessage(timelineEventsQuery.error, 'failed to load timeline')
+  const activityError =
+    activityEventsQuery.error != null
+      ? toErrorMessage(activityEventsQuery.error, 'failed to load activities')
       : ''
 
   const refreshOverview = useCallback(async () => {
@@ -116,11 +116,11 @@ function TimelinePage() {
     })
   }, [queryClient])
 
-  const refreshTimeline = useCallback(async () => {
+  const refreshActivity = useCallback(async () => {
     await queryClient.refetchQueries({
-      queryKey: opsTimelineQueryKey(
-        timelineQueryRef.current,
-        timelineSeverityRef.current,
+      queryKey: opsActivityQueryKey(
+        activityQueryRef.current,
+        activitySeverityRef.current,
       ),
       exact: true,
     })
@@ -128,8 +128,8 @@ function TimelinePage() {
 
   const refreshPage = useCallback(() => {
     void refreshOverview()
-    void refreshTimeline()
-  }, [refreshOverview, refreshTimeline])
+    void refreshActivity()
+  }, [refreshOverview, refreshActivity])
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
@@ -141,34 +141,34 @@ function TimelinePage() {
             message.payload.overview,
           )
           break
-        case 'ops.timeline.updated':
+        case 'ops.activity.updated':
           if (Array.isArray(message.payload.events)) {
-            queryClient.setQueryData<Array<OpsTimelineEvent>>(
-              opsTimelineQueryKey(
-                timelineQueryRef.current,
-                timelineSeverityRef.current,
+            queryClient.setQueryData<Array<OpsActivityEvent>>(
+              opsActivityQueryKey(
+                activityQueryRef.current,
+                activitySeverityRef.current,
               ),
               message.payload.events,
             )
           } else if (message.payload.event != null) {
-            const timelineEvent = message.payload.event
-            queryClient.setQueryData<Array<OpsTimelineEvent>>(
-              opsTimelineQueryKey(
-                timelineQueryRef.current,
-                timelineSeverityRef.current,
+            const activityEvent = message.payload.event
+            queryClient.setQueryData<Array<OpsActivityEvent>>(
+              opsActivityQueryKey(
+                activityQueryRef.current,
+                activitySeverityRef.current,
               ),
               (previous = []) =>
-                prependOpsTimelineEvent(previous, timelineEvent),
+                prependOpsActivityEvent(previous, activityEvent),
             )
           } else {
-            void refreshTimeline()
+            void refreshActivity()
           }
           break
         default:
           break
       }
     },
-    [queryClient, refreshTimeline],
+    [queryClient, refreshActivity],
   )
 
   const connectionState = useOpsEventsSocket({
@@ -176,32 +176,32 @@ function TimelinePage() {
     tokenRequired,
     onMessage: handleWSMessage,
   })
-  const footerSummary = buildTimelineFooterSummary({
+  const footerSummary = buildActivitiesFooterSummary({
     overviewError,
-    timelineError,
+    activityError,
     overviewLoading,
-    timelineLoading,
-    eventCount: timelineEvents.length,
+    activityLoading,
+    eventCount: activityEvents.length,
   })
   const footerCadence =
-    timelineEvents.length > 0 || timelineEventsQuery.isSuccess
+    activityEvents.length > 0 || activityEventsQuery.isSuccess
       ? 'Live · 5s'
       : 'waiting'
 
   return (
     <AppShell
       sidebar={
-        <TimelineSidebar
+        <ActivitiesSidebar
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
           tokenRequired={tokenRequired}
           authenticated={authenticated}
           overview={overview}
-          eventCount={timelineEvents.length}
-          timelineQuery={timelineQuery}
-          onTimelineQueryChange={setTimelineQuery}
-          timelineSeverity={timelineSeverity}
-          onTimelineSeverityChange={setTimelineSeverity}
+          eventCount={activityEvents.length}
+          activityQuery={activityQuery}
+          onActivityQueryChange={setActivityQuery}
+          activitySeverity={activitySeverity}
+          onActivitySeverityChange={setActivitySeverity}
           onTokenChange={setToken}
         />
       }
@@ -220,7 +220,7 @@ function TimelinePage() {
             </Button>
             <span className="truncate">Sentinel</span>
             <span className="text-muted-foreground">/</span>
-            <span className="truncate text-muted-foreground">activity log</span>
+            <span className="truncate text-muted-foreground">activities</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Button
@@ -228,7 +228,7 @@ function TimelinePage() {
               size="sm"
               className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
               onClick={refreshPage}
-              aria-label="Refresh activity log"
+              aria-label="Refresh activities"
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
@@ -241,14 +241,14 @@ function TimelinePage() {
           <div className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
             <ScrollArea className="h-full min-h-0">
               <div className="grid gap-1.5 p-2">
-                {timelineLoading &&
+                {activityLoading &&
                   Array.from({ length: 5 }).map((_, idx) => (
                     <div
-                      key={`timeline-skeleton-${idx}`}
+                      key={`activity-skeleton-${idx}`}
                       className="h-20 animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}
-                {timelineEvents.map((event) => (
+                {activityEvents.map((event) => (
                   <div
                     key={event.id}
                     className="rounded border border-border-subtle bg-surface-elevated px-2.5 py-2"
@@ -271,19 +271,19 @@ function TimelinePage() {
                     )}
                   </div>
                 ))}
-                {!timelineLoading && timelineEvents.length === 0 && (
+                {!activityLoading && activityEvents.length === 0 && (
                   <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
-                    <p>No activity log events for the selected filters.</p>
+                    <p>No activity events for the selected filters.</p>
                     <div className="flex flex-wrap gap-2">
-                      {(timelineQuery.trim() !== '' ||
-                        timelineSeverity !== 'all') && (
+                      {(activityQuery.trim() !== '' ||
+                        activitySeverity !== 'all') && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="h-7 text-[11px]"
                           onClick={() => {
-                            setTimelineQuery('')
-                            setTimelineSeverity('all')
+                            setActivityQuery('')
+                            setActivitySeverity('all')
                           }}
                         >
                           Clear filters
@@ -295,15 +295,15 @@ function TimelinePage() {
                         className="h-7 text-[11px]"
                         onClick={refreshPage}
                       >
-                        Refresh activity log
+                        Refresh activities
                       </Button>
                     </div>
                   </div>
                 )}
-                {timelineError !== '' && (
+                {activityError !== '' && (
                   <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3">
                     <p className="text-[12px] text-destructive-foreground">
-                      {timelineError}
+                      {activityError}
                     </p>
                     <Button
                       variant="outline"
@@ -329,6 +329,6 @@ function TimelinePage() {
   )
 }
 
-export const Route = createFileRoute('/timeline')({
-  component: TimelinePage,
+export const Route = createFileRoute('/activities')({
+  component: ActivitiesPage,
 })

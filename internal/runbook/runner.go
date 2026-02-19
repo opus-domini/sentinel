@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 // Repo defines the store operations consumed by the runbook runner.
@@ -19,7 +19,7 @@ type Repo interface {
 	UpdateOpsRunbookRun(ctx context.Context, update store.OpsRunbookRunUpdate) (store.OpsRunbookRun, error)
 	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
 	GetOpsRunbookRun(ctx context.Context, id string) (store.OpsRunbookRun, error)
-	InsertTimelineEvent(ctx context.Context, event timeline.EventWrite) (timeline.Event, error)
+	InsertActivityEvent(ctx context.Context, event activity.EventWrite) (activity.Event, error)
 }
 
 // EmitFunc publishes a real-time event to connected clients.
@@ -224,7 +224,7 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		slog.Warn("runbook runner: failed to marshal timeline metadata", "err", metaErr)
 	}
 
-	te, teErr := repo.InsertTimelineEvent(ctx, timeline.EventWrite{
+	te, teErr := repo.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    params.Source,
 		EventType: "runbook." + status,
 		Severity:  severity,
@@ -238,7 +238,7 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		slog.Warn("runbook runner: failed to insert timeline event", "err", teErr)
 	}
 	if te.ID > 0 {
-		emit("ops.timeline.updated", map[string]any{
+		emit("ops.activity.updated", map[string]any{
 			"globalRev": globalRev,
 			"event":     te,
 		})

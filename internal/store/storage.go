@@ -15,7 +15,7 @@ const (
 	StorageResourceActivityLog   = "activity-journal"
 	StorageResourceGuardrailLog  = "guardrail-audit"
 	StorageResourceRecoveryLog   = "recovery-history"
-	StorageResourceOpsTimeline   = "ops-timeline"
+	StorageResourceOpsActivity   = "ops-activity"
 	StorageResourceOpsAlerts     = "ops-alerts"
 	StorageResourceOpsJobs       = "ops-jobs"
 	StorageResourceAll           = "all"
@@ -23,7 +23,7 @@ const (
 	storageResourceActivityLabel = "Activity journal"
 	storageResourceGuardrailLbl  = "Guardrail audit"
 	storageResourceRecoveryLbl   = "Recovery history"
-	storageResourceOpsTimelineLb = "Ops timeline"
+	storageResourceOpsActivityLb = "Ops activity"
 	storageResourceOpsAlertsLbl  = "Ops alerts"
 	storageResourceOpsJobsLbl    = "Ops runbook jobs"
 )
@@ -61,7 +61,7 @@ func IsStorageResource(raw string) bool {
 		StorageResourceActivityLog,
 		StorageResourceGuardrailLog,
 		StorageResourceRecoveryLog,
-		StorageResourceOpsTimeline,
+		StorageResourceOpsActivity,
 		StorageResourceOpsAlerts,
 		StorageResourceOpsJobs,
 		StorageResourceAll:
@@ -99,7 +99,7 @@ func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 		StorageResourceActivityLog,
 		StorageResourceGuardrailLog,
 		StorageResourceRecoveryLog,
-		StorageResourceOpsTimeline,
+		StorageResourceOpsActivity,
 		StorageResourceOpsAlerts,
 		StorageResourceOpsJobs,
 	} {
@@ -122,7 +122,7 @@ func (s *Store) FlushStorageResource(ctx context.Context, resource string) ([]St
 			StorageResourceActivityLog,
 			StorageResourceGuardrailLog,
 			StorageResourceRecoveryLog,
-			StorageResourceOpsTimeline,
+			StorageResourceOpsActivity,
 			StorageResourceOpsAlerts,
 			StorageResourceOpsJobs,
 		} {
@@ -196,7 +196,7 @@ func (s *Store) flushStorageResourceSingle(ctx context.Context, resource string)
 			Resource:    resource,
 			RemovedRows: snapshotsRemoved + jobsRemoved,
 		}, nil
-	case StorageResourceOpsTimeline:
+	case StorageResourceOpsActivity:
 		removed, err := deleteRows(ctx, s.db, "DELETE FROM ops_timeline_events")
 		if err != nil {
 			return StorageFlushResult{}, err
@@ -302,7 +302,7 @@ func (s *Store) resourceStorageStats(ctx context.Context, resource string) (Stor
 			Rows:        snapRows + jobRows,
 			ApproxBytes: snapBytes + jobBytes,
 		}, nil
-	case StorageResourceOpsTimeline:
+	case StorageResourceOpsActivity:
 		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
 			COUNT(*),
 			COALESCE(SUM(
@@ -315,7 +315,7 @@ func (s *Store) resourceStorageStats(ctx context.Context, resource string) (Stor
 		}
 		return StorageResourceStat{
 			Resource:    resource,
-			Label:       storageResourceOpsTimelineLb,
+			Label:       storageResourceOpsActivityLb,
 			Rows:        rows,
 			ApproxBytes: approxBytes,
 		}, nil

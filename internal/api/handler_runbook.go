@@ -87,7 +87,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		"globalRev": globalRev,
 		"job":       job,
 	})
-	h.emit(events.TypeOpsTimeline, map[string]any{
+	h.emit(events.TypeOpsActivity, map[string]any{
 		"globalRev": globalRev,
 		"event":     timelineEvent,
 	})

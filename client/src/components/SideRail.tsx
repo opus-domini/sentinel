@@ -36,7 +36,7 @@ export default function SideRail({
   const servicesActive = pathname === '/services'
   const runbooksActive = pathname === '/runbooks'
   const alertsActive = pathname === '/alerts'
-  const timelineActive = pathname === '/timeline'
+  const activitiesActive = pathname === '/activities'
   const metricsActive = pathname === '/metrics'
   const guardrailsActive = pathname === '/guardrails'
 
@@ -62,28 +62,28 @@ export default function SideRail({
       Icon: Blocks,
     },
     {
-      to: '/runbooks' as const,
-      label: 'Runbooks',
-      active: runbooksActive,
-      Icon: ScrollText,
-    },
-    {
       to: '/alerts' as const,
       label: 'Alerts',
       active: alertsActive,
       Icon: Bell,
     },
     {
-      to: '/timeline' as const,
-      label: 'Activity Log',
-      active: timelineActive,
-      Icon: Clock,
-    },
-    {
       to: '/metrics' as const,
       label: 'Metrics',
       active: metricsActive,
       Icon: Activity,
+    },
+    {
+      to: '/runbooks' as const,
+      label: 'Runbooks',
+      active: runbooksActive,
+      Icon: ScrollText,
+    },
+    {
+      to: '/activities' as const,
+      label: 'Activities',
+      active: activitiesActive,
+      Icon: Clock,
     },
     {
       to: '/guardrails' as const,

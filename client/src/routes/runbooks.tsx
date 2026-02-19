@@ -16,11 +16,11 @@ import {
   XCircle,
 } from 'lucide-react'
 import type {
+  OpsActivityEvent,
   OpsRunbook,
   OpsRunbookRunResponse,
   OpsRunbooksResponse,
   OpsSchedule,
-  OpsTimelineEvent,
   OpsWsMessage,
 } from '@/types'
 import type { RunbookDraft } from '@/components/RunbookEditor'
@@ -43,8 +43,8 @@ import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_RUNBOOKS_QUERY_KEY,
-  opsTimelineQueryKey,
-  prependOpsTimelineEvent,
+  opsActivityQueryKey,
+  prependOpsActivityEvent,
   upsertOpsRunbookJob,
 } from '@/lib/opsQueryCache'
 import { cn, randomId } from '@/lib/utils'
@@ -266,12 +266,12 @@ function RunbooksPage() {
           },
         )
         if (data.timelineEvent != null) {
-          queryClient.setQueryData<Array<OpsTimelineEvent>>(
-            opsTimelineQueryKey('', 'all'),
+          queryClient.setQueryData<Array<OpsActivityEvent>>(
+            opsActivityQueryKey('', 'all'),
             (current = []) =>
-              prependOpsTimelineEvent(
+              prependOpsActivityEvent(
                 current,
-                data.timelineEvent as OpsTimelineEvent,
+                data.timelineEvent as OpsActivityEvent,
               ),
           )
         }

@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import type {
+  OpsActivityEvent,
   OpsBrowseServicesResponse,
   OpsBrowsedService,
   OpsOverviewResponse,
@@ -31,7 +32,6 @@ import type {
   OpsServiceStatus,
   OpsServiceStatusResponse,
   OpsServicesResponse,
-  OpsTimelineEvent,
   OpsUnitActionResponse,
   OpsUnitLogsResponse,
 } from '@/types'
@@ -78,8 +78,8 @@ import {
   OPS_OVERVIEW_QUERY_KEY,
   OPS_SERVICES_QUERY_KEY,
   isOpsWsMessage,
-  opsTimelineQueryKey,
-  prependOpsTimelineEvent,
+  opsActivityQueryKey,
+  prependOpsActivityEvent,
 } from '@/lib/opsQueryCache'
 import { browsedServiceDot, toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
@@ -295,12 +295,12 @@ function ServicesPage() {
           queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, data.alerts)
         }
         if (data.timelineEvent != null) {
-          queryClient.setQueryData<Array<OpsTimelineEvent>>(
-            opsTimelineQueryKey('', 'all'),
+          queryClient.setQueryData<Array<OpsActivityEvent>>(
+            opsActivityQueryKey('', 'all'),
             (current = []) =>
-              prependOpsTimelineEvent(
+              prependOpsActivityEvent(
                 current,
-                data.timelineEvent as OpsTimelineEvent,
+                data.timelineEvent as OpsActivityEvent,
               ),
           )
         }
@@ -385,12 +385,12 @@ function ServicesPage() {
           )
           queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
           if (data.timelineEvent != null) {
-            queryClient.setQueryData<Array<OpsTimelineEvent>>(
-              opsTimelineQueryKey('', 'all'),
+            queryClient.setQueryData<Array<OpsActivityEvent>>(
+              opsActivityQueryKey('', 'all'),
               (current = []) =>
-                prependOpsTimelineEvent(
+                prependOpsActivityEvent(
                   current,
-                  data.timelineEvent as OpsTimelineEvent,
+                  data.timelineEvent as OpsActivityEvent,
                 ),
             )
           }

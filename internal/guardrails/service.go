@@ -53,7 +53,6 @@ func New(r repo) *Service {
 
 func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
 	defaultDecision := Decision{
-		Mode:    store.GuardrailModeAllow,
 		Allowed: true,
 	}
 	if s == nil || s.repo == nil {
@@ -104,10 +103,9 @@ func compileRulePatterns(rules []store.GuardrailRule) map[string]*regexp.Regexp 
 
 func evaluateSelection(rules []store.GuardrailRule, input Input, compiled map[string]*regexp.Regexp) evaluatedSelection {
 	selection := evaluatedSelection{
-		mode:    store.GuardrailModeAllow,
 		matched: make([]store.GuardrailRule, 0, 4),
 	}
-	winningRank := decisionRank(store.GuardrailModeAllow)
+	winningRank := 0
 	action := strings.TrimSpace(input.Action)
 	command := strings.TrimSpace(input.Command)
 
@@ -150,9 +148,9 @@ func evaluateRuleMatch(rule store.GuardrailRule, action, command string, compile
 		return "", false
 	}
 
-	mode := store.GuardrailModeAllow
-	if strings.TrimSpace(rule.Mode) != "" {
-		mode = rule.Mode
+	mode := strings.TrimSpace(rule.Mode)
+	if mode == "" {
+		mode = store.GuardrailModeWarn
 	}
 	return mode, true
 }

@@ -10,18 +10,18 @@ import {
 } from '@/components/ui/dialog'
 import { TooltipHelper } from '@/components/TooltipHelper'
 
-export default function TimelineHelpDialog() {
+export default function ActivitiesHelpDialog() {
   const [open, setOpen] = useState(false)
 
   return (
     <>
-      <TooltipHelper content="About Activity Log">
+      <TooltipHelper content="About Activities">
         <Button
           variant="ghost"
           size="icon"
           className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
           onClick={() => setOpen(true)}
-          aria-label="About Activity Log"
+          aria-label="About Activities"
         >
           <CircleHelp className="h-4 w-4" />
         </Button>
@@ -29,7 +29,7 @@ export default function TimelineHelpDialog() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Activity Log</DialogTitle>
+            <DialogTitle>Activities</DialogTitle>
             <DialogDescription>
               An audit log of control-plane operations performed through
               Sentinel.

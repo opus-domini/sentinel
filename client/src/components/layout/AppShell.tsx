@@ -26,6 +26,12 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
     startSidebarResize,
   } = useLayoutContext()
 
+  const hasSidebar = sidebar != null
+  const effectiveCollapsed = !hasSidebar || sidebarCollapsed
+  const gridClass = effectiveCollapsed
+    ? 'grid h-full grid-cols-[1fr] grid-rows-[1fr] md:[grid-template-columns:48px_1fr]'
+    : layoutGridClass
+
   const isMobile = useIsMobileLayout()
 
   const handleSwipeOpen = useCallback(() => {
@@ -40,15 +46,15 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
 
   return (
     <div className="h-dvh overflow-hidden bg-background text-foreground">
-      <div className={layoutGridClass} style={shellStyle}>
+      <div className={gridClass} style={shellStyle}>
         <SideRail
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
         />
 
-        {sidebar}
+        {hasSidebar && sidebar}
 
-        {!sidebarCollapsed && (
+        {hasSidebar && !sidebarCollapsed && (
           <div
             className="hidden cursor-col-resize border-r border-border-subtle hover:bg-primary/20 md:block"
             onMouseDown={startSidebarResize}

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
@@ -23,7 +24,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/security"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
-	"github.com/opus-domini/sentinel/internal/timeline"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
@@ -131,19 +131,19 @@ type opsScheduleRepo interface {
 	UpdateScheduleAfterRun(ctx context.Context, id, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
 }
 
-type alertsTimelineRepo interface {
+type alertsActivityRepo interface {
 	ListAlerts(ctx context.Context, limit int, status string) ([]alerts.Alert, error)
 	DeleteAlert(ctx context.Context, id int64) error
 	UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error)
 	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
-	SearchTimelineEvents(ctx context.Context, query timeline.Query) (timeline.Result, error)
+	SearchActivityEvents(ctx context.Context, query activity.Query) (activity.Result, error)
 	GetStorageStats(ctx context.Context) (store.StorageStats, error)
 	FlushStorageResource(ctx context.Context, resource string) ([]store.StorageFlushResult, error)
 }
 
 // handlerRepo is the composite repository interface used by Handler.
 // It embeds runbook.Repo for async runbook execution (which provides
-// UpdateOpsRunbookRun, GetOpsRunbook, GetOpsRunbookRun, InsertTimelineEvent).
+// UpdateOpsRunbookRun, GetOpsRunbook, GetOpsRunbookRun, InsertActivityEvent).
 type handlerRepo interface {
 	runbook.Repo
 	sessionMetaRepo
@@ -153,7 +153,7 @@ type handlerRepo interface {
 	opsRunbookRepo
 	opsJobRepo
 	opsScheduleRepo
-	alertsTimelineRepo
+	alertsActivityRepo
 }
 
 // Compile-time check: *store.Store satisfies handlerRepo.
@@ -226,7 +226,7 @@ func Register(
 	h.registerServicesRoutes(mux)
 	h.registerRunbooksRoutes(mux)
 	h.registerAlertsRoutes(mux)
-	h.registerTimelineRoutes(mux)
+	h.registerActivityRoutes(mux)
 	h.registerMetricsRoutes(mux)
 	h.registerGuardrailsRoutes(mux)
 	h.registerSettingsRoutes(mux)
@@ -500,7 +500,7 @@ type enrichedPane struct {
 	ChangedAt      string `json:"changedAt,omitempty"`
 }
 
-func parseTimelineLimitParam(raw string, fallback int) (int, error) {
+func parseActivityLimitParam(raw string, fallback int) (int, error) {
 	if raw == "" {
 		return fallback, nil
 	}

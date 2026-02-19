@@ -18,7 +18,7 @@ const (
 	TypeOpsOverview      = "ops.overview.updated"
 	TypeOpsServices      = "ops.services.updated"
 	TypeOpsAlerts        = "ops.alerts.updated"
-	TypeOpsTimeline      = "ops.timeline.updated"
+	TypeOpsActivity      = "ops.activity.updated"
 	TypeOpsJob           = "ops.job.updated"
 	TypeOpsMetrics       = "ops.metrics.updated"
 	TypeScheduleUpdated  = "ops.schedule.updated"

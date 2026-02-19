@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
-	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func TestStorageStatsAndFlush(t *testing.T) {
@@ -37,7 +37,7 @@ func TestStorageStatsAndFlush(t *testing.T) {
 		StorageResourceActivityLog,
 		StorageResourceGuardrailLog,
 		StorageResourceRecoveryLog,
-		StorageResourceOpsTimeline,
+		StorageResourceOpsActivity,
 		StorageResourceOpsAlerts,
 		StorageResourceOpsJobs,
 	} {
@@ -130,7 +130,7 @@ func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time
 	}); err != nil {
 		t.Fatalf("CreateRecoveryJob: %v", err)
 	}
-	if _, err := s.InsertTimelineEvent(ctx, timeline.EventWrite{
+	if _, err := s.InsertActivityEvent(ctx, activity.EventWrite{
 		Source:    "service",
 		EventType: "service.action",
 		Severity:  "info",
@@ -140,7 +140,7 @@ func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time
 		Metadata:  `{"source":"test"}`,
 		CreatedAt: base,
 	}); err != nil {
-		t.Fatalf("InsertTimelineEvent: %v", err)
+		t.Fatalf("InsertActivityEvent: %v", err)
 	}
 	if _, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "service:sentinel:failed",

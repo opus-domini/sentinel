@@ -9,13 +9,13 @@ import {
   OPS_SERVICES_QUERY_KEY,
   OPS_STORAGE_STATS_QUERY_KEY,
   isOpsWsMessage,
-  opsTimelineQueryKey,
-  prependOpsTimelineEvent,
+  opsActivityQueryKey,
+  prependOpsActivityEvent,
   upsertOpsRunbookJob,
 } from './opsQueryCache'
-import type { OpsRunbookRun, OpsTimelineEvent } from '@/types'
+import type { OpsActivityEvent, OpsRunbookRun } from '@/types'
 
-function buildTimelineEvent(id: number): OpsTimelineEvent {
+function buildActivityEvent(id: number): OpsActivityEvent {
   return {
     id,
     source: 'ops',
@@ -55,10 +55,10 @@ describe('opsQueryCache', () => {
     expect(OPS_STORAGE_STATS_QUERY_KEY).toEqual(['ops', 'storage-stats'])
   })
 
-  it('builds normalized timeline query key', () => {
-    expect(opsTimelineQueryKey('  service  ', ' WARN ')).toEqual([
+  it('builds normalized activity query key', () => {
+    expect(opsActivityQueryKey('  service  ', ' WARN ')).toEqual([
       'ops',
-      'timeline',
+      'activity',
       'service',
       'warn',
     ])
@@ -76,16 +76,16 @@ describe('opsQueryCache', () => {
     expect(isOpsWsMessage(null)).toBe(false)
   })
 
-  it('prepends timeline event and deduplicates by id', () => {
-    const first = buildTimelineEvent(1)
-    const second = buildTimelineEvent(2)
+  it('prepends activity event and deduplicates by id', () => {
+    const first = buildActivityEvent(1)
+    const second = buildActivityEvent(2)
     const updatedFirst = { ...first, message: 'updated' }
 
     expect(
-      prependOpsTimelineEvent([first], second).map((item) => item.id),
+      prependOpsActivityEvent([first], second).map((item) => item.id),
     ).toEqual([2, 1])
     expect(
-      prependOpsTimelineEvent([first, second], updatedFirst).map(
+      prependOpsActivityEvent([first, second], updatedFirst).map(
         (item) => item.message,
       ),
     ).toEqual(['updated', 'event-2'])
