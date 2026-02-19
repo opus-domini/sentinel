@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import SideRail from '@/components/SideRail'
+import { LayoutContext } from '@/contexts/LayoutContext'
 
 vi.mock('@/components/TooltipHelper', () => ({
   TooltipHelper: ({ children }: { children: ReactNode }) => children,
@@ -25,10 +26,24 @@ vi.mock('@/components/settings/SettingsDialog', () => ({
   default: () => null,
 }))
 
+const layoutValue = {
+  sidebarOpen: false,
+  setSidebarOpen: () => {},
+  sidebarCollapsed: false,
+  setSidebarCollapsed: () => {},
+  settingsOpen: false,
+  setSettingsOpen: () => {},
+  shellStyle: {},
+  layoutGridClass: '',
+  startSidebarResize: () => {},
+}
+
 describe('SideRail', () => {
   it('keeps desktop side rail icon-only with accessible labels', () => {
     const { container } = render(
-      <SideRail sidebarCollapsed={false} onToggleSidebarCollapsed={() => {}} />,
+      <LayoutContext.Provider value={layoutValue}>
+        <SideRail sidebarCollapsed={false} onToggleSidebarCollapsed={() => {}} />
+      </LayoutContext.Provider>,
     )
 
     const aside = container.querySelector('aside')
