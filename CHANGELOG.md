@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.10](https://github.com/opus-domini/sentinel/compare/v0.3.9...v0.3.10) (2026-02-18)
+
+
+### Bug Fixes
+
+* bump Go to 1.25.7 to resolve stdlib vulnerabilities ([aa9224b](https://github.com/opus-domini/sentinel/commit/aa9224b14447db88f6ad9d5d7aef620fff8b85b6))
+
+
+### Refactors
+
+* gold standard audit — security, code quality, CI, frontend, tests, and API consistency ([28a3128](https://github.com/opus-domini/sentinel/commit/28a3128c3d688f5b5921352cf8dede3b90bc2c8f))
+
+
+### CI
+
+* bump GitHub Actions to latest major versions ([7b5259d](https://github.com/opus-domini/sentinel/commit/7b5259d130138c6e3d13c0641d3bc876775101a4))
+
 ## [0.3.9](https://github.com/opus-domini/sentinel/compare/v0.3.8...v0.3.9) (2026-02-18)
 
 
