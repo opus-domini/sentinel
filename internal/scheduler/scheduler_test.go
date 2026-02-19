@@ -25,7 +25,7 @@ func TestNew_DefaultTickInterval(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
 
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 	if svc.opts.TickInterval != defaultTickInterval {
 		t.Fatalf("expected %v, got %v", defaultTickInterval, svc.opts.TickInterval)
 	}
@@ -35,7 +35,7 @@ func TestNew_CustomTickInterval(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
 
-	svc := New(st, Options{TickInterval: 10 * time.Second})
+	svc := New(st, st, Options{TickInterval: 10 * time.Second})
 	if svc.opts.TickInterval != 10*time.Second {
 		t.Fatalf("expected 10s, got %v", svc.opts.TickInterval)
 	}
@@ -45,7 +45,7 @@ func TestNew_NegativeTickInterval(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
 
-	svc := New(st, Options{TickInterval: -1 * time.Second})
+	svc := New(st, st, Options{TickInterval: -1 * time.Second})
 	if svc.opts.TickInterval != defaultTickInterval {
 		t.Fatalf("expected default %v, got %v", defaultTickInterval, svc.opts.TickInterval)
 	}
@@ -54,7 +54,7 @@ func TestNew_NegativeTickInterval(t *testing.T) {
 func TestComputeNextRun_CronAdvances(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	sched := store.OpsSchedule{
 		ScheduleType: "cron",
@@ -82,7 +82,7 @@ func TestComputeNextRun_CronAdvances(t *testing.T) {
 func TestComputeNextRun_OnceDisables(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	sched := store.OpsSchedule{
 		ScheduleType: "once",
@@ -100,7 +100,7 @@ func TestComputeNextRun_OnceDisables(t *testing.T) {
 func TestComputeNextRun_InvalidCron(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	sched := store.OpsSchedule{
 		ScheduleType: "cron",
@@ -120,7 +120,7 @@ func TestComputeNextRun_InvalidCron(t *testing.T) {
 func TestComputeNextRun_InvalidTimezone(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	sched := store.OpsSchedule{
 		ScheduleType: "cron",
@@ -141,7 +141,7 @@ func TestComputeNextRun_InvalidTimezone(t *testing.T) {
 func TestTick_NoDueSchedules(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	ctx := context.Background()
 
@@ -161,7 +161,7 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
 	hub := events.NewHub()
-	svc := New(st, Options{EventHub: hub})
+	svc := New(st, st, Options{EventHub: hub})
 
 	ctx := context.Background()
 
@@ -210,7 +210,7 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 func TestTick_FutureScheduleNotTriggered(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	ctx := context.Background()
 
@@ -251,7 +251,7 @@ func TestCatchUpMissedRuns_WithinWindow(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
 	hub := events.NewHub()
-	svc := New(st, Options{EventHub: hub})
+	svc := New(st, st, Options{EventHub: hub})
 
 	ctx := context.Background()
 
@@ -294,7 +294,7 @@ func TestCatchUpMissedRuns_WithinWindow(t *testing.T) {
 func TestCatchUpMissedRuns_BeyondWindow(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	ctx := context.Background()
 
@@ -358,7 +358,7 @@ func TestCatchUpMissedRuns_BeyondWindow(t *testing.T) {
 func TestCatchUpMissedRuns_DisabledScheduleSkipped(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	ctx := context.Background()
 
@@ -398,7 +398,7 @@ func TestCatchUpMissedRuns_DisabledScheduleSkipped(t *testing.T) {
 func TestCatchUpMissedRuns_OnceScheduleBeyondWindowDisabled(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{})
+	svc := New(st, st, Options{})
 
 	ctx := context.Background()
 
@@ -446,7 +446,7 @@ func TestPublish_NilHub(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
 
-	svc := New(st, Options{EventHub: nil})
+	svc := New(st, st, Options{EventHub: nil})
 	// Should not panic.
 	svc.publish("test.event", map[string]any{"key": "value"})
 }
@@ -462,7 +462,7 @@ func TestPublish_NilService(t *testing.T) {
 func TestStartStop(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
-	svc := New(st, Options{TickInterval: 100 * time.Millisecond})
+	svc := New(st, st, Options{TickInterval: 100 * time.Millisecond})
 
 	ctx := context.Background()
 

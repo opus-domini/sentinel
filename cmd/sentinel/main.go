@@ -105,7 +105,7 @@ func serve() int {
 	}, 0)
 	healthChecker.Start(context.Background())
 
-	schedulerService := scheduler.New(st, scheduler.Options{
+	schedulerService := scheduler.New(st, st, scheduler.Options{
 		TickInterval: 5 * time.Second,
 		EventHub:     eventHub,
 	})

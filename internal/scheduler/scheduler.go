@@ -18,6 +18,13 @@ const (
 	catchUpWindow       = 24 * time.Hour
 )
 
+type schedulerRepo interface {
+	ListDueSchedules(ctx context.Context, now time.Time) ([]store.OpsSchedule, error)
+	ListOpsSchedules(ctx context.Context) ([]store.OpsSchedule, error)
+	CreateOpsRunbookRun(ctx context.Context, runbookID string, now time.Time) (store.OpsRunbookRun, error)
+	UpdateScheduleAfterRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
+}
+
 // Options configures the scheduler service.
 type Options struct {
 	TickInterval time.Duration
@@ -26,22 +33,24 @@ type Options struct {
 
 // Service runs scheduled runbook executions on a tick loop.
 type Service struct {
-	store     *store.Store
-	opts      Options
-	startOnce sync.Once
-	stopOnce  sync.Once
-	stopFn    context.CancelFunc
-	doneCh    chan struct{}
+	repo        schedulerRepo
+	runbookRepo runbook.Repo
+	opts        Options
+	startOnce   sync.Once
+	stopOnce    sync.Once
+	stopFn      context.CancelFunc
+	doneCh      chan struct{}
 }
 
 // New creates a scheduler service.
-func New(st *store.Store, opts Options) *Service {
+func New(r schedulerRepo, rr runbook.Repo, opts Options) *Service {
 	if opts.TickInterval <= 0 {
 		opts.TickInterval = defaultTickInterval
 	}
 	return &Service{
-		store: st,
-		opts:  opts,
+		repo:        r,
+		runbookRepo: rr,
+		opts:        opts,
 	}
 }
 
@@ -95,7 +104,7 @@ func (s *Service) Stop(ctx context.Context) {
 
 func (s *Service) tick(ctx context.Context) {
 	now := time.Now().UTC()
-	due, err := s.store.ListDueSchedules(ctx, now)
+	due, err := s.repo.ListDueSchedules(ctx, now)
 	if err != nil {
 		slog.Warn("scheduler list due schedules failed", "err", err)
 		return
@@ -106,7 +115,7 @@ func (s *Service) tick(ctx context.Context) {
 }
 
 func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedule, now time.Time) {
-	job, err := s.store.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
+	job, err := s.repo.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
 	if err != nil {
 		slog.Warn("scheduler create run failed", "schedule", sched.ID, "runbook", sched.RunbookID, "err", err)
 		return
@@ -117,7 +126,7 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 	// Compute next run and whether to disable.
 	nextRunAt, enabled := s.computeNextRun(sched)
 
-	if err := s.store.UpdateScheduleAfterRun(ctx, sched.ID, now.Format(time.RFC3339), "running", nextRunAt, enabled); err != nil {
+	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, now.Format(time.RFC3339), "running", nextRunAt, enabled); err != nil {
 		slog.Warn("scheduler update after run failed", "schedule", sched.ID, "err", err)
 	}
 
@@ -131,7 +140,7 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 }
 
 func (s *Service) executeRunbook(job store.OpsRunbookRun, scheduleID string) {
-	runbook.Run(s.store, s.emitEvent, runbook.RunParams{
+	runbook.Run(s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
 		Source:      "scheduler",
 		StepTimeout: stepTimeout,
@@ -140,7 +149,7 @@ func (s *Service) executeRunbook(job store.OpsRunbookRun, scheduleID string) {
 		},
 		OnFinish: func(ctx context.Context, status string) {
 			finished := time.Now().UTC()
-			if err := s.store.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, "", true); err != nil {
+			if err := s.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, "", true); err != nil {
 				slog.Warn("scheduler: update schedule after run", "err", err)
 			}
 			s.publish(events.TypeScheduleUpdated, map[string]any{
@@ -179,7 +188,7 @@ func (s *Service) computeNextRun(sched store.OpsSchedule) (string, bool) {
 
 func (s *Service) catchUpMissedRuns(ctx context.Context) {
 	now := time.Now().UTC()
-	schedules, err := s.store.ListOpsSchedules(ctx)
+	schedules, err := s.repo.ListOpsSchedules(ctx)
 	if err != nil {
 		slog.Warn("scheduler catch-up list failed", "err", err)
 		return
@@ -211,7 +220,7 @@ func (s *Service) catchUpMissedRuns(ctx context.Context) {
 func (s *Service) recomputeNextRun(ctx context.Context, sched store.OpsSchedule) {
 	if sched.ScheduleType == "once" {
 		// One-time schedule that's past due and beyond catch-up: disable it.
-		if err := s.store.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); err != nil {
+		if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); err != nil {
 			slog.Warn("scheduler: disable one-time schedule", "schedule", sched.ID, "err", err)
 		}
 		return
@@ -227,7 +236,7 @@ func (s *Service) recomputeNextRun(ctx context.Context, sched store.OpsSchedule)
 		return
 	}
 	nextRun := cronSched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
-	if err := s.store.UpdateScheduleAfterRun(ctx, sched.ID, sched.LastRunAt, sched.LastRunStatus, nextRun, true); err != nil {
+	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, sched.LastRunAt, sched.LastRunStatus, nextRun, true); err != nil {
 		slog.Warn("scheduler: recompute next run", "schedule", sched.ID, "err", err)
 	}
 }

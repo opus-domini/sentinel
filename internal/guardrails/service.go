@@ -28,8 +28,15 @@ type Decision struct {
 	MatchedRules   []store.GuardrailRule `json:"matchedRules"`
 }
 
+type repo interface {
+	ListGuardrailRules(ctx context.Context) ([]store.GuardrailRule, error)
+	UpsertGuardrailRule(ctx context.Context, rule store.GuardrailRuleWrite) error
+	ListGuardrailAudit(ctx context.Context, limit int) ([]store.GuardrailAudit, error)
+	InsertGuardrailAudit(ctx context.Context, audit store.GuardrailAuditWrite) (int64, error)
+}
+
 type Service struct {
-	store *store.Store
+	repo repo
 }
 
 type evaluatedSelection struct {
@@ -39,8 +46,8 @@ type evaluatedSelection struct {
 	matched []store.GuardrailRule
 }
 
-func New(st *store.Store) *Service {
-	return &Service{store: st}
+func New(r repo) *Service {
+	return &Service{repo: r}
 }
 
 func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
@@ -48,11 +55,11 @@ func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
 		Mode:    store.GuardrailModeAllow,
 		Allowed: true,
 	}
-	if s == nil || s.store == nil {
+	if s == nil || s.repo == nil {
 		return defaultDecision, nil
 	}
 
-	rules, err := s.store.ListGuardrailRules(ctx)
+	rules, err := s.repo.ListGuardrailRules(ctx)
 	if err != nil {
 		return Decision{}, err
 	}
@@ -163,28 +170,28 @@ func defaultDecisionMessage(mode string) string {
 }
 
 func (s *Service) ListRules(ctx context.Context) ([]store.GuardrailRule, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.repo == nil {
 		return []store.GuardrailRule{}, nil
 	}
-	return s.store.ListGuardrailRules(ctx)
+	return s.repo.ListGuardrailRules(ctx)
 }
 
 func (s *Service) UpsertRule(ctx context.Context, rule store.GuardrailRuleWrite) error {
-	if s == nil || s.store == nil {
+	if s == nil || s.repo == nil {
 		return nil
 	}
-	return s.store.UpsertGuardrailRule(ctx, rule)
+	return s.repo.UpsertGuardrailRule(ctx, rule)
 }
 
 func (s *Service) ListAudit(ctx context.Context, limit int) ([]store.GuardrailAudit, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.repo == nil {
 		return []store.GuardrailAudit{}, nil
 	}
-	return s.store.ListGuardrailAudit(ctx, limit)
+	return s.repo.ListGuardrailAudit(ctx, limit)
 }
 
 func (s *Service) RecordAudit(ctx context.Context, input Input, decision Decision, override bool, reason string) error {
-	if s == nil || s.store == nil {
+	if s == nil || s.repo == nil {
 		return nil
 	}
 	metadata := map[string]any{
@@ -192,7 +199,7 @@ func (s *Service) RecordAudit(ctx context.Context, input Input, decision Decisio
 		"mode":         decision.Mode,
 	}
 	metadataRaw, _ := json.Marshal(metadata)
-	_, err := s.store.InsertGuardrailAudit(ctx, store.GuardrailAuditWrite{
+	_, err := s.repo.InsertGuardrailAudit(ctx, store.GuardrailAuditWrite{
 		RuleID:      strings.TrimSpace(decision.MatchedRuleID),
 		Decision:    decision.Mode,
 		Action:      strings.TrimSpace(input.Action),

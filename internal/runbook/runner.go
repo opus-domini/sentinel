@@ -11,6 +11,14 @@ import (
 	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
+// Repo defines the store operations consumed by the runbook runner.
+type Repo interface {
+	UpdateOpsRunbookRun(ctx context.Context, update store.OpsRunbookRunUpdate) (store.OpsRunbookRun, error)
+	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
+	GetOpsRunbookRun(ctx context.Context, id string) (store.OpsRunbookRun, error)
+	InsertTimelineEvent(ctx context.Context, event timeline.EventWrite) (timeline.Event, error)
+}
+
 // EmitFunc publishes a real-time event to connected clients.
 type EmitFunc func(eventType string, payload map[string]any)
 
@@ -44,7 +52,7 @@ const (
 //
 // Run is designed to be called in a goroutine. It creates its own context
 // with a 5-minute timeout.
-func Run(st *store.Store, emit EmitFunc, params RunParams) {
+func Run(repo Repo, emit EmitFunc, params RunParams) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -52,7 +60,7 @@ func Run(st *store.Store, emit EmitFunc, params RunParams) {
 	now := time.Now().UTC()
 
 	// Mark as running (best-effort).
-	runningJob, err := st.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+	runningJob, err := repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          job.ID,
 		Status:         runnerStatusRunning,
 		CompletedSteps: 0,
@@ -68,9 +76,9 @@ func Run(st *store.Store, emit EmitFunc, params RunParams) {
 	})
 
 	// Fetch runbook steps.
-	rb, err := st.GetOpsRunbook(ctx, job.RunbookID)
+	rb, err := repo.GetOpsRunbook(ctx, job.RunbookID)
 	if err != nil {
-		finishRun(ctx, st, emit, params, 0, "", err.Error(), "[]")
+		finishRun(ctx, repo, emit, params, 0, "", err.Error(), "[]")
 		return
 	}
 	steps := make([]Step, len(rb.Steps))
@@ -104,7 +112,7 @@ func Run(st *store.Store, emit EmitFunc, params RunParams) {
 		if marshalErr != nil {
 			slog.Warn("runbook runner: failed to marshal step results", "err", marshalErr)
 		}
-		updated, updateErr := st.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+		updated, updateErr := repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 			RunID:          job.ID,
 			Status:         runnerStatusRunning,
 			CompletedSteps: completed,
@@ -136,17 +144,17 @@ func Run(st *store.Store, emit EmitFunc, params RunParams) {
 		slog.Warn("runbook runner: failed to marshal final step results", "err", marshalErr)
 	}
 
-	finishRun(ctx, st, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON))
+	finishRun(ctx, repo, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON))
 }
 
-func finishRun(ctx context.Context, st *store.Store, emit EmitFunc, params RunParams, completed int, lastStep, errMsg, stepResultsJSON string) {
+func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, completed int, lastStep, errMsg, stepResultsJSON string) {
 	status := runnerStatusSucceeded
 	if errMsg != "" {
 		status = runnerStatusFailed
 	}
 
 	finished := time.Now().UTC()
-	if _, err := st.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+	if _, err := repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          params.Job.ID,
 		Status:         status,
 		CompletedSteps: completed,
@@ -159,7 +167,7 @@ func finishRun(ctx context.Context, st *store.Store, emit EmitFunc, params RunPa
 	}
 
 	globalRev := finished.UnixMilli()
-	updatedJob, getErr := st.GetOpsRunbookRun(ctx, params.Job.ID)
+	updatedJob, getErr := repo.GetOpsRunbookRun(ctx, params.Job.ID)
 	if getErr != nil {
 		slog.Warn("runbook runner: failed to get finished run", "err", getErr)
 	}
@@ -184,7 +192,7 @@ func finishRun(ctx context.Context, st *store.Store, emit EmitFunc, params RunPa
 		slog.Warn("runbook runner: failed to marshal timeline metadata", "err", metaErr)
 	}
 
-	te, teErr := st.InsertTimelineEvent(ctx, timeline.EventWrite{
+	te, teErr := repo.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    params.Source,
 		EventType: "runbook." + status,
 		Severity:  severity,
