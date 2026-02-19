@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/alerts"
@@ -165,6 +166,12 @@ type Handler struct {
 	guardrails *guardrails.Service
 	version    string
 	configPath string
+
+	// runCtx is the parent context for fire-and-forget goroutines (runbook
+	// execution). Cancelled during Shutdown to signal in-flight runs.
+	runCtx    context.Context
+	runCancel context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 const (
@@ -194,7 +201,8 @@ func Register(
 	eventsHub *events.Hub,
 	version string,
 	configPath string,
-) {
+) *Handler {
+	runCtx, runCancel := context.WithCancel(context.Background())
 	h := &Handler{
 		guard:      guard,
 		tmux:       tmux.Service{},
@@ -206,6 +214,8 @@ func Register(
 		guardrails: guardrails.New(st),
 		version:    strings.TrimSpace(version),
 		configPath: configPath,
+		runCtx:     runCtx,
+		runCancel:  runCancel,
 	}
 	h.registerMetaRoutes(mux)
 	h.registerTmuxRoutes(mux)
@@ -217,6 +227,26 @@ func Register(
 	h.registerGuardrailsRoutes(mux)
 	h.registerSettingsRoutes(mux)
 	h.registerRecoveryRoutes(mux)
+	return h
+}
+
+// Shutdown cancels in-flight runbook goroutines and waits for them.
+func (h *Handler) Shutdown(ctx context.Context) {
+	if h == nil {
+		return
+	}
+	if h.runCancel != nil {
+		h.runCancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		h.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 }
 
 func (h *Handler) emit(eventType string, payload map[string]any) {

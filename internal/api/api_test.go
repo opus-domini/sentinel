@@ -335,12 +335,16 @@ func newTestHandler(t *testing.T, tm *mockTmux, sys *mockSysTerms) (*Handler, *s
 		tm = &mockTmux{}
 	}
 	_ = sys
+	runCtx, runCancel := context.WithCancel(context.Background())
+	t.Cleanup(runCancel)
 	return &Handler{
-		guard: guard,
-		tmux:  tm,
-		ops:   &mockOpsControlPlane{},
-		repo:  st,
-		orch:  &opsOrchestrator{repo: st},
+		guard:     guard,
+		tmux:      tm,
+		ops:       &mockOpsControlPlane{},
+		repo:      st,
+		orch:      &opsOrchestrator{repo: st},
+		runCtx:    runCtx,
+		runCancel: runCancel,
 	}, st
 }
 

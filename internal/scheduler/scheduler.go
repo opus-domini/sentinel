@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	defaultTickInterval = 5 * time.Second
-	stepTimeout         = 30 * time.Second
-	catchUpWindow       = 24 * time.Hour
+	defaultTickInterval  = 5 * time.Second
+	defaultMaxConcurrent = 5
+	stepTimeout          = 30 * time.Second
+	catchUpWindow        = 24 * time.Hour
 )
 
 type schedulerRepo interface {
@@ -27,8 +28,9 @@ type schedulerRepo interface {
 
 // Options configures the scheduler service.
 type Options struct {
-	TickInterval time.Duration
-	EventHub     *events.Hub
+	TickInterval  time.Duration
+	MaxConcurrent int
+	EventHub      *events.Hub
 }
 
 // Service runs scheduled runbook executions on a tick loop.
@@ -40,6 +42,13 @@ type Service struct {
 	stopOnce    sync.Once
 	stopFn      context.CancelFunc
 	doneCh      chan struct{}
+
+	// runCtx is the parent context for all spawned runbook goroutines.
+	// Cancelled on Stop to signal in-flight runs.
+	runCtx    context.Context
+	runCancel context.CancelFunc
+	sem       chan struct{}
+	wg        sync.WaitGroup
 }
 
 // New creates a scheduler service.
@@ -47,10 +56,18 @@ func New(r schedulerRepo, rr runbook.Repo, opts Options) *Service {
 	if opts.TickInterval <= 0 {
 		opts.TickInterval = defaultTickInterval
 	}
+	maxConc := opts.MaxConcurrent
+	if maxConc <= 0 {
+		maxConc = defaultMaxConcurrent
+	}
+	runCtx, runCancel := context.WithCancel(context.Background())
 	return &Service{
 		repo:        r,
 		runbookRepo: rr,
 		opts:        opts,
+		sem:         make(chan struct{}, maxConc),
+		runCtx:      runCtx,
+		runCancel:   runCancel,
 	}
 }
 
@@ -63,6 +80,10 @@ func (s *Service) Start(parent context.Context) {
 		ctx, cancel := context.WithCancel(parent)
 		s.stopFn = cancel
 		s.doneCh = make(chan struct{})
+		// Replace default runCtx with one derived from the parent so
+		// that cancellation of the parent propagates to in-flight runs.
+		s.runCancel()
+		s.runCtx, s.runCancel = context.WithCancel(parent)
 
 		go func() {
 			defer close(s.doneCh)
@@ -83,7 +104,8 @@ func (s *Service) Start(parent context.Context) {
 	})
 }
 
-// Stop gracefully stops the scheduler service.
+// Stop gracefully stops the scheduler service. It cancels the tick loop,
+// signals in-flight runbook goroutines to stop, and waits for them.
 func (s *Service) Stop(ctx context.Context) {
 	if s == nil {
 		return
@@ -92,11 +114,25 @@ func (s *Service) Stop(ctx context.Context) {
 		if s.stopFn != nil {
 			s.stopFn()
 		}
+		if s.runCancel != nil {
+			s.runCancel()
+		}
 		if s.doneCh == nil {
 			return
 		}
+		// Wait for tick loop.
 		select {
 		case <-s.doneCh:
+		case <-ctx.Done():
+		}
+		// Wait for in-flight runbook goroutines.
+		done := make(chan struct{})
+		go func() {
+			s.wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
 		case <-ctx.Done():
 		}
 	})
@@ -136,11 +172,22 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		"jobId":    job.ID,
 	})
 
-	go s.executeRunbook(job, sched.ID)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		// Acquire semaphore (backpressure).
+		select {
+		case s.sem <- struct{}{}:
+			defer func() { <-s.sem }()
+		case <-s.runCtx.Done():
+			return
+		}
+		s.executeRunbook(s.runCtx, job, sched.ID)
+	}()
 }
 
-func (s *Service) executeRunbook(job store.OpsRunbookRun, scheduleID string) {
-	runbook.Run(s.runbookRepo, s.emitEvent, runbook.RunParams{
+func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string) {
+	runbook.Run(ctx, s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
 		Source:      "scheduler",
 		StepTimeout: stepTimeout,

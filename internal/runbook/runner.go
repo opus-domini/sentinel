@@ -33,6 +33,10 @@ type RunParams struct {
 	// StepTimeout is the per-step execution timeout.
 	StepTimeout time.Duration
 
+	// RunTimeout is the maximum wall-clock duration for the entire run.
+	// Defaults to 5 minutes if zero.
+	RunTimeout time.Duration
+
 	// ExtraMetadata is merged into timeline event metadata on completion.
 	ExtraMetadata map[string]string
 
@@ -46,14 +50,21 @@ const (
 	runnerStatusFailed    = "failed"
 )
 
+const defaultRunTimeout = 5 * time.Minute
+
 // Run executes a runbook run to completion. It marks the run as running,
 // fetches steps, executes them with progress updates, and records the
 // final result including a timeline event.
 //
-// Run is designed to be called in a goroutine. It creates its own context
-// with a 5-minute timeout.
-func Run(repo Repo, emit EmitFunc, params RunParams) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+// The provided ctx controls cancellation — when the caller cancels (e.g.
+// on server shutdown), in-flight execution is aborted. A run-level timeout
+// (RunParams.RunTimeout, default 5 min) is composed on top of ctx.
+func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
+	runTimeout := params.RunTimeout
+	if runTimeout <= 0 {
+		runTimeout = defaultRunTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
 
 	job := params.Job

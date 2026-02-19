@@ -133,6 +133,11 @@ type Service struct {
 	stopFn    context.CancelFunc
 	doneCh    chan struct{}
 
+	// runCtx is the parent context for restore-job goroutines.
+	runCtx    context.Context
+	runCancel context.CancelFunc
+	wg        sync.WaitGroup
+
 	collectMu sync.Mutex
 }
 
@@ -163,6 +168,7 @@ func (s *Service) Start(parent context.Context) {
 		ctx, cancel := context.WithCancel(parent)
 		s.stopFn = cancel
 		s.doneCh = make(chan struct{})
+		s.runCtx, s.runCancel = context.WithCancel(parent)
 
 		go func() {
 			defer close(s.doneCh)
@@ -193,11 +199,25 @@ func (s *Service) Stop(ctx context.Context) {
 		if s.stopFn != nil {
 			s.stopFn()
 		}
+		if s.runCancel != nil {
+			s.runCancel()
+		}
 		if s.doneCh == nil {
 			return
 		}
+		// Wait for collect loop.
 		select {
 		case <-s.doneCh:
+		case <-ctx.Done():
+		}
+		// Wait for in-flight restore goroutines.
+		done := make(chan struct{})
+		go func() {
+			s.wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
 		case <-ctx.Done():
 		}
 	})
@@ -635,13 +655,17 @@ func (s *Service) RestoreSnapshotAsync(ctx context.Context, snapshotID int64, op
 		return store.RecoveryJob{}, err
 	}
 
-	go s.runRestoreJob(jobID, view.Payload, options, target)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.runRestoreJob(s.runCtx, jobID, view.Payload, options, target)
+	}()
 
 	return job, nil
 }
 
-func (s *Service) runRestoreJob(jobID string, snap SessionSnapshot, options RestoreOptions, requestedTarget string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+func (s *Service) runRestoreJob(parent context.Context, jobID string, snap SessionSnapshot, options RestoreOptions, requestedTarget string) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Minute)
 	defer cancel()
 
 	updateFailure := func(message string) {

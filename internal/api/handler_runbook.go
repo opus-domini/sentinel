@@ -75,7 +75,11 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Launch async execution.
-	go h.executeRunbookAsync(job)
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		h.executeRunbookAsync(h.runCtx, job)
+	}()
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsJob, map[string]any{
@@ -94,8 +98,8 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) executeRunbookAsync(job store.OpsRunbookRun) {
-	runbook.Run(h.repo, h.emitEvent, runbook.RunParams{
+func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookRun) {
+	runbook.Run(ctx, h.repo, h.emitEvent, runbook.RunParams{
 		Job:           job,
 		Source:        "runbook",
 		StepTimeout:   30 * time.Second,

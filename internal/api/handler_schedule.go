@@ -261,7 +261,11 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	// Update schedule last run info.
 	_ = h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", sched.NextRunAt, sched.Enabled)
 
-	go h.executeRunbookAsync(job)
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		h.executeRunbookAsync(h.runCtx, job)
+	}()
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsJob, map[string]any{

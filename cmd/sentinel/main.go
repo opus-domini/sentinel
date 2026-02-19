@@ -121,9 +121,12 @@ func serve() int {
 	go startTimelineTicker(timelineCtx, st, eventHub)
 
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
-	api.Register(mux, guard, st, opsManager, recoveryService, eventHub, currentVersion(), configPath)
+	apiHandler := api.Register(mux, guard, st, opsManager, recoveryService, eventHub, currentVersion(), configPath)
 
 	exitCode := run(cfg, mux)
+	apiShutdownCtx, cancelAPI := context.WithTimeout(context.Background(), 5*time.Second)
+	apiHandler.Shutdown(apiShutdownCtx)
+	cancelAPI()
 	stopTimeline()
 	stopAlerts()
 	stopMetrics()
