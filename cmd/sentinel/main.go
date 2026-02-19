@@ -33,22 +33,12 @@ func serve() int {
 	cfg := config.Load()
 	initLogger(cfg.LogLevel)
 
-	if err := security.ValidateRemoteExposure(cfg.ListenAddr, cfg.Token, cfg.AllowedOrigins); err != nil {
-		if errors.Is(err, security.ErrRemoteToken) {
-			slog.Error("security baseline check failed",
-				"listen", cfg.ListenAddr,
-				"token_required", cfg.Token != "",
-				"allowed_origins", len(cfg.AllowedOrigins),
-				"err", err,
-			)
-			return 1
-		}
-		slog.Warn("security baseline warning",
-			"listen", cfg.ListenAddr,
-			"token_required", cfg.Token != "",
-			"allowed_origins", len(cfg.AllowedOrigins),
-			"err", err,
-		)
+	if err := security.ValidateRemoteExposure(cfg.ListenAddr, cfg.Token); err != nil {
+		slog.Error("security: token is required for remote listen address", "listen", cfg.ListenAddr)
+		return 1
+	}
+	if security.ExposesBeyondLoopback(cfg.ListenAddr) && !security.HasAllowedOrigins(cfg.AllowedOrigins) {
+		slog.Warn("consider setting allowed_origins to restrict cross-origin access", "listen", cfg.ListenAddr)
 	}
 
 	guard := security.New(cfg.Token, cfg.AllowedOrigins)
@@ -175,19 +165,20 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 		}
 	}()
 
-	slog.Info("sentinel started",
-		"listen", cfg.ListenAddr,
-		"data_dir", cfg.DataDir,
-		"token_required", cfg.Token != "",
-		"log_level", cfg.LogLevel,
-		"watchtower_enabled", cfg.Watchtower.Enabled,
-		"watchtower_tick", cfg.Watchtower.TickInterval.String(),
-		"watchtower_capture_lines", cfg.Watchtower.CaptureLines,
-		"watchtower_capture_timeout", cfg.Watchtower.CaptureTimeout.String(),
-		"watchtower_journal_rows", cfg.Watchtower.JournalRows,
-		"recovery_enabled", cfg.Recovery.Enabled,
-		"recovery_interval", cfg.Recovery.SnapshotInterval.String(),
-	)
+	slog.Info("sentinel starting", "version", currentVersion(), "listen", cfg.ListenAddr, "data_dir", cfg.DataDir)
+	slog.Info("security", "token_required", cfg.Token != "", "allowed_origins", len(cfg.AllowedOrigins))
+
+	if cfg.Watchtower.Enabled {
+		slog.Info("watchtower enabled", "tick", cfg.Watchtower.TickInterval, "capture_lines", cfg.Watchtower.CaptureLines)
+	} else {
+		slog.Info("watchtower disabled")
+	}
+
+	if cfg.Recovery.Enabled {
+		slog.Info("recovery enabled", "interval", cfg.Recovery.SnapshotInterval)
+	} else {
+		slog.Info("recovery disabled")
+	}
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("server error", "err", err)
 		return 1

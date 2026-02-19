@@ -298,50 +298,37 @@ func TestValidateRemoteExposure(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		listenAddr     string
-		token          string
-		allowedOrigins []string
-		wantErr        error
+		name       string
+		listenAddr string
+		token      string
+		wantErr    error
 	}{
 		{
-			name:           "localhost without token is allowed",
-			listenAddr:     "127.0.0.1:4040",
-			token:          "",
-			allowedOrigins: nil,
+			name:       "localhost without token is allowed",
+			listenAddr: "127.0.0.1:4040",
+			token:      "",
 		},
 		{
-			name:           "localhost hostname is allowed",
-			listenAddr:     "localhost:4040",
-			token:          "",
-			allowedOrigins: nil,
+			name:       "localhost hostname is allowed",
+			listenAddr: "localhost:4040",
+			token:      "",
 		},
 		{
-			name:           "all interfaces requires token and origin",
-			listenAddr:     ":4040",
-			token:          "",
-			allowedOrigins: nil,
-			wantErr:        ErrRemoteToken,
+			name:       "all interfaces requires token",
+			listenAddr: ":4040",
+			token:      "",
+			wantErr:    ErrRemoteToken,
 		},
 		{
-			name:           "remote ip requires token and origin",
-			listenAddr:     "192.168.1.12:4040",
-			token:          "",
-			allowedOrigins: []string{},
-			wantErr:        ErrRemoteToken,
+			name:       "remote ip requires token",
+			listenAddr: "192.168.1.12:4040",
+			token:      "",
+			wantErr:    ErrRemoteToken,
 		},
 		{
-			name:           "remote with token only still invalid",
-			listenAddr:     "0.0.0.0:4040",
-			token:          "secret",
-			allowedOrigins: nil,
-			wantErr:        ErrRemoteOrigin,
-		},
-		{
-			name:           "remote with token and origin is valid",
-			listenAddr:     "0.0.0.0:4040",
-			token:          "secret",
-			allowedOrigins: []string{"https://sentinel.example.com"},
+			name:       "remote with token only is valid",
+			listenAddr: "0.0.0.0:4040",
+			token:      "secret",
 		},
 	}
 
@@ -349,7 +336,7 @@ func TestValidateRemoteExposure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateRemoteExposure(tt.listenAddr, tt.token, tt.allowedOrigins)
+			err := ValidateRemoteExposure(tt.listenAddr, tt.token)
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Fatalf("ValidateRemoteExposure() unexpected error = %v", err)

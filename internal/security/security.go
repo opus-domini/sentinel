@@ -15,7 +15,6 @@ var (
 	ErrUnauthorized = errors.New("unauthorized")
 	ErrOriginDenied = errors.New("origin denied")
 	ErrRemoteToken  = errors.New("token is required for non-loopback listen address")
-	ErrRemoteOrigin = errors.New("allowed origins are required for non-loopback listen address")
 )
 
 type Guard struct {
@@ -136,25 +135,18 @@ func decodeBase64URL(s string) (string, error) {
 
 // ValidateRemoteExposure enforces the minimum security baseline when Sentinel is
 // configured to listen on a non-loopback address.
-func ValidateRemoteExposure(listenAddr, token string, allowedOrigins []string) error {
-	if !exposesBeyondLoopback(listenAddr) {
+func ValidateRemoteExposure(listenAddr, token string) error {
+	if !ExposesBeyondLoopback(listenAddr) {
 		return nil
 	}
-
-	var issues []error
 	if strings.TrimSpace(token) == "" {
-		issues = append(issues, ErrRemoteToken)
+		return ErrRemoteToken
 	}
-	if !hasNonEmptyOrigin(allowedOrigins) {
-		issues = append(issues, ErrRemoteOrigin)
-	}
-	if len(issues) == 0 {
-		return nil
-	}
-	return errors.Join(issues...)
+	return nil
 }
 
-func hasNonEmptyOrigin(origins []string) bool {
+// HasAllowedOrigins reports whether at least one non-empty origin is configured.
+func HasAllowedOrigins(origins []string) bool {
 	for _, origin := range origins {
 		if strings.TrimSpace(origin) != "" {
 			return true
@@ -163,7 +155,8 @@ func hasNonEmptyOrigin(origins []string) bool {
 	return false
 }
 
-func exposesBeyondLoopback(listenAddr string) bool {
+// ExposesBeyondLoopback reports whether listenAddr is reachable from outside the host.
+func ExposesBeyondLoopback(listenAddr string) bool {
 	host := listenHost(listenAddr)
 	if host == "" {
 		return true
