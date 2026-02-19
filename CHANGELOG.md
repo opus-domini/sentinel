@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.11](https://github.com/opus-domini/sentinel/compare/v0.3.10...v0.3.11) (2026-02-19)
+
+
+### Bug Fixes
+
+* simplify remote security validation and improve startup logs ([d5f9886](https://github.com/opus-domini/sentinel/commit/d5f9886e0dd7ed7f889efbee895ccb93b613ae93))
+* simplify remote security validation and improve startup logs ([df73c21](https://github.com/opus-domini/sentinel/commit/df73c21f73581c1cbccb50104a521ab1dbb6351a))
+
 ## [0.3.10](https://github.com/opus-domini/sentinel/compare/v0.3.9...v0.3.10) (2026-02-18)
 
 
