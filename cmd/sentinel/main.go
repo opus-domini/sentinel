@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -341,6 +344,16 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 // and net/http can discover interfaces like http.Hijacker.
 func (r *statusRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
+}
+
+// Hijack implements http.Hijacker so that direct type assertions
+// (e.g. w.(http.Hijacker)) work through the wrapper. This is required
+// for WebSocket upgrade in internal/ws which uses a direct assertion.
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := r.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
 }
 
 func (r *statusRecorder) ServeHTTP(next http.Handler, req *http.Request) {
