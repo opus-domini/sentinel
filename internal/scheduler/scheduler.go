@@ -21,7 +21,6 @@ const (
 
 type schedulerRepo interface {
 	ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]store.OpsSchedule, error)
-	ListOpsSchedules(ctx context.Context) ([]store.OpsSchedule, error)
 	CreateOpsRunbookRun(ctx context.Context, runbookID string, now time.Time) (store.OpsRunbookRun, error)
 	UpdateScheduleAfterRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
 }
@@ -183,11 +182,11 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		case <-s.runCtx.Done():
 			return
 		}
-		s.executeRunbook(s.runCtx, job, sched.ID)
+		s.executeRunbook(s.runCtx, job, sched.ID, enabled)
 	}()
 }
 
-func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string) {
+func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string, finalEnabled bool) {
 	runbook.Run(ctx, s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
 		Source:      "scheduler",
@@ -197,7 +196,7 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 		},
 		OnFinish: func(ctx context.Context, status string) {
 			finished := time.Now().UTC()
-			if err := s.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, "", true); err != nil {
+			if err := s.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, "", finalEnabled); err != nil {
 				slog.Warn("scheduler: update schedule after run", "err", err)
 			}
 			s.publish(events.TypeScheduleUpdated, map[string]any{
@@ -236,26 +235,20 @@ func (s *Service) computeNextRun(sched store.OpsSchedule) (string, bool) {
 
 func (s *Service) catchUpMissedRuns(ctx context.Context) {
 	now := time.Now().UTC()
-	schedules, err := s.repo.ListOpsSchedules(ctx)
+	maxConc := cap(s.sem)
+	due, err := s.repo.ListDueSchedules(ctx, now, maxConc)
 	if err != nil {
 		slog.Warn("scheduler catch-up list failed", "err", err)
 		return
 	}
 
-	for _, sched := range schedules {
-		if !sched.Enabled || sched.NextRunAt == "" {
-			continue
-		}
+	for _, sched := range due {
 		nextRun, parseErr := time.Parse(time.RFC3339, sched.NextRunAt)
 		if parseErr != nil {
 			continue
 		}
-		if nextRun.After(now) {
-			continue
-		}
-		// Only catch up if within the 24-hour window.
+		// Too old; just recompute to the future.
 		if now.Sub(nextRun) > catchUpWindow {
-			// Too old; just recompute to the future.
 			s.recomputeNextRun(ctx, sched)
 			continue
 		}
