@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   Activity,
   Bell,
@@ -11,9 +10,9 @@ import {
   SquareTerminal,
 } from 'lucide-react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import SettingsDialog from '@/components/settings/SettingsDialog'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { useLayoutContext } from '@/contexts/LayoutContext'
 import { cn } from '@/lib/utils'
 
 type SideRailProps = {
@@ -27,7 +26,7 @@ export default function SideRail({
   onToggleSidebarCollapsed,
   showSidebarToggles = true,
 }: SideRailProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const { setSettingsOpen } = useLayoutContext()
 
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
@@ -135,7 +134,6 @@ export default function SideRail({
           </Button>
         </TooltipHelper>
       )}
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </aside>
   )
 }

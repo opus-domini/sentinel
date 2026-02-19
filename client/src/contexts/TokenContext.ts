@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 
 type TokenContextValue = {
-  token: string
+  authenticated: boolean
   setToken: (token: string) => void
 }
 

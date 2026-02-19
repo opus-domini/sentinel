@@ -8,13 +8,16 @@ export function formatUptime(totalSeconds: number): string {
 }
 
 export function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 B'
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1,
-  )
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
+  let size = bytes
+  let index = 0
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024
+    index += 1
+  }
+  const precision = size >= 100 || index === 0 ? 0 : 1
+  return `${size.toFixed(precision)} ${units[index]}`
 }
 
 export function toErrorMessage(error: unknown, fallback: string): string {

@@ -8,6 +8,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
+import { useToastContext } from '@/contexts/ToastContext'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import {
   createWebClipboardProvider,
@@ -61,7 +62,6 @@ type UseTerminalTmuxArgs = {
   openTabs: Array<string>
   activeSession: string
   activeEpoch: number
-  token: string
   sidebarCollapsed: boolean
   onAttachedMobile: () => void
   wsPath?: string
@@ -93,7 +93,6 @@ export function useTerminalTmux({
   openTabs,
   activeSession,
   activeEpoch,
-  token,
   sidebarCollapsed,
   onAttachedMobile,
   wsPath = '/ws/tmux',
@@ -112,6 +111,10 @@ export function useTerminalTmux({
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
+
+  const { pushToast } = useToastContext()
+  const pushToastRef = useRef(pushToast)
+  pushToastRef.current = pushToast
 
   const isMobile = useIsMobileLayout()
   const isMobileRef = useRef(isMobile)
@@ -342,7 +345,7 @@ export function useTerminalTmux({
         fitRuntime(runtime)
       }
 
-      void document.fonts.ready.then(openTerminal).catch(openTerminal)
+      void document.fonts.ready.then(openTerminal).catch(() => openTerminal())
     },
     [
       fitRuntime,
@@ -405,7 +408,7 @@ export function useTerminalTmux({
       wsURL.searchParams.set(wsQueryKey, runtime.session)
       const socket = new WebSocket(
         wsURL.toString().replace(/^http/, 'ws'),
-        buildWSProtocols(token),
+        buildWSProtocols(),
       )
       socket.binaryType = 'arraybuffer'
       runtime.socket = socket
@@ -498,7 +501,6 @@ export function useTerminalTmux({
       isSocketCurrent,
       onAttachedMobile,
       setRuntimeStatus,
-      token,
       wsPath,
       wsQueryKey,
     ],
@@ -586,6 +588,12 @@ export function useTerminalTmux({
         touchWheelDispose: { dispose: () => undefined },
         webglContextLossDispose: webglAddon.onContextLoss(() => {
           console.warn(`sentinel: webgl context lost (${session})`)
+          pushToastRef.current({
+            level: 'error',
+            title: 'WebGL context lost',
+            message:
+              'Terminal rendering was interrupted. Try reconnecting the session.',
+          })
         }),
         hostResizeObserver: null,
         hostResizeRafId: null,

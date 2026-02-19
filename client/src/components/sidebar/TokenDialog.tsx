@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 type TokenDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  token: string
+  authenticated: boolean
   onTokenChange: (value: string) => void
   tokenRequired: boolean
 }
@@ -22,15 +22,15 @@ type TokenDialogProps = {
 export default function TokenDialog({
   open,
   onOpenChange,
-  token,
+  authenticated,
   onTokenChange,
   tokenRequired,
 }: TokenDialogProps) {
-  const [draft, setDraft] = useState(token)
+  const [draft, setDraft] = useState('')
 
   function handleOpenChange(next: boolean) {
     if (next) {
-      setDraft(token)
+      setDraft('')
     }
     onOpenChange(next)
   }
@@ -45,27 +45,49 @@ export default function TokenDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>API token</DialogTitle>
+          <DialogTitle>Authentication token</DialogTitle>
           <DialogDescription>
             {tokenRequired
-              ? 'A token is required to access the server.'
-              : 'Set a bearer token for API authentication.'}
+              ? 'This server requires a token. The value is stored in an HttpOnly cookie.'
+              : 'Set a token in an HttpOnly cookie for this browser session.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <Input
-            placeholder={
-              tokenRequired ? 'token (required)' : 'token (optional)'
-            }
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            autoFocus
-          />
+          {authenticated && (
+            <p className="mb-3 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-2 text-[11px] text-emerald-200">
+              Authenticated
+            </p>
+          )}
+          {!authenticated && (
+            <Input
+              placeholder={tokenRequired ? 'token (required)' : 'token'}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              autoFocus
+            />
+          )}
           <DialogFooter className="mt-4">
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline">
+                {authenticated ? 'Close' : 'Cancel'}
+              </Button>
             </DialogClose>
-            <Button type="submit">Save</Button>
+            {authenticated ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  onTokenChange('')
+                  onOpenChange(false)
+                }}
+              >
+                Clear cookie
+              </Button>
+            ) : (
+              <Button type="submit" disabled={!draft.trim()}>
+                Save
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

@@ -9,7 +9,7 @@ type LogStreamTarget =
   | { kind: 'unit'; unit: string; scope: string; manager: string }
 
 type UseLogStreamOptions = {
-  token: string
+  authenticated: boolean
   tokenRequired: boolean
   target: LogStreamTarget | null
   enabled: boolean
@@ -17,7 +17,7 @@ type UseLogStreamOptions = {
 }
 
 export function useLogStream({
-  token,
+  authenticated,
   tokenRequired,
   target,
   enabled,
@@ -36,7 +36,7 @@ export function useLogStream({
       setConnectionState('disconnected')
       return
     }
-    if (tokenRequired && token.trim() === '') {
+    if (tokenRequired && !authenticated) {
       setConnectionState('disconnected')
       return
     }
@@ -73,7 +73,7 @@ export function useLogStream({
       )
       wsURL.protocol = wsURL.protocol === 'https:' ? 'wss:' : 'ws:'
 
-      socket = new WebSocket(wsURL.toString(), buildWSProtocols(token))
+      socket = new WebSocket(wsURL.toString(), buildWSProtocols())
 
       socket.onopen = () => {
         if (disposed) return
@@ -122,7 +122,7 @@ export function useLogStream({
         }
       }
     }
-  }, [token, tokenRequired, target, enabled])
+  }, [authenticated, tokenRequired, target, enabled])
 
   return connectionState
 }

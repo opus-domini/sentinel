@@ -86,10 +86,10 @@ export type TimelineResponse = {
 export type GuardrailRule = {
   id: string
   name: string
-  scope: 'action' | 'command' | string
+  scope: 'action' | 'command'
   pattern: string
-  mode: 'allow' | 'warn' | 'confirm' | 'block' | string
-  severity: 'info' | 'warn' | 'error' | string
+  mode: 'allow' | 'warn' | 'confirm' | 'block'
+  severity: 'info' | 'warn' | 'error'
   message: string
   enabled: boolean
   priority: number
@@ -150,7 +150,7 @@ export type OpsServiceInspect = {
   checkedAt: string
 }
 
-export type OpsAlertStatus = 'open' | 'acked' | 'resolved' | string
+export type OpsAlertStatus = 'open' | 'acked' | 'resolved'
 
 export type OpsAlert = {
   id: number

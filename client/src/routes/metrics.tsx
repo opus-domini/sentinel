@@ -6,7 +6,6 @@ import type {
   OpsHostMetrics,
   OpsMetricsResponse,
   OpsOverviewResponse,
-  OpsWsMessage,
 } from '@/types'
 import type { MetricsSnapshot } from '@/lib/MetricsHistory'
 import AppShell from '@/components/layout/AppShell'
@@ -24,6 +23,7 @@ import { MetricsHistory } from '@/lib/MetricsHistory'
 import {
   OPS_METRICS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
+  isOpsWsMessage,
 } from '@/lib/opsQueryCache'
 import { formatBytes, formatUptime, toErrorMessage } from '@/lib/opsUtils'
 import { ProgressBar } from '@/lib/ProgressBar'
@@ -96,9 +96,9 @@ type MetricsTab = 'system' | 'runtime'
 
 function MetricsPage() {
   const { tokenRequired } = useMetaContext()
-  const { token, setToken } = useTokenContext()
+  const { authenticated, setToken } = useTokenContext()
   const layout = useLayoutContext()
-  const api = useTmuxApi(token)
+  const api = useTmuxApi()
   const queryClient = useQueryClient()
 
   const [activeTab, setActiveTab] = useState<MetricsTab>('system')
@@ -162,13 +162,16 @@ function MetricsPage() {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const msg = message as OpsWsMessage
-      switch (msg.type) {
+      if (!isOpsWsMessage(message)) return
+      switch (message.type) {
         case 'ops.overview.updated':
-          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, msg.payload.overview)
+          queryClient.setQueryData(
+            OPS_OVERVIEW_QUERY_KEY,
+            message.payload.overview,
+          )
           break
         case 'ops.metrics.updated': {
-          const m = msg.payload.metrics
+          const m = message.payload.metrics
           historyRef.current.push(toSnapshot(m))
           queryClient.setQueryData(OPS_METRICS_QUERY_KEY, m)
           break
@@ -177,11 +180,11 @@ function MetricsPage() {
           break
       }
     },
-    [queryClient, refreshOverview],
+    [queryClient],
   )
 
   const connectionState = useOpsEventsSocket({
-    token,
+    authenticated,
     tokenRequired,
     onMessage: handleWSMessage,
   })
@@ -210,7 +213,7 @@ function MetricsPage() {
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
           tokenRequired={tokenRequired}
-          token={token}
+          authenticated={authenticated}
           overview={overview}
           onTokenChange={setToken}
         />

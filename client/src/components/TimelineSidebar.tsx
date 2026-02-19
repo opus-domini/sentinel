@@ -12,7 +12,7 @@ type TimelineSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
-  token: string
+  authenticated: boolean
   overview: OpsOverview | null
   eventCount: number
   timelineQuery: string
@@ -26,7 +26,7 @@ export default function TimelineSidebar({
   isOpen,
   collapsed,
   tokenRequired,
-  token,
+  authenticated,
   overview,
   eventCount,
   timelineQuery,
@@ -36,14 +36,13 @@ export default function TimelineSidebar({
   onTokenChange,
 }: TimelineSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
-  const hasToken = token.trim() !== ''
 
   const lockLabel = useMemo(() => {
     if (tokenRequired) {
-      return hasToken ? 'Token configured (required)' : 'Token required'
+      return authenticated ? 'Authenticated (required)' : 'Token required'
     }
-    return hasToken ? 'Token configured' : 'No token'
-  }, [hasToken, tokenRequired])
+    return authenticated ? 'Authenticated' : 'Authentication optional'
+  }, [authenticated, tokenRequired])
 
   const health = useMemo(() => {
     if (overview == null) return '-'
@@ -73,7 +72,7 @@ export default function TimelineSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {hasToken ? (
+                  {authenticated ? (
                     <Lock className="h-4 w-4" />
                   ) : (
                     <LockOpen className="h-4 w-4" />
@@ -86,7 +85,7 @@ export default function TimelineSidebar({
           <TokenDialog
             open={isTokenOpen}
             onOpenChange={setIsTokenOpen}
-            token={token}
+            authenticated={authenticated}
             onTokenChange={onTokenChange}
             tokenRequired={tokenRequired}
           />

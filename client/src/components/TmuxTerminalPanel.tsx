@@ -51,7 +51,7 @@ type TmuxTerminalPanelProps = {
 
 export default function TmuxTerminalPanel({
   connectionState,
-  statusDetail,
+  statusDetail: _statusDetail,
   openTabs,
   activeSession,
   inspectorLoading,

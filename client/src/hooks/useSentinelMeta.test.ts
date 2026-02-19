@@ -42,7 +42,7 @@ describe('useSentinelMeta', () => {
 
   it('starts with default values', () => {
     mockFetch(200, { data: { tokenRequired: false } })
-    const { result } = renderHook(() => useSentinelMeta(''), { wrapper })
+    const { result } = renderHook(() => useSentinelMeta(), { wrapper })
     expect(result.current.tokenRequired).toBe(false)
     expect(result.current.defaultCwd).toBe('')
     expect(result.current.version).toBe('dev')
@@ -52,7 +52,7 @@ describe('useSentinelMeta', () => {
   it('sets tokenRequired from API response', async () => {
     mockFetch(200, { data: { tokenRequired: true } })
 
-    const { result } = renderHook(() => useSentinelMeta(''), { wrapper })
+    const { result } = renderHook(() => useSentinelMeta(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.tokenRequired).toBe(true)
@@ -63,7 +63,7 @@ describe('useSentinelMeta', () => {
   it('sets defaultCwd from API response', async () => {
     mockFetch(200, { data: { tokenRequired: false, defaultCwd: '/home/hugo' } })
 
-    const { result } = renderHook(() => useSentinelMeta(''), { wrapper })
+    const { result } = renderHook(() => useSentinelMeta(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.defaultCwd).toBe('/home/hugo')
@@ -73,7 +73,7 @@ describe('useSentinelMeta', () => {
   it('sets version from API response', async () => {
     mockFetch(200, { data: { tokenRequired: false, version: '1.2.3' } })
 
-    const { result } = renderHook(() => useSentinelMeta(''), { wrapper })
+    const { result } = renderHook(() => useSentinelMeta(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.version).toBe('1.2.3')
@@ -83,9 +83,7 @@ describe('useSentinelMeta', () => {
   it('sets unauthorized on 401', async () => {
     mockFetch(401, {})
 
-    const { result } = renderHook(() => useSentinelMeta('bad-token'), {
-      wrapper,
-    })
+    const { result } = renderHook(() => useSentinelMeta(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.unauthorized).toBe(true)
@@ -95,36 +93,24 @@ describe('useSentinelMeta', () => {
     expect(result.current.version).toBe('dev')
   })
 
-  it('sends bearer token in request', async () => {
+  it('uses same-origin credentials without authorization header', async () => {
     mockFetch(200, { data: { tokenRequired: true } })
 
-    renderHook(() => useSentinelMeta('my-token'), { wrapper })
+    renderHook(() => useSentinelMeta(), { wrapper })
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalled()
     })
 
     const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
-    expect(call[1].headers.Authorization).toBe('Bearer my-token')
-  })
-
-  it('does not send auth header for empty token', async () => {
-    mockFetch(200, { data: { tokenRequired: false } })
-
-    renderHook(() => useSentinelMeta(''), { wrapper })
-
-    await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalled()
-    })
-
-    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(call[1].credentials).toBe('same-origin')
     expect(call[1].headers.Authorization).toBeUndefined()
   })
 
   it('keeps defaults on non-ok non-401 response', async () => {
     mockFetch(500, {})
 
-    const { result } = renderHook(() => useSentinelMeta(''), { wrapper })
+    const { result } = renderHook(() => useSentinelMeta(), { wrapper })
 
     // Wait for fetch to complete.
     await waitFor(() => {
@@ -145,7 +131,7 @@ describe('useSentinelMeta', () => {
       new Error('network fail'),
     )
 
-    const { result } = renderHook(() => useSentinelMeta(''), { wrapper })
+    const { result } = renderHook(() => useSentinelMeta(), { wrapper })
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalled()

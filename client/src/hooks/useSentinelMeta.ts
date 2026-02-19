@@ -7,21 +7,14 @@ type MetaResponse = {
   version?: string
 }
 
-export function useSentinelMeta(token: string) {
-  const normalizedToken = token.trim()
+export function useSentinelMeta() {
   const metaQuery = useQuery({
-    queryKey: ['meta', normalizedToken],
+    queryKey: ['meta'],
     queryFn: async ({ signal }) => {
-      const headers: Record<string, string> = {
-        Accept: 'application/json',
-      }
-      if (normalizedToken !== '') {
-        headers.Authorization = `Bearer ${normalizedToken}`
-      }
-
       const response = await fetch('/api/meta', {
         signal,
-        headers,
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
       })
       if (response.status === 401) {
         return {
@@ -32,12 +25,7 @@ export function useSentinelMeta(token: string) {
         }
       }
       if (!response.ok) {
-        return {
-          tokenRequired: false,
-          defaultCwd: '',
-          version: 'dev',
-          unauthorized: false,
-        }
+        throw new Error(`meta fetch failed: HTTP ${response.status}`)
       }
 
       const payload = (await response.json()) as { data?: MetaResponse }
@@ -48,7 +36,7 @@ export function useSentinelMeta(token: string) {
         unauthorized: false,
       }
     },
-    retry: false,
+    retry: 2,
     staleTime: 60_000,
   })
 
@@ -68,5 +56,6 @@ export function useSentinelMeta(token: string) {
     defaultCwd: value.defaultCwd,
     version: value.version,
     unauthorized: value.unauthorized,
+    loaded: metaQuery.isFetched,
   }
 }

@@ -6,7 +6,6 @@ import type {
   OpsOverviewResponse,
   OpsTimelineEvent,
   OpsTimelineResponse,
-  OpsWsMessage,
 } from '@/types'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
@@ -20,6 +19,7 @@ import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_OVERVIEW_QUERY_KEY,
+  isOpsWsMessage,
   opsTimelineQueryKey,
   prependOpsTimelineEvent,
 } from '@/lib/opsQueryCache'
@@ -54,9 +54,9 @@ function buildTimelineFooterSummary({
 
 function TimelinePage() {
   const { tokenRequired } = useMetaContext()
-  const { token, setToken } = useTokenContext()
+  const { authenticated, setToken } = useTokenContext()
   const layout = useLayoutContext()
-  const api = useTmuxApi(token)
+  const api = useTmuxApi()
   const queryClient = useQueryClient()
 
   const [timelineQuery, setTimelineQuery] = useState('')
@@ -133,22 +133,25 @@ function TimelinePage() {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const msg = message as OpsWsMessage
-      switch (msg.type) {
+      if (!isOpsWsMessage(message)) return
+      switch (message.type) {
         case 'ops.overview.updated':
-          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, msg.payload.overview)
+          queryClient.setQueryData(
+            OPS_OVERVIEW_QUERY_KEY,
+            message.payload.overview,
+          )
           break
         case 'ops.timeline.updated':
-          if (Array.isArray(msg.payload.events)) {
+          if (Array.isArray(message.payload.events)) {
             queryClient.setQueryData<Array<OpsTimelineEvent>>(
               opsTimelineQueryKey(
                 timelineQueryRef.current,
                 timelineSeverityRef.current,
               ),
-              msg.payload.events,
+              message.payload.events,
             )
-          } else if (msg.payload.event != null) {
-            const timelineEvent = msg.payload.event
+          } else if (message.payload.event != null) {
+            const timelineEvent = message.payload.event
             queryClient.setQueryData<Array<OpsTimelineEvent>>(
               opsTimelineQueryKey(
                 timelineQueryRef.current,
@@ -165,11 +168,11 @@ function TimelinePage() {
           break
       }
     },
-    [queryClient, refreshOverview, refreshTimeline],
+    [queryClient, refreshTimeline],
   )
 
   const connectionState = useOpsEventsSocket({
-    token,
+    authenticated,
     tokenRequired,
     onMessage: handleWSMessage,
   })
@@ -192,7 +195,7 @@ function TimelinePage() {
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
           tokenRequired={tokenRequired}
-          token={token}
+          authenticated={authenticated}
           overview={overview}
           eventCount={timelineEvents.length}
           timelineQuery={timelineQuery}

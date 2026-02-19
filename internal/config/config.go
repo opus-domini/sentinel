@@ -51,8 +51,8 @@ const defaultConfigContent = `# Sentinel configuration
 # Environment variable: SENTINEL_LISTEN
 # listen = "127.0.0.1:4040"
 
-# Bearer token for API and WebSocket authentication.
-# When set, all requests must include this token.
+# Authentication token used by the lock dialog to issue an HttpOnly cookie.
+# When set, all API and WebSocket requests require a valid auth cookie.
 # Environment variable: SENTINEL_TOKEN
 # token = ""
 

@@ -36,8 +36,12 @@ export function Sparkline({
 
   if (data.length < 2) return null
 
-  const min = domain ? domain[0] : Math.min(...data)
-  const max = domain ? domain[1] : Math.max(...data)
+  const min = domain
+    ? domain[0]
+    : data.reduce((a, b) => (b < a ? b : a), data[0])
+  const max = domain
+    ? domain[1]
+    : data.reduce((a, b) => (b > a ? b : a), data[0])
   const range = max - min || 1
 
   const pad = 2

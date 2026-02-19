@@ -79,11 +79,11 @@ function SortableTab({
           ? 'bg-surface-active text-foreground'
           : 'bg-surface-elevated text-secondary-foreground hover:bg-surface-active',
       )}
-      role="tab"
-      aria-selected={isActive}
       onClick={onSelect}
       {...attributes}
       {...listeners}
+      role="tab"
+      aria-selected={isActive}
     >
       <span className="min-w-0 truncate pr-2">{tabName}</span>
       <Button
@@ -168,7 +168,10 @@ export default function SessionTabs({
   )
 
   return (
-    <div className="flex items-stretch overflow-auto border-b border-border bg-surface-sunken">
+    <div
+      role="tablist"
+      className="flex items-stretch overflow-auto border-b border-border bg-surface-sunken"
+    >
       {openTabs.length === 0 && (
         <div className="inline-flex h-[30px] min-w-[120px] items-center border-r border-border-subtle bg-surface-elevated px-2 text-[12px] text-secondary-foreground">
           {emptyLabel}

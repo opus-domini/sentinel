@@ -83,34 +83,6 @@ describe('tabsReducer', () => {
     })
   })
 
-  describe('remove', () => {
-    it('removes tab and falls back to last remaining', () => {
-      const s = state({
-        openTabs: ['a', 'b'],
-        activeSession: 'a',
-      })
-      const result = tabsReducer(s, { type: 'remove', session: 'a' })
-      expect(result.openTabs).toEqual(['b'])
-      expect(result.activeSession).toBe('b')
-    })
-
-    it('keeps active if removing non-active tab', () => {
-      const s = state({
-        openTabs: ['a', 'b'],
-        activeSession: 'a',
-      })
-      const result = tabsReducer(s, { type: 'remove', session: 'b' })
-      expect(result.openTabs).toEqual(['a'])
-      expect(result.activeSession).toBe('a')
-    })
-
-    it('ignores empty session name', () => {
-      const s = state({ openTabs: ['a'], activeSession: 'a' })
-      const result = tabsReducer(s, { type: 'remove', session: '' })
-      expect(result).toBe(s)
-    })
-  })
-
   describe('rename', () => {
     it('renames tab and updates active session', () => {
       const s = state({

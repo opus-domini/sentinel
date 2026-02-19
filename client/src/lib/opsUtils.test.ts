@@ -48,7 +48,7 @@ describe('formatBytes', () => {
   })
 
   it('returns bytes for small values', () => {
-    expect(formatBytes(512)).toBe('512.0 B')
+    expect(formatBytes(512)).toBe('512 B')
   })
 
   it('returns KB for kilobyte range', () => {
@@ -70,7 +70,7 @@ describe('formatBytes', () => {
 
   it('caps at TB for very large values', () => {
     const petabyte = 1099511627776 * 1024
-    expect(formatBytes(petabyte)).toBe('1024.0 TB')
+    expect(formatBytes(petabyte)).toBe('1024 TB')
   })
 })
 

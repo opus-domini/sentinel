@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 var (
@@ -17,6 +18,8 @@ var (
 	ErrRemoteToken  = errors.New("token is required for non-loopback listen address")
 )
 
+const AuthCookieName = "sentinel_auth"
+
 type Guard struct {
 	token          string
 	allowedOrigins map[string]struct{}
@@ -24,11 +27,15 @@ type Guard struct {
 
 func New(token string, allowedOrigins []string) *Guard {
 	g := &Guard{
-		token:          token,
+		token:          strings.TrimSpace(token),
 		allowedOrigins: make(map[string]struct{}),
 	}
 	for _, origin := range allowedOrigins {
-		g.allowedOrigins[origin] = struct{}{}
+		trimmed := strings.TrimSpace(origin)
+		if trimmed == "" {
+			continue
+		}
+		g.allowedOrigins[trimmed] = struct{}{}
 	}
 	return g
 }
@@ -62,28 +69,63 @@ func (g *Guard) CheckOrigin(r *http.Request) error {
 }
 
 func (g *Guard) RequireBearer(r *http.Request) error {
-	if !g.TokenRequired() {
-		return nil
-	}
-	token := bearerToken(r)
-	if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(g.token)) != 1 {
+	if !g.TokenMatches(bearerToken(r)) {
 		return ErrUnauthorized
 	}
 	return nil
 }
 
 func (g *Guard) RequireWSToken(r *http.Request) error {
-	if !g.TokenRequired() {
-		return nil
-	}
 	token := bearerToken(r)
 	if token == "" {
 		token = wsSubprotocolToken(r)
 	}
-	if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(g.token)) != 1 {
+	if !g.TokenMatches(token) {
 		return ErrUnauthorized
 	}
 	return nil
+}
+
+func (g *Guard) RequireAuth(r *http.Request) error {
+	if !g.TokenMatches(cookieToken(r)) {
+		return ErrUnauthorized
+	}
+	return nil
+}
+
+func (g *Guard) SetAuthCookie(w http.ResponseWriter, r *http.Request) {
+	if !g.TokenRequired() {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     AuthCookieName,
+		Value:    encodeBase64URL(g.token),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   requestUsesTLS(r),
+	})
+}
+
+func (g *Guard) ClearAuthCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     AuthCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   requestUsesTLS(r),
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0).UTC(),
+	})
+}
+
+func (g *Guard) TokenMatches(token string) bool {
+	if !g.TokenRequired() {
+		return true
+	}
+	token = strings.TrimSpace(token)
+	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(g.token)) == 1
 }
 
 func bearerToken(r *http.Request) string {
@@ -96,6 +138,18 @@ func bearerToken(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(auth, prefix))
+}
+
+func cookieToken(r *http.Request) string {
+	cookie, err := r.Cookie(AuthCookieName)
+	if err != nil {
+		return ""
+	}
+	decoded, err := decodeBase64URL(strings.TrimSpace(cookie.Value))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(decoded)
 }
 
 func wsSubprotocolToken(r *http.Request) string {
@@ -131,6 +185,20 @@ func decodeBase64URL(s string) (string, error) {
 		return "", err
 	}
 	return string(decoded), nil
+}
+
+func encodeBase64URL(s string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(s))
+}
+
+func requestUsesTLS(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
 }
 
 // ValidateRemoteExposure enforces the minimum security baseline when Sentinel is

@@ -51,7 +51,7 @@ describe('useOpsEventsSocket', () => {
     const onMessage = vi.fn()
     const { result } = renderHook(() =>
       useOpsEventsSocket({
-        token: '   ',
+        authenticated: false,
         tokenRequired: true,
         onMessage,
       }),
@@ -67,7 +67,7 @@ describe('useOpsEventsSocket', () => {
 
     renderHook(() =>
       useOpsEventsSocket({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         onMessage,
       }),
@@ -107,7 +107,7 @@ describe('useOpsEventsSocket', () => {
 
     renderHook(() =>
       useOpsEventsSocket({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         onMessage,
       }),
@@ -132,7 +132,7 @@ describe('useOpsEventsSocket', () => {
     const onMessage = vi.fn()
     const { result } = renderHook(() =>
       useOpsEventsSocket({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         onMessage,
       }),
@@ -147,32 +147,31 @@ describe('useOpsEventsSocket', () => {
     expect(result.current).toBe('error')
   })
 
-  it('reconnects with a new socket when token changes', () => {
+  it('reconnects with a new socket when authentication changes', () => {
     const onMessage = vi.fn()
-    let token = 'token-a'
+    let authenticated = false
 
     const { rerender } = renderHook(() =>
       useOpsEventsSocket({
-        token,
+        authenticated,
         tokenRequired: true,
         onMessage,
       }),
     )
 
-    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(MockWebSocket.instances).toHaveLength(0)
 
-    token = 'token-b'
+    authenticated = true
     rerender()
 
-    // Old socket is closed and a new one is created.
-    expect(MockWebSocket.instances.length).toBeGreaterThanOrEqual(2)
+    expect(MockWebSocket.instances).toHaveLength(1)
   })
 
   it('delivers parsed JSON messages to onMessage callback', () => {
     const onMessage = vi.fn()
     renderHook(() =>
       useOpsEventsSocket({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         onMessage,
       }),
@@ -193,11 +192,51 @@ describe('useOpsEventsSocket', () => {
     expect(onMessage).toHaveBeenCalledWith({ type: 'test', value: 42 })
   })
 
+  it('keeps stream alive when onMessage throws', () => {
+    const onMessage = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('boom')
+      })
+      .mockImplementation(() => undefined)
+    renderHook(() =>
+      useOpsEventsSocket({
+        authenticated: true,
+        tokenRequired: false,
+        onMessage,
+      }),
+    )
+
+    act(() => {
+      MockWebSocket.instances[0].emitOpen()
+    })
+
+    expect(() => {
+      act(() => {
+        MockWebSocket.instances[0].onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({ type: 'first', payload: {} }),
+          }),
+        )
+      })
+    }).not.toThrow()
+
+    act(() => {
+      MockWebSocket.instances[0].onmessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({ type: 'second', payload: {} }),
+        }),
+      )
+    })
+
+    expect(onMessage).toHaveBeenCalledTimes(2)
+  })
+
   it('ignores invalid JSON messages', () => {
     const onMessage = vi.fn()
     renderHook(() =>
       useOpsEventsSocket({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         onMessage,
       }),

@@ -60,7 +60,7 @@ describe('useLogStream', () => {
     const target = { kind: 'service' as const, name: 'test' }
     const { result } = renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: false,
@@ -76,7 +76,7 @@ describe('useLogStream', () => {
     const onLine = vi.fn()
     const { result } = renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target: null,
         enabled: true,
@@ -88,12 +88,12 @@ describe('useLogStream', () => {
     expect(MockWebSocket.instances).toHaveLength(0)
   })
 
-  it('returns disconnected when token is required but empty', () => {
+  it('returns disconnected when token is required and unauthenticated', () => {
     const onLine = vi.fn()
     const target = { kind: 'service' as const, name: 'test' }
     const { result } = renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: false,
         tokenRequired: true,
         target,
         enabled: true,
@@ -110,7 +110,7 @@ describe('useLogStream', () => {
     const target = { kind: 'service' as const, name: 'my-svc' }
     const { result } = renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -138,7 +138,7 @@ describe('useLogStream', () => {
     }
     renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -158,7 +158,7 @@ describe('useLogStream', () => {
     const target = { kind: 'service' as const, name: 'test' }
     renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -184,7 +184,7 @@ describe('useLogStream', () => {
     const target = { kind: 'service' as const, name: 'test' }
     renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -208,7 +208,7 @@ describe('useLogStream', () => {
     const target = { kind: 'service' as const, name: 'test' }
     renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -238,7 +238,7 @@ describe('useLogStream', () => {
     const target = { kind: 'service' as const, name: 'test' }
     const { unmount } = renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -256,7 +256,7 @@ describe('useLogStream', () => {
     const target = { kind: 'service' as const, name: 'test' }
     const { result } = renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -278,7 +278,7 @@ describe('useLogStream', () => {
 
     renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -320,7 +320,7 @@ describe('useLogStream', () => {
 
     renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,
@@ -353,7 +353,7 @@ describe('useLogStream', () => {
     // Should not throw or crash the hook.
     renderHook(() =>
       useLogStream({
-        token: '',
+        authenticated: true,
         tokenRequired: false,
         target,
         enabled: true,

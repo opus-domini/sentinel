@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button'
 type SessionControlsProps = {
   sessionCount: number
   tokenRequired: boolean
+  authenticated: boolean
   defaultCwd: string
   tmuxUnavailable: boolean
   recoveryKilledCount: number
   filter: string
-  token: string
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string) => void
@@ -23,11 +23,11 @@ type SessionControlsProps = {
 export default function SessionControls({
   sessionCount,
   tokenRequired,
+  authenticated,
   defaultCwd,
   tmuxUnavailable,
   recoveryKilledCount,
   filter,
-  token,
   onFilterChange,
   onTokenChange,
   onCreate,
@@ -35,21 +35,20 @@ export default function SessionControls({
 }: SessionControlsProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isTokenOpen, setIsTokenOpen] = useState(false)
-  const hasToken = token.trim() !== ''
 
   const lockLabel = useMemo(() => {
     if (tokenRequired) {
-      return hasToken ? 'Token configured (required)' : 'Token required'
+      return authenticated ? 'Authenticated (required)' : 'Token required'
     }
-    return hasToken ? 'Token configured' : 'No token'
-  }, [hasToken, tokenRequired])
+    return authenticated ? 'Authenticated' : 'Authentication optional'
+  }, [authenticated, tokenRequired])
 
   return (
     <section className="grid gap-2 rounded-lg border border-border-subtle bg-secondary p-2">
       <SidebarHeader
         title="Sessions"
         count={sessionCount}
-        hasToken={hasToken}
+        hasToken={authenticated}
         lockTitle={lockLabel}
         canCreate={!tmuxUnavailable}
         helpDialog={<TmuxHelpDialog />}
@@ -99,14 +98,13 @@ export default function SessionControls({
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
         defaultCwd={defaultCwd}
-        token={token}
         onCreate={onCreate}
       />
 
       <TokenDialog
         open={isTokenOpen}
         onOpenChange={setIsTokenOpen}
-        token={token}
+        authenticated={authenticated}
         onTokenChange={onTokenChange}
         tokenRequired={tokenRequired}
       />

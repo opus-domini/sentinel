@@ -16,7 +16,6 @@ type CreateSessionDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultCwd: string
-  token: string
   onCreate: (name: string, cwd: string) => void
 }
 
@@ -28,7 +27,6 @@ export default function CreateSessionDialog({
   open,
   onOpenChange,
   defaultCwd,
-  token,
   onCreate,
 }: CreateSessionDialogProps) {
   const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
@@ -65,18 +63,12 @@ export default function CreateSessionDialog({
       void (async () => {
         setCwdLoading(true)
         try {
-          const headers: Record<string, string> = {
-            Accept: 'application/json',
-          }
-          if (token.trim() !== '') {
-            headers.Authorization = `Bearer ${token.trim()}`
-          }
-
           const response = await fetch(
             `/api/fs/dirs?prefix=${encodeURIComponent(query)}&limit=10`,
             {
               signal: abort.signal,
-              headers,
+              headers: { Accept: 'application/json' },
+              credentials: 'same-origin',
             },
           )
           if (!response.ok) {
@@ -109,7 +101,7 @@ export default function CreateSessionDialog({
       window.clearTimeout(timer)
       abort.abort()
     }
-  }, [cwd, normalizedDefaultCwd, open, token])
+  }, [cwd, normalizedDefaultCwd, open])
 
   function selectSuggestion(value: string) {
     setCwd(value)
@@ -163,6 +155,12 @@ export default function CreateSessionDialog({
               <Input
                 placeholder="working directory"
                 value={cwd}
+                role="combobox"
+                aria-expanded={
+                  cwdFocused && (cwdLoading || cwdSuggestions.length > 0)
+                }
+                aria-autocomplete="list"
+                aria-controls="cwd-listbox"
                 onChange={(e) => {
                   setCwd(e.target.value)
                   setActiveSuggestion(-1)
@@ -212,7 +210,11 @@ export default function CreateSessionDialog({
               {open &&
                 cwdFocused &&
                 (cwdLoading || cwdSuggestions.length > 0) && (
-                  <div className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md">
+                  <div
+                    id="cwd-listbox"
+                    role="listbox"
+                    className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
+                  >
                     {cwdLoading && (
                       <div className="px-2 py-1 text-[11px] text-secondary-foreground">
                         Searching directories...
@@ -223,6 +225,8 @@ export default function CreateSessionDialog({
                         <button
                           key={item}
                           type="button"
+                          role="option"
+                          aria-selected={idx === activeSuggestion}
                           className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] ${
                             idx === activeSuggestion
                               ? 'bg-accent text-accent-foreground'

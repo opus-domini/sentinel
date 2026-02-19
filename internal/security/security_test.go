@@ -4,8 +4,10 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestTokenRequired(t *testing.T) {
@@ -252,6 +254,180 @@ func TestRequireWSToken(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRequireAuth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		token     string
+		cookie    string
+		rawCookie string
+		forwarded string
+		wantErr   error
+	}{
+		{
+			name:  "no token configured",
+			token: "",
+		},
+		{
+			name:   "valid auth cookie",
+			token:  "my-token",
+			cookie: "my-token",
+		},
+		{
+			name:    "wrong auth cookie value",
+			token:   "my-token",
+			cookie:  "wrong",
+			wantErr: ErrUnauthorized,
+		},
+		{
+			name:      "invalid cookie encoding",
+			token:     "my-token",
+			rawCookie: "%%%not-base64%%%",
+			wantErr:   ErrUnauthorized,
+		},
+		{
+			name:    "missing cookie",
+			token:   "my-token",
+			wantErr: ErrUnauthorized,
+		},
+		{
+			name:   "cookie with whitespace after decode",
+			token:  "my-token",
+			cookie: "  my-token  ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			g := New(tt.token, nil)
+			r := httptest.NewRequest("GET", "http://localhost/", nil)
+			if tt.forwarded != "" {
+				r.Header.Set("X-Forwarded-Proto", tt.forwarded)
+			}
+			if tt.cookie != "" {
+				r.AddCookie(&http.Cookie{
+					Name:  AuthCookieName,
+					Value: encodeBase64URL(tt.cookie),
+				})
+			}
+			if tt.rawCookie != "" {
+				r.AddCookie(&http.Cookie{
+					Name:  AuthCookieName,
+					Value: tt.rawCookie,
+				})
+			}
+
+			err := g.RequireAuth(r)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("RequireAuth() unexpected error = %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("RequireAuth() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestAuthCookieLifecycle(t *testing.T) {
+	t.Parallel()
+
+	g := New("secret-token", nil)
+
+	t.Run("set cookie over http", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest("GET", "http://localhost/", nil)
+		rec := httptest.NewRecorder()
+		g.SetAuthCookie(rec, req)
+
+		res := rec.Result()
+		defer func() { _ = res.Body.Close() }()
+
+		cookies := res.Cookies()
+		if len(cookies) != 1 {
+			t.Fatalf("cookies len = %d, want 1", len(cookies))
+		}
+		c := cookies[0]
+		if c.Name != AuthCookieName {
+			t.Fatalf("cookie name = %q, want %q", c.Name, AuthCookieName)
+		}
+		if c.Value != encodeBase64URL("secret-token") {
+			t.Fatalf("cookie value = %q, want encoded token", c.Value)
+		}
+		if c.Path != "/" {
+			t.Fatalf("cookie path = %q, want /", c.Path)
+		}
+		if !c.HttpOnly {
+			t.Fatal("cookie HttpOnly = false, want true")
+		}
+		if c.Secure {
+			t.Fatal("cookie Secure = true, want false on plain http")
+		}
+		if c.SameSite != http.SameSiteStrictMode {
+			t.Fatalf("cookie SameSite = %v, want %v", c.SameSite, http.SameSiteStrictMode)
+		}
+	})
+
+	t.Run("set cookie over forwarded https", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest("GET", "http://localhost/", nil)
+		req.Header.Set("X-Forwarded-Proto", "https")
+		rec := httptest.NewRecorder()
+		g.SetAuthCookie(rec, req)
+
+		res := rec.Result()
+		defer func() { _ = res.Body.Close() }()
+
+		cookies := res.Cookies()
+		if len(cookies) != 1 {
+			t.Fatalf("cookies len = %d, want 1", len(cookies))
+		}
+		if !cookies[0].Secure {
+			t.Fatal("cookie Secure = false, want true for https proxy")
+		}
+	})
+
+	t.Run("clear cookie", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest("GET", "https://localhost/", nil)
+		req.TLS = &tls.ConnectionState{}
+		rec := httptest.NewRecorder()
+		g.ClearAuthCookie(rec, req)
+
+		res := rec.Result()
+		defer func() { _ = res.Body.Close() }()
+
+		cookies := res.Cookies()
+		if len(cookies) != 1 {
+			t.Fatalf("cookies len = %d, want 1", len(cookies))
+		}
+		c := cookies[0]
+		if c.Name != AuthCookieName {
+			t.Fatalf("cookie name = %q, want %q", c.Name, AuthCookieName)
+		}
+		if c.Value != "" {
+			t.Fatalf("cookie value = %q, want empty", c.Value)
+		}
+		if c.MaxAge >= 0 {
+			t.Fatalf("cookie MaxAge = %d, want negative", c.MaxAge)
+		}
+		if c.Expires.After(time.Now().UTC()) {
+			t.Fatalf("cookie Expires = %s, want in the past", c.Expires)
+		}
+		if !c.Secure {
+			t.Fatal("cookie Secure = false, want true for tls request")
+		}
+	})
 }
 
 func TestWSSubprotocolToken(t *testing.T) {

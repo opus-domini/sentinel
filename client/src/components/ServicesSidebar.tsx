@@ -16,7 +16,7 @@ type ServicesSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
-  token: string
+  authenticated: boolean
   loading: boolean
   error: string
   services: Array<OpsServiceStatus>
@@ -39,7 +39,7 @@ export default function ServicesSidebar({
   isOpen,
   collapsed,
   tokenRequired,
-  token,
+  authenticated,
   loading,
   error,
   services,
@@ -50,7 +50,6 @@ export default function ServicesSidebar({
   const [isTokenOpen, setIsTokenOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [removing, setRemoving] = useState<string | null>(null)
-  const hasToken = token.trim() !== ''
   const filteredServices = useMemo(
     () => filterOpsServicesByQuery(services, filter),
     [services, filter],
@@ -59,10 +58,10 @@ export default function ServicesSidebar({
 
   const lockLabel = useMemo(() => {
     if (tokenRequired) {
-      return hasToken ? 'Token configured (required)' : 'Token required'
+      return authenticated ? 'Authenticated (required)' : 'Token required'
     }
-    return hasToken ? 'Token configured' : 'No token'
-  }, [hasToken, tokenRequired])
+    return authenticated ? 'Authenticated' : 'Authentication optional'
+  }, [authenticated, tokenRequired])
 
   async function handleRemove(name: string) {
     setRemoving(name)
@@ -94,7 +93,7 @@ export default function ServicesSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {hasToken ? (
+                  {authenticated ? (
                     <Lock className="h-4 w-4" />
                   ) : (
                     <LockOpen className="h-4 w-4" />
@@ -113,7 +112,7 @@ export default function ServicesSidebar({
           <TokenDialog
             open={isTokenOpen}
             onOpenChange={setIsTokenOpen}
-            token={token}
+            authenticated={authenticated}
             onTokenChange={onTokenChange}
             tokenRequired={tokenRequired}
           />

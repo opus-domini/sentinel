@@ -1,21 +1,19 @@
 import { useCallback } from 'react'
 
-export function useTmuxApi(token: string) {
+export function useTmuxApi() {
   return useCallback(
     async <T>(path: string, init?: RequestInit): Promise<T> => {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       }
 
-      if (token.trim() !== '') {
-        headers.Authorization = `Bearer ${token.trim()}`
-      }
       if (init?.headers) {
         Object.assign(headers, init.headers as Record<string, string>)
       }
 
       const response = await fetch(path, {
         ...init,
+        credentials: 'same-origin',
         headers,
       })
 
@@ -46,8 +44,8 @@ export function useTmuxApi(token: string) {
         return (payload as { data: T }).data
       }
 
-      return {} as T
+      return payload as T
     },
-    [token],
+    [],
   )
 }

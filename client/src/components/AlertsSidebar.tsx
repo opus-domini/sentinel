@@ -13,7 +13,7 @@ type AlertsSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
-  token: string
+  authenticated: boolean
   alertCount: number
   openCount: number
   overview: OpsOverview | null
@@ -28,7 +28,7 @@ export default function AlertsSidebar({
   isOpen,
   collapsed,
   tokenRequired,
-  token,
+  authenticated,
   alertCount,
   openCount,
   overview,
@@ -37,14 +37,13 @@ export default function AlertsSidebar({
   onTokenChange,
 }: AlertsSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
-  const hasToken = token.trim() !== ''
 
   const lockLabel = useMemo(() => {
     if (tokenRequired) {
-      return hasToken ? 'Token configured (required)' : 'Token required'
+      return authenticated ? 'Authenticated (required)' : 'Token required'
     }
-    return hasToken ? 'Token configured' : 'No token'
-  }, [hasToken, tokenRequired])
+    return authenticated ? 'Authenticated' : 'Authentication optional'
+  }, [authenticated, tokenRequired])
 
   const health = useMemo(() => {
     if (overview == null) return '-'
@@ -79,7 +78,7 @@ export default function AlertsSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {hasToken ? (
+                  {authenticated ? (
                     <Lock className="h-4 w-4" />
                   ) : (
                     <LockOpen className="h-4 w-4" />
@@ -92,7 +91,7 @@ export default function AlertsSidebar({
           <TokenDialog
             open={isTokenOpen}
             onOpenChange={setIsTokenOpen}
-            token={token}
+            authenticated={authenticated}
             onTokenChange={onTokenChange}
             tokenRequired={tokenRequired}
           />

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -622,7 +623,7 @@ func TestWrapMiddleware(t *testing.T) {
 		token      string
 		origins    []string
 		origin     string
-		auth       string
+		cookie     string
 		host       string
 		wantStatus int
 	}{
@@ -638,16 +639,16 @@ func TestWrapMiddleware(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:       "token required wrong token",
+			name:       "token required wrong cookie token",
 			token:      "secret",
-			auth:       "Bearer wrong",
+			cookie:     "wrong",
 			host:       "localhost:4040",
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:       "token required correct token",
+			name:       "token required correct cookie token",
 			token:      "secret",
-			auth:       "Bearer secret",
+			cookie:     "secret",
 			host:       "localhost:4040",
 			wantStatus: http.StatusOK,
 		},
@@ -670,8 +671,11 @@ func TestWrapMiddleware(t *testing.T) {
 			if tt.origin != "" {
 				r.Header.Set("Origin", tt.origin)
 			}
-			if tt.auth != "" {
-				r.Header.Set("Authorization", tt.auth)
+			if tt.cookie != "" {
+				r.AddCookie(&http.Cookie{
+					Name:  security.AuthCookieName,
+					Value: base64.RawURLEncoding.EncodeToString([]byte(tt.cookie)),
+				})
 			}
 
 			w := httptest.NewRecorder()
@@ -740,6 +744,114 @@ func TestMetaHandler(t *testing.T) {
 				t.Errorf("version = %q, want %q", body.Data.Version, tt.wantVersion)
 			}
 		})
+	}
+}
+
+func TestSetAuthTokenHandler(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		configToken string
+		body        string
+		wantStatus  int
+		wantCookie  bool
+		wantCode    string
+	}{
+		{
+			name:        "token not required",
+			configToken: "",
+			body:        `{"token":"anything"}`,
+			wantStatus:  http.StatusOK,
+			wantCookie:  false,
+		},
+		{
+			name:        "invalid json",
+			configToken: "secret",
+			body:        `{not-json}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    invalidRequestCode,
+		},
+		{
+			name:        "empty token",
+			configToken: "secret",
+			body:        `{"token":"   "}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    invalidRequestCode,
+		},
+		{
+			name:        "wrong token",
+			configToken: "secret",
+			body:        `{"token":"wrong"}`,
+			wantStatus:  http.StatusUnauthorized,
+			wantCode:    "UNAUTHORIZED",
+		},
+		{
+			name:        "valid token",
+			configToken: "secret",
+			body:        `{"token":"secret"}`,
+			wantStatus:  http.StatusOK,
+			wantCookie:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := &Handler{guard: security.New(tt.configToken, nil)}
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPut, "/api/auth/token", strings.NewReader(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+
+			h.setAuthToken(w, r)
+
+			if w.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+
+			if tt.wantCode != "" {
+				if code := errCode(jsonBody(t, w)); code != tt.wantCode {
+					t.Fatalf("code = %q, want %q", code, tt.wantCode)
+				}
+			}
+
+			cookies := w.Result().Cookies()
+			hasAuthCookie := false
+			for _, cookie := range cookies {
+				if cookie.Name == security.AuthCookieName {
+					hasAuthCookie = true
+					break
+				}
+			}
+			if hasAuthCookie != tt.wantCookie {
+				t.Fatalf("auth cookie present = %v, want %v", hasAuthCookie, tt.wantCookie)
+			}
+		})
+	}
+}
+
+func TestClearAuthTokenHandler(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{guard: security.New("secret", nil)}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/api/auth/token", nil)
+	h.clearAuthToken(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookies len = %d, want 1", len(cookies))
+	}
+	if cookies[0].Name != security.AuthCookieName {
+		t.Fatalf("cookie name = %q, want %q", cookies[0].Name, security.AuthCookieName)
+	}
+	if cookies[0].MaxAge >= 0 {
+		t.Fatalf("cookie MaxAge = %d, want negative", cookies[0].MaxAge)
 	}
 }
 

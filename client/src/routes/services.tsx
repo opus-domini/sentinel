@@ -34,7 +34,6 @@ import type {
   OpsTimelineEvent,
   OpsUnitActionResponse,
   OpsUnitLogsResponse,
-  OpsWsMessage,
 } from '@/types'
 import type { ParsedLogLine } from '@/lib/log-parser'
 import AppShell from '@/components/layout/AppShell'
@@ -78,6 +77,7 @@ import {
   OPS_BROWSE_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
   OPS_SERVICES_QUERY_KEY,
+  isOpsWsMessage,
   opsTimelineQueryKey,
   prependOpsTimelineEvent,
 } from '@/lib/opsQueryCache'
@@ -88,15 +88,12 @@ const LOG_BUFFER_MAX = 5_000
 
 function ServicesPage() {
   const { tokenRequired } = useMetaContext()
-  const { token, setToken } = useTokenContext()
+  const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
-  const api = useTmuxApi(token)
+  const api = useTmuxApi()
   const queryClient = useQueryClient()
 
-  const [, setPendingActions] = useState<
-    Partial<Record<string, OpsServiceAction>>
-  >({})
   const [serviceStatusOpen, setServiceStatusOpen] = useState(false)
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [serviceStatusError, setServiceStatusError] = useState('')
@@ -229,13 +226,13 @@ function ServicesPage() {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const msg = message as OpsWsMessage
-      switch (msg.type) {
+      if (!isOpsWsMessage(message)) return
+      switch (message.type) {
         case 'ops.services.updated':
-          if (Array.isArray(msg.payload.services)) {
+          if (Array.isArray(message.payload.services)) {
             queryClient.setQueryData(
               OPS_SERVICES_QUERY_KEY,
-              msg.payload.services,
+              message.payload.services,
             )
           } else {
             void refreshServices()
@@ -243,17 +240,20 @@ function ServicesPage() {
           void refreshBrowse()
           break
         case 'ops.overview.updated':
-          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, msg.payload.overview)
+          queryClient.setQueryData(
+            OPS_OVERVIEW_QUERY_KEY,
+            message.payload.overview,
+          )
           break
         default:
           break
       }
     },
-    [queryClient, refreshBrowse, refreshOverview, refreshServices],
+    [queryClient, refreshBrowse, refreshServices],
   )
 
   const connectionState = useOpsEventsSocket({
-    token,
+    authenticated,
     tokenRequired,
     onMessage: handleWSMessage,
   })
@@ -264,7 +264,6 @@ function ServicesPage() {
       if (!previous) return
 
       previousServiceRef.current.set(serviceName, previous)
-      setPendingActions((prev) => ({ ...prev, [serviceName]: action }))
       queryClient.setQueryData<Array<OpsServiceStatus>>(
         OPS_SERVICES_QUERY_KEY,
         (current = []) =>
@@ -325,11 +324,6 @@ function ServicesPage() {
         })
       } finally {
         previousServiceRef.current.delete(serviceName)
-        setPendingActions((prev) => {
-          const next = { ...prev }
-          delete next[serviceName]
-          return next
-        })
       }
     },
     [api, pushToast, queryClient, services],
@@ -573,7 +567,7 @@ function ServicesPage() {
   }, [serviceLogsOpen])
 
   const streamStatus = useLogStream({
-    token,
+    authenticated,
     tokenRequired,
     target: streamTarget,
     enabled: streamEnabled && serviceLogsOpen,
@@ -647,7 +641,7 @@ function ServicesPage() {
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
           tokenRequired={tokenRequired}
-          token={token}
+          authenticated={authenticated}
           loading={servicesLoading}
           error={servicesError}
           services={services}

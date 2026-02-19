@@ -7,7 +7,6 @@ import type {
   OpsAlertsResponse,
   OpsOverviewResponse,
   OpsTimelineEvent,
-  OpsWsMessage,
 } from '@/types'
 import AppShell from '@/components/layout/AppShell'
 import AlertsSidebar from '@/components/AlertsSidebar'
@@ -23,6 +22,7 @@ import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_ALERTS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
+  isOpsWsMessage,
   opsTimelineQueryKey,
   prependOpsTimelineEvent,
 } from '@/lib/opsQueryCache'
@@ -62,10 +62,10 @@ function buildAlertsFooterSummary({
 
 function AlertsPage() {
   const { tokenRequired } = useMetaContext()
-  const { token, setToken } = useTokenContext()
+  const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
-  const api = useTmuxApi(token)
+  const api = useTmuxApi()
   const queryClient = useQueryClient()
 
   const [selectedSeverity, setSelectedSeverity] = useState('all')
@@ -130,14 +130,20 @@ function AlertsPage() {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const msg = message as OpsWsMessage
-      switch (msg.type) {
+      if (!isOpsWsMessage(message)) return
+      switch (message.type) {
         case 'ops.overview.updated':
-          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, msg.payload.overview)
+          queryClient.setQueryData(
+            OPS_OVERVIEW_QUERY_KEY,
+            message.payload.overview,
+          )
           break
         case 'ops.alerts.updated':
-          if (Array.isArray(msg.payload.alerts)) {
-            queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, msg.payload.alerts)
+          if (Array.isArray(message.payload.alerts)) {
+            queryClient.setQueryData(
+              OPS_ALERTS_QUERY_KEY,
+              message.payload.alerts,
+            )
           } else {
             void refreshAlerts()
           }
@@ -146,11 +152,11 @@ function AlertsPage() {
           break
       }
     },
-    [queryClient, refreshOverview, refreshAlerts],
+    [queryClient, refreshAlerts],
   )
 
   const connectionState = useOpsEventsSocket({
-    token,
+    authenticated,
     tokenRequired,
     onMessage: handleWSMessage,
   })
@@ -224,7 +230,7 @@ function AlertsPage() {
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
           tokenRequired={tokenRequired}
-          token={token}
+          authenticated={authenticated}
           alertCount={alerts.length}
           openCount={openCount}
           overview={overview}

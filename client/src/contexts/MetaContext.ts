@@ -4,6 +4,8 @@ type MetaContextValue = {
   tokenRequired: boolean
   defaultCwd: string
   version: string
+  unauthorized: boolean
+  loaded: boolean
 }
 
 export const MetaContext = createContext<MetaContextValue | null>(null)

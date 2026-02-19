@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { QueryClient, useQueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import ToastViewport from '@/components/toast/ToastViewport'
@@ -22,37 +23,110 @@ import { useShellLayout } from '@/hooks/useShellLayout'
 import { useToasts } from '@/hooks/useToasts'
 import { useVisualViewport } from '@/hooks/useVisualViewport'
 
-function TokenGateDialog({ onSubmit }: { onSubmit: (token: string) => void }) {
+type AuthCookieUpdateResult = {
+  ok: boolean
+  status: number
+}
+
+async function updateAuthCookie(
+  queryClient: QueryClient,
+  rawToken: string,
+): Promise<AuthCookieUpdateResult> {
+  const token = rawToken.trim()
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  const request: RequestInit = {
+    method: token === '' ? 'DELETE' : 'PUT',
+    credentials: 'same-origin',
+    headers,
+  }
+  if (token !== '') {
+    headers['Content-Type'] = 'application/json'
+    request.body = JSON.stringify({ token })
+  }
+
+  let response: Response | null = null
+  try {
+    response = await fetch('/api/auth/token', request)
+  } catch {
+    response = null
+  }
+
+  await queryClient.invalidateQueries({
+    queryKey: ['meta'],
+    exact: true,
+  })
+  await queryClient.refetchQueries({
+    queryKey: ['meta'],
+    exact: true,
+    type: 'active',
+  })
+
+  return {
+    ok: response?.ok === true,
+    status: response?.status ?? 0,
+  }
+}
+
+function TokenGateDialog({
+  onSubmit,
+}: {
+  onSubmit: (token: string) => Promise<AuthCookieUpdateResult>
+}) {
   const [draft, setDraft] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
   return (
     <Dialog open>
       <DialogContent
         showCloseButton={false}
-        onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => event.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle>Authentication required</DialogTitle>
           <DialogDescription>
-            This server requires a token. Enter it to continue.
+            This server requires a token. Access stays blocked until the token
+            is validated.
           </DialogDescription>
         </DialogHeader>
         <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (draft.trim()) onSubmit(draft.trim())
+          onSubmit={(event) => {
+            event.preventDefault()
+            const token = draft.trim()
+            if (token === '' || submitting) return
+            setSubmitting(true)
+            setError('')
+            void onSubmit(token)
+              .then((result) => {
+                if (result.ok) {
+                  setDraft('')
+                  return
+                }
+                if (result.status === 401) {
+                  setError('Invalid token.')
+                  return
+                }
+                setError('Unable to validate token right now.')
+              })
+              .finally(() => {
+                setSubmitting(false)
+              })
           }}
         >
           <Input
             placeholder="token"
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(event) => setDraft(event.target.value)}
             autoFocus
             aria-label="Authentication token"
+            disabled={submitting}
           />
+          {error !== '' && (
+            <p className="mt-2 text-xs text-destructive-foreground">{error}</p>
+          )}
           <DialogFooter className="mt-4">
-            <Button type="submit" disabled={!draft.trim()}>
+            <Button type="submit" disabled={draft.trim() === '' || submitting}>
               Continue
             </Button>
           </DialogFooter>
@@ -62,9 +136,20 @@ function TokenGateDialog({ onSubmit }: { onSubmit: (token: string) => void }) {
   )
 }
 
+function LoadingGate() {
+  return (
+    <div className="grid h-screen place-items-center bg-background text-foreground">
+      <div className="text-center">
+        <p className="text-sm text-secondary-foreground">Loading Sentinel...</p>
+      </div>
+    </div>
+  )
+}
+
 function RootComponent() {
   useVisualViewport()
   const { toasts, pushToast, dismissToast } = useToasts()
+  const queryClient = useQueryClient()
   const layout = useShellLayout({
     storageKey: 'sentinel_sidebar_collapsed',
     defaultSidebarWidth: 340,
@@ -75,32 +160,40 @@ function RootComponent() {
     },
   })
 
-  const [token, setToken] = useState(
-    () => window.localStorage.getItem('sentinel_token') ?? '',
-  )
-  const meta = useSentinelMeta(token)
+  const meta = useSentinelMeta()
+  const authenticated = !meta.tokenRequired || !meta.unauthorized
+  const needsTokenGate = meta.loaded && meta.tokenRequired && meta.unauthorized
+  const showOutlet = meta.loaded && !needsTokenGate
 
-  useEffect(() => {
-    window.localStorage.setItem('sentinel_token', token)
-  }, [token])
+  const setToken = useCallback(
+    (token: string) => {
+      void updateAuthCookie(queryClient, token)
+    },
+    [queryClient],
+  )
+
+  const submitGateToken = useCallback(
+    (token: string) => updateAuthCookie(queryClient, token),
+    [queryClient],
+  )
 
   return (
     <MetaContext.Provider value={meta}>
-      <TokenContext.Provider value={{ token, setToken }}>
+      <TokenContext.Provider value={{ authenticated, setToken }}>
         <ToastContext.Provider value={{ toasts, pushToast, dismissToast }}>
           <LayoutContext.Provider value={layout}>
             <TooltipProvider delayDuration={300}>
               <ErrorBoundary>
-                <Outlet />
+                {showOutlet ? <Outlet /> : <LoadingGate />}
+                {needsTokenGate && (
+                  <TokenGateDialog onSubmit={submitGateToken} />
+                )}
+                <ToastViewport toasts={toasts} onDismiss={dismissToast} />
               </ErrorBoundary>
-              <ToastViewport toasts={toasts} onDismiss={dismissToast} />
             </TooltipProvider>
           </LayoutContext.Provider>
         </ToastContext.Provider>
       </TokenContext.Provider>
-      {meta.tokenRequired && (!token.trim() || meta.unauthorized) && (
-        <TokenGateDialog onSubmit={setToken} />
-      )}
     </MetaContext.Provider>
   )
 }

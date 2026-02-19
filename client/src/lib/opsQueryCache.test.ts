@@ -8,6 +8,7 @@ import {
   OPS_RUNBOOKS_QUERY_KEY,
   OPS_SERVICES_QUERY_KEY,
   OPS_STORAGE_STATS_QUERY_KEY,
+  isOpsWsMessage,
   opsTimelineQueryKey,
   prependOpsTimelineEvent,
   upsertOpsRunbookJob,
@@ -61,6 +62,18 @@ describe('opsQueryCache', () => {
       'service',
       'warn',
     ])
+  })
+
+  it('validates ops websocket message shape', () => {
+    expect(
+      isOpsWsMessage({
+        type: 'ops.overview.updated',
+        payload: { overview: {} },
+      }),
+    ).toBe(true)
+    expect(isOpsWsMessage({ type: 'ops.overview.updated' })).toBe(false)
+    expect(isOpsWsMessage({ payload: { overview: {} } })).toBe(false)
+    expect(isOpsWsMessage(null)).toBe(false)
   })
 
   it('prepends timeline event and deduplicates by id', () => {

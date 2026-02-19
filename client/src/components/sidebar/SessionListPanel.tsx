@@ -43,12 +43,18 @@ export default function SessionListPanel({
   const hasFilter = filter.trim() !== ''
 
   const openTabsSet = useMemo(() => new Set(openTabs), [openTabs])
-  const attachedSessions = sortedSessions.filter((session) =>
-    isSessionAttached(session, openTabsSet),
-  )
-  const idleSessions = sortedSessions.filter(
-    (session) => !isSessionAttached(session, openTabsSet),
-  )
+  const { attachedSessions, idleSessions } = useMemo(() => {
+    const attached: Array<Session> = []
+    const idle: Array<Session> = []
+    for (const session of sortedSessions) {
+      if (isSessionAttached(session, openTabsSet)) {
+        attached.push(session)
+      } else {
+        idle.push(session)
+      }
+    }
+    return { attachedSessions: attached, idleSessions: idle }
+  }, [sortedSessions, openTabsSet])
 
   return (
     <section className="h-full min-h-0 overflow-hidden rounded-lg border border-border-subtle bg-secondary">

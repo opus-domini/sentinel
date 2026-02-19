@@ -2,8 +2,6 @@
 @import '@fontsource-variable/jetbrains-mono';
 @import '@xterm/xterm/css/xterm.css';
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
   color-scheme: dark;
 
@@ -74,6 +72,13 @@
   --create-hover-from: #1f4580;
   --create-hover-to: #163460;
 
+  /* Terminal controls */
+  --border-bright: #3a3a3a;
+  --terminal-key-text: #b0b0b0;
+  --terminal-key-active: rgba(255, 255, 255, 0.08);
+  --surface-terminal-bar: #1c1c1e;
+  --border-terminal-row: rgba(255, 255, 255, 0.04);
+
   /* Brand logo gradient */
   --brand-from: #1f2f56;
   --brand-to: #16233e;
@@ -138,6 +143,13 @@
   --color-inactive-dot: var(--inactive-dot);
   --color-disconnected-text: var(--disconnected-text);
   --color-link: var(--link);
+
+  /* Terminal controls */
+  --color-border-bright: var(--border-bright);
+  --color-terminal-key-text: var(--terminal-key-text);
+  --color-terminal-key-active: var(--terminal-key-active);
+  --color-surface-terminal-bar: var(--surface-terminal-bar);
+  --color-terminal-row: var(--border-terminal-row);
 }
 
 @layer base {

@@ -27,13 +27,12 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function highlightMatch(text: string, query: string): React.ReactNode {
-  if (!query) return text
-  const regex = new RegExp(`(${escapeRegex(query)})`, 'gi')
+function highlightMatch(text: string, regex: RegExp | null): React.ReactNode {
+  if (!regex) return text
   const parts = text.split(regex)
   if (parts.length === 1) return text
   return parts.map((part, i) =>
-    regex.test(part) ? (
+    i % 2 === 1 ? (
       <mark key={i} className="rounded-sm bg-yellow-500/30 text-yellow-200">
         {part}
       </mark>
@@ -46,12 +45,12 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 const LogLine = React.memo(function LogLine({
   line,
   gutterWidth,
-  searchQuery,
+  searchRegex,
   wordWrap,
 }: {
   line: ParsedLogLine
   gutterWidth: number
-  searchQuery: string
+  searchRegex: RegExp | null
   wordWrap: boolean
 }) {
   const levelClass = levelColors[line.level]
@@ -72,18 +71,18 @@ const LogLine = React.memo(function LogLine({
       >
         {line.timestamp && (
           <span className="text-blue-400/70">
-            {highlightMatch(line.timestamp, searchQuery)}
+            {highlightMatch(line.timestamp, searchRegex)}
           </span>
         )}
         {line.timestamp && ' '}
         {line.unit && (
           <span className="text-purple-400/70">
-            {highlightMatch(line.unit, searchQuery)}
+            {highlightMatch(line.unit, searchRegex)}
           </span>
         )}
         {line.unit && ' '}
         <span className={levelClass}>
-          {highlightMatch(line.message, searchQuery)}
+          {highlightMatch(line.message, searchRegex)}
         </span>
       </span>
     </div>
@@ -106,6 +105,12 @@ export function LogViewer({
     if (lines.length === 0) return 3
     return Math.max(3, String(lines[lines.length - 1].lineNumber).length + 1)
   }, [lines])
+
+  const searchRegex = useMemo(
+    () =>
+      searchQuery ? new RegExp(`(${escapeRegex(searchQuery)})`, 'i') : null,
+    [searchQuery],
+  )
 
   const filteredLines = useMemo(() => {
     if (!searchQuery) return lines
@@ -168,7 +173,7 @@ export function LogViewer({
             key={line.lineNumber}
             line={line}
             gutterWidth={gutterWidth}
-            searchQuery={searchQuery}
+            searchRegex={searchRegex}
             wordWrap={wordWrap}
           />
         ))}

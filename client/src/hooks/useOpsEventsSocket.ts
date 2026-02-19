@@ -4,18 +4,18 @@ import { buildWSProtocols } from '@/lib/wsAuth'
 import { createReconnect } from '@/lib/wsReconnect'
 
 type UseOpsEventsSocketOptions = {
-  token: string
+  authenticated: boolean
   tokenRequired: boolean
   onMessage: (message: unknown) => void
 }
 
 export function useOpsEventsSocket({
-  token,
+  authenticated,
   tokenRequired,
   onMessage,
 }: UseOpsEventsSocketOptions): ConnectionState {
   const [connectionState, setConnectionState] =
-    useState<ConnectionState>('connecting')
+    useState<ConnectionState>('disconnected')
 
   const onMessageRef = useRef(onMessage)
   useEffect(() => {
@@ -23,7 +23,7 @@ export function useOpsEventsSocket({
   }, [onMessage])
 
   useEffect(() => {
-    if (tokenRequired && token.trim() === '') {
+    if (tokenRequired && !authenticated) {
       setConnectionState('disconnected')
       return
     }
@@ -48,7 +48,7 @@ export function useOpsEventsSocket({
       const wsURL = new URL('/ws/events', window.location.origin)
       wsURL.protocol = wsURL.protocol === 'https:' ? 'wss:' : 'ws:'
 
-      socket = new WebSocket(wsURL.toString(), buildWSProtocols(token))
+      socket = new WebSocket(wsURL.toString(), buildWSProtocols())
 
       socket.onopen = () => {
         if (disposed) return
@@ -65,7 +65,11 @@ export function useOpsEventsSocket({
           return
         }
         if (typeof message !== 'object' || message === null) return
-        onMessageRef.current(message)
+        try {
+          onMessageRef.current(message)
+        } catch {
+          // Ignore handler errors to keep the WS stream alive.
+        }
       }
 
       socket.onerror = () => {
@@ -94,7 +98,7 @@ export function useOpsEventsSocket({
         }
       }
     }
-  }, [token, tokenRequired])
+  }, [authenticated, tokenRequired])
 
   return connectionState
 }

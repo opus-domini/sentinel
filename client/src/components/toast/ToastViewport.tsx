@@ -17,7 +17,11 @@ export default function ToastViewport({
   }
 
   return (
-    <div className="pointer-events-none fixed bottom-3 right-3 z-50 grid w-[min(420px,calc(100vw-24px))] gap-2">
+    <div
+      aria-live="polite"
+      role="status"
+      className="pointer-events-none fixed bottom-3 right-3 z-50 grid w-[min(420px,calc(100vw-24px))] gap-2"
+    >
       {toasts.map((toast) => (
         <article
           key={toast.id}

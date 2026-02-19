@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   GuardrailRule,
@@ -8,14 +8,24 @@ import type {
 } from '@/types'
 
 import ThemeSelector from '@/components/settings/ThemeSelector'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useMetaContext } from '@/contexts/MetaContext'
-import { useTokenContext } from '@/contexts/TokenContext'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_GUARDRAILS_QUERY_KEY,
   OPS_STORAGE_STATS_QUERY_KEY,
 } from '@/lib/opsQueryCache'
+import { formatBytes } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -48,8 +58,7 @@ export default function SettingsDialog({
   onOpenChange,
 }: SettingsDialogProps) {
   const { version } = useMetaContext()
-  const { token } = useTokenContext()
-  const api = useTmuxApi(token)
+  const api = useTmuxApi()
   const queryClient = useQueryClient()
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
@@ -59,6 +68,9 @@ export default function SettingsDialog({
   const [storageError, setStorageError] = useState('')
   const [storageNotice, setStorageNotice] = useState('')
   const [storageFlushingResource, setStorageFlushingResource] = useState('')
+  const [flushConfirmResource, setFlushConfirmResource] = useState<
+    string | null
+  >(null)
   const [activeSection, setActiveSection] =
     useState<SettingsSection>('appearance')
   const {
@@ -167,16 +179,8 @@ export default function SettingsDialog({
     [api, queryClient],
   )
 
-  const flushStorageResource = useCallback(
+  const executeFlush = useCallback(
     async (resource: string) => {
-      const isAll = resource === 'all'
-      const accepted = window.confirm(
-        isAll
-          ? 'Flush all persisted history data? This cannot be undone.'
-          : `Flush "${resource}" history data? This cannot be undone.`,
-      )
-      if (!accepted) return
-
       setStorageFlushingResource(resource)
       setStorageNotice('')
       try {
@@ -205,19 +209,6 @@ export default function SettingsDialog({
     },
     [api, queryClient],
   )
-
-  const formatBytes = (value: number) => {
-    if (!Number.isFinite(value) || value <= 0) return '0 B'
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']
-    let size = value
-    let index = 0
-    while (size >= 1024 && index < units.length - 1) {
-      size /= 1024
-      index += 1
-    }
-    const precision = size >= 100 || index === 0 ? 0 : 1
-    return `${size.toFixed(precision)} ${units[index]}`
-  }
 
   const formatRows = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return '0'
@@ -364,9 +355,7 @@ export default function SettingsDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => {
-                      void flushStorageResource('all')
-                    }}
+                    onClick={() => setFlushConfirmResource('all')}
                     disabled={
                       storageLoading ||
                       storageFlushingResource !== '' ||
@@ -438,9 +427,7 @@ export default function SettingsDialog({
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        void flushStorageResource(resource.resource)
-                      }}
+                      onClick={() => setFlushConfirmResource(resource.resource)}
                       disabled={
                         storageFlushingResource !== '' ||
                         storageLoading ||
@@ -513,8 +500,10 @@ export default function SettingsDialog({
                         </Badge>
                         <Select
                           value={rule.mode}
-                          onValueChange={(value) => {
-                            void saveGuardrail(rule, { mode: value })
+                          onValueChange={(value: string) => {
+                            void saveGuardrail(rule, {
+                              mode: value as GuardrailRule['mode'],
+                            })
                           }}
                           disabled={guardrailSavingID === rule.id}
                         >
@@ -585,6 +574,38 @@ export default function SettingsDialog({
           )}
         </div>
       </DialogContent>
+
+      <AlertDialog
+        open={flushConfirmResource != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setFlushConfirmResource(null)
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm flush</AlertDialogTitle>
+            <AlertDialogDescription>
+              {flushConfirmResource === 'all'
+                ? 'Flush all persisted history data? This cannot be undone.'
+                : `Flush "${flushConfirmResource}" history data? This cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="default"
+              onClick={() => {
+                if (flushConfirmResource) {
+                  void executeFlush(flushConfirmResource)
+                }
+                setFlushConfirmResource(null)
+              }}
+            >
+              Flush
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

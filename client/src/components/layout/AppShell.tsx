@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import SideRail from '../SideRail'
 import type { ReactNode } from 'react'
+import SettingsDialog from '@/components/settings/SettingsDialog'
 
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useEdgeSwipe } from '@/hooks/useEdgeSwipe'
@@ -18,6 +19,8 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
     setSidebarOpen,
     sidebarCollapsed,
     setSidebarCollapsed,
+    settingsOpen,
+    setSettingsOpen,
     shellStyle,
     layoutGridClass,
     startSidebarResize,
@@ -60,8 +63,17 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
           'fixed inset-0 z-20 bg-black/45 md:hidden',
           sidebarOpen ? 'block' : 'hidden',
         )}
+        role="presentation"
+        aria-label="Close sidebar"
         onClick={() => setSidebarOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setSidebarOpen(false)
+          }
+        }}
       />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }

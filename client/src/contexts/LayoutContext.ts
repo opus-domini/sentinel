@@ -8,6 +8,8 @@ type LayoutContextValue = {
   setSidebarCollapsed: (
     collapsed: boolean | ((prev: boolean) => boolean),
   ) => void
+  settingsOpen: boolean
+  setSettingsOpen: (open: boolean | ((prev: boolean) => boolean)) => void
   shellStyle: CSSProperties
   layoutGridClass: string
   startSidebarResize: (event: ReactMouseEvent<HTMLDivElement>) => void

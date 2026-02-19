@@ -175,7 +175,7 @@ function ExtraKey({
   return (
     <button
       type="button"
-      className="terminal-key flex min-h-[32px] flex-1 items-center justify-center text-[10px] font-medium text-[#b0b0b0] active:bg-white/[0.08]"
+      className="terminal-key flex min-h-[32px] flex-1 items-center justify-center text-[10px] font-medium text-terminal-key-text active:bg-terminal-key-active"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
@@ -253,7 +253,7 @@ function ModifierKey({
       ? 'bg-primary text-primary-foreground'
       : state === 'sticky'
         ? 'bg-primary/20 text-primary-text border border-primary/40'
-        : 'text-[#b0b0b0] active:bg-white/[0.08]'
+        : 'text-terminal-key-text active:bg-terminal-key-active'
 
   return (
     <button
@@ -414,7 +414,7 @@ export default function TerminalControls({
   return (
     <div
       ref={controlsRef}
-      className="flex flex-col border-y border-border bg-[#1c1c1e]"
+      className="flex flex-col border-y border-border bg-surface-terminal-bar"
     >
       {/* Row 1: modifiers + navigation */}
       <div className="flex">
@@ -463,7 +463,7 @@ export default function TerminalControls({
       </div>
 
       {/* Row 2: symbols + extended navigation */}
-      <div className="flex border-t border-white/[0.04]">
+      <div className="flex border-t border-terminal-row">
         <ExtraKey label="/" ariaLabel="Slash" sequence="/" repeat {...k} />
         <ExtraKey label="-" ariaLabel="Hyphen" sequence="-" repeat {...k} />
         <ExtraKey label="HOME" ariaLabel="Home" csi={CSI_HOME} {...k} />
@@ -475,11 +475,11 @@ export default function TerminalControls({
           disabled={disabled}
           onRefocus={onRefocus}
           isKeyboardVisible={isKeyboardVisible}
-          triggerClassName="terminal-key-gesture flex min-h-[32px] flex-1 items-center justify-center text-[10px] font-medium text-[#b0b0b0] active:bg-white/[0.08]"
+          triggerClassName="terminal-key-gesture flex min-h-[32px] flex-1 items-center justify-center text-[10px] font-medium text-terminal-key-text active:bg-terminal-key-active"
         />
         <button
           type="button"
-          className="terminal-key flex min-h-[32px] flex-1 items-center justify-center text-[#b0b0b0] active:bg-white/[0.08]"
+          className="terminal-key flex min-h-[32px] flex-1 items-center justify-center text-terminal-key-text active:bg-terminal-key-active"
           onTouchStart={() => {
             lastToggleTouch.current = Date.now()
             hapticFeedback()

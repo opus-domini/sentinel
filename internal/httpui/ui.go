@@ -86,7 +86,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if err := h.guard.RequireWSToken(r); err != nil {
+	if err := h.guard.RequireAuth(r); err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -167,7 +167,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if err := h.guard.RequireWSToken(r); err != nil {
+	if err := h.guard.RequireAuth(r); err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -256,7 +256,7 @@ func (h *Handler) authorizeEventsWS(w http.ResponseWriter, r *http.Request) bool
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return false
 	}
-	if err := h.guard.RequireWSToken(r); err != nil {
+	if err := h.guard.RequireAuth(r); err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return false
 	}

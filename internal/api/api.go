@@ -148,6 +148,40 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+type setAuthTokenRequest struct {
+	Token string `json:"token"`
+}
+
+func (h *Handler) setAuthToken(w http.ResponseWriter, r *http.Request) {
+	if !h.guard.TokenRequired() {
+		writeData(w, http.StatusOK, map[string]any{"authenticated": true})
+		return
+	}
+
+	var req setAuthTokenRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "token is required", nil)
+		return
+	}
+	if !h.guard.TokenMatches(token) {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid token", nil)
+		return
+	}
+
+	h.guard.SetAuthCookie(w, r)
+	writeData(w, http.StatusOK, map[string]any{"authenticated": true})
+}
+
+func (h *Handler) clearAuthToken(w http.ResponseWriter, r *http.Request) {
+	h.guard.ClearAuthCookie(w, r)
+	writeData(w, http.StatusOK, map[string]any{"authenticated": false})
+}
+
 func (h *Handler) listDirectories(w http.ResponseWriter, r *http.Request) {
 	limit := defaultDirectorySuggestLimit
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
@@ -274,18 +308,24 @@ func splitDirectoryLookup(prefix string) (baseDir string, matchPrefix string, ok
 	return filepath.Dir(cleaned), filepath.Base(cleaned), true
 }
 
-func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {
+func (h *Handler) wrapOrigin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := h.guard.CheckOrigin(r); err != nil {
 			writeError(w, http.StatusForbidden, "ORIGIN_DENIED", "request origin is not allowed", nil)
 			return
 		}
-		if err := h.guard.RequireBearer(r); err != nil {
+		next(w, r)
+	}
+}
+
+func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {
+	return h.wrapOrigin(func(w http.ResponseWriter, r *http.Request) {
+		if err := h.guard.RequireAuth(r); err != nil {
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid token", nil)
 			return
 		}
 		next(w, r)
-	}
+	})
 }
 
 type enrichedSession struct {

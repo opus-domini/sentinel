@@ -12,7 +12,7 @@ type MetricsSidebarProps = {
   isOpen: boolean
   collapsed: boolean
   tokenRequired: boolean
-  token: string
+  authenticated: boolean
   overview: OpsOverview | null
   onTokenChange: (value: string) => void
 }
@@ -21,19 +21,18 @@ export default function MetricsSidebar({
   isOpen,
   collapsed,
   tokenRequired,
-  token,
+  authenticated,
   overview,
   onTokenChange,
 }: MetricsSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
-  const hasToken = token.trim() !== ''
 
   const lockLabel = useMemo(() => {
     if (tokenRequired) {
-      return hasToken ? 'Token configured (required)' : 'Token required'
+      return authenticated ? 'Authenticated (required)' : 'Token required'
     }
-    return hasToken ? 'Token configured' : 'No token'
-  }, [hasToken, tokenRequired])
+    return authenticated ? 'Authenticated' : 'Authentication optional'
+  }, [authenticated, tokenRequired])
 
   return (
     <SidebarShell isOpen={isOpen} collapsed={collapsed}>
@@ -53,7 +52,7 @@ export default function MetricsSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {hasToken ? (
+                  {authenticated ? (
                     <Lock className="h-4 w-4" />
                   ) : (
                     <LockOpen className="h-4 w-4" />
@@ -66,7 +65,7 @@ export default function MetricsSidebar({
           <TokenDialog
             open={isTokenOpen}
             onOpenChange={setIsTokenOpen}
-            token={token}
+            authenticated={authenticated}
             onTokenChange={onTokenChange}
             tokenRequired={tokenRequired}
           />

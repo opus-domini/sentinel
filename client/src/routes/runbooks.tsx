@@ -164,10 +164,10 @@ function formatScheduleDate(iso: string, tz?: string): string {
 
 function RunbooksPage() {
   const { tokenRequired } = useMetaContext()
-  const { token, setToken } = useTokenContext()
+  const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
-  const api = useTmuxApi(token)
+  const api = useTmuxApi()
   const queryClient = useQueryClient()
 
   const [selectedRunbookId, setSelectedRunbookId] = useState<string | null>(
@@ -237,7 +237,7 @@ function RunbooksPage() {
   )
 
   const connectionState = useOpsEventsSocket({
-    token,
+    authenticated,
     tokenRequired,
     onMessage: handleWSMessage,
   })
@@ -618,7 +618,7 @@ function RunbooksPage() {
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
           tokenRequired={tokenRequired}
-          token={token}
+          authenticated={authenticated}
           loading={runbooksLoading}
           runbooks={runbooks}
           jobs={jobs}

@@ -12,3 +12,9 @@ func (h *Handler) registerRoutes(mux *http.ServeMux, routes []routeBinding) {
 		mux.HandleFunc(route.pattern, h.wrap(route.handler))
 	}
 }
+
+func (h *Handler) registerPublicRoutes(mux *http.ServeMux, routes []routeBinding) {
+	for _, route := range routes {
+		mux.HandleFunc(route.pattern, h.wrapOrigin(route.handler))
+	}
+}

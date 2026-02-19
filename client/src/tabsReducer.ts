@@ -7,7 +7,6 @@ export type TabsState = {
 export type TabsAction =
   | { type: 'activate'; session: string }
   | { type: 'close'; session: string }
-  | { type: 'remove'; session: string }
   | { type: 'rename'; oldName: string; newName: string }
   | { type: 'reorder'; from: number; to: number }
   | { type: 'sync'; sessions: Array<string> }
@@ -76,24 +75,6 @@ export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
       }
     }
     case 'close': {
-      if (action.session === '') {
-        return state
-      }
-
-      const openTabs = state.openTabs.filter(
-        (tabName) => tabName !== action.session,
-      )
-      if (state.activeSession !== action.session) {
-        return { ...state, openTabs }
-      }
-
-      return {
-        openTabs,
-        activeSession: openTabs[openTabs.length - 1] ?? '',
-        activeEpoch: state.activeEpoch + 1,
-      }
-    }
-    case 'remove': {
       if (action.session === '') {
         return state
       }

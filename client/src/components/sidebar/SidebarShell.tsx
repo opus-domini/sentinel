@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
   Activity,
@@ -11,7 +10,6 @@ import {
   X,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import SettingsDialog from '@/components/settings/SettingsDialog'
 import { Button } from '@/components/ui/button'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { cn } from '@/lib/utils'
@@ -33,8 +31,7 @@ const mobileNavItems = [
 ] as const
 
 function MobileNav() {
-  const { setSidebarOpen } = useLayoutContext()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const { setSidebarOpen, setSettingsOpen } = useLayoutContext()
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -84,7 +81,6 @@ function MobileNav() {
           <X className="size-4" />
         </Button>
       </div>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }

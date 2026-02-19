@@ -23,6 +23,7 @@ export function useShellLayout({
     () => window.localStorage.getItem(storageKey) === '1',
   )
   const [sidebarWidth, setSidebarWidth] = useState(defaultSidebarWidth)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, sidebarCollapsed ? '1' : '0')
@@ -31,6 +32,7 @@ export function useShellLayout({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if ((event.target as Element).closest('[role="dialog"]')) return
         setSidebarOpen(false)
       }
     }
@@ -99,6 +101,8 @@ export function useShellLayout({
     setSidebarOpen,
     sidebarCollapsed,
     setSidebarCollapsed,
+    settingsOpen,
+    setSettingsOpen,
     shellStyle,
     layoutGridClass,
     startSidebarResize,
