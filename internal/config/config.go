@@ -19,14 +19,15 @@ const (
 )
 
 type Config struct {
-	ListenAddr     string
-	Token          string
-	AllowedOrigins []string
-	CookieSecure   string
-	DataDir        string
-	LogLevel       string
-	Watchtower     WatchtowerConfig
-	Recovery       RecoveryConfig
+	ListenAddr          string
+	Token               string
+	AllowedOrigins      []string
+	CookieSecure        string
+	AllowInsecureCookie bool
+	DataDir             string
+	LogLevel            string
+	Watchtower          WatchtowerConfig
+	Recovery            RecoveryConfig
 }
 
 type WatchtowerConfig struct {
@@ -162,6 +163,13 @@ func applyCoreConfig(cfg *Config, file map[string]string) {
 			cfg.CookieSecure = CookieSecureAuto
 		}
 	}
+
+	cfg.AllowInsecureCookie = readBoolEnvOrFile(
+		"SENTINEL_ALLOW_INSECURE_COOKIE",
+		"allow_insecure_cookie",
+		file,
+		false,
+	)
 
 	cfg.LogLevel = "info"
 	if level := readRawEnvOrFile("SENTINEL_LOG_LEVEL", "log_level", file); level != "" {

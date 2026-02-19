@@ -48,7 +48,12 @@ func serve() int {
 	guard := security.New(cfg.Token, cfg.AllowedOrigins, cookiePolicy)
 
 	if security.ExposesBeyondLoopback(cfg.ListenAddr) && cfg.Token != "" && cookiePolicy == security.CookieSecureNever {
-		slog.Warn("cookie_secure=never with remote exposure and token auth; cookies will not have the Secure flag")
+		if cfg.AllowInsecureCookie {
+			slog.Warn("cookie_secure=never with remote exposure and token auth; bypassed via SENTINEL_ALLOW_INSECURE_COOKIE")
+		} else {
+			slog.Error("cookie_secure=never is not allowed with remote exposure and token auth; set cookie_secure=auto or cookie_secure=always, or set SENTINEL_ALLOW_INSECURE_COOKIE=true to bypass")
+			return 1
+		}
 	}
 	eventHub := events.NewHub()
 

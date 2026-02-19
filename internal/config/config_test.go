@@ -333,6 +333,38 @@ func TestCookieSecureFromFile(t *testing.T) {
 	}
 }
 
+func TestAllowInsecureCookieDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_ALLOW_INSECURE_COOKIE", "")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_LOG_LEVEL", "")
+	t.Setenv("SENTINEL_COOKIE_SECURE", "")
+
+	cfg := Load()
+	if cfg.AllowInsecureCookie {
+		t.Fatal("AllowInsecureCookie = true, want false by default")
+	}
+}
+
+func TestAllowInsecureCookieEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_ALLOW_INSECURE_COOKIE", "true")
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_LOG_LEVEL", "")
+	t.Setenv("SENTINEL_COOKIE_SECURE", "")
+
+	cfg := Load()
+	if !cfg.AllowInsecureCookie {
+		t.Fatal("AllowInsecureCookie = false, want true from env")
+	}
+}
+
 func TestLoadWatchtowerConfigFromEnvAndFile(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
