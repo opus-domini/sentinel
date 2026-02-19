@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 // EmitFunc publishes a real-time event to connected clients.
@@ -183,7 +184,7 @@ func finishRun(ctx context.Context, st *store.Store, emit EmitFunc, params RunPa
 		slog.Warn("runbook runner: failed to marshal timeline metadata", "err", metaErr)
 	}
 
-	te, teErr := st.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	te, teErr := st.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    params.Source,
 		EventType: "runbook." + status,
 		Severity:  severity,

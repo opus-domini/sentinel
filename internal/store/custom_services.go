@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-type OpsCustomService struct {
+// CustomService represents a user-registered service tracked by Sentinel.
+type CustomService struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Manager     string `json:"manager"`
@@ -19,7 +20,8 @@ type OpsCustomService struct {
 	UpdatedAt   string `json:"updatedAt"`
 }
 
-type OpsCustomServiceWrite struct {
+// CustomServiceWrite contains the fields needed to register a custom service.
+type CustomServiceWrite struct {
 	Name        string
 	DisplayName string
 	Manager     string
@@ -41,10 +43,10 @@ func (s *Store) initCustomServicesSchema() error {
 	return err
 }
 
-func (s *Store) InsertOpsCustomService(ctx context.Context, w OpsCustomServiceWrite) (OpsCustomService, error) {
+func (s *Store) InsertCustomService(ctx context.Context, w CustomServiceWrite) (CustomService, error) {
 	name := strings.TrimSpace(w.Name)
 	if name == "" {
-		return OpsCustomService{}, fmt.Errorf("service name is required")
+		return CustomService{}, fmt.Errorf("service name is required")
 	}
 	displayName := strings.TrimSpace(w.DisplayName)
 	if displayName == "" {
@@ -56,7 +58,7 @@ func (s *Store) InsertOpsCustomService(ctx context.Context, w OpsCustomServiceWr
 	}
 	unit := strings.TrimSpace(w.Unit)
 	if unit == "" {
-		return OpsCustomService{}, fmt.Errorf("service unit is required")
+		return CustomService{}, fmt.Errorf("service unit is required")
 	}
 	scope := strings.ToLower(strings.TrimSpace(w.Scope))
 	if scope == "" {
@@ -68,9 +70,9 @@ func (s *Store) InsertOpsCustomService(ctx context.Context, w OpsCustomServiceWr
 	) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
 		name, displayName, manager, unit, scope, now, now,
 	); err != nil {
-		return OpsCustomService{}, err
+		return CustomService{}, err
 	}
-	return OpsCustomService{
+	return CustomService{
 		Name:        name,
 		DisplayName: displayName,
 		Manager:     manager,
@@ -82,7 +84,7 @@ func (s *Store) InsertOpsCustomService(ctx context.Context, w OpsCustomServiceWr
 	}, nil
 }
 
-func (s *Store) ListOpsCustomServices(ctx context.Context) ([]OpsCustomService, error) {
+func (s *Store) ListCustomServices(ctx context.Context) ([]CustomService, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		name, display_name, manager, unit, scope, enabled, created_at, updated_at
 	FROM ops_custom_services
@@ -93,9 +95,9 @@ func (s *Store) ListOpsCustomServices(ctx context.Context) ([]OpsCustomService, 
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]OpsCustomService, 0, 8)
+	out := make([]CustomService, 0, 8)
 	for rows.Next() {
-		var item OpsCustomService
+		var item CustomService
 		var enabled int
 		if err := rows.Scan(
 			&item.Name, &item.DisplayName, &item.Manager,
@@ -110,7 +112,7 @@ func (s *Store) ListOpsCustomServices(ctx context.Context) ([]OpsCustomService, 
 	return out, rows.Err()
 }
 
-func (s *Store) DeleteOpsCustomService(ctx context.Context, name string) error {
+func (s *Store) DeleteCustomService(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return sql.ErrNoRows

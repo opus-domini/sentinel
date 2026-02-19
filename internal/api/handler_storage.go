@@ -10,6 +10,7 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func (h *Handler) opsConfig(w http.ResponseWriter, _ *http.Request) {
@@ -51,7 +52,7 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	if h.store != nil {
-		te, _ := h.store.InsertOpsTimelineEvent(r.Context(), store.OpsTimelineEventWrite{
+		te, _ := h.store.InsertTimelineEvent(r.Context(), timeline.EventWrite{
 			Source:    "config",
 			EventType: "config.updated",
 			Severity:  "info",

@@ -16,11 +16,12 @@ import (
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/httpui"
-	"github.com/opus-domini/sentinel/internal/ops"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/scheduler"
 	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/timeline"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/watchtower"
 )
@@ -51,7 +52,7 @@ func serve() int {
 	}
 
 	mux := http.NewServeMux()
-	if err := httpui.Register(mux, guard, st, eventHub, ops.NewManager(time.Now(), st)); err != nil {
+	if err := httpui.Register(mux, guard, st, eventHub, services.NewManager(time.Now(), st)); err != nil {
 		slog.Error("frontend init failed", "err", err)
 		return 1
 	}
@@ -66,7 +67,7 @@ func serve() int {
 			eventHub.Publish(events.NewEvent(eventType, payload))
 		},
 		OpsTimeline: func(ctx context.Context, source, eventType, severity, resource, message, details string) {
-			if _, err := st.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+			if _, err := st.InsertTimelineEvent(ctx, timeline.EventWrite{
 				Source:    source,
 				EventType: eventType,
 				Severity:  severity,
@@ -92,8 +93,8 @@ func serve() int {
 		recoveryService.Start(context.Background())
 	}
 
-	opsManager := ops.NewManager(time.Now(), st)
-	healthChecker := ops.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
+	opsManager := services.NewManager(time.Now(), st)
+	healthChecker := services.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
 		eventHub.Publish(events.NewEvent(eventType, payload))
 	}, 0)
 	healthChecker.Start(context.Background())
@@ -187,7 +188,7 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 	return 0
 }
 
-func startMetricsTicker(ctx context.Context, mgr *ops.Manager, hub *events.Hub) {
+func startMetricsTicker(ctx context.Context, mgr *services.Manager, hub *events.Hub) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -214,7 +215,7 @@ func startAlertsTicker(ctx context.Context, st *store.Store, hub *events.Hub) {
 			return
 		case <-ticker.C:
 			collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			alerts, err := st.ListOpsAlerts(collectCtx, 100, "")
+			alerts, err := st.ListAlerts(collectCtx, 100, "")
 			cancel()
 			if err != nil {
 				continue
@@ -235,7 +236,7 @@ func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) 
 			return
 		case <-ticker.C:
 			collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			result, err := st.SearchOpsTimelineEvents(collectCtx, store.OpsTimelineQuery{
+			result, err := st.SearchTimelineEvents(collectCtx, timeline.Query{
 				Limit: 200,
 			})
 			cancel()

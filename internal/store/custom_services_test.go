@@ -9,14 +9,14 @@ import (
 
 const testManager = "systemd"
 
-func TestInsertOpsCustomService(t *testing.T) {
+func TestInsertCustomService(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	t.Run("happy path", func(t *testing.T) {
-		svc, err := s.InsertOpsCustomService(ctx, OpsCustomServiceWrite{
+		svc, err := s.InsertCustomService(ctx, CustomServiceWrite{
 			Name:        "nginx",
 			DisplayName: "Nginx Web Server",
 			Manager:     testManager,
@@ -24,7 +24,7 @@ func TestInsertOpsCustomService(t *testing.T) {
 			Scope:       "system",
 		})
 		if err != nil {
-			t.Fatalf("InsertOpsCustomService: %v", err)
+			t.Fatalf("InsertCustomService: %v", err)
 		}
 		if svc.Name != "nginx" {
 			t.Fatalf("name = %q, want nginx", svc.Name)
@@ -50,12 +50,12 @@ func TestInsertOpsCustomService(t *testing.T) {
 	})
 
 	t.Run("defaults applied", func(t *testing.T) {
-		svc, err := s.InsertOpsCustomService(ctx, OpsCustomServiceWrite{
+		svc, err := s.InsertCustomService(ctx, CustomServiceWrite{
 			Name: "redis",
 			Unit: "redis.service",
 		})
 		if err != nil {
-			t.Fatalf("InsertOpsCustomService: %v", err)
+			t.Fatalf("InsertCustomService: %v", err)
 		}
 		if svc.DisplayName != "redis" {
 			t.Fatalf("displayName should default to name, got %q", svc.DisplayName)
@@ -69,7 +69,7 @@ func TestInsertOpsCustomService(t *testing.T) {
 	})
 
 	t.Run("empty name errors", func(t *testing.T) {
-		_, err := s.InsertOpsCustomService(ctx, OpsCustomServiceWrite{
+		_, err := s.InsertCustomService(ctx, CustomServiceWrite{
 			Name: "",
 			Unit: "foo.service",
 		})
@@ -79,7 +79,7 @@ func TestInsertOpsCustomService(t *testing.T) {
 	})
 
 	t.Run("empty unit errors", func(t *testing.T) {
-		_, err := s.InsertOpsCustomService(ctx, OpsCustomServiceWrite{
+		_, err := s.InsertCustomService(ctx, CustomServiceWrite{
 			Name: "foo",
 			Unit: "",
 		})
@@ -89,7 +89,7 @@ func TestInsertOpsCustomService(t *testing.T) {
 	})
 
 	t.Run("duplicate name errors", func(t *testing.T) {
-		_, err := s.InsertOpsCustomService(ctx, OpsCustomServiceWrite{
+		_, err := s.InsertCustomService(ctx, CustomServiceWrite{
 			Name: "nginx",
 			Unit: "nginx2.service",
 		})
@@ -99,34 +99,34 @@ func TestInsertOpsCustomService(t *testing.T) {
 	})
 }
 
-func TestListOpsCustomServices(t *testing.T) {
+func TestListCustomServices(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	// Empty list.
-	list, err := s.ListOpsCustomServices(ctx)
+	list, err := s.ListCustomServices(ctx)
 	if err != nil {
-		t.Fatalf("ListOpsCustomServices(empty): %v", err)
+		t.Fatalf("ListCustomServices(empty): %v", err)
 	}
 	if len(list) != 0 {
 		t.Fatalf("len = %d, want 0", len(list))
 	}
 
 	// Insert two services.
-	for _, w := range []OpsCustomServiceWrite{
+	for _, w := range []CustomServiceWrite{
 		{Name: "beta", Unit: "beta.service"},
 		{Name: "alpha", Unit: "alpha.service"},
 	} {
-		if _, err := s.InsertOpsCustomService(ctx, w); err != nil {
-			t.Fatalf("InsertOpsCustomService(%s): %v", w.Name, err)
+		if _, err := s.InsertCustomService(ctx, w); err != nil {
+			t.Fatalf("InsertCustomService(%s): %v", w.Name, err)
 		}
 	}
 
-	list, err = s.ListOpsCustomServices(ctx)
+	list, err = s.ListCustomServices(ctx)
 	if err != nil {
-		t.Fatalf("ListOpsCustomServices: %v", err)
+		t.Fatalf("ListCustomServices: %v", err)
 	}
 	if len(list) != 2 {
 		t.Fatalf("len = %d, want 2", len(list))
@@ -137,27 +137,27 @@ func TestListOpsCustomServices(t *testing.T) {
 	}
 }
 
-func TestDeleteOpsCustomService(t *testing.T) {
+func TestDeleteCustomService(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	t.Run("delete existing", func(t *testing.T) {
-		if _, err := s.InsertOpsCustomService(ctx, OpsCustomServiceWrite{
+		if _, err := s.InsertCustomService(ctx, CustomServiceWrite{
 			Name: "to-delete",
 			Unit: "to-delete.service",
 		}); err != nil {
-			t.Fatalf("InsertOpsCustomService: %v", err)
+			t.Fatalf("InsertCustomService: %v", err)
 		}
 
-		if err := s.DeleteOpsCustomService(ctx, "to-delete"); err != nil {
-			t.Fatalf("DeleteOpsCustomService: %v", err)
+		if err := s.DeleteCustomService(ctx, "to-delete"); err != nil {
+			t.Fatalf("DeleteCustomService: %v", err)
 		}
 
-		list, err := s.ListOpsCustomServices(ctx)
+		list, err := s.ListCustomServices(ctx)
 		if err != nil {
-			t.Fatalf("ListOpsCustomServices: %v", err)
+			t.Fatalf("ListCustomServices: %v", err)
 		}
 		if len(list) != 0 {
 			t.Fatalf("len = %d, want 0 after delete", len(list))
@@ -165,14 +165,14 @@ func TestDeleteOpsCustomService(t *testing.T) {
 	})
 
 	t.Run("delete nonexistent returns ErrNoRows", func(t *testing.T) {
-		err := s.DeleteOpsCustomService(ctx, "ghost")
+		err := s.DeleteCustomService(ctx, "ghost")
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("delete empty name returns ErrNoRows", func(t *testing.T) {
-		err := s.DeleteOpsCustomService(ctx, "")
+		err := s.DeleteCustomService(ctx, "")
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}

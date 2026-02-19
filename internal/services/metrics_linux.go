@@ -1,6 +1,6 @@
 //go:build linux
 
-package ops
+package services
 
 import (
 	"context"

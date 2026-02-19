@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func TestOpsTimelineInsertAndSearch(t *testing.T) {
@@ -14,7 +16,7 @@ func TestOpsTimelineInsertAndSearch(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
-	_, err := s.InsertOpsTimelineEvent(ctx, OpsTimelineEventWrite{
+	_, err := s.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "service",
 		EventType: "service.action",
 		Severity:  "warn",
@@ -25,17 +27,17 @@ func TestOpsTimelineInsertAndSearch(t *testing.T) {
 		CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("InsertOpsTimelineEvent: %v", err)
+		t.Fatalf("InsertTimelineEvent: %v", err)
 	}
 
-	result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{
+	result, err := s.SearchTimelineEvents(ctx, timeline.Query{
 		Query:    "restart",
 		Severity: "warn",
 		Source:   "service",
 		Limit:    10,
 	})
 	if err != nil {
-		t.Fatalf("SearchOpsTimelineEvents: %v", err)
+		t.Fatalf("SearchTimelineEvents: %v", err)
 	}
 	if len(result.Events) != 1 {
 		t.Fatalf("len(events) = %d, want 1", len(result.Events))
@@ -53,11 +55,11 @@ func TestInsertOpsTimelineEventDefaults(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert with all empty/default fields.
-	event, err := s.InsertOpsTimelineEvent(ctx, OpsTimelineEventWrite{
+	event, err := s.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Message: "bare event",
 	})
 	if err != nil {
-		t.Fatalf("InsertOpsTimelineEvent: %v", err)
+		t.Fatalf("InsertTimelineEvent: %v", err)
 	}
 	if event.Source != "ops" {
 		t.Fatalf("source = %q, want ops (default)", event.Source)
@@ -65,8 +67,8 @@ func TestInsertOpsTimelineEventDefaults(t *testing.T) {
 	if event.EventType != "ops.event" {
 		t.Fatalf("eventType = %q, want ops.event (default)", event.EventType)
 	}
-	if event.Severity != opsSeverityInfo {
-		t.Fatalf("severity = %q, want %q (default)", event.Severity, opsSeverityInfo)
+	if event.Severity != timeline.SeverityInfo {
+		t.Fatalf("severity = %q, want %q (default)", event.Severity, timeline.SeverityInfo)
 	}
 	if event.CreatedAt == "" {
 		t.Fatalf("createdAt should be set by default")
@@ -81,21 +83,21 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	// Seed diverse events.
-	events := []OpsTimelineEventWrite{
+	events := []timeline.EventWrite{
 		{Source: "service", EventType: "restart", Severity: "warn", Resource: "nginx", Message: "nginx restarted", CreatedAt: base},
 		{Source: "service", EventType: "start", Severity: "info", Resource: "redis", Message: "redis started", CreatedAt: base.Add(time.Second)},
 		{Source: "deploy", EventType: "deploy", Severity: "error", Resource: "app", Message: "deploy failed", CreatedAt: base.Add(2 * time.Second)},
 	}
 	for _, e := range events {
-		if _, err := s.InsertOpsTimelineEvent(ctx, e); err != nil {
-			t.Fatalf("InsertOpsTimelineEvent(%s): %v", e.Resource, err)
+		if _, err := s.InsertTimelineEvent(ctx, e); err != nil {
+			t.Fatalf("InsertTimelineEvent(%s): %v", e.Resource, err)
 		}
 	}
 
 	t.Run("filter by severity only", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Severity: "error"})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{Severity: "error"})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		if len(result.Events) != 1 || result.Events[0].Resource != "app" {
 			t.Fatalf("expected 1 error event (app), got %d: %+v", len(result.Events), result.Events)
@@ -103,9 +105,9 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 	})
 
 	t.Run("filter by source only", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Source: "service"})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{Source: "service"})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		if len(result.Events) != 2 {
 			t.Fatalf("expected 2 service events, got %d", len(result.Events))
@@ -113,9 +115,9 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 	})
 
 	t.Run("filter by query text", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Query: "redis"})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{Query: "redis"})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		if len(result.Events) != 1 || result.Events[0].Resource != "redis" {
 			t.Fatalf("expected 1 redis event, got %d", len(result.Events))
@@ -123,9 +125,9 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 	})
 
 	t.Run("empty query returns all", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		if len(result.Events) != 3 {
 			t.Fatalf("expected 3 events, got %d", len(result.Events))
@@ -133,9 +135,9 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 	})
 
 	t.Run("severity 'all' returns all", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Severity: "all"})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{Severity: "all"})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		if len(result.Events) != 3 {
 			t.Fatalf("expected 3 events, got %d", len(result.Events))
@@ -143,19 +145,19 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 	})
 
 	t.Run("invalid severity returns error", func(t *testing.T) {
-		_, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Severity: "critical"})
+		_, err := s.SearchTimelineEvents(ctx, timeline.Query{Severity: "critical"})
 		if err == nil {
 			t.Fatalf("expected error for invalid severity")
 		}
-		if !errors.Is(err, ErrInvalidOpsFilter) {
-			t.Fatalf("error = %v, want ErrInvalidOpsFilter", err)
+		if !errors.Is(err, timeline.ErrInvalidFilter) {
+			t.Fatalf("error = %v, want timeline.ErrInvalidFilter", err)
 		}
 	})
 
 	t.Run("HasMore when limit exceeded", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Limit: 2})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{Limit: 2})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		if !result.HasMore {
 			t.Fatalf("hasMore = false, want true")
@@ -166,9 +168,9 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 	})
 
 	t.Run("negative limit defaults to 100", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Limit: -5})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{Limit: -5})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		// Should return all 3 events (well under default 100 limit).
 		if len(result.Events) != 3 {
@@ -178,28 +180,28 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 
 	t.Run("severity aliases normalized", func(t *testing.T) {
 		// "warning" should be treated as "warn".
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Severity: "warning"})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{Severity: "warning"})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
-		if len(result.Events) != 1 || result.Events[0].Severity != opsSeverityWarn {
+		if len(result.Events) != 1 || result.Events[0].Severity != timeline.SeverityWarn {
 			t.Fatalf("expected 1 warn event, got %d", len(result.Events))
 		}
 
 		// "err" should be treated as "error".
-		result, err = s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{Severity: "err"})
+		result, err = s.SearchTimelineEvents(ctx, timeline.Query{Severity: "err"})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents(err): %v", err)
+			t.Fatalf("SearchTimelineEvents(err): %v", err)
 		}
-		if len(result.Events) != 1 || result.Events[0].Severity != opsSeverityError {
+		if len(result.Events) != 1 || result.Events[0].Severity != timeline.SeverityError {
 			t.Fatalf("expected 1 error event, got %d", len(result.Events))
 		}
 	})
 
 	t.Run("results ordered by created_at DESC", func(t *testing.T) {
-		result, err := s.SearchOpsTimelineEvents(ctx, OpsTimelineQuery{})
+		result, err := s.SearchTimelineEvents(ctx, timeline.Query{})
 		if err != nil {
-			t.Fatalf("SearchOpsTimelineEvents: %v", err)
+			t.Fatalf("SearchTimelineEvents: %v", err)
 		}
 		if len(result.Events) < 2 {
 			t.Fatalf("need at least 2 events for ordering check")

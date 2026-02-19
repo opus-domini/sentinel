@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/opus-domini/sentinel/internal/alerts"
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func TestStorageStatsAndFlush(t *testing.T) {
@@ -127,7 +130,7 @@ func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time
 	}); err != nil {
 		t.Fatalf("CreateRecoveryJob: %v", err)
 	}
-	if _, err := s.InsertOpsTimelineEvent(ctx, OpsTimelineEventWrite{
+	if _, err := s.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "service",
 		EventType: "service.action",
 		Severity:  "info",
@@ -137,9 +140,9 @@ func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time
 		Metadata:  `{"source":"test"}`,
 		CreatedAt: base,
 	}); err != nil {
-		t.Fatalf("InsertOpsTimelineEvent: %v", err)
+		t.Fatalf("InsertTimelineEvent: %v", err)
 	}
-	if _, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+	if _, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "service:sentinel:failed",
 		Source:    "service",
 		Resource:  "sentinel",
@@ -149,7 +152,7 @@ func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time
 		Metadata:  `{"source":"test"}`,
 		CreatedAt: base,
 	}); err != nil {
-		t.Fatalf("UpsertOpsAlert: %v", err)
+		t.Fatalf("UpsertAlert: %v", err)
 	}
 	runbooks, err := s.ListOpsRunbooks(ctx)
 	if err != nil {

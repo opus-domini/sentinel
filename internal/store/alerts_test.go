@@ -6,6 +6,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/opus-domini/sentinel/internal/alerts"
 )
 
 func TestOpsAlertUpsertAndAck(t *testing.T) {
@@ -15,7 +17,7 @@ func TestOpsAlertUpsertAndAck(t *testing.T) {
 	ctx := context.Background()
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
-	first, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+	first, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "service:sentinel:failed",
 		Source:    "service",
 		Resource:  "sentinel",
@@ -26,10 +28,10 @@ func TestOpsAlertUpsertAndAck(t *testing.T) {
 		CreatedAt: base,
 	})
 	if err != nil {
-		t.Fatalf("UpsertOpsAlert(first): %v", err)
+		t.Fatalf("UpsertAlert(first): %v", err)
 	}
 
-	second, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+	second, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "service:sentinel:failed",
 		Source:    "service",
 		Resource:  "sentinel",
@@ -40,7 +42,7 @@ func TestOpsAlertUpsertAndAck(t *testing.T) {
 		CreatedAt: base.Add(30 * time.Second),
 	})
 	if err != nil {
-		t.Fatalf("UpsertOpsAlert(second): %v", err)
+		t.Fatalf("UpsertAlert(second): %v", err)
 	}
 	if second.ID != first.ID {
 		t.Fatalf("alert id changed on dedupe: first=%d second=%d", first.ID, second.ID)
@@ -49,26 +51,26 @@ func TestOpsAlertUpsertAndAck(t *testing.T) {
 		t.Fatalf("occurrences = %d, want 2", second.Occurrences)
 	}
 
-	alerts, err := s.ListOpsAlerts(ctx, 10, opsAlertStatusOpen)
+	alertsList, err := s.ListAlerts(ctx, 10, alerts.StatusOpen)
 	if err != nil {
-		t.Fatalf("ListOpsAlerts: %v", err)
+		t.Fatalf("ListAlerts: %v", err)
 	}
-	if len(alerts) != 1 {
-		t.Fatalf("len(alerts) = %d, want 1", len(alerts))
+	if len(alertsList) != 1 {
+		t.Fatalf("len(alerts) = %d, want 1", len(alertsList))
 	}
 
-	acked, err := s.AckOpsAlert(ctx, first.ID, base.Add(time.Minute))
+	acked, err := s.AckAlert(ctx, first.ID, base.Add(time.Minute))
 	if err != nil {
-		t.Fatalf("AckOpsAlert: %v", err)
+		t.Fatalf("AckAlert: %v", err)
 	}
-	if acked.Status != opsAlertStatusAcked {
-		t.Fatalf("status = %q, want %q", acked.Status, opsAlertStatusAcked)
+	if acked.Status != alerts.StatusAcked {
+		t.Fatalf("status = %q, want %q", acked.Status, alerts.StatusAcked)
 	}
 	if acked.AckedAt == "" {
 		t.Fatalf("ackedAt should not be empty")
 	}
 
-	_, err = s.AckOpsAlert(ctx, 99999, base)
+	_, err = s.AckAlert(ctx, 99999, base)
 	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("ack missing alert error = %v, want sql.ErrNoRows", err)
 	}
@@ -82,7 +84,7 @@ func TestResolveOpsAlert(t *testing.T) {
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	// Seed an open alert.
-	alert, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+	alert, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "resolve:test",
 		Source:    "test",
 		Resource:  "svc",
@@ -92,16 +94,16 @@ func TestResolveOpsAlert(t *testing.T) {
 		CreatedAt: base,
 	})
 	if err != nil {
-		t.Fatalf("UpsertOpsAlert: %v", err)
+		t.Fatalf("UpsertAlert: %v", err)
 	}
 
 	t.Run("resolve open alert", func(t *testing.T) {
-		resolved, err := s.ResolveOpsAlert(ctx, "resolve:test", base.Add(time.Minute))
+		resolved, err := s.ResolveAlert(ctx, "resolve:test", base.Add(time.Minute))
 		if err != nil {
-			t.Fatalf("ResolveOpsAlert: %v", err)
+			t.Fatalf("ResolveAlert: %v", err)
 		}
-		if resolved.Status != opsAlertStatusResolved {
-			t.Fatalf("status = %q, want %q", resolved.Status, opsAlertStatusResolved)
+		if resolved.Status != alerts.StatusResolved {
+			t.Fatalf("status = %q, want %q", resolved.Status, alerts.StatusResolved)
 		}
 		if resolved.ResolvedAt == "" {
 			t.Fatalf("resolvedAt should not be empty")
@@ -112,21 +114,21 @@ func TestResolveOpsAlert(t *testing.T) {
 	})
 
 	t.Run("resolve already resolved returns ErrNoRows", func(t *testing.T) {
-		_, err := s.ResolveOpsAlert(ctx, "resolve:test", base.Add(2*time.Minute))
+		_, err := s.ResolveAlert(ctx, "resolve:test", base.Add(2*time.Minute))
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("resolve empty dedupe key returns ErrNoRows", func(t *testing.T) {
-		_, err := s.ResolveOpsAlert(ctx, "", base)
+		_, err := s.ResolveAlert(ctx, "", base)
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("resolve nonexistent returns ErrNoRows", func(t *testing.T) {
-		_, err := s.ResolveOpsAlert(ctx, "no:such:key", base)
+		_, err := s.ResolveAlert(ctx, "no:such:key", base)
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
@@ -141,21 +143,21 @@ func TestUpsertOpsAlertReopen(t *testing.T) {
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	// Create and resolve an alert.
-	if _, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+	if _, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "reopen:test",
 		Source:    "test",
 		Title:     "Reopen Alert",
 		Severity:  "warn",
 		CreatedAt: base,
 	}); err != nil {
-		t.Fatalf("UpsertOpsAlert(create): %v", err)
+		t.Fatalf("UpsertAlert(create): %v", err)
 	}
-	if _, err := s.ResolveOpsAlert(ctx, "reopen:test", base.Add(time.Minute)); err != nil {
-		t.Fatalf("ResolveOpsAlert: %v", err)
+	if _, err := s.ResolveAlert(ctx, "reopen:test", base.Add(time.Minute)); err != nil {
+		t.Fatalf("ResolveAlert: %v", err)
 	}
 
 	// Upsert same dedupe key → should reopen (status back to open).
-	reopened, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+	reopened, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "reopen:test",
 		Source:    "test",
 		Title:     "Reopen Alert",
@@ -163,10 +165,10 @@ func TestUpsertOpsAlertReopen(t *testing.T) {
 		CreatedAt: base.Add(2 * time.Minute),
 	})
 	if err != nil {
-		t.Fatalf("UpsertOpsAlert(reopen): %v", err)
+		t.Fatalf("UpsertAlert(reopen): %v", err)
 	}
-	if reopened.Status != opsAlertStatusOpen {
-		t.Fatalf("status = %q, want %q (should reopen)", reopened.Status, opsAlertStatusOpen)
+	if reopened.Status != alerts.StatusOpen {
+		t.Fatalf("status = %q, want %q (should reopen)", reopened.Status, alerts.StatusOpen)
 	}
 	if reopened.Occurrences != 2 {
 		t.Fatalf("occurrences = %d, want 2", reopened.Occurrences)
@@ -181,7 +183,7 @@ func TestUpsertOpsAlertValidation(t *testing.T) {
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	t.Run("empty dedupe key errors", func(t *testing.T) {
-		_, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+		_, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "",
 			Source:    "test",
 			CreatedAt: base,
@@ -192,12 +194,12 @@ func TestUpsertOpsAlertValidation(t *testing.T) {
 	})
 
 	t.Run("defaults applied", func(t *testing.T) {
-		alert, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+		alert, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "defaults:test",
 			CreatedAt: base,
 		})
 		if err != nil {
-			t.Fatalf("UpsertOpsAlert: %v", err)
+			t.Fatalf("UpsertAlert: %v", err)
 		}
 		// Source defaults to "ops".
 		if alert.Source != "ops" {
@@ -212,8 +214,8 @@ func TestUpsertOpsAlertValidation(t *testing.T) {
 			t.Fatalf("message = %q, want defaults:test", alert.Message)
 		}
 		// Severity defaults to info.
-		if alert.Severity != opsSeverityInfo {
-			t.Fatalf("severity = %q, want %q", alert.Severity, opsSeverityInfo)
+		if alert.Severity != "info" {
+			t.Fatalf("severity = %q, want info", alert.Severity)
 		}
 	})
 }
@@ -226,21 +228,21 @@ func TestAckOpsAlertEdgeCases(t *testing.T) {
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	t.Run("ack negative ID returns ErrNoRows", func(t *testing.T) {
-		_, err := s.AckOpsAlert(ctx, -1, base)
+		_, err := s.AckAlert(ctx, -1, base)
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("ack zero ID returns ErrNoRows", func(t *testing.T) {
-		_, err := s.AckOpsAlert(ctx, 0, base)
+		_, err := s.AckAlert(ctx, 0, base)
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("cannot ack resolved alert", func(t *testing.T) {
-		alert, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+		alert, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "ack:resolved",
 			Source:    "test",
 			Title:     "Resolved Alert",
@@ -248,13 +250,13 @@ func TestAckOpsAlertEdgeCases(t *testing.T) {
 			CreatedAt: base,
 		})
 		if err != nil {
-			t.Fatalf("UpsertOpsAlert: %v", err)
+			t.Fatalf("UpsertAlert: %v", err)
 		}
-		if _, err := s.ResolveOpsAlert(ctx, "ack:resolved", base.Add(time.Minute)); err != nil {
-			t.Fatalf("ResolveOpsAlert: %v", err)
+		if _, err := s.ResolveAlert(ctx, "ack:resolved", base.Add(time.Minute)); err != nil {
+			t.Fatalf("ResolveAlert: %v", err)
 		}
 
-		_, err = s.AckOpsAlert(ctx, alert.ID, base.Add(2*time.Minute))
+		_, err = s.AckAlert(ctx, alert.ID, base.Add(2*time.Minute))
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows (cannot ack resolved)", err)
 		}
@@ -269,30 +271,30 @@ func TestListOpsAlertsFilters(t *testing.T) {
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	t.Run("invalid status returns error", func(t *testing.T) {
-		_, err := s.ListOpsAlerts(ctx, 10, "bogus")
+		_, err := s.ListAlerts(ctx, 10, "bogus")
 		if err == nil {
 			t.Fatalf("expected error for invalid status")
 		}
-		if !errors.Is(err, ErrInvalidOpsFilter) {
-			t.Fatalf("error = %v, want ErrInvalidOpsFilter", err)
+		if !errors.Is(err, alerts.ErrInvalidFilter) {
+			t.Fatalf("error = %v, want alerts.ErrInvalidFilter", err)
 		}
 	})
 
 	t.Run("empty status returns all", func(t *testing.T) {
-		if _, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+		if _, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "list:a",
 			Source:    "test",
 			Severity:  "info",
 			CreatedAt: base,
 		}); err != nil {
-			t.Fatalf("UpsertOpsAlert: %v", err)
+			t.Fatalf("UpsertAlert: %v", err)
 		}
 
-		alerts, err := s.ListOpsAlerts(ctx, 10, "")
+		alertsList, err := s.ListAlerts(ctx, 10, "")
 		if err != nil {
-			t.Fatalf("ListOpsAlerts: %v", err)
+			t.Fatalf("ListAlerts: %v", err)
 		}
-		if len(alerts) < 1 {
+		if len(alertsList) < 1 {
 			t.Fatalf("expected at least 1 alert")
 		}
 	})
@@ -306,7 +308,7 @@ func TestResolveOpsAlertAcked(t *testing.T) {
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	// Create and ack an alert.
-	alert, err := s.UpsertOpsAlert(ctx, OpsAlertWrite{
+	alert, err := s.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "resolve:acked",
 		Source:    "test",
 		Title:     "Acked Alert",
@@ -314,18 +316,18 @@ func TestResolveOpsAlertAcked(t *testing.T) {
 		CreatedAt: base,
 	})
 	if err != nil {
-		t.Fatalf("UpsertOpsAlert: %v", err)
+		t.Fatalf("UpsertAlert: %v", err)
 	}
-	if _, err := s.AckOpsAlert(ctx, alert.ID, base.Add(time.Minute)); err != nil {
-		t.Fatalf("AckOpsAlert: %v", err)
+	if _, err := s.AckAlert(ctx, alert.ID, base.Add(time.Minute)); err != nil {
+		t.Fatalf("AckAlert: %v", err)
 	}
 
 	// Resolving an acked alert should succeed.
-	resolved, err := s.ResolveOpsAlert(ctx, "resolve:acked", base.Add(2*time.Minute))
+	resolved, err := s.ResolveAlert(ctx, "resolve:acked", base.Add(2*time.Minute))
 	if err != nil {
-		t.Fatalf("ResolveOpsAlert(acked): %v", err)
+		t.Fatalf("ResolveAlert(acked): %v", err)
 	}
-	if resolved.Status != opsAlertStatusResolved {
-		t.Fatalf("status = %q, want %q", resolved.Status, opsAlertStatusResolved)
+	if resolved.Status != alerts.StatusResolved {
+		t.Fatalf("status = %q, want %q", resolved.Status, alerts.StatusResolved)
 	}
 }

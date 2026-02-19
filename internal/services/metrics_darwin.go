@@ -1,6 +1,6 @@
 //go:build darwin
 
-package ops
+package services
 
 import (
 	"context"

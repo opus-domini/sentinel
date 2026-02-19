@@ -12,6 +12,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +69,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to run runbook", nil)
 		return
 	}
-	timelineEvent, timelineErr := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	timelineEvent, timelineErr := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "runbook",
 		EventType: "runbook.started",
 		Severity:  "info",

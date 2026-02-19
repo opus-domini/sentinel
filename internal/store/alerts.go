@@ -6,41 +6,10 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/opus-domini/sentinel/internal/alerts"
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
-
-const (
-	opsAlertStatusOpen     = "open"
-	opsAlertStatusAcked    = "acked"
-	opsAlertStatusResolved = "resolved"
-)
-
-type OpsAlert struct {
-	ID          int64  `json:"id"`
-	DedupeKey   string `json:"dedupeKey"`
-	Source      string `json:"source"`
-	Resource    string `json:"resource"`
-	Title       string `json:"title"`
-	Message     string `json:"message"`
-	Severity    string `json:"severity"`
-	Status      string `json:"status"`
-	Occurrences int64  `json:"occurrences"`
-	Metadata    string `json:"metadata"`
-	FirstSeenAt string `json:"firstSeenAt"`
-	LastSeenAt  string `json:"lastSeenAt"`
-	AckedAt     string `json:"ackedAt,omitempty"`
-	ResolvedAt  string `json:"resolvedAt,omitempty"`
-}
-
-type OpsAlertWrite struct {
-	DedupeKey string
-	Source    string
-	Resource  string
-	Title     string
-	Message   string
-	Severity  string
-	Metadata  string
-	CreatedAt time.Time
-}
 
 func (s *Store) initAlertsSchema() error {
 	statements := []string{
@@ -73,18 +42,18 @@ func (s *Store) initAlertsSchema() error {
 	return nil
 }
 
-func (s *Store) UpsertOpsAlert(ctx context.Context, write OpsAlertWrite) (OpsAlert, error) {
+func (s *Store) UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error) {
 	now := write.CreatedAt.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	dedupeKey := strings.TrimSpace(write.DedupeKey)
 	if dedupeKey == "" {
-		return OpsAlert{}, fmt.Errorf("dedupe key is required")
+		return alerts.Alert{}, fmt.Errorf("dedupe key is required")
 	}
 	source := strings.TrimSpace(write.Source)
 	if source == "" {
-		source = opsDefaultSource
+		source = timeline.DefaultSource
 	}
 	resource := strings.TrimSpace(write.Resource)
 	title := strings.TrimSpace(write.Title)
@@ -95,7 +64,7 @@ func (s *Store) UpsertOpsAlert(ctx context.Context, write OpsAlertWrite) (OpsAle
 	if message == "" {
 		message = title
 	}
-	severity := normalizeOpsSeverity(write.Severity)
+	severity := timeline.NormalizeSeverity(write.Severity)
 	metadata := strings.TrimSpace(write.Metadata)
 	nowRFC3339 := now.Format(time.RFC3339)
 
@@ -118,21 +87,21 @@ func (s *Store) UpsertOpsAlert(ctx context.Context, write OpsAlertWrite) (OpsAle
 		title,
 		message,
 		severity,
-		opsAlertStatusOpen,
+		alerts.StatusOpen,
 		metadata,
 		nowRFC3339,
 		nowRFC3339,
-		opsAlertStatusResolved,
-		opsAlertStatusOpen,
+		alerts.StatusResolved,
+		alerts.StatusOpen,
 	); err != nil {
-		return OpsAlert{}, err
+		return alerts.Alert{}, err
 	}
 
-	return s.getOpsAlertByDedupeKey(ctx, dedupeKey)
+	return s.getAlertByDedupeKey(ctx, dedupeKey)
 }
 
-func (s *Store) getOpsAlertByDedupeKey(ctx context.Context, dedupeKey string) (OpsAlert, error) {
-	var out OpsAlert
+func (s *Store) getAlertByDedupeKey(ctx context.Context, dedupeKey string) (alerts.Alert, error) {
+	var out alerts.Alert
 	err := s.db.QueryRowContext(ctx, `SELECT
 		id, dedupe_key, source, resource, title, message, severity, status, occurrences,
 		metadata, first_seen_at, last_seen_at, acked_at, resolved_at
@@ -154,12 +123,12 @@ func (s *Store) getOpsAlertByDedupeKey(ctx context.Context, dedupeKey string) (O
 		&out.ResolvedAt,
 	)
 	if err != nil {
-		return OpsAlert{}, err
+		return alerts.Alert{}, err
 	}
 	return out, nil
 }
 
-func (s *Store) ListOpsAlerts(ctx context.Context, limit int, status string) ([]OpsAlert, error) {
+func (s *Store) ListAlerts(ctx context.Context, limit int, status string) ([]alerts.Alert, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -167,8 +136,8 @@ func (s *Store) ListOpsAlerts(ctx context.Context, limit int, status string) ([]
 		limit = 500
 	}
 	status = strings.ToLower(strings.TrimSpace(status))
-	if status != "" && status != opsAlertStatusOpen && status != opsAlertStatusAcked && status != opsAlertStatusResolved {
-		return nil, fmt.Errorf("%w: status", ErrInvalidOpsFilter)
+	if status != "" && status != alerts.StatusOpen && status != alerts.StatusAcked && status != alerts.StatusResolved {
+		return nil, fmt.Errorf("%w: status", alerts.ErrInvalidFilter)
 	}
 
 	rows, err := s.db.QueryContext(ctx, `SELECT
@@ -183,9 +152,9 @@ func (s *Store) ListOpsAlerts(ctx context.Context, limit int, status string) ([]
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]OpsAlert, 0, limit)
+	items := make([]alerts.Alert, 0, limit)
 	for rows.Next() {
-		var item OpsAlert
+		var item alerts.Alert
 		if err := rows.Scan(
 			&item.ID,
 			&item.DedupeKey,
@@ -212,9 +181,9 @@ func (s *Store) ListOpsAlerts(ctx context.Context, limit int, status string) ([]
 	return items, nil
 }
 
-func (s *Store) AckOpsAlert(ctx context.Context, id int64, ackAt time.Time) (OpsAlert, error) {
+func (s *Store) AckAlert(ctx context.Context, id int64, ackAt time.Time) (alerts.Alert, error) {
 	if id <= 0 {
-		return OpsAlert{}, sql.ErrNoRows
+		return alerts.Alert{}, sql.ErrNoRows
 	}
 	at := ackAt.UTC()
 	if at.IsZero() {
@@ -228,24 +197,24 @@ func (s *Store) AckOpsAlert(ctx context.Context, id int64, ackAt time.Time) (Ops
 		    last_seen_at = ?
 		WHERE id = ?
 		  AND status != ?`,
-		opsAlertStatusAcked,
+		alerts.StatusAcked,
 		atRFC3339,
 		atRFC3339,
 		id,
-		opsAlertStatusResolved,
+		alerts.StatusResolved,
 	)
 	if err != nil {
-		return OpsAlert{}, err
+		return alerts.Alert{}, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return OpsAlert{}, err
+		return alerts.Alert{}, err
 	}
 	if affected == 0 {
-		return OpsAlert{}, sql.ErrNoRows
+		return alerts.Alert{}, sql.ErrNoRows
 	}
 
-	var out OpsAlert
+	var out alerts.Alert
 	err = s.db.QueryRowContext(ctx, `SELECT
 		id, dedupe_key, source, resource, title, message, severity, status, occurrences,
 		metadata, first_seen_at, last_seen_at, acked_at, resolved_at
@@ -267,15 +236,15 @@ func (s *Store) AckOpsAlert(ctx context.Context, id int64, ackAt time.Time) (Ops
 		&out.ResolvedAt,
 	)
 	if err != nil {
-		return OpsAlert{}, err
+		return alerts.Alert{}, err
 	}
 	return out, nil
 }
 
-func (s *Store) ResolveOpsAlert(ctx context.Context, dedupeKey string, at time.Time) (OpsAlert, error) {
+func (s *Store) ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error) {
 	dedupeKey = strings.TrimSpace(dedupeKey)
 	if dedupeKey == "" {
-		return OpsAlert{}, sql.ErrNoRows
+		return alerts.Alert{}, sql.ErrNoRows
 	}
 	now := at.UTC()
 	if now.IsZero() {
@@ -285,17 +254,17 @@ func (s *Store) ResolveOpsAlert(ctx context.Context, dedupeKey string, at time.T
 	result, err := s.db.ExecContext(ctx, `UPDATE ops_alerts
 		SET status = ?, resolved_at = ?, last_seen_at = ?
 		WHERE dedupe_key = ? AND status != ?`,
-		opsAlertStatusResolved, nowRFC3339, nowRFC3339, dedupeKey, opsAlertStatusResolved,
+		alerts.StatusResolved, nowRFC3339, nowRFC3339, dedupeKey, alerts.StatusResolved,
 	)
 	if err != nil {
-		return OpsAlert{}, err
+		return alerts.Alert{}, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return OpsAlert{}, err
+		return alerts.Alert{}, err
 	}
 	if affected == 0 {
-		return OpsAlert{}, sql.ErrNoRows
+		return alerts.Alert{}, sql.ErrNoRows
 	}
-	return s.getOpsAlertByDedupeKey(ctx, dedupeKey)
+	return s.getAlertByDedupeKey(ctx, dedupeKey)
 }

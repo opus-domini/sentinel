@@ -14,12 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
-	opsplane "github.com/opus-domini/sentinel/internal/ops"
 	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/security"
+	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/timeline"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
@@ -3262,7 +3264,7 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
-	event, err := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	event, err := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "service",
 		EventType: "service.action",
 		Severity:  "warn",
@@ -3273,9 +3275,9 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 		CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("InsertOpsTimelineEvent: %v", err)
+		t.Fatalf("InsertTimelineEvent: %v", err)
 	}
-	alert, err := h.store.UpsertOpsAlert(ctx, store.OpsAlertWrite{
+	alert, err := h.store.UpsertAlert(ctx, alerts.AlertWrite{
 		DedupeKey: "service:sentinel:failed",
 		Source:    "service",
 		Resource:  "sentinel",
@@ -3286,7 +3288,7 @@ func TestOpsAlertsAndTimelineHandlers(t *testing.T) {
 		CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("UpsertOpsAlert: %v", err)
+		t.Fatalf("UpsertAlert: %v", err)
 	}
 
 	t.Run("list alerts", func(t *testing.T) {
@@ -4004,9 +4006,9 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 	// The mock ListServices returns empty, so services array may be empty;
 	// verify the store persisted the record.
 	_ = services
-	custom, err := h.store.ListOpsCustomServices(r.Context())
+	custom, err := h.store.ListCustomServices(r.Context())
 	if err != nil {
-		t.Fatalf("ListOpsCustomServices: %v", err)
+		t.Fatalf("ListCustomServices: %v", err)
 	}
 	if len(custom) != 1 || custom[0].Name != "myapp" {
 		t.Fatalf("custom services = %+v, want 1 entry named myapp", custom)

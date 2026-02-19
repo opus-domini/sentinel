@@ -1,4 +1,4 @@
-package ops
+package services
 
 import (
 	"context"
@@ -14,6 +14,11 @@ import (
 	"github.com/opus-domini/sentinel/internal/service"
 	"github.com/opus-domini/sentinel/internal/store"
 )
+
+// customServicesRepo defines the store operations consumed by Manager.
+type customServicesRepo interface {
+	ListCustomServices(ctx context.Context) ([]store.CustomService, error)
+}
 
 const (
 	ServiceNameSentinel = "sentinel"
@@ -95,12 +100,12 @@ type Overview struct {
 }
 
 type Manager struct {
-	startedAt time.Time
-	nowFn     func() time.Time
-	hostname  func() (string, error)
-	uidFn     func() int
-	goos      string
-	store     *store.Store
+	startedAt      time.Time
+	nowFn          func() time.Time
+	hostname       func() (string, error)
+	uidFn          func() int
+	goos           string
+	customServices customServicesRepo
 
 	userStatusFn       func() (service.UserServiceStatus, error)
 	autoUpdateStatusFn func(scope string) (service.UserAutoUpdateServiceStatus, error)
@@ -110,7 +115,7 @@ type Manager struct {
 	commandRunner      commandRunner
 }
 
-func NewManager(startedAt time.Time, st *store.Store) *Manager {
+func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 	now := time.Now().UTC()
 	if startedAt.IsZero() {
 		startedAt = now
@@ -121,7 +126,7 @@ func NewManager(startedAt time.Time, st *store.Store) *Manager {
 		hostname:           os.Hostname,
 		uidFn:              os.Getuid,
 		goos:               runtime.GOOS,
-		store:              st,
+		customServices:     csRepo,
 		userStatusFn:       service.UserStatus,
 		autoUpdateStatusFn: service.UserAutoUpdateStatusForScope,
 		installAutoUpdate:  service.InstallUserAutoUpdate,
@@ -218,8 +223,8 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
 	}
 
 	// Merge custom services from store.
-	if m.store != nil {
-		custom, err := m.store.ListOpsCustomServices(ctx)
+	if m.customServices != nil {
+		custom, err := m.customServices.ListCustomServices(ctx)
 		if err == nil {
 			for _, cs := range custom {
 				svc := ServiceStatus{

@@ -2,56 +2,12 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
-
-const (
-	opsSeverityInfo  = "info"
-	opsSeverityWarn  = "warn"
-	opsSeverityError = "error"
-
-	opsDefaultSource = "ops"
-)
-
-var ErrInvalidOpsFilter = errors.New("invalid ops filter")
-
-type OpsTimelineEvent struct {
-	ID        int64  `json:"id"`
-	Source    string `json:"source"`
-	EventType string `json:"eventType"`
-	Severity  string `json:"severity"`
-	Resource  string `json:"resource"`
-	Message   string `json:"message"`
-	Details   string `json:"details"`
-	Metadata  string `json:"metadata"`
-	CreatedAt string `json:"createdAt"`
-}
-
-type OpsTimelineEventWrite struct {
-	Source    string
-	EventType string
-	Severity  string
-	Resource  string
-	Message   string
-	Details   string
-	Metadata  string
-	CreatedAt time.Time
-}
-
-type OpsTimelineQuery struct {
-	Query    string
-	Severity string
-	Source   string
-	Limit    int
-}
-
-type OpsTimelineResult struct {
-	Events  []OpsTimelineEvent `json:"events"`
-	HasMore bool               `json:"hasMore"`
-}
 
 func (s *Store) initTimelineSchema() error {
 	statements := []string{
@@ -81,20 +37,20 @@ func (s *Store) initTimelineSchema() error {
 	return nil
 }
 
-func (s *Store) InsertOpsTimelineEvent(ctx context.Context, write OpsTimelineEventWrite) (OpsTimelineEvent, error) {
+func (s *Store) InsertTimelineEvent(ctx context.Context, write timeline.EventWrite) (timeline.Event, error) {
 	now := write.CreatedAt.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	source := strings.TrimSpace(write.Source)
 	if source == "" {
-		source = opsDefaultSource
+		source = timeline.DefaultSource
 	}
 	eventType := strings.TrimSpace(write.EventType)
 	if eventType == "" {
 		eventType = "ops.event"
 	}
-	severity := normalizeOpsSeverity(write.Severity)
+	severity := timeline.NormalizeSeverity(write.Severity)
 
 	res, err := s.db.ExecContext(ctx, `INSERT INTO ops_timeline_events (
 		source, event_type, severity, resource, message, details, metadata, created_at
@@ -109,17 +65,17 @@ func (s *Store) InsertOpsTimelineEvent(ctx context.Context, write OpsTimelineEve
 		now.Format(time.RFC3339),
 	)
 	if err != nil {
-		return OpsTimelineEvent{}, err
+		return timeline.Event{}, err
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return OpsTimelineEvent{}, err
+		return timeline.Event{}, err
 	}
-	return s.getOpsTimelineEventByID(ctx, id)
+	return s.getTimelineEventByID(ctx, id)
 }
 
-func (s *Store) getOpsTimelineEventByID(ctx context.Context, id int64) (OpsTimelineEvent, error) {
-	var out OpsTimelineEvent
+func (s *Store) getTimelineEventByID(ctx context.Context, id int64) (timeline.Event, error) {
+	var out timeline.Event
 	err := s.db.QueryRowContext(ctx, `SELECT
 		id, source, event_type, severity, resource, message, details, metadata, created_at
 	FROM ops_timeline_events
@@ -135,12 +91,12 @@ func (s *Store) getOpsTimelineEventByID(ctx context.Context, id int64) (OpsTimel
 		&out.CreatedAt,
 	)
 	if err != nil {
-		return OpsTimelineEvent{}, err
+		return timeline.Event{}, err
 	}
 	return out, nil
 }
 
-func (s *Store) SearchOpsTimelineEvents(ctx context.Context, query OpsTimelineQuery) (OpsTimelineResult, error) {
+func (s *Store) SearchTimelineEvents(ctx context.Context, query timeline.Query) (timeline.Result, error) {
 	limit := query.Limit
 	if limit <= 0 {
 		limit = 100
@@ -154,10 +110,10 @@ func (s *Store) SearchOpsTimelineEvents(ctx context.Context, query OpsTimelineQu
 	switch rawSeverity {
 	case "", "all":
 		severity = ""
-	case opsSeverityInfo, opsSeverityWarn, "warning", opsSeverityError, "err":
-		severity = normalizeOpsSeverity(rawSeverity)
+	case timeline.SeverityInfo, timeline.SeverityWarn, "warning", timeline.SeverityError, "err":
+		severity = timeline.NormalizeSeverity(rawSeverity)
 	default:
-		return OpsTimelineResult{}, fmt.Errorf("%w: severity", ErrInvalidOpsFilter)
+		return timeline.Result{}, fmt.Errorf("%w: severity", timeline.ErrInvalidFilter)
 	}
 	source := strings.ToLower(strings.TrimSpace(query.Source))
 
@@ -175,13 +131,13 @@ func (s *Store) SearchOpsTimelineEvents(ctx context.Context, query OpsTimelineQu
 	ORDER BY created_at DESC, id DESC
 	LIMIT ?`, severity, severity, source, source, search, search, search, search, search, limit+1)
 	if err != nil {
-		return OpsTimelineResult{}, err
+		return timeline.Result{}, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	events := make([]OpsTimelineEvent, 0, limit+1)
+	events := make([]timeline.Event, 0, limit+1)
 	for rows.Next() {
-		var item OpsTimelineEvent
+		var item timeline.Event
 		if err := rows.Scan(
 			&item.ID,
 			&item.Source,
@@ -193,29 +149,18 @@ func (s *Store) SearchOpsTimelineEvents(ctx context.Context, query OpsTimelineQu
 			&item.Metadata,
 			&item.CreatedAt,
 		); err != nil {
-			return OpsTimelineResult{}, err
+			return timeline.Result{}, err
 		}
 		events = append(events, item)
 	}
 	if err := rows.Err(); err != nil {
-		return OpsTimelineResult{}, err
+		return timeline.Result{}, err
 	}
 
-	result := OpsTimelineResult{Events: events}
+	result := timeline.Result{Events: events}
 	if len(result.Events) > limit {
 		result.HasMore = true
 		result.Events = result.Events[:limit]
 	}
 	return result, nil
-}
-
-func normalizeOpsSeverity(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case opsSeverityWarn, "warning":
-		return opsSeverityWarn
-	case opsSeverityError, "err":
-		return opsSeverityError
-	default:
-		return opsSeverityInfo
-	}
 }

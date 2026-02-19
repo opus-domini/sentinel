@@ -1,4 +1,4 @@
-package ops
+package services
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/alerts"
 )
 
 const (
@@ -24,11 +24,17 @@ const (
 // HealthPublisher emits events for real-time updates.
 type HealthPublisher func(eventType string, payload map[string]any)
 
+// healthAlertsRepo defines the alert persistence operations consumed by HealthChecker.
+type healthAlertsRepo interface {
+	UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error)
+	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
+}
+
 // HealthChecker periodically polls service states and host metrics,
 // generating alerts on failures and auto-resolving on recovery.
 type HealthChecker struct {
 	manager  *Manager
-	store    *store.Store
+	alerts   healthAlertsRepo
 	publish  HealthPublisher
 	interval time.Duration
 
@@ -38,13 +44,13 @@ type HealthChecker struct {
 }
 
 // NewHealthChecker creates a health checker.
-func NewHealthChecker(mgr *Manager, st *store.Store, publish HealthPublisher, interval time.Duration) *HealthChecker {
+func NewHealthChecker(mgr *Manager, alertsRepo healthAlertsRepo, publish HealthPublisher, interval time.Duration) *HealthChecker {
 	if interval <= 0 {
 		interval = defaultHealthInterval
 	}
 	return &HealthChecker{
 		manager:  mgr,
-		store:    st,
+		alerts:   alertsRepo,
 		publish:  publish,
 		interval: interval,
 		doneCh:   make(chan struct{}),
@@ -93,19 +99,19 @@ func (hc *HealthChecker) checkServices(ctx context.Context) {
 	if hc.manager == nil {
 		return
 	}
-	services, err := hc.manager.ListServices(ctx)
+	svcs, err := hc.manager.ListServices(ctx)
 	if err != nil {
 		slog.Warn("health check: list services failed", "error", err)
 		return
 	}
 	now := time.Now().UTC()
-	for _, svc := range services {
+	for _, svc := range svcs {
 		state := strings.ToLower(strings.TrimSpace(svc.ActiveState))
 		dedupeKey := fmt.Sprintf("health:service:%s:failed", svc.Name)
 
 		switch state {
 		case "failed":
-			hc.raiseAlert(ctx, store.OpsAlertWrite{
+			hc.raiseAlert(ctx, alerts.AlertWrite{
 				DedupeKey: dedupeKey,
 				Source:    "health",
 				Resource:  svc.Name,
@@ -129,7 +135,7 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	now := time.Now().UTC()
 
 	if metrics.CPUPercent > cpuAlertThreshold && metrics.CPUPercent >= 0 {
-		hc.raiseAlert(ctx, store.OpsAlertWrite{
+		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:cpu:high",
 			Source:    "health",
 			Resource:  "host",
@@ -144,7 +150,7 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	}
 
 	if metrics.MemPercent > memAlertThreshold {
-		hc.raiseAlert(ctx, store.OpsAlertWrite{
+		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:memory:high",
 			Source:    "health",
 			Resource:  "host",
@@ -159,7 +165,7 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	}
 
 	if metrics.DiskPercent > diskAlertThreshold {
-		hc.raiseAlert(ctx, store.OpsAlertWrite{
+		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:disk:high",
 			Source:    "health",
 			Resource:  "host",
@@ -174,11 +180,11 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	}
 }
 
-func (hc *HealthChecker) raiseAlert(ctx context.Context, write store.OpsAlertWrite) {
-	if hc.store == nil {
+func (hc *HealthChecker) raiseAlert(ctx context.Context, write alerts.AlertWrite) {
+	if hc.alerts == nil {
 		return
 	}
-	alert, err := hc.store.UpsertOpsAlert(ctx, write)
+	alert, err := hc.alerts.UpsertAlert(ctx, write)
 	if err != nil {
 		slog.Warn("health check: upsert alert failed", "error", err)
 		return
@@ -192,10 +198,10 @@ func (hc *HealthChecker) raiseAlert(ctx context.Context, write store.OpsAlertWri
 }
 
 func (hc *HealthChecker) resolveAlert(ctx context.Context, dedupeKey string, at time.Time) {
-	if hc.store == nil {
+	if hc.alerts == nil {
 		return
 	}
-	alert, err := hc.store.ResolveOpsAlert(ctx, dedupeKey, at)
+	alert, err := hc.alerts.ResolveAlert(ctx, dedupeKey, at)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			slog.Warn("health check: resolve alert failed", "dedupeKey", dedupeKey, "error", err)

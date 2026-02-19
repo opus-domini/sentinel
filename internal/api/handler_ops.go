@@ -12,9 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
-	opsplane "github.com/opus-domini/sentinel/internal/ops"
+	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/timeline"
 )
 
 func (h *Handler) opsOverview(w http.ResponseWriter, r *http.Request) {
@@ -186,9 +188,9 @@ func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsplane.ServiceStatus, action string, at time.Time) (store.OpsTimelineEvent, bool, []store.OpsAlert, error) {
+func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsplane.ServiceStatus, action string, at time.Time) (timeline.Event, bool, []alerts.Alert, error) {
 	if h.store == nil {
-		return store.OpsTimelineEvent{}, false, nil, nil
+		return timeline.Event{}, false, nil, nil
 	}
 	normalizedAction := strings.ToLower(strings.TrimSpace(action))
 	state := strings.ToLower(strings.TrimSpace(serviceStatus.ActiveState))
@@ -200,7 +202,7 @@ func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsp
 		severity = "warn"
 	}
 
-	event, err := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	event, err := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "service",
 		EventType: "service.action",
 		Severity:  severity,
@@ -211,12 +213,12 @@ func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsp
 		CreatedAt: at,
 	})
 	if err != nil {
-		return store.OpsTimelineEvent{}, false, nil, err
+		return timeline.Event{}, false, nil, err
 	}
 
-	alerts := make([]store.OpsAlert, 0, 1)
+	firedAlerts := make([]alerts.Alert, 0, 1)
 	if state == stateFailed {
-		alert, err := h.store.UpsertOpsAlert(ctx, store.OpsAlertWrite{
+		alert, err := h.store.UpsertAlert(ctx, alerts.AlertWrite{
 			DedupeKey: fmt.Sprintf("service:%s:failed", serviceStatus.Name),
 			Source:    "service",
 			Resource:  serviceStatus.Name,
@@ -227,12 +229,12 @@ func (h *Handler) recordOpsServiceAction(ctx context.Context, serviceStatus opsp
 			CreatedAt: at,
 		})
 		if err != nil {
-			return store.OpsTimelineEvent{}, false, nil, err
+			return timeline.Event{}, false, nil, err
 		}
-		alerts = append(alerts, alert)
+		firedAlerts = append(firedAlerts, alert)
 	}
 
-	return event, true, alerts, nil
+	return event, true, firedAlerts, nil
 }
 
 func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
@@ -250,9 +252,9 @@ func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	alerts, err := h.store.ListOpsAlerts(ctx, limit, status)
+	alertsList, err := h.store.ListAlerts(ctx, limit, status)
 	if err != nil {
-		if errors.Is(err, store.ErrInvalidOpsFilter) {
+		if errors.Is(err, alerts.ErrInvalidFilter) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 			return
 		}
@@ -260,7 +262,7 @@ func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"alerts": alerts,
+		"alerts": alertsList,
 	})
 }
 
@@ -280,7 +282,7 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	now := time.Now().UTC()
-	alert, err := h.store.AckOpsAlert(ctx, alertID, now)
+	alert, err := h.store.AckAlert(ctx, alertID, now)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_ALERT_NOT_FOUND", "alert not found", nil)
@@ -316,11 +318,11 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) recordOpsAlertAck(ctx context.Context, alert store.OpsAlert, at time.Time) (store.OpsTimelineEvent, bool, error) {
+func (h *Handler) recordOpsAlertAck(ctx context.Context, alert alerts.Alert, at time.Time) (timeline.Event, bool, error) {
 	if h.store == nil {
-		return store.OpsTimelineEvent{}, false, nil
+		return timeline.Event{}, false, nil
 	}
-	event, err := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	event, err := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "alert",
 		EventType: "alert.acked",
 		Severity:  "info",
@@ -331,7 +333,7 @@ func (h *Handler) recordOpsAlertAck(ctx context.Context, alert store.OpsAlert, a
 		CreatedAt: at,
 	})
 	if err != nil {
-		return store.OpsTimelineEvent{}, false, err
+		return timeline.Event{}, false, err
 	}
 	return event, true, nil
 }
@@ -346,7 +348,7 @@ func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	query := store.OpsTimelineQuery{
+	query := timeline.Query{
 		Query:    strings.TrimSpace(r.URL.Query().Get("q")),
 		Severity: strings.TrimSpace(r.URL.Query().Get("severity")),
 		Source:   strings.TrimSpace(r.URL.Query().Get("source")),
@@ -356,9 +358,9 @@ func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	result, err := h.store.SearchOpsTimelineEvents(ctx, query)
+	result, err := h.store.SearchTimelineEvents(ctx, query)
 	if err != nil {
-		if errors.Is(err, store.ErrInvalidOpsFilter) {
+		if errors.Is(err, timeline.ErrInvalidFilter) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 			return
 		}
@@ -399,7 +401,7 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if _, err := h.store.InsertOpsCustomService(ctx, store.OpsCustomServiceWrite{
+	if _, err := h.store.InsertCustomService(ctx, store.CustomServiceWrite{
 		Name:        req.Name,
 		DisplayName: req.DisplayName,
 		Manager:     req.Manager,
@@ -416,7 +418,7 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	te, _ := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	te, _ := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "service",
 		EventType: "service.registered",
 		Severity:  "info",
@@ -468,7 +470,7 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.store.DeleteOpsCustomService(ctx, serviceName); err != nil {
+	if err := h.store.DeleteCustomService(ctx, serviceName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "custom service not found", nil)
 			return
@@ -478,7 +480,7 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	te, _ := h.store.InsertOpsTimelineEvent(ctx, store.OpsTimelineEventWrite{
+	te, _ := h.store.InsertTimelineEvent(ctx, timeline.EventWrite{
 		Source:    "service",
 		EventType: "service.unregistered",
 		Severity:  "info",

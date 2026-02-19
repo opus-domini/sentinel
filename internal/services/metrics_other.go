@@ -1,6 +1,6 @@
 //go:build !linux && !darwin
 
-package ops
+package services
 
 import (
 	"context"
