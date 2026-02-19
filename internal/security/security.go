@@ -152,9 +152,10 @@ func (g *Guard) resolveSecure(r *http.Request) bool {
 		return true
 	case CookieSecureNever:
 		return false
-	default:
+	case CookieSecureAuto:
 		return requestUsesTLS(r)
 	}
+	return requestUsesTLS(r)
 }
 
 func (g *Guard) TokenMatches(token string) bool {

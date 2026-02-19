@@ -277,7 +277,7 @@ func TestCookieSecureDefault(t *testing.T) {
 	t.Setenv("SENTINEL_LOG_LEVEL", "")
 
 	cfg := Load()
-	if cfg.CookieSecure != "auto" {
+	if cfg.CookieSecure != CookieSecureAuto {
 		t.Fatalf("CookieSecure = %q, want auto", cfg.CookieSecure)
 	}
 }
@@ -307,7 +307,7 @@ func TestCookieSecureInvalidFallback(t *testing.T) {
 	t.Setenv("SENTINEL_LOG_LEVEL", "")
 
 	cfg := Load()
-	if cfg.CookieSecure != "auto" {
+	if cfg.CookieSecure != CookieSecureAuto {
 		t.Fatalf("CookieSecure = %q, want auto (fallback)", cfg.CookieSecure)
 	}
 }

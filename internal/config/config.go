@@ -12,6 +12,12 @@ import (
 	"time"
 )
 
+const (
+	CookieSecureAuto   = "auto"
+	CookieSecureAlways = "always"
+	CookieSecureNever  = "never"
+)
+
 type Config struct {
 	ListenAddr     string
 	Token          string
@@ -147,13 +153,13 @@ func applyCoreConfig(cfg *Config, file map[string]string) {
 	if origins := readRawEnvOrFile("SENTINEL_ALLOWED_ORIGINS", "allowed_origins", file); origins != "" {
 		cfg.AllowedOrigins = splitCSV(origins)
 	}
-	cfg.CookieSecure = "auto"
+	cfg.CookieSecure = CookieSecureAuto
 	if cs := readRawEnvOrFile("SENTINEL_COOKIE_SECURE", "cookie_secure", file); cs != "" {
 		switch strings.ToLower(cs) {
-		case "auto", "always", "never":
+		case CookieSecureAuto, CookieSecureAlways, CookieSecureNever:
 			cfg.CookieSecure = strings.ToLower(cs)
 		default:
-			cfg.CookieSecure = "auto"
+			cfg.CookieSecure = CookieSecureAuto
 		}
 	}
 
