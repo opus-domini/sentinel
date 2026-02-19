@@ -329,7 +329,7 @@ func newTestStore(t *testing.T) *store.Store {
 
 func newTestHandler(t *testing.T, tm *mockTmux, sys *mockSysTerms) *Handler {
 	t.Helper()
-	guard := security.New("", nil)
+	guard := security.New("", nil, security.CookieSecureAuto)
 	st := newTestStore(t)
 	if tm == nil {
 		tm = &mockTmux{}
@@ -659,7 +659,7 @@ func TestWrapMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			guard := security.New(tt.token, tt.origins)
+			guard := security.New(tt.token, tt.origins, security.CookieSecureAuto)
 			h := &Handler{guard: guard}
 
 			wrapped := h.wrap(okHandler)
@@ -719,7 +719,7 @@ func TestMetaHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			guard := security.New(tt.token, nil)
+			guard := security.New(tt.token, nil, security.CookieSecureAuto)
 			h := &Handler{guard: guard, version: tt.version}
 
 			w := httptest.NewRecorder()
@@ -801,7 +801,7 @@ func TestSetAuthTokenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h := &Handler{guard: security.New(tt.configToken, nil)}
+			h := &Handler{guard: security.New(tt.configToken, nil, security.CookieSecureAuto)}
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPut, "/api/auth/token", strings.NewReader(tt.body))
 			r.Header.Set("Content-Type", "application/json")
@@ -836,7 +836,7 @@ func TestSetAuthTokenHandler(t *testing.T) {
 func TestClearAuthTokenHandler(t *testing.T) {
 	t.Parallel()
 
-	h := &Handler{guard: security.New("secret", nil)}
+	h := &Handler{guard: security.New("secret", nil, security.CookieSecureAuto)}
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodDelete, "/api/auth/token", nil)
 	h.clearAuthToken(w, r)

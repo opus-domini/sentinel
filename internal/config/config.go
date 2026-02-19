@@ -16,6 +16,7 @@ type Config struct {
 	ListenAddr     string
 	Token          string
 	AllowedOrigins []string
+	CookieSecure   string
 	DataDir        string
 	LogLevel       string
 	Watchtower     WatchtowerConfig
@@ -146,6 +147,16 @@ func applyCoreConfig(cfg *Config, file map[string]string) {
 	if origins := readRawEnvOrFile("SENTINEL_ALLOWED_ORIGINS", "allowed_origins", file); origins != "" {
 		cfg.AllowedOrigins = splitCSV(origins)
 	}
+	cfg.CookieSecure = "auto"
+	if cs := readRawEnvOrFile("SENTINEL_COOKIE_SECURE", "cookie_secure", file); cs != "" {
+		switch strings.ToLower(cs) {
+		case "auto", "always", "never":
+			cfg.CookieSecure = strings.ToLower(cs)
+		default:
+			cfg.CookieSecure = "auto"
+		}
+	}
+
 	cfg.LogLevel = "info"
 	if level := readRawEnvOrFile("SENTINEL_LOG_LEVEL", "log_level", file); level != "" {
 		cfg.LogLevel = strings.ToLower(level)

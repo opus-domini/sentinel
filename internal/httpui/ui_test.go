@@ -257,7 +257,7 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 		return term.StartShell(ctx, "/bin/sh", cols, rows)
 	}
 
-	h := &Handler{guard: security.New("", nil)}
+	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
 	srv := httptest.NewServer(http.HandlerFunc(h.attachWS))
 	defer srv.Close()
 
@@ -320,7 +320,7 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 		return term.StartShell(ctx, "/bin/sh", cols, rows)
 	}
 
-	h := &Handler{guard: security.New("", nil)}
+	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
 	srv := httptest.NewServer(http.HandlerFunc(h.attachWS))
 	defer srv.Close()
 

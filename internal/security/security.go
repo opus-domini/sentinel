@@ -20,15 +20,41 @@ var (
 
 const AuthCookieName = "sentinel_auth"
 
+// CookieSecurePolicy controls the Secure flag on auth cookies.
+type CookieSecurePolicy int
+
+const (
+	// CookieSecureAuto sets Secure based on per-request TLS detection.
+	CookieSecureAuto CookieSecurePolicy = iota
+	// CookieSecureAlways forces the Secure flag regardless of transport.
+	CookieSecureAlways
+	// CookieSecureNever omits the Secure flag regardless of transport.
+	CookieSecureNever
+)
+
+// ParseCookieSecurePolicy converts a config string to a CookieSecurePolicy.
+func ParseCookieSecurePolicy(s string) CookieSecurePolicy {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "always":
+		return CookieSecureAlways
+	case "never":
+		return CookieSecureNever
+	default:
+		return CookieSecureAuto
+	}
+}
+
 type Guard struct {
 	token          string
 	allowedOrigins map[string]struct{}
+	cookieSecure   CookieSecurePolicy
 }
 
-func New(token string, allowedOrigins []string) *Guard {
+func New(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy) *Guard {
 	g := &Guard{
 		token:          strings.TrimSpace(token),
 		allowedOrigins: make(map[string]struct{}),
+		cookieSecure:   cookieSecure,
 	}
 	for _, origin := range allowedOrigins {
 		trimmed := strings.TrimSpace(origin)
@@ -103,7 +129,7 @@ func (g *Guard) SetAuthCookie(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   requestUsesTLS(r),
+		Secure:   g.resolveSecure(r),
 	})
 }
 
@@ -114,10 +140,21 @@ func (g *Guard) ClearAuthCookie(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   requestUsesTLS(r),
+		Secure:   g.resolveSecure(r),
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0).UTC(),
 	})
+}
+
+func (g *Guard) resolveSecure(r *http.Request) bool {
+	switch g.cookieSecure {
+	case CookieSecureAlways:
+		return true
+	case CookieSecureNever:
+		return false
+	default:
+		return requestUsesTLS(r)
+	}
 }
 
 func (g *Guard) TokenMatches(token string) bool {

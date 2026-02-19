@@ -42,7 +42,12 @@ func serve() int {
 		slog.Warn("consider setting allowed_origins to restrict cross-origin access", "listen", cfg.ListenAddr)
 	}
 
-	guard := security.New(cfg.Token, cfg.AllowedOrigins)
+	cookiePolicy := security.ParseCookieSecurePolicy(cfg.CookieSecure)
+	guard := security.New(cfg.Token, cfg.AllowedOrigins, cookiePolicy)
+
+	if security.ExposesBeyondLoopback(cfg.ListenAddr) && cfg.Token != "" && cookiePolicy == security.CookieSecureNever {
+		slog.Warn("cookie_secure=never with remote exposure and token auth; cookies will not have the Secure flag")
+	}
 	eventHub := events.NewHub()
 
 	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))

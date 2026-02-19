@@ -52,7 +52,7 @@ func newPerfMux(tb testing.TB) *http.ServeMux {
 	mux := http.NewServeMux()
 	Register(
 		mux,
-		security.New("", nil),
+		security.New("", nil, security.CookieSecureAuto),
 		st,
 		&mockOpsControlPlane{},
 		&mockRecovery{},

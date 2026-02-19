@@ -115,7 +115,7 @@ func newContractMux(t *testing.T) *http.ServeMux {
 	mux := http.NewServeMux()
 	Register(
 		mux,
-		security.New("", nil),
+		security.New("", nil, security.CookieSecureAuto),
 		newTestStore(t),
 		&mockOpsControlPlane{},
 		&mockRecovery{},

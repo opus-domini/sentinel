@@ -24,7 +24,7 @@ func TestTokenRequired(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			g := New(tt.token, nil)
+			g := New(tt.token, nil, CookieSecureAuto)
 			if got := g.TokenRequired(); got != tt.want {
 				t.Errorf("TokenRequired() = %v, want %v", got, tt.want)
 			}
@@ -92,7 +92,7 @@ func TestCheckOrigin(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			g := New("", tt.allowedOrigins)
+			g := New("", tt.allowedOrigins, CookieSecureAuto)
 			r := httptest.NewRequest("GET", "http://"+tt.host+"/", nil)
 			r.Host = tt.host
 			if tt.origin != "" {
@@ -160,7 +160,7 @@ func TestRequireBearer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			g := New(tt.token, nil)
+			g := New(tt.token, nil, CookieSecureAuto)
 			r := httptest.NewRequest("GET", "http://localhost/", nil)
 			if tt.auth != "" {
 				r.Header.Set("Authorization", tt.auth)
@@ -242,7 +242,7 @@ func TestRequireWSToken(t *testing.T) {
 			if tt.subproto != "" {
 				r.Header.Set("Sec-WebSocket-Protocol", tt.subproto)
 			}
-			g := New(tt.token, nil)
+			g := New(tt.token, nil, CookieSecureAuto)
 
 			err := g.RequireWSToken(r)
 			if tt.wantErr != nil {
@@ -304,7 +304,7 @@ func TestRequireAuth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			g := New(tt.token, nil)
+			g := New(tt.token, nil, CookieSecureAuto)
 			r := httptest.NewRequest("GET", "http://localhost/", nil)
 			if tt.forwarded != "" {
 				r.Header.Set("X-Forwarded-Proto", tt.forwarded)
@@ -339,7 +339,7 @@ func TestRequireAuth(t *testing.T) {
 func TestAuthCookieLifecycle(t *testing.T) {
 	t.Parallel()
 
-	g := New("secret-token", nil)
+	g := New("secret-token", nil, CookieSecureAuto)
 
 	t.Run("set cookie over http", func(t *testing.T) {
 		t.Parallel()
