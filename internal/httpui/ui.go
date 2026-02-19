@@ -105,13 +105,23 @@ func (h *Handler) spaPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
+// requireWSAuth checks origin and authentication for WebSocket upgrade
+// requests. Returns true if the request is authorized, false otherwise
+// (with the appropriate HTTP error already written to w).
+func (h *Handler) requireWSAuth(w http.ResponseWriter, r *http.Request) bool {
 	if err := h.guard.CheckOrigin(r); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
-		return
+		return false
 	}
 	if err := h.guard.RequireAuth(r); err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
+func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWSAuth(w, r) {
 		return
 	}
 
@@ -141,7 +151,8 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = wsConn.Close() }()
 
 	h.attachPTY(wsConn, attachPTYOptions{
-		label: session,
+		parentCtx: r.Context(),
+		label:     session,
 		startPTY: func(ctx context.Context) (*term.PTY, error) {
 			return h.startTmuxPTY(ctx, session)
 		},
@@ -187,12 +198,7 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
-	if err := h.guard.CheckOrigin(r); err != nil {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if err := h.guard.RequireAuth(r); err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	if !h.requireWSAuth(w, r) {
 		return
 	}
 
@@ -276,12 +282,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) authorizeEventsWS(w http.ResponseWriter, r *http.Request) bool {
-	if err := h.guard.CheckOrigin(r); err != nil {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return false
-	}
-	if err := h.guard.RequireAuth(r); err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	if !h.requireWSAuth(w, r) {
 		return false
 	}
 	if h.events == nil {
@@ -586,6 +587,7 @@ func marshalEventsWSMessage(payload map[string]any) []byte {
 }
 
 type attachPTYOptions struct {
+	parentCtx context.Context
 	label     string
 	startPTY  func(ctx context.Context) (*term.PTY, error)
 	statusMsg map[string]any
@@ -596,7 +598,11 @@ type pingWriter interface {
 }
 
 func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
-	attachCtx, cancelAttach := context.WithCancel(context.Background())
+	parent := opts.parentCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	attachCtx, cancelAttach := context.WithCancel(parent)
 	defer cancelAttach()
 
 	pty, ok := startAttachPTY(wsConn, opts, attachCtx)
