@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/recovery"
-	"github.com/opus-domini/sentinel/internal/service"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/updater"
@@ -22,12 +22,12 @@ import (
 
 var (
 	serveFn                   = serve
-	installUserSvcFn          = service.InstallUser
-	uninstallUserSvcFn        = service.UninstallUser
-	userStatusFn              = service.UserStatus
-	installUserAutoUpdateFn   = service.InstallUserAutoUpdate
-	uninstallUserAutoUpdateFn = service.UninstallUserAutoUpdate
-	userAutoUpdateStatusFn    = service.UserAutoUpdateStatusForScope
+	installUserSvcFn          = daemon.InstallUser
+	uninstallUserSvcFn        = daemon.UninstallUser
+	userStatusFn              = daemon.UserStatus
+	installUserAutoUpdateFn   = daemon.InstallUserAutoUpdate
+	uninstallUserAutoUpdateFn = daemon.UninstallUserAutoUpdate
+	userAutoUpdateStatusFn    = daemon.UserAutoUpdateStatusForScope
 	loadConfigFn              = config.Load
 	currentVersionFn          = currentVersion
 	updateCheckFn             = updater.Check
@@ -156,7 +156,7 @@ func runServiceInstallCommand(ctx commandContext, args []string) int {
 		return 2
 	}
 
-	err := installUserSvcFn(service.InstallUserOptions{
+	err := installUserSvcFn(daemon.InstallUserOptions{
 		ExecPath: strings.TrimSpace(*execPath),
 		Enable:   *enable,
 		Start:    *start,
@@ -166,7 +166,7 @@ func runServiceInstallCommand(ctx commandContext, args []string) int {
 		return 1
 	}
 
-	path, pathErr := service.UserServicePath()
+	path, pathErr := daemon.UserServicePath()
 	if pathErr == nil {
 		writef(ctx.stdout, "service installed: %s\n", path)
 	}
@@ -203,7 +203,7 @@ func runServiceUninstallCommand(ctx commandContext, args []string) int {
 		return 2
 	}
 
-	err := uninstallUserSvcFn(service.UninstallUserOptions{
+	err := uninstallUserSvcFn(daemon.UninstallUserOptions{
 		Disable:    *disable,
 		Stop:       *stop,
 		RemoveUnit: *removeUnit,
@@ -302,7 +302,7 @@ func runServiceAutoUpdateInstallCommand(ctx commandContext, args []string) int {
 		return 2
 	}
 
-	if err := installUserAutoUpdateFn(service.InstallUserAutoUpdateOptions{
+	if err := installUserAutoUpdateFn(daemon.InstallUserAutoUpdateOptions{
 		ExecPath:        strings.TrimSpace(*execPath),
 		Enable:          *enable,
 		Start:           *start,
@@ -316,7 +316,7 @@ func runServiceAutoUpdateInstallCommand(ctx commandContext, args []string) int {
 	}
 
 	resolvedScope := strings.TrimSpace(*scope)
-	timerPath, pathErr := service.UserAutoUpdateTimerPathForScope(resolvedScope)
+	timerPath, pathErr := daemon.UserAutoUpdateTimerPathForScope(resolvedScope)
 	if pathErr == nil {
 		writef(ctx.stdout, "autoupdate timer installed: %s\n", timerPath)
 	}
@@ -354,7 +354,7 @@ func runServiceAutoUpdateUninstallCommand(ctx commandContext, args []string) int
 		return 2
 	}
 
-	if err := uninstallUserAutoUpdateFn(service.UninstallUserAutoUpdateOptions{
+	if err := uninstallUserAutoUpdateFn(daemon.UninstallUserAutoUpdateOptions{
 		Disable:    *disable,
 		Stop:       *stop,
 		RemoveUnit: *removeUnit,

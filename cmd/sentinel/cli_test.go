@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/config"
-	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/updater"
 )
 
@@ -45,8 +45,8 @@ func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
 	origInstall := installUserSvcFn
 	t.Cleanup(func() { installUserSvcFn = origInstall })
 
-	var got service.InstallUserOptions
-	installUserSvcFn = func(opts service.InstallUserOptions) error {
+	var got daemon.InstallUserOptions
+	installUserSvcFn = func(opts daemon.InstallUserOptions) error {
 		got = opts
 		return nil
 	}
@@ -72,8 +72,8 @@ func TestRunCLIServiceStatus(t *testing.T) {
 	origStatus := userStatusFn
 	t.Cleanup(func() { userStatusFn = origStatus })
 
-	userStatusFn = func() (service.UserServiceStatus, error) {
-		return service.UserServiceStatus{
+	userStatusFn = func() (daemon.UserServiceStatus, error) {
+		return daemon.UserServiceStatus{
 			ServicePath:        "/tmp/sentinel.service",
 			UnitFileExists:     true,
 			SystemctlAvailable: true,
@@ -107,8 +107,8 @@ func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
 	origStatus := userStatusFn
 	t.Cleanup(func() { userStatusFn = origStatus })
 
-	userStatusFn = func() (service.UserServiceStatus, error) {
-		return service.UserServiceStatus{
+	userStatusFn = func() (daemon.UserServiceStatus, error) {
+		return daemon.UserServiceStatus{
 			ServicePath:        "/etc/systemd/system/sentinel.service",
 			UnitFileExists:     false,
 			SystemctlAvailable: true,
@@ -153,8 +153,8 @@ func TestRunCLIDoctor(t *testing.T) {
 			Token:      "token",
 		}
 	}
-	userStatusFn = func() (service.UserServiceStatus, error) {
-		return service.UserServiceStatus{
+	userStatusFn = func() (daemon.UserServiceStatus, error) {
+		return daemon.UserServiceStatus{
 			ServicePath:        "/tmp/sentinel.service",
 			UnitFileExists:     true,
 			EnabledState:       "enabled",
@@ -198,8 +198,8 @@ func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 			Token:      "",
 		}
 	}
-	userStatusFn = func() (service.UserServiceStatus, error) {
-		return service.UserServiceStatus{
+	userStatusFn = func() (daemon.UserServiceStatus, error) {
+		return daemon.UserServiceStatus{
 			ServicePath:        "/etc/systemd/system/sentinel.service",
 			UnitFileExists:     false,
 			EnabledState:       "not-found",
@@ -243,7 +243,7 @@ func TestRunCLIServiceInstallFailure(t *testing.T) {
 	origInstall := installUserSvcFn
 	t.Cleanup(func() { installUserSvcFn = origInstall })
 
-	installUserSvcFn = func(_ service.InstallUserOptions) error {
+	installUserSvcFn = func(_ daemon.InstallUserOptions) error {
 		return errors.New("install failed")
 	}
 
@@ -274,8 +274,8 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 	origInstall := installUserAutoUpdateFn
 	t.Cleanup(func() { installUserAutoUpdateFn = origInstall })
 
-	var got service.InstallUserAutoUpdateOptions
-	installUserAutoUpdateFn = func(opts service.InstallUserAutoUpdateOptions) error {
+	var got daemon.InstallUserAutoUpdateOptions
+	installUserAutoUpdateFn = func(opts daemon.InstallUserAutoUpdateOptions) error {
 		got = opts
 		return nil
 	}
@@ -322,11 +322,11 @@ func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
 	origStatus := userAutoUpdateStatusFn
 	t.Cleanup(func() { userAutoUpdateStatusFn = origStatus })
 
-	userAutoUpdateStatusFn = func(scope string) (service.UserAutoUpdateServiceStatus, error) {
+	userAutoUpdateStatusFn = func(scope string) (daemon.UserAutoUpdateServiceStatus, error) {
 		if scope != testScopeUser {
 			t.Fatalf("scope = %q, want %s", scope, testScopeUser)
 		}
-		return service.UserAutoUpdateServiceStatus{
+		return daemon.UserAutoUpdateServiceStatus{
 			ServicePath:        "/tmp/sentinel-updater.service",
 			TimerPath:          "/tmp/sentinel-updater.timer",
 			ServiceUnitExists:  true,
@@ -361,11 +361,11 @@ func TestRunCLIServiceAutoUpdateStatusScopeFlag(t *testing.T) {
 	origStatus := userAutoUpdateStatusFn
 	t.Cleanup(func() { userAutoUpdateStatusFn = origStatus })
 
-	userAutoUpdateStatusFn = func(scope string) (service.UserAutoUpdateServiceStatus, error) {
+	userAutoUpdateStatusFn = func(scope string) (daemon.UserAutoUpdateServiceStatus, error) {
 		if scope != testScopeSystem {
 			t.Fatalf("scope = %q, want %s", scope, testScopeSystem)
 		}
-		return service.UserAutoUpdateServiceStatus{}, nil
+		return daemon.UserAutoUpdateServiceStatus{}, nil
 	}
 
 	var out bytes.Buffer
@@ -380,8 +380,8 @@ func TestRunCLIServiceAutoUpdateUninstallScopeFlag(t *testing.T) {
 	origUninstall := uninstallUserAutoUpdateFn
 	t.Cleanup(func() { uninstallUserAutoUpdateFn = origUninstall })
 
-	var got service.UninstallUserAutoUpdateOptions
-	uninstallUserAutoUpdateFn = func(opts service.UninstallUserAutoUpdateOptions) error {
+	var got daemon.UninstallUserAutoUpdateOptions
+	uninstallUserAutoUpdateFn = func(opts daemon.UninstallUserAutoUpdateOptions) error {
 		got = opts
 		return nil
 	}

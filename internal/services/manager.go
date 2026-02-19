@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -107,9 +107,9 @@ type Manager struct {
 	goos           string
 	customServices customServicesRepo
 
-	userStatusFn       func() (service.UserServiceStatus, error)
-	autoUpdateStatusFn func(scope string) (service.UserAutoUpdateServiceStatus, error)
-	installAutoUpdate  func(opts service.InstallUserAutoUpdateOptions) error
+	userStatusFn       func() (daemon.UserServiceStatus, error)
+	autoUpdateStatusFn func(scope string) (daemon.UserAutoUpdateServiceStatus, error)
+	installAutoUpdate  func(opts daemon.InstallUserAutoUpdateOptions) error
 	userServicePathFn  func() (string, error)
 	autoServicePathFn  func(scope string) (string, error)
 	commandRunner      commandRunner
@@ -127,11 +127,11 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 		uidFn:              os.Getuid,
 		goos:               runtime.GOOS,
 		customServices:     csRepo,
-		userStatusFn:       service.UserStatus,
-		autoUpdateStatusFn: service.UserAutoUpdateStatusForScope,
-		installAutoUpdate:  service.InstallUserAutoUpdate,
-		userServicePathFn:  service.UserServicePath,
-		autoServicePathFn:  service.UserAutoUpdateServicePathForScope,
+		userStatusFn:       daemon.UserStatus,
+		autoUpdateStatusFn: daemon.UserAutoUpdateStatusForScope,
+		installAutoUpdate:  daemon.InstallUserAutoUpdate,
+		userServicePathFn:  daemon.UserServicePath,
+		autoServicePathFn:  daemon.UserAutoUpdateServicePathForScope,
 		commandRunner:      runCommand,
 	}
 }
@@ -442,9 +442,9 @@ func (m *Manager) ensureServiceActionReady(target ServiceStatus, action string) 
 func (m *Manager) bootstrapUpdater(scope string) error {
 	installFn := m.installAutoUpdate
 	if installFn == nil {
-		installFn = service.InstallUserAutoUpdate
+		installFn = daemon.InstallUserAutoUpdate
 	}
-	if err := installFn(service.InstallUserAutoUpdateOptions{
+	if err := installFn(daemon.InstallUserAutoUpdateOptions{
 		Enable:          true,
 		Start:           true,
 		ServiceUnit:     ServiceNameSentinel,
@@ -800,7 +800,7 @@ func (m *Manager) discoverLaunchdUnits(ctx context.Context) ([]AvailableService,
 }
 
 // BrowsedService represents a service unit found on the host, enriched with
-// tracking information when it matches a registered custom service.
+// tracking information when it matches a registered custom daemon.
 type BrowsedService struct {
 	Unit         string `json:"unit"`
 	Description  string `json:"description"`

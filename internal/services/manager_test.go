@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -33,19 +33,19 @@ func TestListServices(t *testing.T) {
 		hostname:  func() (string, error) { return testHostname, nil },
 		uidFn:     func() int { return 1000 },
 		goos:      "linux",
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(scope string) (service.UserAutoUpdateServiceStatus, error) {
+		autoUpdateStatusFn: func(scope string) (daemon.UserAutoUpdateServiceStatus, error) {
 			if scope != scopeUser {
 				t.Fatalf("scope = %q, want %q", scope, scopeUser)
 			}
-			return service.UserAutoUpdateServiceStatus{
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",
@@ -83,16 +83,16 @@ func TestOverview(t *testing.T) {
 		hostname:  func() (string, error) { return testHostname, nil },
 		uidFn:     func() int { return 1000 },
 		goos:      "linux",
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",
@@ -126,16 +126,16 @@ func TestActSystemdUser(t *testing.T) {
 		uidFn:    func() int { return 1000 },
 		goos:     "linux",
 		hostname: func() (string, error) { return testHostname, nil },
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",
@@ -171,16 +171,16 @@ func TestActSystemdUpdater(t *testing.T) {
 		uidFn:    func() int { return 1000 },
 		goos:     "linux",
 		hostname: func() (string, error) { return testHostname, nil },
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",
@@ -208,38 +208,38 @@ func TestActSystemdUpdaterStartBootstrapsWhenMissing(t *testing.T) {
 	t.Parallel()
 
 	installed := false
-	var installOpts service.InstallUserAutoUpdateOptions
+	var installOpts daemon.InstallUserAutoUpdateOptions
 	var calls [][]string
 	m := &Manager{
 		nowFn:    time.Now,
 		uidFn:    func() int { return 1000 },
 		goos:     "linux",
 		hostname: func() (string, error) { return testHostname, nil },
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
 			if installed {
-				return service.UserAutoUpdateServiceStatus{
+				return daemon.UserAutoUpdateServiceStatus{
 					ServiceUnitExists: true,
 					TimerUnitExists:   true,
 					TimerEnabledState: "enabled",
 					TimerActiveState:  "active",
 				}, nil
 			}
-			return service.UserAutoUpdateServiceStatus{
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: false,
 				TimerUnitExists:   false,
 				TimerEnabledState: "not-found",
 				TimerActiveState:  "inactive",
 			}, nil
 		},
-		installAutoUpdate: func(opts service.InstallUserAutoUpdateOptions) error {
+		installAutoUpdate: func(opts daemon.InstallUserAutoUpdateOptions) error {
 			installOpts = opts
 			installed = true
 			return nil
@@ -287,23 +287,23 @@ func TestActSystemdUpdaterRetriesAfterUnitNotFound(t *testing.T) {
 		uidFn:    func() int { return 1000 },
 		goos:     "linux",
 		hostname: func() (string, error) { return testHostname, nil },
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",
 				TimerActiveState:  "inactive",
 			}, nil
 		},
-		installAutoUpdate: func(opts service.InstallUserAutoUpdateOptions) error {
+		installAutoUpdate: func(opts daemon.InstallUserAutoUpdateOptions) error {
 			_ = opts
 			installed = true
 			return nil
@@ -340,16 +340,16 @@ func TestActLaunchdStartBootstrapsWhenMissing(t *testing.T) {
 		uidFn:    func() int { return 1000 },
 		goos:     "darwin",
 		hostname: func() (string, error) { return testHostname, nil },
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/Users/dev/Library/LaunchAgents/io.opusdomini.sentinel.plist",
 				UnitFileExists: true,
 				EnabledState:   "loaded",
 				ActiveState:    "inactive",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "loaded",
@@ -399,16 +399,16 @@ func TestInspectSystemdService(t *testing.T) {
 		uidFn:    func() int { return 1000 },
 		goos:     "linux",
 		hostname: func() (string, error) { return testHostname, nil },
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",
@@ -487,16 +487,16 @@ func TestListServicesMergesCustomServices(t *testing.T) {
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
 		customServices: repo,
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",
@@ -537,16 +537,16 @@ func TestListServicesCustomServicesError(t *testing.T) {
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
 		customServices: repo,
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/home/dev/.config/systemd/user/sentinel.service",
 				UnitFileExists: true,
 				EnabledState:   "enabled",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{
 				ServiceUnitExists: true,
 				TimerUnitExists:   true,
 				TimerEnabledState: "enabled",

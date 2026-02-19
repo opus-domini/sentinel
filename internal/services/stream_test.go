@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/service"
+	"github.com/opus-domini/sentinel/internal/daemon"
 )
 
 func TestStreamLogs_LaunchdUnsupported(t *testing.T) {
@@ -15,16 +15,16 @@ func TestStreamLogs_LaunchdUnsupported(t *testing.T) {
 		nowFn: time.Now,
 		goos:  "darwin",
 		uidFn: func() int { return 1000 },
-		userStatusFn: func() (service.UserServiceStatus, error) {
-			return service.UserServiceStatus{
+		userStatusFn: func() (daemon.UserServiceStatus, error) {
+			return daemon.UserServiceStatus{
 				ServicePath:    "/Users/dev/Library/LaunchAgents/io.opusdomini.sentinel.plist",
 				UnitFileExists: true,
 				EnabledState:   "loaded",
 				ActiveState:    "active",
 			}, nil
 		},
-		autoUpdateStatusFn: func(string) (service.UserAutoUpdateServiceStatus, error) {
-			return service.UserAutoUpdateServiceStatus{}, nil
+		autoUpdateStatusFn: func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+			return daemon.UserAutoUpdateServiceStatus{}, nil
 		},
 	}
 
