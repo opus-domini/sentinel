@@ -151,12 +151,15 @@ func New(st recoveryStore, tm tmuxClient, options Options) *Service {
 	if options.MaxSnapshotsPerSess <= 0 {
 		options.MaxSnapshotsPerSess = defaultMaxSnapshots
 	}
+	runCtx, runCancel := context.WithCancel(context.Background())
 	return &Service{
-		store:   st,
-		tmux:    tm,
-		options: options,
-		bootID:  currentBootID,
-		events:  options.EventHub,
+		store:     st,
+		tmux:      tm,
+		options:   options,
+		bootID:    currentBootID,
+		events:    options.EventHub,
+		runCtx:    runCtx,
+		runCancel: runCancel,
 	}
 }
 
@@ -168,6 +171,9 @@ func (s *Service) Start(parent context.Context) {
 		ctx, cancel := context.WithCancel(parent)
 		s.stopFn = cancel
 		s.doneCh = make(chan struct{})
+		// Cancel the fallback runCtx from New() before replacing with
+		// one derived from parent, so server shutdown propagates.
+		s.runCancel()
 		s.runCtx, s.runCancel = context.WithCancel(parent)
 
 		go func() {
