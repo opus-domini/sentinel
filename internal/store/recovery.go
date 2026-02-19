@@ -67,7 +67,6 @@ const (
 	RecoveryJobRunning   RecoveryJobStatus = "running"
 	RecoveryJobSucceeded RecoveryJobStatus = "succeeded"
 	RecoveryJobFailed    RecoveryJobStatus = "failed"
-	RecoveryJobPartial   RecoveryJobStatus = "partial"
 )
 
 type RecoveryJob struct {

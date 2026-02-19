@@ -6,5 +6,6 @@ func (h *Handler) registerAlertsRoutes(mux *http.ServeMux) {
 	h.registerRoutes(mux, []routeBinding{
 		{pattern: "GET /api/ops/alerts", handler: h.opsAlerts},
 		{pattern: "POST /api/ops/alerts/{alert}/ack", handler: h.ackOpsAlert},
+		{pattern: "DELETE /api/ops/alerts/{alert}", handler: h.deleteOpsAlert},
 	})
 }

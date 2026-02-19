@@ -3689,14 +3689,15 @@ func TestGuardrailEndpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("evaluate command", func(t *testing.T) {
+	t.Run("evaluate action", func(t *testing.T) {
 		t.Parallel()
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(`{
-			"command":"rm -rf /",
-			"action":"manual.check",
-			"windowIndex":-1
+			"action":"pane.kill",
+			"sessionName":"dev",
+			"paneId":"%1",
+			"windowIndex":0
 		}`))
 		h.evaluateGuardrail(w, r)
 		if w.Code != http.StatusOK {
@@ -3705,8 +3706,8 @@ func TestGuardrailEndpoints(t *testing.T) {
 		body := jsonBody(t, w)
 		data, _ := body["data"].(map[string]any)
 		decision, _ := data["decision"].(map[string]any)
-		if decision["mode"] != "block" {
-			t.Fatalf("decision.mode = %v, want block", decision["mode"])
+		if decision["mode"] != "warn" {
+			t.Fatalf("decision.mode = %v, want warn", decision["mode"])
 		}
 	})
 
@@ -4811,5 +4812,166 @@ func TestGuardrailFailClosedOnEvaluateError(t *testing.T) {
 	}
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+func TestCreateGuardrailRule(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.guardrails = guardrails.New(st)
+
+	// Create a rule with explicit ID.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(`{
+		"id": "test.create.rule",
+		"name": "Test Rule",
+		"scope": "command",
+		"pattern": "^rm\\s",
+		"mode": "block",
+		"severity": "error",
+		"message": "Blocked rm command",
+		"enabled": true,
+		"priority": 5
+	}`))
+	r.Header.Set("Content-Type", "application/json")
+	h.createGuardrailRule(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, ok := body["data"].(map[string]any)
+	if !ok {
+		t.Fatal("expected data in response")
+	}
+	rules, ok := data["rules"].([]any)
+	if !ok {
+		t.Fatal("expected rules array in response")
+	}
+	found := false
+	for _, rule := range rules {
+		rMap, _ := rule.(map[string]any)
+		if rMap["id"] == "test.create.rule" {
+			found = true
+			if rMap["name"] != "Test Rule" {
+				t.Errorf("name = %v, want Test Rule", rMap["name"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("created rule not found in response list")
+	}
+}
+
+func TestCreateGuardrailRuleAutoID(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.guardrails = guardrails.New(st)
+
+	// Create a rule without ID — should auto-generate.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(`{
+		"pattern": "^dangerous$",
+		"enabled": true
+	}`))
+	r.Header.Set("Content-Type", "application/json")
+	h.createGuardrailRule(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateGuardrailRuleValidation(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.guardrails = guardrails.New(st)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "missing pattern", body: `{"enabled": true}`},
+		{name: "missing enabled", body: `{"pattern": "^test$"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+			h.createGuardrailRule(w, r)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestDeleteGuardrailRule(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.guardrails = guardrails.New(st)
+	ctx := context.Background()
+
+	// Create a rule first.
+	err := st.UpsertGuardrailRule(ctx, store.GuardrailRuleWrite{
+		ID:      "test.delete.rule",
+		Name:    "Delete Me",
+		Pattern: "^test$",
+		Mode:    "warn",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("UpsertGuardrailRule: %v", err)
+	}
+
+	// Delete it.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("DELETE", "/api/ops/guardrails/rules/test.delete.rule", nil)
+	r.SetPathValue("rule", "test.delete.rule")
+	h.deleteGuardrailRule(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, ok := body["data"].(map[string]any)
+	if !ok {
+		t.Fatal("expected data in response")
+	}
+	if data["removed"] != "test.delete.rule" {
+		t.Errorf("removed = %v, want test.delete.rule", data["removed"])
+	}
+
+	// Verify it's gone.
+	rules, err := st.ListGuardrailRules(ctx)
+	if err != nil {
+		t.Fatalf("ListGuardrailRules: %v", err)
+	}
+	for _, rule := range rules {
+		if rule.ID == "test.delete.rule" {
+			t.Fatal("rule should have been deleted but still exists")
+		}
+	}
+}
+
+func TestDeleteGuardrailRuleNotFound(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	h.guardrails = guardrails.New(st)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("DELETE", "/api/ops/guardrails/rules/nonexistent", nil)
+	r.SetPathValue("rule", "nonexistent")
+	h.deleteGuardrailRule(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body=%s", w.Code, w.Body.String())
 	}
 }

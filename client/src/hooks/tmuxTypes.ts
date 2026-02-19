@@ -103,6 +103,7 @@ export type ActivityDeltaResponse = {
 export type RecoveryOverviewCache = {
   sessions: Array<RecoverySession>
   jobs: Array<RecoveryJob>
+  lastCollectAt: string
 }
 
 export type TmuxTimelineCache = {

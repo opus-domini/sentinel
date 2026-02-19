@@ -51,6 +51,12 @@ export function useRecovery(options: UseRecoveryOptions) {
         TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
       )?.jobs ?? [],
   )
+  const [lastCollectAt, setLastCollectAt] = useState(
+    () =>
+      queryClient.getQueryData<RecoveryOverviewCache>(
+        TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
+      )?.lastCollectAt ?? '',
+  )
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
   const [recoverySnapshots, setRecoverySnapshots] = useState<
     Array<{ id: number; capturedAt: string; windows: number; panes: number }>
@@ -81,9 +87,10 @@ export function useRecovery(options: UseRecoveryOptions) {
       {
         sessions: recoverySessions,
         jobs: recoveryJobs,
+        lastCollectAt,
       },
     )
-  }, [queryClient, recoveryJobs, recoverySessions])
+  }, [queryClient, recoveryJobs, recoverySessions, lastCollectAt])
 
   // Auto-select first recovery session
   useEffect(() => {
@@ -116,11 +123,13 @@ export function useRecovery(options: UseRecoveryOptions) {
         if (gen !== recoveryGenerationRef.current) return
         setRecoverySessions(data.overview.killedSessions)
         setRecoveryJobs(data.overview.runningJobs)
+        setLastCollectAt(data.overview.lastCollectAt || '')
         queryClient.setQueryData<RecoveryOverviewCache>(
           TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
           {
             sessions: data.overview.killedSessions,
             jobs: data.overview.runningJobs,
+            lastCollectAt: data.overview.lastCollectAt || '',
           },
         )
         setRecoveryError('')
@@ -131,11 +140,13 @@ export function useRecovery(options: UseRecoveryOptions) {
         if (message.toLowerCase().includes('recovery subsystem is disabled')) {
           setRecoverySessions([])
           setRecoveryJobs([])
+          setLastCollectAt('')
           queryClient.setQueryData<RecoveryOverviewCache>(
             TMUX_RECOVERY_OVERVIEW_QUERY_KEY,
             {
               sessions: [],
               jobs: [],
+              lastCollectAt: '',
             },
           )
           setRecoveryError('')
@@ -180,7 +191,7 @@ export function useRecovery(options: UseRecoveryOptions) {
       }
       try {
         const data = await api<RecoverySnapshotsResponse>(
-          `/api/recovery/sessions/${encodeURIComponent(session)}/snapshots?limit=25`,
+          `/api/recovery/sessions/${encodeURIComponent(session)}/snapshots?limit=50`,
         )
         const snapshots = data.snapshots.map((item) => ({
           id: item.id,
@@ -238,10 +249,7 @@ export function useRecovery(options: UseRecoveryOptions) {
               `session restored to "${data.job.targetSession || data.job.sessionName}"`,
             )
             await refreshSessions()
-          } else if (
-            data.job.status === 'failed' ||
-            data.job.status === 'partial'
-          ) {
+          } else if (data.job.status === 'failed') {
             pushErrorToast(
               'Recovery',
               data.job.error || 'restore job finished with errors',
@@ -331,6 +339,7 @@ export function useRecovery(options: UseRecoveryOptions) {
     // State
     recoverySessions,
     recoveryJobs,
+    lastCollectAt,
     recoveryDialogOpen,
     recoverySnapshots,
     selectedRecoverySession,

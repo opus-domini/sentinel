@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Menu, RefreshCw } from 'lucide-react'
+import { Eye, EyeOff, Menu, RefreshCw, Trash2 } from 'lucide-react'
 import type {
   OpsAlert,
   OpsAlertsResponse,
@@ -69,6 +69,7 @@ function AlertsPage() {
   const queryClient = useQueryClient()
 
   const [selectedSeverity, setSelectedSeverity] = useState('all')
+  const [showResolved, setShowResolved] = useState(false)
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -100,9 +101,15 @@ function AlertsPage() {
       : ''
 
   const filteredAlerts = useMemo(() => {
-    if (selectedSeverity === 'all') return alerts
-    return alerts.filter((a) => a.severity === selectedSeverity)
-  }, [alerts, selectedSeverity])
+    let result = alerts
+    if (!showResolved) {
+      result = result.filter((a) => a.status !== 'resolved')
+    }
+    if (selectedSeverity !== 'all') {
+      result = result.filter((a) => a.severity === selectedSeverity)
+    }
+    return result
+  }, [alerts, selectedSeverity, showResolved])
 
   const openCount = useMemo(
     () => alerts.filter((a) => a.status === 'open').length,
@@ -223,6 +230,36 @@ function AlertsPage() {
     [alerts, api, pushToast, queryClient],
   )
 
+  const dismissAlert = useCallback(
+    async (alertID: number) => {
+      const previous = alerts.find((item) => item.id === alertID)
+      if (!previous) return
+
+      queryClient.setQueryData<Array<OpsAlert>>(
+        OPS_ALERTS_QUERY_KEY,
+        (current = []) => current.filter((item) => item.id !== alertID),
+      )
+
+      try {
+        await api(`/api/ops/alerts/${alertID}`, {
+          method: 'DELETE',
+        })
+      } catch (error) {
+        queryClient.setQueryData<Array<OpsAlert>>(
+          OPS_ALERTS_QUERY_KEY,
+          (current = []) => [...current, previous],
+        )
+        pushToast({
+          level: 'error',
+          title: previous.title,
+          message:
+            error instanceof Error ? error.message : 'failed to dismiss alert',
+        })
+      }
+    },
+    [alerts, api, pushToast, queryClient],
+  )
+
   return (
     <AppShell
       sidebar={
@@ -261,6 +298,20 @@ function AlertsPage() {
               variant="outline"
               size="sm"
               className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
+              onClick={() => setShowResolved((prev) => !prev)}
+              aria-label={showResolved ? 'Hide resolved' : 'Show resolved'}
+            >
+              {showResolved ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+              {showResolved ? 'Hide resolved' : 'Show resolved'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
               onClick={refreshPage}
               aria-label="Refresh alerts"
             >
@@ -287,9 +338,11 @@ function AlertsPage() {
                     key={alert.id}
                     className={cn(
                       'grid gap-2 rounded border px-2.5 py-2',
-                      alert.severity === 'error'
-                        ? 'border-red-500/45 bg-red-500/10'
-                        : 'border-amber-500/45 bg-amber-500/10',
+                      alert.status === 'resolved'
+                        ? 'border-border-subtle bg-surface-elevated opacity-60'
+                        : alert.severity === 'error'
+                          ? 'border-red-500/45 bg-red-500/10'
+                          : 'border-amber-500/45 bg-amber-500/10',
                     )}
                   >
                     <div className="flex min-w-0 items-center justify-between gap-2">
@@ -317,6 +370,19 @@ function AlertsPage() {
                           onClick={() => ackAlert(alert.id)}
                         >
                           Ack
+                        </Button>
+                      </div>
+                    )}
+                    {alert.status === 'resolved' && (
+                      <div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1 text-[11px]"
+                          onClick={() => dismissAlert(alert.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Dismiss
                         </Button>
                       </div>
                     )}

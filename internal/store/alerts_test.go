@@ -300,6 +300,103 @@ func TestListOpsAlertsFilters(t *testing.T) {
 	})
 }
 
+func TestDeleteResolvedAlert(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
+
+	// Create, resolve, then delete.
+	alert, err := s.UpsertAlert(ctx, alerts.AlertWrite{
+		DedupeKey: "delete:resolved",
+		Source:    "test",
+		Title:     "Delete Me",
+		Severity:  "error",
+		CreatedAt: base,
+	})
+	if err != nil {
+		t.Fatalf("UpsertAlert: %v", err)
+	}
+	if _, err := s.ResolveAlert(ctx, "delete:resolved", base.Add(time.Minute)); err != nil {
+		t.Fatalf("ResolveAlert: %v", err)
+	}
+
+	if err := s.DeleteAlert(ctx, alert.ID); err != nil {
+		t.Fatalf("DeleteAlert: %v", err)
+	}
+
+	// Verify it's gone.
+	alertsList, err := s.ListAlerts(ctx, 100, "")
+	if err != nil {
+		t.Fatalf("ListAlerts: %v", err)
+	}
+	for _, a := range alertsList {
+		if a.ID == alert.ID {
+			t.Fatalf("alert %d should have been deleted", alert.ID)
+		}
+	}
+}
+
+func TestDeleteNonResolvedAlertFails(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
+
+	t.Run("open alert", func(t *testing.T) {
+		alert, err := s.UpsertAlert(ctx, alerts.AlertWrite{
+			DedupeKey: "delete:open",
+			Source:    "test",
+			Title:     "Open Alert",
+			Severity:  "warn",
+			CreatedAt: base,
+		})
+		if err != nil {
+			t.Fatalf("UpsertAlert: %v", err)
+		}
+		err = s.DeleteAlert(ctx, alert.ID)
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("error = %v, want sql.ErrNoRows", err)
+		}
+	})
+
+	t.Run("acked alert", func(t *testing.T) {
+		alert, err := s.UpsertAlert(ctx, alerts.AlertWrite{
+			DedupeKey: "delete:acked",
+			Source:    "test",
+			Title:     "Acked Alert",
+			Severity:  "warn",
+			CreatedAt: base,
+		})
+		if err != nil {
+			t.Fatalf("UpsertAlert: %v", err)
+		}
+		if _, err := s.AckAlert(ctx, alert.ID, base.Add(time.Minute)); err != nil {
+			t.Fatalf("AckAlert: %v", err)
+		}
+		err = s.DeleteAlert(ctx, alert.ID)
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("error = %v, want sql.ErrNoRows", err)
+		}
+	})
+
+	t.Run("nonexistent alert", func(t *testing.T) {
+		err := s.DeleteAlert(ctx, 99999)
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("error = %v, want sql.ErrNoRows", err)
+		}
+	})
+
+	t.Run("zero ID", func(t *testing.T) {
+		err := s.DeleteAlert(ctx, 0)
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("error = %v, want sql.ErrNoRows", err)
+		}
+	})
+}
+
 func TestResolveOpsAlertAcked(t *testing.T) {
 	t.Parallel()
 

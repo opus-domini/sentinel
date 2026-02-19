@@ -101,6 +101,25 @@ export type GuardrailRulesResponse = {
   rules: Array<GuardrailRule>
 }
 
+export type GuardrailAudit = {
+  id: number
+  ruleId: string
+  decision: string
+  action: string
+  command: string
+  sessionName: string
+  windowIndex: number
+  paneId: string
+  override: boolean
+  reason: string
+  metadata: string
+  createdAt: string
+}
+
+export type GuardrailAuditResponse = {
+  audit: Array<GuardrailAudit>
+}
+
 export type StorageResourceStat = {
   resource: string
   label: string

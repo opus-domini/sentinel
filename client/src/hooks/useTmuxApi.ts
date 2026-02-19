@@ -1,4 +1,33 @@
 import { useCallback } from 'react'
+import type { GuardrailRule } from '@/types'
+
+type GuardrailDecision = {
+  mode: string
+  allowed: boolean
+  requireConfirm: boolean
+  message: string
+  matchedRuleId: string
+  matchedRules: Array<GuardrailRule>
+}
+
+export class GuardrailConfirmError extends Error {
+  readonly decision: GuardrailDecision
+  readonly path: string
+  readonly init: RequestInit | undefined
+
+  constructor(
+    message: string,
+    decision: GuardrailDecision,
+    path: string,
+    init: RequestInit | undefined,
+  ) {
+    super(message)
+    this.name = 'GuardrailConfirmError'
+    this.decision = decision
+    this.path = path
+    this.init = init
+  }
+}
 
 export function useTmuxApi() {
   return useCallback(
@@ -25,13 +54,34 @@ export function useTmuxApi() {
       }
 
       if (!response.ok) {
+        const errorObj =
+          typeof payload === 'object' && payload !== null && 'error' in payload
+            ? (payload as { error: Record<string, unknown> }).error
+            : null
+
+        if (
+          response.status === 428 &&
+          errorObj?.code === 'GUARDRAIL_CONFIRM_REQUIRED'
+        ) {
+          const details = errorObj.details as
+            | { decision?: GuardrailDecision }
+            | undefined
+          const decision = details?.decision
+          if (decision) {
+            throw new GuardrailConfirmError(
+              decision.message ||
+                (errorObj.message as string) ||
+                'Confirmation required',
+              decision,
+              path,
+              init,
+            )
+          }
+        }
+
         const message =
-          typeof payload === 'object' &&
-          payload !== null &&
-          'error' in payload &&
-          typeof (payload as { error?: { message?: string } }).error
-            ?.message === 'string'
-            ? (payload as { error: { message: string } }).error.message
+          errorObj?.message != null && typeof errorObj.message === 'string'
+            ? errorObj.message
             : `HTTP ${response.status}`
         throw new Error(message)
       }

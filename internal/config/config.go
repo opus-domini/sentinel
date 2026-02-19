@@ -18,6 +18,12 @@ const (
 	CookieSecureNever  = "never"
 )
 
+type AlertThresholds struct {
+	CPUPercent  float64
+	MemPercent  float64
+	DiskPercent float64
+}
+
 type Config struct {
 	ListenAddr          string
 	Token               string
@@ -28,6 +34,7 @@ type Config struct {
 	LogLevel            string
 	Watchtower          WatchtowerConfig
 	Recovery            RecoveryConfig
+	AlertThresholds     AlertThresholds
 }
 
 type WatchtowerConfig struct {
@@ -111,6 +118,11 @@ func Load() Config {
 			CaptureLines:     80,
 			MaxSnapshots:     300,
 		},
+		AlertThresholds: AlertThresholds{
+			CPUPercent:  90.0,
+			MemPercent:  90.0,
+			DiskPercent: 95.0,
+		},
 	}
 
 	cfg.DataDir = resolveDataDir()
@@ -121,6 +133,7 @@ func Load() Config {
 	applyCoreConfig(&cfg, file)
 	applyWatchtowerConfig(&cfg, file)
 	applyRecoveryConfig(&cfg, file)
+	applyAlertThresholdsConfig(&cfg, file)
 
 	return cfg
 }
@@ -245,6 +258,30 @@ func applyRecoveryConfig(cfg *Config, file map[string]string) {
 	)
 }
 
+func applyAlertThresholdsConfig(cfg *Config, file map[string]string) {
+	if cfg == nil {
+		return
+	}
+	cfg.AlertThresholds.CPUPercent = readPositiveFloatEnvOrFile(
+		"SENTINEL_ALERT_CPU_PERCENT",
+		"alert_cpu_percent",
+		file,
+		cfg.AlertThresholds.CPUPercent,
+	)
+	cfg.AlertThresholds.MemPercent = readPositiveFloatEnvOrFile(
+		"SENTINEL_ALERT_MEM_PERCENT",
+		"alert_mem_percent",
+		file,
+		cfg.AlertThresholds.MemPercent,
+	)
+	cfg.AlertThresholds.DiskPercent = readPositiveFloatEnvOrFile(
+		"SENTINEL_ALERT_DISK_PERCENT",
+		"alert_disk_percent",
+		file,
+		cfg.AlertThresholds.DiskPercent,
+	)
+}
+
 func readRawEnvOrFile(envKey, fileKey string, file map[string]string) string {
 	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
 		return v
@@ -286,6 +323,25 @@ func readPositiveIntEnvOrFile(envKey, fileKey string, file map[string]string, fa
 		return parsed
 	}
 	return fallback
+}
+
+func readPositiveFloatEnvOrFile(envKey, fileKey string, file map[string]string, fallback float64) float64 {
+	raw := readRawEnvOrFile(envKey, fileKey, file)
+	if raw == "" {
+		return fallback
+	}
+	if parsed, ok := parsePositiveFloat(raw); ok {
+		return parsed
+	}
+	return fallback
+}
+
+func parsePositiveFloat(raw string) (float64, bool) {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }
 
 // loadFile reads a simple key = value config file.

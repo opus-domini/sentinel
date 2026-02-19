@@ -1108,12 +1108,12 @@ func TestRecoveryJobStateTransitions(t *testing.T) {
 		}
 	})
 
-	t.Run("finish partial", func(t *testing.T) {
+	t.Run("finish failed with message", func(t *testing.T) {
 		s, _ := setupJob(t)
 		defer func() { _ = s.Close() }()
 
 		finishedAt := time.Date(2025, 6, 5, 12, 5, 0, 0, time.UTC)
-		if err := s.FinishRecoveryJob(ctx, "job-1", RecoveryJobPartial, "2 of 5 failed", finishedAt); err != nil {
+		if err := s.FinishRecoveryJob(ctx, "job-1", RecoveryJobFailed, "2 of 5 failed", finishedAt); err != nil {
 			t.Fatalf("FinishRecoveryJob error = %v", err)
 		}
 
@@ -1121,8 +1121,11 @@ func TestRecoveryJobStateTransitions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetRecoveryJob error = %v", err)
 		}
-		if job.Status != RecoveryJobPartial {
-			t.Fatalf("status = %s, want partial", job.Status)
+		if job.Status != RecoveryJobFailed {
+			t.Fatalf("status = %s, want failed", job.Status)
+		}
+		if job.Error != "2 of 5 failed" {
+			t.Fatalf("error = %q, want %q", job.Error, "2 of 5 failed")
 		}
 	})
 }

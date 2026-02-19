@@ -15,13 +15,13 @@ export default function TimelineHelpDialog() {
 
   return (
     <>
-      <TooltipHelper content="About Timeline">
+      <TooltipHelper content="About Activity Log">
         <Button
           variant="ghost"
           size="icon"
           className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
           onClick={() => setOpen(true)}
-          aria-label="About Timeline"
+          aria-label="About Activity Log"
         >
           <CircleHelp className="h-4 w-4" />
         </Button>
@@ -29,17 +29,18 @@ export default function TimelineHelpDialog() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>About Timeline</DialogTitle>
+            <DialogTitle>Activity Log</DialogTitle>
             <DialogDescription>
-              How the Sentinel operations timeline works.
+              An audit log of control-plane operations performed through
+              Sentinel.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <section>
               <h3 className="mb-1 font-medium text-foreground">Audit Log</h3>
               <p>
-                The timeline is an append-only audit log that records every
-                significant operation performed through Sentinel.
+                The activity log is an append-only record of every significant
+                control-plane operation performed through Sentinel.
               </p>
             </section>
             <section>
@@ -61,9 +62,9 @@ export default function TimelineHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Retention</h3>
               <p>
-                Timeline events are stored locally in the Sentinel database.
-                They persist across restarts and are scoped to this Sentinel
-                instance.
+                Events are stored locally in the Sentinel database and pruned
+                automatically to 10,000 rows. They persist across restarts and
+                are scoped to this Sentinel instance.
               </p>
             </section>
           </div>

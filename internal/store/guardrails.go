@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -127,15 +128,15 @@ func (s *Store) initGuardrailSchema() error {
 		`INSERT OR IGNORE INTO guardrail_rules(
 			id, name, scope, pattern, mode, severity, message, enabled, priority
 		) VALUES (
-			'command.rm.root.block',
-			'Block rm -rf /',
-			'command',
-			'(?i)(^|\s)rm\s+-rf\s+/($|\s)',
-			'block',
-			'error',
-			'Blocked dangerous command pattern: rm -rf /',
+			'action.pane.kill.warn',
+			'Warn on pane kill',
+			'action',
+			'^pane\.kill$',
+			'warn',
+			'warn',
+			'Pane termination logged for audit.',
 			1,
-			5
+			20
 		)`,
 	}
 
@@ -224,6 +225,25 @@ func (s *Store) UpsertGuardrailRule(ctx context.Context, row GuardrailRuleWrite)
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
+}
+
+func (s *Store) DeleteGuardrailRule(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("rule id is required")
+	}
+	result, err := s.db.ExecContext(ctx, `DELETE FROM guardrail_rules WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (s *Store) InsertGuardrailAudit(ctx context.Context, row GuardrailAuditWrite) (int64, error) {

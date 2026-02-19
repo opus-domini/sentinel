@@ -84,19 +84,6 @@ func serve() int {
 		Publish: func(eventType string, payload map[string]any) {
 			eventHub.Publish(events.NewEvent(eventType, payload))
 		},
-		OpsTimeline: func(ctx context.Context, source, eventType, severity, resource, message, details string) {
-			if _, err := st.InsertTimelineEvent(ctx, timeline.EventWrite{
-				Source:    source,
-				EventType: eventType,
-				Severity:  severity,
-				Resource:  resource,
-				Message:   message,
-				Details:   details,
-				CreatedAt: time.Now().UTC(),
-			}); err != nil {
-				slog.Warn("ops timeline write failed", "source", source, "err", err)
-			}
-		},
 	})
 	if cfg.Watchtower.Enabled {
 		watchtowerService.Start(context.Background())
@@ -104,21 +91,26 @@ func serve() int {
 	if cfg.Recovery.Enabled {
 		recoveryService = recovery.New(st, tmux.Service{}, recovery.Options{
 			SnapshotInterval:    cfg.Recovery.SnapshotInterval,
-			CaptureLines:        cfg.Recovery.CaptureLines,
 			MaxSnapshotsPerSess: cfg.Recovery.MaxSnapshots,
 			EventHub:            eventHub,
+			AlertRepo:           st,
 		})
 		recoveryService.Start(context.Background())
 	}
 
 	healthChecker := services.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
 		eventHub.Publish(events.NewEvent(eventType, payload))
-	}, 0)
+	}, 0, services.AlertThresholds{
+		CPUPercent:  cfg.AlertThresholds.CPUPercent,
+		MemPercent:  cfg.AlertThresholds.MemPercent,
+		DiskPercent: cfg.AlertThresholds.DiskPercent,
+	})
 	healthChecker.Start(context.Background())
 
 	schedulerService := scheduler.New(st, st, scheduler.Options{
 		TickInterval: 5 * time.Second,
 		EventHub:     eventHub,
+		AlertRepo:    st,
 	})
 	schedulerService.Start(context.Background())
 
@@ -130,6 +122,9 @@ func serve() int {
 
 	timelineCtx, stopTimeline := context.WithCancel(context.Background())
 	timelineDone := startTimelineTicker(timelineCtx, st, eventHub)
+
+	pruneCtx, stopPrune := context.WithCancel(context.Background())
+	pruneDone := startOpsPruneTicker(pruneCtx, st)
 
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
 	apiHandler := api.Register(mux, guard, st, opsManager, recoveryService, eventHub, currentVersion(), configPath)
@@ -143,9 +138,11 @@ func serve() int {
 	apiHandler.Shutdown(apiShutdownCtx)
 	cancelAPI()
 
+	stopPrune()
 	stopTimeline()
 	stopAlerts()
 	stopMetrics()
+	<-pruneDone
 	<-timelineDone
 	<-alertsDone
 	<-metricsDone
@@ -293,6 +290,30 @@ func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) 
 				hub.Publish(events.NewEvent(events.TypeOpsTimeline, map[string]any{
 					"events": result.Events,
 				}))
+			}
+		}
+	}()
+	return done
+}
+
+func startOpsPruneTicker(ctx context.Context, st *store.Store) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				pruneCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				if n, err := st.PruneOpsTimelineRows(pruneCtx, 10000); err != nil {
+					slog.Warn("ops timeline prune failed", "err", err)
+				} else if n > 0 {
+					slog.Info("ops timeline pruned", "removed", n)
+				}
+				cancel()
 			}
 		}
 	}()

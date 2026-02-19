@@ -241,6 +241,27 @@ func (s *Store) AckAlert(ctx context.Context, id int64, ackAt time.Time) (alerts
 	return out, nil
 }
 
+func (s *Store) DeleteAlert(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+	result, err := s.db.ExecContext(ctx,
+		`DELETE FROM ops_alerts WHERE id = ? AND status = ?`,
+		id, alerts.StatusResolved,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *Store) ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error) {
 	dedupeKey = strings.TrimSpace(dedupeKey)
 	if dedupeKey == "" {

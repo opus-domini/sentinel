@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
@@ -26,7 +27,6 @@ const (
 	runtimeBootChangeKey   = "recovery.last_boot_change_at"
 	runtimeLiveSessionsKey = "recovery.last_live_sessions"
 	defaultSnapshotPeriod  = 5 * time.Second
-	defaultCaptureLines    = 80
 	defaultMaxSnapshots    = 300
 )
 
@@ -100,11 +100,17 @@ type tmuxClient interface {
 	KillSession(ctx context.Context, session string) error
 }
 
+// AlertRepo is an optional interface for raising/resolving recovery alerts.
+type AlertRepo interface {
+	UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error)
+	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
+}
+
 type Options struct {
 	SnapshotInterval    time.Duration
-	CaptureLines        int
 	MaxSnapshotsPerSess int
 	EventHub            *events.Hub
+	AlertRepo           AlertRepo
 }
 
 type Overview struct {
@@ -144,9 +150,6 @@ type Service struct {
 func New(st recoveryStore, tm tmuxClient, options Options) *Service {
 	if options.SnapshotInterval <= 0 {
 		options.SnapshotInterval = defaultSnapshotPeriod
-	}
-	if options.CaptureLines <= 0 {
-		options.CaptureLines = defaultCaptureLines
 	}
 	if options.MaxSnapshotsPerSess <= 0 {
 		options.MaxSnapshotsPerSess = defaultMaxSnapshots
@@ -350,6 +353,17 @@ func (s *Service) markKilledSessionsAfterBootChange(ctx context.Context, bootCha
 	}
 	if err := s.store.MarkRecoverySessionsKilled(ctx, killed, bootID, now); err != nil {
 		return 0, err
+	}
+	for _, name := range killed {
+		s.raiseAlert(ctx, alerts.AlertWrite{
+			DedupeKey: fmt.Sprintf("recovery:session:%s:killed", name),
+			Source:    "recovery",
+			Resource:  name,
+			Title:     fmt.Sprintf("Session %s killed after reboot", name),
+			Message:   fmt.Sprintf("Session %s was lost after boot change", name),
+			Severity:  "warn",
+			CreatedAt: now,
+		})
 	}
 	_ = s.store.SetRuntimeValue(ctx, runtimeBootChangeKey, now.Format(time.RFC3339))
 	slog.Info("recovery marked sessions as killed after boot change", "count", len(killed))
@@ -580,7 +594,6 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 		store.RecoveryJobQueued,
 		store.RecoveryJobRunning,
 		store.RecoveryJobFailed,
-		store.RecoveryJobPartial,
 	}, 30)
 	if err != nil {
 		return Overview{}, err
@@ -628,7 +641,11 @@ func (s *Service) GetJob(ctx context.Context, id string) (store.RecoveryJob, err
 }
 
 func (s *Service) ArchiveSession(ctx context.Context, name string) error {
-	return s.store.MarkRecoverySessionArchived(ctx, name, time.Now().UTC())
+	if err := s.store.MarkRecoverySessionArchived(ctx, name, time.Now().UTC()); err != nil {
+		return err
+	}
+	s.resolveAlert(ctx, fmt.Sprintf("recovery:session:%s:killed", name), time.Now().UTC())
+	return nil
 }
 
 func (s *Service) RestoreSnapshotAsync(ctx context.Context, snapshotID int64, options RestoreOptions) (store.RecoveryJob, error) {
@@ -681,6 +698,15 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 		defer finCancel()
 		_ = s.store.FinishRecoveryJob(finCtx, jobID, store.RecoveryJobFailed, message, time.Now().UTC())
 		_ = s.store.MarkRecoverySessionRestoreFailed(finCtx, snap.SessionName, message)
+		s.raiseAlert(finCtx, alerts.AlertWrite{
+			DedupeKey: fmt.Sprintf("recovery:job:%s:failed", jobID),
+			Source:    "recovery",
+			Resource:  snap.SessionName,
+			Title:     fmt.Sprintf("Restore job %s failed", jobID),
+			Message:   message,
+			Severity:  "error",
+			CreatedAt: time.Now().UTC(),
+		})
 		s.publish(events.TypeRecoveryJob, map[string]any{
 			"jobId":   jobID,
 			"status":  string(store.RecoveryJobFailed),
@@ -747,6 +773,7 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 	if err := s.store.FinishRecoveryJob(finCtx, jobID, store.RecoveryJobSucceeded, "", time.Now().UTC()); err != nil {
 		slog.Warn("recovery finish job failed", "job", jobID, "err", err)
 	}
+	s.resolveAlert(finCtx, fmt.Sprintf("recovery:session:%s:killed", snap.SessionName), time.Now().UTC())
 	s.publish(events.TypeRecoveryJob, map[string]any{
 		"jobId":  jobID,
 		"status": string(store.RecoveryJobSucceeded),
@@ -909,8 +936,10 @@ func (s *Service) restoreWindowPanes(ctx context.Context, session string, window
 		if title := strings.TrimSpace(sp.Title); title != "" {
 			_ = s.tmux.RenamePane(ctx, lp.PaneID, title)
 		}
-		if cwd := strings.TrimSpace(sp.CurrentPath); cwd != "" {
-			_ = s.tmux.SendKeys(ctx, lp.PaneID, "cd "+shellQuoteSingle(cwd), true)
+		if mode == ReplayModeConfirm || mode == ReplayModeFull {
+			if cwd := strings.TrimSpace(sp.CurrentPath); cwd != "" {
+				_ = s.tmux.SendKeys(ctx, lp.PaneID, "cd "+shellQuoteSingle(cwd), true)
+			}
 		}
 		if mode == ReplayModeFull {
 			cmd := strings.TrimSpace(sp.StartCommand)
@@ -1069,4 +1098,24 @@ func (s *Service) publish(eventType string, payload map[string]any) {
 		return
 	}
 	s.events.Publish(events.NewEvent(eventType, payload))
+}
+
+func (s *Service) raiseAlert(ctx context.Context, write alerts.AlertWrite) {
+	if s == nil || s.options.AlertRepo == nil {
+		return
+	}
+	if _, err := s.options.AlertRepo.UpsertAlert(ctx, write); err != nil {
+		slog.Warn("recovery: upsert alert failed", "dedupeKey", write.DedupeKey, "error", err)
+	}
+}
+
+func (s *Service) resolveAlert(ctx context.Context, dedupeKey string, at time.Time) {
+	if s == nil || s.options.AlertRepo == nil {
+		return
+	}
+	if _, err := s.options.AlertRepo.ResolveAlert(ctx, dedupeKey, at); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("recovery: resolve alert failed", "dedupeKey", dedupeKey, "error", err)
+		}
+	}
 }

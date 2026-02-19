@@ -212,3 +212,82 @@ func TestSearchOpsTimelineEventsFilters(t *testing.T) {
 		}
 	})
 }
+
+func TestPruneOpsTimelineRows(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
+
+	// Insert 15 events with distinct timestamps.
+	for i := range 15 {
+		if _, err := s.InsertTimelineEvent(ctx, timeline.EventWrite{
+			Source:    "test",
+			EventType: "ops.event",
+			Severity:  "info",
+			Resource:  "res",
+			Message:   "event " + time.Duration(i).String(),
+			CreatedAt: base.Add(time.Duration(i) * time.Second),
+		}); err != nil {
+			t.Fatalf("InsertTimelineEvent(%d): %v", i, err)
+		}
+	}
+
+	// Verify all 15 exist.
+	all, err := s.SearchTimelineEvents(ctx, timeline.Query{Limit: 100})
+	if err != nil {
+		t.Fatalf("SearchTimelineEvents: %v", err)
+	}
+	if len(all.Events) != 15 {
+		t.Fatalf("pre-prune count = %d, want 15", len(all.Events))
+	}
+
+	// Prune to keep only 10.
+	removed, err := s.PruneOpsTimelineRows(ctx, 10)
+	if err != nil {
+		t.Fatalf("PruneOpsTimelineRows: %v", err)
+	}
+	if removed != 5 {
+		t.Fatalf("removed = %d, want 5", removed)
+	}
+
+	// Verify 10 remain and they are the newest.
+	remaining, err := s.SearchTimelineEvents(ctx, timeline.Query{Limit: 100})
+	if err != nil {
+		t.Fatalf("SearchTimelineEvents after prune: %v", err)
+	}
+	if len(remaining.Events) != 10 {
+		t.Fatalf("post-prune count = %d, want 10", len(remaining.Events))
+	}
+	// The newest event should be the last one inserted (base + 14s).
+	newest := remaining.Events[0]
+	wantNewest := base.Add(14 * time.Second).Format(time.RFC3339)
+	if newest.CreatedAt != wantNewest {
+		t.Fatalf("newest event createdAt = %q, want %q", newest.CreatedAt, wantNewest)
+	}
+
+	t.Run("zero maxRows is no-op", func(t *testing.T) {
+		t.Parallel()
+		s2 := newTestStore(t)
+		n, err := s2.PruneOpsTimelineRows(context.Background(), 0)
+		if err != nil {
+			t.Fatalf("PruneOpsTimelineRows(0): %v", err)
+		}
+		if n != 0 {
+			t.Fatalf("removed = %d, want 0", n)
+		}
+	})
+
+	t.Run("negative maxRows is no-op", func(t *testing.T) {
+		t.Parallel()
+		s2 := newTestStore(t)
+		n, err := s2.PruneOpsTimelineRows(context.Background(), -5)
+		if err != nil {
+			t.Fatalf("PruneOpsTimelineRows(-5): %v", err)
+		}
+		if n != 0 {
+			t.Fatalf("removed = %d, want 0", n)
+		}
+	})
+}

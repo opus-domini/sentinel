@@ -96,6 +96,26 @@ func (s *Store) getTimelineEventByID(ctx context.Context, id int64) (timeline.Ev
 	return out, nil
 }
 
+func (s *Store) PruneOpsTimelineRows(ctx context.Context, maxRows int) (int64, error) {
+	if maxRows <= 0 {
+		return 0, nil
+	}
+	result, err := s.db.ExecContext(ctx,
+		`DELETE FROM ops_timeline_events
+		  WHERE id IN (
+			SELECT id
+			FROM ops_timeline_events
+			ORDER BY created_at DESC, id DESC
+			LIMIT -1 OFFSET ?
+		  )`,
+		maxRows,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (s *Store) SearchTimelineEvents(ctx context.Context, query timeline.Query) (timeline.Result, error) {
 	limit := query.Limit
 	if limit <= 0 {

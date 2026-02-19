@@ -7,6 +7,7 @@ import {
   Clock,
   ScrollText,
   Settings,
+  Shield,
   SquareTerminal,
 } from 'lucide-react'
 import { Link, useRouterState } from '@tanstack/react-router'
@@ -37,6 +38,7 @@ export default function SideRail({
   const alertsActive = pathname === '/alerts'
   const timelineActive = pathname === '/timeline'
   const metricsActive = pathname === '/metrics'
+  const guardrailsActive = pathname === '/guardrails'
 
   const navItemClass = (isActive: boolean) =>
     cn(
@@ -73,7 +75,7 @@ export default function SideRail({
     },
     {
       to: '/timeline' as const,
-      label: 'Timeline',
+      label: 'Activity Log',
       active: timelineActive,
       Icon: Clock,
     },
@@ -82,6 +84,12 @@ export default function SideRail({
       label: 'Metrics',
       active: metricsActive,
       Icon: Activity,
+    },
+    {
+      to: '/guardrails' as const,
+      label: 'Guardrails',
+      active: guardrailsActive,
+      Icon: Shield,
     },
   ]
 

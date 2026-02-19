@@ -47,7 +47,7 @@ function buildTimelineFooterSummary({
     return timelineError
   }
   if (overviewLoading || timelineLoading) {
-    return 'Loading timeline...'
+    return 'Loading activity log...'
   }
   return `${eventCount} events`
 }
@@ -220,7 +220,7 @@ function TimelinePage() {
             </Button>
             <span className="truncate">Sentinel</span>
             <span className="text-muted-foreground">/</span>
-            <span className="truncate text-muted-foreground">timeline</span>
+            <span className="truncate text-muted-foreground">activity log</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Button
@@ -228,7 +228,7 @@ function TimelinePage() {
               size="sm"
               className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
               onClick={refreshPage}
-              aria-label="Refresh timeline"
+              aria-label="Refresh activity log"
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
@@ -273,7 +273,7 @@ function TimelinePage() {
                 ))}
                 {!timelineLoading && timelineEvents.length === 0 && (
                   <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
-                    <p>No timeline events for the selected filters.</p>
+                    <p>No activity log events for the selected filters.</p>
                     <div className="flex flex-wrap gap-2">
                       {(timelineQuery.trim() !== '' ||
                         timelineSeverity !== 'all') && (
@@ -295,7 +295,7 @@ function TimelinePage() {
                         className="h-7 text-[11px]"
                         onClick={refreshPage}
                       >
-                        Refresh timeline
+                        Refresh activity log
                       </Button>
                     </div>
                   </div>

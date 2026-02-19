@@ -133,6 +133,9 @@ type opsScheduleRepo interface {
 
 type alertsTimelineRepo interface {
 	ListAlerts(ctx context.Context, limit int, status string) ([]alerts.Alert, error)
+	DeleteAlert(ctx context.Context, id int64) error
+	UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error)
+	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
 	SearchTimelineEvents(ctx context.Context, query timeline.Query) (timeline.Result, error)
 	GetStorageStats(ctx context.Context) (store.StorageStats, error)
 	FlushStorageResource(ctx context.Context, resource string) ([]store.StorageFlushResult, error)

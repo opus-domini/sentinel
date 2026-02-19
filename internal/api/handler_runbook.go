@@ -105,6 +105,7 @@ func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookR
 		Source:        "runbook",
 		StepTimeout:   30 * time.Second,
 		ExtraMetadata: map[string]string{"runbookId": job.RunbookID},
+		AlertRepo:     h.repo,
 	})
 }
 

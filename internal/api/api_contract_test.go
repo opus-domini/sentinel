@@ -50,6 +50,7 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 
 		{name: "alerts-list", method: http.MethodGet, path: "/api/ops/alerts"},
 		{name: "alerts-ack", method: http.MethodPost, path: "/api/ops/alerts/1/ack"},
+		{name: "alerts-delete", method: http.MethodDelete, path: "/api/ops/alerts/1"},
 		{name: "timeline", method: http.MethodGet, path: "/api/ops/timeline"},
 		{name: "metrics", method: http.MethodGet, path: "/api/ops/metrics"},
 
@@ -72,7 +73,9 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "storage-flush", method: http.MethodPost, path: "/api/ops/storage/flush", body: `{"resource":"timeline"}`},
 
 		{name: "guardrails-rules", method: http.MethodGet, path: "/api/ops/guardrails/rules"},
+		{name: "guardrails-create", method: http.MethodPost, path: "/api/ops/guardrails/rules", body: `{"pattern":"^test$","enabled":true}`},
 		{name: "guardrails-update", method: http.MethodPatch, path: "/api/ops/guardrails/rules/delete-session", body: `{"enabled":true}`},
+		{name: "guardrails-delete", method: http.MethodDelete, path: "/api/ops/guardrails/rules/delete-session"},
 		{name: "guardrails-audit", method: http.MethodGet, path: "/api/ops/guardrails/audit"},
 		{name: "guardrails-evaluate", method: http.MethodPost, path: "/api/ops/guardrails/evaluate", body: `{"action":"kill-session","args":{"session":"dev"}}`},
 

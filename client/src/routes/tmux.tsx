@@ -15,6 +15,7 @@ import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
 import TimelineDialog from '@/components/tmux/TimelineDialog'
 import RecoveryDialog from '@/components/tmux/RecoveryDialog'
+import GuardrailConfirmDialog from '@/components/GuardrailConfirmDialog'
 import KillSessionDialog from '@/components/tmux/KillSessionDialog'
 import RenameDialog from '@/components/tmux/RenameDialog'
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -307,6 +308,8 @@ function TmuxPage() {
             recovery.recoverySessions.filter((item) => item.state === 'killed')
               .length
           }
+          recoverySessionCount={sessions.length}
+          lastCollectAt={recovery.lastCollectAt}
           onFilterChange={setFilter}
           onTokenChange={setToken}
           onCreate={(name, cwd) => {
@@ -425,6 +428,14 @@ function TmuxPage() {
         session={sessionCRUD.killDialogSession}
         onOpenChange={() => sessionCRUD.setKillDialogSession(null)}
         onConfirm={sessionCRUD.handleConfirmKill}
+      />
+
+      <GuardrailConfirmDialog
+        open={sessionCRUD.guardrailConfirm !== null}
+        ruleName={sessionCRUD.guardrailConfirm?.ruleName ?? ''}
+        message={sessionCRUD.guardrailConfirm?.message ?? ''}
+        onOpenChange={() => sessionCRUD.handleGuardrailCancel()}
+        onConfirm={sessionCRUD.handleGuardrailConfirm}
       />
 
       <RenameDialog

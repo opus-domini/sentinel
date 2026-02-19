@@ -21,7 +21,7 @@ func TestGuardrailSchemaSeedsDefaultRules(t *testing.T) {
 	}
 
 	foundSessionKill := false
-	foundDangerousRM := false
+	foundPaneKillWarn := false
 	for _, rule := range rules {
 		switch rule.ID {
 		case "action.session.kill.confirm":
@@ -29,15 +29,15 @@ func TestGuardrailSchemaSeedsDefaultRules(t *testing.T) {
 			if rule.Mode != GuardrailModeConfirm {
 				t.Fatalf("session kill mode = %q, want confirm", rule.Mode)
 			}
-		case "command.rm.root.block":
-			foundDangerousRM = true
-			if rule.Mode != GuardrailModeBlock {
-				t.Fatalf("rm block mode = %q, want block", rule.Mode)
+		case "action.pane.kill.warn":
+			foundPaneKillWarn = true
+			if rule.Mode != GuardrailModeWarn {
+				t.Fatalf("pane kill warn mode = %q, want warn", rule.Mode)
 			}
 		}
 	}
-	if !foundSessionKill || !foundDangerousRM {
-		t.Fatalf("missing default rules, sessionKill=%v rmBlock=%v", foundSessionKill, foundDangerousRM)
+	if !foundSessionKill || !foundPaneKillWarn {
+		t.Fatalf("missing default rules, sessionKill=%v paneKillWarn=%v", foundSessionKill, foundPaneKillWarn)
 	}
 }
 

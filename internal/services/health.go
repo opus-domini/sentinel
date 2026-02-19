@@ -14,12 +14,14 @@ import (
 	"github.com/opus-domini/sentinel/internal/alerts"
 )
 
-const (
-	defaultHealthInterval = 30 * time.Second
-	cpuAlertThreshold     = 90.0
-	memAlertThreshold     = 90.0
-	diskAlertThreshold    = 95.0
-)
+const defaultHealthInterval = 30 * time.Second
+
+// AlertThresholds configures the metric thresholds that trigger alerts.
+type AlertThresholds struct {
+	CPUPercent  float64
+	MemPercent  float64
+	DiskPercent float64
+}
 
 // HealthPublisher emits events for real-time updates.
 type HealthPublisher func(eventType string, payload map[string]any)
@@ -33,10 +35,11 @@ type healthAlertsRepo interface {
 // HealthChecker periodically polls service states and host metrics,
 // generating alerts on failures and auto-resolving on recovery.
 type HealthChecker struct {
-	manager  *Manager
-	alerts   healthAlertsRepo
-	publish  HealthPublisher
-	interval time.Duration
+	manager    *Manager
+	alerts     healthAlertsRepo
+	publish    HealthPublisher
+	interval   time.Duration
+	thresholds AlertThresholds
 
 	startOnce sync.Once
 	stopOnce  sync.Once
@@ -44,17 +47,28 @@ type HealthChecker struct {
 	doneCh    chan struct{}
 }
 
-// NewHealthChecker creates a health checker.
-func NewHealthChecker(mgr *Manager, alertsRepo healthAlertsRepo, publish HealthPublisher, interval time.Duration) *HealthChecker {
+// NewHealthChecker creates a health checker. If thresholds is zero-valued,
+// defaults of 90/90/95 are applied.
+func NewHealthChecker(mgr *Manager, alertsRepo healthAlertsRepo, publish HealthPublisher, interval time.Duration, thresholds AlertThresholds) *HealthChecker {
 	if interval <= 0 {
 		interval = defaultHealthInterval
 	}
+	if thresholds.CPUPercent <= 0 {
+		thresholds.CPUPercent = 90.0
+	}
+	if thresholds.MemPercent <= 0 {
+		thresholds.MemPercent = 90.0
+	}
+	if thresholds.DiskPercent <= 0 {
+		thresholds.DiskPercent = 95.0
+	}
 	return &HealthChecker{
-		manager:  mgr,
-		alerts:   alertsRepo,
-		publish:  publish,
-		interval: interval,
-		doneCh:   make(chan struct{}),
+		manager:    mgr,
+		alerts:     alertsRepo,
+		publish:    publish,
+		interval:   interval,
+		thresholds: thresholds,
+		doneCh:     make(chan struct{}),
 	}
 }
 
@@ -141,13 +155,13 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	metrics := hc.manager.Metrics(ctx)
 	now := time.Now().UTC()
 
-	if metrics.CPUPercent > cpuAlertThreshold && metrics.CPUPercent >= 0 {
+	if metrics.CPUPercent > hc.thresholds.CPUPercent && metrics.CPUPercent >= 0 {
 		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:cpu:high",
 			Source:    "health",
 			Resource:  "host",
 			Title:     "High CPU usage",
-			Message:   fmt.Sprintf("CPU usage is %.1f%% (threshold: %.0f%%)", metrics.CPUPercent, cpuAlertThreshold),
+			Message:   fmt.Sprintf("CPU usage is %.1f%% (threshold: %.0f%%)", metrics.CPUPercent, hc.thresholds.CPUPercent),
 			Severity:  "warn",
 			Metadata:  marshalMetadata(map[string]any{"cpuPercent": metrics.CPUPercent}),
 			CreatedAt: now,
@@ -156,13 +170,13 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 		hc.resolveAlert(ctx, "health:host:cpu:high", now)
 	}
 
-	if metrics.MemPercent > memAlertThreshold {
+	if metrics.MemPercent > hc.thresholds.MemPercent {
 		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:memory:high",
 			Source:    "health",
 			Resource:  "host",
 			Title:     "High memory usage",
-			Message:   fmt.Sprintf("Memory usage is %.1f%% (threshold: %.0f%%)", metrics.MemPercent, memAlertThreshold),
+			Message:   fmt.Sprintf("Memory usage is %.1f%% (threshold: %.0f%%)", metrics.MemPercent, hc.thresholds.MemPercent),
 			Severity:  "warn",
 			Metadata:  marshalMetadata(map[string]any{"memPercent": metrics.MemPercent}),
 			CreatedAt: now,
@@ -171,13 +185,13 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 		hc.resolveAlert(ctx, "health:host:memory:high", now)
 	}
 
-	if metrics.DiskPercent > diskAlertThreshold {
+	if metrics.DiskPercent > hc.thresholds.DiskPercent {
 		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:disk:high",
 			Source:    "health",
 			Resource:  "host",
 			Title:     "High disk usage",
-			Message:   fmt.Sprintf("Disk usage is %.1f%% (threshold: %.0f%%)", metrics.DiskPercent, diskAlertThreshold),
+			Message:   fmt.Sprintf("Disk usage is %.1f%% (threshold: %.0f%%)", metrics.DiskPercent, hc.thresholds.DiskPercent),
 			Severity:  "error",
 			Metadata:  marshalMetadata(map[string]any{"diskPercent": metrics.DiskPercent}),
 			CreatedAt: now,

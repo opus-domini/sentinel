@@ -57,7 +57,7 @@ export default function TimelineSidebar({
         <section className="grid gap-2 rounded-lg border border-border-subtle bg-secondary p-2">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-              Timeline
+              Activity Log
             </span>
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
               {eventCount}
@@ -130,7 +130,7 @@ export default function TimelineSidebar({
           <input
             value={timelineQuery}
             onChange={(e) => onTimelineQueryChange(e.target.value)}
-            placeholder="search timeline"
+            placeholder="search activity log"
             className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
           />
           <select

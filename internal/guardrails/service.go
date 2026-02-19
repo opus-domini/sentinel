@@ -31,6 +31,7 @@ type Decision struct {
 type repo interface {
 	ListGuardrailRules(ctx context.Context) ([]store.GuardrailRule, error)
 	UpsertGuardrailRule(ctx context.Context, rule store.GuardrailRuleWrite) error
+	DeleteGuardrailRule(ctx context.Context, id string) error
 	ListGuardrailAudit(ctx context.Context, limit int) ([]store.GuardrailAudit, error)
 	InsertGuardrailAudit(ctx context.Context, audit store.GuardrailAuditWrite) (int64, error)
 }
@@ -181,6 +182,13 @@ func (s *Service) UpsertRule(ctx context.Context, rule store.GuardrailRuleWrite)
 		return nil
 	}
 	return s.repo.UpsertGuardrailRule(ctx, rule)
+}
+
+func (s *Service) DeleteRule(ctx context.Context, id string) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	return s.repo.DeleteGuardrailRule(ctx, id)
 }
 
 func (s *Service) ListAudit(ctx context.Context, limit int) ([]store.GuardrailAudit, error) {

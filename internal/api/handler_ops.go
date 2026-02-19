@@ -263,6 +263,39 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) deleteOpsAlert(w http.ResponseWriter, r *http.Request) {
+	alertRaw := strings.TrimSpace(r.PathValue("alert"))
+	alertID, err := strconv.ParseInt(alertRaw, 10, 64)
+	if err != nil || alertID <= 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "alert must be a positive integer", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+	defer cancel()
+
+	if err := h.repo.DeleteAlert(ctx, alertID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_ALERT_NOT_FOUND", "alert not found or not resolved", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete alert", nil)
+		return
+	}
+
+	globalRev := time.Now().UTC().UnixMilli()
+	h.emit(events.TypeOpsAlerts, map[string]any{
+		"globalRev": globalRev,
+		"alertId":   alertID,
+		"action":    "deleted",
+	})
+
+	writeData(w, http.StatusOK, map[string]any{
+		"deleted":   alertID,
+		"globalRev": globalRev,
+	})
+}
+
 func (h *Handler) opsTimeline(w http.ResponseWriter, r *http.Request) {
 	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)

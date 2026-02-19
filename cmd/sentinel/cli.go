@@ -807,7 +807,6 @@ func runRecoveryRestoreCommand(ctx commandContext, args []string) int {
 
 	svc := recovery.New(st, tmux.Service{}, recovery.Options{
 		SnapshotInterval:    cfg.Recovery.SnapshotInterval,
-		CaptureLines:        cfg.Recovery.CaptureLines,
 		MaxSnapshotsPerSess: cfg.Recovery.MaxSnapshots,
 	})
 
@@ -843,7 +842,7 @@ func runRecoveryRestoreCommand(ctx commandContext, args []string) int {
 		case store.RecoveryJobSucceeded:
 			writef(ctx.stdout, "restore finished successfully (target=%s)\n", current.TargetSession)
 			return 0
-		case store.RecoveryJobFailed, store.RecoveryJobPartial:
+		case store.RecoveryJobFailed:
 			writef(ctx.stderr, "restore finished with errors: %s\n", current.Error)
 			return 1
 		case store.RecoveryJobQueued, store.RecoveryJobRunning:

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { GuardrailConfirmError } from './useTmuxApi'
 import { isTmuxBinaryMissingMessage } from './tmuxTypes'
 import type { ConnectionState, Session, SessionsResponse } from '@/types'
 import type {
@@ -63,6 +64,11 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const [killDialogSession, setKillDialogSession] = useState<string | null>(
     null,
   )
+  const [guardrailConfirm, setGuardrailConfirm] = useState<{
+    session: string
+    ruleName: string
+    message: string
+  } | null>(null)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameSessionTarget, setRenameSessionTarget] = useState<string | null>(
     null,
@@ -241,8 +247,8 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     ],
   )
 
-  const killSession = useCallback(
-    async (name: string) => {
+  const killSessionWithConfirm = useCallback(
+    async (name: string, guardrailConfirmed: boolean) => {
       const sessionName = name.trim()
       if (sessionName === '') {
         return
@@ -269,12 +275,14 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       }
 
       try {
-        const killURL = `/api/tmux/sessions/${encodeURIComponent(sessionName)}?confirm=1`
+        const killURL = `/api/tmux/sessions/${encodeURIComponent(sessionName)}`
+        const headers: Record<string, string> = {}
+        if (guardrailConfirmed) {
+          headers['X-Sentinel-Guardrail-Confirm'] = 'true'
+        }
         await api<void>(killURL, {
           method: 'DELETE',
-          headers: {
-            'X-Sentinel-Guardrail-Confirm': 'true',
-          },
+          headers,
         })
 
         void refreshSessions()
@@ -287,6 +295,17 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         if (activeBeforeKill !== '') {
           dispatchTabs({ type: 'activate', session: activeBeforeKill })
         }
+
+        if (error instanceof GuardrailConfirmError) {
+          const rules = error.decision.matchedRules
+          setGuardrailConfirm({
+            session: sessionName,
+            ruleName: rules.length > 0 ? rules[0].name : '',
+            message: error.decision.message,
+          })
+          return
+        }
+
         const msg =
           error instanceof Error ? error.message : 'failed to kill session'
         setConnection('error', msg)
@@ -310,6 +329,24 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       tabsStateRef,
     ],
   )
+
+  const killSession = useCallback(
+    async (name: string) => {
+      await killSessionWithConfirm(name, false)
+    },
+    [killSessionWithConfirm],
+  )
+
+  const handleGuardrailConfirm = useCallback(() => {
+    if (guardrailConfirm) {
+      void killSessionWithConfirm(guardrailConfirm.session, true)
+    }
+    setGuardrailConfirm(null)
+  }, [guardrailConfirm, killSessionWithConfirm])
+
+  const handleGuardrailCancel = useCallback(() => {
+    setGuardrailConfirm(null)
+  }, [])
 
   const handleConfirmKill = useCallback(() => {
     if (killDialogSession) {
@@ -502,6 +539,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     renameDialogOpen,
     renameSessionTarget,
     renameValue,
+    guardrailConfirm,
     // Refs
     lastSessionsRefreshAtRef,
     pendingKillSessionsRef,
@@ -512,6 +550,8 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     createSession,
     killSession,
     handleConfirmKill,
+    handleGuardrailConfirm,
+    handleGuardrailCancel,
     renameActive,
     setSessionIcon,
     handleOpenRenameDialogForSession,

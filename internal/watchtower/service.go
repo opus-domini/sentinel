@@ -92,9 +92,6 @@ var _ watchtowerStore = (*store.Store)(nil)
 
 type CollectFunc func(ctx context.Context) error
 
-// OpsTimelineFunc is called to record significant watchtower events in the ops timeline.
-type OpsTimelineFunc func(ctx context.Context, source, eventType, severity, resource, message, details string)
-
 type Options struct {
 	TickInterval   time.Duration
 	CaptureLines   int
@@ -103,7 +100,6 @@ type Options struct {
 	TimelineRows   int
 	Collect        CollectFunc
 	Publish        func(eventType string, payload map[string]any)
-	OpsTimeline    OpsTimelineFunc
 }
 
 type Service struct {
@@ -350,14 +346,6 @@ func (s *Service) publishCollectEvents(ctx context.Context, summary collectSumma
 			"sessionPatches":   sessionPatches,
 			"inspectorPatches": inspectorPatches,
 		})
-	}
-
-	// Emit ops timeline events for timeline-significant changes.
-	if s.options.OpsTimeline != nil && len(summary.timelineChangedSessions) > 0 {
-		for sessionName := range summary.timelineChangedSessions {
-			s.options.OpsTimeline(ctx, "watchtower", "session.activity", "info",
-				sessionName, "Terminal activity detected in "+sessionName, "")
-		}
 	}
 
 	sessionsPayload := sortedNonEmptySessionNames(summary.timelineChangedSessions)

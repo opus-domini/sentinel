@@ -32,6 +32,7 @@ type Options struct {
 	TickInterval  time.Duration
 	MaxConcurrent int
 	EventHub      *events.Hub
+	AlertRepo     runbook.AlertRepo
 }
 
 // Service runs scheduled runbook executions on a tick loop.
@@ -207,6 +208,7 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 		Job:         job,
 		Source:      "scheduler",
 		StepTimeout: stepTimeout,
+		AlertRepo:   s.opts.AlertRepo,
 		ExtraMetadata: map[string]string{
 			"scheduleId": scheduleID,
 		},

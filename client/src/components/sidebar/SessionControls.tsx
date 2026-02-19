@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
+import { Shield } from 'lucide-react'
 import CreateSessionDialog from './CreateSessionDialog'
 import SidebarHeader from './SidebarHeader'
 import TokenDialog from './TokenDialog'
 import TmuxHelpDialog from '@/components/TmuxHelpDialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { formatRelativeTime } from '@/lib/formatRelativeTime'
 
 type SessionControlsProps = {
   sessionCount: number
@@ -13,6 +15,8 @@ type SessionControlsProps = {
   defaultCwd: string
   tmuxUnavailable: boolean
   recoveryKilledCount: number
+  recoverySessionCount: number
+  lastCollectAt: string
   filter: string
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
@@ -27,6 +31,8 @@ export default function SessionControls({
   defaultCwd,
   tmuxUnavailable,
   recoveryKilledCount,
+  recoverySessionCount,
+  lastCollectAt,
   filter,
   onFilterChange,
   onTokenChange,
@@ -108,6 +114,17 @@ export default function SessionControls({
         onTokenChange={onTokenChange}
         tokenRequired={tokenRequired}
       />
+
+      {recoverySessionCount > 0 && lastCollectAt && (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Shield className="size-3" />
+          <span>
+            Protected · {recoverySessionCount} session
+            {recoverySessionCount !== 1 ? 's' : ''} · snapshot{' '}
+            {formatRelativeTime(lastCollectAt)}
+          </span>
+        </div>
+      )}
     </section>
   )
 }

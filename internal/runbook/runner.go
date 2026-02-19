@@ -2,11 +2,14 @@ package runbook
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/timeline"
 )
@@ -21,6 +24,12 @@ type Repo interface {
 
 // EmitFunc publishes a real-time event to connected clients.
 type EmitFunc func(eventType string, payload map[string]any)
+
+// AlertRepo is an optional interface for raising/resolving alerts on run completion.
+type AlertRepo interface {
+	UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error)
+	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
+}
 
 // RunParams configures a single runbook execution.
 type RunParams struct {
@@ -42,6 +51,10 @@ type RunParams struct {
 
 	// OnFinish is called after the run is persisted with the final status.
 	OnFinish func(ctx context.Context, status string)
+
+	// AlertRepo is an optional alert repository. When non-nil, failed runs
+	// raise alerts and successful runs resolve them.
+	AlertRepo AlertRepo
 }
 
 const (
@@ -229,6 +242,31 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 			"globalRev": globalRev,
 			"event":     te,
 		})
+	}
+
+	if params.AlertRepo != nil {
+		dedupeKey := fmt.Sprintf("runbook:%s:failed", params.Job.RunbookID)
+		switch status {
+		case runnerStatusFailed:
+			if _, alertErr := params.AlertRepo.UpsertAlert(ctx, alerts.AlertWrite{
+				DedupeKey: dedupeKey,
+				Source:    "runbook",
+				Resource:  params.Job.RunbookName,
+				Title:     fmt.Sprintf("Runbook %s failed", params.Job.RunbookName),
+				Message:   errMsg,
+				Severity:  "error",
+				CreatedAt: finished,
+			}); alertErr != nil {
+				slog.Warn("runbook runner: failed to upsert alert", "err", alertErr)
+			}
+		case runnerStatusSucceeded:
+			if _, alertErr := params.AlertRepo.ResolveAlert(ctx, dedupeKey, finished); alertErr != nil {
+				// sql.ErrNoRows is expected when no prior alert exists.
+				if !errors.Is(alertErr, sql.ErrNoRows) {
+					slog.Warn("runbook runner: failed to resolve alert", "err", alertErr)
+				}
+			}
+		}
 	}
 
 	if params.OnFinish != nil {

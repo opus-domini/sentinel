@@ -296,6 +296,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 			Source:        "schedule",
 			StepTimeout:   30 * time.Second,
 			ExtraMetadata: map[string]string{"scheduleId": scheduleID},
+			AlertRepo:     h.repo,
 			OnFinish: func(ctx context.Context, status string) {
 				finished := time.Now().UTC()
 				if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, finalNextRunAt, finalEnabled); err != nil {

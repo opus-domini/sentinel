@@ -2,6 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -86,6 +90,96 @@ func (h *Handler) updateGuardrailRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{"rules": rules})
+}
+
+func (h *Handler) createGuardrailRule(w http.ResponseWriter, r *http.Request) {
+	if h.guardrails == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "guardrails are unavailable", nil)
+		return
+	}
+
+	var req struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Scope    string `json:"scope"`
+		Pattern  string `json:"pattern"`
+		Mode     string `json:"mode"`
+		Severity string `json:"severity"`
+		Message  string `json:"message"`
+		Enabled  *bool  `json:"enabled"`
+		Priority int    `json:"priority"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if strings.TrimSpace(req.Pattern) == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "pattern is required", nil)
+		return
+	}
+	if req.Enabled == nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "enabled is required", nil)
+		return
+	}
+
+	id := strings.TrimSpace(req.ID)
+	if id == "" {
+		b := make([]byte, 8)
+		if _, err := rand.Read(b); err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to generate rule id", nil)
+			return
+		}
+		id = hex.EncodeToString(b)
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	if err := h.guardrails.UpsertRule(ctx, store.GuardrailRuleWrite{
+		ID:       id,
+		Name:     req.Name,
+		Scope:    req.Scope,
+		Pattern:  req.Pattern,
+		Mode:     req.Mode,
+		Severity: req.Severity,
+		Message:  req.Message,
+		Enabled:  *req.Enabled,
+		Priority: req.Priority,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create guardrail rule", nil)
+		return
+	}
+	rules, err := h.guardrails.ListRules(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list guardrail rules", nil)
+		return
+	}
+	writeData(w, http.StatusCreated, map[string]any{"rules": rules})
+}
+
+func (h *Handler) deleteGuardrailRule(w http.ResponseWriter, r *http.Request) {
+	if h.guardrails == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "guardrails are unavailable", nil)
+		return
+	}
+	ruleID := strings.TrimSpace(r.PathValue("rule"))
+	if ruleID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "rule is required", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	if err := h.guardrails.DeleteRule(ctx, ruleID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "guardrail rule not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete guardrail rule", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{"removed": ruleID})
 }
 
 func (h *Handler) listGuardrailAudit(w http.ResponseWriter, r *http.Request) {

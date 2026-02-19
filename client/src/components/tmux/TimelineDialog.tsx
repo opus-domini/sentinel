@@ -80,9 +80,9 @@ export default function TimelineDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex min-h-[24rem] max-h-[88vh] flex-col overflow-hidden sm:min-h-[38rem] sm:max-w-6xl">
         <DialogHeader>
-          <DialogTitle>Operations Timeline</DialogTitle>
+          <DialogTitle>Command History</DialogTitle>
           <DialogDescription>
-            Unified search over command lifecycle events and output markers.
+            Search over command lifecycle events and output markers.
           </DialogDescription>
         </DialogHeader>
 

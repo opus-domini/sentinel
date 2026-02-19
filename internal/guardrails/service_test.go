@@ -19,23 +19,23 @@ func newGuardrailTestStore(t *testing.T) *store.Store {
 	return st
 }
 
-func TestEvaluateCommandBlockRule(t *testing.T) {
+func TestEvaluatePaneKillWarnRule(t *testing.T) {
 	t.Parallel()
 
 	st := newGuardrailTestStore(t)
 	svc := New(st)
 
 	decision, err := svc.Evaluate(context.Background(), Input{
-		Command: "rm -rf /",
+		Action: "pane.kill",
 	})
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if decision.Mode != store.GuardrailModeBlock {
-		t.Fatalf("decision.Mode = %q, want block", decision.Mode)
+	if decision.Mode != store.GuardrailModeWarn {
+		t.Fatalf("decision.Mode = %q, want warn", decision.Mode)
 	}
-	if decision.Allowed {
-		t.Fatalf("decision.Allowed = true, want false")
+	if !decision.Allowed {
+		t.Fatalf("decision.Allowed = false, want true")
 	}
 }
 

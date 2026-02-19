@@ -7,6 +7,10 @@ export const OPS_ALERTS_QUERY_KEY = ['ops', 'alerts'] as const
 export const OPS_RUNBOOKS_QUERY_KEY = ['ops', 'runbooks'] as const
 export const OPS_METRICS_QUERY_KEY = ['ops', 'metrics'] as const
 export const OPS_GUARDRAILS_QUERY_KEY = ['ops', 'guardrails'] as const
+export const OPS_GUARDRAILS_AUDIT_QUERY_KEY = [
+  'ops',
+  'guardrails-audit',
+] as const
 export const OPS_STORAGE_STATS_QUERY_KEY = ['ops', 'storage-stats'] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
