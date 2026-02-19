@@ -74,9 +74,21 @@ func New(dbPath string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("create guardrail schema: %w", err)
 	}
-	if err := s.initOpsSchema(); err != nil {
+	if err := s.initTimelineSchema(); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("create ops schema: %w", err)
+		return nil, fmt.Errorf("create timeline schema: %w", err)
+	}
+	if err := s.initAlertsSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create alerts schema: %w", err)
+	}
+	if err := s.initRunbookSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create runbook schema: %w", err)
+	}
+	if err := s.initCustomServicesSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create custom services schema: %w", err)
 	}
 	if err := s.initSchedulerSchema(); err != nil {
 		_ = db.Close()
