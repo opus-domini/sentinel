@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
@@ -289,12 +291,63 @@ func startTimelineTicker(ctx context.Context, st *store.Store, hub *events.Hub) 
 	return done
 }
 
+// requestIDKey is the context key for the request ID.
+type requestIDKey struct{}
+
 func requestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rid := generateRequestID()
+		ctx := context.WithValue(r.Context(), requestIDKey{}, rid)
+		r = r.WithContext(ctx)
+		w.Header().Set("X-Request-ID", rid)
+
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		slog.Debug("request", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start).Truncate(time.Millisecond))
+		rec.ServeHTTP(next, r)
+		slog.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "duration", time.Since(start).Truncate(time.Millisecond), "request_id", rid)
 	})
+}
+
+// statusRecorder wraps http.ResponseWriter to capture the status code.
+// Unwrap returns the underlying ResponseWriter so net/http can discover
+// http.Hijacker (needed for WebSocket upgrade) via interface assertion.
+type statusRecorder struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	if !r.wroteHeader {
+		r.status = code
+		r.wroteHeader = true
+	}
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if !r.wroteHeader {
+		r.wroteHeader = true
+	}
+	return r.ResponseWriter.Write(b)
+}
+
+// Unwrap exposes the underlying ResponseWriter so http.ResponseController
+// and net/http can discover interfaces like http.Hijacker.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
+func (r *statusRecorder) ServeHTTP(next http.Handler, req *http.Request) {
+	next.ServeHTTP(r, req)
+}
+
+func generateRequestID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "unknown"
+	}
+	return hex.EncodeToString(b[:])
 }
 
 func initLogger(level string) {

@@ -94,24 +94,6 @@ func (g *Guard) CheckOrigin(r *http.Request) error {
 	return nil
 }
 
-func (g *Guard) RequireBearer(r *http.Request) error {
-	if !g.TokenMatches(bearerToken(r)) {
-		return ErrUnauthorized
-	}
-	return nil
-}
-
-func (g *Guard) RequireWSToken(r *http.Request) error {
-	token := bearerToken(r)
-	if token == "" {
-		token = wsSubprotocolToken(r)
-	}
-	if !g.TokenMatches(token) {
-		return ErrUnauthorized
-	}
-	return nil
-}
-
 func (g *Guard) RequireAuth(r *http.Request) error {
 	if !g.TokenMatches(cookieToken(r)) {
 		return ErrUnauthorized
@@ -166,18 +148,6 @@ func (g *Guard) TokenMatches(token string) bool {
 	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(g.token)) == 1
 }
 
-func bearerToken(r *http.Request) string {
-	auth := strings.TrimSpace(r.Header.Get("Authorization"))
-	if auth == "" {
-		return ""
-	}
-	const prefix = "Bearer "
-	if !strings.HasPrefix(auth, prefix) {
-		return ""
-	}
-	return strings.TrimSpace(strings.TrimPrefix(auth, prefix))
-}
-
 func cookieToken(r *http.Request) string {
 	cookie, err := r.Cookie(AuthCookieName)
 	if err != nil {
@@ -188,30 +158,6 @@ func cookieToken(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimSpace(decoded)
-}
-
-func wsSubprotocolToken(r *http.Request) string {
-	header := strings.TrimSpace(r.Header.Get("Sec-WebSocket-Protocol"))
-	if header == "" {
-		return ""
-	}
-	for _, raw := range strings.Split(header, ",") {
-		proto := strings.TrimSpace(raw)
-		const prefix = "sentinel.auth."
-		if !strings.HasPrefix(proto, prefix) {
-			continue
-		}
-		encoded := strings.TrimSpace(strings.TrimPrefix(proto, prefix))
-		if encoded == "" {
-			continue
-		}
-		decoded, err := decodeBase64URL(encoded)
-		if err != nil || strings.TrimSpace(decoded) == "" {
-			continue
-		}
-		return decoded
-	}
-	return ""
 }
 
 func decodeBase64URL(s string) (string, error) {

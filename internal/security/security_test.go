@@ -2,7 +2,6 @@ package security
 
 import (
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -109,148 +108,6 @@ func TestCheckOrigin(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Errorf("CheckOrigin() unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestRequireBearer(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		token   string
-		auth    string
-		wantErr error
-	}{
-		{
-			name:  "no token configured",
-			token: "",
-			auth:  "",
-		},
-		{
-			name:  "correct token",
-			token: "my-token",
-			auth:  "Bearer my-token",
-		},
-		{
-			name:    "wrong token",
-			token:   "my-token",
-			auth:    "Bearer wrong-token",
-			wantErr: ErrUnauthorized,
-		},
-		{
-			name:    "no authorization header",
-			token:   "my-token",
-			auth:    "",
-			wantErr: ErrUnauthorized,
-		},
-		{
-			name:    "wrong prefix basic",
-			token:   "my-token",
-			auth:    "Basic xxx",
-			wantErr: ErrUnauthorized,
-		},
-		{
-			name:  "token with extra spaces",
-			token: "my-token",
-			auth:  "Bearer  my-token ",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			g := New(tt.token, nil, CookieSecureAuto)
-			r := httptest.NewRequest("GET", "http://localhost/", nil)
-			if tt.auth != "" {
-				r.Header.Set("Authorization", tt.auth)
-			}
-
-			err := g.RequireBearer(r)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("RequireBearer() error = %v, want %v", err, tt.wantErr)
-				}
-			} else if err != nil {
-				t.Errorf("RequireBearer() unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestRequireWSToken(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		token    string
-		auth     string
-		subproto string
-		wantErr  error
-	}{
-		{
-			name:  "no token configured",
-			token: "",
-		},
-		{
-			name:  "correct token in authorization header",
-			token: "my-token",
-			auth:  "Bearer my-token",
-		},
-		{
-			name:    "wrong token in authorization header",
-			token:   "my-token",
-			auth:    "Bearer wrong",
-			wantErr: ErrUnauthorized,
-		},
-		{
-			name:     "correct token in websocket subprotocol",
-			token:    "my-token",
-			subproto: "sentinel.v1, sentinel.auth.bXktdG9rZW4",
-		},
-		{
-			name:     "invalid subprotocol token",
-			token:    "my-token",
-			subproto: "sentinel.v1, sentinel.auth.d3Jvbmc",
-			wantErr:  ErrUnauthorized,
-		},
-		{
-			name:     "authorization takes precedence over subprotocol",
-			token:    "my-token",
-			auth:     "Bearer my-token",
-			subproto: "sentinel.v1, sentinel.auth.d3Jvbmc",
-		},
-		{
-			name:    "no token anywhere",
-			token:   "my-token",
-			wantErr: ErrUnauthorized,
-		},
-		{
-			name:     "only generic subprotocol no auth token",
-			token:    "my-token",
-			subproto: "sentinel.v1",
-			wantErr:  ErrUnauthorized,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			r := httptest.NewRequest("GET", "http://localhost/", nil)
-			if tt.auth != "" {
-				r.Header.Set("Authorization", tt.auth)
-			}
-			if tt.subproto != "" {
-				r.Header.Set("Sec-WebSocket-Protocol", tt.subproto)
-			}
-			g := New(tt.token, nil, CookieSecureAuto)
-
-			err := g.RequireWSToken(r)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("RequireWSToken() error = %v, want %v", err, tt.wantErr)
-				}
-			} else if err != nil {
-				t.Errorf("RequireWSToken() unexpected error: %v", err)
 			}
 		})
 	}
@@ -428,46 +285,6 @@ func TestAuthCookieLifecycle(t *testing.T) {
 			t.Fatal("cookie Secure = false, want true for tls request")
 		}
 	})
-}
-
-func TestWSSubprotocolToken(t *testing.T) {
-	t.Parallel()
-
-	token := "tok.en-123"
-	encoded := base64.RawURLEncoding.EncodeToString([]byte(token))
-	r := httptest.NewRequest("GET", "http://localhost/", nil)
-	r.Header.Set("Sec-WebSocket-Protocol", "sentinel.v1, sentinel.auth."+encoded)
-	if got := wsSubprotocolToken(r); got != token {
-		t.Fatalf("wsSubprotocolToken() = %q, want %q", got, token)
-	}
-}
-
-func TestBearerToken(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		auth string
-		want string
-	}{
-		{"valid bearer", "Bearer my-token", "my-token"},
-		{"empty header", "", ""},
-		{"wrong scheme", "Basic xyz", ""},
-		{"with whitespace", "Bearer  spaced-token  ", "spaced-token"},
-		{"missing value", "Bearer ", ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			r := httptest.NewRequest("GET", "http://localhost/", nil)
-			if tt.auth != "" {
-				r.Header.Set("Authorization", tt.auth)
-			}
-			if got := bearerToken(r); got != tt.want {
-				t.Errorf("bearerToken() = %q, want %q", got, tt.want)
-			}
-		})
-	}
 }
 
 func TestCookieSecurePolicy(t *testing.T) {
