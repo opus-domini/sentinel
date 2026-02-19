@@ -89,7 +89,9 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	// Fetch runbook steps.
 	rb, err := repo.GetOpsRunbook(ctx, job.RunbookID)
 	if err != nil {
-		finishRun(ctx, repo, emit, params, 0, "", err.Error(), "[]")
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second) //nolint:govet // finCancel is deferred
+		defer finCancel()
+		finishRun(finCtx, repo, emit, params, 0, "", err.Error(), "[]")
 		return
 	}
 	steps := make([]Step, len(rb.Steps))
@@ -155,7 +157,13 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 		slog.Warn("runbook runner: failed to marshal final step results", "err", marshalErr)
 	}
 
-	finishRun(ctx, repo, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON))
+	// Use a context detached from cancellation for terminal writes so that
+	// finishRun succeeds even when the execution context has been cancelled
+	// (timeout, server shutdown). context.WithoutCancel preserves Values
+	// (trace IDs) while shedding the done channel.
+	finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer finCancel()
+	finishRun(finCtx, repo, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON))
 }
 
 func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, completed int, lastStep, errMsg, stepResultsJSON string) {

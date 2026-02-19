@@ -669,8 +669,12 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 	defer cancel()
 
 	updateFailure := func(message string) {
-		_ = s.store.FinishRecoveryJob(ctx, jobID, store.RecoveryJobFailed, message, time.Now().UTC())
-		_ = s.store.MarkRecoverySessionRestoreFailed(ctx, snap.SessionName, message)
+		// Use a context detached from cancellation so terminal writes
+		// succeed even after timeout or server shutdown.
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer finCancel()
+		_ = s.store.FinishRecoveryJob(finCtx, jobID, store.RecoveryJobFailed, message, time.Now().UTC())
+		_ = s.store.MarkRecoverySessionRestoreFailed(finCtx, snap.SessionName, message)
 		s.publish(events.TypeRecoveryJob, map[string]any{
 			"jobId":   jobID,
 			"status":  string(store.RecoveryJobFailed),
@@ -684,6 +688,7 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 
 	if err := s.store.SetRecoveryJobRunning(ctx, jobID, time.Now().UTC()); err != nil {
 		slog.Warn("recovery set job running failed", "job", jobID, "err", err)
+		updateFailure(fmt.Sprintf("failed to set job running: %v", err))
 		return
 	}
 	if err := s.store.MarkRecoverySessionRestoring(ctx, snap.SessionName); err != nil {
@@ -727,10 +732,13 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 		return
 	}
 
-	if err := s.store.MarkRecoverySessionRestored(ctx, snap.SessionName, time.Now().UTC()); err != nil {
+	// Use a context detached from cancellation for terminal writes.
+	finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer finCancel()
+	if err := s.store.MarkRecoverySessionRestored(finCtx, snap.SessionName, time.Now().UTC()); err != nil {
 		slog.Warn("recovery mark restored failed", "session", snap.SessionName, "err", err)
 	}
-	if err := s.store.FinishRecoveryJob(ctx, jobID, store.RecoveryJobSucceeded, "", time.Now().UTC()); err != nil {
+	if err := s.store.FinishRecoveryJob(finCtx, jobID, store.RecoveryJobSucceeded, "", time.Now().UTC()); err != nil {
 		slog.Warn("recovery finish job failed", "job", jobID, "err", err)
 	}
 	s.publish(events.TypeRecoveryJob, map[string]any{
@@ -748,7 +756,7 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 	})
 
 	// Trigger a fresh snapshot after restore to keep journal consistent.
-	if err := s.Collect(ctx); err != nil {
+	if err := s.Collect(finCtx); err != nil {
 		slog.Warn("recovery collect after restore failed", "job", jobID, "err", err)
 	}
 }
