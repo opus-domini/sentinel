@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0](https://github.com/opus-domini/sentinel/compare/v0.3.12...v0.4.0) (2026-02-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove command scope from guardrails, replace pattern input with action picker
+
+### Features
+
+* remove command scope from guardrails, replace pattern input with action picker ([2bbc165](https://github.com/opus-domini/sentinel/commit/2bbc1659d118e3c056f728c5a19357a2c59c684b))
+
+
+### Bug Fixes
+
+* add pointer cursor to dialog close button ([b6b63e1](https://github.com/opus-domini/sentinel/commit/b6b63e10d3d1f05de030d763f7a82acd9cebdf24))
+* add pointer cursor to tmux header action buttons ([24f0df0](https://github.com/opus-domini/sentinel/commit/24f0df0a440a180bb4b1462894c25d15c29d3c73))
+* mobile UX — overflow fixes, alert timestamps, dismiss confirmation, sparkline height ([66ad4d3](https://github.com/opus-domini/sentinel/commit/66ad4d3349df2e036c030e48681448011984e6cb))
+* position tmux dialogs at top of viewport instead of centered ([e244da4](https://github.com/opus-domini/sentinel/commit/e244da4554469eb9a218d636b9fb412228112695))
+
 ## [0.3.12](https://github.com/opus-domini/sentinel/compare/v0.3.11...v0.3.12) (2026-02-20)
 
 
