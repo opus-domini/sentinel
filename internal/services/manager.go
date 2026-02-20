@@ -535,6 +535,16 @@ func detectManager(goos string) string {
 	return managerSystemd
 }
 
+// systemdScopes returns the systemd scopes to query.
+// When running as root (uid 0) there is no user D-Bus session,
+// so only the system scope is returned.
+func (m *Manager) systemdScopes() []string {
+	if m.uidFn != nil && m.uidFn() == 0 {
+		return []string{scopeSystem}
+	}
+	return []string{scopeUser, scopeSystem}
+}
+
 func detectScope(path string, uidFn func() int) string {
 	cleaned := strings.ToLower(strings.TrimSpace(path))
 	switch {
@@ -699,7 +709,7 @@ func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, err
 
 	switch manager {
 	case managerSystemd:
-		for _, scope := range []string{scopeUser, scopeSystem} {
+		for _, scope := range m.systemdScopes() {
 			units, err := m.discoverSystemdUnits(ctx, scope)
 			if err != nil {
 				slog.Warn("service discovery failed", "manager", "systemd", "scope", scope, "err", err)
@@ -834,7 +844,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 
 	switch manager {
 	case managerSystemd:
-		for _, scope := range []string{scopeUser, scopeSystem} {
+		for _, scope := range m.systemdScopes() {
 			units, err := m.discoverSystemdUnits(ctx, scope)
 			if err != nil {
 				slog.Warn("service discovery failed", "manager", "systemd", "scope", scope, "err", err)

@@ -889,6 +889,34 @@ func TestDiscoverServicesDiscoverError(t *testing.T) {
 	}
 }
 
+func TestDiscoverServicesRootSkipsUserScope(t *testing.T) {
+	t.Parallel()
+
+	m := newTestManager("linux", func(_ context.Context, name string, args ...string) (string, error) {
+		if name == cmdSystemctl && slices.Contains(args, "list-units") {
+			if slices.Contains(args, argUser) {
+				return "", errors.New("unexpected --user call when running as root")
+			}
+			return "nginx.service loaded active running Nginx web server", nil
+		}
+		return "", nil
+	})
+	m.uidFn = func() int { return 0 } // simulate root
+
+	discovered, err := m.DiscoverServices(context.Background())
+	if err != nil {
+		t.Fatalf("DiscoverServices: %v", err)
+	}
+	if len(discovered) == 0 {
+		t.Fatal("expected at least one discovered service")
+	}
+	for _, d := range discovered {
+		if d.Scope == scopeUser {
+			t.Fatalf("discovered user-scope unit %q when running as root", d.Unit)
+		}
+	}
+}
+
 func TestBrowseServicesSystemd(t *testing.T) {
 	t.Parallel()
 
