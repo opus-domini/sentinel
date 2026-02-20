@@ -31,7 +31,7 @@ export default function GuardrailsHelpDialog() {
           <DialogHeader>
             <DialogTitle>About Guardrails</DialogTitle>
             <DialogDescription>
-              Safety rules that evaluate commands and actions before execution.
+              Safety rules that evaluate actions before execution.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
@@ -40,8 +40,8 @@ export default function GuardrailsHelpDialog() {
                 What are Guardrails?
               </h3>
               <p>
-                Guardrails are safety rules that evaluate commands and actions
-                before execution. Each rule matches against a pattern and
+                Guardrails are safety rules that evaluate operations before
+                execution. Each rule matches against one or more actions and
                 determines how the system should respond.
               </p>
             </section>
@@ -63,23 +63,10 @@ export default function GuardrailsHelpDialog() {
               </ul>
             </section>
             <section>
-              <h3 className="mb-1 font-medium text-foreground">Scope</h3>
-              <ul className="list-inside list-disc space-y-1">
-                <li>
-                  <strong className="text-foreground">command</strong> — matches
-                  shell commands sent to terminal panes
-                </li>
-                <li>
-                  <strong className="text-foreground">action</strong> — matches
-                  tmux operations like pane.kill or window.close
-                </li>
-              </ul>
-            </section>
-            <section>
               <h3 className="mb-1 font-medium text-foreground">Priority</h3>
               <p>
                 Lower number means higher priority. When multiple rules match
-                the same command or action, the strictest mode wins.
+                the same action, the strictest mode wins.
               </p>
             </section>
             <section>

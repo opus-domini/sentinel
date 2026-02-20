@@ -4826,11 +4826,11 @@ func TestCreateGuardrailRule(t *testing.T) {
 	r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(`{
 		"id": "test.create.rule",
 		"name": "Test Rule",
-		"scope": "command",
-		"pattern": "^rm\\s",
+		"scope": "action",
+		"pattern": "^session\\.create$",
 		"mode": "block",
 		"severity": "error",
-		"message": "Blocked rm command",
+		"message": "Blocked session creation",
 		"enabled": true,
 		"priority": 5
 	}`))
@@ -4873,7 +4873,7 @@ func TestCreateGuardrailRuleAutoID(t *testing.T) {
 	// Create a rule without ID — should auto-generate.
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(`{
-		"pattern": "^dangerous$",
+		"pattern": "^pane\\.split$",
 		"enabled": true
 	}`))
 	r.Header.Set("Content-Type", "application/json")

@@ -9,8 +9,7 @@ import (
 )
 
 const (
-	GuardrailScopeAction  = "action"
-	GuardrailScopeCommand = "command"
+	GuardrailScopeAction = "action"
 
 	GuardrailModeWarn    = "warn"
 	GuardrailModeConfirm = "confirm"
@@ -81,7 +80,7 @@ func (s *Store) initGuardrailSchema() error {
 		`CREATE TABLE IF NOT EXISTS guardrail_rules (
 			id         TEXT PRIMARY KEY,
 			name       TEXT NOT NULL DEFAULT '',
-			scope      TEXT NOT NULL DEFAULT 'command',
+			scope      TEXT NOT NULL DEFAULT 'action',
 			pattern    TEXT NOT NULL DEFAULT '',
 			mode       TEXT NOT NULL DEFAULT 'warn',
 			severity   TEXT NOT NULL DEFAULT 'warn',
@@ -143,6 +142,13 @@ func (s *Store) initGuardrailSchema() error {
 		if _, err := s.db.ExecContext(context.Background(), stmt); err != nil {
 			return err
 		}
+	}
+
+	// Migrate any legacy command-scope rules to action scope.
+	if _, err := s.db.ExecContext(context.Background(),
+		`UPDATE guardrail_rules SET scope = 'action' WHERE scope = 'command'`,
+	); err != nil {
+		return err
 	}
 	return nil
 }
@@ -333,14 +339,8 @@ func (s *Store) ListGuardrailAudit(ctx context.Context, limit int) ([]GuardrailA
 	return out, rows.Err()
 }
 
-func normalizeGuardrailScope(raw string) string {
-	scope := strings.ToLower(strings.TrimSpace(raw))
-	switch scope {
-	case GuardrailScopeAction:
-		return GuardrailScopeAction
-	default:
-		return GuardrailScopeCommand
-	}
+func normalizeGuardrailScope(_ string) string {
+	return GuardrailScopeAction
 }
 
 func normalizeGuardrailMode(raw string) string {

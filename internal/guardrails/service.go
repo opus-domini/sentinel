@@ -13,7 +13,6 @@ import (
 
 type Input struct {
 	Action      string `json:"action"`
-	Command     string `json:"command"`
 	SessionName string `json:"sessionName"`
 	WindowIndex int    `json:"windowIndex"`
 	PaneID      string `json:"paneId"`
@@ -107,10 +106,9 @@ func evaluateSelection(rules []store.GuardrailRule, input Input, compiled map[st
 	}
 	winningRank := 0
 	action := strings.TrimSpace(input.Action)
-	command := strings.TrimSpace(input.Command)
 
 	for _, rule := range rules {
-		mode, ok := evaluateRuleMatch(rule, action, command, compiled)
+		mode, ok := evaluateRuleMatch(rule, action, compiled)
 		if !ok {
 			continue
 		}
@@ -127,16 +125,11 @@ func evaluateSelection(rules []store.GuardrailRule, input Input, compiled map[st
 	return selection
 }
 
-func evaluateRuleMatch(rule store.GuardrailRule, action, command string, compiled map[string]*regexp.Regexp) (string, bool) {
+func evaluateRuleMatch(rule store.GuardrailRule, action string, compiled map[string]*regexp.Regexp) (string, bool) {
 	if !rule.Enabled {
 		return "", false
 	}
-
-	target := command
-	if strings.EqualFold(rule.Scope, store.GuardrailScopeAction) {
-		target = action
-	}
-	if strings.TrimSpace(target) == "" {
+	if strings.TrimSpace(action) == "" {
 		return "", false
 	}
 
@@ -144,7 +137,7 @@ func evaluateRuleMatch(rule store.GuardrailRule, action, command string, compile
 	if !ok {
 		return "", false
 	}
-	if !re.MatchString(target) {
+	if !re.MatchString(action) {
 		return "", false
 	}
 
@@ -209,7 +202,6 @@ func (s *Service) RecordAudit(ctx context.Context, input Input, decision Decisio
 		RuleID:      strings.TrimSpace(decision.MatchedRuleID),
 		Decision:    decision.Mode,
 		Action:      strings.TrimSpace(input.Action),
-		Command:     strings.TrimSpace(input.Command),
 		SessionName: strings.TrimSpace(input.SessionName),
 		WindowIndex: input.WindowIndex,
 		PaneID:      strings.TrimSpace(input.PaneID),

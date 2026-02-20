@@ -221,7 +221,6 @@ func (h *Handler) evaluateGuardrail(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Action      string `json:"action"`
-		Command     string `json:"command"`
 		SessionName string `json:"sessionName"`
 		WindowIndex int    `json:"windowIndex"`
 		PaneID      string `json:"paneId"`
@@ -238,24 +237,18 @@ func (h *Handler) evaluateGuardrail(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	decision, err := h.guardrails.Evaluate(ctx, guardrails.Input{
+	input := guardrails.Input{
 		Action:      req.Action,
-		Command:     req.Command,
 		SessionName: req.SessionName,
 		WindowIndex: req.WindowIndex,
 		PaneID:      req.PaneID,
-	})
+	}
+	decision, err := h.guardrails.Evaluate(ctx, input)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to evaluate guardrail policy", nil)
 		return
 	}
-	if err := h.guardrails.RecordAudit(ctx, guardrails.Input{
-		Action:      req.Action,
-		Command:     req.Command,
-		SessionName: req.SessionName,
-		WindowIndex: req.WindowIndex,
-		PaneID:      req.PaneID,
-	}, decision, false, "manual evaluate"); err != nil {
+	if err := h.guardrails.RecordAudit(ctx, input, decision, false, "manual evaluate"); err != nil {
 		slog.Warn("guardrail evaluate audit write failed", "err", err)
 	}
 	writeData(w, http.StatusOK, map[string]any{"decision": decision})

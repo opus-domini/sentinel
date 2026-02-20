@@ -86,7 +86,7 @@ export type TimelineResponse = {
 export type GuardrailRule = {
   id: string
   name: string
-  scope: 'action' | 'command'
+  scope: 'action'
   pattern: string
   mode: 'allow' | 'warn' | 'confirm' | 'block'
   severity: 'info' | 'warn' | 'error'
