@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.3](https://github.com/opus-domini/sentinel/compare/v0.4.2...v0.4.3) (2026-02-20)
+
+
+### Features
+
+* add server offline detection with retry banner ([cbdd7a9](https://github.com/opus-domini/sentinel/commit/cbdd7a9a9f72a3c8979a30f5b79fafe1846e8f19))
+
+
+### Bug Fixes
+
+* **httpui:** make embedded dist fs init race-safe ([6ce1ae1](https://github.com/opus-domini/sentinel/commit/6ce1ae1b12363778268608fec28a37a8b2024d50))
+* make server offline detection robust across build contexts ([6584005](https://github.com/opus-domini/sentinel/commit/6584005df159a87f1284818a2740aa38872aa4b7))
+* move offline detection to QueryCache callbacks ([480cfbf](https://github.com/opus-domini/sentinel/commit/480cfbfed7913f50962bb36f88abd2956b50ecc6))
+* remove destructive daemon tests that kill running sentinel service ([bc4a660](https://github.com/opus-domini/sentinel/commit/bc4a660a7cf3b9ea93441d7a3b813a6702acdfad))
+* use committed placeholder file in TestServeDistPath ([2a004e2](https://github.com/opus-domini/sentinel/commit/2a004e2d322a332a78fb52cbaa8225d2b31cc954))
+* write step result to DB before execution, not after ([40722f6](https://github.com/opus-domini/sentinel/commit/40722f612e5bfe361928c5e590a1968ff6e1dfcb))
+
+
+### CI
+
+* add Codecov coverage upload to CI ([97e57f0](https://github.com/opus-domini/sentinel/commit/97e57f0bfc0c8d4815fd28765be02f42e5aac245))
+
 ## [0.4.2](https://github.com/opus-domini/sentinel/compare/v0.4.1...v0.4.2) (2026-02-20)
 
 
