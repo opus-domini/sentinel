@@ -544,9 +544,24 @@ func (s *Store) FailOrphanedRuns(ctx context.Context) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE ops_runbook_runs
-			SET status = ?, error = 'interrupted by server restart', finished_at = ?
+			SET status = ?,
+			    error = 'interrupted by server restart',
+			    finished_at = ?,
+			    step_results = CASE
+			        WHEN status = ? AND current_step != '' THEN
+			            json_insert(step_results, '$[#]', json_object(
+			                'stepIndex', completed_steps,
+			                'title', current_step,
+			                'type', 'interrupted',
+			                'output', '',
+			                'error', 'interrupted by server restart',
+			                'durationMs', 0
+			            ))
+			        ELSE step_results
+			    END
 		  WHERE status IN (?, ?)`,
 		opsRunbookStatusFailed, now,
+		opsRunbookStatusRunning,
 		opsRunbookStatusRunning, opsRunbookStatusQueued,
 	)
 	if err != nil {

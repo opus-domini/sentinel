@@ -582,34 +582,40 @@ func TestFailOrphanedRuns(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 2, 15, 14, 0, 0, 0, time.UTC)
 
-	// Seed a runbook.
+	// Seed a 2-step runbook.
 	if _, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
 		ID:   "orphan.test",
 		Name: "Orphan Test",
 		Steps: []OpsRunbookStep{
-			{Type: "command", Title: "Step 1", Command: "echo 1"},
+			{Type: "command", Title: "Check status", Command: "echo ok"},
+			{Type: "command", Title: "Restart service", Command: "systemctl restart sentinel"},
 		},
 		Enabled: true,
 	}); err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
 
-	// Create three runs: one will stay queued, one advanced to running, one to succeeded.
+	// Create three runs: one stays queued, one advanced to running (step 2), one succeeded.
 	queuedRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun(queued): %v", err)
 	}
 
+	// Simulate: step 1 completed, step 2 is running when server dies.
 	runningRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun(running): %v", err)
 	}
+	step1Result, _ := json.Marshal([]OpsRunbookStepResult{
+		{StepIndex: 0, Title: "Check status", Type: "command", Output: "ok", DurationMs: 120},
+	})
 	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
-		RunID:       runningRun.ID,
-		Status:      opsRunbookStatusRunning,
-		CurrentStep: "Step 1",
-		StartedAt:   now.Format(time.RFC3339),
-		StepResults: "[]",
+		RunID:          runningRun.ID,
+		Status:         opsRunbookStatusRunning,
+		CompletedSteps: 1,
+		CurrentStep:    "Restart service",
+		StartedAt:      now.Format(time.RFC3339),
+		StepResults:    string(step1Result),
 	}); err != nil {
 		t.Fatalf("UpdateOpsRunbookRun(running): %v", err)
 	}
@@ -621,8 +627,8 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
 		RunID:          succeededRun.ID,
 		Status:         opsRunbookStatusSucceeded,
-		CompletedSteps: 1,
-		CurrentStep:    "Step 1",
+		CompletedSteps: 2,
+		CurrentStep:    "Restart service",
 		StartedAt:      now.Format(time.RFC3339),
 		FinishedAt:     now.Add(time.Second).Format(time.RFC3339),
 		StepResults:    "[]",
@@ -639,7 +645,7 @@ func TestFailOrphanedRuns(t *testing.T) {
 		t.Fatalf("affected = %d, want 2", n)
 	}
 
-	// Verify queued run is now failed.
+	// Verify queued run is failed, no step results added.
 	q, err := s.GetOpsRunbookRun(ctx, queuedRun.ID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun(queued): %v", err)
@@ -653,8 +659,11 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if q.FinishedAt == "" {
 		t.Fatalf("queued run finishedAt should be set")
 	}
+	if len(q.StepResults) != 0 {
+		t.Fatalf("queued run stepResults = %d, want 0 (never started)", len(q.StepResults))
+	}
 
-	// Verify running run is now failed.
+	// Verify running run is failed with interrupted step appended.
 	r, err := s.GetOpsRunbookRun(ctx, runningRun.ID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun(running): %v", err)
@@ -664,6 +673,27 @@ func TestFailOrphanedRuns(t *testing.T) {
 	}
 	if r.Error != "interrupted by server restart" {
 		t.Fatalf("running run error = %q, want 'interrupted by server restart'", r.Error)
+	}
+	if len(r.StepResults) != 2 {
+		t.Fatalf("running run stepResults = %d, want 2 (step 1 ok + step 2 interrupted)", len(r.StepResults))
+	}
+	// Step 1 should be the original successful result.
+	if r.StepResults[0].Title != "Check status" || r.StepResults[0].Output != "ok" {
+		t.Fatalf("step 0 = %+v, want Check status/ok", r.StepResults[0])
+	}
+	// Step 2 should be the interrupted step.
+	interrupted := r.StepResults[1]
+	if interrupted.StepIndex != 1 {
+		t.Fatalf("interrupted stepIndex = %d, want 1", interrupted.StepIndex)
+	}
+	if interrupted.Title != "Restart service" {
+		t.Fatalf("interrupted title = %q, want 'Restart service'", interrupted.Title)
+	}
+	if interrupted.Type != "interrupted" {
+		t.Fatalf("interrupted type = %q, want 'interrupted'", interrupted.Type)
+	}
+	if interrupted.Error != "interrupted by server restart" {
+		t.Fatalf("interrupted error = %q, want 'interrupted by server restart'", interrupted.Error)
 	}
 
 	// Verify succeeded run is untouched.
