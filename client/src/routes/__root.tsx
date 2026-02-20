@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { ServerOfflineBanner } from '@/components/ServerOfflineBanner'
 import ToastViewport from '@/components/toast/ToastViewport'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +21,7 @@ import { MetaContext } from '@/contexts/MetaContext'
 import { ToastContext } from '@/contexts/ToastContext'
 import { TokenContext } from '@/contexts/TokenContext'
 import { useSentinelMeta } from '@/hooks/useSentinelMeta'
+import { useServerStatus } from '@/hooks/useServerStatus'
 import { useShellLayout } from '@/hooks/useShellLayout'
 import { useToasts } from '@/hooks/useToasts'
 import { useVisualViewport } from '@/hooks/useVisualViewport'
@@ -161,6 +163,7 @@ function RootComponent() {
     },
   })
 
+  const { offline, retry } = useServerStatus()
   const meta = useSentinelMeta()
   const authenticated = !meta.tokenRequired || !meta.unauthorized
   const needsTokenGate = meta.loaded && meta.tokenRequired && meta.unauthorized
@@ -190,6 +193,7 @@ function RootComponent() {
                   <TokenGateDialog onSubmit={submitGateToken} />
                 )}
                 <ToastViewport toasts={toasts} onDismiss={dismissToast} />
+                {offline && <ServerOfflineBanner onRetry={retry} />}
               </ErrorBoundary>
             </TooltipProvider>
           </LayoutContext.Provider>
