@@ -93,7 +93,7 @@ func TestBuildRestartCommandLaunchd(t *testing.T) {
 	if len(cmd) != 4 {
 		t.Fatalf("len(buildRestartCommand) = %d, want 4", len(cmd))
 	}
-	if cmd[0] != "launchctl" || cmd[1] != "kickstart" || cmd[2] != "-k" {
+	if cmd[0] != "launchctl" || cmd[1] != "kickstart" || cmd[2] != "-k" { //nolint:goconst // test assertion
 		t.Fatalf("unexpected launchd restart command: %#v", cmd)
 	}
 	if os.Geteuid() == 0 {
@@ -129,7 +129,7 @@ func TestBuildRestartCommandSystemScope(t *testing.T) {
 	if len(cmd) != 3 {
 		t.Fatalf("len(buildRestartCommand) = %d, want 3", len(cmd))
 	}
-	if cmd[0] != "systemctl" || cmd[1] != "restart" || cmd[2] != "sentinel" {
+	if cmd[0] != "systemctl" || cmd[1] != "restart" || cmd[2] != "sentinel" { //nolint:goconst // test assertion
 		t.Fatalf("unexpected linux system restart command: %#v", cmd)
 	}
 }

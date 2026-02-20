@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -4970,6 +4971,2244 @@ func TestDeleteGuardrailRuleNotFound(t *testing.T) {
 	r := httptest.NewRequest("DELETE", "/api/ops/guardrails/rules/nonexistent", nil)
 	r.SetPathValue("rule", "nonexistent")
 	h.deleteGuardrailRule(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Schedule handler tests
+// ---------------------------------------------------------------------------
+
+func TestListSchedulesHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty list", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/schedules", nil)
+		h.listSchedules(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		schedules, _ := data["schedules"].([]any)
+		if len(schedules) != 0 {
+			t.Fatalf("schedules len = %d, want 0", len(schedules))
+		}
+	})
+
+	t.Run("with schedules", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		ctx := context.Background()
+		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "list-sched-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsRunbook: %v", err)
+		}
+		future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
+		if _, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+			RunbookID: rb.ID, Name: "sched-1", ScheduleType: "cron",
+			CronExpr: "0 * * * *", Timezone: "UTC", Enabled: true, NextRunAt: future,
+		}); err != nil {
+			t.Fatalf("InsertOpsSchedule: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/schedules", nil)
+		h.listSchedules(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		schedules, _ := data["schedules"].([]any)
+		if len(schedules) != 1 {
+			t.Fatalf("schedules len = %d, want 1", len(schedules))
+		}
+	})
+
+	t.Run("nil repo", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.repo = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/schedules", nil)
+		h.listSchedules(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestCreateScheduleHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("cron schedule", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.events = events.NewHub()
+		ctx := context.Background()
+		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "create-sched-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsRunbook: %v", err)
+		}
+
+		body := fmt.Sprintf(`{"runbookId":"%s","name":"my-cron","scheduleType":"cron","cronExpr":"0 * * * *","timezone":"UTC","enabled":true}`, rb.ID)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(body))
+		h.createSchedule(w, r)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201; body=%s", w.Code, w.Body.String())
+		}
+		resp := jsonBody(t, w)
+		data, _ := resp["data"].(map[string]any)
+		sched, _ := data["schedule"].(map[string]any)
+		if sched["name"] != "my-cron" {
+			t.Fatalf("name = %v, want my-cron", sched["name"])
+		}
+	})
+
+	t.Run("once schedule", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.events = events.NewHub()
+		ctx := context.Background()
+		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "create-once-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsRunbook: %v", err)
+		}
+
+		future := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+		body := fmt.Sprintf(`{"runbookId":"%s","name":"my-once","scheduleType":"once","runAt":"%s","enabled":true}`, rb.ID, future)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(body))
+		h.createSchedule(w, r)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("validation errors", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		tests := []struct {
+			name string
+			body string
+		}{
+			{"missing runbookId", `{"name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`},
+			{"missing name", `{"runbookId":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`},
+			{"invalid scheduleType", `{"runbookId":"x","name":"x","scheduleType":"bad"}`},
+			{"invalid json", `{not-json}`},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(tt.body))
+				h.createSchedule(w, r)
+
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+				}
+			})
+		}
+	})
+
+	t.Run("nil repo", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.repo = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
+		h.createSchedule(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestUpdateScheduleHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.events = events.NewHub()
+		ctx := context.Background()
+		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "update-sched-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsRunbook: %v", err)
+		}
+		future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
+		sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+			RunbookID: rb.ID, Name: "orig", ScheduleType: "cron",
+			CronExpr: "0 * * * *", Timezone: "UTC", Enabled: true, NextRunAt: future,
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsSchedule: %v", err)
+		}
+
+		body := fmt.Sprintf(`{"runbookId":"%s","name":"updated","scheduleType":"cron","cronExpr":"30 * * * *","timezone":"UTC","enabled":true}`, rb.ID)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/schedules/"+sched.ID, strings.NewReader(body))
+		r.SetPathValue("schedule", sched.ID)
+		h.updateSchedule(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+		resp := jsonBody(t, w)
+		data, _ := resp["data"].(map[string]any)
+		updated, _ := data["schedule"].(map[string]any)
+		if updated["name"] != "updated" {
+			t.Fatalf("name = %v, want updated", updated["name"])
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		ctx := context.Background()
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "upd-nf-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		body := fmt.Sprintf(`{"runbookId":"%s","name":"x","scheduleType":"cron","cronExpr":"0 * * * *","timezone":"UTC","enabled":true}`, rb.ID)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/schedules/nonexistent", strings.NewReader(body))
+		r.SetPathValue("schedule", "nonexistent")
+		h.updateSchedule(w, r)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("missing schedule id", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/schedules/", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
+		r.SetPathValue("schedule", "")
+		h.updateSchedule(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil repo", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.repo = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/schedules/abc", strings.NewReader(`{}`))
+		r.SetPathValue("schedule", "abc")
+		h.updateSchedule(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestDeleteScheduleHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.events = events.NewHub()
+		ctx := context.Background()
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "del-sched-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		future := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
+		sched, _ := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+			RunbookID: rb.ID, Name: "to-delete", ScheduleType: "cron",
+			CronExpr: "0 * * * *", Timezone: "UTC", Enabled: true, NextRunAt: future,
+		})
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/schedules/"+sched.ID, nil)
+		r.SetPathValue("schedule", sched.ID)
+		h.deleteSchedule(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+		resp := jsonBody(t, w)
+		data, _ := resp["data"].(map[string]any)
+		if data["removed"] != sched.ID {
+			t.Fatalf("removed = %v, want %s", data["removed"], sched.ID)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/schedules/nonexistent", nil)
+		r.SetPathValue("schedule", "nonexistent")
+		h.deleteSchedule(w, r)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", w.Code)
+		}
+	})
+
+	t.Run("missing id", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/schedules/", nil)
+		r.SetPathValue("schedule", "")
+		h.deleteSchedule(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil repo", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.repo = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/schedules/abc", nil)
+		r.SetPathValue("schedule", "abc")
+		h.deleteSchedule(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestValidateScheduleRequest(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("runbook not found", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStore(t)
+		_, err := validateScheduleRequest(ctx, st, "nonexistent", "cron", "0 * * * *", "UTC", "")
+		if err == nil || !strings.Contains(err.Error(), "runbook not found") {
+			t.Fatalf("err = %v, want runbook not found", err)
+		}
+	})
+
+	t.Run("invalid cron", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStore(t)
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "val-cron-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		_, err := validateScheduleRequest(ctx, st, rb.ID, "cron", "bad-cron", "UTC", "")
+		if err == nil || !strings.Contains(err.Error(), "invalid cron") {
+			t.Fatalf("err = %v, want invalid cron", err)
+		}
+	})
+
+	t.Run("invalid timezone", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStore(t)
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "val-tz-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		_, err := validateScheduleRequest(ctx, st, rb.ID, "cron", "0 * * * *", "Invalid/Zone", "")
+		if err == nil || !strings.Contains(err.Error(), "invalid timezone") {
+			t.Fatalf("err = %v, want invalid timezone", err)
+		}
+	})
+
+	t.Run("once missing runAt", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStore(t)
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "val-once-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		_, err := validateScheduleRequest(ctx, st, rb.ID, "once", "", "", "not-rfc3339")
+		if err == nil || !strings.Contains(err.Error(), "runAt must be a valid RFC3339") {
+			t.Fatalf("err = %v, want runAt must be RFC3339", err)
+		}
+	})
+
+	t.Run("once past runAt", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStore(t)
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "val-past-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		past := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
+		_, err := validateScheduleRequest(ctx, st, rb.ID, "once", "", "", past)
+		if err == nil || !strings.Contains(err.Error(), "runAt must be in the future") {
+			t.Fatalf("err = %v, want runAt must be in the future", err)
+		}
+	})
+
+	t.Run("valid cron returns nextRunAt", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStore(t)
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "val-ok-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		next, err := validateScheduleRequest(ctx, st, rb.ID, "cron", "0 * * * *", "UTC", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		parsed, err := time.Parse(time.RFC3339, next)
+		if err != nil {
+			t.Fatalf("nextRunAt is not RFC3339: %q", next)
+		}
+		if !parsed.After(time.Now().UTC()) {
+			t.Fatalf("nextRunAt should be in the future: %s", next)
+		}
+	})
+
+	t.Run("valid once returns nextRunAt", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStore(t)
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "val-once-ok-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		future := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+		next, err := validateScheduleRequest(ctx, st, rb.ID, "once", "", "", future)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if next == "" {
+			t.Fatal("nextRunAt should not be empty")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Recovery handler tests
+// ---------------------------------------------------------------------------
+
+func TestListRecoverySessionsHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		sessions := []store.RecoverySession{
+			{Name: "dev", State: "killed"},
+		}
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			listKilledSessionsFn: func(_ context.Context) ([]store.RecoverySession, error) {
+				return sessions, nil
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/sessions", nil)
+		h.listRecoverySessions(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		got, _ := data["sessions"].([]any)
+		if len(got) != 1 {
+			t.Fatalf("sessions len = %d, want 1", len(got))
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			listKilledSessionsFn: func(_ context.Context) ([]store.RecoverySession, error) {
+				return nil, fmt.Errorf("db error")
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/sessions", nil)
+		h.listRecoverySessions(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+
+	t.Run("recovery disabled", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = nil
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/sessions", nil)
+		h.listRecoverySessions(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestArchiveRecoverySessionHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.events = events.NewHub()
+		h.recovery = &mockRecovery{}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/recovery/sessions/dev/archive", nil)
+		r.SetPathValue("session", "dev")
+		h.archiveRecoverySession(w, r)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("invalid session name", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/recovery/sessions/inv@lid/archive", nil)
+		r.SetPathValue("session", "inv@lid")
+		h.archiveRecoverySession(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("archive error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			archiveSessionFn: func(_ context.Context, _ string) error {
+				return fmt.Errorf("archive fail")
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/recovery/sessions/dev/archive", nil)
+		r.SetPathValue("session", "dev")
+		h.archiveRecoverySession(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+
+	t.Run("recovery disabled", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = nil
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/recovery/sessions/dev/archive", nil)
+		r.SetPathValue("session", "dev")
+		h.archiveRecoverySession(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestListRecoverySnapshotsHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			listSnapshotsFn: func(_ context.Context, _ string, _ int) ([]store.RecoverySnapshot, error) {
+				return []store.RecoverySnapshot{{ID: 1, SessionName: "dev"}}, nil
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/sessions/dev/snapshots", nil)
+		r.SetPathValue("session", "dev")
+		h.listRecoverySnapshots(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		snaps, _ := data["snapshots"].([]any)
+		if len(snaps) != 1 {
+			t.Fatalf("snapshots len = %d, want 1", len(snaps))
+		}
+	})
+
+	t.Run("invalid session", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/sessions/inv@lid/snapshots", nil)
+		r.SetPathValue("session", "inv@lid")
+		h.listRecoverySnapshots(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("custom limit", func(t *testing.T) {
+		t.Parallel()
+
+		var gotLimit int
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			listSnapshotsFn: func(_ context.Context, _ string, limit int) ([]store.RecoverySnapshot, error) {
+				gotLimit = limit
+				return nil, nil
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/sessions/dev/snapshots?limit=5", nil)
+		r.SetPathValue("session", "dev")
+		h.listRecoverySnapshots(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if gotLimit != 5 {
+			t.Fatalf("limit = %d, want 5", gotLimit)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			listSnapshotsFn: func(_ context.Context, _ string, _ int) ([]store.RecoverySnapshot, error) {
+				return nil, fmt.Errorf("db error")
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/sessions/dev/snapshots", nil)
+		r.SetPathValue("session", "dev")
+		h.listRecoverySnapshots(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+}
+
+func TestGetRecoverySnapshotHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			getSnapshotFn: func(_ context.Context, id int64) (recovery.SnapshotView, error) {
+				return recovery.SnapshotView{
+					Meta: store.RecoverySnapshot{ID: id, SessionName: "dev"},
+				}, nil
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/snapshots/42", nil)
+		r.SetPathValue("snapshot", "42")
+		h.getRecoverySnapshot(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{}
+
+		tests := []struct {
+			name string
+			id   string
+		}{
+			{"not a number", "abc"},
+			{"zero", "0"},
+			{"negative", "-5"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("GET", "/api/recovery/snapshots/"+tt.id, nil)
+				r.SetPathValue("snapshot", tt.id)
+				h.getRecoverySnapshot(w, r)
+
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want 400", w.Code)
+				}
+			})
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			getSnapshotFn: func(_ context.Context, _ int64) (recovery.SnapshotView, error) {
+				return recovery.SnapshotView{}, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/snapshots/999", nil)
+		r.SetPathValue("snapshot", "999")
+		h.getRecoverySnapshot(w, r)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", w.Code)
+		}
+	})
+
+	t.Run("internal error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			getSnapshotFn: func(_ context.Context, _ int64) (recovery.SnapshotView, error) {
+				return recovery.SnapshotView{}, fmt.Errorf("disk error")
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/snapshots/42", nil)
+		r.SetPathValue("snapshot", "42")
+		h.getRecoverySnapshot(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+}
+
+func TestGetRecoveryJobHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			getJobFn: func(_ context.Context, id string) (store.RecoveryJob, error) {
+				return store.RecoveryJob{ID: id, SessionName: "dev"}, nil
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/jobs/job-1", nil)
+		r.SetPathValue("job", "job-1")
+		h.getRecoveryJob(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("empty id", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/jobs/", nil)
+		r.SetPathValue("job", "")
+		h.getRecoveryJob(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			getJobFn: func(_ context.Context, _ string) (store.RecoveryJob, error) {
+				return store.RecoveryJob{}, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/jobs/missing", nil)
+		r.SetPathValue("job", "missing")
+		h.getRecoveryJob(w, r)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", w.Code)
+		}
+	})
+
+	t.Run("internal error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = &mockRecovery{
+			getJobFn: func(_ context.Context, _ string) (store.RecoveryJob, error) {
+				return store.RecoveryJob{}, fmt.Errorf("disk error")
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/jobs/job-1", nil)
+		r.SetPathValue("job", "job-1")
+		h.getRecoveryJob(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+
+	t.Run("recovery disabled", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.recovery = nil
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/recovery/jobs/job-1", nil)
+		r.SetPathValue("job", "job-1")
+		h.getRecoveryJob(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Ops handler tests – deleteOpsAlert, discoverOpsServices
+// ---------------------------------------------------------------------------
+
+func TestDeleteOpsAlertHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.events = events.NewHub()
+		ctx := context.Background()
+
+		alert, err := st.UpsertAlert(ctx, alerts.AlertWrite{
+			DedupeKey: "test:del", Source: "test", Resource: "svc",
+			Title: "test alert", Message: "msg", Severity: "error",
+			CreatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			t.Fatalf("UpsertAlert: %v", err)
+		}
+		// Resolve the alert first (deleteAlert requires resolved status).
+		if _, err := st.ResolveAlert(ctx, "test:del", time.Now().UTC()); err != nil {
+			t.Fatalf("ResolveAlert: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", fmt.Sprintf("/api/ops/alerts/%d", alert.ID), nil)
+		r.SetPathValue("alert", fmt.Sprintf("%d", alert.ID))
+		h.deleteOpsAlert(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		deleted, _ := data["deleted"].(float64)
+		if int64(deleted) != alert.ID {
+			t.Fatalf("deleted = %v, want %d", deleted, alert.ID)
+		}
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		tests := []struct {
+			name string
+			id   string
+		}{
+			{"not a number", "abc"},
+			{"zero", "0"},
+			{"negative", "-1"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("DELETE", "/api/ops/alerts/"+tt.id, nil)
+				r.SetPathValue("alert", tt.id)
+				h.deleteOpsAlert(w, r)
+
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want 400", w.Code)
+				}
+			})
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/alerts/99999", nil)
+		r.SetPathValue("alert", "99999")
+		h.deleteOpsAlert(w, r)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404; body=%s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestDiscoverOpsServicesHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = &mockOpsControlPlane{
+			discoverFn: func(_ context.Context) ([]opsplane.AvailableService, error) {
+				return []opsplane.AvailableService{{Unit: "test.service"}}, nil
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/services/discover", nil)
+		h.discoverOpsServices(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		services, _ := data["services"].([]any)
+		if len(services) != 1 {
+			t.Fatalf("services len = %d, want 1", len(services))
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = &mockOpsControlPlane{
+			discoverFn: func(_ context.Context) ([]opsplane.AvailableService, error) {
+				return nil, fmt.Errorf("discover fail")
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/services/discover", nil)
+		h.discoverOpsServices(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+
+	t.Run("nil ops", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = nil
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/services/discover", nil)
+		h.discoverOpsServices(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Runbook handler tests – deleteOpsJob, opsJob error paths
+// ---------------------------------------------------------------------------
+
+func TestDeleteOpsJobHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		ctx := context.Background()
+
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:  "del-job-rb",
+			Steps: []store.OpsRunbookStep{{Type: "command", Title: "echo", Command: "echo ok"}},
+		})
+		job, err := st.CreateOpsRunbookRun(ctx, rb.ID, time.Now().UTC())
+		if err != nil {
+			t.Fatalf("CreateOpsRunbookRun: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/jobs/"+job.ID, nil)
+		r.SetPathValue("job", job.ID)
+		h.deleteOpsJob(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		if data["deleted"] != true {
+			t.Fatalf("deleted = %v, want true", data["deleted"])
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/jobs/nonexistent", nil)
+		r.SetPathValue("job", "nonexistent")
+		h.deleteOpsJob(w, r)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", w.Code)
+		}
+	})
+
+	t.Run("empty id", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/jobs/", nil)
+		r.SetPathValue("job", "")
+		h.deleteOpsJob(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil repo", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.repo = nil
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/ops/jobs/abc", nil)
+		r.SetPathValue("job", "abc")
+		h.deleteOpsJob(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestOpsJobHandlerNotFound(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/jobs/nonexistent", nil)
+	r.SetPathValue("job", "nonexistent")
+	h.opsJob(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+func TestOpsJobHandlerEmptyID(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/jobs/", nil)
+	r.SetPathValue("job", "")
+	h.opsJob(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestOpsJobHandlerNilRepo(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.repo = nil
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/jobs/abc", nil)
+	r.SetPathValue("job", "abc")
+	h.opsJob(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Guardrail handler tests – listGuardrailAudit, updateGuardrailRule
+// ---------------------------------------------------------------------------
+
+func TestListGuardrailAuditHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit", nil)
+		h.listGuardrailAudit(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		audit, _ := data["audit"].([]any)
+		if audit == nil {
+			t.Fatal("audit should be present")
+		}
+	})
+
+	t.Run("with custom limit", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit?limit=10", nil)
+		h.listGuardrailAudit(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("invalid limit", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit?limit=bad", nil)
+		h.listGuardrailAudit(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("zero limit", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit?limit=0", nil)
+		h.listGuardrailAudit(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil guardrails returns empty", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.guardrails = nil
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit", nil)
+		h.listGuardrailAudit(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+	})
+}
+
+func TestUpdateGuardrailRuleHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+		ctx := context.Background()
+
+		// Seed a rule via the store.
+		if err := st.UpsertGuardrailRule(ctx, store.GuardrailRuleWrite{
+			ID: "rule-upd", Name: "test", Pattern: "rm -rf", Mode: "block",
+			Severity: "error", Enabled: true,
+		}); err != nil {
+			t.Fatalf("seed rule: %v", err)
+		}
+
+		body := `{"name":"updated","pattern":"rm -rf /","mode":"warn","severity":"warn","enabled":true,"priority":5}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-upd", strings.NewReader(body))
+		r.SetPathValue("rule", "rule-upd")
+		h.updateGuardrailRule(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("missing pattern", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		body := `{"name":"x","pattern":"","mode":"block","severity":"error","enabled":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
+		r.SetPathValue("rule", "rule-1")
+		h.updateGuardrailRule(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("missing enabled", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error"}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
+		r.SetPathValue("rule", "rule-1")
+		h.updateGuardrailRule(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("missing rule id", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error","enabled":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/", strings.NewReader(body))
+		r.SetPathValue("rule", "")
+		h.updateGuardrailRule(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil guardrails", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.guardrails = nil
+
+		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error","enabled":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
+		r.SetPathValue("rule", "rule-1")
+		h.updateGuardrailRule(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Ops handler tests – opsAlerts filters, opsUnitStatus, opsUnitLogs errors
+// ---------------------------------------------------------------------------
+
+func TestOpsAlertsHandlerFilters(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid limit", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/alerts?limit=bad", nil)
+		h.opsAlerts(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil repo", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.repo = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/alerts", nil)
+		h.opsAlerts(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+
+	t.Run("valid status filter", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/alerts?status=open", nil)
+		h.opsAlerts(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("invalid status filter", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/alerts?status=bogus", nil)
+		h.opsAlerts(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+}
+
+func TestOpsUnitStatusHandlerValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing unit", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/status?manager=systemd", nil)
+		h.opsUnitStatus(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("invalid manager", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/status?unit=test.service&manager=bad", nil)
+		h.opsUnitStatus(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("invalid scope", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/status?unit=test.service&manager=systemd&scope=bad", nil)
+		h.opsUnitStatus(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil ops", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/status?unit=test.service&manager=systemd", nil)
+		h.opsUnitStatus(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+func TestOpsUnitLogsHandlerValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing unit", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/logs?manager=systemd", nil)
+		h.opsUnitLogs(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("invalid manager", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=bad", nil)
+		h.opsUnitLogs(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("invalid scope", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd&scope=bad", nil)
+		h.opsUnitLogs(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("success with lines param", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = &mockOpsControlPlane{
+			logsByUnitFn: func(_ context.Context, _, _, _ string, lines int) (string, error) {
+				return fmt.Sprintf("lines=%d", lines), nil
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd&scope=user&lines=50", nil)
+		h.opsUnitLogs(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("error from service", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = &mockOpsControlPlane{
+			logsByUnitFn: func(_ context.Context, _, _, _ string, _ int) (string, error) {
+				return "", fmt.Errorf("logs fail")
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd&scope=user", nil)
+		h.opsUnitLogs(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+
+	t.Run("nil ops", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd", nil)
+		h.opsUnitLogs(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Presence handler tests – setTmuxPresence validation
+// ---------------------------------------------------------------------------
+
+func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing terminalId", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		body := `{"session":"dev","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		h.setTmuxPresence(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("invalid session name", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		body := `{"terminalId":"t1","session":"inv@lid","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		h.setTmuxPresence(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("invalid windowIndex", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		body := `{"terminalId":"t1","session":"dev","windowIndex":-2,"paneId":"%1","visible":true,"focused":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		h.setTmuxPresence(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("invalid paneId", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		body := `{"terminalId":"t1","session":"dev","windowIndex":0,"paneId":"nopercent","visible":true,"focused":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		h.setTmuxPresence(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil repo", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.repo = nil
+		body := `{"terminalId":"t1","session":"dev","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		h.setTmuxPresence(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Ops handler tests – opsOverview, opsServices nil-ops and error paths
+// ---------------------------------------------------------------------------
+
+func TestOpsOverviewHandlerErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil ops", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/overview", nil)
+		h.opsOverview(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+
+	t.Run("overview error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = &mockOpsControlPlane{
+			overviewFn: func(_ context.Context) (opsplane.Overview, error) {
+				return opsplane.Overview{}, fmt.Errorf("fail")
+			},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/overview", nil)
+		h.opsOverview(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+}
+
+func TestOpsServicesHandlerErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil ops", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = nil
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/services", nil)
+		h.opsServices(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+
+	t.Run("list error", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.ops = &mockOpsControlPlane{
+			listServicesFn: func(_ context.Context) ([]opsplane.ServiceStatus, error) {
+				return nil, fmt.Errorf("fail")
+			},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/ops/services", nil)
+		h.opsServices(w, r)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Ops metrics nil-ops test
+// ---------------------------------------------------------------------------
+
+func TestOpsMetricsNilOps(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.ops = nil
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/metrics", nil)
+	h.opsMetrics(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Evaluate guardrail handler test
+// ---------------------------------------------------------------------------
+
+func TestEvaluateGuardrailHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		body := `{"action":"rm -rf /","sessionName":"dev","windowIndex":0,"paneId":"%1"}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(body))
+		h.evaluateGuardrail(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("invalid paneId", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil, nil)
+		h.guardrails = guardrails.New(st)
+
+		body := `{"action":"test","paneId":"nopercent"}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(body))
+		h.evaluateGuardrail(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("nil guardrails", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, nil, nil)
+		h.guardrails = nil
+
+		body := `{"action":"test"}`
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(body))
+		h.evaluateGuardrail(w, r)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", w.Code)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Ops service action handler – invalid action error from service
+// ---------------------------------------------------------------------------
+
+func TestOpsServiceActionHandlerInvalidActionFromService(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		actFn: func(_ context.Context, _, _ string) (opsplane.ServiceStatus, error) {
+			return opsplane.ServiceStatus{}, opsplane.ErrInvalidAction
+		},
+	}
+
+	body := `{"action":"restart"}`
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/services/test-svc/action", strings.NewReader(body))
+	r.SetPathValue("service", "test-svc")
+	h.opsServiceAction(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ops service logs – custom lines parameter
+// ---------------------------------------------------------------------------
+
+func TestOpsServiceLogsCustomLines(t *testing.T) {
+	t.Parallel()
+
+	var gotLines int
+	h, _ := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		logsFn: func(_ context.Context, _ string, lines int) (string, error) {
+			gotLines = lines
+			return "log output", nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/test-svc/logs?lines=50", nil)
+	r.SetPathValue("service", "test-svc")
+	h.opsServiceLogs(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if gotLines != 50 {
+		t.Fatalf("lines = %d, want 50", gotLines)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ack ops alert – not found error
+// ---------------------------------------------------------------------------
+
+func TestAckOpsAlertNotFound(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/alerts/99999/ack", nil)
+	r.SetPathValue("alert", "99999")
+	h.ackOpsAlert(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Browse ops services – nil result normalization
+// ---------------------------------------------------------------------------
+
+func TestBrowseOpsServicesNilResult(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		browseFn: func(_ context.Context) ([]opsplane.BrowsedService, error) {
+			return nil, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/services/browse", nil)
+	h.browseOpsServices(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	services, _ := data["services"].([]any)
+	if services == nil {
+		t.Fatal("services should be non-nil empty array")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ops unit action – validation, ErrInvalidAction
+// ---------------------------------------------------------------------------
+
+func TestOpsUnitActionHandlerValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"invalid action", `{"unit":"test.service","manager":"systemd","action":"bad"}`},
+		{"invalid manager", `{"unit":"test.service","manager":"bad","action":"start"}`},
+		{"invalid scope", `{"unit":"test.service","manager":"systemd","scope":"bad","action":"start"}`},
+		{"invalid json", `{not-json}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h, _ := newTestHandler(t, nil, nil)
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/api/ops/units/action", strings.NewReader(tt.body))
+			h.opsUnitAction(w, r)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestOpsUnitActionHandlerInvalidActionFromService(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.ops = &mockOpsControlPlane{
+		actByUnitFn: func(_ context.Context, _, _, _, _ string) error {
+			return opsplane.ErrInvalidAction
+		},
+		overviewFn: func(_ context.Context) (opsplane.Overview, error) {
+			return opsplane.Overview{}, nil
+		},
+	}
+
+	body := `{"unit":"test.service","manager":"systemd","action":"start"}`
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/units/action", strings.NewReader(body))
+	h.opsUnitAction(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Storage handler – opsConfig and patchOpsConfig edge cases
+// ---------------------------------------------------------------------------
+
+func TestOpsConfigHandlerReadError(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.configPath = "/nonexistent/path/config.toml"
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/config", nil)
+	h.opsConfig(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestPatchOpsConfigHandlerEmptyContent(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.configPath = filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(h.configPath, []byte("# orig"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	body := `{"content":""}`
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("PATCH", "/api/ops/config", strings.NewReader(body))
+	h.patchOpsConfig(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Storage flush – nil repo
+// ---------------------------------------------------------------------------
+
+func TestStorageStatsNilRepo(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.repo = nil
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/storage/stats", nil)
+	h.storageStats(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+func TestFlushStorageNilRepo(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.repo = nil
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/storage/flush", strings.NewReader(`{"resource":"timeline"}`))
+	h.flushStorage(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// decodeOptionalJSON edge cases
+// ---------------------------------------------------------------------------
+
+func TestDecodeOptionalJSON(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty body", func(t *testing.T) {
+		t.Parallel()
+
+		r := httptest.NewRequest("POST", "/", strings.NewReader(""))
+		var dst struct{ Name string }
+		err := decodeOptionalJSON(r, &dst)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("whitespace body", func(t *testing.T) {
+		t.Parallel()
+
+		r := httptest.NewRequest("POST", "/", strings.NewReader("   "))
+		var dst struct{ Name string }
+		err := decodeOptionalJSON(r, &dst)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("valid json", func(t *testing.T) {
+		t.Parallel()
+
+		r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"test"}`))
+		var dst struct {
+			Name string `json:"name"`
+		}
+		err := decodeOptionalJSON(r, &dst)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if dst.Name != "test" {
+			t.Fatalf("name = %q, want test", dst.Name)
+		}
+	})
+
+	t.Run("multiple json values", func(t *testing.T) {
+		t.Parallel()
+
+		r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"a"}{"name":"b"}`))
+		var dst struct {
+			Name string `json:"name"`
+		}
+		err := decodeOptionalJSON(r, &dst)
+		if err == nil {
+			t.Fatal("expected error for multiple json values")
+		}
+	})
+
+	t.Run("unknown fields", func(t *testing.T) {
+		t.Parallel()
+
+		r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"a","extra":true}`))
+		var dst struct {
+			Name string `json:"name"`
+		}
+		err := decodeOptionalJSON(r, &dst)
+		if err == nil {
+			t.Fatal("expected error for unknown fields")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// parseActivityLimitParam edge cases
+// ---------------------------------------------------------------------------
+
+func TestParseActivityLimitParam(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		raw      string
+		fallback int
+		want     int
+		wantErr  bool
+	}{
+		{"empty uses fallback", "", 50, 50, false},
+		{"valid number", "10", 50, 10, false},
+		{"over 500 clamped", "999", 50, 500, false},
+		{"negative rejected", "-1", 50, 0, true},
+		{"zero rejected", "0", 50, 0, true},
+		{"not a number", "abc", 50, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseActivityLimitParam(tt.raw, tt.fallback)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Activity handler – opsActivity nil repo / invalid filter
+// ---------------------------------------------------------------------------
+
+func TestOpsActivityNilRepo(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.repo = nil
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/activity", nil)
+	h.opsActivity(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+func TestOpsActivityInvalidLimit(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/activity?limit=bad", nil)
+	h.opsActivity(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Runbooks handler – opsRunbooks nil repo
+// ---------------------------------------------------------------------------
+
+func TestOpsRunbooksNilRepo(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.repo = nil
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/runbooks", nil)
+	h.opsRunbooks(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// runOpsRunbook – nil repo, empty runbook id
+// ---------------------------------------------------------------------------
+
+func TestRunOpsRunbookNilRepo(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.repo = nil
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/runbooks/abc/run", nil)
+	r.SetPathValue("runbook", "abc")
+	h.runOpsRunbook(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+func TestRunOpsRunbookEmptyID(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/runbooks//run", nil)
+	r.SetPathValue("runbook", "")
+	h.runOpsRunbook(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestRunOpsRunbookNotFound(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/runbooks/nonexistent/run", nil)
+	r.SetPathValue("runbook", "nonexistent")
+	h.runOpsRunbook(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404; body=%s", w.Code, w.Body.String())

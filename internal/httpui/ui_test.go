@@ -276,7 +276,7 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	if err := json.Unmarshal(payload, &status); err != nil {
 		t.Fatalf("status payload is not JSON: %v", err)
 	}
-	if status["type"] != "status" || status["state"] != "attached" || status["session"] != testSessionName {
+	if status["type"] != "status" || status["state"] != testStateAttached || status["session"] != testSessionName {
 		t.Fatalf("unexpected status payload: %s", string(payload))
 	}
 
@@ -339,7 +339,7 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	if err := json.Unmarshal(payload, &status); err != nil {
 		t.Fatalf("status payload is not JSON: %v", err)
 	}
-	if status["state"] != "attached" {
+	if status["state"] != testStateAttached {
 		t.Fatalf("unexpected status payload: %s", string(payload))
 	}
 

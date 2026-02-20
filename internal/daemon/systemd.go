@@ -25,6 +25,7 @@ const (
 	managerScopeSystem        = "system"
 	managerScopeLaunchd       = "launchd"
 	systemdStateUnknown       = "unknown"
+	defaultOnCalendar         = "daily"
 )
 
 type InstallUserOptions struct {
@@ -178,7 +179,7 @@ func resolveInstallUserAutoUpdateConfig(opts InstallUserAutoUpdateOptions) (inst
 
 	onCalendar := strings.TrimSpace(opts.OnCalendar)
 	if onCalendar == "" {
-		onCalendar = "daily"
+		onCalendar = defaultOnCalendar
 	}
 	randomizedDelay := opts.RandomizedDelay
 	if randomizedDelay <= 0 {

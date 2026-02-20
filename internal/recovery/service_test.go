@@ -97,21 +97,21 @@ func TestCollectPersistsRecoverySnapshot(t *testing.T) {
 	fake := &fakeTmux{
 		sessions: []tmux.Session{
 			{
-				Name:       "dev",
+				Name:       testSessionDev,
 				Attached:   1,
 				CreatedAt:  time.Now().UTC(),
 				ActivityAt: time.Now().UTC(),
 			},
 		},
 		windows: map[string][]tmux.Window{
-			"dev": {
-				{Session: "dev", Index: 0, Name: "editor", Active: true, Panes: 1, Layout: "abcd,120x40,0,0,0"},
+			testSessionDev: {
+				{Session: testSessionDev, Index: 0, Name: "editor", Active: true, Panes: 1, Layout: "abcd,120x40,0,0,0"},
 			},
 		},
 		panes: map[string][]tmux.Pane{
-			"dev": {
+			testSessionDev: {
 				{
-					Session:        "dev",
+					Session:        testSessionDev,
 					WindowIndex:    0,
 					PaneIndex:      0,
 					PaneID:         "%1",
@@ -139,14 +139,14 @@ func TestCollectPersistsRecoverySnapshot(t *testing.T) {
 	if len(sessions) != 1 {
 		t.Fatalf("running sessions = %d, want 1", len(sessions))
 	}
-	if sessions[0].Name != "dev" {
+	if sessions[0].Name != testSessionDev {
 		t.Fatalf("session name = %q, want dev", sessions[0].Name)
 	}
 	if sessions[0].LatestSnapshotID <= 0 {
 		t.Fatalf("latest snapshot id = %d, want > 0", sessions[0].LatestSnapshotID)
 	}
 
-	snapshots, err := st.ListRecoverySnapshots(context.Background(), "dev", 10)
+	snapshots, err := st.ListRecoverySnapshots(context.Background(), testSessionDev, 10)
 	if err != nil {
 		t.Fatalf("ListRecoverySnapshots() error = %v", err)
 	}
@@ -228,17 +228,17 @@ func TestCollectBuildsSnapshotFromWatchtowerProjection(t *testing.T) {
 	fake := &fakeTmux{
 		sessions: []tmux.Session{
 			{
-				Name:       "dev",
+				Name:       testSessionDev,
 				Attached:   2,
 				CreatedAt:  now,
 				ActivityAt: now,
 			},
 		},
 		windows: map[string][]tmux.Window{
-			"dev": {},
+			testSessionDev: {},
 		},
 		panes: map[string][]tmux.Pane{
-			"dev": {},
+			testSessionDev: {},
 		},
 	}
 
@@ -249,7 +249,7 @@ func TestCollectBuildsSnapshotFromWatchtowerProjection(t *testing.T) {
 		t.Fatalf("Collect() error = %v", err)
 	}
 
-	snapshots, err := st.ListRecoverySnapshots(ctx, "dev", 10)
+	snapshots, err := st.ListRecoverySnapshots(ctx, testSessionDev, 10)
 	if err != nil {
 		t.Fatalf("ListRecoverySnapshots() error = %v", err)
 	}
@@ -267,7 +267,7 @@ func TestCollectBuildsSnapshotFromWatchtowerProjection(t *testing.T) {
 func seedProjectionSnapshotState(t *testing.T, st *store.Store, ctx context.Context, now time.Time) {
 	t.Helper()
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
-		SessionName:       "dev",
+		SessionName:       testSessionDev,
 		Attached:          1,
 		Windows:           2,
 		Panes:             2,
@@ -281,8 +281,8 @@ func seedProjectionSnapshotState(t *testing.T, st *store.Store, ctx context.Cont
 		t.Fatalf("UpsertWatchtowerSession: %v", err)
 	}
 	for _, win := range []store.WatchtowerWindowWrite{
-		{SessionName: "dev", WindowIndex: 0, Name: "editor", Active: true, Layout: "layout-a", WindowActivityAt: now, Rev: 2, UpdatedAt: now},
-		{SessionName: "dev", WindowIndex: 1, Name: "logs", Active: false, Layout: "layout-b", WindowActivityAt: now, Rev: 2, UpdatedAt: now},
+		{SessionName: testSessionDev, WindowIndex: 0, Name: "editor", Active: true, Layout: "layout-a", WindowActivityAt: now, Rev: 2, UpdatedAt: now},
+		{SessionName: testSessionDev, WindowIndex: 1, Name: "logs", Active: false, Layout: "layout-b", WindowActivityAt: now, Rev: 2, UpdatedAt: now},
 	} {
 		if err := st.UpsertWatchtowerWindow(ctx, win); err != nil {
 			t.Fatalf("UpsertWatchtowerWindow(%d): %v", win.WindowIndex, err)
@@ -291,7 +291,7 @@ func seedProjectionSnapshotState(t *testing.T, st *store.Store, ctx context.Cont
 	for _, pane := range []store.WatchtowerPaneWrite{
 		{
 			PaneID:         "%1",
-			SessionName:    "dev",
+			SessionName:    testSessionDev,
 			WindowIndex:    0,
 			PaneIndex:      0,
 			Title:          "editor-pane",
@@ -308,7 +308,7 @@ func seedProjectionSnapshotState(t *testing.T, st *store.Store, ctx context.Cont
 		},
 		{
 			PaneID:         "%2",
-			SessionName:    "dev",
+			SessionName:    testSessionDev,
 			WindowIndex:    1,
 			PaneIndex:      0,
 			Title:          "logs-pane",
@@ -339,13 +339,13 @@ func TestRestoreSafeModeSkipsCd(t *testing.T) {
 	var sentKeys []string
 	fake := &fakeTmux{
 		sessions: []tmux.Session{
-			{Name: "dev", Attached: 1, CreatedAt: time.Now().UTC(), ActivityAt: time.Now().UTC()},
+			{Name: testSessionDev, Attached: 1, CreatedAt: time.Now().UTC(), ActivityAt: time.Now().UTC()},
 		},
 		windows: map[string][]tmux.Window{
-			"dev": {{Session: "dev", Index: 0, Name: "editor", Active: true, Panes: 1, Layout: "abcd,120x40,0,0,0"}},
+			testSessionDev: {{Session: testSessionDev, Index: 0, Name: "editor", Active: true, Panes: 1, Layout: "abcd,120x40,0,0,0"}},
 		},
 		panes: map[string][]tmux.Pane{
-			"dev": {{Session: "dev", WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Active: true, CurrentPath: "/tmp/dev", StartCommand: "nvim", CurrentCommand: "nvim"}},
+			testSessionDev: {{Session: testSessionDev, WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Active: true, CurrentPath: "/tmp/dev", StartCommand: "nvim", CurrentCommand: "nvim"}},
 		},
 	}
 
@@ -356,7 +356,7 @@ func TestRestoreSafeModeSkipsCd(t *testing.T) {
 		t.Fatalf("Collect() error = %v", err)
 	}
 
-	snapshots, err := st.ListRecoverySnapshots(ctx, "dev", 1)
+	snapshots, err := st.ListRecoverySnapshots(ctx, testSessionDev, 1)
 	if err != nil || len(snapshots) == 0 {
 		t.Fatalf("ListRecoverySnapshots() = %v, err = %v", snapshots, err)
 	}

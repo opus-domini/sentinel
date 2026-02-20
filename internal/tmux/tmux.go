@@ -688,7 +688,7 @@ func nextWindowIndexFromListOutput(out string) (int, bool) {
 	return maxIndex + 1, true
 }
 
-func run(ctx context.Context, args ...string) (string, error) {
+var run = func(ctx context.Context, args ...string) (string, error) { //nolint:gochecknoglobals // var enables test injection
 	cmd := exec.CommandContext(ctx, "tmux", args...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

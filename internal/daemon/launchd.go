@@ -517,7 +517,7 @@ func launchdLabelFromServiceUnit(raw string) (string, error) {
 func launchdStartInterval(raw string) (int, error) {
 	value := strings.ToLower(strings.TrimSpace(raw))
 	switch value {
-	case "", "daily":
+	case "", defaultOnCalendar:
 		return 24 * 60 * 60, nil
 	case "hourly":
 		return 60 * 60, nil

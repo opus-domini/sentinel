@@ -40,9 +40,10 @@ const (
 	sentinelLaunchdLabel = "io.opusdomini.sentinel"
 	updaterLaunchdLabel  = "io.opusdomini.sentinel.updater"
 
-	stateActive  = "active"
-	stateRunning = "running"
-	stateUnknown = "unknown"
+	stateActive   = "active"
+	stateRunning  = "running"
+	stateInactive = "inactive"
+	stateUnknown  = "unknown"
 )
 
 var (
@@ -270,7 +271,7 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 		_, err := m.commandRunner(ctx, "launchctl", "print", target)
 		if err != nil {
 			svc.Exists = false
-			svc.ActiveState = "inactive"
+			svc.ActiveState = stateInactive
 			svc.EnabledState = "-"
 			return
 		}
@@ -788,7 +789,7 @@ func (m *Manager) discoverLaunchdUnits(ctx context.Context) ([]AvailableService,
 		label := fields[2]
 		state := "active"
 		if fields[0] == "-" {
-			state = "inactive"
+			state = stateInactive
 		}
 		units = append(units, AvailableService{
 			Unit:        label,
