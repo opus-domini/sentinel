@@ -540,6 +540,21 @@ func (s *Store) CreateOpsRunbookRun(ctx context.Context, runbookID string, at ti
 	return s.GetOpsRunbookRun(ctx, runID)
 }
 
+func (s *Store) FailOrphanedRuns(ctx context.Context) (int64, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE ops_runbook_runs
+			SET status = ?, error = 'interrupted by server restart', finished_at = ?
+		  WHERE status IN (?, ?)`,
+		opsRunbookStatusFailed, now,
+		opsRunbookStatusRunning, opsRunbookStatusQueued,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (s *Store) DeleteOpsRunbookRun(ctx context.Context, runID string) error {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {

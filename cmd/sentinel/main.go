@@ -67,6 +67,12 @@ func serve() int {
 	}
 	defer func() { _ = st.Close() }()
 
+	if n, err := st.FailOrphanedRuns(context.Background()); err != nil {
+		slog.Warn("failed to reconcile orphaned runbook runs", "err", err)
+	} else if n > 0 {
+		slog.Info("reconciled orphaned runbook runs", "count", n)
+	}
+
 	opsManager := services.NewManager(time.Now(), st)
 
 	mux := http.NewServeMux()

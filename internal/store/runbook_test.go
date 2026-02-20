@@ -574,3 +574,116 @@ func TestScanOpsRunbookRunMalformedJSON(t *testing.T) {
 		t.Fatalf("len(stepResults) = %d, want 0 (malformed JSON fallback)", len(loaded.StepResults))
 	}
 }
+
+func TestFailOrphanedRuns(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 2, 15, 14, 0, 0, 0, time.UTC)
+
+	// Seed a runbook.
+	if _, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID:   "orphan.test",
+		Name: "Orphan Test",
+		Steps: []OpsRunbookStep{
+			{Type: "command", Title: "Step 1", Command: "echo 1"},
+		},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+
+	// Create three runs: one will stay queued, one advanced to running, one to succeeded.
+	queuedRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
+	if err != nil {
+		t.Fatalf("CreateOpsRunbookRun(queued): %v", err)
+	}
+
+	runningRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
+	if err != nil {
+		t.Fatalf("CreateOpsRunbookRun(running): %v", err)
+	}
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:       runningRun.ID,
+		Status:      opsRunbookStatusRunning,
+		CurrentStep: "Step 1",
+		StartedAt:   now.Format(time.RFC3339),
+		StepResults: "[]",
+	}); err != nil {
+		t.Fatalf("UpdateOpsRunbookRun(running): %v", err)
+	}
+
+	succeededRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
+	if err != nil {
+		t.Fatalf("CreateOpsRunbookRun(succeeded): %v", err)
+	}
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:          succeededRun.ID,
+		Status:         opsRunbookStatusSucceeded,
+		CompletedSteps: 1,
+		CurrentStep:    "Step 1",
+		StartedAt:      now.Format(time.RFC3339),
+		FinishedAt:     now.Add(time.Second).Format(time.RFC3339),
+		StepResults:    "[]",
+	}); err != nil {
+		t.Fatalf("UpdateOpsRunbookRun(succeeded): %v", err)
+	}
+
+	// Reconcile orphaned runs.
+	n, err := s.FailOrphanedRuns(ctx)
+	if err != nil {
+		t.Fatalf("FailOrphanedRuns: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("affected = %d, want 2", n)
+	}
+
+	// Verify queued run is now failed.
+	q, err := s.GetOpsRunbookRun(ctx, queuedRun.ID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbookRun(queued): %v", err)
+	}
+	if q.Status != opsRunbookStatusFailed {
+		t.Fatalf("queued run status = %q, want %q", q.Status, opsRunbookStatusFailed)
+	}
+	if q.Error != "interrupted by server restart" {
+		t.Fatalf("queued run error = %q, want 'interrupted by server restart'", q.Error)
+	}
+	if q.FinishedAt == "" {
+		t.Fatalf("queued run finishedAt should be set")
+	}
+
+	// Verify running run is now failed.
+	r, err := s.GetOpsRunbookRun(ctx, runningRun.ID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbookRun(running): %v", err)
+	}
+	if r.Status != opsRunbookStatusFailed {
+		t.Fatalf("running run status = %q, want %q", r.Status, opsRunbookStatusFailed)
+	}
+	if r.Error != "interrupted by server restart" {
+		t.Fatalf("running run error = %q, want 'interrupted by server restart'", r.Error)
+	}
+
+	// Verify succeeded run is untouched.
+	su, err := s.GetOpsRunbookRun(ctx, succeededRun.ID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbookRun(succeeded): %v", err)
+	}
+	if su.Status != opsRunbookStatusSucceeded {
+		t.Fatalf("succeeded run status = %q, want %q", su.Status, opsRunbookStatusSucceeded)
+	}
+	if su.Error != "" {
+		t.Fatalf("succeeded run error = %q, want empty", su.Error)
+	}
+
+	// Calling again should affect 0 rows.
+	n2, err := s.FailOrphanedRuns(ctx)
+	if err != nil {
+		t.Fatalf("FailOrphanedRuns (second call): %v", err)
+	}
+	if n2 != 0 {
+		t.Fatalf("second call affected = %d, want 0", n2)
+	}
+}
