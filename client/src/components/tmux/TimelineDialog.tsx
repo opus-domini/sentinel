@@ -78,7 +78,7 @@ export default function TimelineDialog({
 }: TimelineDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex min-h-[24rem] max-h-[88vh] flex-col overflow-hidden sm:min-h-[38rem] sm:max-w-6xl">
+      <DialogContent className="top-[5%] flex min-h-[24rem] max-h-[88vh] -translate-y-0 flex-col overflow-hidden sm:min-h-[38rem] sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>Command History</DialogTitle>
           <DialogDescription>
