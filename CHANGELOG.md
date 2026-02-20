@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.5](https://github.com/opus-domini/sentinel/compare/v0.4.4...v0.4.5) (2026-02-20)
+
+
+### Features
+
+* add webhook support to runbooks with step-level payload details ([5a559d5](https://github.com/opus-domini/sentinel/commit/5a559d5910a0eb67f09909f2ad00f017783a3603))
+* make guardrails the sole confirmation authority for tmux actions ([17816a1](https://github.com/opus-domini/sentinel/commit/17816a162c6c0e5a7839feb1683be4832ef3a1bd))
+
+
+### Bug Fixes
+
+* prevent daemon tests from killing host systemd services ([b44d733](https://github.com/opus-domini/sentinel/commit/b44d733c5b5f2176c50c7d1bc9f584c6a25f0f25))
+* resolve lint failures from golangci-lint v2.10 upgrade ([5a15626](https://github.com/opus-domini/sentinel/commit/5a15626ea75e322fbc712554d5fe0706d113514a))
+
+
+### CI
+
+* bump golangci-lint to v2.10.1 for Go 1.26 compatibility ([4de0240](https://github.com/opus-domini/sentinel/commit/4de02402bf4dd5b0fee7684168e26b9ef74cc991))
+
+
+### Documentation
+
+* document runbook webhook feature and payload structure ([21b16ff](https://github.com/opus-domini/sentinel/commit/21b16ff4619068f177fc022539989d0cf3769b85))
+
 ## [0.4.4](https://github.com/opus-domini/sentinel/compare/v0.4.3...v0.4.4) (2026-02-20)
 
 
