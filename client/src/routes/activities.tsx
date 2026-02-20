@@ -253,7 +253,7 @@ function ActivitiesPage() {
                 {activityEvents.map((event) => (
                   <div
                     key={event.id}
-                    className="rounded border border-border-subtle bg-surface-elevated px-2.5 py-2"
+                    className="min-w-0 overflow-hidden rounded border border-border-subtle bg-surface-elevated px-2.5 py-2"
                   >
                     <div className="flex min-w-0 items-center justify-between gap-2">
                       <p className="min-w-0 truncate text-[12px] font-semibold">
@@ -263,11 +263,11 @@ function ActivitiesPage() {
                         {event.severity}
                       </span>
                     </div>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
+                    <p className="mt-1 break-words text-[10px] text-muted-foreground">
                       {event.source} • {event.resource} • {event.createdAt}
                     </p>
                     {event.details.trim() !== '' && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
+                      <p className="mt-1 break-words text-[11px] text-muted-foreground">
                         {event.details}
                       </p>
                     )}

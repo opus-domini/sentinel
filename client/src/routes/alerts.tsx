@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Eye, EyeOff, Menu, RefreshCw, Trash2 } from 'lucide-react'
@@ -29,6 +29,25 @@ import {
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
+
+function formatAlertTime(isoDate: string): string {
+  const parsed = Date.parse(isoDate)
+  if (Number.isNaN(parsed)) return isoDate
+  const d = new Date(parsed)
+  const now = Date.now()
+  const diffMin = Math.floor((now - d.getTime()) / 60000)
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
 
 type AlertsFooterSummaryParams = {
   overviewError: string
@@ -71,6 +90,13 @@ function AlertsPage() {
 
   const [selectedSeverity, setSelectedSeverity] = useState('all')
   const [showResolved, setShowResolved] = useState(false)
+  const [confirmDismissId, setConfirmDismissId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (confirmDismissId == null) return
+    const timer = setTimeout(() => setConfirmDismissId(null), 3000)
+    return () => clearTimeout(timer)
+  }, [confirmDismissId])
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -372,7 +398,7 @@ function AlertsPage() {
                     <div
                       key={alert.id}
                       className={cn(
-                        'grid gap-2 rounded border px-2.5 py-2',
+                        'grid gap-1.5 rounded border px-2.5 py-2',
                         alert.status === 'resolved'
                           ? 'border-border-subtle bg-surface-elevated opacity-60'
                           : alert.severity === 'error'
@@ -389,12 +415,45 @@ function AlertsPage() {
                             {alert.resource} • {alert.occurrences}x
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full border border-border-subtle bg-surface-overlay px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          {alert.status}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <span className="rounded-full border border-border-subtle bg-surface-overlay px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {alert.status}
+                          </span>
+                          {alert.status === 'resolved' &&
+                            (confirmDismissId === alert.id ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-[10px] text-destructive-foreground"
+                                onClick={() => {
+                                  setConfirmDismissId(null)
+                                  void dismissAlert(alert.id)
+                                }}
+                              >
+                                Confirm?
+                              </Button>
+                            ) : (
+                              <TooltipHelper content="Dismiss">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground"
+                                  onClick={() => setConfirmDismissId(alert.id)}
+                                  aria-label="Dismiss alert"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </TooltipHelper>
+                            ))}
+                        </div>
                       </div>
                       <p className="text-[11px] text-muted-foreground">
                         {alert.message}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatAlertTime(alert.firstSeenAt)}
+                        {alert.lastSeenAt !== alert.firstSeenAt &&
+                          ` · last ${formatAlertTime(alert.lastSeenAt)}`}
                       </p>
                       {alert.status === 'open' && (
                         <div>
@@ -405,19 +464,6 @@ function AlertsPage() {
                             onClick={() => ackAlert(alert.id)}
                           >
                             Ack
-                          </Button>
-                        </div>
-                      )}
-                      {alert.status === 'resolved' && (
-                        <div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 gap-1 text-[11px]"
-                            onClick={() => dismissAlert(alert.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Dismiss
                           </Button>
                         </div>
                       )}

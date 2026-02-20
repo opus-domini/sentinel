@@ -341,14 +341,16 @@ function MetricsPage() {
                             metrics.cpuPercent >= 0 ? metrics.cpuPercent : 0
                           }
                         />
-                        <Sparkline
-                          data={cpuData}
-                          timestamps={ts}
-                          color={SPARKLINE_COLORS.cpu}
-                          domain={[0, 100]}
-                          formatValue={(v) => `${v.toFixed(1)}%`}
-                          className="mt-2 h-10 w-full"
-                        />
+                        <div className="mt-2 h-10 w-full">
+                          <Sparkline
+                            data={cpuData}
+                            timestamps={ts}
+                            color={SPARKLINE_COLORS.cpu}
+                            domain={[0, 100]}
+                            formatValue={(v) => `${v.toFixed(1)}%`}
+                            className="h-full w-full"
+                          />
+                        </div>
                       </div>
                       <div
                         className={cn(
@@ -369,14 +371,16 @@ function MetricsPage() {
                           {formatBytes(metrics.memTotalBytes)}
                         </p>
                         <ProgressBar percent={metrics.memPercent} />
-                        <Sparkline
-                          data={memData}
-                          timestamps={ts}
-                          color={SPARKLINE_COLORS.memory}
-                          domain={[0, 100]}
-                          formatValue={(v) => `${v.toFixed(1)}%`}
-                          className="mt-2 h-10 w-full"
-                        />
+                        <div className="mt-2 h-10 w-full">
+                          <Sparkline
+                            data={memData}
+                            timestamps={ts}
+                            color={SPARKLINE_COLORS.memory}
+                            domain={[0, 100]}
+                            formatValue={(v) => `${v.toFixed(1)}%`}
+                            className="h-full w-full"
+                          />
+                        </div>
                       </div>
                       <div
                         className={cn(
@@ -397,14 +401,16 @@ function MetricsPage() {
                           {formatBytes(metrics.diskTotalBytes)}
                         </p>
                         <ProgressBar percent={metrics.diskPercent} />
-                        <Sparkline
-                          data={diskData}
-                          timestamps={ts}
-                          color={SPARKLINE_COLORS.disk}
-                          domain={[0, 100]}
-                          formatValue={(v) => `${v.toFixed(1)}%`}
-                          className="mt-2 h-10 w-full"
-                        />
+                        <div className="mt-2 h-10 w-full">
+                          <Sparkline
+                            data={diskData}
+                            timestamps={ts}
+                            color={SPARKLINE_COLORS.disk}
+                            domain={[0, 100]}
+                            formatValue={(v) => `${v.toFixed(1)}%`}
+                            className="h-full w-full"
+                          />
+                        </div>
                       </div>
                       <div className="rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
                         <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
@@ -417,13 +423,15 @@ function MetricsPage() {
                           {metrics.loadAvg5.toFixed(2)} /{' '}
                           {metrics.loadAvg15.toFixed(2)}
                         </p>
-                        <Sparkline
-                          data={loadData}
-                          timestamps={ts}
-                          color={SPARKLINE_COLORS.loadAvg}
-                          formatValue={(v) => v.toFixed(2)}
-                          className="mt-2 h-10 w-full"
-                        />
+                        <div className="mt-2 h-10 w-full">
+                          <Sparkline
+                            data={loadData}
+                            timestamps={ts}
+                            color={SPARKLINE_COLORS.loadAvg}
+                            formatValue={(v) => v.toFixed(2)}
+                            className="h-full w-full"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -438,13 +446,15 @@ function MetricsPage() {
                         <p className="mt-1 text-[12px] font-semibold">
                           {metrics.numGoroutines}
                         </p>
-                        <Sparkline
-                          data={goroutineData}
-                          timestamps={ts}
-                          color={SPARKLINE_COLORS.goroutines}
-                          formatValue={(v) => `${v}`}
-                          className="mt-2 h-10 w-full"
-                        />
+                        <div className="mt-2 h-10 w-full">
+                          <Sparkline
+                            data={goroutineData}
+                            timestamps={ts}
+                            color={SPARKLINE_COLORS.goroutines}
+                            formatValue={(v) => `${v}`}
+                            className="h-full w-full"
+                          />
+                        </div>
                       </div>
                       <div className="rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
                         <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
@@ -453,13 +463,15 @@ function MetricsPage() {
                         <p className="mt-1 text-[12px] font-semibold">
                           {metrics.goMemAllocMB.toFixed(1)} MB
                         </p>
-                        <Sparkline
-                          data={heapData}
-                          timestamps={ts}
-                          color={SPARKLINE_COLORS.goHeap}
-                          formatValue={(v) => `${v.toFixed(1)} MB`}
-                          className="mt-2 h-10 w-full"
-                        />
+                        <div className="mt-2 h-10 w-full">
+                          <Sparkline
+                            data={heapData}
+                            timestamps={ts}
+                            color={SPARKLINE_COLORS.goHeap}
+                            formatValue={(v) => `${v.toFixed(1)} MB`}
+                            className="h-full w-full"
+                          />
+                        </div>
                       </div>
                       <MetricCard
                         label="PID"

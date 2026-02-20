@@ -1043,15 +1043,15 @@ function ServicesPage() {
                         <p className="mb-1 text-[11px] font-semibold text-foreground">
                           Properties
                         </p>
-                        <div className="grid gap-1 text-[11px]">
+                        <div className="grid gap-1 overflow-hidden text-[11px]">
                           {Object.entries(serviceStatusData.properties)
                             .sort(([a], [b]) => a.localeCompare(b))
                             .map(([key, value]) => (
                               <div
                                 key={key}
-                                className="grid grid-cols-[9rem_1fr] gap-2"
+                                className="grid grid-cols-[5.5rem_1fr] gap-2 sm:grid-cols-[9rem_1fr]"
                               >
-                                <span className="font-mono text-muted-foreground">
+                                <span className="break-all font-mono text-muted-foreground">
                                   {key}
                                 </span>
                                 <span className="break-all font-mono text-foreground">
