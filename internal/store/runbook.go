@@ -16,6 +16,8 @@ const (
 	opsRunbookStatusRunning   = "running"
 	opsRunbookStatusSucceeded = "succeeded"
 	opsRunbookStatusFailed    = "failed"
+
+	opsRunbookOrphanError = "interrupted by server restart"
 )
 
 type OpsRunbookStep struct {

@@ -653,7 +653,7 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if q.Status != opsRunbookStatusFailed {
 		t.Fatalf("queued run status = %q, want %q", q.Status, opsRunbookStatusFailed)
 	}
-	if q.Error != "interrupted by server restart" {
+	if q.Error != opsRunbookOrphanError {
 		t.Fatalf("queued run error = %q, want 'interrupted by server restart'", q.Error)
 	}
 	if q.FinishedAt == "" {
@@ -671,7 +671,7 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if r.Status != opsRunbookStatusFailed {
 		t.Fatalf("running run status = %q, want %q", r.Status, opsRunbookStatusFailed)
 	}
-	if r.Error != "interrupted by server restart" {
+	if r.Error != opsRunbookOrphanError {
 		t.Fatalf("running run error = %q, want 'interrupted by server restart'", r.Error)
 	}
 	if len(r.StepResults) != 2 {
@@ -692,7 +692,7 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if interrupted.Type != "interrupted" {
 		t.Fatalf("interrupted type = %q, want 'interrupted'", interrupted.Type)
 	}
-	if interrupted.Error != "interrupted by server restart" {
+	if interrupted.Error != opsRunbookOrphanError {
 		t.Fatalf("interrupted error = %q, want 'interrupted by server restart'", interrupted.Error)
 	}
 
