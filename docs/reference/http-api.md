@@ -203,6 +203,7 @@ Runbook create/update payload:
   "name": "Health Check",
   "description": "Verify service health",
   "enabled": true,
+  "webhookURL": "https://hooks.example.com/sentinel",
   "steps": [
     { "type": "command", "title": "Check status", "command": "systemctl --user is-active myapp" },
     { "type": "check", "title": "Verify response", "check": "curl -sf http://localhost:8080/health" },
@@ -210,6 +211,8 @@ Runbook create/update payload:
   ]
 }
 ```
+
+The optional `webhookURL` field configures a webhook endpoint that receives a POST with run results on completion. Must be `http` or `https`. See [Runbooks — Webhooks](/features/runbooks.md#webhooks) for payload details.
 
 ## Operations: Storage
 

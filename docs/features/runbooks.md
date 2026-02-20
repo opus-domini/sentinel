@@ -89,6 +89,68 @@ At each step completion, the job is updated in the store and an `ops.job.updated
 
 Timeline events are created at runbook start (`runbook.started`) and completion (`runbook.succeeded` or `runbook.failed`).
 
+## Webhooks
+
+Runbooks can optionally define a `webhookURL` field to receive HTTP notifications when a run completes. Set the URL via the editor UI or the create/update API. An empty string disables the webhook.
+
+URL validation requires `http` or `https` scheme with a valid host.
+
+When a run finishes (succeeded or failed), Sentinel sends a `POST` request to the configured URL with a JSON payload. Delivery uses a 10-second timeout with exponential backoff retry (3 attempts) on 5xx responses. Webhooks fire for both manual and scheduled runs.
+
+**Payload:**
+
+```json
+{
+  "event": "runbook.completed",
+  "sentAt": "2026-02-20T22:01:00Z",
+  "runbook": {
+    "id": "rb-7",
+    "name": "Deploy Service"
+  },
+  "job": {
+    "id": "run-42",
+    "status": "succeeded",
+    "source": "scheduler",
+    "totalSteps": 3,
+    "completedSteps": 3,
+    "startedAt": "2026-02-20T22:00:00Z",
+    "finishedAt": "2026-02-20T22:01:00Z",
+    "steps": [
+      { "index": 0, "title": "Build", "type": "command", "output": "ok", "durationMs": 120 },
+      { "index": 1, "title": "Test", "type": "command", "output": "passed", "durationMs": 340 },
+      { "index": 2, "title": "Verify", "type": "check", "durationMs": 50 }
+    ]
+  }
+}
+```
+
+Fields use `omitempty` — `error`, `startedAt`, `finishedAt`, and step-level `output` are omitted when empty. On a failed run, `error` appears at the job level and optionally on the failing step:
+
+```json
+{
+  "event": "runbook.completed",
+  "sentAt": "2026-02-20T22:05:00Z",
+  "runbook": {
+    "id": "rb-7",
+    "name": "Deploy Service"
+  },
+  "job": {
+    "id": "run-43",
+    "status": "failed",
+    "source": "manual",
+    "error": "step 1 failed: exit status 1",
+    "totalSteps": 3,
+    "completedSteps": 1,
+    "startedAt": "2026-02-20T22:04:00Z",
+    "finishedAt": "2026-02-20T22:05:00Z",
+    "steps": [
+      { "index": 0, "title": "Build", "type": "command", "output": "ok", "durationMs": 120 },
+      { "index": 1, "title": "Test", "type": "command", "error": "exit status 1", "durationMs": 410 }
+    ]
+  }
+}
+```
+
 ## Step Results
 
 Each step result includes:
