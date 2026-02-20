@@ -34,6 +34,11 @@ type UseSessionCRUDOptions = {
   pushErrorToast: (title: string, message: string) => void
   pushSuccessToast: (title: string, message: string) => void
   pendingCreateSessionsRef: React.MutableRefObject<Map<string, string>>
+  requestGuardrailConfirm: (
+    ruleName: string,
+    message: string,
+    onConfirm: () => void,
+  ) => void
 }
 
 export function useSessionCRUD(options: UseSessionCRUDOptions) {
@@ -54,6 +59,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     pushErrorToast,
     pushSuccessToast,
     pendingCreateSessionsRef,
+    requestGuardrailConfirm,
   } = options
 
   const refreshGenerationRef = useRef(0)
@@ -61,14 +67,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const pendingRenameSessionsRef = useRef(new Map<string, string>())
   const lastSessionsRefreshAtRef = useRef(0)
 
-  const [killDialogSession, setKillDialogSession] = useState<string | null>(
-    null,
-  )
-  const [guardrailConfirm, setGuardrailConfirm] = useState<{
-    session: string
-    ruleName: string
-    message: string
-  } | null>(null)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameSessionTarget, setRenameSessionTarget] = useState<string | null>(
     null,
@@ -167,8 +165,8 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     [dispatchTabs, setSessions],
   )
 
-  const createSession = useCallback(
-    async (name: string, cwd: string) => {
+  const createSessionWithConfirm = useCallback(
+    async (name: string, cwd: string, guardrailConfirmed: boolean) => {
       const sessionName = name.trim()
       if (!sessionName) {
         setConnection('error', 'session name required')
@@ -192,14 +190,17 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         )
         dispatchTabs({ type: 'activate', session: sessionName })
         setConnection('connecting', `creating ${sessionName}`)
-        // Clear inspector error for the new session being created
-        // (handled by inspector hook's session-switch effect)
       }
 
       try {
+        const headers: Record<string, string> = {}
+        if (guardrailConfirmed) {
+          headers['X-Sentinel-Guardrail-Confirm'] = 'true'
+        }
         await api<{ name: string }>('/api/tmux/sessions', {
           method: 'POST',
           body: JSON.stringify({ name: sessionName, cwd }),
+          headers,
         })
 
         activateSession(sessionName)
@@ -209,8 +210,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         pushSuccessToast('Create Session', `session "${sessionName}" created`)
       } catch (error) {
         pendingCreateSessionsRef.current.delete(sessionName)
-        const msg =
-          error instanceof Error ? error.message : 'failed to create session'
         if (!sessionAlreadyExists) {
           setSessions((prev) =>
             prev.filter((item) => item.name !== sessionName),
@@ -225,6 +224,19 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
             dispatchTabs({ type: 'activate', session: previousActiveSession })
           }
         }
+
+        if (error instanceof GuardrailConfirmError) {
+          const rules = error.decision.matchedRules
+          requestGuardrailConfirm(
+            rules[0]?.name ?? '',
+            error.decision.message,
+            () => void createSessionWithConfirm(sessionName, cwd, true),
+          )
+          return
+        }
+
+        const msg =
+          error instanceof Error ? error.message : 'failed to create session'
         setConnection('error', msg)
         pushErrorToast('Create Session', msg)
       }
@@ -240,11 +252,19 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       pushSuccessToast,
       refreshInspector,
       refreshSessions,
+      requestGuardrailConfirm,
       sessionsRef,
       setConnection,
       setSessions,
       tabsStateRef,
     ],
+  )
+
+  const createSession = useCallback(
+    async (name: string, cwd: string) => {
+      await createSessionWithConfirm(name, cwd, false)
+    },
+    [createSessionWithConfirm],
   )
 
   const killSessionWithConfirm = useCallback(
@@ -298,11 +318,11 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
 
         if (error instanceof GuardrailConfirmError) {
           const rules = error.decision.matchedRules
-          setGuardrailConfirm({
-            session: sessionName,
-            ruleName: rules.length > 0 ? rules[0].name : '',
-            message: error.decision.message,
-          })
+          requestGuardrailConfirm(
+            rules[0]?.name ?? '',
+            error.decision.message,
+            () => void killSessionWithConfirm(sessionName, true),
+          )
           return
         }
 
@@ -322,6 +342,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       pushErrorToast,
       pushSuccessToast,
       refreshSessions,
+      requestGuardrailConfirm,
       resetTerminal,
       sessionsRef,
       setConnection,
@@ -336,24 +357,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     },
     [killSessionWithConfirm],
   )
-
-  const handleGuardrailConfirm = useCallback(() => {
-    if (guardrailConfirm) {
-      void killSessionWithConfirm(guardrailConfirm.session, true)
-    }
-    setGuardrailConfirm(null)
-  }, [guardrailConfirm, killSessionWithConfirm])
-
-  const handleGuardrailCancel = useCallback(() => {
-    setGuardrailConfirm(null)
-  }, [])
-
-  const handleConfirmKill = useCallback(() => {
-    if (killDialogSession) {
-      void killSession(killDialogSession)
-    }
-    setKillDialogSession(null)
-  }, [killDialogSession, killSession])
 
   const renameActive = useCallback(
     async (targetSession: string, newName: string) => {
@@ -535,11 +538,9 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
 
   return {
     // State
-    killDialogSession,
     renameDialogOpen,
     renameSessionTarget,
     renameValue,
-    guardrailConfirm,
     // Refs
     lastSessionsRefreshAtRef,
     pendingKillSessionsRef,
@@ -549,9 +550,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     activateSession,
     createSession,
     killSession,
-    handleConfirmKill,
-    handleGuardrailConfirm,
-    handleGuardrailCancel,
     renameActive,
     setSessionIcon,
     handleOpenRenameDialogForSession,
@@ -559,7 +557,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     closeTab,
     detachSession,
     reorderTabs,
-    setKillDialogSession,
     setRenameDialogOpen,
     setRenameSessionTarget,
     setRenameValue,

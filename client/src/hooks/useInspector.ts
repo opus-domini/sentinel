@@ -7,6 +7,7 @@ import {
   samePaneProjection,
   sameWindowProjection,
 } from './tmuxTypes'
+import { GuardrailConfirmError } from './useTmuxApi'
 import type {
   ConnectionState,
   PaneInfo,
@@ -63,6 +64,11 @@ type UseInspectorOptions = {
   pushErrorToast: (title: string, message: string) => void
   pushSuccessToast: (title: string, message: string) => void
   setConnection: (state: ConnectionState, detail: string) => void
+  requestGuardrailConfirm: (
+    ruleName: string,
+    message: string,
+    onConfirm: () => void,
+  ) => void
 }
 
 export function useInspector(options: UseInspectorOptions) {
@@ -79,6 +85,7 @@ export function useInspector(options: UseInspectorOptions) {
     pushErrorToast,
     pushSuccessToast,
     setConnection,
+    requestGuardrailConfirm,
   } = options
 
   const queryClient = useQueryClient()
@@ -745,6 +752,39 @@ export function useInspector(options: UseInspectorOptions) {
           active,
           nextIdx,
         )
+        if (error instanceof GuardrailConfirmError) {
+          const rules = error.decision.matchedRules
+          requestGuardrailConfirm(
+            rules[0]?.name ?? '',
+            error.decision.message,
+            () => {
+              void api<void>(
+                `/api/tmux/sessions/${encodeURIComponent(active)}/new-window`,
+                {
+                  method: 'POST',
+                  body: '{}',
+                  headers: { 'X-Sentinel-Guardrail-Confirm': 'true' },
+                },
+              )
+                .then(() => {
+                  void refreshInspector(active, { background: true })
+                  void refreshSessions()
+                })
+                .catch((retryError) => {
+                  const retryMsg =
+                    retryError instanceof Error
+                      ? retryError.message
+                      : 'failed to create window'
+                  pushErrorToast('New Window', retryMsg)
+                  void refreshInspector(active, { background: true })
+                  void refreshSessions()
+                })
+            },
+          )
+          void refreshInspector(active, { background: true })
+          void refreshSessions()
+          return
+        }
         const msg =
           error instanceof Error ? error.message : 'failed to create window'
         setInspectorError(msg)
@@ -758,6 +798,7 @@ export function useInspector(options: UseInspectorOptions) {
     pushErrorToast,
     refreshInspector,
     refreshSessions,
+    requestGuardrailConfirm,
     setSessions,
     tabsStateRef,
     windows,
@@ -841,6 +882,39 @@ export function useInspector(options: UseInspectorOptions) {
             active,
             windowIndex,
           )
+          if (error instanceof GuardrailConfirmError) {
+            const rules = error.decision.matchedRules
+            requestGuardrailConfirm(
+              rules[0]?.name ?? '',
+              error.decision.message,
+              () => {
+                void api<void>(
+                  `/api/tmux/sessions/${encodeURIComponent(active)}/kill-window`,
+                  {
+                    method: 'POST',
+                    body: JSON.stringify({ index: windowIndex }),
+                    headers: { 'X-Sentinel-Guardrail-Confirm': 'true' },
+                  },
+                )
+                  .then(() => {
+                    void refreshInspector(active, { background: true })
+                    void refreshSessions()
+                  })
+                  .catch((retryError) => {
+                    const retryMsg =
+                      retryError instanceof Error
+                        ? retryError.message
+                        : 'failed to close window'
+                    pushErrorToast('Kill Window', retryMsg)
+                    void refreshInspector(active, { background: true })
+                    void refreshSessions()
+                  })
+              },
+            )
+            void refreshInspector(active, { background: true })
+            void refreshSessions()
+            return
+          }
           const msg =
             error instanceof Error ? error.message : 'failed to close window'
           setInspectorError(msg)
@@ -856,6 +930,7 @@ export function useInspector(options: UseInspectorOptions) {
       pushErrorToast,
       refreshInspector,
       refreshSessions,
+      requestGuardrailConfirm,
       setSessions,
       tabsStateRef,
       windows,
@@ -973,6 +1048,39 @@ export function useInspector(options: UseInspectorOptions) {
               removed.windowIndex,
             )
           }
+          if (error instanceof GuardrailConfirmError) {
+            const rules = error.decision.matchedRules
+            requestGuardrailConfirm(
+              rules[0]?.name ?? '',
+              error.decision.message,
+              () => {
+                void api<void>(
+                  `/api/tmux/sessions/${encodeURIComponent(active)}/kill-pane`,
+                  {
+                    method: 'POST',
+                    body: JSON.stringify({ paneId: paneID }),
+                    headers: { 'X-Sentinel-Guardrail-Confirm': 'true' },
+                  },
+                )
+                  .then(() => {
+                    void refreshInspector(active, { background: true })
+                    void refreshSessions()
+                  })
+                  .catch((retryError) => {
+                    const retryMsg =
+                      retryError instanceof Error
+                        ? retryError.message
+                        : 'failed to close pane'
+                    pushErrorToast('Kill Pane', retryMsg)
+                    void refreshInspector(active, { background: true })
+                    void refreshSessions()
+                  })
+              },
+            )
+            void refreshInspector(active, { background: true })
+            void refreshSessions()
+            return
+          }
           const msg =
             error instanceof Error ? error.message : 'failed to close pane'
           setInspectorError(msg)
@@ -988,6 +1096,7 @@ export function useInspector(options: UseInspectorOptions) {
       pushErrorToast,
       refreshInspector,
       refreshSessions,
+      requestGuardrailConfirm,
       setSessions,
       tabsStateRef,
       windows,
@@ -1105,6 +1214,39 @@ export function useInspector(options: UseInspectorOptions) {
             active,
             target.windowIndex,
           )
+          if (error instanceof GuardrailConfirmError) {
+            const rules = error.decision.matchedRules
+            requestGuardrailConfirm(
+              rules[0]?.name ?? '',
+              error.decision.message,
+              () => {
+                void api<void>(
+                  `/api/tmux/sessions/${encodeURIComponent(active)}/split-pane`,
+                  {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      paneId: targetID,
+                      direction,
+                    }),
+                    headers: { 'X-Sentinel-Guardrail-Confirm': 'true' },
+                  },
+                )
+                  .then(() => {
+                    void refreshInspector(active, { background: true })
+                  })
+                  .catch((retryError) => {
+                    const retryMsg =
+                      retryError instanceof Error
+                        ? retryError.message
+                        : 'failed to split pane'
+                    pushErrorToast('Split Pane', retryMsg)
+                    void refreshInspector(active, { background: true })
+                  })
+              },
+            )
+            void refreshInspector(active, { background: true })
+            return
+          }
           const msg =
             error instanceof Error ? error.message : 'failed to split pane'
           setInspectorError(msg)
@@ -1118,6 +1260,7 @@ export function useInspector(options: UseInspectorOptions) {
       panes,
       pushErrorToast,
       refreshInspector,
+      requestGuardrailConfirm,
       setSessions,
       tabsStateRef,
       windows,

@@ -18,7 +18,6 @@ import GuardrailsDialog from '@/components/tmux/GuardrailsDialog'
 import TimelineDialog from '@/components/tmux/TimelineDialog'
 import RecoveryDialog from '@/components/tmux/RecoveryDialog'
 import GuardrailConfirmDialog from '@/components/GuardrailConfirmDialog'
-import KillSessionDialog from '@/components/tmux/KillSessionDialog'
 import RenameDialog from '@/components/tmux/RenameDialog'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
@@ -46,6 +45,20 @@ function TmuxPage() {
   // ---- Guardrails dialog state ----
   const [guardrailsOpen, setGuardrailsOpen] = useState(false)
   const [createSessionOpen, setCreateSessionOpen] = useState(false)
+
+  // ---- Guardrail confirm state (shared across session CRUD + inspector) ----
+  const [guardrailConfirm, setGuardrailConfirm] = useState<{
+    ruleName: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
+
+  const requestGuardrailConfirm = useCallback(
+    (ruleName: string, message: string, onConfirm: () => void) => {
+      setGuardrailConfirm({ ruleName, message, onConfirm })
+    },
+    [],
+  )
 
   // ---- Tabs state ----
   const [tabsState, dispatchTabs] = useReducer(
@@ -166,6 +179,7 @@ function TmuxPage() {
     pushErrorToast,
     pushSuccessToast,
     setConnection,
+    requestGuardrailConfirm,
   })
 
   // ---- Session CRUD hook ----
@@ -187,6 +201,7 @@ function TmuxPage() {
     pushErrorToast,
     pushSuccessToast,
     pendingCreateSessionsRef: inspector.pendingCreateSessionsRef,
+    requestGuardrailConfirm,
   })
 
   // Wire the forwarding ref
@@ -318,7 +333,9 @@ function TmuxPage() {
           onAttach={sessionCRUD.activateSession}
           onRename={sessionCRUD.handleOpenRenameDialogForSession}
           onDetach={sessionCRUD.detachSession}
-          onKill={sessionCRUD.setKillDialogSession}
+          onKill={(name) => {
+            void sessionCRUD.killSession(name)
+          }}
           onChangeIcon={sessionCRUD.setSessionIcon}
         />
       }
@@ -348,7 +365,9 @@ function TmuxPage() {
         onSplitPaneHorizontal={() => inspector.splitPane('horizontal')}
         onClosePane={inspector.closePane}
         onRenameTab={sessionCRUD.handleOpenRenameDialogForSession}
-        onKillTab={sessionCRUD.setKillDialogSession}
+        onKillTab={(name) => {
+          void sessionCRUD.killSession(name)
+        }}
         onSelectTab={sessionCRUD.activateSession}
         onCloseTab={sessionCRUD.closeTab}
         onReorderTabs={sessionCRUD.reorderTabs}
@@ -437,18 +456,15 @@ function TmuxPage() {
         }}
       />
 
-      <KillSessionDialog
-        session={sessionCRUD.killDialogSession}
-        onOpenChange={() => sessionCRUD.setKillDialogSession(null)}
-        onConfirm={sessionCRUD.handleConfirmKill}
-      />
-
       <GuardrailConfirmDialog
-        open={sessionCRUD.guardrailConfirm !== null}
-        ruleName={sessionCRUD.guardrailConfirm?.ruleName ?? ''}
-        message={sessionCRUD.guardrailConfirm?.message ?? ''}
-        onOpenChange={() => sessionCRUD.handleGuardrailCancel()}
-        onConfirm={sessionCRUD.handleGuardrailConfirm}
+        open={guardrailConfirm !== null}
+        ruleName={guardrailConfirm?.ruleName ?? ''}
+        message={guardrailConfirm?.message ?? ''}
+        onOpenChange={() => setGuardrailConfirm(null)}
+        onConfirm={() => {
+          guardrailConfirm?.onConfirm()
+          setGuardrailConfirm(null)
+        }}
       />
 
       <RenameDialog
