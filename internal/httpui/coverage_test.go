@@ -985,8 +985,8 @@ func TestServeDistPath(t *testing.T) {
 		{"dot_path", ".", false},
 		{"slash_only", "/", false},
 		{"nonexistent_file", "does-not-exist-xyz.html", false},
-		// index.html exists in the embedded dist (committed to git).
-		{"index_html", "index.html", true},
+		// index.placeholder.html is committed to git (index.html is build-generated).
+		{"placeholder_html", "index.placeholder.html", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
