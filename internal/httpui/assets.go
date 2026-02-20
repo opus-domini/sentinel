@@ -6,19 +6,30 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 
 	clientassets "github.com/opus-domini/sentinel/client"
 )
 
-var distFS fs.FS
+var (
+	distFS     fs.FS
+	distFSInit sync.Once
+	distFSErr  error
+)
+
+func ensureDistFS() error {
+	distFSInit.Do(func() {
+		distFS, distFSErr = fs.Sub(clientassets.DistFS, "dist")
+	})
+	return distFSErr
+}
 
 func registerAssetRoutes(mux *http.ServeMux) error {
-	var err error
-	distFS, err = fs.Sub(clientassets.DistFS, "dist")
-	if err != nil {
+	if err := ensureDistFS(); err != nil {
 		return fmt.Errorf("embed dist: %w", err)
 	}
 
+	var err error
 	assetsFS, err := fs.Sub(distFS, "assets")
 	if err == nil {
 		mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
@@ -27,6 +38,10 @@ func registerAssetRoutes(mux *http.ServeMux) error {
 }
 
 func serveDistPath(w http.ResponseWriter, r *http.Request, filePath string) bool {
+	if ensureDistFS() != nil {
+		return false
+	}
+
 	clean := strings.TrimPrefix(path.Clean("/"+filePath), "/")
 	if clean == "." || clean == "" {
 		return false
