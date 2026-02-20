@@ -1875,4 +1875,3 @@ func TestReadSystemctlStateReturnsNonEmpty(t *testing.T) {
 		t.Fatal("expected non-empty state")
 	}
 }
-

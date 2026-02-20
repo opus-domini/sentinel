@@ -30,6 +30,12 @@ linters:
         # crypto/sha1 is mandated by RFC 6455 (WebSocket handshake)
         - G401
         - G505
+        # Taint-analysis rules produce false positives on structured logging,
+        # internal file paths, and httptest clients.
+        - G703
+        - G704
+        - G705
+        - G706
 
 issues:
   max-issues-per-linter: 0

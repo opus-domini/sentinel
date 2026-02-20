@@ -207,8 +207,8 @@ func TestBuildWebhookPayload(t *testing.T) {
 
 	params := RunParams{
 		Job: store.OpsRunbookRun{
-			ID:         "run-42",
-			RunbookID:  "rb-7",
+			ID:          "run-42",
+			RunbookID:   "rb-7",
 			RunbookName: "Deploy Service",
 		},
 		Source: "scheduler",
@@ -276,7 +276,7 @@ func TestBuildWebhookPayload(t *testing.T) {
 	if payload.Job.Steps[0].DurationMs != 120 {
 		t.Fatalf("steps[0].durationMs = %d, want 120", payload.Job.Steps[0].DurationMs)
 	}
-	if payload.Job.Steps[1].Type != "command" {
+	if payload.Job.Steps[1].Type != "command" { //nolint:goconst // test assertion, not worth a constant
 		t.Fatalf("steps[1].type = %q, want command", payload.Job.Steps[1].Type)
 	}
 	if payload.Job.Steps[2].Title != "Verify" {
