@@ -38,7 +38,12 @@ jobs:
       - name: Verify go.mod is tidy
         run: go mod tidy && git diff --exit-code go.mod go.sum
 
-      - run: go test -race -v ./...
+      - run: go test -race -coverprofile=coverage.txt -v ./...
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       - run: go test -tags=contract -run '^TestContract' -v ./...
       - run: ./scripts/docs-check.sh
       - run: go build -trimpath -o /tmp/sentinel ./cmd/sentinel
