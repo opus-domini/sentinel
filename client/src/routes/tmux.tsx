@@ -13,6 +13,7 @@ import type { RuntimeMetrics } from '@/hooks/tmuxTypes'
 import AppShell from '@/components/layout/AppShell'
 import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
+import GuardrailsDialog from '@/components/tmux/GuardrailsDialog'
 import TimelineDialog from '@/components/tmux/TimelineDialog'
 import RecoveryDialog from '@/components/tmux/RecoveryDialog'
 import GuardrailConfirmDialog from '@/components/GuardrailConfirmDialog'
@@ -40,6 +41,9 @@ function TmuxPage() {
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
   const queryClient = useQueryClient()
+
+  // ---- Guardrails dialog state ----
+  const [guardrailsOpen, setGuardrailsOpen] = useState(false)
 
   // ---- Tabs state ----
   const [tabsState, dispatchTabs] = useReducer(
@@ -351,12 +355,18 @@ function TmuxPage() {
         onFocusTerminal={focusTerminal}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
+        onOpenGuardrails={() => setGuardrailsOpen(true)}
         onOpenSnapshots={() => recovery.setRecoveryDialogOpen(true)}
         onOpenTimeline={() => {
           timeline.setTimelineOpen(true)
           void timeline.loadTimeline({ quiet: true })
         }}
         onOpenCreateSession={() => layout.setSidebarOpen(true)}
+      />
+
+      <GuardrailsDialog
+        open={guardrailsOpen}
+        onOpenChange={setGuardrailsOpen}
       />
 
       <TimelineDialog

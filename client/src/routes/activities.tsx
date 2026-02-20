@@ -9,6 +9,7 @@ import type {
 } from '@/types'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
+import { TooltipHelper } from '@/components/TooltipHelper'
 import ActivitiesSidebar from '@/components/ActivitiesSidebar'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -223,16 +224,17 @@ function ActivitiesPage() {
             <span className="truncate text-muted-foreground">activities</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
-              onClick={refreshPage}
-              aria-label="Refresh activities"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
+            <TooltipHelper content="Refresh">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 cursor-pointer"
+                onClick={refreshPage}
+                aria-label="Refresh activities"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipHelper>
             <ConnectionBadge state={connectionState} />
           </div>
         </header>

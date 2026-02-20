@@ -1,7 +1,8 @@
-import { History, Menu, Minus, Plus, Shield } from 'lucide-react'
+import { Archive, History, Menu, Minus, Plus, ShieldAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import ConnectionBadge from './ConnectionBadge'
 import SessionTabs from './SessionTabs'
+import { TooltipHelper } from './TooltipHelper'
 import TerminalControls from './terminal/TerminalControls'
 import PaneStrip from './tmux/PaneStrip'
 import TerminalHost from './tmux/TerminalHost'
@@ -46,6 +47,7 @@ type TmuxTerminalPanelProps = {
   onFocusTerminal?: () => void
   onZoomIn?: () => void
   onZoomOut?: () => void
+  onOpenGuardrails?: () => void
   onOpenSnapshots?: () => void
   onOpenTimeline?: () => void
   onOpenCreateSession?: () => void
@@ -85,6 +87,7 @@ export default function TmuxTerminalPanel({
   onFocusTerminal,
   onZoomIn,
   onZoomOut,
+  onOpenGuardrails,
   onOpenSnapshots,
   onOpenTimeline,
   onOpenCreateSession,
@@ -191,31 +194,46 @@ export default function TmuxTerminalPanel({
           <span className="text-muted-foreground">/</span>
           <span className="truncate text-muted-foreground">tmux</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-6 gap-1 px-2 text-[11px]"
-            onClick={onOpenSnapshots}
-            disabled={!onOpenSnapshots}
-            aria-label="Open recovery snapshots"
-          >
-            <Shield className="h-3 w-3" />
-            Snapshots
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-6 gap-1 px-2 text-[11px]"
-            onClick={onOpenTimeline}
-            disabled={!onOpenTimeline}
-            aria-label="Open operations timeline"
-          >
-            <History className="h-3 w-3" />
-            Timeline
-          </Button>
+        <div className="flex items-center gap-1">
+          <TooltipHelper content="Guardrails">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onOpenGuardrails}
+              disabled={!onOpenGuardrails}
+              aria-label="Guardrails"
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHelper>
+          <TooltipHelper content="Recovery snapshots">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onOpenSnapshots}
+              disabled={!onOpenSnapshots}
+              aria-label="Recovery snapshots"
+            >
+              <Archive className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHelper>
+          <TooltipHelper content="Timeline">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onOpenTimeline}
+              disabled={!onOpenTimeline}
+              aria-label="Timeline"
+            >
+              <History className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHelper>
           <ConnectionBadge state={connectionState} />
         </div>
       </header>

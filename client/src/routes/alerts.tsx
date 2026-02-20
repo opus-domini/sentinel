@@ -11,6 +11,7 @@ import type {
 import AppShell from '@/components/layout/AppShell'
 import AlertsSidebar from '@/components/AlertsSidebar'
 import ConnectionBadge from '@/components/ConnectionBadge'
+import { TooltipHelper } from '@/components/TooltipHelper'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -302,138 +303,144 @@ function AlertsPage() {
               aria-label={showResolved ? 'Hide resolved' : 'Show resolved'}
             >
               {showResolved ? (
-                <EyeOff className="h-3.5 w-3.5" />
-              ) : (
                 <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5" />
               )}
-              {showResolved ? 'Hide resolved' : 'Show resolved'}
+              <span className="hidden md:inline">Resolved</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
-              onClick={refreshPage}
-              aria-label="Refresh alerts"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
+            <TooltipHelper content="Refresh">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 cursor-pointer"
+                onClick={refreshPage}
+                aria-label="Refresh alerts"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipHelper>
             <ConnectionBadge state={connectionState} />
           </div>
         </header>
 
         <section className="grid min-h-0 grid-rows-[1fr] overflow-hidden p-3">
           <div className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
-            <ScrollArea className="h-full min-h-0">
-              <div className="grid gap-1.5 p-2">
-                {alertsLoading &&
-                  Array.from({ length: 5 }).map((_, idx) => (
-                    <div
-                      key={`alerts-skeleton-${idx}`}
-                      className="h-24 animate-pulse rounded border border-border-subtle bg-surface-elevated"
-                    />
-                  ))}
-                {filteredAlerts.map((alert) => (
-                  <div
-                    key={alert.id}
-                    className={cn(
-                      'grid gap-2 rounded border px-2.5 py-2',
-                      alert.status === 'resolved'
-                        ? 'border-border-subtle bg-surface-elevated opacity-60'
-                        : alert.severity === 'error'
-                          ? 'border-red-500/45 bg-red-500/10'
-                          : 'border-amber-500/45 bg-amber-500/10',
-                    )}
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-[12px] font-semibold">
-                          {alert.title}
-                        </p>
-                        <p className="truncate text-[10px] text-muted-foreground">
-                          {alert.resource} • {alert.occurrences}x
-                        </p>
-                      </div>
-                      <span className="shrink-0 rounded-full border border-border-subtle bg-surface-overlay px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        {alert.status}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      {alert.message}
-                    </p>
-                    {alert.status === 'open' && (
-                      <div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-[11px]"
-                          onClick={() => ackAlert(alert.id)}
-                        >
-                          Ack
-                        </Button>
-                      </div>
-                    )}
-                    {alert.status === 'resolved' && (
-                      <div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 gap-1 text-[11px]"
-                          onClick={() => dismissAlert(alert.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Dismiss
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {!alertsLoading && filteredAlerts.length === 0 && (
-                  <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
-                    <p>
-                      {selectedSeverity === 'all'
-                        ? 'No active alerts.'
-                        : `No ${selectedSeverity} alerts.`}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedSeverity !== 'all' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-[11px]"
-                          onClick={() => setSelectedSeverity('all')}
-                        >
-                          Show all severities
-                        </Button>
-                      )}
+            {!alertsLoading &&
+            filteredAlerts.length === 0 &&
+            alertsError === '' ? (
+              <div className="grid h-full place-items-center">
+                <div className="text-center">
+                  <p className="text-[13px] text-muted-foreground">
+                    {selectedSeverity === 'all'
+                      ? 'No active alerts.'
+                      : `No ${selectedSeverity} alerts.`}
+                  </p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    {selectedSeverity !== 'all' && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="h-7 text-[11px]"
-                        onClick={refreshPage}
+                        onClick={() => setSelectedSeverity('all')}
                       >
-                        Refresh alerts
+                        Show all severities
                       </Button>
-                    </div>
-                  </div>
-                )}
-                {alertsError !== '' && (
-                  <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3">
-                    <p className="text-[12px] text-destructive-foreground">
-                      {alertsError}
-                    </p>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 w-fit text-[11px]"
+                      className="h-7 text-[11px]"
                       onClick={refreshPage}
                     >
-                      Try again
+                      Refresh alerts
                     </Button>
                   </div>
-                )}
+                </div>
               </div>
-            </ScrollArea>
+            ) : (
+              <ScrollArea className="h-full min-h-0">
+                <div className="grid gap-1.5 p-2">
+                  {alertsLoading &&
+                    Array.from({ length: 5 }).map((_, idx) => (
+                      <div
+                        key={`alerts-skeleton-${idx}`}
+                        className="h-24 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+                      />
+                    ))}
+                  {filteredAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={cn(
+                        'grid gap-2 rounded border px-2.5 py-2',
+                        alert.status === 'resolved'
+                          ? 'border-border-subtle bg-surface-elevated opacity-60'
+                          : alert.severity === 'error'
+                            ? 'border-red-500/45 bg-red-500/10'
+                            : 'border-amber-500/45 bg-amber-500/10',
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-[12px] font-semibold">
+                            {alert.title}
+                          </p>
+                          <p className="truncate text-[10px] text-muted-foreground">
+                            {alert.resource} • {alert.occurrences}x
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-border-subtle bg-surface-overlay px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {alert.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {alert.message}
+                      </p>
+                      {alert.status === 'open' && (
+                        <div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[11px]"
+                            onClick={() => ackAlert(alert.id)}
+                          >
+                            Ack
+                          </Button>
+                        </div>
+                      )}
+                      {alert.status === 'resolved' && (
+                        <div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-[11px]"
+                            onClick={() => dismissAlert(alert.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Dismiss
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {alertsError !== '' && (
+                    <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3">
+                      <p className="text-[12px] text-destructive-foreground">
+                        {alertsError}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-fit text-[11px]"
+                        onClick={refreshPage}
+                      >
+                        Try again
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            )}
           </div>
         </section>
 

@@ -101,7 +101,7 @@ export default function RecoveryDialog(props: RecoveryDialogProps) {
           if (nextOpen) onRefresh()
         }}
       >
-        <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
+        <DialogContent className="flex min-h-[24rem] max-h-[88vh] flex-col overflow-hidden sm:min-h-[38rem] sm:max-w-6xl">
           <DialogHeader>
             <DialogTitle>Recovery Center</DialogTitle>
             <DialogDescription>

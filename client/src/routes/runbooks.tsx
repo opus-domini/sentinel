@@ -652,16 +652,17 @@ function RunbooksPage() {
             <span className="truncate text-muted-foreground">runbooks</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
-              onClick={() => void refreshRunbooks()}
-              aria-label="Refresh runbooks"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
+            <TooltipHelper content="Refresh">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 cursor-pointer"
+                onClick={() => void refreshRunbooks()}
+                aria-label="Refresh runbooks"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipHelper>
             <ConnectionBadge state={connectionState} />
           </div>
         </header>

@@ -14,7 +14,6 @@ import { Route as ServicesRouteImport } from './routes/services'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as OpsRouteImport } from './routes/ops'
 import { Route as MetricsRouteImport } from './routes/metrics'
-import { Route as GuardrailsRouteImport } from './routes/guardrails'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as ActivitiesRouteImport } from './routes/activities'
 import { Route as IndexRouteImport } from './routes/index'
@@ -44,11 +43,6 @@ const MetricsRoute = MetricsRouteImport.update({
   path: '/metrics',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GuardrailsRoute = GuardrailsRouteImport.update({
-  id: '/guardrails',
-  path: '/guardrails',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AlertsRoute = AlertsRouteImport.update({
   id: '/alerts',
   path: '/alerts',
@@ -69,7 +63,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
   '/alerts': typeof AlertsRoute
-  '/guardrails': typeof GuardrailsRoute
   '/metrics': typeof MetricsRoute
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
@@ -80,7 +73,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
   '/alerts': typeof AlertsRoute
-  '/guardrails': typeof GuardrailsRoute
   '/metrics': typeof MetricsRoute
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
@@ -92,7 +84,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
   '/alerts': typeof AlertsRoute
-  '/guardrails': typeof GuardrailsRoute
   '/metrics': typeof MetricsRoute
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
@@ -105,7 +96,6 @@ export interface FileRouteTypes {
     | '/'
     | '/activities'
     | '/alerts'
-    | '/guardrails'
     | '/metrics'
     | '/ops'
     | '/runbooks'
@@ -116,7 +106,6 @@ export interface FileRouteTypes {
     | '/'
     | '/activities'
     | '/alerts'
-    | '/guardrails'
     | '/metrics'
     | '/ops'
     | '/runbooks'
@@ -127,7 +116,6 @@ export interface FileRouteTypes {
     | '/'
     | '/activities'
     | '/alerts'
-    | '/guardrails'
     | '/metrics'
     | '/ops'
     | '/runbooks'
@@ -139,7 +127,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivitiesRoute: typeof ActivitiesRoute
   AlertsRoute: typeof AlertsRoute
-  GuardrailsRoute: typeof GuardrailsRoute
   MetricsRoute: typeof MetricsRoute
   OpsRoute: typeof OpsRoute
   RunbooksRoute: typeof RunbooksRoute
@@ -184,13 +171,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MetricsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/guardrails': {
-      id: '/guardrails'
-      path: '/guardrails'
-      fullPath: '/guardrails'
-      preLoaderRoute: typeof GuardrailsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/alerts': {
       id: '/alerts'
       path: '/alerts'
@@ -219,7 +199,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivitiesRoute: ActivitiesRoute,
   AlertsRoute: AlertsRoute,
-  GuardrailsRoute: GuardrailsRoute,
   MetricsRoute: MetricsRoute,
   OpsRoute: OpsRoute,
   RunbooksRoute: RunbooksRoute,
