@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2](https://github.com/opus-domini/sentinel/compare/v0.4.1...v0.4.2) (2026-02-20)
+
+
+### Bug Fixes
+
+* extract orphan error constant to satisfy goconst lint ([46be998](https://github.com/opus-domini/sentinel/commit/46be998903a2e771d3b9ddffcfc395779a3fca8a))
+* reconcile orphaned runbook runs stuck in running/queued on startup ([7326125](https://github.com/opus-domini/sentinel/commit/7326125a0808cda0eff69648ad149f52e9f02cea))
+* use inline confirm for runbook job delete, matching alerts pattern ([ca5f9bf](https://github.com/opus-domini/sentinel/commit/ca5f9bff7441670d56bfc5f9f64ed11eeead6720))
+
 ## [0.4.1](https://github.com/opus-domini/sentinel/compare/v0.4.0...v0.4.1) (2026-02-20)
 
 
