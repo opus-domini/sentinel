@@ -13,6 +13,7 @@ import type { RuntimeMetrics } from '@/hooks/tmuxTypes'
 import AppShell from '@/components/layout/AppShell'
 import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
+import CreateSessionDialog from '@/components/sidebar/CreateSessionDialog'
 import GuardrailsDialog from '@/components/tmux/GuardrailsDialog'
 import TimelineDialog from '@/components/tmux/TimelineDialog'
 import RecoveryDialog from '@/components/tmux/RecoveryDialog'
@@ -44,6 +45,7 @@ function TmuxPage() {
 
   // ---- Guardrails dialog state ----
   const [guardrailsOpen, setGuardrailsOpen] = useState(false)
+  const [createSessionOpen, setCreateSessionOpen] = useState(false)
 
   // ---- Tabs state ----
   const [tabsState, dispatchTabs] = useReducer(
@@ -361,12 +363,21 @@ function TmuxPage() {
           timeline.setTimelineOpen(true)
           void timeline.loadTimeline({ quiet: true })
         }}
-        onOpenCreateSession={() => layout.setSidebarOpen(true)}
+        onOpenCreateSession={() => setCreateSessionOpen(true)}
       />
 
       <GuardrailsDialog
         open={guardrailsOpen}
         onOpenChange={setGuardrailsOpen}
+      />
+
+      <CreateSessionDialog
+        open={createSessionOpen}
+        onOpenChange={setCreateSessionOpen}
+        defaultCwd={defaultCwd}
+        onCreate={(name, cwd) => {
+          void sessionCRUD.createSession(name, cwd)
+        }}
       />
 
       <TimelineDialog
