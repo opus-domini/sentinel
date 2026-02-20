@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.4](https://github.com/opus-domini/sentinel/compare/v0.4.3...v0.4.4) (2026-02-20)
+
+
+### Bug Fixes
+
+* new tmux windows inherit session's working directory ([e16b50f](https://github.com/opus-domini/sentinel/commit/e16b50f567d58ef2435fa8a46d983c9c96f68961))
+* open create session dialog directly from empty state button ([a0d29a8](https://github.com/opus-domini/sentinel/commit/a0d29a811299e44558074923c4f89549b2150d74))
+* skip systemd user scope when running as root ([2f5481e](https://github.com/opus-domini/sentinel/commit/2f5481ebc310ddd1e12e0de3c8bc2b9e844e5ac2))
+
 ## [0.4.3](https://github.com/opus-domini/sentinel/compare/v0.4.2...v0.4.3) (2026-02-20)
 
 
