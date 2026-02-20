@@ -4720,6 +4720,51 @@ func TestCreateRunbookRejectsInvalidStepType(t *testing.T) {
 	}
 }
 
+func TestValidateWebhookURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"empty is valid", "", false},
+		{"https valid", "https://hooks.example.com/sentinel", false},
+		{"http valid", "http://localhost:8080/hook", false},
+		{"ftp rejected", "ftp://files.example.com/hook", true},
+		{"no scheme", "hooks.example.com/sentinel", true},
+		{"no host", "https://", true},
+		{"javascript rejected", "javascript:alert(1)", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateWebhookURL(tc.url)
+			if tc.wantErr && err == nil {
+				t.Fatalf("validateWebhookURL(%q) = nil, want error", tc.url)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("validateWebhookURL(%q) = %v, want nil", tc.url, err)
+			}
+		})
+	}
+}
+
+func TestCreateRunbookRejectsInvalidWebhookURL(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+
+	body := `{"name":"bad-hook","webhookURL":"ftp://not-http","steps":[{"type":"command","title":"Build","command":"make"}]}`
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(body))
+	h.createOpsRunbook(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestTriggerCronScheduleRecomputesNextRunAt(t *testing.T) {
 	t.Parallel()
 

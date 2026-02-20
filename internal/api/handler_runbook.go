@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -182,6 +183,10 @@ func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
+	if err := validateWebhookURL(req.WebhookURL); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -213,6 +218,10 @@ func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	}
 	req.ID = runbookID
 	if err := validateRunbookSteps(req.Steps); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if err := validateWebhookURL(req.WebhookURL); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
@@ -283,6 +292,23 @@ func validateRunbookSteps(steps []store.OpsRunbookStep) error {
 		if strings.TrimSpace(step.Title) == "" {
 			return fmt.Errorf("step %d: title is required", i)
 		}
+	}
+	return nil
+}
+
+func validateWebhookURL(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("webhook URL is invalid")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("webhook URL must use http or https")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("webhook URL must include a host")
 	}
 	return nil
 }

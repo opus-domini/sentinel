@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Clock, Lock, LockOpen, Plus } from 'lucide-react'
+import { Clock, Lock, LockOpen, Plus, Webhook } from 'lucide-react'
 import type { OpsRunbook, OpsRunbookRun, OpsSchedule } from '@/types'
 import RunbooksHelpDialog from '@/components/RunbooksHelpDialog'
 import SidebarShell from '@/components/sidebar/SidebarShell'
@@ -207,6 +207,9 @@ export default function RunbooksSidebar({
                       />
                       {schedules.some((s) => s.runbookId === runbook.id) && (
                         <Clock className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
+                      )}
+                      {runbook.webhookURL && (
+                        <Webhook className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
                       )}
                       <span className="min-w-0 flex-1 truncate font-semibold">
                         {runbook.name}

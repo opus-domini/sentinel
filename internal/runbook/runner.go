@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"time"
 
+	fastshot "github.com/opus-domini/fast-shot"
+
 	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -104,7 +106,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	if err != nil {
 		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second) //nolint:govet // finCancel is deferred
 		defer finCancel()
-		finishRun(finCtx, repo, emit, params, 0, "", err.Error(), "[]")
+		finishRun(finCtx, repo, emit, params, 0, "", err.Error(), "[]", "")
 		return
 	}
 	steps := make([]Step, len(rb.Steps))
@@ -208,10 +210,10 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	// (trace IDs) while shedding the done channel.
 	finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer finCancel()
-	finishRun(finCtx, repo, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON))
+	finishRun(finCtx, repo, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON), rb.WebhookURL)
 }
 
-func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, completed int, lastStep, errMsg, stepResultsJSON string) {
+func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, completed int, lastStep, errMsg, stepResultsJSON, webhookURL string) {
 	status := runnerStatusSucceeded
 	if errMsg != "" {
 		status = runnerStatusFailed
@@ -301,7 +303,104 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		}
 	}
 
+	if webhookURL != "" {
+		fireWebhook(ctx, webhookURL, buildWebhookPayload(params, updatedJob))
+	}
+
 	if params.OnFinish != nil {
 		params.OnFinish(ctx, status)
 	}
+}
+
+type webhookPayload struct {
+	Event   string         `json:"event"`
+	SentAt  string         `json:"sentAt"`
+	Runbook webhookRunbook `json:"runbook"`
+	Job     webhookJob     `json:"job"`
+}
+
+type webhookRunbook struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type webhookJob struct {
+	ID             string        `json:"id"`
+	Status         string        `json:"status"`
+	Source         string        `json:"source"`
+	TotalSteps     int           `json:"totalSteps"`
+	CompletedSteps int           `json:"completedSteps"`
+	Error          string        `json:"error,omitempty"`
+	StartedAt      string        `json:"startedAt,omitempty"`
+	FinishedAt     string        `json:"finishedAt,omitempty"`
+	Steps          []webhookStep `json:"steps,omitempty"`
+}
+
+type webhookStep struct {
+	Index      int    `json:"index"`
+	Title      string `json:"title"`
+	Type       string `json:"type"`
+	Output     string `json:"output,omitempty"`
+	Error      string `json:"error,omitempty"`
+	DurationMs int64  `json:"durationMs"`
+}
+
+func buildWebhookPayload(params RunParams, job store.OpsRunbookRun) webhookPayload {
+	steps := make([]webhookStep, len(job.StepResults))
+	for i, sr := range job.StepResults {
+		steps[i] = webhookStep{
+			Index:      sr.StepIndex,
+			Title:      sr.Title,
+			Type:       sr.Type,
+			Output:     sr.Output,
+			Error:      sr.Error,
+			DurationMs: sr.DurationMs,
+		}
+	}
+
+	return webhookPayload{
+		Event:  "runbook.completed",
+		SentAt: time.Now().UTC().Format(time.RFC3339),
+		Runbook: webhookRunbook{
+			ID:   params.Job.RunbookID,
+			Name: params.Job.RunbookName,
+		},
+		Job: webhookJob{
+			ID:             job.ID,
+			Status:         job.Status,
+			Source:         params.Source,
+			TotalSteps:     job.TotalSteps,
+			CompletedSteps: job.CompletedSteps,
+			Error:          job.Error,
+			StartedAt:      job.StartedAt,
+			FinishedAt:     job.FinishedAt,
+			Steps:          steps,
+		},
+	}
+}
+
+func fireWebhook(ctx context.Context, webhookURL string, payload any) {
+	client := fastshot.NewClient(webhookURL).
+		Config().SetTimeout(10 * time.Second).
+		Build()
+
+	resp, err := client.POST("").
+		Body().AsJSON(payload).
+		Context().Set(ctx).
+		Retry().SetExponentialBackoffWithJitter(1*time.Second, 3, 2.0).
+		Retry().WithMaxDelay(5 * time.Second).
+		Retry().WithRetryCondition(func(r *fastshot.Response) bool {
+		return r.Status().Is5xxServerError()
+	}).
+		Send()
+	if err != nil {
+		slog.Warn("webhook delivery failed", "url", webhookURL, "error", err)
+		return
+	}
+	defer resp.Body().Close()
+	if resp.Status().IsError() {
+		slog.Warn("webhook delivery rejected", "url", webhookURL, "status", resp.Status().Code())
+		return
+	}
+	slog.Info("webhook delivered", "url", webhookURL, "status", resp.Status().Code())
 }

@@ -148,6 +148,53 @@ func TestInsertOpsRunbook(t *testing.T) {
 			t.Fatalf("expected error for duplicate ID")
 		}
 	})
+
+	t.Run("webhook URL round-trip", func(t *testing.T) {
+		rb, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+			ID:         "test.webhook",
+			Name:       "Webhook Runbook",
+			WebhookURL: "https://hooks.example.com/sentinel",
+			Enabled:    true,
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsRunbook: %v", err)
+		}
+		if rb.WebhookURL != "https://hooks.example.com/sentinel" {
+			t.Fatalf("webhookURL = %q, want https://hooks.example.com/sentinel", rb.WebhookURL)
+		}
+
+		// Verify it persists through list.
+		all, err := s.ListOpsRunbooks(ctx)
+		if err != nil {
+			t.Fatalf("ListOpsRunbooks: %v", err)
+		}
+		var found bool
+		for _, r := range all {
+			if r.ID == "test.webhook" {
+				found = true
+				if r.WebhookURL != "https://hooks.example.com/sentinel" {
+					t.Fatalf("list webhookURL = %q, want https://hooks.example.com/sentinel", r.WebhookURL)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("test.webhook not found in list")
+		}
+	})
+
+	t.Run("empty webhook URL defaults to empty string", func(t *testing.T) {
+		rb, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+			ID:      "test.no.webhook",
+			Name:    "No Webhook",
+			Enabled: true,
+		})
+		if err != nil {
+			t.Fatalf("InsertOpsRunbook: %v", err)
+		}
+		if rb.WebhookURL != "" {
+			t.Fatalf("webhookURL = %q, want empty", rb.WebhookURL)
+		}
+	})
 }
 
 func TestUpdateOpsRunbook(t *testing.T) {
@@ -228,6 +275,33 @@ func TestUpdateOpsRunbook(t *testing.T) {
 		})
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
+		}
+	})
+
+	t.Run("update webhook URL", func(t *testing.T) {
+		updated, err := s.UpdateOpsRunbook(ctx, OpsRunbookWrite{
+			ID:         "update.me",
+			Name:       "Updated",
+			WebhookURL: "https://hooks.example.com/notify",
+		})
+		if err != nil {
+			t.Fatalf("UpdateOpsRunbook: %v", err)
+		}
+		if updated.WebhookURL != "https://hooks.example.com/notify" {
+			t.Fatalf("webhookURL = %q, want https://hooks.example.com/notify", updated.WebhookURL)
+		}
+
+		// Clear webhook URL.
+		cleared, err := s.UpdateOpsRunbook(ctx, OpsRunbookWrite{
+			ID:         "update.me",
+			Name:       "Updated",
+			WebhookURL: "",
+		})
+		if err != nil {
+			t.Fatalf("UpdateOpsRunbook(clear): %v", err)
+		}
+		if cleared.WebhookURL != "" {
+			t.Fatalf("webhookURL = %q, want empty", cleared.WebhookURL)
 		}
 	})
 }
@@ -440,6 +514,35 @@ func TestUpdateOpsRunbookRun(t *testing.T) {
 		})
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
+		}
+	})
+
+	t.Run("empty StartedAt preserves previous value", func(t *testing.T) {
+		// Set startedAt first.
+		started := now.Format(time.RFC3339)
+		if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+			RunID:     run.ID,
+			Status:    opsRunbookStatusRunning,
+			StartedAt: started,
+		}); err != nil {
+			t.Fatalf("set startedAt: %v", err)
+		}
+
+		// Update without startedAt — should NOT clobber it.
+		finished := now.Add(10 * time.Second).Format(time.RFC3339)
+		updated, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+			RunID:      run.ID,
+			Status:     opsRunbookStatusSucceeded,
+			FinishedAt: finished,
+		})
+		if err != nil {
+			t.Fatalf("UpdateOpsRunbookRun: %v", err)
+		}
+		if updated.StartedAt != started {
+			t.Fatalf("startedAt = %q, want %q (should be preserved)", updated.StartedAt, started)
+		}
+		if updated.FinishedAt != finished {
+			t.Fatalf("finishedAt = %q, want %q", updated.FinishedAt, finished)
 		}
 	})
 }

@@ -59,6 +59,7 @@ function runbookToDraft(runbook: OpsRunbook): RunbookDraft {
     name: runbook.name,
     description: runbook.description,
     enabled: runbook.enabled,
+    webhookURL: runbook.webhookURL ?? '',
     steps: runbook.steps.map(
       (step): RunbookStepDraft => ({
         key: randomId(),
@@ -78,6 +79,7 @@ function createBlankDraft(): RunbookDraft {
     name: '',
     description: '',
     enabled: true,
+    webhookURL: '',
     steps: [createBlankStep()],
   }
 }
@@ -86,6 +88,17 @@ function validateDraft(draft: RunbookDraft): Record<string, string> {
   const errors: Record<string, string> = {}
   if (draft.name.trim() === '') {
     errors.name = 'Name is required'
+  }
+  const trimmedURL = draft.webhookURL.trim()
+  if (trimmedURL !== '') {
+    try {
+      const u = new URL(trimmedURL)
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        errors.webhookURL = 'Must use http or https'
+      }
+    } catch {
+      errors.webhookURL = 'Invalid URL'
+    }
   }
   if (draft.steps.length === 0) {
     errors.steps = 'At least one step is required'
@@ -109,6 +122,7 @@ function draftToPayload(draft: RunbookDraft) {
     name: draft.name.trim(),
     description: draft.description.trim(),
     enabled: draft.enabled,
+    webhookURL: draft.webhookURL.trim(),
     steps: draft.steps.map((step) => {
       const base: Record<string, string> = {
         type: step.type,

@@ -250,6 +250,7 @@ export type OpsRunbook = {
   name: string
   description: string
   enabled: boolean
+  webhookURL?: string
   steps: Array<OpsRunbookStep>
   createdAt: string
   updatedAt: string

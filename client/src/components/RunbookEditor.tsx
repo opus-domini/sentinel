@@ -12,6 +12,7 @@ export type RunbookDraft = {
   name: string
   description: string
   enabled: boolean
+  webhookURL: string
   steps: Array<RunbookStepDraft>
 }
 
@@ -150,6 +151,27 @@ export function RunbookEditor({
               />
               <span className="text-muted-foreground">Enabled</span>
             </label>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                Webhook URL
+              </label>
+              <Input
+                className={cn(
+                  'mt-0.5 h-8 bg-surface-overlay text-[12px]',
+                  errors.webhookURL && 'border-red-500',
+                )}
+                placeholder="https://hooks.example.com/..."
+                value={draft.webhookURL}
+                onChange={(e) =>
+                  onDraftChange({ ...draft, webhookURL: e.target.value })
+                }
+              />
+              {errors.webhookURL && (
+                <p className="mt-0.5 text-[10px] text-red-400">
+                  {errors.webhookURL}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-2">

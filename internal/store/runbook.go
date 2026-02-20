@@ -33,6 +33,7 @@ type OpsRunbook struct {
 	Name        string           `json:"name"`
 	Description string           `json:"description"`
 	Enabled     bool             `json:"enabled"`
+	WebhookURL  string           `json:"webhookURL"`
 	Steps       []OpsRunbookStep `json:"steps"`
 	CreatedAt   string           `json:"createdAt"`
 	UpdatedAt   string           `json:"updatedAt"`
@@ -68,6 +69,7 @@ type OpsRunbookWrite struct {
 	Description string
 	Steps       []OpsRunbookStep
 	Enabled     bool
+	WebhookURL  string
 }
 
 type OpsRunbookRunUpdate struct {
@@ -149,12 +151,24 @@ func (s *Store) initRunbookSchema() error {
 			return err
 		}
 	}
+
+	// Schema migrations — silently ignore "duplicate column" errors.
+	migrations := []string{
+		`ALTER TABLE ops_runbooks ADD COLUMN webhook_url TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, m := range migrations {
+		if _, err := s.db.ExecContext(context.Background(), m); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, name, description, steps_json, enabled, created_at, updated_at
+		id, name, description, steps_json, enabled, webhook_url, created_at, updated_at
 	FROM ops_runbooks
 	ORDER BY name ASC`)
 	if err != nil {
@@ -175,6 +189,7 @@ func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 			&item.Description,
 			&stepsJSON,
 			&enabled,
+			&item.WebhookURL,
 			&item.CreatedAt,
 			&item.UpdatedAt,
 		); err != nil {
@@ -344,7 +359,7 @@ func (s *Store) getOpsRunbookByID(ctx context.Context, runbookID string) (OpsRun
 		enabled  int
 	)
 	err := s.db.QueryRowContext(ctx, `SELECT
-		id, name, description, steps_json, enabled, created_at, updated_at
+		id, name, description, steps_json, enabled, webhook_url, created_at, updated_at
 	FROM ops_runbooks
 	WHERE id = ?`, runbookID).Scan(
 		&out.ID,
@@ -352,6 +367,7 @@ func (s *Store) getOpsRunbookByID(ctx context.Context, runbookID string) (OpsRun
 		&out.Description,
 		&stepsRaw,
 		&enabled,
+		&out.WebhookURL,
 		&out.CreatedAt,
 		&out.UpdatedAt,
 	)
@@ -419,9 +435,9 @@ func (s *Store) InsertOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRun
 		enabled = 1
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbooks (
-		id, name, description, steps_json, enabled, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, now, now,
+		id, name, description, steps_json, enabled, webhook_url, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, strings.TrimSpace(w.WebhookURL), now, now,
 	); err != nil {
 		return OpsRunbook{}, err
 	}
@@ -451,9 +467,9 @@ func (s *Store) UpdateOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRun
 		enabled = 1
 	}
 	result, err := s.db.ExecContext(ctx, `UPDATE ops_runbooks SET
-		name = ?, description = ?, steps_json = ?, enabled = ?, updated_at = ?
+		name = ?, description = ?, steps_json = ?, enabled = ?, webhook_url = ?, updated_at = ?
 	WHERE id = ?`,
-		name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, now, id,
+		name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, strings.TrimSpace(w.WebhookURL), now, id,
 	)
 	if err != nil {
 		return OpsRunbook{}, err
@@ -496,16 +512,24 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 	if stepResults == "" {
 		stepResults = "[]"
 	}
+	startedAt := strings.TrimSpace(u.StartedAt)
+	finishedAt := strings.TrimSpace(u.FinishedAt)
 	if _, err := s.db.ExecContext(ctx, `UPDATE ops_runbook_runs SET
-		status = ?, completed_steps = ?, current_step = ?, error = ?, step_results = ?, started_at = ?, finished_at = ?
+		status = ?,
+		completed_steps = ?,
+		current_step = ?,
+		error = ?,
+		step_results = ?,
+		started_at = CASE WHEN ? != '' THEN ? ELSE started_at END,
+		finished_at = CASE WHEN ? != '' THEN ? ELSE finished_at END
 	WHERE id = ?`,
 		strings.TrimSpace(u.Status),
 		u.CompletedSteps,
 		strings.TrimSpace(u.CurrentStep),
 		strings.TrimSpace(u.Error),
 		stepResults,
-		strings.TrimSpace(u.StartedAt),
-		strings.TrimSpace(u.FinishedAt),
+		startedAt, startedAt,
+		finishedAt, finishedAt,
 		runID,
 	); err != nil {
 		return OpsRunbookRun{}, err
