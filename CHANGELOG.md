@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.3.12](https://github.com/opus-domini/sentinel/compare/v0.3.11...v0.3.12) (2026-02-20)
+
+
+### Features
+
+* add cookie_secure policy for auth cookie hardening ([85547e7](https://github.com/opus-domini/sentinel/commit/85547e7213ddc637510f230e9accad40e0be4b73))
+* UX feature audit — guardrails, alerts, timeline, recovery ([909cae9](https://github.com/opus-domini/sentinel/commit/909cae9ea5575d1634bb579b09613246eb16d3d1))
+* UX polish — guardrails dialog, icon-only headers, standardized dialogs ([0f9b436](https://github.com/opus-domini/sentinel/commit/0f9b436d1f761c6d77a2ded3f26041044ca72aa8))
+* UX polish — snapshots button, activities rename, guardrails cleanup, nav reorder ([24a1598](https://github.com/opus-domini/sentinel/commit/24a1598ff07a00deabf88c9e40f0b84c9b3a986c))
+
+
+### Bug Fixes
+
+* add loop observability, HealthChecker guards, and ticker doneCh ([63349cf](https://github.com/opus-domini/sentinel/commit/63349cf39a1d7258f64b39bf0351f436f06a188e))
+* **auth:** migrate token flow to HttpOnly cookie and lock unauthenticated UI ([ee54480](https://github.com/opus-domini/sentinel/commit/ee54480f31e29985c02402bea302d853908cc8ea))
+* enforce cookie_secure policy and block insecure remote startup ([8b996b2](https://github.com/opus-domini/sentinel/commit/8b996b231d1ebf2308ca37b1aa005d814f111651))
+* ensure deterministic terminal state for async jobs on cancellation ([ed62a67](https://github.com/opus-domini/sentinel/commit/ed62a67d83725c48ef3f1eba09533e8423f524f3))
+* harden domain invariants and close safety gaps ([53a2f1d](https://github.com/opus-domini/sentinel/commit/53a2f1dd31325c71e4886af6a29c761aa47c306c))
+* implement http.Hijacker on statusRecorder for WebSocket upgrade ([c2d95c0](https://github.com/opus-domini/sentinel/commit/c2d95c0da5053c0aa983ec71bdb3841431fb359e))
+* improve mobile responsiveness and add empty state placeholders ([6b3ab31](https://github.com/opus-domini/sentinel/commit/6b3ab3191c3fe1ca22edb775ccbcf76e5cff249e))
+* initialize recovery runCtx in constructor to prevent CLI panic ([0643411](https://github.com/opus-domini/sentinel/commit/064341135619e80cd2bed2a43a0cf7b73f3471c4))
+* limit scheduler goroutine burst and validate unit action inputs ([3b97c9d](https://github.com/opus-domini/sentinel/commit/3b97c9de89c3ace2ab847758faaa5b298694ed64))
+* preserve once schedule disabled state and bound catch-up burst ([573959a](https://github.com/opus-domini/sentinel/commit/573959a3a8ea487832df76730b25212fea79e23c))
+* refocus terminal after tmux window tab switch ([ccd3cce](https://github.com/opus-domini/sentinel/commit/ccd3cce890e6802a005d472e3aead6abc639cd11))
+* resolve ESLint duplicate import and type-only import errors ([30797aa](https://github.com/opus-domini/sentinel/commit/30797aab11ee54d631d2356a9868e45d746fecd1))
+* resolve ESLint duplicate import and type-only import errors ([62d796e](https://github.com/opus-domini/sentinel/commit/62d796e4da1099e515cfdb42434299595600b11a))
+* resolve ESLint duplicate import and type-only import errors ([9f5e524](https://github.com/opus-domini/sentinel/commit/9f5e524d7330b1901101b2e60951bbf50c477544))
+* resolve exhaustive switch and goconst lint issues ([e349620](https://github.com/opus-domini/sentinel/commit/e34962066d8780562b5b6d70512c2fe47610a4ba))
+* scheduler recurrence, manual trigger completion, and CLI restore contract ([7a2018f](https://github.com/opus-domini/sentinel/commit/7a2018feba855985f3fbff12792e71a28a4c5c8f))
+* wrap SideRail e2e test with LayoutContext provider ([8ffde77](https://github.com/opus-domini/sentinel/commit/8ffde77a5148ee71109d6df2a3bdd3fba853a1c7))
+
+
+### Refactors
+
+* add lifecycle context propagation and scheduler concurrency control ([19e315e](https://github.com/opus-domini/sentinel/commit/19e315e1c5ac4035a7e1083614ebf6f140da52bc))
+* consolidate WS auth checks and propagate request context to PTY ([03dc652](https://github.com/opus-domini/sentinel/commit/03dc6521258a9059b629c83df3482e2d2836b5e4))
+* create alerts/timeline domain packages and rename ops to services ([b939fd0](https://github.com/opus-domini/sentinel/commit/b939fd08266ed1e414d2aa99f85fddbd94b03021))
+* create single opsManager in composition root ([59019bc](https://github.com/opus-domini/sentinel/commit/59019bcd5758e5fff6efb9f442a6040fcb0da52d))
+* decompose store/ops.go into domain-specific files ([e9318f4](https://github.com/opus-domini/sentinel/commit/e9318f4715778007dee15fffbd8a8834aadde511))
+* decouple guardrails, runbook, scheduler from *store.Store ([8caaeef](https://github.com/opus-domini/sentinel/commit/8caaeef270939570a79bee17f400965cb1c99f3b))
+* decouple recovery and watchtower from *store.Store ([680074a](https://github.com/opus-domini/sentinel/commit/680074aef5c93e12bb1ec6754963f2e37f91e29b))
+* extract orchestrations from handlers into opsOrchestrator ([1ffaf3a](https://github.com/opus-domini/sentinel/commit/1ffaf3a6bc7afb48fca975d25c78d8b2deebc36d))
+* improve request logging and remove dead security code ([d9ee213](https://github.com/opus-domini/sentinel/commit/d9ee21351886cfc88fa20d5625a24a53625b13f8))
+* remove *store.Store from handler structs in api and httpui ([7f674ee](https://github.com/opus-domini/sentinel/commit/7f674eec53219ab28676dab7e95ffcbdc5eb5bc1))
+* rename internal/service to internal/daemon ([16ea46a](https://github.com/opus-domini/sentinel/commit/16ea46a337c6ad296445c15c8c57c92ff0a3193b))
+
 ## [0.3.11](https://github.com/opus-domini/sentinel/compare/v0.3.10...v0.3.11) (2026-02-19)
 
 
