@@ -200,7 +200,7 @@ export default function TmuxTerminalPanel({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-6 w-6"
+              className="h-6 w-6 cursor-pointer"
               onClick={onOpenGuardrails}
               disabled={!onOpenGuardrails}
               aria-label="Guardrails"
@@ -213,7 +213,7 @@ export default function TmuxTerminalPanel({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-6 w-6"
+              className="h-6 w-6 cursor-pointer"
               onClick={onOpenSnapshots}
               disabled={!onOpenSnapshots}
               aria-label="Recovery snapshots"
@@ -226,7 +226,7 @@ export default function TmuxTerminalPanel({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-6 w-6"
+              className="h-6 w-6 cursor-pointer"
               onClick={onOpenTimeline}
               disabled={!onOpenTimeline}
               aria-label="Timeline"
