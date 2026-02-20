@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/opus-domini/sentinel/compare/v0.4.0...v0.4.1) (2026-02-20)
+
+
+### Bug Fixes
+
+* reconcile orphaned runbook runs stuck in running/queued on startup ([80f81b9](https://github.com/opus-domini/sentinel/commit/80f81b9a34f356f1f282398fc7953232a8ad52ba))
+
 ## [0.4.0](https://github.com/opus-domini/sentinel/compare/v0.3.12...v0.4.0) (2026-02-20)
 
 
