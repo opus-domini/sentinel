@@ -421,7 +421,13 @@ func NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
 			target = fmt.Sprintf("%s:%d", session, nextIndex)
 		}
 	}
-	out, err := run(ctx, "new-window", "-P", "-F", "#{window_index}\t#{pane_id}", "-t", target)
+	args := []string{"new-window", "-P", "-F", "#{window_index}\t#{pane_id}", "-t", target}
+	if pathOut, pathErr := run(ctx, "display-message", "-t", session, "-p", "#{session_path}"); pathErr == nil {
+		if sp := strings.TrimSpace(pathOut); sp != "" {
+			args = append(args, "-c", sp)
+		}
+	}
+	out, err := run(ctx, args...)
 	if err != nil {
 		return NewWindowResult{}, err
 	}

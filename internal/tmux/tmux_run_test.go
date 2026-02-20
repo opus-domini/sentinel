@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	cmdListWindows = "list-windows"
-	cmdNewWindow   = "new-window"
+	cmdListWindows    = "list-windows"
+	cmdNewWindow      = "new-window"
+	cmdDisplayMessage = "display-message"
 )
 
 // setRun swaps the package-level run function for the duration of the
@@ -967,11 +968,16 @@ func TestNewWindow(t *testing.T) {
 			switch args[0] {
 			case cmdListWindows:
 				return "0\n1\n2\n", nil
+			case cmdDisplayMessage:
+				return "/home/dev/project\n", nil
 			case cmdNewWindow:
 				// Should target session:3 (next after max=2)
 				for i, a := range args {
 					if a == "-t" && i+1 < len(args) && args[i+1] != "dev:3" {
 						t.Errorf("expected target dev:3, got %s", args[i+1])
+					}
+					if a == "-c" && i+1 < len(args) && args[i+1] != "/home/dev/project" {
+						t.Errorf("expected -c /home/dev/project, got %s", args[i+1])
 					}
 				}
 				return "3\t%15\n", nil
@@ -996,6 +1002,8 @@ func TestNewWindow(t *testing.T) {
 			switch args[0] {
 			case cmdListWindows:
 				return "", errCommandFailed("session gone")
+			case cmdDisplayMessage:
+				return "/home/dev/project\n", nil
 			case cmdNewWindow:
 				// Should use fallback target "dev:"
 				for i, a := range args {
@@ -1023,6 +1031,8 @@ func TestNewWindow(t *testing.T) {
 			switch args[0] {
 			case cmdListWindows:
 				return "0\n", nil
+			case cmdDisplayMessage:
+				return "/tmp\n", nil
 			case cmdNewWindow:
 				return "", errCommandFailed("server dead")
 			default:
@@ -1041,6 +1051,8 @@ func TestNewWindow(t *testing.T) {
 			switch args[0] {
 			case cmdListWindows:
 				return "0\n", nil
+			case cmdDisplayMessage:
+				return "/tmp\n", nil
 			case cmdNewWindow:
 				return "garbage", nil
 			default:
@@ -1051,6 +1063,34 @@ func TestNewWindow(t *testing.T) {
 		_, err := NewWindow(ctx, "dev")
 		if err == nil {
 			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("display_message_fails_omits_cwd", func(t *testing.T) {
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			switch args[0] {
+			case cmdListWindows:
+				return "0\n", nil
+			case cmdDisplayMessage:
+				return "", errCommandFailed("no session")
+			case cmdNewWindow:
+				for _, a := range args {
+					if a == "-c" {
+						t.Error("should not pass -c when display-message fails")
+					}
+				}
+				return "1\t%10\n", nil
+			default:
+				return "", fmt.Errorf("unexpected command: %s", args[0])
+			}
+		})
+
+		result, err := NewWindow(ctx, "dev")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Index != 1 || result.PaneID != "%10" {
+			t.Errorf("result = %+v, want Index=1 PaneID=%%10", result)
 		}
 	})
 }
