@@ -601,13 +601,15 @@ func TestFailOrphanedRuns(t *testing.T) {
 		t.Fatalf("CreateOpsRunbookRun(queued): %v", err)
 	}
 
-	// Simulate: step 1 completed, step 2 is running when server dies.
+	// Simulate: step 1 completed, step 2 was pre-populated by beforeStep
+	// but the server died before it finished executing.
 	runningRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun(running): %v", err)
 	}
-	step1Result, _ := json.Marshal([]OpsRunbookStepResult{
+	stepResults, _ := json.Marshal([]OpsRunbookStepResult{
 		{StepIndex: 0, Title: "Check status", Type: "command", Output: "ok", DurationMs: 120},
+		{StepIndex: 1, Title: "Restart service", Type: "command"},
 	})
 	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
 		RunID:          runningRun.ID,
@@ -615,7 +617,7 @@ func TestFailOrphanedRuns(t *testing.T) {
 		CompletedSteps: 1,
 		CurrentStep:    "Restart service",
 		StartedAt:      now.Format(time.RFC3339),
-		StepResults:    string(step1Result),
+		StepResults:    string(stepResults),
 	}); err != nil {
 		t.Fatalf("UpdateOpsRunbookRun(running): %v", err)
 	}
@@ -663,7 +665,7 @@ func TestFailOrphanedRuns(t *testing.T) {
 		t.Fatalf("queued run stepResults = %d, want 0 (never started)", len(q.StepResults))
 	}
 
-	// Verify running run is failed with interrupted step appended.
+	// Verify running run is failed; step results preserved as-is.
 	r, err := s.GetOpsRunbookRun(ctx, runningRun.ID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun(running): %v", err)
@@ -672,28 +674,28 @@ func TestFailOrphanedRuns(t *testing.T) {
 		t.Fatalf("running run status = %q, want %q", r.Status, opsRunbookStatusFailed)
 	}
 	if r.Error != opsRunbookOrphanError {
-		t.Fatalf("running run error = %q, want 'interrupted by server restart'", r.Error)
+		t.Fatalf("running run error = %q, want %q", r.Error, opsRunbookOrphanError)
 	}
 	if len(r.StepResults) != 2 {
-		t.Fatalf("running run stepResults = %d, want 2 (step 1 ok + step 2 interrupted)", len(r.StepResults))
+		t.Fatalf("running run stepResults = %d, want 2 (step 1 ok + step 2 pre-populated)", len(r.StepResults))
 	}
 	// Step 1 should be the original successful result.
 	if r.StepResults[0].Title != "Check status" || r.StepResults[0].Output != "ok" {
 		t.Fatalf("step 0 = %+v, want Check status/ok", r.StepResults[0])
 	}
-	// Step 2 should be the interrupted step.
-	interrupted := r.StepResults[1]
-	if interrupted.StepIndex != 1 {
-		t.Fatalf("interrupted stepIndex = %d, want 1", interrupted.StepIndex)
+	// Step 2 should be the pre-populated entry (correct title, empty output/error).
+	prePopulated := r.StepResults[1]
+	if prePopulated.StepIndex != 1 {
+		t.Fatalf("pre-populated stepIndex = %d, want 1", prePopulated.StepIndex)
 	}
-	if interrupted.Title != "Restart service" {
-		t.Fatalf("interrupted title = %q, want 'Restart service'", interrupted.Title)
+	if prePopulated.Title != "Restart service" {
+		t.Fatalf("pre-populated title = %q, want 'Restart service'", prePopulated.Title)
 	}
-	if interrupted.Type != "interrupted" {
-		t.Fatalf("interrupted type = %q, want 'interrupted'", interrupted.Type)
+	if prePopulated.Type != "command" {
+		t.Fatalf("pre-populated type = %q, want 'command'", prePopulated.Type)
 	}
-	if interrupted.Error != opsRunbookOrphanError {
-		t.Fatalf("interrupted error = %q, want 'interrupted by server restart'", interrupted.Error)
+	if prePopulated.Output != "" || prePopulated.Error != "" {
+		t.Fatalf("pre-populated should have empty output/error, got output=%q error=%q", prePopulated.Output, prePopulated.Error)
 	}
 
 	// Verify succeeded run is untouched.

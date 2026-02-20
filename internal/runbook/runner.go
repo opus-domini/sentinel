@@ -124,8 +124,41 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	}
 	executor := NewExecutor(nil, stepTimeout)
 	var accumulated []store.OpsRunbookStepResult
+
+	// beforeStep writes a preliminary step result to the DB before execution.
+	// If the server dies mid-step, this entry already exists with the correct
+	// step title so FailOrphanedRuns does not need to reconstruct it.
+	beforeStep := func(stepIndex int, step Step) {
+		accumulated = append(accumulated, store.OpsRunbookStepResult{
+			StepIndex: stepIndex,
+			Title:     step.Title,
+			Type:      step.Type,
+		})
+		stepResultsJSON, marshalErr := json.Marshal(accumulated)
+		if marshalErr != nil {
+			slog.Warn("runbook runner: failed to marshal step results", "err", marshalErr)
+		}
+		updated, updateErr := repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+			RunID:          job.ID,
+			Status:         runnerStatusRunning,
+			CompletedSteps: stepIndex,
+			CurrentStep:    step.Title,
+			StepResults:    string(stepResultsJSON),
+			StartedAt:      now.Format(time.RFC3339),
+		})
+		if updateErr != nil {
+			slog.Warn("runbook runner: failed to update run before step", "err", updateErr)
+		}
+		emit("ops.job.updated", map[string]any{
+			"globalRev": time.Now().UTC().UnixMilli(),
+			"job":       updated,
+		})
+	}
+
+	// progress updates the last step result entry with actual output/error/duration.
 	progress := func(completed int, stepTitle string, result StepResult) {
-		sr := store.OpsRunbookStepResult{
+		last := len(accumulated) - 1
+		accumulated[last] = store.OpsRunbookStepResult{
 			StepIndex:  result.StepIndex,
 			Title:      result.Title,
 			Type:       result.Type,
@@ -133,7 +166,6 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 			Error:      result.Error,
 			DurationMs: result.Duration.Milliseconds(),
 		}
-		accumulated = append(accumulated, sr)
 		stepResultsJSON, marshalErr := json.Marshal(accumulated)
 		if marshalErr != nil {
 			slog.Warn("runbook runner: failed to marshal step results", "err", marshalErr)
@@ -155,7 +187,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 		})
 	}
 
-	results, execErr := executor.Execute(ctx, steps, progress)
+	results, execErr := executor.Execute(ctx, steps, beforeStep, progress)
 
 	errMsg := ""
 	if execErr != nil {

@@ -63,7 +63,7 @@ func TestExecuteAllStepTypes(t *testing.T) {
 	}
 
 	exec := NewExecutor(mock.run, time.Minute)
-	results, err := exec.Execute(context.Background(), steps, nil)
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestCommandStepFailureStopsExecution(t *testing.T) {
 	}
 
 	exec := NewExecutor(mock.run, time.Minute)
-	results, err := exec.Execute(context.Background(), steps, nil)
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -152,7 +152,7 @@ func TestCheckStepFailureStopsExecution(t *testing.T) {
 	}
 
 	exec := NewExecutor(mock.run, time.Minute)
-	results, err := exec.Execute(context.Background(), steps, nil)
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -184,7 +184,7 @@ func TestContextCancellation(t *testing.T) {
 	}
 
 	exec := NewExecutor(mock.run, time.Minute)
-	results, err := exec.Execute(ctx, steps, nil)
+	results, err := exec.Execute(ctx, steps, nil, nil)
 
 	if err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
@@ -231,7 +231,7 @@ func TestProgressCallbackCalledForEachStep(t *testing.T) {
 	}
 
 	exec := NewExecutor(mock.run, time.Minute)
-	results, err := exec.Execute(context.Background(), steps, progress)
+	results, err := exec.Execute(context.Background(), steps, nil, progress)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestEmptyStepsList(t *testing.T) {
 	mock := &mockRunner{}
 	exec := NewExecutor(mock.run, time.Minute)
 
-	results, err := exec.Execute(context.Background(), nil, nil)
+	results, err := exec.Execute(context.Background(), nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestEmptyStepsList(t *testing.T) {
 		t.Errorf("got %d results, want 0", len(results))
 	}
 
-	results, err = exec.Execute(context.Background(), []Step{}, nil)
+	results, err = exec.Execute(context.Background(), []Step{}, nil, nil)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestStepTimeout(t *testing.T) {
 
 	exec := NewExecutor(slowRunner, 50*time.Millisecond)
 	start := time.Now()
-	results, err := exec.Execute(context.Background(), steps, nil)
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -341,7 +341,7 @@ func TestUnknownStepType(t *testing.T) {
 		{Type: "unknown", Title: "Mystery step"},
 	}
 
-	results, err := exec.Execute(context.Background(), steps, nil)
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for unknown step type, got nil")
 	}

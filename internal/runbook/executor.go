@@ -18,6 +18,9 @@ type StepResult struct {
 	Duration  time.Duration
 }
 
+// BeforeStepFunc is called before each step begins execution.
+type BeforeStepFunc func(stepIndex int, step Step)
+
 // ProgressFunc is called after each step completes with the count of
 // completed steps, the title of the step just finished, and its result.
 type ProgressFunc func(completedSteps int, currentStep string, result StepResult)
@@ -58,14 +61,19 @@ func NewExecutor(runner CommandRunner, stepTimeout time.Duration) *Executor {
 }
 
 // Execute runs steps sequentially. It stops on the first command/check
-// failure and returns partial results together with an error. The progress
+// failure and returns partial results together with an error. The beforeStep
+// callback, when non-nil, is invoked before each step begins. The progress
 // callback, when non-nil, is invoked after every completed step.
-func (e *Executor) Execute(ctx context.Context, steps []Step, progress ProgressFunc) ([]StepResult, error) {
+func (e *Executor) Execute(ctx context.Context, steps []Step, beforeStep BeforeStepFunc, progress ProgressFunc) ([]StepResult, error) {
 	results := make([]StepResult, 0, len(steps))
 
 	for i, step := range steps {
 		if err := ctx.Err(); err != nil {
 			return results, fmt.Errorf("step %d %q: %w", i, step.Title, err)
+		}
+
+		if beforeStep != nil {
+			beforeStep(i, step)
 		}
 
 		stepCtx, cancel := context.WithTimeout(ctx, e.stepTimeout)
