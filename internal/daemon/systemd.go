@@ -251,26 +251,31 @@ func UninstallUser(opts UninstallUserOptions) error {
 		return err
 	}
 
+	servicePath, err := UserServicePath()
+	if err != nil {
+		return err
+	}
+
+	return uninstallUserSystemd(opts, servicePath, runSystemctlUser)
+}
+
+func uninstallUserSystemd(opts UninstallUserOptions, servicePath string, runFn func(args ...string) error) error {
 	switch {
 	case opts.Disable && opts.Stop:
-		_ = runSystemctlUser("disable", "--now", "sentinel")
+		_ = runFn("disable", "--now", "sentinel")
 	case opts.Disable:
-		_ = runSystemctlUser("disable", "sentinel")
+		_ = runFn("disable", "sentinel")
 	case opts.Stop:
-		_ = runSystemctlUser("stop", "sentinel")
+		_ = runFn("stop", "sentinel")
 	}
 
 	if opts.RemoveUnit {
-		servicePath, err := UserServicePath()
-		if err != nil {
-			return err
-		}
 		if err := os.Remove(servicePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove user service: %w", err)
 		}
 	}
 
-	return runSystemctlUser("daemon-reload")
+	return runFn("daemon-reload")
 }
 
 func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
@@ -293,27 +298,31 @@ func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
 		return err
 	}
 
-	stopUserAutoUpdateTimer(opts.Disable, opts.Stop)
+	return uninstallUserAutoUpdateSystemd(opts, runSystemctlUser)
+}
+
+func uninstallUserAutoUpdateSystemd(opts UninstallUserAutoUpdateOptions, runFn func(args ...string) error) error {
+	stopUserAutoUpdateTimer(opts.Disable, opts.Stop, runFn)
 	if opts.RemoveUnit {
 		if err := removeUserAutoUpdateUnits(); err != nil {
 			return err
 		}
 	}
 
-	if err := runSystemctlUser("daemon-reload"); err != nil {
+	if err := runFn("daemon-reload"); err != nil {
 		return withSystemdUserBusHint(err)
 	}
 	return nil
 }
 
-func stopUserAutoUpdateTimer(disable, stop bool) {
+func stopUserAutoUpdateTimer(disable, stop bool, runFn func(args ...string) error) {
 	switch {
 	case disable && stop:
-		_ = runSystemctlUser("disable", "--now", "sentinel-updater.timer")
+		_ = runFn("disable", "--now", "sentinel-updater.timer")
 	case disable:
-		_ = runSystemctlUser("disable", "sentinel-updater.timer")
+		_ = runFn("disable", "sentinel-updater.timer")
 	case stop:
-		_ = runSystemctlUser("stop", "sentinel-updater.timer")
+		_ = runFn("stop", "sentinel-updater.timer")
 	}
 }
 

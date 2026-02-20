@@ -169,7 +169,6 @@ func TestNormalizeSystemctlErrorState(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := normalizeSystemctlErrorState(tc.in)
@@ -228,7 +227,6 @@ func TestApplySystemdUnitState(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var calls []string
@@ -1545,162 +1543,236 @@ func TestUserServicePathNonRoot(t *testing.T) {
 	}
 }
 
-func TestUninstallUserAutoUpdateUserScopeOnLinux(t *testing.T) {
+func TestUninstallUserSystemd(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("test requires non-root")
-	}
-
-	// The user-scope uninstall path goes through ensureSystemdUserSupported
-	// which may fail in containers without systemctl.
-	err := UninstallUserAutoUpdate(UninstallUserAutoUpdateOptions{
-		Scope: "user",
-	})
-	if err != nil {
-		// This is expected if systemctl is not available
-		if strings.Contains(err.Error(), "systemctl") {
-			return
-		}
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestUninstallUserAutoUpdateUserScopeWithRemoveUnit(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("test requires non-root")
-	}
-
-	// With RemoveUnit=true and user scope, should attempt to remove files
-	// (which don't exist) then daemon-reload
-	err := UninstallUserAutoUpdate(UninstallUserAutoUpdateOptions{
-		Scope:      "user",
-		RemoveUnit: true,
-	})
-	if err != nil {
-		// Expected if systemctl is not available
-		if strings.Contains(err.Error(), "systemctl") {
-			return
-		}
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestUninstallUserAutoUpdateUserScopeDisableStop(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("test requires non-root")
-	}
-
-	// With Disable+Stop, tests the stopUserAutoUpdateTimer path
-	err := UninstallUserAutoUpdate(UninstallUserAutoUpdateOptions{
-		Scope:   "user",
-		Disable: true,
-		Stop:    true,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "systemctl") {
-			return
-		}
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestUninstallUserAutoUpdateUserScopeDisableOnly(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("test requires non-root")
-	}
-
-	err := UninstallUserAutoUpdate(UninstallUserAutoUpdateOptions{
-		Scope:   "user",
-		Disable: true,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "systemctl") {
-			return
-		}
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestUninstallUserAutoUpdateUserScopeStopOnly(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("test requires non-root")
-	}
-
-	err := UninstallUserAutoUpdate(UninstallUserAutoUpdateOptions{
-		Scope: "user",
-		Stop:  true,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "systemctl") {
-			return
-		}
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestUninstallUserOnLinux(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("test requires non-root")
-	}
-
-	// Test all branches of UninstallUser for non-root Linux user.
-	// ensureSystemdUserSupported should pass if systemctl is available.
 	tests := []struct {
-		name string
-		opts UninstallUserOptions
+		name      string
+		opts      UninstallUserOptions
+		wantCalls []string
 	}{
-		{"disable and stop", UninstallUserOptions{Disable: true, Stop: true}},
-		{"disable only", UninstallUserOptions{Disable: true}},
-		{"stop only", UninstallUserOptions{Stop: true}},
-		{"remove unit", UninstallUserOptions{RemoveUnit: true}},
-		{"noop", UninstallUserOptions{}},
+		{
+			name:      "disable and stop",
+			opts:      UninstallUserOptions{Disable: true, Stop: true},
+			wantCalls: []string{"disable --now sentinel", "daemon-reload"},
+		},
+		{
+			name:      "disable only",
+			opts:      UninstallUserOptions{Disable: true},
+			wantCalls: []string{"disable sentinel", "daemon-reload"},
+		},
+		{
+			name:      "stop only",
+			opts:      UninstallUserOptions{Stop: true},
+			wantCalls: []string{"stop sentinel", "daemon-reload"},
+		},
+		{
+			name:      "noop",
+			opts:      UninstallUserOptions{},
+			wantCalls: []string{"daemon-reload"},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := UninstallUser(tc.opts)
+			var calls []string
+			err := uninstallUserSystemd(tc.opts, "/nonexistent/path", func(args ...string) error {
+				calls = append(calls, strings.Join(args, " "))
+				return nil
+			})
 			if err != nil {
-				// systemctl may not have user bus access in CI
-				if strings.Contains(err.Error(), "systemctl") ||
-					strings.Contains(err.Error(), "Failed to connect") ||
-					strings.Contains(err.Error(), "bus") {
-					return
-				}
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if strings.Join(calls, "|") != strings.Join(tc.wantCalls, "|") {
+				t.Fatalf("calls = %v, want %v", calls, tc.wantCalls)
 			}
 		})
 	}
 }
+
+func TestUninstallUserSystemdRemoveUnit(t *testing.T) {
+	t.Parallel()
+
+	// Create a temp file to simulate the unit file.
+	tmpDir := t.TempDir()
+	unitPath := filepath.Join(tmpDir, "sentinel.service")
+	if err := os.WriteFile(unitPath, []byte("[Unit]"), 0o600); err != nil {
+		t.Fatalf("write temp unit: %v", err)
+	}
+
+	var calls []string
+	err := uninstallUserSystemd(
+		UninstallUserOptions{RemoveUnit: true},
+		unitPath,
+		func(args ...string) error {
+			calls = append(calls, strings.Join(args, " "))
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(unitPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("unit file should have been removed")
+	}
+
+	wantCalls := []string{"daemon-reload"}
+	if strings.Join(calls, "|") != strings.Join(wantCalls, "|") {
+		t.Fatalf("calls = %v, want %v", calls, wantCalls)
+	}
+}
+
+func TestUninstallUserSystemdRemoveUnitNotExist(t *testing.T) {
+	t.Parallel()
+
+	err := uninstallUserSystemd(
+		UninstallUserOptions{RemoveUnit: true},
+		"/nonexistent/sentinel.service",
+		func(args ...string) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("should ignore missing unit file: %v", err)
+	}
+}
+
+func TestUninstallUserSystemdDaemonReloadError(t *testing.T) {
+	t.Parallel()
+
+	expected := "daemon-reload failed"
+	err := uninstallUserSystemd(
+		UninstallUserOptions{},
+		"/nonexistent/path",
+		func(args ...string) error {
+			if strings.Join(args, " ") == "daemon-reload" {
+				return errors.New(expected)
+			}
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), expected) {
+		t.Fatalf("error = %v, want contains %q", err, expected)
+	}
+}
+
+func TestUninstallUserAutoUpdateSystemd(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		opts      UninstallUserAutoUpdateOptions
+		wantCalls []string
+	}{
+		{
+			name:      "disable and stop",
+			opts:      UninstallUserAutoUpdateOptions{Disable: true, Stop: true},
+			wantCalls: []string{"disable --now sentinel-updater.timer", "daemon-reload"},
+		},
+		{
+			name:      "disable only",
+			opts:      UninstallUserAutoUpdateOptions{Disable: true},
+			wantCalls: []string{"disable sentinel-updater.timer", "daemon-reload"},
+		},
+		{
+			name:      "stop only",
+			opts:      UninstallUserAutoUpdateOptions{Stop: true},
+			wantCalls: []string{"stop sentinel-updater.timer", "daemon-reload"},
+		},
+		{
+			name:      "noop",
+			opts:      UninstallUserAutoUpdateOptions{},
+			wantCalls: []string{"daemon-reload"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var calls []string
+			err := uninstallUserAutoUpdateSystemd(tc.opts, func(args ...string) error {
+				calls = append(calls, strings.Join(args, " "))
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if strings.Join(calls, "|") != strings.Join(tc.wantCalls, "|") {
+				t.Fatalf("calls = %v, want %v", calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
+func TestUninstallUserAutoUpdateSystemdDaemonReloadError(t *testing.T) {
+	t.Parallel()
+
+	expected := "daemon-reload failed"
+	err := uninstallUserAutoUpdateSystemd(
+		UninstallUserAutoUpdateOptions{},
+		func(args ...string) error {
+			if strings.Join(args, " ") == "daemon-reload" {
+				return errors.New(expected)
+			}
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), expected) {
+		t.Fatalf("error = %v, want contains %q", err, expected)
+	}
+}
+
+func TestStopUserAutoUpdateTimer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		disable   bool
+		stop      bool
+		wantCalls []string
+	}{
+		{
+			name:      "disable and stop",
+			disable:   true,
+			stop:      true,
+			wantCalls: []string{"disable --now sentinel-updater.timer"},
+		},
+		{
+			name:      "disable only",
+			disable:   true,
+			wantCalls: []string{"disable sentinel-updater.timer"},
+		},
+		{
+			name:      "stop only",
+			stop:      true,
+			wantCalls: []string{"stop sentinel-updater.timer"},
+		},
+		{
+			name:      "noop",
+			wantCalls: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var calls []string
+			stopUserAutoUpdateTimer(tc.disable, tc.stop, func(args ...string) error {
+				calls = append(calls, strings.Join(args, " "))
+				return nil
+			})
+			if strings.Join(calls, "|") != strings.Join(tc.wantCalls, "|") {
+				t.Fatalf("calls = %v, want %v", calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
+// NOTE: Tests for InstallUser, InstallUserAutoUpdate, and
+// applyUserAutoUpdateTimerState are intentionally omitted. These functions
+// write real systemd unit files (~/.config/systemd/user/sentinel.service) and
+// run real systemctl commands (daemon-reload, enable, start), which disrupts
+// any running sentinel service and kills tmux sessions.
 
 func TestRunSystemctlUserWithBogusCommand(t *testing.T) {
 	t.Parallel()
@@ -1804,8 +1876,3 @@ func TestReadSystemctlStateReturnsNonEmpty(t *testing.T) {
 	}
 }
 
-// NOTE: Tests for InstallUser, InstallUserAutoUpdate, stopUserAutoUpdateTimer,
-// and applyUserAutoUpdateTimerState are intentionally omitted. These functions
-// write real systemd unit files (~/.config/systemd/user/sentinel.service) and
-// run real systemctl commands (daemon-reload, enable, start, stop, disable),
-// which overwrites any running sentinel service and kills tmux sessions.
