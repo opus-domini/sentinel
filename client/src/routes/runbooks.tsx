@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import cronstrue from 'cronstrue'
@@ -183,6 +183,13 @@ function RunbooksPage() {
     new Set(),
   )
   const [deleteJobTarget, setDeleteJobTarget] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (deleteJobTarget == null) return
+    const timer = setTimeout(() => setDeleteJobTarget(null), 3000)
+    return () => clearTimeout(timer)
+  }, [deleteJobTarget])
+
   const [editingSchedule, setEditingSchedule] = useState<{
     runbookId: string
     schedule: OpsSchedule | null
@@ -965,44 +972,30 @@ function RunbooksPage() {
                                 </p>
                               )}
                             </div>
-                            {job.status !== 'running' && (
-                              <button
-                                type="button"
-                                className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover/job:opacity-100"
-                                onClick={() =>
-                                  setDeleteJobTarget(
-                                    deleteJobTarget === job.id ? null : job.id,
-                                  )
-                                }
-                                aria-label="Delete job"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            )}
+                            {job.status !== 'running' &&
+                              (deleteJobTarget === job.id ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 shrink-0 cursor-pointer px-1.5 text-[10px] text-red-400 hover:text-red-300"
+                                  onClick={() => {
+                                    setDeleteJobTarget(null)
+                                    void deleteJob(job.id)
+                                  }}
+                                >
+                                  Confirm?
+                                </Button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover/job:opacity-100"
+                                  onClick={() => setDeleteJobTarget(job.id)}
+                                  aria-label="Delete job"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              ))}
                           </div>
-                          {deleteJobTarget === job.id && (
-                            <div className="flex items-center gap-2 border-t border-border-subtle px-2.5 py-1.5">
-                              <span className="text-[10px] text-muted-foreground">
-                                Delete this run?
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-5 cursor-pointer px-2 text-[10px] text-red-400 hover:text-red-300"
-                                onClick={() => void deleteJob(job.id)}
-                              >
-                                Confirm
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-5 cursor-pointer px-2 text-[10px]"
-                                onClick={() => setDeleteJobTarget(null)}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          )}
                           {isExpanded && steps.length > 0 && (
                             <div className="grid min-w-0 gap-0.5 border-t border-border-subtle px-2.5 py-2">
                               {steps.map((sr) => {
