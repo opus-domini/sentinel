@@ -2,10 +2,7 @@ package store
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
-	"fmt"
 	"time"
 )
 
@@ -95,7 +92,7 @@ func (s *Store) ListSchedulesByRunbook(ctx context.Context, runbookID string) ([
 func (s *Store) InsertOpsSchedule(ctx context.Context, w OpsScheduleWrite) (OpsSchedule, error) {
 	id := w.ID
 	if id == "" {
-		id = randomScheduleID()
+		id = randomID()
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO ops_schedules
@@ -204,12 +201,4 @@ func scanOpsSchedule(row opsScheduleRowScanner) (OpsSchedule, error) {
 	}
 	sched.Enabled = enabled != 0
 	return sched, nil
-}
-
-func randomScheduleID() string {
-	var raw [10]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return fmt.Sprintf("sched-%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(raw[:])
 }

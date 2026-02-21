@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -139,7 +137,7 @@ func (s *Store) StartOpsRunbook(ctx context.Context, runbookID string, at time.T
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	runID := uuid.NewString()
+	runID := randomID()
 	totalSteps := len(runbook.Steps)
 	currentStep := ""
 	if totalSteps > 0 {
@@ -332,7 +330,7 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 func (s *Store) InsertOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRunbook, error) {
 	id := strings.TrimSpace(w.ID)
 	if id == "" {
-		id = uuid.NewString()
+		id = randomID()
 	}
 	name := strings.TrimSpace(w.Name)
 	if name == "" {
@@ -467,7 +465,7 @@ func (s *Store) CreateOpsRunbookRun(ctx context.Context, runbookID string, at ti
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	runID := uuid.NewString()
+	runID := randomID()
 	totalSteps := len(runbook.Steps)
 	currentStep := ""
 	if totalSteps > 0 {
