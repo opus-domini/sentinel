@@ -8,16 +8,11 @@ Sentinel exposes three WS endpoints.
 | --- | --- |
 | `/ws/tmux?session=<name>` | Attach to tmux session PTY |
 | `/ws/events` | Realtime state/event channel |
+| `/ws/logs?service=<name>` | Service log streaming |
 
 ## Authentication
 
-When token is required:
-
-- Prefer WS subprotocol auth:
-  - `sentinel.v1`
-  - `sentinel.auth.<base64url-token>`
-
-No token in URL query params.
+WS auth uses the same HttpOnly cookie (`sentinel_auth`) as HTTP requests. No token in URL query params.
 
 ## PTY Streams (`/ws/tmux`)
 
@@ -69,7 +64,9 @@ Server sends:
 - `ops.overview.updated`
 - `ops.services.updated`
 - `ops.alerts.updated`
-- `ops.timeline.updated`
+- `ops.activity.updated`
+- `ops.metrics.updated`
+- `ops.schedule.updated`
 - `ops.job.updated`
 - `recovery.overview.updated`
 - `recovery.job.updated`

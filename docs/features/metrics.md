@@ -52,6 +52,7 @@ A toggle in the sidebar enables or disables automatic polling:
 Overview state is kept current via the `/ws/events` WebSocket:
 
 - `ops.overview.updated` — updated overview payload including host and Sentinel process info.
+- `ops.metrics.updated` — updated host resource metrics (CPU, memory, disk, load averages).
 
 ## API Endpoints
 

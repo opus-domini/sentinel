@@ -11,7 +11,15 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/watchtower`: activity collector and unread projection engine.
 - `internal/recovery`: periodic snapshot and restore orchestration.
 - `internal/store`: SQLite schema and persistence (sessions metadata, watchtower, recovery, guardrails).
-- `client`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/runbooks`, `/alerts`, `/timeline`, `/metrics`.
+- `internal/activity`: operations activity log and timeline projection.
+- `internal/alerts`: alert ingestion, state tracking, and notification rules.
+- `internal/runbook`: runbook definition parsing, step execution, and webhook dispatch.
+- `internal/scheduler`: cron-based job scheduling and execution engine.
+- `internal/term`: terminal abstraction and PTY lifecycle management.
+- `internal/updater`: binary self-update checks and apply logic.
+- `internal/validate`: shared input validators (session names, cron expressions, timezones).
+- `internal/daemon`: systemd/launchd service install and lifecycle management.
+- `client`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/ops`, `/runbooks`, `/alerts`, `/activities`, `/metrics`.
 
 ## Runtime Flow
 
@@ -23,7 +31,7 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
    - WebSocket for realtime updates (`/ws/events`)
    - PTY stream (`/ws/tmux`)
 5. UI uses optimistic mutations and reconciles with events/patches.
-6. UI routes provide dedicated pages: terminal workspace (`/tmux`), service management (`/services`), runbook execution (`/runbooks`), alert monitoring (`/alerts`), operations timeline (`/timeline`), and system metrics (`/metrics`).
+6. UI routes provide dedicated pages: terminal workspace (`/tmux`), service management (`/services`), operations dashboard (`/ops`), runbook execution (`/runbooks`), alert monitoring (`/alerts`), operations activity (`/activities`), and system metrics (`/metrics`).
 
 ## Data Model (Operational)
 
@@ -49,8 +57,11 @@ Primary path is WS events:
 - `ops.overview.updated`
 - `ops.services.updated`
 - `ops.alerts.updated`
-- `ops.timeline.updated`
+- `ops.activity.updated`
+- `ops.metrics.updated`
+- `ops.schedule.updated`
 - `ops.job.updated`
+- `tmux.guardrail.blocked`
 - `recovery.overview.updated`
 - `recovery.job.updated`
 

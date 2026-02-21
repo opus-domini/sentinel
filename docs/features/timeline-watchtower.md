@@ -19,7 +19,7 @@ Watchtower is the background projection engine that converts tmux runtime output
 - Pane capture lines: `80`
 - Pane capture timeout: `150ms`
 - Activity journal retention: `5000` rows
-- Timeline retention: `20000` rows
+- Timeline retention: `10000` rows
 
 These values are configurable (see configuration reference).
 
@@ -49,24 +49,23 @@ Endpoint:
 
 Filters:
 
-- `session`, `windowIndex`, `paneId`
 - `q` (search text)
-- `severity`, `eventType`
-- `since`, `until` (RFC3339)
+- `severity`
+- `source`
 - `limit` (up to 500)
 
 ## Timeline Page
 
-The dedicated `/timeline` route provides a full-page view of the operational audit log.
+The dedicated `/activities` route provides a full-page view of the operational audit log.
 
 - The sidebar displays overview stats (host, uptime, events count, health), a search query input, and a severity filter dropdown (all/info/warn/error). A `?` help dialog button and token/lock controls are available at the top of the sidebar.
 - The main panel shows a scrollable list of timeline events. Each event displays: message, severity badge, source/resource, timestamp, and optional details.
-- New events prepend in real-time via `ops.timeline.updated` WebSocket events.
-- Filters support text search query and severity level.
+- New events prepend in real-time via `ops.activity.updated` WebSocket events.
+- Filters support text search query, severity level, and source.
 
 Endpoint:
 
-- `GET /api/ops/timeline` -- search and filter operational timeline events
+- `GET /api/ops/activity` -- search and filter operational activity events
 
 ## Performance Notes
 

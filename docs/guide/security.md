@@ -10,24 +10,22 @@ When `token` is configured, all HTTP and WS requests require authentication.
 
 ### HTTP
 
-Use bearer token:
+Authentication uses an HttpOnly cookie set via the token endpoint:
 
 ```http
-Authorization: Bearer <token>
+PUT /api/auth/token
+Content-Type: application/json
+
+{ "token": "<token>" }
 ```
+
+On success, the server sets the `sentinel_auth` HttpOnly cookie. All subsequent HTTP requests are authenticated via this cookie.
 
 ### WebSocket
 
-WS auth is supported via subprotocol (recommended) and bearer header fallback.
+WS connections authenticate via the same `sentinel_auth` HttpOnly cookie. The browser includes the cookie automatically on connection.
 
 - Protocol: `sentinel.v1`
-- Optional auth protocol: `sentinel.auth.<base64url-token>`
-
-Example protocol list from frontend:
-
-```text
-sentinel.v1, sentinel.auth.<base64url-token>
-```
 
 ## Origin Validation
 

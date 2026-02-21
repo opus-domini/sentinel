@@ -59,8 +59,8 @@ If request volume is high:
 
 ## `401 UNAUTHORIZED` on API or WS
 
-- Check token value in Settings and client headers.
-- For WS, ensure subprotocol includes `sentinel.auth.<base64url-token>`.
+- Check token value in Settings — authentication uses an HttpOnly cookie set via the UI.
+- For WS, ensure the `sentinel.v1` subprotocol is used and the auth cookie is present.
 
 ## Mobile scroll/keyboard instability
 

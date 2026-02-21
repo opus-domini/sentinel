@@ -26,8 +26,26 @@ Error:
 
 ## Auth and Origin
 
-- If token is enabled, send `Authorization: Bearer <token>`.
-- Origin checks apply to all API routes.
+When token is configured, auth uses HttpOnly cookies:
+
+1. Client sends `PUT /api/auth/token` with `{"token":"..."}`.
+2. Server validates and sets HttpOnly cookie `sentinel_auth`.
+3. All subsequent requests are authenticated via this cookie.
+
+Origin checks apply to all API routes.
+
+## Auth Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `PUT` | `/api/auth/token` | Set auth cookie |
+| `DELETE` | `/api/auth/token` | Clear auth cookie |
+
+`PUT /api/auth/token` payload:
+
+```json
+{ "token": "..." }
+```
 
 ## Metadata and Filesystem
 
@@ -119,7 +137,7 @@ Payload:
 
 ## Operations: Control Plane
 
-### Overview, Alerts and Timeline
+### Overview, Alerts and Activity
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -127,13 +145,15 @@ Payload:
 | `GET` | `/api/ops/metrics` | Host resource metrics (CPU, memory, disk) |
 | `GET` | `/api/ops/alerts` | List active/recent ops alerts |
 | `POST` | `/api/ops/alerts/{alert}/ack` | Acknowledge one alert |
-| `GET` | `/api/ops/timeline` | Ops timeline search/filter |
+| `DELETE` | `/api/ops/alerts/{alert}` | Delete one alert |
+| `GET` | `/api/ops/activity` | Ops activity search/filter |
 | `GET` | `/api/ops/config` | Read config file |
 | `PATCH` | `/api/ops/config` | Update config file |
 
-Timeline query params:
+Activity query params:
 
 - `q` text filter
+- `source` activity source filter
 - `severity` (`info`, `warn`, `error`)
 - `limit` (1..500)
 
@@ -214,6 +234,16 @@ Runbook create/update payload:
 
 The optional `webhookURL` field configures a webhook endpoint that receives a POST with run results on completion. Must be `http` or `https`. See [Runbooks — Webhooks](/features/runbooks.md#webhooks) for payload details.
 
+### Schedules
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/ops/schedules` | List schedules |
+| `POST` | `/api/ops/schedules` | Create schedule |
+| `PUT` | `/api/ops/schedules/{schedule}` | Update schedule |
+| `DELETE` | `/api/ops/schedules/{schedule}` | Delete schedule |
+| `POST` | `/api/ops/schedules/{schedule}/trigger` | Trigger schedule immediately |
+
 ## Operations: Storage
 
 | Method | Path | Purpose |
@@ -233,7 +263,7 @@ Allowed resources:
 - `activity-journal`
 - `guardrail-audit`
 - `recovery-history`
-- `ops-timeline`
+- `ops-activity`
 - `ops-alerts`
 - `ops-jobs`
 - `all`
@@ -243,7 +273,9 @@ Allowed resources:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/ops/guardrails/rules` | List rules |
+| `POST` | `/api/ops/guardrails/rules` | Create rule |
 | `PATCH` | `/api/ops/guardrails/rules/{rule}` | Upsert one rule |
+| `DELETE` | `/api/ops/guardrails/rules/{rule}` | Delete rule |
 | `GET` | `/api/ops/guardrails/audit` | List audit events |
 | `POST` | `/api/ops/guardrails/evaluate` | Evaluate one action/command manually |
 
@@ -278,6 +310,7 @@ Restore payload (optional body):
 - `UNAVAILABLE`
 - `TMUX_*` (`TMUX_NOT_FOUND`, `SESSION_NOT_FOUND`, etc.)
 - `OPS_RUNBOOK_NOT_FOUND`, `OPS_JOB_NOT_FOUND`
+- `OPS_ALERT_NOT_FOUND`, `SCHEDULE_NOT_FOUND`
 - `GUARDRAIL_BLOCKED`
 - `GUARDRAIL_CONFIRM_REQUIRED`
 - `RECOVERY_DISABLED`, `RECOVERY_ERROR`

@@ -9,7 +9,7 @@ sentinel doctor
 sentinel recovery <list|restore>
 sentinel update <check|apply|status>
 sentinel --help
-sentinel --version
+sentinel --version | -v | version
 ```
 
 ## `sentinel serve`
@@ -30,7 +30,7 @@ sentinel service install --exec PATH --enable=true --start=true
 
 Flags:
 
-- `--exec`: binary path for service unit.
+- `--exec`: binary path for service unit (optional, defaults to current executable).
 - `--enable`: enable at boot/login.
 - `--start`: start immediately.
 
@@ -130,6 +130,8 @@ sentinel update apply \
   --repo owner/name \
   --api URL \
   --exec PATH \
+  --os linux \
+  --arch amd64 \
   --allow-downgrade=false \
   --allow-unverified=false \
   --restart=false \

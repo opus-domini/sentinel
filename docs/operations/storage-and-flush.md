@@ -20,7 +20,7 @@ Resources tracked:
 - `activity-journal`
 - `guardrail-audit`
 - `recovery-history`
-- `ops-timeline`
+- `ops-activity`
 - `ops-alerts`
 - `ops-jobs`
 
@@ -42,7 +42,7 @@ Allowed values:
 - `activity-journal`
 - `guardrail-audit`
 - `recovery-history`
-- `ops-timeline`
+- `ops-activity`
 - `ops-alerts`
 - `ops-jobs`
 - `all`

@@ -11,7 +11,7 @@ The ops control plane is Sentinel's host operations management layer. It provide
 | `/services` | Service Management | Monitor, start/stop/restart, browse and register systemd/launchd services | [Services](/features/services.md) |
 | `/runbooks` | Runbook Execution | Executable operational procedures with step-level output tracking and job history | [Runbooks](/features/runbooks.md) |
 | `/alerts` | Alert Monitoring | Deduplicated alert feed with acknowledge action | [Alerts](/features/alerts.md) |
-| `/timeline` | Operations Timeline | Searchable operational audit log filtered by severity and text | [Timeline and Watchtower](/features/timeline-watchtower.md) |
+| `/activities` | Operations Timeline | Searchable operational audit log filtered by severity and text | [Timeline and Watchtower](/features/timeline-watchtower.md) |
 | `/metrics` | System Metrics | System and runtime metrics dashboard | [Metrics](/features/metrics.md) |
 
 ## Shared Infrastructure
@@ -24,8 +24,10 @@ The ops control plane is Sentinel's host operations management layer. It provide
   - `ops.overview.updated`
   - `ops.services.updated`
   - `ops.alerts.updated`
-  - `ops.timeline.updated`
+  - `ops.activity.updated`
   - `ops.job.updated`
+  - `ops.schedule.updated`
+  - `ops.metrics.updated`
 
 ### API Surface
 
@@ -39,10 +41,11 @@ Alerts (see [Alerts](/features/alerts.md)):
 
 - `GET /api/ops/alerts`
 - `POST /api/ops/alerts/{alert}/ack`
+- `DELETE /api/ops/alerts/{alert}`
 
 Timeline (see [Timeline and Watchtower](/features/timeline-watchtower.md)):
 
-- `GET /api/ops/timeline`
+- `GET /api/ops/activity`
 
 Metrics (see [Metrics](/features/metrics.md)):
 
@@ -71,6 +74,14 @@ Runbooks (see [Runbooks](/features/runbooks.md)):
 - `POST /api/ops/runbooks/{runbook}/run`
 - `GET /api/ops/jobs/{job}`
 - `DELETE /api/ops/jobs/{job}`
+
+Schedules (see [Runbooks](/features/runbooks.md)):
+
+- `GET /api/ops/schedules`
+- `POST /api/ops/schedules`
+- `PUT /api/ops/schedules/{schedule}`
+- `DELETE /api/ops/schedules/{schedule}`
+- `POST /api/ops/schedules/{schedule}/trigger`
 
 ## Navigation
 

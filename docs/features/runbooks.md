@@ -16,7 +16,7 @@ Steps execute sequentially. The first `command` or `check` failure stops the run
 
 ## Built-in Runbooks
 
-Sentinel seeds two runbooks on first startup:
+Sentinel seeds three runbooks on first startup:
 
 **Service Recovery** (`ops.service.recover`)
 
@@ -29,6 +29,11 @@ Sentinel seeds two runbooks on first startup:
 1. `command` — Check updater timer (`sentinel service autoupdate status`)
 2. `command` — Check release status (`sentinel update check`)
 3. `manual` — Review versions and update policy before apply
+
+**Apply Update** (`ops.update.apply`)
+
+1. `command` — Check for updates (`sentinel update check`)
+2. `command` — Apply update and restart (`sentinel update apply --restart`)
 
 Built-in runbooks (IDs prefixed with `ops.`) cannot be deleted.
 
@@ -137,7 +142,7 @@ Fields use `omitempty` — `error`, `startedAt`, `finishedAt`, and step-level `o
   "job": {
     "id": "run-43",
     "status": "failed",
-    "source": "manual",
+    "source": "runbook",
     "error": "step 1 failed: exit status 1",
     "totalSteps": 3,
     "completedSteps": 1,
@@ -172,7 +177,7 @@ Jobs are listed alongside runbooks in the list response:
 GET /api/ops/runbooks
 ```
 
-Returns `{ runbooks, jobs }` where `jobs` contains the 20 most recent runs.
+Returns `{ runbooks, jobs, schedules }` where `jobs` contains the 20 most recent runs.
 
 Query a single job:
 
@@ -186,11 +191,23 @@ Delete a job:
 DELETE /api/ops/jobs/{job}
 ```
 
+## Scheduling
+
+Runbooks can be executed on a schedule. Two schedule types are supported:
+
+- **Cron** — recurring execution using standard cron expressions (e.g. `0 */6 * * *`). Supports optional timezone via IANA identifiers (e.g. `America/New_York`); defaults to the host's local timezone.
+- **One-shot** — single future execution at a specific time, automatically removed after firing.
+
+Schedules are managed via the API and the frontend editor. A background scheduler engine evaluates pending schedules every minute and triggers runs as they come due. Scheduled runs use `"source": "scheduler"` in job objects and webhook payloads.
+
+When a schedule is created, updated, or deleted, an `ops.schedule.updated` event is emitted over the `/ws/events` WebSocket.
+
 ## Realtime Events
 
 - `ops.job.updated` — emitted on each state change (queued, running, per-step progress, completion)
 - Each event payload includes `{ globalRev, job }` with the full job object and accumulated `stepResults`
-- `ops.timeline.updated` — emitted for runbook start and completion timeline entries
+- `ops.activity.updated` — emitted for runbook start and completion timeline entries
+- `ops.schedule.updated` — emitted when a schedule is created, modified, or removed
 
 ## Frontend
 
@@ -202,6 +219,7 @@ The dedicated `/runbooks` route provides a standalone page for runbook execution
 - Each step result is collapsible with output or "No output" indicator
 - Job deletion with inline confirmation
 - Editor for creating and editing custom runbooks with drag-to-reorder steps
+- Schedule management: create, edit, and delete cron or one-shot schedules per runbook
 
 ## API Endpoints
 
@@ -212,3 +230,8 @@ The dedicated `/runbooks` route provides a standalone page for runbook execution
 - `POST /api/ops/runbooks/{runbook}/run` — trigger execution
 - `GET /api/ops/jobs/{job}` — get job details
 - `DELETE /api/ops/jobs/{job}` — delete job
+- `GET /api/ops/schedules` — list all schedules
+- `POST /api/ops/schedules` — create a schedule
+- `PUT /api/ops/schedules/{schedule}` — update a schedule
+- `DELETE /api/ops/schedules/{schedule}` — delete a schedule
+- `POST /api/ops/schedules/{schedule}/trigger` — trigger a scheduled run immediately

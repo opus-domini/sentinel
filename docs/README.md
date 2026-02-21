@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.s
 ### Open UI
 
 - Default URL: `http://127.0.0.1:4040`
-- If token is enabled, authenticate in Settings or with `Authorization: Bearer <token>`.
+- If token is enabled, authenticate via the Settings dialog in the UI.
 
 ### Check Runtime
 
@@ -97,6 +97,6 @@ Tip: click any image to zoom.
 
 ![Desktop settings theme](assets/images/desktop-settings-theme.png)
 
-> Secure your instance with bearer token authentication and origin allowlists.
+> Secure your instance with token authentication and origin allowlists.
 
 ![Desktop settings token](assets/images/desktop-settings-token.png)

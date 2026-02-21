@@ -28,6 +28,13 @@ watchtower_capture_lines = 80
 watchtower_capture_timeout = "150ms"
 watchtower_journal_rows = 5000
 
+cookie_secure = "auto"
+allow_insecure_cookie = false
+
+alert_cpu_percent = 90
+alert_mem_percent = 90
+alert_disk_percent = 95
+
 recovery_enabled = true
 recovery_snapshot_interval = "5s"
 recovery_capture_lines = 80
@@ -39,7 +46,7 @@ recovery_max_snapshots = 300
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SENTINEL_LISTEN` | `127.0.0.1:4040` | HTTP listen address |
-| `SENTINEL_TOKEN` | empty | Bearer token for HTTP/WS auth |
+| `SENTINEL_TOKEN` | empty | Auth token (cookie-based) |
 | `SENTINEL_ALLOWED_ORIGINS` | empty | Comma-separated allowed origins |
 | `SENTINEL_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `SENTINEL_DATA_DIR` | `~/.sentinel` | Data directory |
@@ -51,6 +58,11 @@ recovery_max_snapshots = 300
 | `SENTINEL_RECOVERY_ENABLED` | `true` | Enable recovery service |
 | `SENTINEL_RECOVERY_SNAPSHOT_INTERVAL` | `5s` | Recovery snapshot interval |
 | `SENTINEL_RECOVERY_CAPTURE_LINES` | `80` | Recovery pane capture lines |
+| `SENTINEL_COOKIE_SECURE` | `auto` | Cookie secure flag: `auto`, `always`, `never` |
+| `SENTINEL_ALLOW_INSECURE_COOKIE` | `false` | Allow auth cookie over plain HTTP |
+| `SENTINEL_ALERT_CPU_PERCENT` | `90` | CPU usage alert threshold (percent) |
+| `SENTINEL_ALERT_MEM_PERCENT` | `90` | Memory usage alert threshold (percent) |
+| `SENTINEL_ALERT_DISK_PERCENT` | `95` | Disk usage alert threshold (percent) |
 | `SENTINEL_RECOVERY_MAX_SNAPSHOTS` | `300` | Max snapshots per session |
 
 ## Recommended Profiles
