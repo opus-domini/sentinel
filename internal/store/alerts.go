@@ -11,37 +11,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/alerts"
 )
 
-func (s *Store) initAlertsSchema() error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS ops_alerts (
-			id            INTEGER PRIMARY KEY AUTOINCREMENT,
-			dedupe_key    TEXT NOT NULL UNIQUE,
-			source        TEXT NOT NULL,
-			resource      TEXT NOT NULL,
-			title         TEXT NOT NULL,
-			message       TEXT NOT NULL,
-			severity      TEXT NOT NULL,
-			status        TEXT NOT NULL DEFAULT 'open',
-			occurrences   INTEGER NOT NULL DEFAULT 1,
-			metadata      TEXT NOT NULL DEFAULT '',
-			first_seen_at TEXT NOT NULL,
-			last_seen_at  TEXT NOT NULL,
-			acked_at      TEXT DEFAULT '',
-			resolved_at   TEXT DEFAULT ''
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_ops_alerts_status
-			ON ops_alerts (status, last_seen_at DESC, id DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_ops_alerts_last_seen
-			ON ops_alerts (last_seen_at DESC, id DESC)`,
-	}
-	for _, stmt := range statements {
-		if _, err := s.db.ExecContext(context.Background(), stmt); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Store) UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error) {
 	now := write.CreatedAt.UTC()
 	if now.IsZero() {

@@ -39,31 +39,6 @@ type OpsScheduleWrite struct {
 	NextRunAt    string
 }
 
-func (s *Store) initSchedulerSchema() error {
-	schema := `CREATE TABLE IF NOT EXISTS ops_schedules (
-		id              TEXT PRIMARY KEY,
-		runbook_id      TEXT NOT NULL,
-		name            TEXT NOT NULL DEFAULT '',
-		schedule_type   TEXT NOT NULL,
-		cron_expr       TEXT NOT NULL DEFAULT '',
-		timezone        TEXT NOT NULL DEFAULT 'UTC',
-		run_at          TEXT NOT NULL DEFAULT '',
-		enabled         INTEGER NOT NULL DEFAULT 1,
-		last_run_at     TEXT NOT NULL DEFAULT '',
-		last_run_status TEXT NOT NULL DEFAULT '',
-		next_run_at     TEXT NOT NULL DEFAULT '',
-		created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-		updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
-	);
-	CREATE INDEX IF NOT EXISTS idx_ops_schedules_next_run
-		ON ops_schedules (enabled, next_run_at ASC);
-	CREATE INDEX IF NOT EXISTS idx_ops_schedules_runbook
-		ON ops_schedules (runbook_id)`
-
-	_, err := s.db.ExecContext(context.Background(), schema)
-	return err
-}
-
 // ListOpsSchedules returns all schedules ordered by name.
 func (s *Store) ListOpsSchedules(ctx context.Context) ([]OpsSchedule, error) {
 	rows, err := s.db.QueryContext(ctx,

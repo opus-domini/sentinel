@@ -14,6 +14,8 @@
 !go.sum
 !go.mod
 
+!/internal/store/migrations/**/*
+
 !README.md
 !CONTRIBUTING.md
 !SPEC.md

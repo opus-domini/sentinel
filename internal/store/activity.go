@@ -9,34 +9,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/activity"
 )
 
-func (s *Store) initActivitySchema() error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS ops_timeline_events (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			source       TEXT NOT NULL,
-			event_type   TEXT NOT NULL,
-			severity     TEXT NOT NULL,
-			resource     TEXT NOT NULL,
-			message      TEXT NOT NULL,
-			details      TEXT NOT NULL DEFAULT '',
-			metadata     TEXT NOT NULL DEFAULT '',
-			created_at   TEXT NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_ops_timeline_created
-			ON ops_timeline_events (created_at DESC, id DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_ops_timeline_severity
-			ON ops_timeline_events (severity, created_at DESC, id DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_ops_timeline_source
-			ON ops_timeline_events (source, created_at DESC, id DESC)`,
-	}
-	for _, stmt := range statements {
-		if _, err := s.db.ExecContext(context.Background(), stmt); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Store) InsertActivityEvent(ctx context.Context, write activity.EventWrite) (activity.Event, error) {
 	now := write.CreatedAt.UTC()
 	if now.IsZero() {

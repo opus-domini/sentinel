@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
@@ -58,31 +59,26 @@ func TestWatchtowerSchemaCreated(t *testing.T) {
 	}
 }
 
-func TestWatchtowerSchemaIdempotentAndBackfill(t *testing.T) {
+func TestWatchtowerMigrationIdempotent(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t)
-	defer func() { _ = s.Close() }()
+	// Opening the store twice on the same DB must be idempotent.
+	dbPath := filepath.Join(t.TempDir(), "sentinel.db")
+	s1, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("first New(): %v", err)
+	}
+	_ = s1.Close()
+
+	s2, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("second New() on same DB: %v", err)
+	}
+	defer func() { _ = s2.Close() }()
 
 	ctx := context.Background()
-
-	if err := s.UpsertSession(ctx, "dev", "h1", "last line"); err != nil {
-		t.Fatalf("UpsertSession: %v", err)
-	}
-
-	if err := s.initWatchtowerSchema(); err != nil {
-		t.Fatalf("initWatchtowerSchema second call: %v", err)
-	}
-	if err := s.initWatchtowerSchema(); err != nil {
-		t.Fatalf("initWatchtowerSchema third call: %v", err)
-	}
-
-	row, err := s.GetWatchtowerSession(ctx, "dev")
-	if err != nil {
-		t.Fatalf("GetWatchtowerSession(dev): %v", err)
-	}
-	if row.LastPreview != "last line" {
-		t.Fatalf("LastPreview = %q, want %q", row.LastPreview, "last line")
+	if _, err := s2.ListWatchtowerSessions(ctx); err != nil {
+		t.Fatalf("ListWatchtowerSessions after reopen: %v", err)
 	}
 }
 

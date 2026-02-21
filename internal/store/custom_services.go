@@ -29,20 +29,6 @@ type CustomServiceWrite struct {
 	Scope       string
 }
 
-func (s *Store) initCustomServicesSchema() error {
-	_, err := s.db.ExecContext(context.Background(), `CREATE TABLE IF NOT EXISTS ops_custom_services (
-		name         TEXT PRIMARY KEY,
-		display_name TEXT NOT NULL,
-		manager      TEXT NOT NULL DEFAULT 'systemd',
-		unit         TEXT NOT NULL,
-		scope        TEXT NOT NULL DEFAULT 'user',
-		enabled      INTEGER NOT NULL DEFAULT 1,
-		created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-		updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
-	)`)
-	return err
-}
-
 func (s *Store) InsertCustomService(ctx context.Context, w CustomServiceWrite) (CustomService, error) {
 	name := strings.TrimSpace(w.Name)
 	if name == "" {

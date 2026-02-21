@@ -38,64 +38,23 @@ func New(dbPath string) (*Store, error) {
 	// preventing SQLITE_BUSY errors from concurrent HTTP handlers.
 	db.SetMaxOpenConns(1)
 
+	ctx := context.Background()
 	for _, pragma := range []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA busy_timeout=5000",
 	} {
-		if _, err := db.ExecContext(context.Background(), pragma); err != nil {
+		if _, err := db.ExecContext(ctx, pragma); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("set %s: %w", pragma, err)
 		}
 	}
 
-	schema := `CREATE TABLE IF NOT EXISTS sessions (
-		name           TEXT PRIMARY KEY,
-		hash           TEXT NOT NULL,
-		last_content   TEXT DEFAULT '',
-		icon           TEXT DEFAULT '',
-		next_window_seq INTEGER NOT NULL DEFAULT 1,
-		updated_at     TEXT DEFAULT (datetime('now'))
-	)`
-	if _, err := db.ExecContext(context.Background(), schema); err != nil {
+	if err := runMigrations(ctx, db); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("create schema: %w", err)
+		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
-	s := &Store{db: db, dbPath: dbPath}
-	if err := s.initRecoverySchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create recovery schema: %w", err)
-	}
-	if err := s.initWatchtowerSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create watchtower schema: %w", err)
-	}
-	if err := s.initGuardrailSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create guardrail schema: %w", err)
-	}
-	if err := s.initActivitySchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create activity schema: %w", err)
-	}
-	if err := s.initAlertsSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create alerts schema: %w", err)
-	}
-	if err := s.initRunbookSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create runbook schema: %w", err)
-	}
-	if err := s.initCustomServicesSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create custom services schema: %w", err)
-	}
-	if err := s.initSchedulerSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create scheduler schema: %w", err)
-	}
-
-	return s, nil
+	return &Store{db: db, dbPath: dbPath}, nil
 }
 
 func (s *Store) GetAll(ctx context.Context) (map[string]SessionMeta, error) {
