@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.6](https://github.com/opus-domini/sentinel/compare/v0.4.5...v0.4.6) (2026-02-21)
+
+
+### Features
+
+* add internal database migrator with versioned SQL migrations ([1d2b44a](https://github.com/opus-domini/sentinel/commit/1d2b44ac195b95ddb602cf794c463b1ae29d0a7b))
+
+
+### Refactors
+
+* replace google/uuid with stdlib crypto/rand for ID generation ([40fabc2](https://github.com/opus-domini/sentinel/commit/40fabc2f28e2deb8e6e34b2cc35893c03c698c8f))
+
+
+### Documentation
+
+* comprehensive audit and fix of all documentation ([2965459](https://github.com/opus-domini/sentinel/commit/29654599d6ffd5df3536ce2e1044a3dd12c87c47))
+
 ## [0.4.5](https://github.com/opus-domini/sentinel/compare/v0.4.4...v0.4.5) (2026-02-20)
 
 
