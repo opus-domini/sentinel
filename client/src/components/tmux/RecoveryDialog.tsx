@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import { ProgressBar } from '@/lib/ProgressBar'
 import { formatRelativeTime } from '@/lib/formatRelativeTime'
 import { slugifyTmuxName } from '@/lib/tmuxName'
@@ -82,6 +83,7 @@ export default function RecoveryDialog(props: RecoveryDialogProps) {
     onArchive,
   } = props
 
+  const { formatDateTime } = useDateFormat()
   const [confirmReplace, setConfirmReplace] = useState(false)
 
   const handleRestore = () => {
@@ -270,11 +272,7 @@ export default function RecoveryDialog(props: RecoveryDialogProps) {
                       Captured:{' '}
                       {formatRelativeTime(selectedSnapshot.payload.capturedAt)}{' '}
                       <span className="text-[10px]">
-                        (
-                        {new Date(
-                          selectedSnapshot.payload.capturedAt,
-                        ).toLocaleString()}
-                        )
+                        ({formatDateTime(selectedSnapshot.payload.capturedAt)})
                       </span>
                     </div>
                     <div className="text-muted-foreground">

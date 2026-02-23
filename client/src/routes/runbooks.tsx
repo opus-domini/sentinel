@@ -37,6 +37,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
@@ -180,6 +181,7 @@ function RunbooksPage() {
   const { tokenRequired } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
+  const { formatDateTime } = useDateFormat()
   const layout = useLayoutContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
@@ -977,7 +979,7 @@ function RunbooksPage() {
                                 </span>
                               </div>
                               <p className="truncate text-[10px] text-muted-foreground">
-                                {job.createdAt}
+                                {formatDateTime(job.createdAt)}
                                 {job.currentStep && ` · ${job.currentStep}`}
                               </p>
                               {job.error && (

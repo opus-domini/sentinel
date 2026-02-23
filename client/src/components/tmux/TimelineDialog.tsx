@@ -1,6 +1,7 @@
 import type { TimelineEvent } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import {
   Dialog,
   DialogContent,
@@ -49,15 +50,6 @@ function severityClass(severity: string): string {
   }
 }
 
-function formatTimelineTimestamp(raw: string): string {
-  if (raw.trim() === '') return '-'
-  const parsed = new Date(raw)
-  if (Number.isNaN(parsed.getTime())) {
-    return raw
-  }
-  return parsed.toLocaleString()
-}
-
 export default function TimelineDialog({
   open,
   onOpenChange,
@@ -76,6 +68,8 @@ export default function TimelineDialog({
   onSessionFilterChange,
   onRefresh,
 }: TimelineDialogProps) {
+  const { formatDateTime } = useDateFormat()
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="top-[5%] flex min-h-[24rem] max-h-[88vh] -translate-y-0 flex-col overflow-hidden sm:min-h-[38rem] sm:max-w-6xl">
@@ -183,7 +177,7 @@ export default function TimelineDialog({
                         {location.label}
                       </Badge>
                       <span className="text-[11px] text-muted-foreground">
-                        {formatTimelineTimestamp(event.createdAt)}
+                        {formatDateTime(event.createdAt)}
                       </span>
                       {event.durationMs > 0 && (
                         <span className="text-[11px] text-muted-foreground">

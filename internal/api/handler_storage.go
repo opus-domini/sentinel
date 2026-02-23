@@ -1,15 +1,18 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/validate"
 )
 
 func (h *Handler) opsConfig(w http.ResponseWriter, _ *http.Request) {
@@ -116,4 +119,95 @@ func (h *Handler) flushStorage(w http.ResponseWriter, r *http.Request) {
 		"results":   results,
 		"flushedAt": time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func (h *Handler) patchTimezone(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Timezone string `json:"timezone"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	tz := strings.TrimSpace(req.Timezone)
+	if tz == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "timezone is required", nil)
+		return
+	}
+	if err := validate.Timezone(tz); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	if h.configPath != "" {
+		if err := upsertConfigKey(h.configPath, "timezone", tz); err != nil {
+			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist timezone", nil)
+			return
+		}
+	}
+
+	h.mu.Lock()
+	h.timezone = tz
+	h.mu.Unlock()
+
+	writeData(w, http.StatusOK, map[string]any{
+		"timezone": tz,
+	})
+}
+
+func (h *Handler) patchLocale(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Locale string `json:"locale"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	loc := strings.TrimSpace(req.Locale)
+	// Empty locale is valid — means "use browser default".
+
+	if h.configPath != "" {
+		if err := upsertConfigKey(h.configPath, "locale", loc); err != nil {
+			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist locale", nil)
+			return
+		}
+	}
+
+	h.mu.Lock()
+	h.locale = loc
+	h.mu.Unlock()
+
+	writeData(w, http.StatusOK, map[string]any{
+		"locale": loc,
+	})
+}
+
+// upsertConfigKey updates or inserts a key = "value" line in the config file.
+func upsertConfigKey(path, key, value string) error {
+	data, err := os.ReadFile(path) //nolint:gosec // path is derived from DataDir
+	if err != nil {
+		return err
+	}
+
+	var lines []string
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	found := false
+	newLine := key + ` = "` + value + `"`
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		// Match both active and commented-out lines for this key.
+		if !found && (strings.HasPrefix(trimmed, key+" =") || strings.HasPrefix(trimmed, key+"=") ||
+			strings.HasPrefix(trimmed, "# "+key+" =") || strings.HasPrefix(trimmed, "# "+key+"=")) {
+			lines = append(lines, newLine)
+			found = true
+			continue
+		}
+		lines = append(lines, line)
+	}
+	if !found {
+		lines = append(lines, newLine)
+	}
+
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600) //nolint:gosec // fixed content
 }

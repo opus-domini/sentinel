@@ -5,6 +5,8 @@ type MetaResponse = {
   tokenRequired?: boolean
   defaultCwd?: string
   version?: string
+  timezone?: string
+  locale?: string
 }
 
 export function useSentinelMeta() {
@@ -21,6 +23,8 @@ export function useSentinelMeta() {
           tokenRequired: true,
           defaultCwd: '',
           version: 'dev',
+          timezone: 'UTC',
+          locale: '',
           unauthorized: true,
         }
       }
@@ -33,6 +37,8 @@ export function useSentinelMeta() {
         tokenRequired: Boolean(payload.data?.tokenRequired),
         defaultCwd: (payload.data?.defaultCwd ?? '').trim(),
         version: (payload.data?.version ?? 'dev').trim() || 'dev',
+        timezone: (payload.data?.timezone ?? 'UTC').trim() || 'UTC',
+        locale: (payload.data?.locale ?? '').trim(),
         unauthorized: false,
       }
     },
@@ -46,6 +52,8 @@ export function useSentinelMeta() {
         tokenRequired: false,
         defaultCwd: '',
         version: 'dev',
+        timezone: 'UTC',
+        locale: '',
         unauthorized: false,
       },
     [metaQuery.data],
@@ -55,6 +63,8 @@ export function useSentinelMeta() {
     tokenRequired: value.tokenRequired,
     defaultCwd: value.defaultCwd,
     version: value.version,
+    timezone: value.timezone,
+    locale: value.locale,
     unauthorized: value.unauthorized,
     loaded: metaQuery.isFetched,
   }

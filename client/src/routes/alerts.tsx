@@ -18,6 +18,7 @@ import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
@@ -29,25 +30,6 @@ import {
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
-
-function formatAlertTime(isoDate: string): string {
-  const parsed = Date.parse(isoDate)
-  if (Number.isNaN(parsed)) return isoDate
-  const d = new Date(parsed)
-  const now = Date.now()
-  const diffMin = Math.floor((now - d.getTime()) / 60000)
-  if (diffMin < 1) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHr = Math.floor(diffMin / 60)
-  if (diffHr < 24) return `${diffHr}h ago`
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-}
 
 type AlertsFooterSummaryParams = {
   overviewError: string
@@ -84,6 +66,7 @@ function AlertsPage() {
   const { tokenRequired } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
+  const { formatRelativeTime } = useDateFormat()
   const layout = useLayoutContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
@@ -451,9 +434,9 @@ function AlertsPage() {
                         {alert.message}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {formatAlertTime(alert.firstSeenAt)}
+                        {formatRelativeTime(alert.firstSeenAt)}
                         {alert.lastSeenAt !== alert.firstSeenAt &&
-                          ` · last ${formatAlertTime(alert.lastSeenAt)}`}
+                          ` · last ${formatRelativeTime(alert.lastSeenAt)}`}
                       </p>
                       {alert.status === 'open' && (
                         <div>

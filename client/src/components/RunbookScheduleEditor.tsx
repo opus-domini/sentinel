@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TIMEZONES } from '@/lib/dateFormat'
 import { cn } from '@/lib/utils'
 
 export type ScheduleDraft = {
@@ -41,21 +42,6 @@ const CRON_PRESETS = [
   { label: 'Weekdays at 9 AM', value: '0 9 * * 1-5' },
   { label: 'Weekly on Monday', value: '0 0 * * 1' },
   { label: 'Custom', value: 'custom' },
-] as const
-
-const TIMEZONES = [
-  'UTC',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Sao_Paulo',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'Asia/Tokyo',
-  'Asia/Shanghai',
-  'Australia/Sydney',
 ] as const
 
 function scheduleToPreset(cronExpr: string): string {

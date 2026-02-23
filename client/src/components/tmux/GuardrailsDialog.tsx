@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import {
   OPS_GUARDRAILS_AUDIT_QUERY_KEY,
   OPS_GUARDRAILS_QUERY_KEY,
@@ -106,19 +107,6 @@ const modeDescription: Record<string, string> = {
   warn: 'Log the match and allow execution to proceed',
   confirm: 'Require explicit confirmation before execution',
   block: 'Deny execution entirely',
-}
-
-function formatAuditTime(raw: string): string {
-  if (!raw) return '-'
-  const d = new Date(raw)
-  if (isNaN(d.getTime())) return raw
-  return d.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
 }
 
 function decisionBadgeClass(mode: string): string {
@@ -350,6 +338,7 @@ export default function GuardrailsDialog({
   open,
   onOpenChange,
 }: GuardrailsDialogProps) {
+  const { formatDateTimeShort } = useDateFormat()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
 
@@ -831,7 +820,7 @@ export default function GuardrailsDialog({
                         </div>
                       </div>
                       <span className="shrink-0 text-[10px] text-muted-foreground">
-                        {formatAuditTime(entry.createdAt)}
+                        {formatDateTimeShort(entry.createdAt)}
                       </span>
                     </div>
                   </div>

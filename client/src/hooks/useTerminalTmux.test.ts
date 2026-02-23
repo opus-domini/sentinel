@@ -139,7 +139,10 @@ describe('useTerminalTmux – setConnection guard', () => {
     globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
 
     // Ensure localStorage is available (Node 22+ needs --localstorage-file)
-    if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage.getItem !== 'function') {
+    if (
+      typeof globalThis.localStorage === 'undefined' ||
+      typeof globalThis.localStorage.getItem !== 'function'
+    ) {
       const store = new Map<string, string>()
       Object.defineProperty(globalThis, 'localStorage', {
         value: {
@@ -147,7 +150,9 @@ describe('useTerminalTmux – setConnection guard', () => {
           setItem: (key: string, value: string) => store.set(key, value),
           removeItem: (key: string) => store.delete(key),
           clear: () => store.clear(),
-          get length() { return store.size },
+          get length() {
+            return store.size
+          },
           key: () => null,
         },
         writable: true,

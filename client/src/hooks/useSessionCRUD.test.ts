@@ -5,7 +5,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { GuardrailConfirmError } from './useTmuxApi'
 import { useSessionCRUD } from './useSessionCRUD'
 import type { Session } from '@/types'
-import type { ApiFunction, DispatchTabs, RuntimeMetrics, TabsStateRef } from './tmuxTypes'
+import type {
+  ApiFunction,
+  DispatchTabs,
+  RuntimeMetrics,
+  TabsStateRef,
+} from './tmuxTypes'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,7 +41,15 @@ function makeGuardrailError(): GuardrailConfirmError {
       requireConfirm: true,
       message: 'This will destroy the session',
       matchedRuleId: 'rule-1',
-      matchedRules: [{ id: 'rule-1', name: 'protect-prod', pattern: 'prod*', action: 'confirm', enabled: true }],
+      matchedRules: [
+        {
+          id: 'rule-1',
+          name: 'protect-prod',
+          pattern: 'prod*',
+          action: 'confirm',
+          enabled: true,
+        },
+      ],
     },
     '/api/tmux/sessions/prod',
     { method: 'DELETE' },
@@ -154,9 +167,7 @@ describe('useSessionCRUD – killSession', () => {
     opts.closeCurrentSocket.mockImplementation(() =>
       callOrder.push('closeCurrentSocket'),
     )
-    opts.setConnection.mockImplementation(() =>
-      callOrder.push('setConnection'),
-    )
+    opts.setConnection.mockImplementation(() => callOrder.push('setConnection'))
 
     // Simulate the guardrail confirm callback
     // killSessionWithConfirm is internal, but the requestGuardrailConfirm
@@ -176,7 +187,8 @@ describe('useSessionCRUD – killSession', () => {
     })
 
     // Now retrieve the onConfirm callback
-    const confirmCallback = opts.requestGuardrailConfirm.mock.calls[0][2] as () => void
+    const confirmCallback = opts.requestGuardrailConfirm.mock
+      .calls[0][2] as () => void
 
     // Second call (confirmed): API resolves
     api.mockResolvedValueOnce(undefined)
@@ -242,7 +254,8 @@ describe('useSessionCRUD – killSession', () => {
       await result.current.killSession('prod')
     })
 
-    const confirmCallback = opts.requestGuardrailConfirm.mock.calls[0][2] as () => void
+    const confirmCallback = opts.requestGuardrailConfirm.mock
+      .calls[0][2] as () => void
 
     // Second call (confirmed): API fails with a generic error
     api.mockRejectedValueOnce(new Error('tmux server crashed'))

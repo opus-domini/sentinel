@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { StorageFlushResponse, StorageStatsResponse } from '@/types'
 
+import { LOCALES, TIMEZONES } from '@/lib/dateFormat'
 import ThemeSelector from '@/components/settings/ThemeSelector'
 import {
   AlertDialog,
@@ -28,6 +29,13 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { THEME_STORAGE_KEY } from '@/lib/terminalThemes'
 
 type SettingsDialogProps = {
@@ -41,9 +49,11 @@ export default function SettingsDialog({
   open,
   onOpenChange,
 }: SettingsDialogProps) {
-  const { version } = useMetaContext()
+  const { version, timezone, locale } = useMetaContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
+  const [savingTimezone, setSavingTimezone] = useState(false)
+  const [savingLocale, setSavingLocale] = useState(false)
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
@@ -72,6 +82,42 @@ export default function SettingsDialog({
       new CustomEvent('sentinel-theme-change', { detail: id }),
     )
   }
+
+  const changeTimezone = useCallback(
+    async (tz: string) => {
+      setSavingTimezone(true)
+      try {
+        await api('/api/ops/settings/timezone', {
+          method: 'PATCH',
+          body: JSON.stringify({ timezone: tz }),
+        })
+        await queryClient.invalidateQueries({ queryKey: ['meta'] })
+      } catch {
+        // best-effort — meta will still reflect the old value
+      } finally {
+        setSavingTimezone(false)
+      }
+    },
+    [api, queryClient],
+  )
+
+  const changeLocale = useCallback(
+    async (loc: string) => {
+      setSavingLocale(true)
+      try {
+        await api('/api/ops/settings/locale', {
+          method: 'PATCH',
+          body: JSON.stringify({ locale: loc }),
+        })
+        await queryClient.invalidateQueries({ queryKey: ['meta'] })
+      } catch {
+        // best-effort
+      } finally {
+        setSavingLocale(false)
+      }
+    },
+    [api, queryClient],
+  )
 
   const storageStatsQuery = useQuery({
     queryKey: OPS_STORAGE_STATS_QUERY_KEY,
@@ -243,6 +289,54 @@ export default function SettingsDialog({
                     PWA needs HTTPS or localhost.
                   </span>
                 )}
+              </div>
+
+              <div className="mt-5 border-t border-border-subtle pt-4">
+                <h3 className="mb-1 text-xs font-medium">Timezone</h3>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  IANA timezone used for all displayed timestamps.
+                </p>
+                <Select
+                  value={timezone}
+                  onValueChange={(v) => void changeTimezone(v)}
+                  disabled={savingTimezone}
+                >
+                  <SelectTrigger className="w-full max-w-xs bg-surface-overlay text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIMEZONES.map((tz) => (
+                      <SelectItem key={tz} value={tz}>
+                        {tz}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="mt-5 border-t border-border-subtle pt-4">
+                <h3 className="mb-1 text-xs font-medium">Date Format</h3>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Locale used for date and number formatting.
+                </p>
+                <Select
+                  value={locale || 'auto'}
+                  onValueChange={(v) =>
+                    void changeLocale(v === 'auto' ? '' : v)
+                  }
+                  disabled={savingLocale}
+                >
+                  <SelectTrigger className="w-full max-w-xs bg-surface-overlay text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOCALES.map((loc) => (
+                      <SelectItem key={loc.value} value={loc.value}>
+                        {loc.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </section>
           )}

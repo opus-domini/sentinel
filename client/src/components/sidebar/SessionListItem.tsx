@@ -4,9 +4,10 @@ import {
   effectiveAttachedClients,
   isSessionAttachedWithLocalTab,
 } from './sessionAttachment'
-import { formatRelativeTime, formatTimestamp } from './sessionTime'
+import { formatRelativeTime } from './sessionTime'
 import type { Session } from '../../types'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -40,6 +41,7 @@ export default function SessionListItem({
   onChangeIcon,
   canDetach,
 }: SessionListItemProps) {
+  const { formatTimestamp } = useDateFormat()
   const isAttached = isSessionAttachedWithLocalTab(session, canDetach)
   const attachedClients = effectiveAttachedClients(session.attached, canDetach)
   const unreadPanes = session.unreadPanes ?? 0

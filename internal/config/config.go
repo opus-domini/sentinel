@@ -32,6 +32,8 @@ type Config struct {
 	AllowInsecureCookie bool
 	DataDir             string
 	LogLevel            string
+	Timezone            string
+	Locale              string
 	Watchtower          WatchtowerConfig
 	Recovery            RecoveryConfig
 	AlertThresholds     AlertThresholds
@@ -100,6 +102,15 @@ const defaultConfigContent = `# Sentinel configuration
 # recovery_enabled = true
 # recovery_snapshot_interval = "5s"
 # recovery_max_snapshots = 300
+
+# IANA timezone for all displayed timestamps.
+# Environment variable: SENTINEL_TIMEZONE
+# timezone = "America/Sao_Paulo"
+
+# BCP 47 locale for date/number formatting (e.g. "pt-BR", "en-US").
+# When empty, the browser's default locale is used.
+# Environment variable: SENTINEL_LOCALE
+# locale = "pt-BR"
 `
 
 func Load() Config {
@@ -125,6 +136,7 @@ func Load() Config {
 		},
 	}
 
+	cfg.Timezone = time.Now().Location().String()
 	cfg.DataDir = resolveDataDir()
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
 	ensureDefaultConfig(configPath)
@@ -187,6 +199,16 @@ func applyCoreConfig(cfg *Config, file map[string]string) {
 	cfg.LogLevel = "info"
 	if level := readRawEnvOrFile("SENTINEL_LOG_LEVEL", "log_level", file); level != "" {
 		cfg.LogLevel = strings.ToLower(level)
+	}
+
+	if tz := readRawEnvOrFile("SENTINEL_TIMEZONE", "timezone", file); tz != "" {
+		if _, err := time.LoadLocation(tz); err == nil {
+			cfg.Timezone = tz
+		}
+	}
+
+	if locale := readRawEnvOrFile("SENTINEL_LOCALE", "locale", file); locale != "" {
+		cfg.Locale = locale
 	}
 }
 

@@ -4,6 +4,8 @@ type MetaContextValue = {
   tokenRequired: boolean
   defaultCwd: string
   version: string
+  timezone: string
+  locale: string
   unauthorized: boolean
   loaded: boolean
 }

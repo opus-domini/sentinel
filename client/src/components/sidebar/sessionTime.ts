@@ -42,13 +42,36 @@ export function formatRelativeTime(value: string): string {
   return `${years}y`
 }
 
-export function formatTimestamp(value: string): string {
+export function formatTimestamp(
+  value: string,
+  timezone?: string,
+  locale?: string,
+): string {
   if (!value) {
     return '-'
   }
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     return '-'
+  }
+  if (timezone) {
+    try {
+      const loc = locale || undefined
+      const datePart = new Intl.DateTimeFormat(loc, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: timezone,
+      }).format(date)
+      const timePart = new Intl.DateTimeFormat(loc, {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: timezone,
+      }).format(date)
+      return datePart + ' ' + timePart
+    } catch {
+      // fall through to default
+    }
   }
   return (
     date.toLocaleDateString() +

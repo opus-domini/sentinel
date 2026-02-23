@@ -16,6 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useTokenContext } from '@/contexts/TokenContext'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
@@ -56,6 +57,7 @@ function buildActivitiesFooterSummary({
 function ActivitiesPage() {
   const { tokenRequired } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
+  const { formatDateTime } = useDateFormat()
   const layout = useLayoutContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
@@ -264,7 +266,8 @@ function ActivitiesPage() {
                       </span>
                     </div>
                     <p className="mt-1 break-words text-[10px] text-muted-foreground">
-                      {event.source} • {event.resource} • {event.createdAt}
+                      {event.source} • {event.resource} •{' '}
+                      {formatDateTime(event.createdAt)}
                     </p>
                     {event.details.trim() !== '' && (
                       <p className="mt-1 break-words text-[11px] text-muted-foreground">

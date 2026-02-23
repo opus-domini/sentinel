@@ -170,6 +170,9 @@ type Handler struct {
 	guardrails *guardrails.Service
 	version    string
 	configPath string
+	timezone   string
+	locale     string
+	mu         sync.Mutex // protects mutable settings (timezone, locale)
 
 	// runCtx is the parent context for fire-and-forget goroutines (runbook
 	// execution). Cancelled during Shutdown to signal in-flight runs.
@@ -205,6 +208,8 @@ func Register(
 	eventsHub *events.Hub,
 	version string,
 	configPath string,
+	timezone string,
+	locale string,
 ) *Handler {
 	runCtx, runCancel := context.WithCancel(context.Background())
 	h := &Handler{
@@ -218,6 +223,8 @@ func Register(
 		guardrails: guardrails.New(st),
 		version:    strings.TrimSpace(version),
 		configPath: configPath,
+		timezone:   timezone,
+		locale:     locale,
 		runCtx:     runCtx,
 		runCancel:  runCancel,
 	}
@@ -266,10 +273,16 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	if version == "" {
 		version = defaultMetaVersion
 	}
+	h.mu.Lock()
+	tz := h.timezone
+	loc := h.locale
+	h.mu.Unlock()
 	writeData(w, http.StatusOK, map[string]any{
 		"tokenRequired": h.guard.TokenRequired(),
 		"defaultCwd":    defaultCwd,
 		"version":       version,
+		"timezone":      tz,
+		"locale":        loc,
 	})
 }
 

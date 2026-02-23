@@ -69,6 +69,8 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 
 		{name: "config-get", method: http.MethodGet, path: "/api/ops/config"},
 		{name: "config-patch", method: http.MethodPatch, path: "/api/ops/config", body: `{"logLevel":"info"}`},
+		{name: "settings-timezone", method: http.MethodPatch, path: "/api/ops/settings/timezone", body: `{"timezone":"UTC"}`},
+		{name: "settings-locale", method: http.MethodPatch, path: "/api/ops/settings/locale", body: `{"locale":"en-US"}`},
 		{name: "storage-stats", method: http.MethodGet, path: "/api/ops/storage/stats"},
 		{name: "storage-flush", method: http.MethodPost, path: "/api/ops/storage/flush", body: `{"resource":"timeline"}`},
 
@@ -124,6 +126,8 @@ func newContractMux(t *testing.T) *http.ServeMux {
 		&mockRecovery{},
 		events.NewHub(),
 		"test",
+		"",
+		"UTC",
 		"",
 	)
 	return mux
