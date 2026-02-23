@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 1 || name != "init" {
-		t.Fatalf("latest migration = (%d, %q), want (1, %q)", version, name, "init")
+	if version != 2 || name != "recovery-job-meta" {
+		t.Fatalf("latest migration = (%d, %q), want (2, %q)", version, name, "recovery-job-meta")
 	}
 
 	// Spot-check that a few tables exist.
@@ -64,8 +64,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("schema_migrations rows = %d, want 1", count)
+	if count != 2 {
+		t.Fatalf("schema_migrations rows = %d, want 2", count)
 	}
 }
 

@@ -52,6 +52,7 @@ type RecoveryConfig struct {
 	SnapshotInterval time.Duration
 	CaptureLines     int
 	MaxSnapshots     int
+	BootRestore      string // "off", "safe", "confirm", "full"
 }
 
 var (
@@ -99,9 +100,11 @@ const defaultConfigContent = `# Sentinel configuration
 # - SENTINEL_RECOVERY_ENABLED
 # - SENTINEL_RECOVERY_SNAPSHOT_INTERVAL
 # - SENTINEL_RECOVERY_MAX_SNAPSHOTS
+# - SENTINEL_RECOVERY_BOOT_RESTORE
 # recovery_enabled = true
 # recovery_snapshot_interval = "5s"
 # recovery_max_snapshots = 300
+# recovery_boot_restore = "off"  # off | safe | confirm | full
 
 # IANA timezone for all displayed timestamps.
 # Environment variable: SENTINEL_TIMEZONE
@@ -278,6 +281,12 @@ func applyRecoveryConfig(cfg *Config, file map[string]string) {
 		file,
 		cfg.Recovery.MaxSnapshots,
 	)
+	if raw := readRawEnvOrFile("SENTINEL_RECOVERY_BOOT_RESTORE", "recovery_boot_restore", file); raw != "" {
+		switch raw {
+		case "off", "safe", "confirm", "full":
+			cfg.Recovery.BootRestore = raw
+		}
+	}
 }
 
 func applyAlertThresholdsConfig(cfg *Config, file map[string]string) {

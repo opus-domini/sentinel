@@ -484,21 +484,24 @@ func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	return createdPaneID, nil
 }
 
-func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) error {
-	args := []string{"split-window", "-d", "-t", paneID}
+func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
+	args := []string{"split-window", "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
 	switch direction {
 	case "vertical":
 		args = append(args, "-h")
 	case "horizontal":
 		args = append(args, "-v")
 	default:
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
 	}
 	if strings.TrimSpace(cwd) != "" {
 		args = append(args, "-c", cwd)
 	}
-	_, err := run(ctx, args...)
-	return err
+	out, err := run(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }
 
 func SelectLayout(ctx context.Context, session string, index int, layout string) error {

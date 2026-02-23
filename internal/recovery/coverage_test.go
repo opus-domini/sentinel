@@ -3,6 +3,7 @@ package recovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -1194,21 +1195,23 @@ func (f *splitTrackingTmux) ListPanes(_ context.Context, session string) ([]tmux
 	return append([]tmux.Pane{}, f.panes[session]...), nil
 }
 
-func (f *splitTrackingTmux) SplitPaneIn(_ context.Context, paneID, direction, cwd string) error {
+func (f *splitTrackingTmux) SplitPaneIn(_ context.Context, paneID, direction, cwd string) (string, error) {
 	f.splitCount++
 	// Simulate a new pane being added.
+	var newPaneID string
 	for sessionName, panes := range f.panes {
 		newIdx := len(panes)
+		newPaneID = fmt.Sprintf("%%%d", newIdx+1)
 		f.panes[sessionName] = append(panes, tmux.Pane{
 			Session:     sessionName,
 			WindowIndex: 0,
 			PaneIndex:   newIdx,
-			PaneID:      "%" + string(rune('0'+newIdx+1)),
+			PaneID:      newPaneID,
 			Active:      false,
 		})
 		break
 	}
-	return nil
+	return newPaneID, nil
 }
 
 // ---------------------------------------------------------------------------

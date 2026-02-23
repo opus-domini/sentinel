@@ -179,7 +179,6 @@ export type RecoveryActions = {
   loadRecoverySnapshots: (sessionName: string) => Promise<void>
   restoreSelectedSnapshot: () => Promise<void>
   archiveRecoverySession: (sessionName: string) => Promise<void>
-  pollRecoveryJob: (jobID: string) => void
 }
 
 export type TimelineState = {

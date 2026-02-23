@@ -77,7 +77,7 @@ func (Service) SessionExists(ctx context.Context, session string) (bool, error) 
 	return SessionExists(ctx, session)
 }
 
-func (Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string) error {
+func (Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
 	return SplitPaneIn(ctx, paneID, direction, cwd)
 }
 

@@ -81,6 +81,9 @@ type RecoveryJob struct {
 	CompletedSteps int               `json:"completedSteps"`
 	CurrentStep    string            `json:"currentStep"`
 	Error          string            `json:"error"`
+	TriggeredBy    string            `json:"triggeredBy"`
+	Degraded       bool              `json:"degraded"`
+	DegradedReason string            `json:"degradedReason"`
 	CreatedAt      time.Time         `json:"createdAt"`
 	StartedAt      *time.Time        `json:"startedAt,omitempty"`
 	FinishedAt     *time.Time        `json:"finishedAt,omitempty"`
@@ -319,80 +322,24 @@ func (s *Store) ListRecoverySessions(ctx context.Context, states []RecoverySessi
 
 	out := make([]RecoverySession, 0, 16)
 	for rows.Next() {
-		var (
-			row                        RecoverySession
-			stateRaw                   string
-			snapshotAtRaw, lastSeenRaw string
-			killedRaw, restoredRaw     string
-			archivedRaw, restoreError  string
-		)
-		if err := rows.Scan(
-			&row.Name,
-			&stateRaw,
-			&row.LatestSnapshotID,
-			&row.SnapshotHash,
-			&snapshotAtRaw,
-			&row.LastBootID,
-			&lastSeenRaw,
-			&killedRaw,
-			&restoredRaw,
-			&archivedRaw,
-			&restoreError,
-			&row.Windows,
-			&row.Panes,
-		); err != nil {
+		row, err := scanRecoverySession(rows)
+		if err != nil {
 			return nil, err
 		}
-		row.State = RecoverySessionState(stateRaw)
-		row.SnapshotAt = parseStoreTime(snapshotAtRaw)
-		row.LastSeenAt = parseStoreTime(lastSeenRaw)
-		row.KilledAt = parseStoreTimePtr(killedRaw)
-		row.RestoredAt = parseStoreTimePtr(restoredRaw)
-		row.ArchivedAt = parseStoreTimePtr(archivedRaw)
-		row.RestoreError = restoreError
 		out = append(out, row)
 	}
 	return out, rows.Err()
 }
 
 func (s *Store) GetRecoverySession(ctx context.Context, name string) (RecoverySession, error) {
-	var (
-		row                                         RecoverySession
-		stateRaw, snapshotAtRaw, lastSeenRaw        string
-		killedRaw, restoredRaw, archivedRaw, errRaw string
-	)
-	err := s.db.QueryRowContext(ctx,
+	row := s.db.QueryRowContext(ctx,
 		`SELECT name, state, latest_snapshot_id, snapshot_hash, snapshot_at, last_boot_id, last_seen_at,
 		        killed_at, restored_at, archived_at, restore_error, windows, panes
 		   FROM recovery_sessions
 		  WHERE name = ?`,
 		name,
-	).Scan(
-		&row.Name,
-		&stateRaw,
-		&row.LatestSnapshotID,
-		&row.SnapshotHash,
-		&snapshotAtRaw,
-		&row.LastBootID,
-		&lastSeenRaw,
-		&killedRaw,
-		&restoredRaw,
-		&archivedRaw,
-		&errRaw,
-		&row.Windows,
-		&row.Panes,
 	)
-	if err != nil {
-		return RecoverySession{}, err
-	}
-	row.State = RecoverySessionState(stateRaw)
-	row.SnapshotAt = parseStoreTime(snapshotAtRaw)
-	row.LastSeenAt = parseStoreTime(lastSeenRaw)
-	row.KilledAt = parseStoreTimePtr(killedRaw)
-	row.RestoredAt = parseStoreTimePtr(restoredRaw)
-	row.ArchivedAt = parseStoreTimePtr(archivedRaw)
-	row.RestoreError = errRaw
-	return row, nil
+	return scanRecoverySession(row)
 }
 
 func (s *Store) MarkRecoverySessionsKilled(ctx context.Context, names []string, bootID string, killedAt time.Time) error {
@@ -543,48 +490,17 @@ func (s *Store) TrimRecoverySnapshots(ctx context.Context, maxPerSession int) er
 	if maxPerSession <= 0 {
 		return nil
 	}
-	sessions, err := s.ListRecoverySessions(ctx, nil)
-	if err != nil {
-		return err
-	}
-	for _, item := range sessions {
-		rows, err := s.db.QueryContext(ctx,
-			`SELECT id
-			   FROM recovery_snapshots
-			  WHERE session_name = ?
-			  ORDER BY captured_at DESC
-			  LIMIT -1 OFFSET ?`,
-			item.Name,
-			maxPerSession,
-		)
-		if err != nil {
-			return err
-		}
-		var staleIDs []int64
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				_ = rows.Close()
-				return err
-			}
-			staleIDs = append(staleIDs, id)
-		}
-		_ = rows.Close()
-		if len(staleIDs) == 0 {
-			continue
-		}
-		placeholders := make([]string, len(staleIDs))
-		args := make([]any, len(staleIDs))
-		for i, id := range staleIDs {
-			placeholders[i] = "?"
-			args[i] = id
-		}
-		query := "DELETE FROM recovery_snapshots WHERE id IN (" + strings.Join(placeholders, ", ") + ")" //nolint:gosec // placeholders are literals
-		if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM recovery_snapshots WHERE id IN (
+			SELECT id FROM (
+				SELECT id, ROW_NUMBER() OVER (
+					PARTITION BY session_name ORDER BY captured_at DESC
+				) AS rn FROM recovery_snapshots
+			) WHERE rn > ?
+		)`,
+		maxPerSession,
+	)
+	return err
 }
 
 func (s *Store) SetRuntimeValue(ctx context.Context, key, value string) error {
@@ -616,11 +532,20 @@ func (s *Store) CreateRecoveryJob(ctx context.Context, job RecoveryJob) error {
 	if createdAt.IsZero() {
 		createdAt = time.Now().UTC()
 	}
+	degradedInt := 0
+	if job.Degraded {
+		degradedInt = 1
+	}
+	triggeredBy := strings.TrimSpace(job.TriggeredBy)
+	if triggeredBy == "" {
+		triggeredBy = "manual"
+	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO recovery_jobs (
 			id, session_name, target_session, snapshot_id, mode, conflict_policy, status,
-			total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			total_steps, completed_steps, current_step, error, triggered_by, degraded, degraded_reason,
+			created_at, started_at, finished_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID,
 		job.SessionName,
 		job.TargetSession,
@@ -632,6 +557,9 @@ func (s *Store) CreateRecoveryJob(ctx context.Context, job RecoveryJob) error {
 		job.CompletedSteps,
 		job.CurrentStep,
 		strings.TrimSpace(job.Error),
+		triggeredBy,
+		degradedInt,
+		strings.TrimSpace(job.DegradedReason),
 		createdAt.Format(time.RFC3339),
 		formatTimePtr(job.StartedAt),
 		formatTimePtr(job.FinishedAt),
@@ -697,41 +625,15 @@ func (s *Store) FinishRecoveryJob(ctx context.Context, id string, status Recover
 }
 
 func (s *Store) GetRecoveryJob(ctx context.Context, id string) (RecoveryJob, error) {
-	var (
-		row                         RecoveryJob
-		statusRaw, createdAtRaw     string
-		startedAtRaw, finishedAtRaw string
-	)
-	err := s.db.QueryRowContext(ctx,
+	row := s.db.QueryRowContext(ctx,
 		`SELECT id, session_name, target_session, snapshot_id, mode, conflict_policy, status,
-		        total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
+		        total_steps, completed_steps, current_step, error, triggered_by, degraded, degraded_reason,
+		        created_at, started_at, finished_at
 		   FROM recovery_jobs
 		  WHERE id = ?`,
 		id,
-	).Scan(
-		&row.ID,
-		&row.SessionName,
-		&row.TargetSession,
-		&row.SnapshotID,
-		&row.Mode,
-		&row.ConflictPolicy,
-		&statusRaw,
-		&row.TotalSteps,
-		&row.CompletedSteps,
-		&row.CurrentStep,
-		&row.Error,
-		&createdAtRaw,
-		&startedAtRaw,
-		&finishedAtRaw,
 	)
-	if err != nil {
-		return RecoveryJob{}, err
-	}
-	row.Status = RecoveryJobStatus(statusRaw)
-	row.CreatedAt = parseStoreTime(createdAtRaw)
-	row.StartedAt = parseStoreTimePtr(startedAtRaw)
-	row.FinishedAt = parseStoreTimePtr(finishedAtRaw)
-	return row, nil
+	return scanRecoveryJob(row)
 }
 
 func (s *Store) ListRecoveryJobs(ctx context.Context, statuses []RecoveryJobStatus, limit int) ([]RecoveryJob, error) {
@@ -740,7 +642,8 @@ func (s *Store) ListRecoveryJobs(ctx context.Context, statuses []RecoveryJobStat
 	}
 
 	query := `SELECT id, session_name, target_session, snapshot_id, mode, conflict_policy, status,
-	                 total_steps, completed_steps, current_step, error, created_at, started_at, finished_at
+	                 total_steps, completed_steps, current_step, error, triggered_by, degraded, degraded_reason,
+	                 created_at, started_at, finished_at
 	            FROM recovery_jobs`
 	args := make([]any, 0, len(statuses)+1)
 	if len(statuses) > 0 {
@@ -762,34 +665,10 @@ func (s *Store) ListRecoveryJobs(ctx context.Context, statuses []RecoveryJobStat
 
 	out := make([]RecoveryJob, 0, limit)
 	for rows.Next() {
-		var (
-			row                        RecoveryJob
-			statusRaw                  string
-			createdAtRaw, startedAtRaw string
-			finishedAtRaw              string
-		)
-		if err := rows.Scan(
-			&row.ID,
-			&row.SessionName,
-			&row.TargetSession,
-			&row.SnapshotID,
-			&row.Mode,
-			&row.ConflictPolicy,
-			&statusRaw,
-			&row.TotalSteps,
-			&row.CompletedSteps,
-			&row.CurrentStep,
-			&row.Error,
-			&createdAtRaw,
-			&startedAtRaw,
-			&finishedAtRaw,
-		); err != nil {
+		row, err := scanRecoveryJob(rows)
+		if err != nil {
 			return nil, err
 		}
-		row.Status = RecoveryJobStatus(statusRaw)
-		row.CreatedAt = parseStoreTime(createdAtRaw)
-		row.StartedAt = parseStoreTimePtr(startedAtRaw)
-		row.FinishedAt = parseStoreTimePtr(finishedAtRaw)
 		out = append(out, row)
 	}
 	return out, rows.Err()
@@ -839,6 +718,77 @@ func scanRecoverySnapshot(src scanRow) (RecoverySnapshot, error) {
 		return RecoverySnapshot{}, err
 	}
 	row.CapturedAt = parseStoreTime(capturedAtRaw)
+	return row, nil
+}
+
+func scanRecoverySession(src scanRow) (RecoverySession, error) {
+	var (
+		row                        RecoverySession
+		stateRaw                   string
+		snapshotAtRaw, lastSeenRaw string
+		killedRaw, restoredRaw     string
+		archivedRaw, restoreError  string
+	)
+	if err := src.Scan(
+		&row.Name,
+		&stateRaw,
+		&row.LatestSnapshotID,
+		&row.SnapshotHash,
+		&snapshotAtRaw,
+		&row.LastBootID,
+		&lastSeenRaw,
+		&killedRaw,
+		&restoredRaw,
+		&archivedRaw,
+		&restoreError,
+		&row.Windows,
+		&row.Panes,
+	); err != nil {
+		return RecoverySession{}, err
+	}
+	row.State = RecoverySessionState(stateRaw)
+	row.SnapshotAt = parseStoreTime(snapshotAtRaw)
+	row.LastSeenAt = parseStoreTime(lastSeenRaw)
+	row.KilledAt = parseStoreTimePtr(killedRaw)
+	row.RestoredAt = parseStoreTimePtr(restoredRaw)
+	row.ArchivedAt = parseStoreTimePtr(archivedRaw)
+	row.RestoreError = restoreError
+	return row, nil
+}
+
+func scanRecoveryJob(src scanRow) (RecoveryJob, error) {
+	var (
+		row                         RecoveryJob
+		statusRaw, createdAtRaw     string
+		startedAtRaw, finishedAtRaw string
+		degradedInt                 int
+	)
+	if err := src.Scan(
+		&row.ID,
+		&row.SessionName,
+		&row.TargetSession,
+		&row.SnapshotID,
+		&row.Mode,
+		&row.ConflictPolicy,
+		&statusRaw,
+		&row.TotalSteps,
+		&row.CompletedSteps,
+		&row.CurrentStep,
+		&row.Error,
+		&row.TriggeredBy,
+		&degradedInt,
+		&row.DegradedReason,
+		&createdAtRaw,
+		&startedAtRaw,
+		&finishedAtRaw,
+	); err != nil {
+		return RecoveryJob{}, err
+	}
+	row.Status = RecoveryJobStatus(statusRaw)
+	row.Degraded = degradedInt != 0
+	row.CreatedAt = parseStoreTime(createdAtRaw)
+	row.StartedAt = parseStoreTimePtr(startedAtRaw)
+	row.FinishedAt = parseStoreTimePtr(finishedAtRaw)
 	return row, nil
 }
 

@@ -100,6 +100,7 @@ func serve() int {
 			MaxSnapshotsPerSess: cfg.Recovery.MaxSnapshots,
 			EventHub:            eventHub,
 			AlertRepo:           st,
+			BootRestore:         cfg.Recovery.BootRestore,
 		})
 		recoveryService.Start(context.Background())
 	}

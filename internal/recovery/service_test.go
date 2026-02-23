@@ -61,12 +61,14 @@ func (f *fakeTmux) RenameWindow(_ context.Context, _ string, _ int, _ string) er
 func (f *fakeTmux) NewWindowAt(_ context.Context, _ string, _ int, _ string, _ string) error {
 	return nil
 }
-func (f *fakeTmux) SplitPaneIn(_ context.Context, _ string, _ string, _ string) error { return nil }
-func (f *fakeTmux) SelectLayout(_ context.Context, _ string, _ int, _ string) error   { return nil }
-func (f *fakeTmux) SelectWindow(_ context.Context, _ string, _ int) error             { return nil }
-func (f *fakeTmux) SelectPane(_ context.Context, _ string) error                      { return nil }
-func (f *fakeTmux) RenamePane(_ context.Context, _ string, _ string) error            { return nil }
-func (f *fakeTmux) SendKeys(_ context.Context, _ string, _ string, _ bool) error      { return nil }
+func (f *fakeTmux) SplitPaneIn(_ context.Context, _ string, _ string, _ string) (string, error) {
+	return "%99", nil
+}
+func (f *fakeTmux) SelectLayout(_ context.Context, _ string, _ int, _ string) error { return nil }
+func (f *fakeTmux) SelectWindow(_ context.Context, _ string, _ int) error           { return nil }
+func (f *fakeTmux) SelectPane(_ context.Context, _ string) error                    { return nil }
+func (f *fakeTmux) RenamePane(_ context.Context, _ string, _ string) error          { return nil }
+func (f *fakeTmux) SendKeys(_ context.Context, _ string, _ string, _ bool) error    { return nil }
 func (f *fakeTmux) KillSession(_ context.Context, session string) error {
 	out := make([]tmux.Session, 0, len(f.sessions))
 	for _, item := range f.sessions {

@@ -723,12 +723,15 @@ func TestSplitPaneIn(t *testing.T) {
 			if !strings.Contains(joined, "-c /home/user") {
 				t.Errorf("expected -c /home/user, got: %v", args)
 			}
-			return "", nil
+			return "%5", nil
 		})
 
-		err := SplitPaneIn(ctx, "%0", "vertical", "/home/user")
+		paneID, err := SplitPaneIn(ctx, "%0", "vertical", "/home/user")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if paneID != "%5" {
+			t.Errorf("expected paneID %%5, got %q", paneID)
 		}
 	})
 
@@ -741,17 +744,20 @@ func TestSplitPaneIn(t *testing.T) {
 			if strings.Contains(joined, "-c") {
 				t.Errorf("expected no -c flag for empty cwd, got: %v", args)
 			}
-			return "", nil
+			return "%6", nil
 		})
 
-		err := SplitPaneIn(ctx, "%0", "horizontal", "")
+		paneID, err := SplitPaneIn(ctx, "%0", "horizontal", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if paneID != "%6" {
+			t.Errorf("expected paneID %%6, got %q", paneID)
 		}
 	})
 
 	t.Run("invalid_direction", func(t *testing.T) {
-		err := SplitPaneIn(ctx, "%0", "diagonal", "/tmp")
+		_, err := SplitPaneIn(ctx, "%0", "diagonal", "/tmp")
 		if err == nil {
 			t.Fatal("expected error")
 		}

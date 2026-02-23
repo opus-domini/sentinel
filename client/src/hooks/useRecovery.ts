@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type {
   RecoveryJob,
-  RecoveryJobResponse,
   RecoveryOverviewResponse,
   RecoverySession,
   RecoverySnapshotResponse,
@@ -70,7 +69,6 @@ export function useRecovery(options: UseRecoveryOptions) {
   const [selectedSnapshot, setSelectedSnapshot] =
     useState<RecoverySnapshotView | null>(null)
   const [recoveryLoading, setRecoveryLoading] = useState(false)
-  const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [recoveryError, setRecoveryError] = useState('')
   const [restoreMode, setRestoreMode] = useState<'safe' | 'confirm' | 'full'>(
     'confirm',
@@ -108,6 +106,12 @@ export function useRecovery(options: UseRecoveryOptions) {
       setSelectedRecoverySession(recoverySessions[0].name)
     }
   }, [recoverySessions, selectedRecoverySession])
+
+  const recoveryBusy = useMemo(
+    () =>
+      recoveryJobs.some((j) => j.status === 'queued' || j.status === 'running'),
+    [recoveryJobs],
+  )
 
   const refreshRecovery = useCallback(
     async (params?: { quiet?: boolean }) => {
@@ -217,63 +221,30 @@ export function useRecovery(options: UseRecoveryOptions) {
     [api, loadRecoverySnapshot],
   )
 
-  const pollRecoveryJob = useCallback(
-    (jobID: string) => {
-      const startedAt = Date.now()
-      const maxDurationMs = 5 * 60 * 1000
-
-      const tick = async () => {
-        try {
-          const data = await api<RecoveryJobResponse>(
-            `/api/recovery/jobs/${encodeURIComponent(jobID)}`,
-          )
-          setRecoveryJobs((prev) => {
-            const next = [data.job, ...prev.filter((j) => j.id !== data.job.id)]
-            return next.slice(0, 30)
-          })
-
-          if (
-            (data.job.status === 'queued' || data.job.status === 'running') &&
-            Date.now() - startedAt < maxDurationMs
-          ) {
-            window.setTimeout(() => {
-              void tick()
-            }, 1200)
-            return
-          }
-
-          setRecoveryBusy(false)
-          if (data.job.status === 'succeeded') {
-            pushSuccessToast(
-              'Recovery',
-              `session restored to "${data.job.targetSession || data.job.sessionName}"`,
-            )
-            await refreshSessions()
-          } else if (data.job.status === 'failed') {
-            pushErrorToast(
-              'Recovery',
-              data.job.error || 'restore job finished with errors',
-            )
-          }
-          await refreshRecovery({ quiet: true })
-        } catch (error) {
-          setRecoveryBusy(false)
-          const message =
-            error instanceof Error
-              ? error.message
-              : 'failed to track restore progress'
-          setRecoveryError(message)
-        }
+  // React to terminal job states pushed via WebSocket (recovery.job.updated).
+  const toastedJobsRef = useRef(new Set<string>())
+  useEffect(() => {
+    for (const job of recoveryJobs) {
+      if (toastedJobsRef.current.has(job.id)) continue
+      if (job.status === 'succeeded') {
+        toastedJobsRef.current.add(job.id)
+        pushSuccessToast(
+          'Recovery',
+          `session restored to "${job.targetSession || job.sessionName}"`,
+        )
+        void refreshSessions()
+      } else if (job.status === 'failed') {
+        toastedJobsRef.current.add(job.id)
+        pushErrorToast(
+          'Recovery',
+          job.error || 'restore job finished with errors',
+        )
       }
-
-      void tick()
-    },
-    [api, pushErrorToast, pushSuccessToast, refreshRecovery, refreshSessions],
-  )
+    }
+  }, [recoveryJobs, pushSuccessToast, pushErrorToast, refreshSessions])
 
   const restoreSelectedSnapshot = useCallback(async () => {
     if (selectedSnapshotID === null) return
-    setRecoveryBusy(true)
     setRecoveryError('')
     try {
       const data = await api<{ job: RecoveryJob }>(
@@ -291,9 +262,7 @@ export function useRecovery(options: UseRecoveryOptions) {
         data.job,
         ...prev.filter((item) => item.id !== data.job.id),
       ])
-      pollRecoveryJob(data.job.id)
     } catch (error) {
-      setRecoveryBusy(false)
       const message =
         error instanceof Error ? error.message : 'failed to start restore'
       setRecoveryError(message)
@@ -301,7 +270,6 @@ export function useRecovery(options: UseRecoveryOptions) {
     }
   }, [
     api,
-    pollRecoveryJob,
     pushErrorToast,
     restoreConflictPolicy,
     restoreMode,
@@ -364,6 +332,5 @@ export function useRecovery(options: UseRecoveryOptions) {
     loadRecoverySnapshots,
     restoreSelectedSnapshot,
     archiveRecoverySession,
-    pollRecoveryJob,
   }
 }

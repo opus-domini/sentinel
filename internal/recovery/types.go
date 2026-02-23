@@ -52,6 +52,7 @@ type RestoreOptions struct {
 	Mode           ReplayMode     `json:"mode"`
 	ConflictPolicy ConflictPolicy `json:"conflictPolicy"`
 	TargetSession  string         `json:"targetSession"`
+	TriggeredBy    string         `json:"triggeredBy,omitempty"`
 }
 
 func (o RestoreOptions) normalize() RestoreOptions {

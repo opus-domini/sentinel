@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -91,7 +92,7 @@ type tmuxClient interface {
 	CreateSession(ctx context.Context, name, cwd string) error
 	RenameWindow(ctx context.Context, session string, index int, name string) error
 	NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error
-	SplitPaneIn(ctx context.Context, paneID, direction, cwd string) error
+	SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error)
 	SelectLayout(ctx context.Context, session string, index int, layout string) error
 	SelectWindow(ctx context.Context, session string, index int) error
 	SelectPane(ctx context.Context, paneID string) error
@@ -111,6 +112,7 @@ type Options struct {
 	MaxSnapshotsPerSess int
 	EventHub            *events.Hub
 	AlertRepo           AlertRepo
+	BootRestore         string // "off", "safe", "confirm", "full"; empty = "off"
 }
 
 type Overview struct {
@@ -367,7 +369,30 @@ func (s *Service) markKilledSessionsAfterBootChange(ctx context.Context, bootCha
 	}
 	_ = s.store.SetRuntimeValue(ctx, runtimeBootChangeKey, now.Format(time.RFC3339))
 	slog.Info("recovery marked sessions as killed after boot change", "count", len(killed))
+
+	if mode := s.options.BootRestore; mode != "" && mode != "off" {
+		for _, name := range killed {
+			s.autoRestoreSession(ctx, name, ReplayMode(mode))
+		}
+	}
 	return len(killed), nil
+}
+
+func (s *Service) autoRestoreSession(ctx context.Context, sessionName string, mode ReplayMode) {
+	snapshots, err := s.store.ListRecoverySnapshots(ctx, sessionName, 1)
+	if err != nil || len(snapshots) == 0 {
+		return
+	}
+	_, err = s.RestoreSnapshotAsync(ctx, snapshots[0].ID, RestoreOptions{
+		Mode:           mode,
+		ConflictPolicy: ConflictRename,
+		TriggeredBy:    "boot",
+	})
+	if err != nil {
+		slog.Warn("recovery auto-restore failed", "session", sessionName, "err", err)
+	} else {
+		slog.Info("recovery auto-restore started", "session", sessionName, "mode", mode)
+	}
 }
 
 func (s *Service) storeCollectRuntime(ctx context.Context, bootID string, now time.Time) error {
@@ -661,6 +686,10 @@ func (s *Service) RestoreSnapshotAsync(ctx context.Context, snapshotID int64, op
 	}
 	jobID := randomJobID()
 	totalSteps := estimateTotalSteps(view.Payload)
+	triggeredBy := strings.TrimSpace(options.TriggeredBy)
+	if triggeredBy == "" {
+		triggeredBy = "manual"
+	}
 	job := store.RecoveryJob{
 		ID:             jobID,
 		SessionName:    view.Payload.SessionName,
@@ -672,6 +701,7 @@ func (s *Service) RestoreSnapshotAsync(ctx context.Context, snapshotID int64, op
 		TotalSteps:     totalSteps,
 		CompletedSteps: 0,
 		CurrentStep:    "",
+		TriggeredBy:    triggeredBy,
 		CreatedAt:      time.Now().UTC(),
 	}
 	if err := s.store.CreateRecoveryJob(ctx, job); err != nil {
@@ -707,15 +737,8 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 			Severity:  "error",
 			CreatedAt: time.Now().UTC(),
 		})
-		s.publish(events.TypeRecoveryJob, map[string]any{
-			"jobId":   jobID,
-			"status":  string(store.RecoveryJobFailed),
-			"message": message,
-		})
-		s.publish(events.TypeRecoveryOverview, map[string]any{
-			"session": snap.SessionName,
-			"status":  string(store.RecoveryStateKilled),
-		})
+		s.publishJobTransition(jobID, store.RecoveryJobFailed,
+			snap.SessionName, store.RecoveryStateKilled, map[string]any{"message": message})
 	}
 
 	if err := s.store.SetRecoveryJobRunning(ctx, jobID, time.Now().UTC()); err != nil {
@@ -726,14 +749,8 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 	if err := s.store.MarkRecoverySessionRestoring(ctx, snap.SessionName); err != nil {
 		slog.Warn("recovery mark restoring failed", "session", snap.SessionName, "err", err)
 	}
-	s.publish(events.TypeRecoveryJob, map[string]any{
-		"jobId":  jobID,
-		"status": string(store.RecoveryJobRunning),
-	})
-	s.publish(events.TypeRecoveryOverview, map[string]any{
-		"session": snap.SessionName,
-		"status":  string(store.RecoveryStateRestoring),
-	})
+	s.publishJobTransition(jobID, store.RecoveryJobRunning,
+		snap.SessionName, store.RecoveryStateRestoring, nil)
 
 	totalSteps := estimateTotalSteps(snap)
 	doneSteps := 0
@@ -774,15 +791,8 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 		slog.Warn("recovery finish job failed", "job", jobID, "err", err)
 	}
 	s.resolveAlert(finCtx, fmt.Sprintf("recovery:session:%s:killed", snap.SessionName), time.Now().UTC())
-	s.publish(events.TypeRecoveryJob, map[string]any{
-		"jobId":  jobID,
-		"status": string(store.RecoveryJobSucceeded),
-		"target": target,
-	})
-	s.publish(events.TypeRecoveryOverview, map[string]any{
-		"session": snap.SessionName,
-		"status":  string(store.RecoveryStateRestored),
-	})
+	s.publishJobTransition(jobID, store.RecoveryJobSucceeded,
+		snap.SessionName, store.RecoveryStateRestored, map[string]any{"target": target})
 	s.publish(events.TypeTmuxSessions, map[string]any{
 		"source": "recovery.restore",
 		"target": target,
@@ -870,16 +880,46 @@ func (s *Service) restoreSession(ctx context.Context, snap SessionSnapshot, mode
 		if len(windowPanes) == 0 {
 			continue
 		}
-		if err := s.ensurePaneCount(ctx, target, window.Index, len(windowPanes), windowPanes); err != nil {
-			return err
-		}
-		if strings.TrimSpace(window.Layout) != "" {
-			if err := s.tmux.SelectLayout(ctx, target, window.Index, window.Layout); err != nil {
-				slog.Debug("recovery select-layout failed", "session", target, "window", window.Index, "err", err)
+
+		tree := parseLayout(strings.TrimSpace(window.Layout))
+		if tree != nil && tree.leafCount() == len(windowPanes) {
+			// Layout-aware: create panes matching the layout tree.
+			firstPaneID, err := s.firstPaneIDForWindow(ctx, target, window.Index)
+			if err != nil {
+				return err
 			}
-		}
-		if err := s.restoreWindowPanes(ctx, target, window.Index, windowPanes, mode); err != nil {
-			return err
+			counter := 0
+			cwdFn := func(leafIdx int) string {
+				if leafIdx < len(windowPanes) {
+					return strings.TrimSpace(windowPanes[leafIdx].CurrentPath)
+				}
+				return ""
+			}
+			result, err := buildPanes(ctx, s.tmux, tree, firstPaneID, cwdFn, &counter)
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(window.Layout) != "" {
+				if err := s.tmux.SelectLayout(ctx, target, window.Index, window.Layout); err != nil {
+					slog.Debug("recovery select-layout failed", "session", target, "window", window.Index, "err", err)
+				}
+			}
+			if err := s.restoreWindowPanesWithIDs(ctx, result.paneIDs, windowPanes, mode); err != nil {
+				return err
+			}
+		} else {
+			// Fallback: sequential splits for snapshots without valid layout.
+			if err := s.ensurePaneCount(ctx, target, window.Index, len(windowPanes), windowPanes); err != nil {
+				return err
+			}
+			if strings.TrimSpace(window.Layout) != "" {
+				if err := s.tmux.SelectLayout(ctx, target, window.Index, window.Layout); err != nil {
+					slog.Debug("recovery select-layout failed", "session", target, "window", window.Index, "err", err)
+				}
+			}
+			if err := s.restoreWindowPanes(ctx, target, window.Index, windowPanes, mode); err != nil {
+				return err
+			}
 		}
 		step(fmt.Sprintf("window %d restored", window.Index))
 	}
@@ -911,7 +951,7 @@ func (s *Service) ensurePaneCount(ctx context.Context, session string, windowInd
 		if nextIdx%2 == 1 {
 			direction = "vertical"
 		}
-		if err := s.tmux.SplitPaneIn(ctx, targetPane.PaneID, direction, nextCWD); err != nil {
+		if _, err := s.tmux.SplitPaneIn(ctx, targetPane.PaneID, direction, nextCWD); err != nil {
 			return err
 		}
 	}
@@ -952,6 +992,52 @@ func (s *Service) restoreWindowPanes(ctx context.Context, session string, window
 		}
 		if sp.Active {
 			_ = s.tmux.SelectPane(ctx, lp.PaneID)
+		}
+	}
+	return nil
+}
+
+func (s *Service) firstPaneIDForWindow(ctx context.Context, session string, windowIndex int) (string, error) {
+	allPanes, err := s.tmux.ListPanes(ctx, session)
+	if err != nil {
+		return "", err
+	}
+	wPanes := filterPanesByWindow(allPanes, windowIndex)
+	if len(wPanes) == 0 {
+		return "", fmt.Errorf("no panes found for window %d in session %q", windowIndex, session)
+	}
+	sort.Slice(wPanes, func(i, j int) bool { return wPanes[i].PaneIndex < wPanes[j].PaneIndex })
+	return wPanes[0].PaneID, nil
+}
+
+// restoreWindowPanesWithIDs applies snapshot state to panes identified by
+// explicit IDs (from layout-aware buildPanes), without needing to re-query
+// the pane list from tmux.
+func (s *Service) restoreWindowPanesWithIDs(ctx context.Context, paneIDs []string, snapPanes []PaneSnapshot, mode ReplayMode) error {
+	sort.Slice(snapPanes, func(i, j int) bool { return snapPanes[i].PaneIndex < snapPanes[j].PaneIndex })
+	count := min(len(paneIDs), len(snapPanes))
+	for i := 0; i < count; i++ {
+		sp := snapPanes[i]
+		paneID := paneIDs[i]
+		if title := strings.TrimSpace(sp.Title); title != "" {
+			_ = s.tmux.RenamePane(ctx, paneID, title)
+		}
+		if mode == ReplayModeConfirm || mode == ReplayModeFull {
+			if cwd := strings.TrimSpace(sp.CurrentPath); cwd != "" {
+				_ = s.tmux.SendKeys(ctx, paneID, "cd "+shellQuoteSingle(cwd), true)
+			}
+		}
+		if mode == ReplayModeFull {
+			cmd := strings.TrimSpace(sp.StartCommand)
+			if cmd == "" {
+				cmd = strings.TrimSpace(sp.CurrentCommand)
+			}
+			if cmd != "" {
+				_ = s.tmux.SendKeys(ctx, paneID, cmd, true)
+			}
+		}
+		if sp.Active {
+			_ = s.tmux.SelectPane(ctx, paneID)
 		}
 	}
 	return nil
@@ -1024,34 +1110,44 @@ func randomJobID() string {
 	return hex.EncodeToString(raw[:])
 }
 
-func snapshotHash(snap SessionSnapshot) (string, error) {
-	type windowHash struct {
-		Index  int
-		Name   string
-		Panes  int
-		Layout string
-	}
-	type paneHash struct {
-		WindowIndex    int
-		PaneIndex      int
-		Title          string
-		CurrentPath    string
-		StartCommand   string
-		CurrentCommand string
-	}
+type windowHashEntry struct {
+	Index  int
+	Name   string
+	Panes  int
+	Layout string
+}
 
-	windows := make([]windowHash, 0, len(snap.Windows))
+type paneHashEntry struct {
+	WindowIndex    int
+	PaneIndex      int
+	Title          string
+	CurrentPath    string
+	StartCommand   string
+	CurrentCommand string
+}
+
+type snapshotHashPayload struct {
+	SessionName  string
+	Attached     int
+	ActiveWindow int
+	ActivePaneID string
+	Windows      []windowHashEntry
+	Panes        []paneHashEntry
+}
+
+func snapshotHash(snap SessionSnapshot) (string, error) {
+	windows := make([]windowHashEntry, 0, len(snap.Windows))
 	for _, item := range snap.Windows {
-		windows = append(windows, windowHash{
+		windows = append(windows, windowHashEntry{
 			Index:  item.Index,
 			Name:   item.Name,
 			Panes:  item.Panes,
 			Layout: item.Layout,
 		})
 	}
-	panes := make([]paneHash, 0, len(snap.Panes))
+	panes := make([]paneHashEntry, 0, len(snap.Panes))
 	for _, item := range snap.Panes {
-		panes = append(panes, paneHash{
+		panes = append(panes, paneHashEntry{
 			WindowIndex:    item.WindowIndex,
 			PaneIndex:      item.PaneIndex,
 			Title:          item.Title,
@@ -1069,28 +1165,33 @@ func snapshotHash(snap SessionSnapshot) (string, error) {
 		return panes[i].WindowIndex < panes[j].WindowIndex
 	})
 
-	flat := struct {
-		SessionName  string
-		Attached     int
-		ActiveWindow int
-		ActivePaneID string
-		Windows      []windowHash
-		Panes        []paneHash
-	}{
+	blob, err := json.Marshal(snapshotHashPayload{
 		SessionName:  snap.SessionName,
 		Attached:     snap.Attached,
 		ActiveWindow: snap.ActiveWindow,
 		ActivePaneID: snap.ActivePaneID,
 		Windows:      windows,
 		Panes:        panes,
-	}
-
-	blob, err := json.Marshal(flat)
+	})
 	if err != nil {
 		return "", fmt.Errorf("marshal snapshot for hashing: %w", err)
 	}
 	sum := sha256.Sum256(blob)
 	return hex.EncodeToString(sum[:8]), nil
+}
+
+func (s *Service) publishJobTransition(jobID string, jobStatus store.RecoveryJobStatus,
+	sessionName string, sessionState store.RecoverySessionState, extra map[string]any) {
+	jobPayload := map[string]any{
+		"jobId":  jobID,
+		"status": string(jobStatus),
+	}
+	maps.Copy(jobPayload, extra)
+	s.publish(events.TypeRecoveryJob, jobPayload)
+	s.publish(events.TypeRecoveryOverview, map[string]any{
+		"session": sessionName,
+		"status":  string(sessionState),
+	})
 }
 
 func (s *Service) publish(eventType string, payload map[string]any) {
