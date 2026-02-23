@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.6](https://github.com/opus-domini/sentinel/compare/v0.4.5...v0.4.6) (2026-02-23)
+
+
+### Features
+
+* add internal database migrator with versioned SQL migrations ([1d2b44a](https://github.com/opus-domini/sentinel/commit/1d2b44ac195b95ddb602cf794c463b1ae29d0a7b))
+* add timezone and locale settings with unified date formatting ([6ef1737](https://github.com/opus-domini/sentinel/commit/6ef1737bde47ab542fced054fc1418ccd57c8bfe))
+* deterministic layout restore, scan helpers, and auto-restore on boot ([13076c8](https://github.com/opus-domini/sentinel/commit/13076c862832ec0dafde55c1d7a113ab4fc35d0a))
+
+
+### Bug Fixes
+
+* connection badge poisoned when switching sessions after create ([73f3bdc](https://github.com/opus-domini/sentinel/commit/73f3bdc8d9cf52025c05ab7b575c87b0195764f7))
+* connection badge stuck on "Connecting" after session creation ([21ae665](https://github.com/opus-domini/sentinel/commit/21ae665e73cf6c1481c1f5ce5b3a38cd126c8a5c))
+* eliminate UI flash when kill session triggers guardrail confirm ([78f8831](https://github.com/opus-domini/sentinel/commit/78f883124b47868db0b3aa26802df282bf03e26c))
+* emit runbook.started activity event for scheduled runs ([4ac7863](https://github.com/opus-domini/sentinel/commit/4ac7863776621553d4f09e304b873ffcbafd0c49))
+
+
+### Refactors
+
+* replace google/uuid with stdlib crypto/rand for ID generation ([40fabc2](https://github.com/opus-domini/sentinel/commit/40fabc2f28e2deb8e6e34b2cc35893c03c698c8f))
+
+
+### Documentation
+
+* comprehensive audit and fix of all documentation ([2965459](https://github.com/opus-domini/sentinel/commit/29654599d6ffd5df3536ce2e1044a3dd12c87c47))
+
 ## [0.4.5](https://github.com/opus-domini/sentinel/compare/v0.4.4...v0.4.5) (2026-02-20)
 
 
