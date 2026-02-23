@@ -269,15 +269,9 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     [createSessionWithConfirm],
   )
 
-  const killSessionWithConfirm = useCallback(
-    async (name: string, guardrailConfirmed: boolean) => {
-      const sessionName = name.trim()
-      if (sessionName === '') {
-        return
-      }
-
-      const activeBeforeKill = tabsStateRef.current.activeSession
-      const wasActive = activeBeforeKill === sessionName
+  const applyKillOptimisticUI = useCallback(
+    (sessionName: string) => {
+      const wasActive = tabsStateRef.current.activeSession === sessionName
       const hadSession = sessionsRef.current.some(
         (item) => item.name === sessionName,
       )
@@ -295,6 +289,39 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         resetTerminal()
         setConnection('disconnected', 'session killed')
       }
+    },
+    [
+      clearPendingInspectorSessionState,
+      clearPendingSessionRenamesForName,
+      closeCurrentSocket,
+      dispatchTabs,
+      pendingCreateSessionsRef,
+      resetTerminal,
+      sessionsRef,
+      setConnection,
+      setSessions,
+      tabsStateRef,
+    ],
+  )
+
+  const killSessionWithConfirm = useCallback(
+    async (name: string, guardrailConfirmed: boolean) => {
+      const sessionName = name.trim()
+      if (sessionName === '') {
+        return
+      }
+
+      const activeBeforeKill = tabsStateRef.current.activeSession
+      const hadSession = sessionsRef.current.some(
+        (item) => item.name === sessionName,
+      )
+
+      // Apply optimistic UI only when confirmed (or when guardrails
+      // won't intervene). On the initial attempt we wait for the API
+      // response so a guardrail rejection doesn't cause a flash.
+      if (guardrailConfirmed) {
+        applyKillOptimisticUI(sessionName)
+      }
 
       try {
         const killURL = `/api/tmux/sessions/${encodeURIComponent(sessionName)}`
@@ -307,17 +334,13 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           headers,
         })
 
+        // API succeeded — apply optimistic UI now if we deferred it.
+        if (!guardrailConfirmed) {
+          applyKillOptimisticUI(sessionName)
+        }
         void refreshSessions()
         pushSuccessToast('Kill Session', `session "${sessionName}" killed`)
       } catch (error) {
-        pendingKillSessionsRef.current.delete(sessionName)
-        if (hadSession) {
-          void refreshSessions()
-        }
-        if (activeBeforeKill !== '') {
-          dispatchTabs({ type: 'activate', session: activeBeforeKill })
-        }
-
         if (error instanceof GuardrailConfirmError) {
           const rules = error.decision.matchedRules
           requestGuardrailConfirm(
@@ -328,6 +351,16 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           return
         }
 
+        pendingKillSessionsRef.current.delete(sessionName)
+        if (guardrailConfirmed) {
+          if (hadSession) {
+            void refreshSessions()
+          }
+          if (activeBeforeKill !== '') {
+            dispatchTabs({ type: 'activate', session: activeBeforeKill })
+          }
+        }
+
         const msg =
           error instanceof Error ? error.message : 'failed to kill session'
         setConnection('error', msg)
@@ -336,19 +369,14 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     },
     [
       api,
-      clearPendingInspectorSessionState,
-      clearPendingSessionRenamesForName,
-      closeCurrentSocket,
+      applyKillOptimisticUI,
       dispatchTabs,
-      pendingCreateSessionsRef,
       pushErrorToast,
       pushSuccessToast,
       refreshSessions,
       requestGuardrailConfirm,
-      resetTerminal,
       sessionsRef,
       setConnection,
-      setSessions,
       tabsStateRef,
     ],
   )
