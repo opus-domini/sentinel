@@ -704,6 +704,13 @@ export function useTerminalTmux({
     if (sessionName !== '') {
       const runtime = runtimesRef.current.get(sessionName)
       if (runtime) {
+        // Never regress a connected runtime to 'connecting'. The WebSocket
+        // state machine (socket.onopen) is the authority once connected.
+        // External callers can target the wrong runtime when activeSessionRef
+        // is stale (e.g. during session creation before React re-renders).
+        if (runtime.connectionState === 'connected' && next === 'connecting') {
+          return
+        }
         runtime.connectionState = next
         runtime.statusDetail = detail
       }

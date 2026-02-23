@@ -204,9 +204,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         })
 
         activateSession(sessionName)
-        if (connectionState !== 'connected') {
-          setConnection('connecting', `opening ${sessionName}`)
-        }
+        setConnection('connecting', `opening ${sessionName}`)
         void refreshInspector(sessionName)
         void refreshSessions()
         pushSuccessToast('Create Session', `session "${sessionName}" created`)
