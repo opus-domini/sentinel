@@ -3,11 +3,14 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -176,6 +179,20 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 
 	slog.Info("scheduler triggered run", "schedule", sched.ID, "runbook", sched.RunbookID, "job", job.ID)
 
+	// Record the "runbook.started" activity event (same as manual runs).
+	if _, err := s.runbookRepo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "runbook",
+		EventType: "runbook.started",
+		Severity:  "info",
+		Resource:  job.RunbookID,
+		Message:   fmt.Sprintf("Runbook started: %s", job.RunbookName),
+		Details:   fmt.Sprintf("job=%s steps=%d source=scheduler schedule=%s", job.ID, job.TotalSteps, sched.ID),
+		Metadata:  marshalStartedMetadata(job.ID, job.RunbookID, sched.ID),
+		CreatedAt: now,
+	}); err != nil {
+		slog.Warn("scheduler: record runbook.started event", "job", job.ID, "err", err)
+	}
+
 	// Compute next run and whether to disable.
 	nextRunAt, enabled := s.computeNextRun(sched)
 
@@ -305,4 +322,17 @@ func (s *Service) publish(eventType string, payload map[string]any) {
 		return
 	}
 	s.opts.EventHub.Publish(events.NewEvent(eventType, payload))
+}
+
+func marshalStartedMetadata(jobID, runbookID, scheduleID string) string {
+	b, err := json.Marshal(map[string]string{
+		"jobId":      jobID,
+		"runbookId":  runbookID,
+		"scheduleId": scheduleID,
+		"status":     "queued",
+	})
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }
