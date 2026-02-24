@@ -67,6 +67,8 @@ const (
 	RecoveryJobRunning   RecoveryJobStatus = "running"
 	RecoveryJobSucceeded RecoveryJobStatus = "succeeded"
 	RecoveryJobFailed    RecoveryJobStatus = "failed"
+
+	recoveryStaleReason = "interrupted by restart"
 )
 
 type RecoveryJob struct {
@@ -641,7 +643,7 @@ func (s *Store) GetRecoveryJob(ctx context.Context, id string) (RecoveryJob, err
 func (s *Store) FailStaleRecoveryJobs(ctx context.Context, reason string, finishedAt time.Time) (int64, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		reason = "interrupted by restart"
+		reason = recoveryStaleReason
 	}
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE recovery_jobs
@@ -668,10 +670,11 @@ func (s *Store) ResetStaleSessions(ctx context.Context) (int64, error) {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE recovery_sessions
 		    SET state = ?,
-		        restore_error = 'interrupted by restart',
+		        restore_error = ?,
 		        updated_at = datetime('now')
 		  WHERE state = ?`,
 		RecoveryStateKilled,
+		recoveryStaleReason,
 		RecoveryStateRestoring,
 	)
 	if err != nil {

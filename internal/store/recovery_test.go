@@ -1395,7 +1395,7 @@ func TestFailStaleRecoveryJobs(t *testing.T) {
 			CreatedAt: now,
 		})
 
-		affected, err := s.FailStaleRecoveryJobs(ctx, "interrupted by restart", now)
+		affected, err := s.FailStaleRecoveryJobs(ctx, recoveryStaleReason, now)
 		if err != nil {
 			t.Fatalf("FailStaleRecoveryJobs error = %v", err)
 		}
@@ -1411,8 +1411,8 @@ func TestFailStaleRecoveryJobs(t *testing.T) {
 			if job.Status != RecoveryJobFailed {
 				t.Fatalf("%s status = %s, want failed", id, job.Status)
 			}
-			if job.Error != "interrupted by restart" {
-				t.Fatalf("%s error = %q, want %q", id, job.Error, "interrupted by restart")
+			if job.Error != recoveryStaleReason {
+				t.Fatalf("%s error = %q, want %q", id, job.Error, recoveryStaleReason)
 			}
 			if job.FinishedAt == nil {
 				t.Fatalf("%s FinishedAt is nil", id)
@@ -1475,7 +1475,7 @@ func TestFailStaleRecoveryJobs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetRecoveryJob error = %v", err)
 		}
-		if job.Error != "interrupted by restart" {
+		if job.Error != recoveryStaleReason {
 			t.Fatalf("error = %q, want default reason", job.Error)
 		}
 	})
@@ -1523,8 +1523,8 @@ func TestResetStaleSessions(t *testing.T) {
 		if sess.State != RecoveryStateKilled {
 			t.Fatalf("restoring-sess state = %s, want killed", sess.State)
 		}
-		if sess.RestoreError != "interrupted by restart" {
-			t.Fatalf("restore error = %q, want %q", sess.RestoreError, "interrupted by restart")
+		if sess.RestoreError != recoveryStaleReason {
+			t.Fatalf("restore error = %q, want %q", sess.RestoreError, recoveryStaleReason)
 		}
 
 		// The already-killed session should remain unchanged.
