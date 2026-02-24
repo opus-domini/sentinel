@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.7](https://github.com/opus-domini/sentinel/compare/v0.4.6...v0.4.7) (2026-02-24)
+
+
+### Features
+
+* add FUNDING.yml to support funding model platforms ([d211b68](https://github.com/opus-domini/sentinel/commit/d211b683ac126954179639858111c4f7c0120c8b))
+* recovery stale-job cleanup, icon preservation, and toast fix ([7d906dd](https://github.com/opus-domini/sentinel/commit/7d906ddddcacdf0bc5c078de087cbbb6dca16117))
+
+
+### Bug Fixes
+
+* complete icon restore before marking recovery job succeeded ([1c08da5](https://github.com/opus-domini/sentinel/commit/1c08da56b7d08ac6d93972a1f1625b2cf9d21fe3))
+* extract recoveryStaleReason constant to satisfy goconst ([02788f2](https://github.com/opus-domini/sentinel/commit/02788f2c70f69f214a5c5c1a82d29d65ae4e2047))
+
 ## [0.4.6](https://github.com/opus-domini/sentinel/compare/v0.4.5...v0.4.6) (2026-02-23)
 
 
