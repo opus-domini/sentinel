@@ -824,6 +824,21 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 	// Use a context detached from cancellation for terminal writes.
 	finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer finCancel()
+
+	// Trigger a fresh snapshot before marking the job succeeded so that all
+	// side-effects (journal row, icon) are visible when consumers observe the
+	// terminal succeeded status.
+	if err := s.Collect(finCtx); err != nil {
+		slog.Warn("recovery collect after restore failed", "job", jobID, "err", err)
+	}
+
+	// Restore session icon after Collect, which ensures the sessions row exists.
+	if icon := strings.TrimSpace(snap.Icon); icon != "" {
+		if err := s.store.SetIcon(finCtx, target, icon); err != nil {
+			slog.Warn("recovery restore icon failed", "session", target, "err", err)
+		}
+	}
+
 	if err := s.store.MarkRecoverySessionRestored(finCtx, snap.SessionName, time.Now().UTC()); err != nil {
 		slog.Warn("recovery mark restored failed", "session", snap.SessionName, "err", err)
 	}
@@ -837,19 +852,6 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 		"source": "recovery.restore",
 		"target": target,
 	})
-
-	// Trigger a fresh snapshot after restore to keep journal consistent.
-	// This also creates the sessions metadata row needed for icon restore.
-	if err := s.Collect(finCtx); err != nil {
-		slog.Warn("recovery collect after restore failed", "job", jobID, "err", err)
-	}
-
-	// Restore session icon after Collect, which ensures the sessions row exists.
-	if icon := strings.TrimSpace(snap.Icon); icon != "" {
-		if err := s.store.SetIcon(finCtx, target, icon); err != nil {
-			slog.Warn("recovery restore icon failed", "session", target, "err", err)
-		}
-	}
 }
 
 func (s *Service) resolveRestoreTarget(ctx context.Context, requested string, policy ConflictPolicy) (string, error) {
