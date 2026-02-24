@@ -44,6 +44,7 @@ type SessionSnapshot struct {
 	Attached     int              `json:"attached"`
 	ActiveWindow int              `json:"activeWindow"`
 	ActivePaneID string           `json:"activePaneId"`
+	Icon         string           `json:"icon,omitempty"`
 	Windows      []WindowSnapshot `json:"windows"`
 	Panes        []PaneSnapshot   `json:"panes"`
 }

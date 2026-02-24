@@ -636,6 +636,50 @@ func (s *Store) GetRecoveryJob(ctx context.Context, id string) (RecoveryJob, err
 	return scanRecoveryJob(row)
 }
 
+// FailStaleRecoveryJobs marks all jobs in queued or running state as failed.
+// This cleans up orphaned jobs left behind after a crash or restart.
+func (s *Store) FailStaleRecoveryJobs(ctx context.Context, reason string, finishedAt time.Time) (int64, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "interrupted by restart"
+	}
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE recovery_jobs
+		    SET status = ?,
+		        error = ?,
+		        current_step = '',
+		        finished_at = ?
+		  WHERE status IN (?, ?)`,
+		RecoveryJobFailed,
+		reason,
+		finishedAt.UTC().Format(time.RFC3339),
+		RecoveryJobQueued,
+		RecoveryJobRunning,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// ResetStaleSessions reverts sessions stuck in the "restoring" state back to
+// "killed", so they become eligible for a new restore attempt.
+func (s *Store) ResetStaleSessions(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE recovery_sessions
+		    SET state = ?,
+		        restore_error = 'interrupted by restart',
+		        updated_at = datetime('now')
+		  WHERE state = ?`,
+		RecoveryStateKilled,
+		RecoveryStateRestoring,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (s *Store) ListRecoveryJobs(ctx context.Context, statuses []RecoveryJobStatus, limit int) ([]RecoveryJob, error) {
 	if limit <= 0 {
 		limit = 20

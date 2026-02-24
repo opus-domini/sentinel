@@ -51,6 +51,7 @@ type sessionRepo interface {
 	MarkRecoverySessionRestoring(ctx context.Context, name string) error
 	MarkRecoverySessionRestored(ctx context.Context, name string, restoredAt time.Time) error
 	MarkRecoverySessionArchived(ctx context.Context, name string, archivedAt time.Time) error
+	ResetStaleSessions(ctx context.Context) (int64, error)
 }
 
 type restoreRepo interface {
@@ -65,6 +66,7 @@ type jobRepo interface {
 	ListRecoveryJobs(ctx context.Context, statuses []store.RecoveryJobStatus, limit int) ([]store.RecoveryJob, error)
 	SetRecoveryJobRunning(ctx context.Context, id string, startedAt time.Time) error
 	FinishRecoveryJob(ctx context.Context, id string, status store.RecoveryJobStatus, errMsg string, finishedAt time.Time) error
+	FailStaleRecoveryJobs(ctx context.Context, reason string, finishedAt time.Time) (int64, error)
 }
 
 type watchtowerReader interface {
@@ -73,12 +75,18 @@ type watchtowerReader interface {
 	ListWatchtowerPanes(ctx context.Context, sessionName string) ([]store.WatchtowerPane, error)
 }
 
+type iconRepo interface {
+	GetSessionIcon(ctx context.Context, name string) (string, error)
+	SetIcon(ctx context.Context, name, icon string) error
+}
+
 type recoveryStore interface {
 	runtimeKV
 	snapshotRepo
 	sessionRepo
 	restoreRepo
 	jobRepo
+	iconRepo
 	watchtowerReader
 }
 
@@ -183,6 +191,7 @@ func (s *Service) Start(parent context.Context) {
 
 		go func() {
 			defer close(s.doneCh)
+			s.cleanupStaleState(ctx)
 			if err := s.Collect(ctx); err != nil {
 				slog.Warn("recovery initial collect failed", "err", err)
 			}
@@ -232,6 +241,34 @@ func (s *Service) Stop(ctx context.Context) {
 		case <-ctx.Done():
 		}
 	})
+}
+
+// cleanupStaleState fails orphaned jobs and resets sessions stuck in
+// "restoring" after a crash or restart. Called once during Start before
+// the first Collect.
+func (s *Service) cleanupStaleState(ctx context.Context) {
+	now := time.Now().UTC()
+	failedJobs, err := s.store.FailStaleRecoveryJobs(ctx, "interrupted by restart", now)
+	if err != nil {
+		slog.Warn("recovery: failed to clean up stale jobs", "err", err)
+	} else if failedJobs > 0 {
+		slog.Info("recovery: cleaned up stale jobs", "count", failedJobs)
+	}
+
+	resetSessions, err := s.store.ResetStaleSessions(ctx)
+	if err != nil {
+		slog.Warn("recovery: failed to reset stale sessions", "err", err)
+	} else if resetSessions > 0 {
+		slog.Info("recovery: reset stale restoring sessions", "count", resetSessions)
+	}
+
+	if failedJobs > 0 || resetSessions > 0 {
+		s.publish(events.TypeRecoveryOverview, map[string]any{
+			"action":        "stale-cleanup",
+			"failedJobs":    failedJobs,
+			"resetSessions": resetSessions,
+		})
+	}
 }
 
 func (s *Service) Collect(ctx context.Context) error {
@@ -429,6 +466,9 @@ func (s *Service) captureSession(ctx context.Context, sess tmux.Session, bootID 
 		if err != nil {
 			return false, err
 		}
+	}
+	if icon, err := s.store.GetSessionIcon(ctx, sess.Name); err == nil {
+		snap.Icon = icon
 	}
 	return s.persistSnapshot(ctx, snap, capturedAt)
 }
@@ -799,8 +839,16 @@ func (s *Service) runRestoreJob(parent context.Context, jobID string, snap Sessi
 	})
 
 	// Trigger a fresh snapshot after restore to keep journal consistent.
+	// This also creates the sessions metadata row needed for icon restore.
 	if err := s.Collect(finCtx); err != nil {
 		slog.Warn("recovery collect after restore failed", "job", jobID, "err", err)
+	}
+
+	// Restore session icon after Collect, which ensures the sessions row exists.
+	if icon := strings.TrimSpace(snap.Icon); icon != "" {
+		if err := s.store.SetIcon(finCtx, target, icon); err != nil {
+			slog.Warn("recovery restore icon failed", "session", target, "err", err)
+		}
 	}
 }
 

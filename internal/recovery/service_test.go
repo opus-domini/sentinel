@@ -422,6 +422,226 @@ func (s *sendKeysTracker) keys() []string {
 	return append([]string{}, s.sentKeys...)
 }
 
+func TestSnapshotCapturesAndRestoresIcon(t *testing.T) {
+	t.Parallel()
+
+	st := newRecoveryStore(t)
+	ctx := context.Background()
+
+	fake := &fakeTmux{
+		sessions: []tmux.Session{
+			{Name: testSessionDev, Attached: 1, CreatedAt: time.Now().UTC(), ActivityAt: time.Now().UTC()},
+		},
+		windows: map[string][]tmux.Window{
+			testSessionDev: {{Session: testSessionDev, Index: 0, Name: "editor", Active: true, Panes: 1, Layout: "abcd,120x40,0,0,0"}},
+		},
+		panes: map[string][]tmux.Pane{
+			testSessionDev: {{Session: testSessionDev, WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Active: true, CurrentPath: "/tmp/dev"}},
+		},
+	}
+
+	svc := New(st, fake, Options{})
+	svc.bootID = func(context.Context) string { return testBootID }
+
+	// Set an icon for the session before snapshot capture.
+	if err := st.UpsertSession(ctx, testSessionDev, "h1", ""); err != nil {
+		t.Fatalf("UpsertSession error = %v", err)
+	}
+	if err := st.SetIcon(ctx, testSessionDev, "bot"); err != nil {
+		t.Fatalf("SetIcon error = %v", err)
+	}
+
+	if err := svc.Collect(ctx); err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	// Verify the snapshot contains the icon.
+	snapshots, err := st.ListRecoverySnapshots(ctx, testSessionDev, 1)
+	if err != nil || len(snapshots) == 0 {
+		t.Fatalf("ListRecoverySnapshots() = %v, err = %v", snapshots, err)
+	}
+
+	view, err := svc.GetSnapshot(ctx, snapshots[0].ID)
+	if err != nil {
+		t.Fatalf("GetSnapshot() error = %v", err)
+	}
+	if view.Payload.Icon != "bot" {
+		t.Fatalf("snapshot icon = %q, want %q", view.Payload.Icon, "bot")
+	}
+
+	// Restore to a new session name and verify the icon is applied.
+	job, err := svc.RestoreSnapshotAsync(ctx, snapshots[0].ID, RestoreOptions{
+		Mode:           ReplayModeSafe,
+		ConflictPolicy: ConflictRename,
+	})
+	if err != nil {
+		t.Fatalf("RestoreSnapshotAsync() error = %v", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		j, err := st.GetRecoveryJob(ctx, job.ID)
+		if err != nil {
+			t.Fatalf("GetRecoveryJob() error = %v", err)
+		}
+		if j.Status == store.RecoveryJobSucceeded || j.Status == store.RecoveryJobFailed {
+			if j.Status == store.RecoveryJobFailed {
+				t.Fatalf("restore job failed: %s", j.Error)
+			}
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// The restored session gets a renamed target; check the icon was set.
+	finishedJob, err := st.GetRecoveryJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("GetRecoveryJob() error = %v", err)
+	}
+	restoredIcon, err := st.GetSessionIcon(ctx, finishedJob.TargetSession)
+	if err != nil {
+		t.Fatalf("GetSessionIcon(%s) error = %v", finishedJob.TargetSession, err)
+	}
+	if restoredIcon != "bot" {
+		t.Fatalf("restored icon = %q, want %q", restoredIcon, "bot")
+	}
+}
+
+func TestStartCleansUpStaleJobsAndSessions(t *testing.T) {
+	t.Parallel()
+
+	st := newRecoveryStore(t)
+	ctx := context.Background()
+
+	// Create a live session so Collect doesn't error.
+	fake := &fakeTmux{
+		sessions: []tmux.Session{
+			{Name: "live", Attached: 1, CreatedAt: time.Now().UTC(), ActivityAt: time.Now().UTC()},
+		},
+		windows: map[string][]tmux.Window{
+			"live": {{Session: "live", Index: 0, Name: "main", Active: true, Panes: 1, Layout: "abcd,120x40,0,0,0"}},
+		},
+		panes: map[string][]tmux.Pane{
+			"live": {{Session: "live", WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Active: true, CurrentPath: "/tmp"}},
+		},
+	}
+
+	svc := New(st, fake, Options{SnapshotInterval: time.Hour})
+	svc.bootID = func(context.Context) string { return testBootID }
+
+	// Seed an initial snapshot so we can create jobs referencing it.
+	if err := svc.Collect(ctx); err != nil {
+		t.Fatalf("initial Collect() error = %v", err)
+	}
+
+	snapshots, err := st.ListRecoverySnapshots(ctx, "live", 1)
+	if err != nil || len(snapshots) == 0 {
+		t.Fatalf("ListRecoverySnapshots() = %v, err = %v", snapshots, err)
+	}
+	snapID := snapshots[0].ID
+
+	// Create orphaned jobs in queued/running state (simulating a crash).
+	now := time.Now().UTC()
+	if err := st.CreateRecoveryJob(ctx, store.RecoveryJob{
+		ID: "orphan-queued", SessionName: "live", SnapshotID: snapID,
+		Mode: "confirm", ConflictPolicy: "rename", Status: store.RecoveryJobQueued,
+		CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateRecoveryJob(queued) error = %v", err)
+	}
+	if err := st.CreateRecoveryJob(ctx, store.RecoveryJob{
+		ID: "orphan-running", SessionName: "live", SnapshotID: snapID,
+		Mode: "confirm", ConflictPolicy: "rename", Status: store.RecoveryJobRunning,
+		CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateRecoveryJob(running) error = %v", err)
+	}
+
+	// Also create a session stuck in "restoring" state.
+	// First, create a snapshot for the stuck session.
+	if _, _, err := st.UpsertRecoverySnapshot(ctx, store.RecoverySnapshotWrite{
+		SessionName: "stuck",
+		BootID:      testBootID,
+		StateHash:   "hash-stuck",
+		CapturedAt:  now,
+		PayloadJSON: `{"windows":[]}`,
+	}); err != nil {
+		t.Fatalf("UpsertRecoverySnapshot(stuck) error = %v", err)
+	}
+	if err := st.MarkRecoverySessionRestoring(ctx, "stuck"); err != nil {
+		t.Fatalf("MarkRecoverySessionRestoring(stuck) error = %v", err)
+	}
+
+	// Verify pre-conditions: 2 active jobs, 1 restoring session.
+	activeJobs, err := st.ListRecoveryJobs(ctx, []store.RecoveryJobStatus{
+		store.RecoveryJobQueued, store.RecoveryJobRunning,
+	}, 10)
+	if err != nil {
+		t.Fatalf("ListRecoveryJobs error = %v", err)
+	}
+	if len(activeJobs) != 2 {
+		t.Fatalf("pre-start active jobs = %d, want 2", len(activeJobs))
+	}
+
+	restoringSessions, err := st.ListRecoverySessions(ctx, []store.RecoverySessionState{store.RecoveryStateRestoring})
+	if err != nil {
+		t.Fatalf("ListRecoverySessions error = %v", err)
+	}
+	if len(restoringSessions) != 1 {
+		t.Fatalf("pre-start restoring sessions = %d, want 1", len(restoringSessions))
+	}
+
+	// Start the service — this should clean up stale state.
+	svcCtx, svcCancel := context.WithCancel(ctx)
+	svc.Start(svcCtx)
+
+	// Give the goroutine time to run cleanupStaleState + first Collect.
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify: orphaned jobs should now be failed.
+	for _, id := range []string{"orphan-queued", "orphan-running"} {
+		job, err := st.GetRecoveryJob(ctx, id)
+		if err != nil {
+			t.Fatalf("GetRecoveryJob(%s) error = %v", id, err)
+		}
+		if job.Status != store.RecoveryJobFailed {
+			t.Fatalf("%s status = %s, want failed", id, job.Status)
+		}
+		if job.Error != "interrupted by restart" {
+			t.Fatalf("%s error = %q, want %q", id, job.Error, "interrupted by restart")
+		}
+	}
+
+	// Verify: restoring session should be back to killed.
+	stuckSess, err := st.GetRecoverySession(ctx, "stuck")
+	if err != nil {
+		t.Fatalf("GetRecoverySession(stuck) error = %v", err)
+	}
+	if stuckSess.State != store.RecoveryStateKilled {
+		t.Fatalf("stuck session state = %s, want killed", stuckSess.State)
+	}
+	if stuckSess.RestoreError != "interrupted by restart" {
+		t.Fatalf("stuck restore error = %q, want %q", stuckSess.RestoreError, "interrupted by restart")
+	}
+
+	// No more active jobs.
+	activeJobs, err = st.ListRecoveryJobs(ctx, []store.RecoveryJobStatus{
+		store.RecoveryJobQueued, store.RecoveryJobRunning,
+	}, 10)
+	if err != nil {
+		t.Fatalf("ListRecoveryJobs error = %v", err)
+	}
+	if len(activeJobs) != 0 {
+		t.Fatalf("post-start active jobs = %d, want 0", len(activeJobs))
+	}
+
+	// Cleanup.
+	svcCancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer shutdownCancel()
+	svc.Stop(shutdownCtx)
+}
+
 func assertProjectionSnapshotView(t *testing.T, view SnapshotView) {
 	t.Helper()
 	if view.Payload.Attached != 2 {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -112,10 +113,26 @@ func (s *Store) Rename(ctx context.Context, oldName, newName string) error {
 	return err
 }
 
+func (s *Store) GetSessionIcon(ctx context.Context, name string) (string, error) {
+	var icon string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT icon FROM sessions WHERE name = ?",
+		name,
+	).Scan(&icon)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return icon, err
+}
+
 func (s *Store) SetIcon(ctx context.Context, name, icon string) error {
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE sessions SET icon = ?, updated_at = datetime('now') WHERE name = ?",
-		icon, name,
+		`INSERT INTO sessions (name, hash, icon, updated_at)
+		 VALUES (?, '', ?, datetime('now'))
+		 ON CONFLICT(name) DO UPDATE SET
+		   icon = excluded.icon,
+		   updated_at = excluded.updated_at`,
+		name, icon,
 	)
 	return err
 }

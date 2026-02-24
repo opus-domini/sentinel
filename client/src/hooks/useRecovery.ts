@@ -222,10 +222,20 @@ export function useRecovery(options: UseRecoveryOptions) {
   )
 
   // React to terminal job states pushed via WebSocket (recovery.job.updated).
+  // Only toast jobs that finished recently (within the last 30s) to avoid
+  // re-toasting historical failures on every page load.  Jobs failed by the
+  // startup stale-cleanup ("interrupted by restart") are housekeeping — never
+  // toast those.
   const toastedJobsRef = useRef(new Set<string>())
   useEffect(() => {
+    const cutoff = Date.now() - 30_000
     for (const job of recoveryJobs) {
       if (toastedJobsRef.current.has(job.id)) continue
+      const finishedMs = job.finishedAt ? new Date(job.finishedAt).getTime() : 0
+      if (finishedMs > 0 && finishedMs < cutoff) {
+        toastedJobsRef.current.add(job.id)
+        continue
+      }
       if (job.status === 'succeeded') {
         toastedJobsRef.current.add(job.id)
         pushSuccessToast(
@@ -235,6 +245,7 @@ export function useRecovery(options: UseRecoveryOptions) {
         void refreshSessions()
       } else if (job.status === 'failed') {
         toastedJobsRef.current.add(job.id)
+        if (job.error === 'interrupted by restart') continue
         pushErrorToast(
           'Recovery',
           job.error || 'restore job finished with errors',

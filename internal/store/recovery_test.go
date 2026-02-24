@@ -1356,3 +1356,207 @@ func TestUpsertRecoverySnapshotResetsKilledSession(t *testing.T) {
 		t.Fatal("KilledAt should be cleared after new snapshot")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FailStaleRecoveryJobs
+// ---------------------------------------------------------------------------
+
+func TestFailStaleRecoveryJobs(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("fails queued and running jobs", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
+		now := time.Now().UTC()
+
+		mustCreateJob(t, s, ctx, RecoveryJob{
+			ID: "j-queued", SessionName: testSessionDev, SnapshotID: snap.ID,
+			Mode: "confirm", ConflictPolicy: "rename", Status: RecoveryJobQueued,
+			CreatedAt: now,
+		})
+		mustCreateJob(t, s, ctx, RecoveryJob{
+			ID: "j-running", SessionName: testSessionDev, SnapshotID: snap.ID,
+			Mode: "confirm", ConflictPolicy: "rename", Status: RecoveryJobRunning,
+			CreatedAt: now,
+		})
+		mustCreateJob(t, s, ctx, RecoveryJob{
+			ID: "j-succeeded", SessionName: testSessionDev, SnapshotID: snap.ID,
+			Mode: "confirm", ConflictPolicy: "rename", Status: RecoveryJobSucceeded,
+			CreatedAt: now,
+		})
+		mustCreateJob(t, s, ctx, RecoveryJob{
+			ID: "j-failed", SessionName: testSessionDev, SnapshotID: snap.ID,
+			Mode: "confirm", ConflictPolicy: "rename", Status: RecoveryJobFailed,
+			CreatedAt: now,
+		})
+
+		affected, err := s.FailStaleRecoveryJobs(ctx, "interrupted by restart", now)
+		if err != nil {
+			t.Fatalf("FailStaleRecoveryJobs error = %v", err)
+		}
+		if affected != 2 {
+			t.Fatalf("affected = %d, want 2", affected)
+		}
+
+		for _, id := range []string{"j-queued", "j-running"} {
+			job, err := s.GetRecoveryJob(ctx, id)
+			if err != nil {
+				t.Fatalf("GetRecoveryJob(%s) error = %v", id, err)
+			}
+			if job.Status != RecoveryJobFailed {
+				t.Fatalf("%s status = %s, want failed", id, job.Status)
+			}
+			if job.Error != "interrupted by restart" {
+				t.Fatalf("%s error = %q, want %q", id, job.Error, "interrupted by restart")
+			}
+			if job.FinishedAt == nil {
+				t.Fatalf("%s FinishedAt is nil", id)
+			}
+			if job.CurrentStep != "" {
+				t.Fatalf("%s current step = %q, want empty", id, job.CurrentStep)
+			}
+		}
+
+		// Succeeded and already-failed jobs should be untouched.
+		succeeded, err := s.GetRecoveryJob(ctx, "j-succeeded")
+		if err != nil {
+			t.Fatalf("GetRecoveryJob(j-succeeded) error = %v", err)
+		}
+		if succeeded.Status != RecoveryJobSucceeded {
+			t.Fatalf("j-succeeded status = %s, want succeeded", succeeded.Status)
+		}
+
+		failed, err := s.GetRecoveryJob(ctx, "j-failed")
+		if err != nil {
+			t.Fatalf("GetRecoveryJob(j-failed) error = %v", err)
+		}
+		if failed.Status != RecoveryJobFailed {
+			t.Fatalf("j-failed status = %s, want failed", failed.Status)
+		}
+	})
+
+	t.Run("noop when no stale jobs", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		affected, err := s.FailStaleRecoveryJobs(ctx, "", time.Now())
+		if err != nil {
+			t.Fatalf("FailStaleRecoveryJobs error = %v", err)
+		}
+		if affected != 0 {
+			t.Fatalf("affected = %d, want 0", affected)
+		}
+	})
+
+	t.Run("default reason when empty", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		snap := mustUpsertSnapshot(t, s, ctx, validSnapshotWrite(testSessionDev))
+		mustCreateJob(t, s, ctx, RecoveryJob{
+			ID: "j1", SessionName: testSessionDev, SnapshotID: snap.ID,
+			Mode: "confirm", ConflictPolicy: "rename", Status: RecoveryJobQueued,
+			CreatedAt: time.Now(),
+		})
+
+		_, err := s.FailStaleRecoveryJobs(ctx, "", time.Now())
+		if err != nil {
+			t.Fatalf("FailStaleRecoveryJobs error = %v", err)
+		}
+
+		job, err := s.GetRecoveryJob(ctx, "j1")
+		if err != nil {
+			t.Fatalf("GetRecoveryJob error = %v", err)
+		}
+		if job.Error != "interrupted by restart" {
+			t.Fatalf("error = %q, want default reason", job.Error)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ResetStaleSessions
+// ---------------------------------------------------------------------------
+
+func TestResetStaleSessions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("resets restoring sessions to killed", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("restoring-sess"))
+		mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("killed-sess"))
+		mustUpsertSnapshot(t, s, ctx, validSnapshotWrite("running-sess"))
+
+		// Set one to restoring, one to killed.
+		if err := s.MarkRecoverySessionRestoring(ctx, "restoring-sess"); err != nil {
+			t.Fatalf("MarkRecoverySessionRestoring error = %v", err)
+		}
+		if err := s.MarkRecoverySessionsKilled(ctx, []string{"killed-sess"}, "boot-2", time.Now()); err != nil {
+			t.Fatalf("MarkRecoverySessionsKilled error = %v", err)
+		}
+
+		affected, err := s.ResetStaleSessions(ctx)
+		if err != nil {
+			t.Fatalf("ResetStaleSessions error = %v", err)
+		}
+		if affected != 1 {
+			t.Fatalf("affected = %d, want 1", affected)
+		}
+
+		// The restoring session should now be killed.
+		sess, err := s.GetRecoverySession(ctx, "restoring-sess")
+		if err != nil {
+			t.Fatalf("GetRecoverySession error = %v", err)
+		}
+		if sess.State != RecoveryStateKilled {
+			t.Fatalf("restoring-sess state = %s, want killed", sess.State)
+		}
+		if sess.RestoreError != "interrupted by restart" {
+			t.Fatalf("restore error = %q, want %q", sess.RestoreError, "interrupted by restart")
+		}
+
+		// The already-killed session should remain unchanged.
+		killed, err := s.GetRecoverySession(ctx, "killed-sess")
+		if err != nil {
+			t.Fatalf("GetRecoverySession error = %v", err)
+		}
+		if killed.State != RecoveryStateKilled {
+			t.Fatalf("killed-sess state = %s, want killed", killed.State)
+		}
+
+		// The running session should remain unchanged.
+		running, err := s.GetRecoverySession(ctx, "running-sess")
+		if err != nil {
+			t.Fatalf("GetRecoverySession error = %v", err)
+		}
+		if running.State != RecoveryStateRunning {
+			t.Fatalf("running-sess state = %s, want running", running.State)
+		}
+	})
+
+	t.Run("noop when no restoring sessions", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+		defer func() { _ = s.Close() }()
+
+		affected, err := s.ResetStaleSessions(ctx)
+		if err != nil {
+			t.Fatalf("ResetStaleSessions error = %v", err)
+		}
+		if affected != 0 {
+			t.Fatalf("affected = %d, want 0", affected)
+		}
+	})
+}
