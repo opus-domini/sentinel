@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.10](https://github.com/opus-domini/sentinel/compare/v0.4.9...v0.4.10) (2026-02-25)
+
+
+### Build
+
+* **deps:** bump actions/setup-node from 4.4.0 to 6.2.0 ([c12dc97](https://github.com/opus-domini/sentinel/commit/c12dc97e0b1cf494219f225b18ae8a13b69e5adb))
+* **deps:** bump github.com/opus-domini/fast-shot from 1.2.0 to 1.3.0 ([44d1429](https://github.com/opus-domini/sentinel/commit/44d14296a0adee854473a6839bd794641db097b5))
+
 ## [0.4.9](https://github.com/opus-domini/sentinel/compare/v0.4.8...v0.4.9) (2026-02-25)
 
 
