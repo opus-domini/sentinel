@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.8](https://github.com/opus-domini/sentinel/compare/v0.4.7...v0.4.8) (2026-02-25)
+
+
+### Features
+
+* auto-reconnect tmux WebSocket on unexpected disconnect ([de8c6c5](https://github.com/opus-domini/sentinel/commit/de8c6c518744d8c1ddc4f4fdd2f230e0d82035ba))
+
 ## [0.4.7](https://github.com/opus-domini/sentinel/compare/v0.4.6...v0.4.7) (2026-02-24)
 
 
