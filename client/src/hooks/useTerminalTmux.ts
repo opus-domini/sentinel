@@ -8,6 +8,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
+import type { ReconnectState } from '@/lib/wsReconnect'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import {
@@ -17,6 +18,7 @@ import {
 import { attachTouchWheelBridge } from '@/lib/touchWheelBridge'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
 import { buildWSProtocols } from '@/lib/wsAuth'
+import { createReconnect } from '@/lib/wsReconnect'
 
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
@@ -56,6 +58,8 @@ type SessionRuntime = {
   webglContextLossDispose: Disposable
   hostResizeObserver: ResizeObserver | null
   hostResizeRafId: number | null
+  reconnect: ReconnectState
+  reconnectTimer: number | null
 }
 
 type UseTerminalTmuxArgs = {
@@ -143,6 +147,13 @@ export function useTerminalTmux({
     },
     [],
   )
+
+  const clearReconnectTimer = useCallback((runtime: SessionRuntime) => {
+    if (runtime.reconnectTimer !== null) {
+      window.clearTimeout(runtime.reconnectTimer)
+      runtime.reconnectTimer = null
+    }
+  }, [])
 
   const publishActiveRuntimeState = useCallback(() => {
     if (!isMountedRef.current) {
@@ -383,6 +394,7 @@ export function useTerminalTmux({
 
   const connectRuntime = useCallback(
     (runtime: SessionRuntime, options?: { resetTerminal?: boolean }) => {
+      clearReconnectTimer(runtime)
       runtime.generation += 1
       const generation = runtime.generation
 
@@ -418,6 +430,7 @@ export function useTerminalTmux({
           return
         }
         runtime.manualCloseReason = null
+        runtime.reconnect.reset()
         setRuntimeStatus(
           runtime,
           'connected',
@@ -488,12 +501,33 @@ export function useTerminalTmux({
         if (runtime.socket === socket) {
           runtime.socket = null
         }
+        const wasManual = runtime.manualCloseReason !== null
         const reason = runtime.manualCloseReason ?? 'connection closed'
         runtime.manualCloseReason = null
-        setRuntimeStatus(runtime, 'disconnected', reason)
+
+        if (wasManual) {
+          setRuntimeStatus(runtime, 'disconnected', reason)
+          return
+        }
+
+        // Unexpected close — schedule auto-reconnect with backoff
+        const delay = runtime.reconnect.next()
+        const delaySec = Math.ceil(delay / 1000)
+        setRuntimeStatus(
+          runtime,
+          'connecting',
+          `reconnecting in ${delaySec}s`,
+        )
+        runtime.reconnectTimer = window.setTimeout(() => {
+          runtime.reconnectTimer = null
+          if (isRuntimeCurrent(runtime, generation)) {
+            connectRuntime(runtime, { resetTerminal: false })
+          }
+        }, delay)
       }
     },
     [
+      clearReconnectTimer,
       connectedVerb,
       connectingVerb,
       fitRuntime,
@@ -508,6 +542,8 @@ export function useTerminalTmux({
 
   const closeRuntimeSocket = useCallback(
     (runtime: SessionRuntime, reason?: string) => {
+      clearReconnectTimer(runtime)
+
       if (reason && reason !== '') {
         runtime.manualCloseReason = reason
       }
@@ -523,7 +559,7 @@ export function useTerminalTmux({
       runtime.socket = null
       socket.close()
     },
-    [setRuntimeStatus],
+    [clearReconnectTimer, setRuntimeStatus],
   )
 
   const createRuntime = useCallback(
@@ -597,6 +633,8 @@ export function useTerminalTmux({
         }),
         hostResizeObserver: null,
         hostResizeRafId: null,
+        reconnect: createReconnect(),
+        reconnectTimer: null,
       }
 
       runtime.onDataDispose = terminal.onData((data) => {
@@ -652,6 +690,7 @@ export function useTerminalTmux({
 
   const disposeRuntime = useCallback(
     (runtime: SessionRuntime, reason: string) => {
+      clearReconnectTimer(runtime)
       runtime.generation += 1
       closeRuntimeSocket(runtime, reason)
       cleanupHostResizeObserver(runtime)
@@ -666,7 +705,7 @@ export function useTerminalTmux({
       hostsRef.current.delete(runtime.session)
       hostCallbacksRef.current.delete(runtime.session)
     },
-    [cleanupHostResizeObserver, closeRuntimeSocket],
+    [clearReconnectTimer, cleanupHostResizeObserver, closeRuntimeSocket],
   )
 
   const getTerminalHostRef = useCallback(
