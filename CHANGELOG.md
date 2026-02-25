@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.9](https://github.com/opus-domini/sentinel/compare/v0.4.8...v0.4.9) (2026-02-25)
+
+
+### Bug Fixes
+
+* correct paths in .gitignore for consistency ([1d1e75b](https://github.com/opus-domini/sentinel/commit/1d1e75b26a80169f49ef0f1d77c41d2b339fd3d8))
+
 ## [0.4.8](https://github.com/opus-domini/sentinel/compare/v0.4.7...v0.4.8) (2026-02-25)
 
 
