@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.11](https://github.com/opus-domini/sentinel/compare/v0.4.10...v0.4.11) (2026-03-03)
+
+
+### Bug Fixes
+
+* defer selectInFlightRef reset to server confirmation ([0f86d39](https://github.com/opus-domini/sentinel/commit/0f86d3907d488243be2def83ac4305e58d879452))
+* emit inspector event from watchtower on active window change ([ba29da8](https://github.com/opus-domini/sentinel/commit/ba29da85899c03d7490effc8cd99f21c55ce60c0))
+* invalidate stale refreshInspector on window/pane selection ([6be1880](https://github.com/opus-domini/sentinel/commit/6be1880153e05243675636af50e4f2b00dabe728))
+* prevent window tab flicker on UI click with grace period ([268a660](https://github.com/opus-domini/sentinel/commit/268a6602806889a7c9e9a97ee721f614272cc9e4))
+* resolve tab switching regression and prevent stuck loading state ([16d9599](https://github.com/opus-domini/sentinel/commit/16d959966c081d0329c56010a9973e340ad01d79))
+* sync window tabs on terminal switch, hide session tab scrollbar, fix mobile scroll ([0164564](https://github.com/opus-domini/sentinel/commit/0164564c8e27f1e439fda4c5625fb5d7b26a642f))
+
 ## [0.4.10](https://github.com/opus-domini/sentinel/compare/v0.4.9...v0.4.10) (2026-02-25)
 
 
