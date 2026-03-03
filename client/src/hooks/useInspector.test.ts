@@ -315,6 +315,86 @@ describe('useInspector – refreshInspector override reconciliation', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Tests — generation invalidation (stale refreshInspector race)
+// ---------------------------------------------------------------------------
+
+describe('useInspector – selectWindow invalidates stale refreshInspector', () => {
+  it('discards a refreshInspector that started before selectWindow', async () => {
+    // Track fetch calls to /windows so we can control timing
+    let windowsFetchCount = 0
+    let resolveSlowWindows: ((v: unknown) => void) | null = null
+
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        windowsFetchCount++
+        if (windowsFetchCount <= 1) {
+          // First call (initial refresh) — resolve immediately
+          return Promise.resolve({
+            windows: [
+              makeWindow({ index: 0, active: true }),
+              makeWindow({ index: 1, name: 'alt', active: false }),
+            ],
+          })
+        }
+        // Second call (the stale refresh) — delay so we can interleave
+        return new Promise((resolve) => {
+          resolveSlowWindows = resolve
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({ windowIndex: 0, paneId: '%1', active: true }),
+            makePane({ windowIndex: 1, paneId: '%2', active: false }),
+          ],
+        })
+      }
+      // select-window — resolve immediately
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    // Wait for initial refresh to complete
+    await waitFor(() => {
+      expect(result.current.windows.length).toBeGreaterThan(0)
+    })
+
+    // Start a refreshInspector — it will hang on the /windows fetch
+    let refreshPromise: Promise<void> | undefined
+    act(() => {
+      refreshPromise = result.current.refreshInspector('dev', {
+        background: true,
+      })
+    })
+
+    // While the refresh is awaiting /windows, user clicks selectWindow(1).
+    // This bumps inspectorGenerationRef, invalidating the in-flight refresh.
+    act(() => {
+      result.current.selectWindow(1)
+    })
+    expect(result.current.activeWindowIndexOverride).toBe(1)
+
+    // Now resolve the slow /windows fetch — the stale refresh should bail
+    // when it checks the generation, leaving the override intact.
+    await act(async () => {
+      resolveSlowWindows?.({
+        windows: [
+          makeWindow({ index: 0, active: true }),
+          makeWindow({ index: 1, name: 'alt', active: false }),
+        ],
+      })
+      await refreshPromise
+    })
+
+    // Override MUST be preserved — the stale refresh was discarded
+    expect(result.current.activeWindowIndexOverride).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Tests — applyInspectorProjectionPatches override clearing
 // ---------------------------------------------------------------------------
 

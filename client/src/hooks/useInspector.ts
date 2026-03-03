@@ -645,6 +645,7 @@ export function useInspector(options: UseInspectorOptions) {
       if (!active) return
       if (activeWindowOverrideRef.current === windowIndex) return
       setInspectorError('')
+      inspectorGenerationRef.current += 1
       selectInFlightRef.current += 1
       setActiveWindowIndexOverride(windowIndex)
       const preferredPaneID =
@@ -689,6 +690,7 @@ export function useInspector(options: UseInspectorOptions) {
       if (activePaneOverrideRef.current === paneID) return
       const paneInfo = panes.find((p) => p.paneId === paneID)
       setInspectorError('')
+      inspectorGenerationRef.current += 1
       selectInFlightRef.current += 1
       setActivePaneIDOverride(paneID)
       if (paneInfo) setActiveWindowIndexOverride(paneInfo.windowIndex)
