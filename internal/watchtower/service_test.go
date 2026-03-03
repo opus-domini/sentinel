@@ -860,6 +860,136 @@ func TestCollectHandlesTmuxServerDown(t *testing.T) {
 	}
 }
 
+func TestCollectPublishesInspectorEventOnActiveWindowChange(t *testing.T) {
+	t.Parallel()
+
+	st := newWatchtowerTestStore(t)
+	defer func() { _ = st.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Window 0 starts as active; after first collect, window 1 becomes active.
+	var collectCount atomic.Int32
+	fake := fakeTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{{
+				Name:       "dev",
+				Windows:    2,
+				Attached:   1,
+				CreatedAt:  now,
+				ActivityAt: now,
+			}}, nil
+		},
+		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
+			secondCollect := collectCount.Load() >= 1
+			return []tmux.Window{
+				{Session: "dev", Index: 0, Name: "main", Active: !secondCollect, Panes: 1, Layout: "layout"},
+				{Session: "dev", Index: 1, Name: "alt", Active: secondCollect, Panes: 1, Layout: "layout"},
+			}, nil
+		},
+		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
+			secondCollect := collectCount.Load() >= 1
+			return []tmux.Pane{
+				{Session: "dev", WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Active: !secondCollect},
+				{Session: "dev", WindowIndex: 1, PaneIndex: 0, PaneID: "%2", Active: secondCollect},
+			}, nil
+		},
+		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
+			return "output", nil
+		},
+	}
+
+	var inspectorEvents atomic.Int32
+	var inspectorSession, inspectorAction atomic.Value
+	svc := New(st, fake, Options{
+		Publish: func(eventType string, payload map[string]any) {
+			if eventType == "tmux.inspector.updated" {
+				inspectorEvents.Add(1)
+				inspectorSession.Store(payload["session"])
+				inspectorAction.Store(payload["action"])
+			}
+		},
+	})
+
+	// First collect: establishes baseline. No active window change yet.
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect #1: %v", err)
+	}
+	if got := inspectorEvents.Load(); got != 0 {
+		t.Fatalf("inspector events after first collect = %d, want 0", got)
+	}
+
+	// Second collect: active window switches from 0 → 1.
+	collectCount.Store(1)
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect #2: %v", err)
+	}
+	if got := inspectorEvents.Load(); got != 1 {
+		t.Fatalf("inspector events after second collect = %d, want 1", got)
+	}
+	if got := inspectorSession.Load(); got != "dev" {
+		t.Fatalf("inspector event session = %v, want dev", got)
+	}
+	if got := inspectorAction.Load(); got != "active-window-changed" {
+		t.Fatalf("inspector event action = %v, want active-window-changed", got)
+	}
+
+	// Third collect: no further active window change.
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect #3: %v", err)
+	}
+	if got := inspectorEvents.Load(); got != 1 {
+		t.Fatalf("inspector events after third collect = %d, want 1 (no new emission)", got)
+	}
+}
+
+func TestCollectDoesNotPublishInspectorEventWhenActiveWindowUnchanged(t *testing.T) {
+	t.Parallel()
+
+	st := newWatchtowerTestStore(t)
+	defer func() { _ = st.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	fake := fakeTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{{
+				Name:       "dev",
+				Windows:    1,
+				Attached:   1,
+				CreatedAt:  now,
+				ActivityAt: now,
+			}}, nil
+		},
+		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
+			return []tmux.Window{{Session: "dev", Index: 0, Name: "main", Active: true, Panes: 1, Layout: "layout"}}, nil
+		},
+		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
+			return []tmux.Pane{{Session: "dev", WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Active: true}}, nil
+		},
+		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
+			return "output", nil
+		},
+	}
+
+	var inspectorEvents atomic.Int32
+	svc := New(st, fake, Options{
+		Publish: func(eventType string, _ map[string]any) {
+			if eventType == "tmux.inspector.updated" {
+				inspectorEvents.Add(1)
+			}
+		},
+	})
+
+	for i := range 3 {
+		if err := svc.collect(context.Background()); err != nil {
+			t.Fatalf("collect #%d: %v", i+1, err)
+		}
+	}
+	if got := inspectorEvents.Load(); got != 0 {
+		t.Fatalf("inspector events = %d, want 0 (active window never changed)", got)
+	}
+}
+
 func newWatchtowerTestStore(t *testing.T) *store.Store {
 	t.Helper()
 	dir := t.TempDir()
