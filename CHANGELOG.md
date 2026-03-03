@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.12](https://github.com/opus-domini/sentinel/compare/v0.4.11...v0.4.12) (2026-03-03)
+
+
+### Bug Fixes
+
+* forward touch coordinates and override wheelDeltaY in touchWheelBridge ([fef46d4](https://github.com/opus-domini/sentinel/commit/fef46d4f9d24dbdb3d5f5b45b7f4098837492b55))
+
 ## [0.4.11](https://github.com/opus-domini/sentinel/compare/v0.4.10...v0.4.11) (2026-03-03)
 
 
