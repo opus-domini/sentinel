@@ -22,7 +22,7 @@
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.90.21",
-    "@tanstack/react-router": "^1.163.2",
+    "@tanstack/react-router": "^1.166.2",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
@@ -45,7 +45,7 @@
   "devDependencies": {
     "@tanstack/eslint-config": "^0.4.0",
     "@tanstack/react-devtools": "^0.9.6",
-    "@tanstack/react-router-devtools": "^1.163.2",
+    "@tanstack/react-router-devtools": "^1.166.2",
     "@tanstack/router-plugin": "^1.164.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
