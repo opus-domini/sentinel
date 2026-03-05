@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.13](https://github.com/opus-domini/sentinel/compare/v0.4.12...v0.4.13) (2026-03-05)
+
+
+### Bug Fixes
+
+* hide tmux status bar when attaching from web UI ([2d4de2a](https://github.com/opus-domini/sentinel/commit/2d4de2a12838acaac0216c71161ea0ed8f3a550b))
+
+
+### Build
+
+* **deps-dev:** bump @tanstack/router-plugin from 1.163.2 to 1.164.0 in /client ([7ba5abd](https://github.com/opus-domini/sentinel/commit/7ba5abdf690b953036cc37f089bbc628557026e4))
+* **deps-dev:** bump @tanstack/router-plugin in /client ([ba6b7ca](https://github.com/opus-domini/sentinel/commit/ba6b7ca955978f893fb1063e824fcc64ce6426a1))
+* **deps-dev:** bump @types/node from 25.3.0 to 25.3.3 in /client ([84b95f8](https://github.com/opus-domini/sentinel/commit/84b95f834ad0740d1fee6c7b4907a50cef082667))
+* **deps-dev:** bump @types/node from 25.3.0 to 25.3.3 in /client ([4e72efa](https://github.com/opus-domini/sentinel/commit/4e72efac8563b4f21a72e87be3e3afdfbd4750c4))
+* **deps:** bump actions/download-artifact from 7.0.0 to 8.0.0 ([37e67da](https://github.com/opus-domini/sentinel/commit/37e67dae1e1592db6359657cc02c739c4be62241))
+* **deps:** bump actions/download-artifact from 7.0.0 to 8.0.0 ([b6c87ae](https://github.com/opus-domini/sentinel/commit/b6c87aed337314c4581dcc09b70872cc642cfe7b))
+* **deps:** bump actions/setup-go from 6.2.0 to 6.3.0 ([f44d531](https://github.com/opus-domini/sentinel/commit/f44d53101d61807f9a2df1a4227330afd713b5e4))
+* **deps:** bump actions/setup-go from 6.2.0 to 6.3.0 ([6d24e68](https://github.com/opus-domini/sentinel/commit/6d24e683757676fce4a392619d6d701042d25847))
+* **deps:** bump actions/setup-node from 6.2.0 to 6.3.0 ([f13767f](https://github.com/opus-domini/sentinel/commit/f13767fec56bc091165a30f2e58206b10238190f))
+* **deps:** bump actions/setup-node from 6.2.0 to 6.3.0 ([6f17374](https://github.com/opus-domini/sentinel/commit/6f17374fc4406b5c3d414fa100297e45ff34a619))
+* **deps:** bump actions/upload-artifact from 6.0.0 to 7.0.0 ([9e4cf20](https://github.com/opus-domini/sentinel/commit/9e4cf2085647d8460f2744b149113470ac52a278))
+* **deps:** bump actions/upload-artifact from 6.0.0 to 7.0.0 ([33cf2a3](https://github.com/opus-domini/sentinel/commit/33cf2a3c3a0db1d3db633ff6031e1776c5444348))
+* **deps:** bump github.com/opus-domini/fast-shot from 1.3.0 to 1.3.1 ([023b761](https://github.com/opus-domini/sentinel/commit/023b7611be9c43cfb1b425d346cc53e1b6bd9eea))
+* **deps:** bump github.com/opus-domini/fast-shot from 1.3.0 to 1.3.1 ([56d4655](https://github.com/opus-domini/sentinel/commit/56d465569f8c04bfdfc3beb76e926f9b2524dc11))
+* **deps:** bump lucide-react from 0.575.0 to 0.576.0 in /client ([2f168b0](https://github.com/opus-domini/sentinel/commit/2f168b0d52a5c2e645c7833544152a218f92336a))
+* **deps:** bump lucide-react from 0.575.0 to 0.576.0 in /client ([f7f046d](https://github.com/opus-domini/sentinel/commit/f7f046d4c33b79ddb0ce9ff7ff4764b8ef547905))
+
 ## [0.4.12](https://github.com/opus-domini/sentinel/compare/v0.4.11...v0.4.12) (2026-03-03)
 
 
