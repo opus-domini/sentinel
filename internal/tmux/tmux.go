@@ -242,11 +242,27 @@ func CreateSession(ctx context.Context, name, cwd string) error {
 // When enabled, wheel gestures are handled by tmux copy-mode instead of
 // being interpreted as terminal cursor keys by applications.
 func SetSessionMouse(ctx context.Context, session string, enabled bool) error {
-	value := "off"
+	return setSessionOption(ctx, session, "mouse", enabled)
+}
+
+// SetSessionStatus toggles the tmux status bar for a target session.
+// When disabled, the status line is hidden — useful for web terminals that
+// provide their own window/pane management UI.
+func SetSessionStatus(ctx context.Context, session string, enabled bool) error {
+	return setSessionOption(ctx, session, "status", enabled)
+}
+
+const (
+	tmuxOn  = "on"
+	tmuxOff = "off"
+)
+
+func setSessionOption(ctx context.Context, session, option string, enabled bool) error {
+	value := tmuxOff
 	if enabled {
-		value = "on"
+		value = tmuxOn
 	}
-	_, err := run(ctx, "set-option", "-t", session, "mouse", value)
+	_, err := run(ctx, "set-option", "-t", session, option, value)
 	return err
 }
 

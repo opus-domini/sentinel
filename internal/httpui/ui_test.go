@@ -129,15 +129,17 @@ func TestRunPingLoopReportsPingError(t *testing.T) {
 func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
 		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
 		startTmuxAttachFn = originalAttach
 	})
 	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
 
-	callOrder := make([]string, 0, 2)
+	callOrder := make([]string, 0, 3)
 	tmuxSetSessionMouse = func(_ context.Context, session string, enabled bool) error {
 		if session != testSessionName {
 			t.Fatalf("session = %q, want %q", session, testSessionName)
@@ -146,6 +148,16 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 			t.Fatal("enabled = false, want true")
 		}
 		callOrder = append(callOrder, "mouse")
+		return nil
+	}
+	tmuxSetSessionStatus = func(_ context.Context, session string, enabled bool) error {
+		if session != testSessionName {
+			t.Fatalf("session = %q, want %q", session, testSessionName)
+		}
+		if enabled {
+			t.Fatal("enabled = true, want false")
+		}
+		callOrder = append(callOrder, "status")
 		return nil
 	}
 
@@ -169,26 +181,32 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 	if got != wantPTY {
 		t.Fatalf("startTmuxPTY returned unexpected PTY pointer")
 	}
-	if !slices.Equal(callOrder, []string{"mouse", "attach"}) {
-		t.Fatalf("call order = %v, want [mouse attach]", callOrder)
+	if !slices.Equal(callOrder, []string{"mouse", "status", "attach"}) {
+		t.Fatalf("call order = %v, want [mouse status attach]", callOrder)
 	}
 }
 
 func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
 		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
 		startTmuxAttachFn = originalAttach
 	})
 	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
 
-	callOrder := make([]string, 0, 2)
+	callOrder := make([]string, 0, 3)
 	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error {
 		callOrder = append(callOrder, "mouse")
 		return errors.New("set-option failed")
+	}
+	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error {
+		callOrder = append(callOrder, "status")
+		return nil
 	}
 
 	wantPTY := &term.PTY{}
@@ -205,8 +223,8 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 	if got != wantPTY {
 		t.Fatalf("startTmuxPTY returned unexpected PTY pointer")
 	}
-	if !slices.Equal(callOrder, []string{"mouse", "attach"}) {
-		t.Fatalf("call order = %v, want [mouse attach]", callOrder)
+	if !slices.Equal(callOrder, []string{"mouse", "status", "attach"}) {
+		t.Fatalf("call order = %v, want [mouse status attach]", callOrder)
 	}
 }
 
@@ -214,11 +232,13 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
 		tmuxSessionExistsFn = originalExists
 		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
 		startTmuxAttachFn = originalAttach
 	})
 	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
@@ -231,7 +251,7 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	}
 
 	var mu sync.Mutex
-	callOrder := make([]string, 0, 2)
+	callOrder := make([]string, 0, 3)
 	tmuxSetSessionMouse = func(_ context.Context, session string, enabled bool) error {
 		if session != testSessionName {
 			t.Fatalf("session = %q, want %q", session, testSessionName)
@@ -241,6 +261,12 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 		}
 		mu.Lock()
 		callOrder = append(callOrder, "mouse")
+		mu.Unlock()
+		return nil
+	}
+	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error {
+		mu.Lock()
+		callOrder = append(callOrder, "status")
 		mu.Unlock()
 		return nil
 	}
@@ -283,8 +309,8 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	mu.Lock()
 	gotOrder := append([]string{}, callOrder...)
 	mu.Unlock()
-	if !slices.Equal(gotOrder, []string{"mouse", "attach"}) {
-		t.Fatalf("call order = %v, want [mouse attach]", gotOrder)
+	if !slices.Equal(gotOrder, []string{"mouse", "status", "attach"}) {
+		t.Fatalf("call order = %v, want [mouse status attach]", gotOrder)
 	}
 }
 
@@ -292,11 +318,13 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
 		tmuxSessionExistsFn = originalExists
 		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
 		startTmuxAttachFn = originalAttach
 	})
 	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
@@ -306,12 +334,18 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	}
 
 	var mu sync.Mutex
-	callOrder := make([]string, 0, 2)
+	callOrder := make([]string, 0, 3)
 	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error {
 		mu.Lock()
 		callOrder = append(callOrder, "mouse")
 		mu.Unlock()
 		return errors.New("set-option failed")
+	}
+	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error {
+		mu.Lock()
+		callOrder = append(callOrder, "status")
+		mu.Unlock()
+		return nil
 	}
 	startTmuxAttachFn = func(ctx context.Context, _ string, cols, rows int) (*term.PTY, error) {
 		mu.Lock()
@@ -346,8 +380,8 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	mu.Lock()
 	gotOrder := append([]string{}, callOrder...)
 	mu.Unlock()
-	if !slices.Equal(gotOrder, []string{"mouse", "attach"}) {
-		t.Fatalf("call order = %v, want [mouse attach]", gotOrder)
+	if !slices.Equal(gotOrder, []string{"mouse", "status", "attach"}) {
+		t.Fatalf("call order = %v, want [mouse status attach]", gotOrder)
 	}
 }
 

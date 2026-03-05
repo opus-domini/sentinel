@@ -1075,10 +1075,12 @@ func TestSpaPageServesIndexForUnknownPaths(t *testing.T) {
 func TestStartTmuxPTYContinuesWhenWebMousePatchFails(t *testing.T) {
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
 	originalAttach := startTmuxAttachFn
 	t.Cleanup(func() {
 		tmuxEnsureWebMouse = originalEnsureMouse
 		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
 		startTmuxAttachFn = originalAttach
 	})
 
@@ -1087,6 +1089,7 @@ func TestStartTmuxPTYContinuesWhenWebMousePatchFails(t *testing.T) {
 		return errors.New("web mouse patch failed")
 	}
 	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error { return nil }
+	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error { return nil }
 	wantPTY := &term.PTY{}
 	startTmuxAttachFn = func(_ context.Context, _ string, _ int, _ int) (*term.PTY, error) {
 		return wantPTY, nil

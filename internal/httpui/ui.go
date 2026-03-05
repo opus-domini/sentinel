@@ -27,10 +27,11 @@ const (
 )
 
 var (
-	tmuxSessionExistsFn = tmux.SessionExists
-	tmuxEnsureWebMouse  = tmux.EnsureWebMouseBindings
-	tmuxSetSessionMouse = tmux.SetSessionMouse
-	startTmuxAttachFn   = term.StartTmuxAttach
+	tmuxSessionExistsFn  = tmux.SessionExists
+	tmuxEnsureWebMouse   = tmux.EnsureWebMouseBindings
+	tmuxSetSessionMouse  = tmux.SetSessionMouse
+	tmuxSetSessionStatus = tmux.SetSessionStatus
+	startTmuxAttachFn    = term.StartTmuxAttach
 )
 
 // OpsLogStreamer provides streaming log access for managed services.
@@ -174,6 +175,12 @@ func (h *Handler) startTmuxPTY(ctx context.Context, session string) (*term.PTY, 
 	// application ArrowUp/ArrowDown in alternate buffer contexts.
 	if err := tmuxSetSessionMouse(ctx, session, true); err != nil {
 		slog.Warn("tmux mouse enable failed", "session", session, "err", err)
+	}
+
+	// Best-effort: hide status bar — the web UI provides its own
+	// window/pane management, making the tmux status line redundant.
+	if err := tmuxSetSessionStatus(ctx, session, false); err != nil {
+		slog.Warn("tmux status hide failed", "session", session, "err", err)
 	}
 	return startTmuxAttachFn(ctx, session, defaultTermCols, defaultTermRows)
 }

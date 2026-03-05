@@ -962,6 +962,42 @@ func TestSetSessionMouse(t *testing.T) {
 	})
 }
 
+// --- SetSessionStatus ---
+
+func TestSetSessionStatus(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("enabled", func(t *testing.T) {
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			last := args[len(args)-1]
+			if last != "on" {
+				t.Errorf("expected 'on', got %q", last)
+			}
+			return "", nil
+		})
+
+		err := SetSessionStatus(ctx, "dev", true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			last := args[len(args)-1]
+			if last != "off" {
+				t.Errorf("expected 'off', got %q", last)
+			}
+			return "", nil
+		})
+
+		err := SetSessionStatus(ctx, "dev", false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 // --- NewWindow ---
 
 func TestNewWindow(t *testing.T) {
