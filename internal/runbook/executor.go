@@ -43,7 +43,13 @@ type Executor struct {
 	stepTimeout time.Duration
 }
 
-const defaultStepTimeout = 30 * time.Second
+const (
+	stepTypeCommand = "command"
+	stepTypeCheck   = "check"
+	stepTypeManual  = "manual"
+
+	defaultStepTimeout = 30 * time.Second
+)
 
 // NewExecutor creates an Executor. If runner is nil a default runner backed
 // by exec.CommandContext is used. If stepTimeout is zero it defaults to 30s.
@@ -104,19 +110,19 @@ func (e *Executor) executeStep(ctx context.Context, index int, step Step) StepRe
 	}
 
 	switch step.Type {
-	case "command":
+	case stepTypeCommand:
 		output, err := e.runner(ctx, "sh", "-c", step.Command)
 		result.Output = output
 		if err != nil {
 			result.Error = err.Error()
 		}
-	case "check":
+	case stepTypeCheck:
 		output, err := e.runner(ctx, "sh", "-c", step.Check)
 		result.Output = output
 		if err != nil {
 			result.Error = err.Error()
 		}
-	case "manual":
+	case stepTypeManual:
 		result.Output = step.Description
 	default:
 		result.Error = fmt.Sprintf("unknown step type: %q", step.Type)
