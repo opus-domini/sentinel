@@ -11,9 +11,9 @@
     "test:unit": "vitest run --passWithNoTests --exclude \"src/**/*.e2e.test.ts?(x)\"",
     "test:e2e": "vitest run --passWithNoTests --config vitest.e2e.config.ts",
     "test:all": "npm run test:unit && npm run test:e2e",
-    "lint": "eslint",
-    "format": "prettier",
-    "check": "prettier --write . && eslint --fix"
+    "lint": "oxlint . && oxfmt --check .",
+    "format": "oxfmt --write .",
+    "check": "oxfmt --write . && oxlint --fix ."
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -43,7 +43,6 @@
     "vite-tsconfig-paths": "^6.1.1"
   },
   "devDependencies": {
-    "@tanstack/eslint-config": "^0.4.0",
     "@tanstack/react-devtools": "^0.9.6",
     "@tanstack/react-router-devtools": "^1.166.2",
     "@tanstack/router-plugin": "^1.164.0",
@@ -54,7 +53,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
     "jsdom": "^28.1.0",
-    "prettier": "^3.8.1",
+    "oxfmt": "^0.36.0",
+    "oxlint": "^1.51.0",
     "shadcn": "^3.8.5",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
