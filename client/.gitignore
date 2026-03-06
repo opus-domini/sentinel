@@ -12,9 +12,8 @@
 !vite.config.ts
 !vitest.config.ts
 !vitest.e2e.config.ts
-!eslint.config.js
-!prettier.config.js
-!.prettierignore
+!.oxlintrc.json
+!.oxfmtrc.json
 !components.json
 !.cta.json
 
