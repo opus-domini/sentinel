@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.14](https://github.com/opus-domini/sentinel/compare/v0.4.13...v0.4.14) (2026-03-06)
+
+
+### Refactors
+
+* replace ESLint + Prettier with oxlint + oxfmt ([#69](https://github.com/opus-domini/sentinel/issues/69)) ([3c466a2](https://github.com/opus-domini/sentinel/commit/3c466a2a325335f3cc7fec793845f3b7cf9901ec))
+
+
+### Build
+
+* **deps:** bump @tanstack/react-router and devtools to ^1.166.2 ([#67](https://github.com/opus-domini/sentinel/issues/67)) ([bc33e72](https://github.com/opus-domini/sentinel/commit/bc33e7285270d1e55b8d3296d1cf3ee28af82177))
+
 ## [0.4.13](https://github.com/opus-domini/sentinel/compare/v0.4.12...v0.4.13) (2026-03-05)
 
 
