@@ -331,6 +331,77 @@ func TestDefaultTimeoutAndRunner(t *testing.T) {
 	}
 }
 
+func TestContextCancelledBetweenSteps(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	callCount := 0
+	runner := func(_ context.Context, _ string, _ ...string) (string, error) {
+		callCount++
+		if callCount == 1 {
+			cancel() // cancel after first step completes
+		}
+		return "ok", nil
+	}
+
+	steps := []Step{
+		{Type: "command", Title: "Step 1", Command: "echo first"},
+		{Type: "command", Title: "Step 2", Command: "echo second"},
+	}
+
+	exec := NewExecutor(runner, time.Minute)
+	results, err := exec.Execute(ctx, steps, nil, nil)
+
+	if err == nil {
+		t.Fatal("expected error from cancelled context between steps")
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1 (partial — only first step)", len(results))
+	}
+	if results[0].Title != "Step 1" {
+		t.Errorf("result[0].Title = %q, want Step 1", results[0].Title)
+	}
+}
+
+func TestBeforeStepCallback(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockRunner{
+		results: []mockResult{
+			{output: "ok"},
+		},
+	}
+
+	steps := []Step{
+		{Type: "command", Title: "Build", Command: "make"},
+	}
+
+	type beforeCall struct {
+		index int
+		title string
+	}
+	var calls []beforeCall
+	beforeStep := func(index int, step Step) {
+		calls = append(calls, beforeCall{index: index, title: step.Title})
+	}
+
+	exec := NewExecutor(mock.run, time.Minute)
+	results, err := exec.Execute(context.Background(), steps, beforeStep, nil)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if len(calls) != 1 {
+		t.Fatalf("beforeStep called %d times, want 1", len(calls))
+	}
+	if calls[0].index != 0 || calls[0].title != "Build" {
+		t.Errorf("beforeStep call = %+v, want {index:0, title:Build}", calls[0])
+	}
+}
+
 func TestUnknownStepType(t *testing.T) {
 	t.Parallel()
 
