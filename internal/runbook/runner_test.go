@@ -2,7 +2,9 @@ package runbook
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/activity"
+	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -199,6 +202,303 @@ func TestRunOnFinishReceivesFinalizeContext(t *testing.T) {
 	}
 	if onFinishStatus != runnerStatusFailed {
 		t.Errorf("OnFinish status = %q, want %q", onFinishStatus, runnerStatusFailed)
+	}
+}
+
+func TestRunSuccessfulEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		runbookOK: true,
+		runbook: store.OpsRunbook{
+			ID:   "rb-ok",
+			Name: "quick-runbook",
+			Steps: []store.OpsRunbookStep{
+				{Type: "command", Title: "step-1", Command: "echo hello"},
+				{Type: "manual", Title: "step-2", Description: "done"},
+			},
+		},
+	}
+
+	var emittedTypes []string
+	emit := func(eventType string, _ map[string]any) {
+		emittedTypes = append(emittedTypes, eventType)
+	}
+
+	var onFinishStatus string
+	Run(context.Background(), repo, emit, RunParams{
+		Job:         store.OpsRunbookRun{ID: "run-ok", RunbookID: "rb-ok"},
+		Source:      "test",
+		StepTimeout: 5 * time.Second,
+		RunTimeout:  10 * time.Second,
+		OnFinish: func(_ context.Context, status string) {
+			onFinishStatus = status
+		},
+	})
+
+	last := repo.lastUpdate()
+	if last.Status != runnerStatusSucceeded {
+		t.Errorf("last update status = %q, want %q", last.Status, runnerStatusSucceeded)
+	}
+	if last.FinishedAt == "" {
+		t.Error("last update FinishedAt is empty, want non-empty timestamp")
+	}
+	if last.CurrentStep != "step-2" {
+		t.Errorf("last update CurrentStep = %q, want %q", last.CurrentStep, "step-2")
+	}
+	if repo.timelineCount() == 0 {
+		t.Error("no timeline events inserted, want at least 1")
+	}
+	if onFinishStatus != runnerStatusSucceeded {
+		t.Errorf("OnFinish status = %q, want %q", onFinishStatus, runnerStatusSucceeded)
+	}
+}
+
+func TestRunGetRunbookError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		getRunbookErr: fmt.Errorf("db connection lost"),
+	}
+
+	emit := func(_ string, _ map[string]any) {}
+
+	Run(context.Background(), repo, emit, RunParams{
+		Job:         store.OpsRunbookRun{ID: "run-fail", RunbookID: "rb-missing"},
+		Source:      "test",
+		StepTimeout: 1 * time.Second,
+		RunTimeout:  1 * time.Second,
+	})
+
+	last := repo.lastUpdate()
+	if last.Status != runnerStatusFailed {
+		t.Errorf("status = %q, want %q", last.Status, runnerStatusFailed)
+	}
+	if last.Error == "" {
+		t.Error("error should be set when GetOpsRunbook fails")
+	}
+	if !strings.Contains(last.Error, "db connection lost") {
+		t.Errorf("error = %q, want it to contain 'db connection lost'", last.Error)
+	}
+}
+
+func TestRunWithExtraMetadata(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		runbookOK: true,
+		runbook: store.OpsRunbook{
+			ID:   "rb-meta",
+			Name: "meta-runbook",
+			Steps: []store.OpsRunbookStep{
+				{Type: "manual", Title: "done", Description: "ok"},
+			},
+		},
+	}
+
+	emit := func(_ string, _ map[string]any) {}
+
+	Run(context.Background(), repo, emit, RunParams{
+		Job:         store.OpsRunbookRun{ID: "run-meta", RunbookID: "rb-meta"},
+		Source:      "scheduler",
+		StepTimeout: 1 * time.Second,
+		RunTimeout:  5 * time.Second,
+		ExtraMetadata: map[string]string{
+			"scheduleId": "sched-123",
+		},
+	})
+
+	// Verify timeline event was inserted with metadata.
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.insertedTL) == 0 {
+		t.Fatal("no timeline events inserted")
+	}
+	meta := repo.insertedTL[len(repo.insertedTL)-1].Metadata
+	if !strings.Contains(meta, "scheduleId") {
+		t.Errorf("metadata = %q, want it to contain 'scheduleId'", meta)
+	}
+	if !strings.Contains(meta, "sched-123") {
+		t.Errorf("metadata = %q, want it to contain 'sched-123'", meta)
+	}
+}
+
+// mockAlertRepo implements AlertRepo for testing.
+type mockAlertRepo struct {
+	mu           sync.Mutex
+	upserted     []alerts.AlertWrite
+	resolvedKeys []string
+	upsertErr    error
+	resolveErr   error
+}
+
+func (m *mockAlertRepo) UpsertAlert(_ context.Context, write alerts.AlertWrite) (alerts.Alert, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.upserted = append(m.upserted, write)
+	return alerts.Alert{ID: 1}, m.upsertErr
+}
+
+func (m *mockAlertRepo) ResolveAlert(_ context.Context, dedupeKey string, _ time.Time) (alerts.Alert, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.resolvedKeys = append(m.resolvedKeys, dedupeKey)
+	return alerts.Alert{}, m.resolveErr
+}
+
+func TestRunAlertRepoUpsertOnFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		runbookOK: true,
+		runbook: store.OpsRunbook{
+			ID:   "rb-alert-fail",
+			Name: "failing-runbook",
+			Steps: []store.OpsRunbookStep{
+				{Type: "command", Title: "bad step", Command: "sleep 60"},
+			},
+		},
+	}
+
+	alertRepo := &mockAlertRepo{}
+	emit := func(_ string, _ map[string]any) {}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	Run(ctx, repo, emit, RunParams{
+		Job: store.OpsRunbookRun{
+			ID:          "run-alert",
+			RunbookID:   "rb-alert-fail",
+			RunbookName: "failing-runbook",
+		},
+		Source:      "test",
+		StepTimeout: 1 * time.Second,
+		RunTimeout:  1 * time.Second,
+		AlertRepo:   alertRepo,
+	})
+
+	alertRepo.mu.Lock()
+	defer alertRepo.mu.Unlock()
+	if len(alertRepo.upserted) != 1 {
+		t.Fatalf("upserted alerts = %d, want 1", len(alertRepo.upserted))
+	}
+	if alertRepo.upserted[0].Severity != "error" {
+		t.Errorf("alert severity = %q, want %q", alertRepo.upserted[0].Severity, "error")
+	}
+	if !strings.Contains(alertRepo.upserted[0].Title, "failing-runbook") {
+		t.Errorf("alert title = %q, want it to contain runbook name", alertRepo.upserted[0].Title)
+	}
+}
+
+func TestRunAlertRepoResolveOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		runbookOK: true,
+		runbook: store.OpsRunbook{
+			ID:   "rb-alert-ok",
+			Name: "ok-runbook",
+			Steps: []store.OpsRunbookStep{
+				{Type: "manual", Title: "ok", Description: "done"},
+			},
+		},
+	}
+
+	alertRepo := &mockAlertRepo{
+		resolveErr: sql.ErrNoRows, // No prior alert — should be silently ignored.
+	}
+	emit := func(_ string, _ map[string]any) {}
+
+	Run(context.Background(), repo, emit, RunParams{
+		Job: store.OpsRunbookRun{
+			ID:          "run-resolve",
+			RunbookID:   "rb-alert-ok",
+			RunbookName: "ok-runbook",
+		},
+		Source:      "test",
+		StepTimeout: 1 * time.Second,
+		RunTimeout:  5 * time.Second,
+		AlertRepo:   alertRepo,
+	})
+
+	alertRepo.mu.Lock()
+	defer alertRepo.mu.Unlock()
+	if len(alertRepo.resolvedKeys) != 1 {
+		t.Fatalf("resolved keys = %d, want 1", len(alertRepo.resolvedKeys))
+	}
+	wantKey := "runbook:rb-alert-ok:failed"
+	if alertRepo.resolvedKeys[0] != wantKey {
+		t.Errorf("resolved key = %q, want %q", alertRepo.resolvedKeys[0], wantKey)
+	}
+}
+
+func TestRunWithWebhookURL(t *testing.T) {
+	t.Parallel()
+
+	var receivedPayload webhookPayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Errorf("decode webhook: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	repo := &mockRepo{
+		runbookOK: true,
+		runbook: store.OpsRunbook{
+			ID:         "rb-wh",
+			Name:       "webhook-runbook",
+			WebhookURL: server.URL,
+			Steps: []store.OpsRunbookStep{
+				{Type: "manual", Title: "ok", Description: "done"},
+			},
+		},
+	}
+
+	emit := func(_ string, _ map[string]any) {}
+
+	Run(context.Background(), repo, emit, RunParams{
+		Job:         store.OpsRunbookRun{ID: "run-wh", RunbookID: "rb-wh", RunbookName: "webhook-runbook"},
+		Source:      "test",
+		StepTimeout: 1 * time.Second,
+		RunTimeout:  5 * time.Second,
+	})
+
+	if receivedPayload.Event != "runbook.completed" { //nolint:goconst // test assertion
+		t.Errorf("webhook event = %q, want runbook.completed", receivedPayload.Event)
+	}
+	if receivedPayload.Runbook.ID != "rb-wh" {
+		t.Errorf("webhook runbook ID = %q, want rb-wh", receivedPayload.Runbook.ID)
+	}
+}
+
+func TestRunDefaultTimeouts(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		runbookOK: true,
+		runbook: store.OpsRunbook{
+			ID:   "rb-defaults",
+			Name: "defaults-runbook",
+			Steps: []store.OpsRunbookStep{
+				{Type: "manual", Title: "ok", Description: "done"},
+			},
+		},
+	}
+
+	emit := func(_ string, _ map[string]any) {}
+
+	// Zero timeouts — should use defaults and still succeed.
+	Run(context.Background(), repo, emit, RunParams{
+		Job:    store.OpsRunbookRun{ID: "run-defaults", RunbookID: "rb-defaults"},
+		Source: "test",
+	})
+
+	last := repo.lastUpdate()
+	if last.Status != runnerStatusSucceeded {
+		t.Errorf("status = %q, want %q", last.Status, runnerStatusSucceeded)
 	}
 }
 
