@@ -1,5 +1,5 @@
 import { ArrowLeftRight, ArrowUpDown, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { PaneInfo } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -81,31 +81,36 @@ export default function PaneStrip({
   const isMobile = useIsMobileLayout()
   const stripRef = useRef<HTMLDivElement | null>(null)
   const touchStateRef = useRef<PaneStripTouchState | null>(null)
-  const sortedPanes = [...panes].sort((left, right) => {
-    if (left.windowIndex !== right.windowIndex) {
-      return left.windowIndex - right.windowIndex
-    }
-    const leftPending = isPendingSplitPaneID(left.paneId)
-    const rightPending = isPendingSplitPaneID(right.paneId)
-    if (leftPending !== rightPending) {
-      return leftPending ? 1 : -1
-    }
-    if (leftPending && rightPending) {
-      return (
-        parsePendingSplitSlot(left.paneId) - parsePendingSplitSlot(right.paneId)
-      )
-    }
-    const leftIDOrder = parsePaneIDOrder(left.paneId)
-    const rightIDOrder = parsePaneIDOrder(right.paneId)
-    if (
-      leftIDOrder !== null &&
-      rightIDOrder !== null &&
-      leftIDOrder !== rightIDOrder
-    ) {
-      return leftIDOrder - rightIDOrder
-    }
-    return left.paneIndex - right.paneIndex
-  })
+  const sortedPanes = useMemo(
+    () =>
+      [...panes].sort((left, right) => {
+        if (left.windowIndex !== right.windowIndex) {
+          return left.windowIndex - right.windowIndex
+        }
+        const leftPending = isPendingSplitPaneID(left.paneId)
+        const rightPending = isPendingSplitPaneID(right.paneId)
+        if (leftPending !== rightPending) {
+          return leftPending ? 1 : -1
+        }
+        if (leftPending && rightPending) {
+          return (
+            parsePendingSplitSlot(left.paneId) -
+            parsePendingSplitSlot(right.paneId)
+          )
+        }
+        const leftIDOrder = parsePaneIDOrder(left.paneId)
+        const rightIDOrder = parsePaneIDOrder(right.paneId)
+        if (
+          leftIDOrder !== null &&
+          rightIDOrder !== null &&
+          leftIDOrder !== rightIDOrder
+        ) {
+          return leftIDOrder - rightIDOrder
+        }
+        return left.paneIndex - right.paneIndex
+      }),
+    [panes],
+  )
   const visiblePanes =
     activeWindowIndex === null
       ? []

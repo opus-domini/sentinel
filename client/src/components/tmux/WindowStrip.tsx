@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { WindowInfo } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -35,8 +36,9 @@ export default function WindowStrip({
   onCreateWindow,
 }: WindowStripProps) {
   const isMobile = useIsMobileLayout()
-  const sortedWindows = [...windows].sort(
-    (left, right) => left.index - right.index,
+  const sortedWindows = useMemo(
+    () => [...windows].sort((left, right) => left.index - right.index),
+    [windows],
   )
   const stripClass = 'flex min-h-[24px] items-center gap-1.5 overflow-x-auto'
 

@@ -199,9 +199,14 @@ export default function SettingsDialog({
         </DialogHeader>
 
         <div className="mt-1 grid min-h-0 min-w-0 flex-1 grid-rows-[auto_1fr] gap-3">
-          <nav className="flex flex-wrap gap-1 rounded-md border border-border-subtle bg-secondary p-1">
+          <nav
+            className="flex flex-wrap gap-1 rounded-md border border-border-subtle bg-secondary p-1"
+            role="tablist"
+          >
             <button
               type="button"
+              role="tab"
+              aria-selected={activeSection === 'appearance'}
               className={sectionButtonClass('appearance')}
               onClick={() => setActiveSection('appearance')}
             >
@@ -209,6 +214,8 @@ export default function SettingsDialog({
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeSection === 'app'}
               className={sectionButtonClass('app')}
               onClick={() => setActiveSection('app')}
             >
@@ -216,6 +223,8 @@ export default function SettingsDialog({
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeSection === 'data'}
               className={sectionButtonClass('data')}
               onClick={() => setActiveSection('data')}
             >
@@ -223,6 +232,8 @@ export default function SettingsDialog({
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeSection === 'about'}
               className={sectionButtonClass('about')}
               onClick={() => setActiveSection('about')}
             >

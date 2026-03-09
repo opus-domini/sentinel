@@ -552,9 +552,14 @@ export default function GuardrailsDialog({
 
         <section className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <nav className="flex gap-1 rounded-md border border-border-subtle bg-secondary p-1">
+            <nav
+              className="flex gap-1 rounded-md border border-border-subtle bg-secondary p-1"
+              role="tablist"
+            >
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === 'rules'}
                 className={tabClass('rules')}
                 onClick={() => setActiveTab('rules')}
               >
@@ -562,6 +567,8 @@ export default function GuardrailsDialog({
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === 'audit'}
                 className={tabClass('audit')}
                 onClick={() => setActiveTab('audit')}
               >
