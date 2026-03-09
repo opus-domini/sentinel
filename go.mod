@@ -3,6 +3,7 @@ module github.com/opus-domini/sentinel
 go 1.26.1
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/opus-domini/fast-shot v1.3.1
 	github.com/robfig/cron/v3 v3.0.1
 	modernc.org/sqlite v1.46.1

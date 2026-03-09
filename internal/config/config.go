@@ -1,8 +1,8 @@
 package config
 
 import (
-	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 const (
@@ -56,7 +58,9 @@ var (
 
 const defaultConfigContent = `# Sentinel configuration
 # All values shown are defaults. Uncomment and edit to customize.
+# Environment variables (SENTINEL_*) always take precedence over file values.
 
+[server]
 # Address and port the server listens on.
 # Environment variable: SENTINEL_LISTEN
 # listen = "127.0.0.1:4040"
@@ -70,26 +74,17 @@ const defaultConfigContent = `# Sentinel configuration
 # Environment variable: SENTINEL_ALLOWED_ORIGINS
 # allowed_origins = ""
 
+# Cookie Secure flag: "auto", "always", or "never".
+# Environment variable: SENTINEL_COOKIE_SECURE
+# cookie_secure = "auto"
+
+# Allow insecure (non-HTTPS) cookies.
+# Environment variable: SENTINEL_ALLOW_INSECURE_COOKIE
+# allow_insecure_cookie = false
+
 # Log level: debug, info, warn, error.
 # Environment variable: SENTINEL_LOG_LEVEL
 # log_level = "info"
-
-# Watchtower subsystem (background activity projection + unread journal).
-# Environment variables:
-# - SENTINEL_WATCHTOWER_ENABLED
-# - SENTINEL_WATCHTOWER_TICK_INTERVAL
-# - SENTINEL_WATCHTOWER_CAPTURE_LINES
-# - SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT
-# - SENTINEL_WATCHTOWER_JOURNAL_ROWS
-# watchtower_enabled = true
-# watchtower_tick_interval = "1s"
-# watchtower_capture_lines = 80
-# watchtower_capture_timeout = "150ms"
-# watchtower_journal_rows = 5000
-
-# Maximum number of concurrent manual runbook executions.
-# Environment variable: SENTINEL_RUNBOOK_MAX_CONCURRENT
-# runbook_max_concurrent = 5
 
 # IANA timezone for all displayed timestamps.
 # Environment variable: SENTINEL_TIMEZONE
@@ -99,6 +94,45 @@ const defaultConfigContent = `# Sentinel configuration
 # When empty, the browser's default locale is used.
 # Environment variable: SENTINEL_LOCALE
 # locale = "pt-BR"
+
+[alerts]
+# CPU usage threshold percentage for alerts.
+# Environment variable: SENTINEL_ALERT_CPU_PERCENT
+# cpu_percent = 90.0
+
+# Memory usage threshold percentage for alerts.
+# Environment variable: SENTINEL_ALERT_MEM_PERCENT
+# mem_percent = 90.0
+
+# Disk usage threshold percentage for alerts.
+# Environment variable: SENTINEL_ALERT_DISK_PERCENT
+# disk_percent = 95.0
+
+[watchtower]
+# Enable the watchtower subsystem (background activity projection + unread journal).
+# Environment variable: SENTINEL_WATCHTOWER_ENABLED
+# enabled = true
+
+# How often watchtower polls for activity.
+# Environment variable: SENTINEL_WATCHTOWER_TICK_INTERVAL
+# tick_interval = "1s"
+
+# Number of lines to capture from each pane.
+# Environment variable: SENTINEL_WATCHTOWER_CAPTURE_LINES
+# capture_lines = 80
+
+# Timeout for capturing pane content.
+# Environment variable: SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT
+# capture_timeout = "150ms"
+
+# Maximum number of rows in the unread journal.
+# Environment variable: SENTINEL_WATCHTOWER_JOURNAL_ROWS
+# journal_rows = 5000
+
+[runbooks]
+# Maximum number of concurrent manual runbook executions.
+# Environment variable: SENTINEL_RUNBOOK_MAX_CONCURRENT
+# max_concurrent = 5
 `
 
 func Load() Config {
@@ -324,36 +358,156 @@ func parsePositiveFloat(raw string) (float64, bool) {
 	return value, true
 }
 
-// loadFile reads a simple key = value config file.
-// Lines starting with # are comments. Quotes around values are stripped.
-// Returns an empty map if the file does not exist.
-func loadFile(path string) map[string]string {
-	m := make(map[string]string)
-	f, err := os.Open(path) //nolint:gosec // path is derived from DataDir, not user input
-	if err != nil {
-		return m
-	}
-	defer func() { _ = f.Close() }()
+// tomlServer maps the [server] section of the config file.
+type tomlServer struct {
+	Listen              *string `toml:"listen"`
+	Token               *string `toml:"token"`
+	AllowedOrigins      *string `toml:"allowed_origins"`
+	CookieSecure        *string `toml:"cookie_secure"`
+	AllowInsecureCookie *bool   `toml:"allow_insecure_cookie"`
+	LogLevel            *string `toml:"log_level"`
+	Timezone            *string `toml:"timezone"`
+	Locale              *string `toml:"locale"`
+}
 
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || line[0] == '#' || line[0] == '[' {
-			continue
+// tomlAlerts maps the [alerts] section of the config file.
+type tomlAlerts struct {
+	CPUPercent  *float64 `toml:"cpu_percent"`
+	MemPercent  *float64 `toml:"mem_percent"`
+	DiskPercent *float64 `toml:"disk_percent"`
+}
+
+// tomlWatchtower maps the [watchtower] section of the config file.
+type tomlWatchtower struct {
+	Enabled        *bool   `toml:"enabled"`
+	TickInterval   *string `toml:"tick_interval"`
+	CaptureLines   *int64  `toml:"capture_lines"`
+	CaptureTimeout *string `toml:"capture_timeout"`
+	JournalRows    *int64  `toml:"journal_rows"`
+}
+
+// tomlRunbooks maps the [runbooks] section of the config file.
+type tomlRunbooks struct {
+	MaxConcurrent *int64 `toml:"max_concurrent"`
+}
+
+// tomlConfig is the top-level structure for the TOML config file.
+// It supports both sectioned format (preferred) and flat legacy keys.
+type tomlConfig struct {
+	Server     tomlServer     `toml:"server"`
+	Alerts     tomlAlerts     `toml:"alerts"`
+	Watchtower tomlWatchtower `toml:"watchtower"`
+	Runbooks   tomlRunbooks   `toml:"runbooks"`
+
+	// Legacy flat keys (for backward compatibility with pre-section configs).
+	Listen                   *string  `toml:"listen"`
+	Token                    *string  `toml:"token"`
+	AllowedOrigins           *string  `toml:"allowed_origins"`
+	CookieSecure             *string  `toml:"cookie_secure"`
+	AllowInsecureCookie      *bool    `toml:"allow_insecure_cookie"`
+	LogLevel                 *string  `toml:"log_level"`
+	Timezone                 *string  `toml:"timezone"`
+	Locale                   *string  `toml:"locale"`
+	RunbookMaxConcurrent     *int64   `toml:"runbook_max_concurrent"`
+	WatchtowerEnabled        *bool    `toml:"watchtower_enabled"`
+	WatchtowerTickInterval   *string  `toml:"watchtower_tick_interval"`
+	WatchtowerCaptureLines   *int64   `toml:"watchtower_capture_lines"`
+	WatchtowerCaptureTimeout *string  `toml:"watchtower_capture_timeout"`
+	WatchtowerJournalRows    *int64   `toml:"watchtower_journal_rows"`
+	AlertCPUPercent          *float64 `toml:"alert_cpu_percent"`
+	AlertMemPercent          *float64 `toml:"alert_mem_percent"`
+	AlertDiskPercent         *float64 `toml:"alert_disk_percent"`
+}
+
+// flatten converts the parsed TOML config into a flat key-value map.
+// Sectioned keys take precedence over legacy flat keys.
+func (tc *tomlConfig) flatten() map[string]string {
+	m := make(map[string]string)
+
+	// Helper to set a string value if the pointer is non-nil.
+	setStr := func(key string, v *string) {
+		if v != nil {
+			m[key] = *v
 		}
-		key, val, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		k := strings.TrimSpace(key)
-		v := strings.TrimSpace(val)
-		// Strip surrounding quotes.
-		if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
-			v = v[1 : len(v)-1]
-		}
-		m[k] = v
 	}
+	setBool := func(key string, v *bool) {
+		if v != nil {
+			m[key] = strconv.FormatBool(*v)
+		}
+	}
+	setInt := func(key string, v *int64) {
+		if v != nil {
+			m[key] = strconv.FormatInt(*v, 10)
+		}
+	}
+	setFloat := func(key string, v *float64) {
+		if v != nil {
+			m[key] = strconv.FormatFloat(*v, 'f', -1, 64)
+		}
+	}
+
+	// Apply legacy flat keys first.
+	setStr("listen", tc.Listen)
+	setStr("token", tc.Token)
+	setStr("allowed_origins", tc.AllowedOrigins)
+	setStr("cookie_secure", tc.CookieSecure)
+	setBool("allow_insecure_cookie", tc.AllowInsecureCookie)
+	setStr("log_level", tc.LogLevel)
+	setStr("timezone", tc.Timezone)
+	setStr("locale", tc.Locale)
+	setInt("runbook_max_concurrent", tc.RunbookMaxConcurrent)
+	setBool("watchtower_enabled", tc.WatchtowerEnabled)
+	setStr("watchtower_tick_interval", tc.WatchtowerTickInterval)
+	setInt("watchtower_capture_lines", tc.WatchtowerCaptureLines)
+	setStr("watchtower_capture_timeout", tc.WatchtowerCaptureTimeout)
+	setInt("watchtower_journal_rows", tc.WatchtowerJournalRows)
+	setFloat("alert_cpu_percent", tc.AlertCPUPercent)
+	setFloat("alert_mem_percent", tc.AlertMemPercent)
+	setFloat("alert_disk_percent", tc.AlertDiskPercent)
+
+	// Sectioned keys override legacy flat keys.
+	setStr("listen", tc.Server.Listen)
+	setStr("token", tc.Server.Token)
+	setStr("allowed_origins", tc.Server.AllowedOrigins)
+	setStr("cookie_secure", tc.Server.CookieSecure)
+	setBool("allow_insecure_cookie", tc.Server.AllowInsecureCookie)
+	setStr("log_level", tc.Server.LogLevel)
+	setStr("timezone", tc.Server.Timezone)
+	setStr("locale", tc.Server.Locale)
+
+	setFloat("alert_cpu_percent", tc.Alerts.CPUPercent)
+	setFloat("alert_mem_percent", tc.Alerts.MemPercent)
+	setFloat("alert_disk_percent", tc.Alerts.DiskPercent)
+
+	setBool("watchtower_enabled", tc.Watchtower.Enabled)
+	setStr("watchtower_tick_interval", tc.Watchtower.TickInterval)
+	setInt("watchtower_capture_lines", tc.Watchtower.CaptureLines)
+	setStr("watchtower_capture_timeout", tc.Watchtower.CaptureTimeout)
+	setInt("watchtower_journal_rows", tc.Watchtower.JournalRows)
+
+	setInt("runbook_max_concurrent", tc.Runbooks.MaxConcurrent)
+
 	return m
+}
+
+// loadFile parses a TOML config file and returns a flat key-value map.
+// Returns an empty map if the file does not exist or cannot be parsed.
+func loadFile(path string) map[string]string {
+	var tc tomlConfig
+	if _, err := toml.DecodeFile(path, &tc); err != nil {
+		return make(map[string]string)
+	}
+	return tc.flatten()
+}
+
+// decodeTOML parses TOML content from a string and returns a flat key-value map.
+// Used for testing; returns an error if parsing fails.
+func decodeTOML(content string) (map[string]string, error) {
+	var tc tomlConfig
+	if _, err := toml.Decode(content, &tc); err != nil {
+		return nil, fmt.Errorf("decode toml: %w", err)
+	}
+	return tc.flatten(), nil
 }
 
 // writeDefaultConfig creates the config file with commented-out defaults.
