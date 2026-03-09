@@ -1,3 +1,9 @@
+// Uses a custom autocomplete instead of the shared Combobox (ui/combobox.tsx)
+// because the working-directory field requires free-form text input with
+// server-side filesystem path suggestions fetched on each keystroke. The shared
+// Combobox wraps Base UI's Combobox primitive, which restricts selection to
+// predefined items and does not support free-form values. Base UI's Autocomplete
+// would be the correct primitive, but it is not yet available in the project.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
