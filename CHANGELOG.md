@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/opus-domini/sentinel/compare/v0.5.0...v0.5.1) (2026-03-09)
+
+
+### Documentation
+
+* update documentation for recent features and API changes ([92bffb3](https://github.com/opus-domini/sentinel/commit/92bffb320920db45ca6c1490486c5a8f386d6ebb))
+
 ## [0.5.0](https://github.com/opus-domini/sentinel/compare/v0.4.14...v0.5.0) (2026-03-09)
 
 
