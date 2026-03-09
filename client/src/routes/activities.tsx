@@ -7,6 +7,7 @@ import type {
   OpsActivityResponse,
   OpsOverviewResponse,
 } from '@/types'
+import { getActivitySourceIcon } from '@/lib/activityIcons'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { TooltipHelper } from '@/components/TooltipHelper'
@@ -64,6 +65,7 @@ function ActivitiesPage() {
 
   const [activityQuery, setActivityQuery] = useState('')
   const [activitySeverity, setActivitySeverity] = useState('all')
+  const [activitySource, setActivitySource] = useState('all')
 
   const activityQueryKey = useMemo(
     () => opsActivityQueryKey(activityQuery, activitySeverity),
@@ -100,7 +102,16 @@ function ActivitiesPage() {
   })
 
   const overview = overviewQuery.data ?? null
-  const activityEvents = activityEventsQuery.data ?? []
+  const activityEventsRaw = activityEventsQuery.data ?? []
+
+  const MAX_VISIBLE_EVENTS = 500
+  const activityEvents = useMemo(() => {
+    const filtered =
+      activitySource === 'all'
+        ? activityEventsRaw
+        : activityEventsRaw.filter((e) => e.source === activitySource)
+    return filtered.slice(0, MAX_VISIBLE_EVENTS)
+  }, [activityEventsRaw, activitySource])
   const overviewLoading = overviewQuery.isLoading
   const activityLoading = activityEventsQuery.isLoading
   const overviewError =
@@ -205,6 +216,8 @@ function ActivitiesPage() {
           onActivityQueryChange={setActivityQuery}
           activitySeverity={activitySeverity}
           onActivitySeverityChange={setActivitySeverity}
+          activitySource={activitySource}
+          onActivitySourceChange={setActivitySource}
           onTokenChange={setToken}
         />
       }
@@ -252,36 +265,43 @@ function ActivitiesPage() {
                       className="h-20 animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}
-                {activityEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="min-w-0 overflow-hidden rounded border border-border-subtle bg-surface-elevated px-2.5 py-2"
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-2">
-                      <p className="min-w-0 truncate text-[12px] font-semibold">
-                        {event.message}
+                {activityEvents.map((event) => {
+                  const SourceIcon = getActivitySourceIcon(event.source)
+                  return (
+                    <div
+                      key={event.id}
+                      className="min-w-0 overflow-hidden rounded border border-border-subtle bg-surface-elevated px-2.5 py-2"
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <SourceIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <p className="min-w-0 truncate text-[12px] font-semibold">
+                            {event.message}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-border-subtle bg-surface-overlay px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {event.severity}
+                        </span>
+                      </div>
+                      <p className="mt-1 break-words text-[10px] text-muted-foreground">
+                        {event.source} • {event.resource} •{' '}
+                        {formatDateTime(event.createdAt)}
                       </p>
-                      <span className="shrink-0 rounded-full border border-border-subtle bg-surface-overlay px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        {event.severity}
-                      </span>
+                      {event.details.trim() !== '' && (
+                        <p className="mt-1 break-words text-[11px] text-muted-foreground">
+                          {event.details}
+                        </p>
+                      )}
                     </div>
-                    <p className="mt-1 break-words text-[10px] text-muted-foreground">
-                      {event.source} • {event.resource} •{' '}
-                      {formatDateTime(event.createdAt)}
-                    </p>
-                    {event.details.trim() !== '' && (
-                      <p className="mt-1 break-words text-[11px] text-muted-foreground">
-                        {event.details}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
                 {!activityLoading && activityEvents.length === 0 && (
                   <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
                     <p>No activity events for the selected filters.</p>
                     <div className="flex flex-wrap gap-2">
                       {(activityQuery.trim() !== '' ||
-                        activitySeverity !== 'all') && (
+                        activitySeverity !== 'all' ||
+                        activitySource !== 'all') && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -289,6 +309,7 @@ function ActivitiesPage() {
                           onClick={() => {
                             setActivityQuery('')
                             setActivitySeverity('all')
+                            setActivitySource('all')
                           }}
                         >
                           Clear filters

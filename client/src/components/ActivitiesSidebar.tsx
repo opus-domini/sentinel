@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Lock, LockOpen } from 'lucide-react'
 import type { OpsOverview } from '@/types'
+import { ACTIVITY_SOURCES } from '@/lib/activityIcons'
 import SidebarShell from '@/components/sidebar/SidebarShell'
 import ActivitiesHelpDialog from '@/components/ActivitiesHelpDialog'
 import TokenDialog from '@/components/sidebar/TokenDialog'
@@ -19,6 +20,8 @@ type ActivitiesSidebarProps = {
   onActivityQueryChange: (value: string) => void
   activitySeverity: string
   onActivitySeverityChange: (value: string) => void
+  activitySource: string
+  onActivitySourceChange: (value: string) => void
   onTokenChange: (value: string) => void
 }
 
@@ -33,6 +36,8 @@ export default function ActivitiesSidebar({
   onActivityQueryChange,
   activitySeverity,
   onActivitySeverityChange,
+  activitySource,
+  onActivitySourceChange,
   onTokenChange,
 }: ActivitiesSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
@@ -142,6 +147,18 @@ export default function ActivitiesSidebar({
             <option value="info">info</option>
             <option value="warn">warn</option>
             <option value="error">error</option>
+          </select>
+          <select
+            value={activitySource}
+            onChange={(e) => onActivitySourceChange(e.target.value)}
+            className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
+          >
+            <option value="all">all sources</option>
+            {ACTIVITY_SOURCES.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
           </select>
         </section>
       </div>
