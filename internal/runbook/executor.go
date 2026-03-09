@@ -41,6 +41,7 @@ type Step struct {
 type Executor struct {
 	runner      CommandRunner
 	stepTimeout time.Duration
+	params      map[string]string // substituted into commands before execution
 }
 
 const (
@@ -53,16 +54,23 @@ const (
 
 // NewExecutor creates an Executor. If runner is nil a default runner backed
 // by exec.CommandContext is used. If stepTimeout is zero it defaults to 30s.
-func NewExecutor(runner CommandRunner, stepTimeout time.Duration) *Executor {
+// The optional params map is used to substitute {{PARAM}} placeholders in
+// step commands before execution.
+func NewExecutor(runner CommandRunner, stepTimeout time.Duration, params ...map[string]string) *Executor {
 	if runner == nil {
 		runner = defaultRunner
 	}
 	if stepTimeout == 0 {
 		stepTimeout = defaultStepTimeout
 	}
+	var p map[string]string
+	if len(params) > 0 {
+		p = params[0]
+	}
 	return &Executor{
 		runner:      runner,
 		stepTimeout: stepTimeout,
+		params:      p,
 	}
 }
 
@@ -111,13 +119,15 @@ func (e *Executor) executeStep(ctx context.Context, index int, step Step) StepRe
 
 	switch step.Type {
 	case stepTypeCommand:
-		output, err := e.runner(ctx, "sh", "-c", step.Command)
+		cmd := SubstituteParams(step.Command, e.params)
+		output, err := e.runner(ctx, "sh", "-c", cmd)
 		result.Output = output
 		if err != nil {
 			result.Error = err.Error()
 		}
 	case stepTypeCheck:
-		output, err := e.runner(ctx, "sh", "-c", step.Check)
+		cmd := SubstituteParams(step.Check, e.params)
+		output, err := e.runner(ctx, "sh", "-c", cmd)
 		result.Output = output
 		if err != nil {
 			result.Error = err.Error()

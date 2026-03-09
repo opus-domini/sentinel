@@ -429,3 +429,126 @@ func TestUnknownStepType(t *testing.T) {
 		t.Errorf("runner called %d times, want 0 for unknown step type", got)
 	}
 }
+
+func TestExecuteWithParameterSubstitution(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockRunner{
+		results: []mockResult{
+			{output: "deployed"},
+			{output: "healthy"},
+		},
+	}
+
+	steps := []Step{
+		{Type: "command", Title: "Deploy", Command: "deploy.sh --host={{HOST}} --env={{ENV}}"},
+		{Type: "check", Title: "Health check", Check: "curl -f http://{{HOST}}:{{PORT}}/health"},
+	}
+
+	params := map[string]string{
+		"HOST": "server.example.com",
+		"ENV":  "production",
+		"PORT": "8080",
+	}
+
+	exec := NewExecutor(mock.run, time.Minute, params)
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2", len(results))
+	}
+
+	// Verify the runner received substituted commands.
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+
+	if len(mock.calls) != 2 {
+		t.Fatalf("runner called %d times, want 2", len(mock.calls))
+	}
+
+	// Command step should have substituted host and env.
+	cmdArgs := mock.calls[0].Args
+	if len(cmdArgs) < 2 {
+		t.Fatalf("command args = %v, want at least 2 elements", cmdArgs)
+	}
+	cmd := cmdArgs[1] // args[0] is "-c", args[1] is the command
+	wantCmd := "deploy.sh --host='server.example.com' --env='production'"
+	if cmd != wantCmd {
+		t.Errorf("command = %q, want %q", cmd, wantCmd)
+	}
+
+	// Check step should have substituted host and port.
+	checkArgs := mock.calls[1].Args
+	checkCmd := checkArgs[1]
+	wantCheck := "curl -f http://'server.example.com':'8080'/health"
+	if checkCmd != wantCheck {
+		t.Errorf("check = %q, want %q", checkCmd, wantCheck)
+	}
+}
+
+func TestExecuteWithoutParams(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockRunner{
+		results: []mockResult{
+			{output: "ok"},
+		},
+	}
+
+	steps := []Step{
+		{Type: "command", Title: "Build", Command: "make build"},
+	}
+
+	// No params — backward compatible.
+	exec := NewExecutor(mock.run, time.Minute)
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	cmd := mock.calls[0].Args[1]
+	if cmd != "make build" {
+		t.Errorf("command = %q, want %q (unchanged)", cmd, "make build")
+	}
+}
+
+func TestExecuteShellEscapingInParams(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockRunner{
+		results: []mockResult{
+			{output: "ok"},
+		},
+	}
+
+	steps := []Step{
+		{Type: "command", Title: "Echo", Command: "echo {{MSG}}"},
+	}
+
+	// Value with shell metacharacters should be safely escaped.
+	params := map[string]string{
+		"MSG": "$(whoami); rm -rf /",
+	}
+
+	exec := NewExecutor(mock.run, time.Minute, params)
+	_, err := exec.Execute(context.Background(), steps, nil, nil)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	cmd := mock.calls[0].Args[1]
+	// The value should be wrapped in single quotes, preventing shell expansion.
+	want := "echo '$(whoami); rm -rf /'"
+	if cmd != want {
+		t.Errorf("command = %q, want %q", cmd, want)
+	}
+}

@@ -45,6 +45,10 @@ func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type runOpsRunbookRequest struct {
+	Parameters map[string]string `json:"parameters"`
+}
+
 func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
@@ -54,6 +58,17 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	if runbookID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook is required", nil)
 		return
+	}
+
+	// Parse optional parameters from request body.
+	var reqParams map[string]string
+	if r.Body != nil && r.ContentLength != 0 {
+		var req runOpsRunbookRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
+		reqParams = req.Parameters
 	}
 
 	// Acquire the runbook concurrency semaphore (non-blocking).
@@ -69,8 +84,28 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
 
+	// Fetch the runbook to validate parameters.
+	rb, err := h.repo.GetOpsRunbook(ctx, runbookID)
+	if err != nil {
+		<-h.runSem // release on early return
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load runbook", nil)
+		return
+	}
+
+	// Resolve and validate parameters.
+	resolved := runbook.ResolveParams(rb.Parameters, reqParams)
+	if err := runbook.ValidateParams(rb.Parameters, resolved); err != nil {
+		<-h.runSem // release on early return
+		writeError(w, http.StatusBadRequest, "INVALID_PARAMETERS", err.Error(), nil)
+		return
+	}
+
 	now := time.Now().UTC()
-	job, err := h.repo.CreateOpsRunbookRun(ctx, runbookID, now)
+	job, err := h.repo.CreateOpsRunbookRunWithParams(ctx, runbookID, now, resolved)
 	if err != nil {
 		<-h.runSem // release on early return
 		if errors.Is(err, sql.ErrNoRows) {
@@ -93,7 +128,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer h.wg.Done()
 		defer func() { <-h.runSem }()
-		h.executeRunbookAsync(h.runCtx, job)
+		h.executeRunbookAsync(h.runCtx, job, resolved)
 	}()
 
 	globalRev := now.UnixMilli()
@@ -113,11 +148,12 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookRun) {
+func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookRun, params map[string]string) {
 	runbook.Run(ctx, h.repo, h.emitEvent, runbook.RunParams{
 		Job:           job,
 		Source:        "runbook",
 		StepTimeout:   30 * time.Second,
+		Parameters:    params,
 		ExtraMetadata: map[string]string{"runbookId": job.RunbookID},
 		AlertRepo:     h.repo,
 	})

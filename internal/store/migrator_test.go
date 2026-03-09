@@ -27,12 +27,12 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 5 || name != "ops-global-rev" {
-		t.Fatalf("latest migration = (%d, %q), want (5, %q)", version, name, "ops-global-rev")
+	if version != 7 || name != "marker-patterns" {
+		t.Fatalf("latest migration = (%d, %q), want (7, %q)", version, name, "marker-patterns")
 	}
 
 	// Spot-check that a few tables exist.
-	for _, table := range []string{"sessions", "wt_sessions", "guardrail_rules", "ops_runbooks", "ops_schedules"} {
+	for _, table := range []string{"sessions", "wt_sessions", "guardrail_rules", "ops_runbooks", "ops_schedules", "marker_patterns"} {
 		var n int
 		if err := db.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
@@ -64,8 +64,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 4 { //nolint: migrations 000001, 000003, 000004, 000005
-		t.Fatalf("schema_migrations rows = %d, want 4", count)
+	if count != 6 { //nolint: migrations 000001, 000003, 000004, 000005, 000006, 000007
+		t.Fatalf("schema_migrations rows = %d, want 6", count)
 	}
 }
 
@@ -119,6 +119,15 @@ func TestRunMigrationsSeedData(t *testing.T) {
 	}
 	if globalRev != "0" {
 		t.Fatalf("global_rev = %q, want %q", globalRev, "0")
+	}
+
+	// Marker pattern seeds.
+	var markerCount int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM marker_patterns").Scan(&markerCount); err != nil {
+		t.Fatalf("count marker_patterns: %v", err)
+	}
+	if markerCount < 8 {
+		t.Fatalf("marker_patterns count = %d, want >= 8", markerCount)
 	}
 }
 

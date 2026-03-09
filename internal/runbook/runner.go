@@ -48,6 +48,10 @@ type RunParams struct {
 	// Defaults to 5 minutes if zero.
 	RunTimeout time.Duration
 
+	// Parameters holds the resolved parameter values to substitute into
+	// step commands before execution.
+	Parameters map[string]string
+
 	// ExtraMetadata is merged into timeline event metadata on completion.
 	ExtraMetadata map[string]string
 
@@ -124,7 +128,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	if stepTimeout <= 0 {
 		stepTimeout = 30 * time.Second
 	}
-	executor := NewExecutor(nil, stepTimeout)
+	executor := NewExecutor(nil, stepTimeout, params.Parameters)
 	var accumulated []store.OpsRunbookStepResult
 
 	// beforeStep writes a preliminary step result to the DB before execution.

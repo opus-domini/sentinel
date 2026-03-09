@@ -26,15 +26,27 @@ type OpsRunbookStep struct {
 	Description string `json:"description,omitempty"`
 }
 
+// RunbookParameter defines a single parameter that a runbook accepts.
+// Parameters are substituted into step commands before execution.
+type RunbookParameter struct {
+	Name     string   `json:"name"`
+	Label    string   `json:"label"`
+	Type     string   `json:"type"` // "string", "number", "boolean", "select"
+	Default  string   `json:"default"`
+	Required bool     `json:"required"`
+	Options  []string `json:"options,omitempty"` // for type "select"
+}
+
 type OpsRunbook struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	Enabled     bool             `json:"enabled"`
-	WebhookURL  string           `json:"webhookURL"`
-	Steps       []OpsRunbookStep `json:"steps"`
-	CreatedAt   string           `json:"createdAt"`
-	UpdatedAt   string           `json:"updatedAt"`
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Enabled     bool               `json:"enabled"`
+	WebhookURL  string             `json:"webhookURL"`
+	Steps       []OpsRunbookStep   `json:"steps"`
+	Parameters  []RunbookParameter `json:"parameters"`
+	CreatedAt   string             `json:"createdAt"`
+	UpdatedAt   string             `json:"updatedAt"`
 }
 
 type OpsRunbookStepResult struct {
@@ -56,6 +68,7 @@ type OpsRunbookRun struct {
 	CurrentStep    string                 `json:"currentStep"`
 	Error          string                 `json:"error"`
 	StepResults    []OpsRunbookStepResult `json:"stepResults"`
+	ParametersUsed map[string]string      `json:"parametersUsed"`
 	CreatedAt      string                 `json:"createdAt"`
 	StartedAt      string                 `json:"startedAt,omitempty"`
 	FinishedAt     string                 `json:"finishedAt,omitempty"`
@@ -66,6 +79,7 @@ type OpsRunbookWrite struct {
 	Name        string
 	Description string
 	Steps       []OpsRunbookStep
+	Parameters  []RunbookParameter
 	Enabled     bool
 	WebhookURL  string
 }
@@ -83,7 +97,7 @@ type OpsRunbookRunUpdate struct {
 
 func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, name, description, steps_json, enabled, webhook_url, created_at, updated_at
+		id, name, description, steps_json, enabled, webhook_url, parameters, created_at, updated_at
 	FROM ops_runbooks
 	ORDER BY name ASC`)
 	if err != nil {
@@ -94,9 +108,10 @@ func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 	runbooks := make([]OpsRunbook, 0, 8)
 	for rows.Next() {
 		var (
-			item      OpsRunbook
-			stepsJSON string
-			enabled   int
+			item       OpsRunbook
+			stepsJSON  string
+			paramsJSON string
+			enabled    int
 		)
 		if err := rows.Scan(
 			&item.ID,
@@ -105,6 +120,7 @@ func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 			&stepsJSON,
 			&enabled,
 			&item.WebhookURL,
+			&paramsJSON,
 			&item.CreatedAt,
 			&item.UpdatedAt,
 		); err != nil {
@@ -113,6 +129,9 @@ func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 		item.Enabled = enabled == 1
 		if err := json.Unmarshal([]byte(stepsJSON), &item.Steps); err != nil {
 			item.Steps = []OpsRunbookStep{}
+		}
+		if err := json.Unmarshal([]byte(paramsJSON), &item.Parameters); err != nil || item.Parameters == nil {
+			item.Parameters = []RunbookParameter{}
 		}
 		runbooks = append(runbooks, item)
 	}
@@ -151,8 +170,8 @@ func (s *Store) StartOpsRunbook(ctx context.Context, runbookID string, at time.T
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, '', '[]', ?, '', '')`,
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, created_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, '', '[]', '{}', ?, '', '')`,
 		runID,
 		runbook.ID,
 		runbook.Name,
@@ -207,7 +226,7 @@ func (s *Store) ListOpsRunbookRuns(ctx context.Context, limit int) ([]OpsRunbook
 		limit = 500
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, created_at, started_at, finished_at
 	FROM ops_runbook_runs
 	ORDER BY created_at DESC, id DESC
 	LIMIT ?`, limit)
@@ -236,7 +255,7 @@ func (s *Store) GetOpsRunbookRun(ctx context.Context, runID string) (OpsRunbookR
 		return OpsRunbookRun{}, sql.ErrNoRows
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, created_at, started_at, finished_at
 	FROM ops_runbook_runs
 	WHERE id = ?
 	LIMIT 1`, runID)
@@ -269,12 +288,13 @@ func (s *Store) GetOpsRunbook(ctx context.Context, id string) (OpsRunbook, error
 
 func (s *Store) getOpsRunbookByID(ctx context.Context, runbookID string) (OpsRunbook, error) {
 	var (
-		out      OpsRunbook
-		stepsRaw string
-		enabled  int
+		out       OpsRunbook
+		stepsRaw  string
+		paramsRaw string
+		enabled   int
 	)
 	err := s.db.QueryRowContext(ctx, `SELECT
-		id, name, description, steps_json, enabled, webhook_url, created_at, updated_at
+		id, name, description, steps_json, enabled, webhook_url, parameters, created_at, updated_at
 	FROM ops_runbooks
 	WHERE id = ?`, runbookID).Scan(
 		&out.ID,
@@ -283,6 +303,7 @@ func (s *Store) getOpsRunbookByID(ctx context.Context, runbookID string) (OpsRun
 		&stepsRaw,
 		&enabled,
 		&out.WebhookURL,
+		&paramsRaw,
 		&out.CreatedAt,
 		&out.UpdatedAt,
 	)
@@ -292,6 +313,9 @@ func (s *Store) getOpsRunbookByID(ctx context.Context, runbookID string) (OpsRun
 	out.Enabled = enabled == 1
 	if err := json.Unmarshal([]byte(stepsRaw), &out.Steps); err != nil {
 		out.Steps = []OpsRunbookStep{}
+	}
+	if err := json.Unmarshal([]byte(paramsRaw), &out.Parameters); err != nil || out.Parameters == nil {
+		out.Parameters = []RunbookParameter{}
 	}
 	return out, nil
 }
@@ -304,6 +328,7 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 	var (
 		out            OpsRunbookRun
 		stepResultsRaw string
+		paramsUsedRaw  string
 	)
 	if err := scanner.Scan(
 		&out.ID,
@@ -315,6 +340,7 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 		&out.CurrentStep,
 		&out.Error,
 		&stepResultsRaw,
+		&paramsUsedRaw,
 		&out.CreatedAt,
 		&out.StartedAt,
 		&out.FinishedAt,
@@ -323,6 +349,9 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 	}
 	if err := json.Unmarshal([]byte(stepResultsRaw), &out.StepResults); err != nil || out.StepResults == nil {
 		out.StepResults = []OpsRunbookStepResult{}
+	}
+	if err := json.Unmarshal([]byte(paramsUsedRaw), &out.ParametersUsed); err != nil || out.ParametersUsed == nil {
+		out.ParametersUsed = map[string]string{}
 	}
 	return out, nil
 }
@@ -344,15 +373,23 @@ func (s *Store) InsertOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRun
 	if err != nil {
 		return OpsRunbook{}, err
 	}
+	params := w.Parameters
+	if params == nil {
+		params = []RunbookParameter{}
+	}
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return OpsRunbook{}, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	enabled := 0
 	if w.Enabled {
 		enabled = 1
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbooks (
-		id, name, description, steps_json, enabled, webhook_url, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, strings.TrimSpace(w.WebhookURL), now, now,
+		id, name, description, steps_json, enabled, webhook_url, parameters, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, strings.TrimSpace(w.WebhookURL), string(paramsJSON), now, now,
 	); err != nil {
 		return OpsRunbook{}, err
 	}
@@ -376,15 +413,23 @@ func (s *Store) UpdateOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRun
 	if err != nil {
 		return OpsRunbook{}, err
 	}
+	params := w.Parameters
+	if params == nil {
+		params = []RunbookParameter{}
+	}
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return OpsRunbook{}, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	enabled := 0
 	if w.Enabled {
 		enabled = 1
 	}
 	result, err := s.db.ExecContext(ctx, `UPDATE ops_runbooks SET
-		name = ?, description = ?, steps_json = ?, enabled = ?, webhook_url = ?, updated_at = ?
+		name = ?, description = ?, steps_json = ?, enabled = ?, webhook_url = ?, parameters = ?, updated_at = ?
 	WHERE id = ?`,
-		name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, strings.TrimSpace(w.WebhookURL), now, id,
+		name, strings.TrimSpace(w.Description), string(stepsJSON), enabled, strings.TrimSpace(w.WebhookURL), string(paramsJSON), now, id,
 	)
 	if err != nil {
 		return OpsRunbook{}, err
@@ -472,9 +517,47 @@ func (s *Store) CreateOpsRunbookRun(ctx context.Context, runbookID string, at ti
 		currentStep = runbook.Steps[0].Title
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, created_at, started_at, finished_at
-	) VALUES (?, ?, ?, ?, ?, 0, ?, '', '[]', ?, '', '')`,
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, created_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, 0, ?, '', '[]', '{}', ?, '', '')`,
 		runID, runbook.ID, runbook.Name, opsRunbookStatusQueued, totalSteps, currentStep, now.Format(time.RFC3339),
+	); err != nil {
+		return OpsRunbookRun{}, err
+	}
+	return s.GetOpsRunbookRun(ctx, runID)
+}
+
+// CreateOpsRunbookRunWithParams creates a new run record and stores the
+// parameter values that were supplied by the caller.
+func (s *Store) CreateOpsRunbookRunWithParams(ctx context.Context, runbookID string, at time.Time, params map[string]string) (OpsRunbookRun, error) {
+	runbookID = strings.TrimSpace(runbookID)
+	if runbookID == "" {
+		return OpsRunbookRun{}, sql.ErrNoRows
+	}
+	rb, err := s.getOpsRunbookByID(ctx, runbookID)
+	if err != nil {
+		return OpsRunbookRun{}, err
+	}
+	now := at.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	runID := randomID()
+	totalSteps := len(rb.Steps)
+	currentStep := ""
+	if totalSteps > 0 {
+		currentStep = rb.Steps[0].Title
+	}
+	if params == nil {
+		params = map[string]string{}
+	}
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return OpsRunbookRun{}, fmt.Errorf("marshal parameters: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, created_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, 0, ?, '', '[]', ?, ?, '', '')`,
+		runID, rb.ID, rb.Name, opsRunbookStatusQueued, totalSteps, currentStep, string(paramsJSON), now.Format(time.RFC3339),
 	); err != nil {
 		return OpsRunbookRun{}, err
 	}
