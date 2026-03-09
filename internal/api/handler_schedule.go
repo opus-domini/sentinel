@@ -94,6 +94,8 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.orch.RecordScheduleCreated(ctx, schedule, time.Now().UTC())
+
 	h.emit(events.TypeScheduleUpdated, map[string]any{
 		"action":   "created",
 		"schedule": schedule,
@@ -207,6 +209,8 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.orch.RecordScheduleDeleted(ctx, scheduleID, time.Now().UTC())
+
 	h.emit(events.TypeScheduleUpdated, map[string]any{
 		"action":  "deleted",
 		"removed": scheduleID,
@@ -287,6 +291,8 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", finalNextRunAt, finalEnabled); err != nil {
 		slog.Warn("trigger schedule: update after run failed", "schedule", scheduleID, "err", err)
 	}
+
+	h.orch.RecordScheduleTriggered(ctx, scheduleID, sched.RunbookID, job.ID, now)
 
 	h.wg.Add(1)
 	go func() {

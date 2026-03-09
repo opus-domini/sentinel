@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -69,6 +70,7 @@ func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus
 		if alertErr != nil {
 			return activity.Event{}, false, nil, alertErr
 		}
+		o.RecordAlertCreated(ctx, alert, at)
 		firedAlerts = append(firedAlerts, alert)
 	}
 
@@ -169,4 +171,153 @@ func (o *opsOrchestrator) RecordConfigUpdated(ctx context.Context, at time.Time)
 		Message:   "Configuration file updated via API",
 		CreatedAt: at,
 	})
+}
+
+// RecordAlertCreated records a timeline event when an alert is created/upserted.
+// Best-effort: errors are logged but not returned.
+func (o *opsOrchestrator) RecordAlertCreated(ctx context.Context, alert alerts.Alert, at time.Time) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "alert",
+		EventType: "alert.created",
+		Severity:  activity.NormalizeSeverity(alert.Severity),
+		Resource:  alert.Resource,
+		Message:   fmt.Sprintf("Alert created: %s", alert.Title),
+		Details:   alert.Message,
+		Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey}),
+		CreatedAt: at,
+	})
+	if err != nil {
+		slog.Warn("failed to record alert.created event", "alertId", alert.ID, "err", err)
+	}
+}
+
+// RecordAlertResolved records a timeline event when an alert is resolved.
+// Best-effort: errors are logged but not returned.
+func (o *opsOrchestrator) RecordAlertResolved(ctx context.Context, alert alerts.Alert, at time.Time) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "alert",
+		EventType: "alert.resolved",
+		Severity:  "info",
+		Resource:  alert.Resource,
+		Message:   fmt.Sprintf("Alert resolved: %s", alert.Title),
+		Details:   alert.Message,
+		Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey}),
+		CreatedAt: at,
+	})
+	if err != nil {
+		slog.Warn("failed to record alert.resolved event", "alertId", alert.ID, "err", err)
+	}
+}
+
+// RecordAlertDeleted records a timeline event when an alert is deleted.
+// Best-effort: errors are logged but not returned.
+func (o *opsOrchestrator) RecordAlertDeleted(ctx context.Context, alertID int64, at time.Time) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "alert",
+		EventType: "alert.deleted",
+		Severity:  "info",
+		Resource:  fmt.Sprintf("alert:%d", alertID),
+		Message:   fmt.Sprintf("Alert deleted: %d", alertID),
+		Metadata:  marshalMetadata(map[string]any{"alertId": alertID}),
+		CreatedAt: at,
+	})
+	if err != nil {
+		slog.Warn("failed to record alert.deleted event", "alertId", alertID, "err", err)
+	}
+}
+
+// RecordGuardrailBlocked records a timeline event when a guardrail blocks an action.
+// Best-effort: errors are logged but not returned.
+func (o *opsOrchestrator) RecordGuardrailBlocked(ctx context.Context, action, session, paneID, message string, at time.Time) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	resource := strings.TrimSpace(session)
+	if resource == "" {
+		resource = strings.TrimSpace(paneID)
+	}
+	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "guardrail",
+		EventType: "guardrail.blocked",
+		Severity:  activity.SeverityWarn,
+		Resource:  resource,
+		Message:   fmt.Sprintf("Guardrail blocked: %s", strings.TrimSpace(action)),
+		Details:   strings.TrimSpace(message),
+		Metadata:  marshalMetadata(map[string]string{"action": strings.TrimSpace(action), "session": strings.TrimSpace(session), "paneId": strings.TrimSpace(paneID)}),
+		CreatedAt: at,
+	})
+	if err != nil {
+		slog.Warn("failed to record guardrail.blocked event", "action", action, "err", err)
+	}
+}
+
+// RecordScheduleCreated records a timeline event when a schedule is created.
+// Best-effort: errors are logged but not returned.
+func (o *opsOrchestrator) RecordScheduleCreated(ctx context.Context, schedule store.OpsSchedule, at time.Time) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "schedule",
+		EventType: "schedule.created",
+		Severity:  "info",
+		Resource:  schedule.RunbookID,
+		Message:   fmt.Sprintf("Schedule created: %s", schedule.Name),
+		Details:   fmt.Sprintf("type=%s runbook=%s", schedule.ScheduleType, schedule.RunbookID),
+		Metadata:  marshalMetadata(map[string]string{"scheduleId": schedule.ID, "runbookId": schedule.RunbookID, "type": schedule.ScheduleType}),
+		CreatedAt: at,
+	})
+	if err != nil {
+		slog.Warn("failed to record schedule.created event", "scheduleId", schedule.ID, "err", err)
+	}
+}
+
+// RecordScheduleTriggered records a timeline event when a schedule run fires.
+// Best-effort: errors are logged but not returned.
+func (o *opsOrchestrator) RecordScheduleTriggered(ctx context.Context, scheduleID, runbookID, jobID string, at time.Time) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "schedule",
+		EventType: "schedule.triggered",
+		Severity:  "info",
+		Resource:  runbookID,
+		Message:   fmt.Sprintf("Schedule triggered: %s", scheduleID),
+		Details:   fmt.Sprintf("schedule=%s job=%s", scheduleID, jobID),
+		Metadata:  marshalMetadata(map[string]string{"scheduleId": scheduleID, "runbookId": runbookID, "jobId": jobID}),
+		CreatedAt: at,
+	})
+	if err != nil {
+		slog.Warn("failed to record schedule.triggered event", "scheduleId", scheduleID, "err", err)
+	}
+}
+
+// RecordScheduleDeleted records a timeline event when a schedule is deleted.
+// Best-effort: errors are logged but not returned.
+func (o *opsOrchestrator) RecordScheduleDeleted(ctx context.Context, scheduleID string, at time.Time) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
+		Source:    "schedule",
+		EventType: "schedule.deleted",
+		Severity:  "info",
+		Resource:  scheduleID,
+		Message:   fmt.Sprintf("Schedule deleted: %s", scheduleID),
+		Metadata:  marshalMetadata(map[string]string{"scheduleId": scheduleID}),
+		CreatedAt: at,
+	})
+	if err != nil {
+		slog.Warn("failed to record schedule.deleted event", "scheduleId", scheduleID, "err", err)
+	}
 }

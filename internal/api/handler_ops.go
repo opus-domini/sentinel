@@ -283,7 +283,10 @@ func (h *Handler) deleteOpsAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	globalRev := time.Now().UTC().UnixMilli()
+	now := time.Now().UTC()
+	h.orch.RecordAlertDeleted(ctx, alertID, now)
+
+	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsAlerts, map[string]any{
 		"globalRev": globalRev,
 		"alertId":   alertID,

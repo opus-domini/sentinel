@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 )
 
@@ -32,11 +33,18 @@ type healthAlertsRepo interface {
 	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
 }
 
+// healthActivityRepo is an optional interface for recording timeline events.
+// When non-nil, alert lifecycle events are written to the ops timeline.
+type healthActivityRepo interface {
+	InsertActivityEvent(ctx context.Context, write activity.EventWrite) (activity.Event, error)
+}
+
 // HealthChecker periodically polls service states and host metrics,
 // generating alerts on failures and auto-resolving on recovery.
 type HealthChecker struct {
 	manager    *Manager
 	alerts     healthAlertsRepo
+	activity   healthActivityRepo
 	publish    HealthPublisher
 	interval   time.Duration
 	thresholds AlertThresholds
@@ -70,6 +78,12 @@ func NewHealthChecker(mgr *Manager, alertsRepo healthAlertsRepo, publish HealthP
 		thresholds: thresholds,
 		doneCh:     make(chan struct{}),
 	}
+}
+
+// SetActivityRepo sets an optional activity repository for recording
+// alert lifecycle events in the ops timeline. Must be called before Start.
+func (hc *HealthChecker) SetActivityRepo(repo healthActivityRepo) {
+	hc.activity = repo
 }
 
 // Start begins the periodic health check loop.
@@ -210,6 +224,20 @@ func (hc *HealthChecker) raiseAlert(ctx context.Context, write alerts.AlertWrite
 		slog.Warn("health check: upsert alert failed", "error", err)
 		return
 	}
+	if hc.activity != nil {
+		if _, teErr := hc.activity.InsertActivityEvent(ctx, activity.EventWrite{
+			Source:    "alert",
+			EventType: "alert.created",
+			Severity:  activity.NormalizeSeverity(alert.Severity),
+			Resource:  alert.Resource,
+			Message:   fmt.Sprintf("Alert created: %s", alert.Title),
+			Details:   alert.Message,
+			Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey, "source": "health"}),
+			CreatedAt: write.CreatedAt,
+		}); teErr != nil {
+			slog.Warn("health check: record alert.created event failed", "error", teErr)
+		}
+	}
 	if hc.publish != nil {
 		hc.publish("ops.alerts.updated", map[string]any{
 			"globalRev": time.Now().UTC().UnixMilli(),
@@ -228,6 +256,20 @@ func (hc *HealthChecker) resolveAlert(ctx context.Context, dedupeKey string, at 
 			slog.Warn("health check: resolve alert failed", "dedupeKey", dedupeKey, "error", err)
 		}
 		return
+	}
+	if hc.activity != nil {
+		if _, teErr := hc.activity.InsertActivityEvent(ctx, activity.EventWrite{
+			Source:    "alert",
+			EventType: "alert.resolved",
+			Severity:  "info",
+			Resource:  alert.Resource,
+			Message:   fmt.Sprintf("Alert resolved: %s", alert.Title),
+			Details:   alert.Message,
+			Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey, "source": "health"}),
+			CreatedAt: at,
+		}); teErr != nil {
+			slog.Warn("health check: record alert.resolved event failed", "error", teErr)
+		}
 	}
 	if hc.publish != nil {
 		hc.publish("ops.alerts.updated", map[string]any{
