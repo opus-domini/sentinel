@@ -172,6 +172,11 @@ type Handler struct {
 	runCtx    context.Context
 	runCancel context.CancelFunc
 	wg        sync.WaitGroup
+
+	// runSem limits the number of concurrent manual runbook executions.
+	// A non-blocking send is attempted; if the channel is full the handler
+	// returns HTTP 429 Too Many Requests.
+	runSem chan struct{}
 }
 
 const (
@@ -202,7 +207,11 @@ func Register(
 	configPath string,
 	timezone string,
 	locale string,
+	runbookMaxConcurrent int,
 ) *Handler {
+	if runbookMaxConcurrent <= 0 {
+		runbookMaxConcurrent = 5
+	}
 	runCtx, runCancel := context.WithCancel(context.Background())
 	h := &Handler{
 		guard:      guard,
@@ -218,6 +227,7 @@ func Register(
 		locale:     locale,
 		runCtx:     runCtx,
 		runCancel:  runCancel,
+		runSem:     make(chan struct{}, runbookMaxConcurrent),
 	}
 	h.registerMetaRoutes(mux)
 	h.registerTmuxRoutes(mux)

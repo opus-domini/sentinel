@@ -25,17 +25,18 @@ type AlertThresholds struct {
 }
 
 type Config struct {
-	ListenAddr          string
-	Token               string
-	AllowedOrigins      []string
-	CookieSecure        string
-	AllowInsecureCookie bool
-	DataDir             string
-	LogLevel            string
-	Timezone            string
-	Locale              string
-	Watchtower          WatchtowerConfig
-	AlertThresholds     AlertThresholds
+	ListenAddr           string
+	Token                string
+	AllowedOrigins       []string
+	CookieSecure         string
+	AllowInsecureCookie  bool
+	DataDir              string
+	LogLevel             string
+	Timezone             string
+	Locale               string
+	RunbookMaxConcurrent int
+	Watchtower           WatchtowerConfig
+	AlertThresholds      AlertThresholds
 }
 
 type WatchtowerConfig struct {
@@ -86,6 +87,10 @@ const defaultConfigContent = `# Sentinel configuration
 # watchtower_capture_timeout = "150ms"
 # watchtower_journal_rows = 5000
 
+# Maximum number of concurrent manual runbook executions.
+# Environment variable: SENTINEL_RUNBOOK_MAX_CONCURRENT
+# runbook_max_concurrent = 5
+
 # IANA timezone for all displayed timestamps.
 # Environment variable: SENTINEL_TIMEZONE
 # timezone = "America/Sao_Paulo"
@@ -98,7 +103,8 @@ const defaultConfigContent = `# Sentinel configuration
 
 func Load() Config {
 	cfg := Config{
-		ListenAddr: "127.0.0.1:4040",
+		ListenAddr:           "127.0.0.1:4040",
+		RunbookMaxConcurrent: 5,
 		Watchtower: WatchtowerConfig{
 			Enabled:        true,
 			TickInterval:   1 * time.Second,
@@ -186,6 +192,13 @@ func applyCoreConfig(cfg *Config, file map[string]string) {
 	if locale := readRawEnvOrFile("SENTINEL_LOCALE", "locale", file); locale != "" {
 		cfg.Locale = locale
 	}
+
+	cfg.RunbookMaxConcurrent = readPositiveIntEnvOrFile(
+		"SENTINEL_RUNBOOK_MAX_CONCURRENT",
+		"runbook_max_concurrent",
+		file,
+		cfg.RunbookMaxConcurrent,
+	)
 }
 
 func applyWatchtowerConfig(cfg *Config, file map[string]string) {

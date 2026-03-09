@@ -122,7 +122,7 @@ func serve() int {
 	pruneDone := startOpsPruneTicker(pruneCtx, st)
 
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
-	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, currentVersion(), configPath, cfg.Timezone, cfg.Locale)
+	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, currentVersion(), configPath, cfg.Timezone, cfg.Locale, cfg.RunbookMaxConcurrent)
 
 	exitCode := run(cfg, mux)
 

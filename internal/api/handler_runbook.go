@@ -56,12 +56,23 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Acquire the runbook concurrency semaphore (non-blocking).
+	select {
+	case h.runSem <- struct{}{}:
+		// Acquired — release happens in the goroutine below.
+	default:
+		writeError(w, http.StatusTooManyRequests, "TOO_MANY_REQUESTS",
+			"too many concurrent runbook executions", nil)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
 
 	now := time.Now().UTC()
 	job, err := h.repo.CreateOpsRunbookRun(ctx, runbookID, now)
 	if err != nil {
+		<-h.runSem // release on early return
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
 			return
@@ -72,6 +83,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 
 	timelineEvent, timelineErr := h.orch.RecordRunbookStarted(ctx, job, now)
 	if timelineErr != nil {
+		<-h.runSem // release on early return
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist runbook timeline", nil)
 		return
 	}
@@ -80,6 +92,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
+		defer func() { <-h.runSem }()
 		h.executeRunbookAsync(h.runCtx, job)
 	}()
 

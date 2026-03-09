@@ -425,3 +425,66 @@ watchtower_journal_rows = 7000
 		t.Fatalf("watchtower journal rows = %d, want 9000", cfg.Watchtower.JournalRows)
 	}
 }
+
+func TestRunbookMaxConcurrentDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "")
+
+	cfg := Load()
+	if cfg.RunbookMaxConcurrent != 5 {
+		t.Fatalf("RunbookMaxConcurrent = %d, want 5", cfg.RunbookMaxConcurrent)
+	}
+}
+
+func TestRunbookMaxConcurrentEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "10")
+
+	cfg := Load()
+	if cfg.RunbookMaxConcurrent != 10 {
+		t.Fatalf("RunbookMaxConcurrent = %d, want 10", cfg.RunbookMaxConcurrent)
+	}
+}
+
+func TestRunbookMaxConcurrentFromFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+	content := `runbook_max_concurrent = 3
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "")
+
+	cfg := Load()
+	if cfg.RunbookMaxConcurrent != 3 {
+		t.Fatalf("RunbookMaxConcurrent = %d, want 3", cfg.RunbookMaxConcurrent)
+	}
+}
+
+func TestRunbookMaxConcurrentInvalidFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_TOKEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "not-a-number")
+
+	cfg := Load()
+	if cfg.RunbookMaxConcurrent != 5 {
+		t.Fatalf("RunbookMaxConcurrent = %d, want 5 (default fallback)", cfg.RunbookMaxConcurrent)
+	}
+}

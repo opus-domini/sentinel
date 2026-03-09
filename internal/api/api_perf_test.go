@@ -60,6 +60,7 @@ func newPerfMux(tb testing.TB) *http.ServeMux {
 		"",
 		"UTC",
 		"",
+		5,
 	)
 	return mux
 }
