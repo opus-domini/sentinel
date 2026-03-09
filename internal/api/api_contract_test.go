@@ -54,6 +54,7 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "activity", method: http.MethodGet, path: "/api/ops/activity"},
 		{name: "metrics", method: http.MethodGet, path: "/api/ops/metrics"},
 
+		{name: "runbooks-suggest", method: http.MethodGet, path: "/api/ops/runbooks/suggest?marker=error&session=dev"},
 		{name: "runbooks-list", method: http.MethodGet, path: "/api/ops/runbooks"},
 		{name: "runbooks-create", method: http.MethodPost, path: "/api/ops/runbooks", body: `{"id":"noop","name":"Noop","description":"noop","steps":[{"type":"command","title":"echo","command":"echo ok"}]}`},
 		{name: "runbooks-update", method: http.MethodPut, path: "/api/ops/runbooks/noop", body: `{"name":"Noop","description":"noop","steps":[{"type":"command","title":"echo","command":"echo ok"}]}`},
@@ -71,6 +72,9 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "config-patch", method: http.MethodPatch, path: "/api/ops/config", body: `{"logLevel":"info"}`},
 		{name: "settings-timezone", method: http.MethodPatch, path: "/api/ops/settings/timezone", body: `{"timezone":"UTC"}`},
 		{name: "settings-locale", method: http.MethodPatch, path: "/api/ops/settings/locale", body: `{"locale":"en-US"}`},
+		{name: "settings-webhook-get", method: http.MethodGet, path: "/api/ops/settings/webhook"},
+		{name: "settings-webhook-patch", method: http.MethodPatch, path: "/api/ops/settings/webhook", body: `{"url":"","events":[]}`},
+		{name: "webhook-test", method: http.MethodPost, path: "/api/ops/webhook/test", body: `{"url":"http://localhost:9999/hook"}`},
 		{name: "storage-stats", method: http.MethodGet, path: "/api/ops/storage/stats"},
 		{name: "storage-flush", method: http.MethodPost, path: "/api/ops/storage/flush", body: `{"resource":"timeline"}`},
 

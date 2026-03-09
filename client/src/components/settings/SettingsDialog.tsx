@@ -1,6 +1,11 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { StorageFlushResponse, StorageStatsResponse } from '@/types'
+import type {
+  StorageFlushResponse,
+  StorageStatsResponse,
+  WebhookSettings,
+  WebhookTestResponse,
+} from '@/types'
 
 import { LOCALES, TIMEZONES } from '@/lib/dateFormat'
 import ThemeSelector from '@/components/settings/ThemeSelector'
@@ -29,6 +34,8 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -43,7 +50,13 @@ type SettingsDialogProps = {
   onOpenChange: (open: boolean) => void
 }
 
-type SettingsSection = 'appearance' | 'app' | 'data' | 'about'
+type SettingsSection = 'appearance' | 'app' | 'notifications' | 'data' | 'about'
+
+const WEBHOOK_EVENTS = [
+  { key: 'alert.created', label: 'Alert Created' },
+  { key: 'alert.resolved', label: 'Alert Resolved' },
+  { key: 'alert.acked', label: 'Alert Acknowledged' },
+] as const
 
 export default function SettingsDialog({
   open,
@@ -65,6 +78,13 @@ export default function SettingsDialog({
   >(null)
   const [activeSection, setActiveSection] =
     useState<SettingsSection>('appearance')
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [webhookEvents, setWebhookEvents] = useState<Array<string>>([])
+  const [webhookLoaded, setWebhookLoaded] = useState(false)
+  const [webhookSaving, setWebhookSaving] = useState(false)
+  const [webhookTesting, setWebhookTesting] = useState(false)
+  const [webhookError, setWebhookError] = useState('')
+  const [webhookNotice, setWebhookNotice] = useState('')
   const {
     supportsPwa,
     installed,
@@ -118,6 +138,74 @@ export default function SettingsDialog({
     },
     [api, queryClient],
   )
+
+  // Load webhook settings when the Notifications section is first opened.
+  useEffect(() => {
+    if (!open || activeSection !== 'notifications' || webhookLoaded) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const data = await api<WebhookSettings>('/api/ops/settings/webhook')
+        if (cancelled) return
+        setWebhookUrl(data.url ?? '')
+        setWebhookEvents(data.events ?? [])
+        setWebhookLoaded(true)
+      } catch {
+        // best-effort
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, activeSection, webhookLoaded, api])
+
+  const toggleWebhookEvent = useCallback((event: string) => {
+    setWebhookEvents((prev) =>
+      prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event],
+    )
+  }, [])
+
+  const saveWebhookSettings = useCallback(async () => {
+    setWebhookSaving(true)
+    setWebhookError('')
+    setWebhookNotice('')
+    try {
+      const data = await api<WebhookSettings>('/api/ops/settings/webhook', {
+        method: 'PATCH',
+        body: JSON.stringify({ url: webhookUrl, events: webhookEvents }),
+      })
+      setWebhookUrl(data.url ?? '')
+      setWebhookEvents(data.events ?? [])
+      setWebhookNotice('Webhook settings saved.')
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'failed to save webhook settings'
+      setWebhookError(message)
+    } finally {
+      setWebhookSaving(false)
+    }
+  }, [api, webhookUrl, webhookEvents])
+
+  const testWebhook = useCallback(async () => {
+    setWebhookTesting(true)
+    setWebhookError('')
+    setWebhookNotice('')
+    try {
+      const data = await api<WebhookTestResponse>('/api/ops/webhook/test', {
+        method: 'POST',
+        body: JSON.stringify({ url: webhookUrl }),
+      })
+      setWebhookNotice(data.message || 'Test payload delivered.')
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'webhook test failed'
+      setWebhookError(message)
+    } finally {
+      setWebhookTesting(false)
+    }
+  }, [api, webhookUrl])
 
   const storageStatsQuery = useQuery({
     queryKey: OPS_STORAGE_STATS_QUERY_KEY,
@@ -220,6 +308,15 @@ export default function SettingsDialog({
               onClick={() => setActiveSection('app')}
             >
               App
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeSection === 'notifications'}
+              className={sectionButtonClass('notifications')}
+              onClick={() => setActiveSection('notifications')}
+            >
+              Notifications
             </button>
             <button
               type="button"
@@ -348,6 +445,80 @@ export default function SettingsDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'notifications' && (
+            <section className="min-h-0 overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-secondary p-3">
+              <h3 className="mb-1 text-xs font-medium">Alert Webhooks</h3>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Send HTTP POST notifications when alert events occur.
+              </p>
+
+              {webhookError.trim() !== '' && (
+                <div className="mb-2 rounded border border-destructive/45 bg-destructive/10 px-2 py-1 text-[11px] text-destructive-foreground">
+                  {webhookError}
+                </div>
+              )}
+              {webhookNotice.trim() !== '' && (
+                <div className="mb-2 rounded border border-ok/45 bg-ok/10 px-2 py-1 text-[11px] text-ok-foreground">
+                  {webhookNotice}
+                </div>
+              )}
+
+              <div className="mb-4">
+                <Label htmlFor="webhook-url" className="mb-1">
+                  Webhook URL
+                </Label>
+                <Input
+                  id="webhook-url"
+                  type="url"
+                  placeholder="https://hooks.slack.com/services/..."
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  className="bg-surface-overlay"
+                />
+              </div>
+
+              <fieldset className="mb-4">
+                <legend className="mb-2 text-xs font-medium">Events</legend>
+                <div className="flex flex-col gap-2">
+                  {WEBHOOK_EVENTS.map((evt) => (
+                    <label
+                      key={evt.key}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.includes(evt.key)}
+                        onChange={() => toggleWebhookEvent(evt.key)}
+                        className="size-3.5 rounded border-input accent-primary"
+                      />
+                      {evt.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void saveWebhookSettings()}
+                  disabled={webhookSaving}
+                >
+                  {webhookSaving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void testWebhook()}
+                  disabled={webhookTesting || webhookUrl.trim() === ''}
+                >
+                  {webhookTesting ? 'Testing...' : 'Test Webhook'}
+                </Button>
               </div>
             </section>
           )}

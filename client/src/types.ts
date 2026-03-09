@@ -245,12 +245,24 @@ export type OpsRunbookStep = {
   description?: string
 }
 
+export type RunbookParameterType = 'string' | 'number' | 'boolean' | 'select'
+
+export type RunbookParameter = {
+  name: string
+  label: string
+  type: RunbookParameterType
+  default: string
+  required: boolean
+  options?: Array<string>
+}
+
 export type OpsRunbook = {
   id: string
   name: string
   description: string
   enabled: boolean
   webhookURL?: string
+  parameters?: Array<RunbookParameter>
   steps: Array<OpsRunbookStep>
   createdAt: string
   updatedAt: string
@@ -275,6 +287,7 @@ export type OpsRunbookRun = {
   currentStep: string
   error: string
   stepResults: Array<OpsRunbookStepResult>
+  parametersUsed?: Record<string, string>
   createdAt: string
   startedAt?: string
   finishedAt?: string
@@ -300,6 +313,10 @@ export type OpsRunbooksResponse = {
   runbooks: Array<OpsRunbook>
   jobs: Array<OpsRunbookRun>
   schedules: Array<OpsSchedule>
+}
+
+export type SuggestedRunbooksResponse = {
+  runbooks: Array<OpsRunbook>
 }
 
 export type OpsRunbookRunResponse = {
@@ -393,6 +410,16 @@ export type OpsUnitLogsResponse = {
   unit: string
   lines: number
   output: string
+}
+
+export type WebhookSettings = {
+  url: string
+  events: Array<string>
+}
+
+export type WebhookTestResponse = {
+  success: boolean
+  message: string
 }
 
 export type OpsWsMessage =

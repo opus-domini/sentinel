@@ -5,12 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
+	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
@@ -179,6 +184,144 @@ func (h *Handler) patchLocale(w http.ResponseWriter, r *http.Request) {
 
 	writeData(w, http.StatusOK, map[string]any{
 		"locale": loc,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Webhook notification settings
+// ---------------------------------------------------------------------------
+
+var validWebhookEvents = []string{"alert.created", "alert.resolved", "alert.acked"}
+
+func (h *Handler) getWebhookSettings(w http.ResponseWriter, _ *http.Request) {
+	h.mu.Lock()
+	n := h.notifier
+	h.mu.Unlock()
+
+	webhookURL := n.URL()
+	evts := n.Events()
+	sort.Strings(evts)
+
+	writeData(w, http.StatusOK, map[string]any{
+		"url":    webhookURL,
+		"events": evts,
+	})
+}
+
+func (h *Handler) patchWebhookSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL    string   `json:"url"`
+		Events []string `json:"events"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	webhookURL := strings.TrimSpace(req.URL)
+	if webhookURL != "" {
+		parsed, err := url.ParseRequestURI(webhookURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url must be a valid http or https URL", nil)
+			return
+		}
+	}
+
+	// Validate and deduplicate events.
+	var cleanEvents []string
+	seen := make(map[string]bool, len(req.Events))
+	for _, e := range req.Events {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if !slices.Contains(validWebhookEvents, e) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unsupported event: "+e, nil)
+			return
+		}
+		if !seen[e] {
+			seen[e] = true
+			cleanEvents = append(cleanEvents, e)
+		}
+	}
+	sort.Strings(cleanEvents)
+
+	// Persist to config file.
+	if h.configPath != "" {
+		if err := upsertConfigKey(h.configPath, "webhook_url", webhookURL); err != nil {
+			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook_url", nil)
+			return
+		}
+		if err := upsertConfigKey(h.configPath, "webhook_events", strings.Join(cleanEvents, ",")); err != nil {
+			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook_events", nil)
+			return
+		}
+	}
+
+	// Hot-swap the notifier in memory.
+	newNotifier := notify.New(webhookURL, cleanEvents)
+	h.mu.Lock()
+	h.notifier = newNotifier
+	h.mu.Unlock()
+
+	slog.Info("webhook settings updated", "url", webhookURL, "events", cleanEvents)
+
+	writeData(w, http.StatusOK, map[string]any{
+		"url":    webhookURL,
+		"events": cleanEvents,
+	})
+}
+
+func (h *Handler) testWebhook(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+
+	webhookURL := strings.TrimSpace(req.URL)
+	if webhookURL == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url is required", nil)
+		return
+	}
+	parsed, err := url.ParseRequestURI(webhookURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url must be a valid http or https URL", nil)
+		return
+	}
+
+	// Create a one-shot notifier with all events enabled for the test.
+	testNotifier := notify.New(webhookURL, []string{"alert.test"})
+	if testNotifier == nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "failed to create test notifier", nil)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	hostname, _ := os.Hostname()
+	payload := notify.AlertWebhookPayload{
+		Event: "alert.test",
+		Alert: map[string]any{
+			"title":   "Sentinel webhook test",
+			"message": "If you see this, your webhook is working correctly.",
+		},
+		Host:      hostname,
+		Timestamp: time.Now().UTC(),
+	}
+
+	if err := testNotifier.Send(ctx, payload); err != nil {
+		slog.Warn("webhook test failed", "url", webhookURL, "error", err)
+		writeError(w, http.StatusBadGateway, "WEBHOOK_TEST_FAILED", "webhook delivery failed: "+err.Error(), nil)
+		return
+	}
+
+	writeData(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "test payload delivered successfully",
 	})
 }
 

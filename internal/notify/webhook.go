@@ -51,6 +51,26 @@ func New(url string, events []string) *Notifier {
 	}
 }
 
+// URL returns the configured webhook URL, or "" if the notifier is nil/disabled.
+func (n *Notifier) URL() string {
+	if n == nil {
+		return ""
+	}
+	return n.url
+}
+
+// Events returns the list of enabled event names. Returns nil for a nil receiver.
+func (n *Notifier) Events() []string {
+	if n == nil {
+		return nil
+	}
+	out := make([]string, 0, len(n.events))
+	for e := range n.events {
+		out = append(out, e)
+	}
+	return out
+}
+
 // Send delivers a webhook notification if the event is enabled.
 // It is safe to call on a nil receiver.
 func (n *Notifier) Send(ctx context.Context, payload AlertWebhookPayload) error {
@@ -78,6 +98,34 @@ func (n *Notifier) Send(ctx context.Context, payload AlertWebhookPayload) error 
 		return fmt.Errorf("alert webhook rejected: status %d", resp.Status().Code())
 	}
 	slog.Info("alert webhook delivered", "url", n.url, "event", payload.Event, "status", resp.Status().Code())
+	return nil
+}
+
+// SendJSON delivers an arbitrary JSON payload to the webhook URL.
+// It bypasses event filtering — the caller decides when to call it.
+// Safe to call on a nil receiver.
+func (n *Notifier) SendJSON(ctx context.Context, payload any) error {
+	if n == nil || n.url == "" {
+		return nil
+	}
+
+	resp, err := n.client.POST("").
+		Body().AsJSON(payload).
+		Context().Set(ctx).
+		Retry().SetExponentialBackoffWithJitter(1*time.Second, 3, 2.0).
+		Retry().WithMaxDelay(5 * time.Second).
+		Retry().WithRetryCondition(func(r *fastshot.Response) bool {
+		return r.Status().Is5xxServerError()
+	}).
+		Send()
+	if err != nil {
+		return fmt.Errorf("webhook delivery failed: %w", err)
+	}
+	defer resp.Body().Close()
+	if resp.Status().IsError() {
+		return fmt.Errorf("webhook rejected: status %d", resp.Status().Code())
+	}
+	slog.Info("webhook delivered", "url", n.url, "status", resp.Status().Code())
 	return nil
 }
 
