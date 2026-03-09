@@ -101,6 +101,7 @@ type opsRunbookRepo interface {
 	InsertOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
 	UpdateOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
 	DeleteOpsRunbook(ctx context.Context, id string) error
+	SuggestRunbooksForMarker(ctx context.Context, marker, sessionName string) ([]store.OpsRunbook, error)
 	// GetOpsRunbook is provided by runbook.Repo (embedded in handlerRepo).
 }
 

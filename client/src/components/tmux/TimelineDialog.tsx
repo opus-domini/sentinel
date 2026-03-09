@@ -1,4 +1,10 @@
-import type { TimelineEvent } from '@/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Play } from 'lucide-react'
+import type {
+  OpsRunbook,
+  SuggestedRunbooksResponse,
+  TimelineEvent,
+} from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/useDateFormat'
@@ -37,6 +43,7 @@ type TimelineDialogProps = {
   onEventTypeChange: (value: string) => void
   onSessionFilterChange: (value: string) => void
   onRefresh: () => void
+  onRunRunbook?: (runbookId: string) => void
 }
 
 function severityClass(severity: string): string {
@@ -49,6 +56,106 @@ function severityClass(severity: string): string {
       return 'border-border-subtle bg-surface-overlay text-muted-foreground'
   }
 }
+
+// ---------------------------------------------------------------------------
+// SuggestedRunbooks – inline sub-component for marker events
+// ---------------------------------------------------------------------------
+
+type SuggestedRunbooksProps = {
+  marker: string
+  session: string
+  onRun: (runbookId: string) => void
+}
+
+function SuggestedRunbooks({ marker, session, onRun }: SuggestedRunbooksProps) {
+  const [runbooks, setRunbooks] = useState<Array<OpsRunbook>>([])
+  const [loading, setLoading] = useState(true)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const fetchSuggestions = useCallback(async () => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (marker) params.set('marker', marker)
+      if (session) params.set('session', session)
+
+      const response = await fetch(
+        `/api/ops/runbooks/suggest?${params.toString()}`,
+        {
+          credentials: 'same-origin',
+          signal: controller.signal,
+        },
+      )
+      if (!response.ok) {
+        setRunbooks([])
+        return
+      }
+      const payload = (await response.json()) as {
+        data?: SuggestedRunbooksResponse
+      }
+      if (!controller.signal.aborted) {
+        setRunbooks(payload.data?.runbooks ?? [])
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        setRunbooks([])
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false)
+      }
+    }
+  }, [marker, session])
+
+  useEffect(() => {
+    void fetchSuggestions()
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [fetchSuggestions])
+
+  if (loading) {
+    return (
+      <p className="mt-1.5 text-[10px] text-muted-foreground">
+        Loading suggested runbooks...
+      </p>
+    )
+  }
+
+  if (runbooks.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-1.5">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        Suggested Runbooks
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {runbooks.map((rb) => (
+          <button
+            key={rb.id}
+            type="button"
+            className="inline-flex cursor-pointer items-center gap-1 rounded border border-border-subtle bg-card px-2 py-0.5 text-[11px] text-secondary-foreground transition-colors hover:bg-accent"
+            title={rb.description || rb.name}
+            onClick={() => onRun(rb.id)}
+          >
+            <Play className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{rb.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// TimelineDialog
+// ---------------------------------------------------------------------------
 
 export default function TimelineDialog({
   open,
@@ -67,6 +174,7 @@ export default function TimelineDialog({
   onEventTypeChange,
   onSessionFilterChange,
   onRefresh,
+  onRunRunbook,
 }: TimelineDialogProps) {
   const { formatDateTime } = useDateFormat()
 
@@ -204,6 +312,13 @@ export default function TimelineDialog({
                       >
                         {event.details}
                       </pre>
+                    )}
+                    {event.marker && onRunRunbook && (
+                      <SuggestedRunbooks
+                        marker={event.marker}
+                        session={event.session}
+                        onRun={onRunRunbook}
+                      />
                     )}
                   </li>
                 )

@@ -276,6 +276,29 @@ function TmuxPage() {
     loadTimelineRef: timeline.loadTimelineRef,
   })
 
+  // ---- Runbook run from timeline ----
+  const handleRunRunbookFromTimeline = useCallback(
+    (runbookId: string) => {
+      void (async () => {
+        try {
+          await api(`/api/ops/runbooks/${encodeURIComponent(runbookId)}/run`, {
+            method: 'POST',
+          })
+          pushSuccessToast(
+            'Runbook started',
+            'Runbook execution has been queued.',
+          )
+        } catch (error) {
+          pushErrorToast(
+            'Runbook failed',
+            error instanceof Error ? error.message : 'Failed to run runbook',
+          )
+        }
+      })()
+    },
+    [api, pushErrorToast, pushSuccessToast],
+  )
+
   // ---- Derived state ----
   const orderedSessions = useMemo(() => {
     const list = [...sessions]
@@ -404,6 +427,7 @@ function TmuxPage() {
         onRefresh={() => {
           void timeline.loadTimeline()
         }}
+        onRunRunbook={handleRunRunbookFromTimeline}
       />
 
       <GuardrailConfirmDialog

@@ -298,3 +298,129 @@ func TestCreateOpsRunbookRunWithParams(t *testing.T) {
 		}
 	})
 }
+
+func TestSuggestRunbooksForMarker(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Seed runbooks with varied names and descriptions.
+	seeds := []OpsRunbookWrite{
+		{ID: "rb-error-fix", Name: "Fix OOM Error", Description: "Handles out-of-memory errors on production", Enabled: true},
+		{ID: "rb-deploy", Name: "Deploy Service", Description: "Deploys a service to the target host", Enabled: true},
+		{ID: "rb-restart-dev", Name: "Restart dev", Description: "Restarts the dev session services", Enabled: true},
+		{ID: "rb-timeout-handler", Name: "Handle Timeout", Description: "Investigates timeout errors in the pipeline", Enabled: true},
+		{ID: "rb-disabled", Name: "Disabled Error Handler", Description: "Should not appear because it is disabled", Enabled: false},
+		{ID: "rb-cleanup", Name: "Cleanup Logs", Description: "Removes stale log files from disk", Enabled: true},
+		{ID: "rb-error-alert", Name: "Error Alert Triage", Description: "Triage process for error alerts", Enabled: true},
+	}
+	for _, seed := range seeds {
+		if _, err := s.InsertOpsRunbook(ctx, seed); err != nil {
+			t.Fatalf("InsertOpsRunbook(%s): %v", seed.ID, err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		marker     string
+		session    string
+		wantIDs    []string // expected IDs in result (order may vary for same relevance)
+		wantAbsent []string // IDs that must NOT appear
+	}{
+		{
+			name:       "match marker in name",
+			marker:     "error",
+			session:    "",
+			wantIDs:    []string{"rb-error-fix", "rb-error-alert"},
+			wantAbsent: []string{"rb-disabled"},
+		},
+		{
+			name:    "match marker in description",
+			marker:  "timeout",
+			session: "",
+			wantIDs: []string{"rb-timeout-handler"},
+		},
+		{
+			name:    "match session name",
+			marker:  "",
+			session: "dev",
+			wantIDs: []string{"rb-restart-dev"},
+		},
+		{
+			name:    "match both marker and session",
+			marker:  "error",
+			session: "dev",
+			wantIDs: []string{"rb-error-fix", "rb-error-alert", "rb-restart-dev"},
+		},
+		{
+			name:    "no matches",
+			marker:  "nonexistent-keyword-xyz",
+			session: "nonexistent-session-abc",
+			wantIDs: []string{},
+		},
+		{
+			name:    "empty inputs return empty",
+			marker:  "",
+			session: "",
+			wantIDs: []string{},
+		},
+		{
+			name:       "disabled runbooks excluded",
+			marker:     "disabled",
+			session:    "",
+			wantAbsent: []string{"rb-disabled"},
+		},
+		{
+			name:    "max 5 results",
+			marker:  "e", // broad match, will hit many runbooks
+			session: "",
+			// Just verify we get at most 5
+		},
+		{
+			name:    "case insensitive matching",
+			marker:  "OOM",
+			session: "",
+			wantIDs: []string{"rb-error-fix"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			results, err := s.SuggestRunbooksForMarker(ctx, tc.marker, tc.session)
+			if err != nil {
+				t.Fatalf("SuggestRunbooksForMarker(%q, %q): %v", tc.marker, tc.session, err)
+			}
+
+			if len(results) > 5 {
+				t.Fatalf("returned %d results, want at most 5", len(results))
+			}
+
+			resultIDs := make(map[string]bool, len(results))
+			for _, r := range results {
+				resultIDs[r.ID] = true
+			}
+
+			for _, wantID := range tc.wantIDs {
+				if !resultIDs[wantID] {
+					t.Errorf("expected runbook %q in results, got IDs: %v", wantID, mapKeys(resultIDs))
+				}
+			}
+
+			for _, absentID := range tc.wantAbsent {
+				if resultIDs[absentID] {
+					t.Errorf("runbook %q should NOT appear in results", absentID)
+				}
+			}
+		})
+	}
+}
+
+func mapKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}

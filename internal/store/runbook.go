@@ -579,6 +579,109 @@ func (s *Store) FailOrphanedRuns(ctx context.Context) (int64, error) {
 	return result.RowsAffected()
 }
 
+// SuggestRunbooksForMarker returns up to 5 enabled runbooks whose name or
+// description contains the marker keyword or the session name. Results are
+// ordered by relevance: name matches are ranked above description-only matches.
+func (s *Store) SuggestRunbooksForMarker(ctx context.Context, marker, sessionName string) ([]OpsRunbook, error) {
+	marker = strings.ToLower(strings.TrimSpace(marker))
+	sessionName = strings.ToLower(strings.TrimSpace(sessionName))
+	if marker == "" && sessionName == "" {
+		return []OpsRunbook{}, nil
+	}
+
+	// Build a query that scores rows by match location (name > description).
+	// We use CASE expressions to compute a relevance score and ORDER BY it.
+	clauses := make([]string, 0, 4)
+	args := make([]any, 0, 8)
+
+	if marker != "" {
+		like := "%" + marker + "%"
+		clauses = append(clauses, "(lower(name) LIKE ? OR lower(description) LIKE ?)")
+		args = append(args, like, like)
+	}
+	if sessionName != "" {
+		like := "%" + sessionName + "%"
+		clauses = append(clauses, "(lower(name) LIKE ? OR lower(description) LIKE ?)")
+		args = append(args, like, like)
+	}
+
+	where := "enabled = 1 AND (" + strings.Join(clauses, " OR ") + ")"
+
+	// Relevance: name match on marker scores highest (1), name match on session (2),
+	// description-only match (3).
+	var scoreExpr string
+	scoreArgs := make([]any, 0, 4)
+	if marker != "" && sessionName != "" {
+		markerLike := "%" + marker + "%"
+		sessionLike := "%" + sessionName + "%"
+		scoreExpr = `CASE
+			WHEN lower(name) LIKE ? THEN 1
+			WHEN lower(name) LIKE ? THEN 2
+			ELSE 3
+		END`
+		scoreArgs = append(scoreArgs, markerLike, sessionLike)
+	} else if marker != "" {
+		markerLike := "%" + marker + "%"
+		scoreExpr = `CASE WHEN lower(name) LIKE ? THEN 1 ELSE 2 END`
+		scoreArgs = append(scoreArgs, markerLike)
+	} else {
+		sessionLike := "%" + sessionName + "%"
+		scoreExpr = `CASE WHEN lower(name) LIKE ? THEN 1 ELSE 2 END`
+		scoreArgs = append(scoreArgs, sessionLike)
+	}
+
+	query := `SELECT id, name, description, steps_json, enabled, webhook_url, parameters, created_at, updated_at
+		FROM ops_runbooks
+		WHERE ` + where + `
+		ORDER BY ` + scoreExpr + `, name ASC
+		LIMIT 5`
+
+	allArgs := make([]any, 0, len(args)+len(scoreArgs))
+	allArgs = append(allArgs, args...)
+	allArgs = append(allArgs, scoreArgs...)
+
+	rows, err := s.db.QueryContext(ctx, query, allArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("suggest runbooks for marker: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	runbooks := make([]OpsRunbook, 0, 5)
+	for rows.Next() {
+		var (
+			item       OpsRunbook
+			stepsJSON  string
+			paramsJSON string
+			enabled    int
+		)
+		if err := rows.Scan(
+			&item.ID,
+			&item.Name,
+			&item.Description,
+			&stepsJSON,
+			&enabled,
+			&item.WebhookURL,
+			&paramsJSON,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.Enabled = enabled == 1
+		if err := json.Unmarshal([]byte(stepsJSON), &item.Steps); err != nil {
+			item.Steps = []OpsRunbookStep{}
+		}
+		if err := json.Unmarshal([]byte(paramsJSON), &item.Parameters); err != nil || item.Parameters == nil {
+			item.Parameters = []RunbookParameter{}
+		}
+		runbooks = append(runbooks, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return runbooks, nil
+}
+
 func (s *Store) DeleteOpsRunbookRun(ctx context.Context, runID string) error {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {

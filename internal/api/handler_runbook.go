@@ -15,6 +15,34 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
+func (h *Handler) suggestRunbooksForMarker(w http.ResponseWriter, r *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
+		return
+	}
+
+	marker := strings.TrimSpace(r.URL.Query().Get("marker"))
+	session := strings.TrimSpace(r.URL.Query().Get("session"))
+	if marker == "" && session == "" {
+		writeData(w, http.StatusOK, map[string]any{
+			"runbooks": []store.OpsRunbook{},
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	runbooks, err := h.repo.SuggestRunbooksForMarker(ctx, marker, session)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to suggest runbooks", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"runbooks": runbooks,
+	})
+}
+
 func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
 	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)

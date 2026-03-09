@@ -4,6 +4,7 @@ import "net/http"
 
 func (h *Handler) registerRunbooksRoutes(mux *http.ServeMux) {
 	h.registerRoutes(mux, []routeBinding{
+		{pattern: "GET /api/ops/runbooks/suggest", handler: h.suggestRunbooksForMarker},
 		{pattern: "GET /api/ops/runbooks", handler: h.opsRunbooks},
 		{pattern: "POST /api/ops/runbooks", handler: h.createOpsRunbook},
 		{pattern: "PUT /api/ops/runbooks/{runbook}", handler: h.updateOpsRunbook},

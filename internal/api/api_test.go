@@ -6810,3 +6810,122 @@ func TestRunOpsRunbookSemaphoreReleasedOnNotFound(t *testing.T) {
 		t.Fatal("semaphore was not released after not-found error")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// suggestRunbooksForMarker
+// ---------------------------------------------------------------------------
+
+func TestSuggestRunbooksForMarker(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil, nil)
+	ctx := context.Background()
+
+	// Seed runbooks with varied names and descriptions.
+	seeds := []store.OpsRunbookWrite{
+		{ID: "rb-oom", Name: "Fix OOM Error", Description: "Handles out-of-memory errors", Enabled: true},
+		{ID: "rb-restart", Name: "Restart dev", Description: "Restarts the dev session", Enabled: true},
+		{ID: "rb-deploy", Name: "Deploy Service", Description: "Deploys to production", Enabled: true},
+		{ID: "rb-disabled", Name: "Disabled Error", Description: "Should not appear", Enabled: false},
+	}
+	for _, seed := range seeds {
+		if _, err := st.InsertOpsRunbook(ctx, seed); err != nil {
+			t.Fatalf("InsertOpsRunbook(%s): %v", seed.ID, err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		query      string
+		wantStatus int
+		wantIDs    []string
+		wantAbsent []string
+	}{
+		{
+			name:       "marker match",
+			query:      "?marker=error",
+			wantStatus: http.StatusOK,
+			wantIDs:    []string{"rb-oom"},
+			wantAbsent: []string{"rb-disabled"},
+		},
+		{
+			name:       "session match",
+			query:      "?session=dev",
+			wantStatus: http.StatusOK,
+			wantIDs:    []string{"rb-restart"},
+		},
+		{
+			name:       "both marker and session",
+			query:      "?marker=error&session=dev",
+			wantStatus: http.StatusOK,
+			wantIDs:    []string{"rb-oom", "rb-restart"},
+		},
+		{
+			name:       "no params returns empty",
+			query:      "",
+			wantStatus: http.StatusOK,
+			wantIDs:    []string{},
+		},
+		{
+			name:       "no matches",
+			query:      "?marker=nonexistent-keyword-xyz",
+			wantStatus: http.StatusOK,
+			wantIDs:    []string{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("GET", "/api/ops/runbooks/suggest"+tc.query, nil)
+			h.suggestRunbooksForMarker(w, r)
+
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d\nbody: %s", w.Code, tc.wantStatus, w.Body.String())
+			}
+
+			body := jsonBody(t, w)
+			data, _ := body["data"].(map[string]any)
+			runbooksRaw, _ := data["runbooks"].([]any)
+
+			resultIDs := make(map[string]bool, len(runbooksRaw))
+			for _, raw := range runbooksRaw {
+				item, _ := raw.(map[string]any)
+				id, _ := item["id"].(string)
+				resultIDs[id] = true
+			}
+
+			for _, wantID := range tc.wantIDs {
+				if !resultIDs[wantID] {
+					ids := make([]string, 0, len(resultIDs))
+					for k := range resultIDs {
+						ids = append(ids, k)
+					}
+					t.Errorf("expected runbook %q in results, got: %v", wantID, ids)
+				}
+			}
+
+			for _, absentID := range tc.wantAbsent {
+				if resultIDs[absentID] {
+					t.Errorf("runbook %q should NOT appear in results", absentID)
+				}
+			}
+		})
+	}
+}
+
+func TestSuggestRunbooksForMarkerNilRepo(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil, nil)
+	h.repo = nil
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/ops/runbooks/suggest?marker=error", nil)
+	h.suggestRunbooksForMarker(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
