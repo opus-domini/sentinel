@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.5.0](https://github.com/opus-domini/sentinel/compare/v0.4.14...v0.5.0) (2026-03-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* refactor runbook step types — run, script, approval (#steps)
+* remove tmux session recovery feature
+
+### Features
+
+* add source icons and filter to activity page ([#3](https://github.com/opus-domini/sentinel/issues/3).2) ([87d99aa](https://github.com/opus-domini/sentinel/commit/87d99aa592a18b0a62b885c435f4335922eb51ea))
+* alert webhook notifications ([#4](https://github.com/opus-domini/sentinel/issues/4).1) ([4012eed](https://github.com/opus-domini/sentinel/commit/4012eed5e68eafe24e01c8b6544b50a911064f68))
+* configurable marker detection patterns ([#6](https://github.com/opus-domini/sentinel/issues/6).1) ([dbbb93c](https://github.com/opus-domini/sentinel/commit/dbbb93c88d32b453010060ec20996f92541be195))
+* delta-based tickers for alerts and activity ([#1](https://github.com/opus-domini/sentinel/issues/1).2) ([2ae355d](https://github.com/opus-domini/sentinel/commit/2ae355d7c0cdba1718b76754851773978dbce78e))
+* expand activity event sources across all operations ([#3](https://github.com/opus-domini/sentinel/issues/3).1) ([6c3bea7](https://github.com/opus-domini/sentinel/commit/6c3bea73aa37194100ebd950957339bd94ee023e))
+* improve alert UX with bulk ack and visibility toggles ([db22dc6](https://github.com/opus-domini/sentinel/commit/db22dc636682ccdf08424e34a7bd7b816578ef69))
+* interactive service metric cards with scope-aware counts ([c50ec20](https://github.com/opus-domini/sentinel/commit/c50ec20220a8f1a3e16ac176b7f9c125dfdd80b3))
+* limit concurrent manual runbook runs with semaphore ([#1](https://github.com/opus-domini/sentinel/issues/1).4) ([4da038c](https://github.com/opus-domini/sentinel/commit/4da038cb585cc87721d0da95ab66d37118a61260))
+* refactor runbook step types — run, script, approval (#steps) ([83dcadc](https://github.com/opus-domini/sentinel/commit/83dcadc98cd49767ce58812696246586155a0c59))
+* remove tmux session recovery feature ([7f30112](https://github.com/opus-domini/sentinel/commit/7f3011210a692c1de679ba3a57b351d6aa7bbef4))
+* runbook parameters UI — editor, run dialog, job history ([#5](https://github.com/opus-domini/sentinel/issues/5).3) ([6b7a8b4](https://github.com/opus-domini/sentinel/commit/6b7a8b415c0896888ad43d88c716071aa317bc59))
+* runbook parameters with variable substitution ([#5](https://github.com/opus-domini/sentinel/issues/5).1, [#5](https://github.com/opus-domini/sentinel/issues/5).2) ([7b5b410](https://github.com/opus-domini/sentinel/commit/7b5b4107c90fd19cadc23db9e76422aaf3669f36))
+* scheduled health reports via webhook ([#6](https://github.com/opus-domini/sentinel/issues/6).3) ([d9d93e9](https://github.com/opus-domini/sentinel/commit/d9d93e9c7fc46591bc595cb108d58fdffa0bf612))
+* suggest runbooks for timeline markers ([#6](https://github.com/opus-domini/sentinel/issues/6).2) ([3fcfe56](https://github.com/opus-domini/sentinel/commit/3fcfe566509ff2c74b288878a9002915c1fdc208))
+* track and surface frequent directories in session creation ([2203999](https://github.com/opus-domini/sentinel/commit/2203999a15820e60d69dbec3436b8fa76f9f6c41))
+* webhook settings UI in SettingsDialog ([#4](https://github.com/opus-domini/sentinel/issues/4).2) ([ee6630f](https://github.com/opus-domini/sentinel/commit/ee6630f67789ff09f3960cd6f85a1402fe8f2084))
+
+
+### Bug Fixes
+
+* add wt_presence index, ARIA dialog tabs, memoize inline sorts ([7395488](https://github.com/opus-domini/sentinel/commit/73954887e98ba690ebf5ad53a94601e05853d73b))
+* gofmt formatting and remove unused time helpers ([b3ce05e](https://github.com/opus-domini/sentinel/commit/b3ce05ec3fa2df18f98adbc2ad8f9f53aba0428e))
+* resolve all remaining lint warnings (noctx + gosec) ([6a7357e](https://github.com/opus-domini/sentinel/commit/6a7357e3b40706309794537200ef9652868c3b8a))
+* resolve golangci-lint warnings from step refactor ([67c2cf5](https://github.com/opus-domini/sentinel/commit/67c2cf54834ccbbfab48af7f9bb527adb2584d21))
+
+
+### Refactors
+
+* extract runbooks page sub-components and hook ([654f485](https://github.com/opus-domini/sentinel/commit/654f4852b696481bd073cc0d02713d81a13a1465))
+* extract services page sub-components ([7d192fa](https://github.com/opus-domini/sentinel/commit/7d192fac1002710bd817c0b22857da9467403e6d))
+* migrate config to BurntSushi/toml parser ([#1](https://github.com/opus-domini/sentinel/issues/1).3) ([89b9110](https://github.com/opus-domini/sentinel/commit/89b911085a79bc48355db9edbbd5b79ef39fb5da))
+* remove command scope from guardrails ([#1](https://github.com/opus-domini/sentinel/issues/1).6) ([aaaec3e](https://github.com/opus-domini/sentinel/commit/aaaec3ef02aa6bf5b1e8eb98c0948a8ab752b391))
+* split store/watchtower.go into domain-specific files ([585daaa](https://github.com/opus-domini/sentinel/commit/585daaac8c9cbef20bbd98eab2556e71e620b189))
+
+
+### Documentation
+
+* document combobox pattern decision in CreateSessionDialog ([#2](https://github.com/opus-domini/sentinel/issues/2).6) ([7d0cf07](https://github.com/opus-domini/sentinel/commit/7d0cf072f56132c0613d537000c22d439cd76ea7))
+* update roadmap with completed Marco 1 and 2 items ([30c3fd3](https://github.com/opus-domini/sentinel/commit/30c3fd3ed6958e7e09c9cde75dc4c1ebaab3a7cf))
+
 ## [0.4.14](https://github.com/opus-domini/sentinel/compare/v0.4.13...v0.4.14) (2026-03-06)
 
 
