@@ -66,6 +66,10 @@ func (s *Store) UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alert
 		return alerts.Alert{}, err
 	}
 
+	if _, err := s.BumpOpsRevision(ctx, RevTableAlerts); err != nil {
+		return alerts.Alert{}, fmt.Errorf("bump alerts revision: %w", err)
+	}
+
 	return s.getAlertByDedupeKey(ctx, dedupeKey)
 }
 
@@ -183,6 +187,10 @@ func (s *Store) AckAlert(ctx context.Context, id int64, ackAt time.Time) (alerts
 		return alerts.Alert{}, sql.ErrNoRows
 	}
 
+	if _, err := s.BumpOpsRevision(ctx, RevTableAlerts); err != nil {
+		return alerts.Alert{}, fmt.Errorf("bump alerts revision: %w", err)
+	}
+
 	var out alerts.Alert
 	err = s.db.QueryRowContext(ctx, `SELECT
 		id, dedupe_key, source, resource, title, message, severity, status, occurrences,
@@ -228,6 +236,9 @@ func (s *Store) DeleteAlert(ctx context.Context, id int64) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
+	if _, err := s.BumpOpsRevision(ctx, RevTableAlerts); err != nil {
+		return fmt.Errorf("bump alerts revision: %w", err)
+	}
 	return nil
 }
 
@@ -255,6 +266,9 @@ func (s *Store) ResolveAlert(ctx context.Context, dedupeKey string, at time.Time
 	}
 	if affected == 0 {
 		return alerts.Alert{}, sql.ErrNoRows
+	}
+	if _, err := s.BumpOpsRevision(ctx, RevTableAlerts); err != nil {
+		return alerts.Alert{}, fmt.Errorf("bump alerts revision: %w", err)
 	}
 	return s.getAlertByDedupeKey(ctx, dedupeKey)
 }

@@ -43,6 +43,9 @@ func (s *Store) InsertActivityEvent(ctx context.Context, write activity.EventWri
 	if err != nil {
 		return activity.Event{}, err
 	}
+	if _, err := s.BumpOpsRevision(ctx, RevTableActivity); err != nil {
+		return activity.Event{}, fmt.Errorf("bump activity revision: %w", err)
+	}
 	return s.getActivityEventByID(ctx, id)
 }
 
@@ -85,7 +88,16 @@ func (s *Store) PruneOpsActivityRows(ctx context.Context, maxRows int) (int64, e
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if n > 0 {
+		if _, err := s.BumpOpsRevision(ctx, RevTableActivity); err != nil {
+			return n, fmt.Errorf("bump activity revision: %w", err)
+		}
+	}
+	return n, nil
 }
 
 func (s *Store) SearchActivityEvents(ctx context.Context, query activity.Query) (activity.Result, error) {

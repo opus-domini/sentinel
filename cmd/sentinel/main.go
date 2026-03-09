@@ -100,6 +100,7 @@ func serve() int {
 		MemPercent:  cfg.AlertThresholds.MemPercent,
 		DiskPercent: cfg.AlertThresholds.DiskPercent,
 	})
+	healthChecker.SetActivityRepo(st)
 	healthChecker.Start(context.Background())
 
 	schedulerService := scheduler.New(st, st, scheduler.Options{
@@ -229,6 +230,7 @@ func startAlertsTicker(ctx context.Context, st *store.Store, hub *events.Hub) <-
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		var lastRev int64
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -237,12 +239,23 @@ func startAlertsTicker(ctx context.Context, st *store.Store, hub *events.Hub) <-
 				return
 			case <-ticker.C:
 				collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				rev, err := st.GetOpsAlertRevision(collectCtx)
+				if err != nil {
+					cancel()
+					slog.Warn("alerts tick: revision check failed", "err", err)
+					continue
+				}
+				if rev == lastRev {
+					cancel()
+					continue
+				}
 				alerts, err := st.ListAlerts(collectCtx, 100, "")
 				cancel()
 				if err != nil {
 					slog.Warn("alerts tick failed", "err", err)
 					continue
 				}
+				lastRev = rev
 				hub.Publish(events.NewEvent(events.TypeOpsAlerts, map[string]any{
 					"alerts": alerts,
 				}))
@@ -256,6 +269,7 @@ func startActivityTicker(ctx context.Context, st *store.Store, hub *events.Hub) 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		var lastRev int64
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -264,6 +278,16 @@ func startActivityTicker(ctx context.Context, st *store.Store, hub *events.Hub) 
 				return
 			case <-ticker.C:
 				collectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				rev, err := st.GetOpsActivityRevision(collectCtx)
+				if err != nil {
+					cancel()
+					slog.Warn("activity tick: revision check failed", "err", err)
+					continue
+				}
+				if rev == lastRev {
+					cancel()
+					continue
+				}
 				result, err := st.SearchActivityEvents(collectCtx, activity.Query{
 					Limit: 200,
 				})
@@ -272,6 +296,7 @@ func startActivityTicker(ctx context.Context, st *store.Store, hub *events.Hub) 
 					slog.Warn("activity tick failed", "err", err)
 					continue
 				}
+				lastRev = rev
 				hub.Publish(events.NewEvent(events.TypeOpsActivity, map[string]any{
 					"events": result.Events,
 				}))
