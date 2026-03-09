@@ -3,6 +3,7 @@ import { Clock, Pause, Pencil, Play, Trash2 } from 'lucide-react'
 import type { OpsRunbook, OpsSchedule } from '@/types'
 import type { ScheduleDraft } from '@/components/RunbookScheduleEditor'
 import { RunbookScheduleEditor } from '@/components/RunbookScheduleEditor'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
 
@@ -162,6 +163,47 @@ export function RunbookDetailPanel({
           </div>
         ))}
       </div>
+
+      {/* Parameters section */}
+      {runbook.parameters && runbook.parameters.length > 0 && (
+        <div className="grid gap-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Parameters ({runbook.parameters.length})
+          </p>
+          {runbook.parameters.map((param) => (
+            <div
+              key={param.name}
+              className="flex items-center gap-2 rounded border border-border-subtle bg-surface-overlay px-2 py-1.5 text-[11px]"
+            >
+              <span className="font-mono font-medium">{param.name}</span>
+              <Badge variant="outline" className="h-4 px-1 text-[9px]">
+                {param.type}
+              </Badge>
+              {param.required && (
+                <Badge
+                  variant="outline"
+                  className="h-4 px-1 text-[9px] text-amber-400"
+                >
+                  required
+                </Badge>
+              )}
+              {param.label && (
+                <span className="text-muted-foreground">{param.label}</span>
+              )}
+              {param.default && (
+                <span className="text-muted-foreground">= {param.default}</span>
+              )}
+              {param.type === 'select' &&
+                param.options &&
+                param.options.length > 0 && (
+                  <span className="truncate text-[10px] text-muted-foreground">
+                    [{param.options.join(', ')}]
+                  </span>
+                )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Schedule section */}
       <div className="grid gap-1">

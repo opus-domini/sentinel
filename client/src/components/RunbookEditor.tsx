@@ -1,5 +1,8 @@
 import { ArrowLeft, Plus, Save } from 'lucide-react'
+import type { RunbookParameterType } from '@/types'
+import type { RunbookParameterDraft } from '@/components/RunbookParameterEditor'
 import type { RunbookStepDraft } from '@/components/RunbookStepEditor'
+import { RunbookParameterEditor } from '@/components/RunbookParameterEditor'
 import { RunbookStepEditor } from '@/components/RunbookStepEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +16,7 @@ export type RunbookDraft = {
   description: string
   enabled: boolean
   webhookURL: string
+  parameters: Array<RunbookParameterDraft>
   steps: Array<RunbookStepDraft>
 }
 
@@ -37,6 +41,18 @@ function createBlankStep(): RunbookStepDraft {
 }
 
 export { createBlankStep }
+
+function createBlankParameter(): RunbookParameterDraft {
+  return {
+    key: randomId(),
+    name: '',
+    label: '',
+    type: 'string' as RunbookParameterType,
+    default: '',
+    required: false,
+    options: '',
+  }
+}
 
 export function RunbookEditor({
   draft,
@@ -74,6 +90,26 @@ export function RunbookEditor({
     const [moved] = next.splice(from, 1)
     next.splice(to, 0, moved)
     onDraftChange({ ...draft, steps: next })
+  }
+
+  const addParameter = () => {
+    onDraftChange({
+      ...draft,
+      parameters: [...draft.parameters, createBlankParameter()],
+    })
+  }
+
+  const updateParameter = (index: number, param: RunbookParameterDraft) => {
+    const next = [...draft.parameters]
+    next[index] = param
+    onDraftChange({ ...draft, parameters: next })
+  }
+
+  const removeParameter = (index: number) => {
+    onDraftChange({
+      ...draft,
+      parameters: draft.parameters.filter((_, i) => i !== index),
+    })
   }
 
   return (
@@ -172,6 +208,51 @@ export function RunbookEditor({
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="grid gap-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                Parameters ({draft.parameters.length})
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
+                onClick={addParameter}
+              >
+                <Plus className="h-3 w-3" />
+                Add Parameter
+              </Button>
+            </div>
+            {errors.parameters && (
+              <p className="px-1 text-[10px] text-red-400">
+                {errors.parameters}
+              </p>
+            )}
+            {draft.parameters.map((param, i) => (
+              <RunbookParameterEditor
+                key={param.key}
+                param={param}
+                errors={
+                  Object.fromEntries(
+                    Object.entries(errors)
+                      .filter(([k]) => k.startsWith(`param.${i}.`))
+                      .map(([k, v]) => [k.replace(`param.${i}.`, ''), v]),
+                  ) as Record<string, string>
+                }
+                onChange={(p) => updateParameter(i, p)}
+                onRemove={() => removeParameter(i)}
+              />
+            ))}
+            {draft.parameters.length === 0 && (
+              <div className="rounded-lg border border-dashed border-border-subtle p-3 text-center">
+                <p className="text-[11px] text-muted-foreground">
+                  No parameters. Click &ldquo;Add Parameter&rdquo; to define
+                  inputs for this runbook.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid gap-2">

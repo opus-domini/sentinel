@@ -7,8 +7,10 @@ import type {
   OpsRunbooksResponse,
   OpsSchedule,
   OpsWsMessage,
+  RunbookParameterType,
 } from '@/types'
 import type { RunbookDraft } from '@/components/RunbookEditor'
+import type { RunbookParameterDraft } from '@/components/RunbookParameterEditor'
 import type { RunbookStepDraft } from '@/components/RunbookStepEditor'
 import type { ScheduleDraft } from '@/components/RunbookScheduleEditor'
 import { createBlankStep } from '@/components/RunbookEditor'
@@ -30,6 +32,17 @@ function runbookToDraft(runbook: OpsRunbook): RunbookDraft {
     description: runbook.description,
     enabled: runbook.enabled,
     webhookURL: runbook.webhookURL ?? '',
+    parameters: (runbook.parameters ?? []).map(
+      (p): RunbookParameterDraft => ({
+        key: randomId(),
+        name: p.name,
+        label: p.label,
+        type: p.type as RunbookParameterType,
+        default: p.default ?? '',
+        required: p.required,
+        options: p.options?.join(', ') ?? '',
+      }),
+    ),
     steps: runbook.steps.map(
       (step): RunbookStepDraft => ({
         key: randomId(),
@@ -50,6 +63,7 @@ function createBlankDraft(): RunbookDraft {
     description: '',
     enabled: true,
     webhookURL: '',
+    parameters: [],
     steps: [createBlankStep()],
   }
 }
@@ -70,6 +84,20 @@ function validateDraft(draft: RunbookDraft): Record<string, string> {
       errors.webhookURL = 'Invalid URL'
     }
   }
+  draft.parameters.forEach((param, i) => {
+    if (param.name.trim() === '') {
+      errors[`param.${i}.name`] = 'Name is required'
+    }
+    if (
+      param.type === 'select' &&
+      param.options
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean).length === 0
+    ) {
+      errors[`param.${i}.options`] = 'At least one option is required'
+    }
+  })
   if (draft.steps.length === 0) {
     errors.steps = 'At least one step is required'
   }
@@ -93,6 +121,22 @@ function draftToPayload(draft: RunbookDraft) {
     description: draft.description.trim(),
     enabled: draft.enabled,
     webhookURL: draft.webhookURL.trim(),
+    parameters: draft.parameters.map((p) => {
+      const param: Record<string, unknown> = {
+        name: p.name.trim(),
+        label: p.label.trim(),
+        type: p.type,
+        default: p.default,
+        required: p.required,
+      }
+      if (p.type === 'select') {
+        param.options = p.options
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
+      }
+      return param
+    }),
     steps: draft.steps.map((step) => {
       const base: Record<string, string> = {
         type: step.type,
@@ -128,6 +172,8 @@ export function useRunbooksPage({
   const [editorErrors, setEditorErrors] = useState<Record<string, string>>({})
   const [deleteTarget, setDeleteTarget] = useState<OpsRunbook | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  const [runTarget, setRunTarget] = useState<OpsRunbook | null>(null)
 
   const [editingSchedule, setEditingSchedule] = useState<{
     runbookId: string
@@ -189,7 +235,7 @@ export function useRunbooksPage({
   })
 
   const runRunbook = useCallback(
-    async (runbookID: string) => {
+    async (runbookID: string, parameters?: Record<string, string>) => {
       const runbook = runbooks.find((item) => item.id === runbookID)
       if (!runbook) return
 
@@ -198,6 +244,10 @@ export function useRunbooksPage({
           `/api/ops/runbooks/${encodeURIComponent(runbookID)}/run`,
           {
             method: 'POST',
+            body:
+              parameters != null && Object.keys(parameters).length > 0
+                ? JSON.stringify({ parameters })
+                : undefined,
           },
         )
         const job = data.job
@@ -236,6 +286,34 @@ export function useRunbooksPage({
       }
     },
     [api, pushToast, queryClient, runbooks],
+  )
+
+  // --- Run dialog callbacks ---
+
+  const startRun = useCallback(
+    (runbookId: string) => {
+      const rb = runbooks.find((item) => item.id === runbookId)
+      if (!rb) return
+      if (!rb.parameters || rb.parameters.length === 0) {
+        void runRunbook(runbookId)
+        return
+      }
+      setRunTarget(rb)
+    },
+    [runbooks, runRunbook],
+  )
+
+  const cancelRun = useCallback(() => {
+    setRunTarget(null)
+  }, [])
+
+  const confirmRun = useCallback(
+    (parameters: Record<string, string>) => {
+      if (runTarget == null) return
+      setRunTarget(null)
+      void runRunbook(runTarget.id, parameters)
+    },
+    [runTarget, runRunbook],
   )
 
   // --- Editor callbacks ---
@@ -565,6 +643,9 @@ export function useRunbooksPage({
     deleteTarget,
     deleting,
 
+    // Run dialog state
+    runTarget,
+
     // Schedule state
     editingSchedule,
     setEditingSchedule,
@@ -573,6 +654,9 @@ export function useRunbooksPage({
     // Actions
     refreshRunbooks,
     runRunbook,
+    startRun,
+    cancelRun,
+    confirmRun,
     startCreate,
     startEdit,
     cancelEdit,

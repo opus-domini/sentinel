@@ -7,6 +7,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import type { OpsRunbookRun } from '@/types'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useDateFormat } from '@/hooks/useDateFormat'
@@ -130,6 +131,24 @@ export function RunbookJobHistory({
                         {job.error}
                       </p>
                     )}
+                    {job.parametersUsed &&
+                      Object.keys(job.parametersUsed).length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {Object.entries(job.parametersUsed).map(
+                            ([key, val]) => (
+                              <Badge
+                                key={key}
+                                variant="outline"
+                                className="h-4 gap-0.5 px-1 text-[9px]"
+                              >
+                                <span className="font-mono">{key}</span>
+                                <span className="text-muted-foreground">=</span>
+                                <span>{val}</span>
+                              </Badge>
+                            ),
+                          )}
+                        </div>
+                      )}
                   </div>
                   {job.status !== 'running' &&
                     (deleteJobTarget === job.id ? (

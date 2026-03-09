@@ -4,6 +4,7 @@ import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { RunbookDeleteDialog } from '@/components/RunbookDeleteDialog'
 import { RunbookEditor } from '@/components/RunbookEditor'
+import { RunbookRunDialog } from '@/components/RunbookRunDialog'
 import { RunbookDetailPanel } from '@/components/runbooks/RunbookDetailPanel'
 import { RunbookJobHistory } from '@/components/runbooks/RunbookJobHistory'
 import RunbooksSidebar from '@/components/RunbooksSidebar'
@@ -35,11 +36,14 @@ function RunbooksPage() {
     editorErrors,
     deleteTarget,
     deleting,
+    runTarget,
     editingSchedule,
     setEditingSchedule,
     scheduleSaving,
     refreshRunbooks,
-    runRunbook,
+    startRun,
+    cancelRun,
+    confirmRun,
     startCreate,
     startEdit,
     cancelEdit,
@@ -130,7 +134,7 @@ function RunbooksPage() {
                 scheduleSaving={scheduleSaving}
                 onEdit={startEdit}
                 onDelete={confirmDelete}
-                onRun={(id) => void runRunbook(id)}
+                onRun={startRun}
                 onEditSchedule={setEditingSchedule}
                 onCancelScheduleEdit={() => setEditingSchedule(null)}
                 onSaveSchedule={(draft) => void saveSchedule(draft)}
@@ -169,6 +173,13 @@ function RunbooksPage() {
           </span>
         </footer>
       </main>
+
+      <RunbookRunDialog
+        open={runTarget != null}
+        runbook={runTarget}
+        onConfirm={confirmRun}
+        onCancel={cancelRun}
+      />
 
       <RunbookDeleteDialog
         open={deleteTarget != null}
