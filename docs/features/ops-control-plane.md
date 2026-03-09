@@ -41,6 +41,7 @@ Alerts (see [Alerts](/features/alerts.md)):
 
 - `GET /api/ops/alerts`
 - `POST /api/ops/alerts/{alert}/ack`
+- `POST /api/ops/alerts/bulk-ack`
 - `DELETE /api/ops/alerts/{alert}`
 
 Timeline (see [Timeline and Watchtower](/features/timeline-watchtower.md)):
@@ -65,8 +66,15 @@ Services (see [Services](/features/services.md)):
 - `GET /api/ops/services/unit/status`
 - `GET /api/ops/services/unit/logs`
 
+Markers:
+
+- `GET /api/ops/markers`
+- `PUT /api/ops/markers/{pattern}`
+- `DELETE /api/ops/markers/{pattern}`
+
 Runbooks (see [Runbooks](/features/runbooks.md)):
 
+- `GET /api/ops/runbooks/suggest`
 - `GET /api/ops/runbooks`
 - `POST /api/ops/runbooks`
 - `PUT /api/ops/runbooks/{runbook}`
@@ -74,6 +82,8 @@ Runbooks (see [Runbooks](/features/runbooks.md)):
 - `POST /api/ops/runbooks/{runbook}/run`
 - `GET /api/ops/jobs/{job}`
 - `DELETE /api/ops/jobs/{job}`
+- `POST /api/ops/runs/{runId}/approve`
+- `POST /api/ops/runs/{runId}/reject`
 
 Schedules (see [Runbooks](/features/runbooks.md)):
 

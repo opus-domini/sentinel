@@ -10,10 +10,13 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/tmux`: tmux command adapter and behavior patches.
 - `internal/watchtower`: activity collector and unread projection engine.
 - `internal/recovery`: periodic snapshot and restore orchestration.
-- `internal/store`: SQLite schema and persistence (sessions metadata, watchtower, recovery, guardrails).
+- `internal/store`: SQLite schema and persistence (sessions metadata, watchtower, recovery, guardrails, marker patterns).
 - `internal/activity`: operations activity log and timeline projection.
 - `internal/alerts`: alert ingestion, state tracking, and notification rules.
-- `internal/runbook`: runbook definition parsing, step execution, and webhook dispatch.
+- `internal/notify`: webhook delivery with retry/backoff for alert and health report notifications.
+- `internal/report`: scheduled health report generation and webhook dispatch.
+- `internal/runbook`: runbook definition parsing, step execution (run/script/approval), shell validation, and webhook dispatch.
+- `internal/guardrails`: action-scope safety rules for destructive terminal commands.
 - `internal/scheduler`: cron-based job scheduling and execution engine.
 - `internal/term`: terminal abstraction and PTY lifecycle management.
 - `internal/updater`: binary self-update checks and apply logic.
@@ -45,6 +48,11 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
   - live presence
 - Recovery snapshots and restore jobs
 - Guardrail rules and audit logs
+- Ops alerts with deduplication and lifecycle (open → acked → resolved)
+- Ops runbooks, runs, schedules, and parameters
+- Marker patterns for terminal output detection
+- Ops revision tracking for delta-based broadcasts
+- Session directory frequency tracking
 
 ## Event-Driven UX Strategy
 

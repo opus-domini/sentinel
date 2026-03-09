@@ -18,6 +18,7 @@ The UI and API are built to keep this hierarchy consistent with realtime updates
 - Attach to any session over WebSocket PTY stream.
 - Rename window and pane labels.
 - Session icon metadata.
+- Frequent directories endpoint (`GET /api/tmux/frequent-dirs`) powers quick-pick suggestions in the session creation dialog.
 
 ![Desktop tmux fullscreen](assets/images/desktop-tmux-fullscreen.png)
 

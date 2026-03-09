@@ -26,12 +26,14 @@ Alerts targeting the same resource are deduplicated by key. When a duplicate ale
 ## Acknowledging Alerts
 
 - Click **Ack** on an open alert to mark it as acknowledged.
+- Select multiple alerts and use **Bulk Ack** to acknowledge them in one action.
 - Acknowledged alerts remain visible in the feed but stop contributing to the open alert count.
 - Alerts are auto-resolved when their underlying condition clears (e.g. a failed service returns to active state).
 - The ack action uses optimistic updates with rollback on failure.
 
 ```
 POST /api/ops/alerts/{alert}/ack
+POST /api/ops/alerts/bulk-ack
 ```
 
 ## UI Features
@@ -39,6 +41,8 @@ POST /api/ops/alerts/{alert}/ack
 - Dedicated `/alerts` route with full-page alert management.
 - Sidebar displays overview stats: host identity, uptime, and health summary.
 - Severity filter buttons (`all` / `warn` / `error`) narrow the visible feed.
+- Visibility toggles for acked and resolved alerts let you show or hide them from the feed.
+- Bulk acknowledge: select multiple alerts and ack them in one action.
 - Open alert count badge in the sidebar reflects unacknowledged alerts.
 - Scrollable alert list with cards showing: title, resource, occurrence count, status badge, and message.
 - Help dialog (triggered via the `?` button) explaining the alerting system.
@@ -50,14 +54,18 @@ Alert state is kept current via the `/ws/events` WebSocket:
 - `ops.alerts.updated` — full alert list refresh when any alert changes state.
 - `ops.overview.updated` — updated overview payload including health summary and alert counts.
 
+## Webhook Notifications
+
+Alert lifecycle events can be forwarded to an external system via webhook. Set `alert_webhook_url` in the config (or `SENTINEL_ALERT_WEBHOOK_URL` env var) and Sentinel sends an HTTP POST for each configured event. Use `alert_webhook_events` to control which lifecycle events trigger the webhook.
+
 ## API Endpoints
 
 - `GET /api/ops/alerts` — list active and recent ops alerts
 - `POST /api/ops/alerts/{alert}/ack` — acknowledge a single alert
+- `POST /api/ops/alerts/bulk-ack` — acknowledge multiple alerts at once
 - `DELETE /api/ops/alerts/{alert}` — delete a resolved alert
 - `GET /api/ops/overview` — host + Sentinel + services summary (includes alert counts)
 
 ## Limitations
 
-- Alerts are local to the Sentinel instance. There is no forwarding to external alerting systems (PagerDuty, Slack, etc.).
 - Alert history is retained in SQLite and subject to the configured retention policy.

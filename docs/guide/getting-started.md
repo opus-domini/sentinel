@@ -60,6 +60,7 @@ sentinel service status
 Edit `~/.sentinel/config.toml` (or root data dir when running as root):
 
 ```toml
+[server]
 listen = "127.0.0.1:4040"
 token = ""
 allowed_origins = ""
@@ -69,6 +70,7 @@ log_level = "info"
 Remote access baseline:
 
 ```toml
+[server]
 listen = "0.0.0.0:4040"
 token = "replace-with-strong-token"
 allowed_origins = "https://sentinel.example.com"

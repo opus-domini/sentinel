@@ -103,6 +103,7 @@ Direction: `vertical` or `horizontal`.
 | `GET` | `/api/tmux/activity/delta` | Delta patches by global revision |
 | `GET` | `/api/tmux/activity/stats` | Watchtower runtime metrics |
 | `GET` | `/api/tmux/timeline` | Search timeline events |
+| `GET` | `/api/tmux/frequent-dirs` | Frequently used directories |
 
 `/api/tmux/activity/delta` query params:
 
@@ -115,6 +116,10 @@ Direction: `vertical` or `horizontal`.
 - `q`, `severity`, `eventType`
 - `since`, `until` (RFC3339)
 - `limit` (1..500)
+
+`/api/tmux/frequent-dirs` query params:
+
+- `limit` (1..20, default 5)
 
 ## Presence
 
@@ -144,6 +149,7 @@ Payload:
 | `GET` | `/api/ops/overview` | Host + Sentinel + services summary |
 | `GET` | `/api/ops/metrics` | Host resource metrics (CPU, memory, disk) |
 | `GET` | `/api/ops/alerts` | List active/recent ops alerts |
+| `POST` | `/api/ops/alerts/bulk-ack` | Bulk-acknowledge alerts (max 100) |
 | `POST` | `/api/ops/alerts/{alert}/ack` | Acknowledge one alert |
 | `DELETE` | `/api/ops/alerts/{alert}` | Delete one alert |
 | `GET` | `/api/ops/activity` | Ops activity search/filter |
@@ -156,6 +162,14 @@ Activity query params:
 - `source` activity source filter
 - `severity` (`info`, `warn`, `error`)
 - `limit` (1..500)
+
+Bulk-ack payload:
+
+```json
+{ "ids": [1, 2, 3] }
+```
+
+`ids` must contain 1–100 alert IDs.
 
 ### Services
 
@@ -209,12 +223,17 @@ Unit query params (status and logs): `unit`, `scope`, `manager`, `lines`.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/ops/runbooks` | List runbooks and recent jobs |
+| `GET` | `/api/ops/runbooks/suggest` | Suggest runbooks for a marker/session |
 | `POST` | `/api/ops/runbooks` | Create custom runbook |
 | `PUT` | `/api/ops/runbooks/{runbook}` | Update runbook |
 | `DELETE` | `/api/ops/runbooks/{runbook}` | Delete runbook |
 | `POST` | `/api/ops/runbooks/{runbook}/run` | Execute runbook asynchronously (202) |
 | `GET` | `/api/ops/jobs/{job}` | Query one runbook job |
 | `DELETE` | `/api/ops/jobs/{job}` | Delete a runbook job |
+| `POST` | `/api/ops/runs/{runId}/approve` | Approve a waiting approval step (202) |
+| `POST` | `/api/ops/runs/{runId}/reject` | Reject a waiting approval step |
+
+`/api/ops/runbooks/suggest` query params: `marker`, `session`.
 
 Runbook create/update payload:
 
@@ -225,12 +244,28 @@ Runbook create/update payload:
   "enabled": true,
   "webhookURL": "https://hooks.example.com/sentinel",
   "steps": [
-    { "type": "command", "title": "Check status", "command": "systemctl --user is-active myapp" },
-    { "type": "check", "title": "Verify response", "check": "curl -sf http://localhost:8080/health" },
-    { "type": "manual", "title": "Review", "description": "Inspect output above." }
+    { "type": "run", "title": "Check status", "command": "systemctl --user is-active myapp" },
+    { "type": "run", "title": "Verify response", "command": "curl -sf http://localhost:8080/health" },
+    { "type": "script", "title": "Rotate logs", "script": "#!/bin/bash\ncd /var/log && gzip *.log" },
+    { "type": "approval", "title": "Review", "description": "Inspect output above." }
   ]
 }
 ```
+
+Step types:
+
+- `run` — execute a single shell command (`command` field).
+- `script` — execute a multi-line script (`script` field).
+- `approval` — pause and wait for manual approval (`description` field).
+
+Per-step options (all optional):
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `continueOnError` | bool | Continue to the next step on failure |
+| `timeout` | int | Step timeout in seconds |
+| `retries` | int | Number of retry attempts |
+| `retryDelay` | int | Delay between retries in seconds |
 
 The optional `webhookURL` field configures a webhook endpoint that receives a POST with run results on completion. Must be `http` or `https`. See [Runbooks — Webhooks](/features/runbooks.md#webhooks) for payload details.
 
@@ -243,6 +278,28 @@ The optional `webhookURL` field configures a webhook endpoint that receives a PO
 | `PUT` | `/api/ops/schedules/{schedule}` | Update schedule |
 | `DELETE` | `/api/ops/schedules/{schedule}` | Delete schedule |
 | `POST` | `/api/ops/schedules/{schedule}/trigger` | Trigger schedule immediately |
+
+### Markers
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/ops/markers` | List marker patterns |
+| `PUT` | `/api/ops/markers/{pattern}` | Create or update marker pattern |
+| `DELETE` | `/api/ops/markers/{pattern}` | Delete marker pattern |
+
+Marker upsert payload:
+
+```json
+{
+  "pattern": "error|fail",
+  "severity": "error",
+  "label": "Error marker",
+  "enabled": true,
+  "priority": 10
+}
+```
+
+`pattern` and `enabled` are required. When `{pattern}` in the URL path is omitted, a random ID is generated.
 
 ## Operations: Storage
 
