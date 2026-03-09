@@ -9,19 +9,19 @@ import (
 const PresenceExpiry = 30 * time.Second
 
 const (
-	TypeReady            = "events.ready"
-	TypeTmuxSessions     = "tmux.sessions.updated"
-	TypeTmuxInspector    = "tmux.inspector.updated"
-	TypeTmuxActivity     = "tmux.activity.updated"
-	TypeTmuxTimeline     = "tmux.timeline.updated"
-	TypeTmuxGuardrail    = "tmux.guardrail.blocked"
-	TypeOpsOverview      = "ops.overview.updated"
-	TypeOpsServices      = "ops.services.updated"
-	TypeOpsAlerts        = "ops.alerts.updated"
-	TypeOpsActivity      = "ops.activity.updated"
-	TypeOpsJob           = "ops.job.updated"
-	TypeOpsMetrics       = "ops.metrics.updated"
-	TypeScheduleUpdated  = "ops.schedule.updated"
+	TypeReady           = "events.ready"
+	TypeTmuxSessions    = "tmux.sessions.updated"
+	TypeTmuxInspector   = "tmux.inspector.updated"
+	TypeTmuxActivity    = "tmux.activity.updated"
+	TypeTmuxTimeline    = "tmux.timeline.updated"
+	TypeTmuxGuardrail   = "tmux.guardrail.blocked"
+	TypeOpsOverview     = "ops.overview.updated"
+	TypeOpsServices     = "ops.services.updated"
+	TypeOpsAlerts       = "ops.alerts.updated"
+	TypeOpsActivity     = "ops.activity.updated"
+	TypeOpsJob          = "ops.job.updated"
+	TypeOpsMetrics      = "ops.metrics.updated"
+	TypeScheduleUpdated = "ops.schedule.updated"
 )
 
 type Event struct {

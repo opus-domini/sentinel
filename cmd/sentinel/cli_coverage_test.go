@@ -97,7 +97,6 @@ func TestSubcommandHelpRouting(t *testing.T) {
 		{name: "update -h", args: []string{"update", "-h"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update --help", args: []string{"update", "--help"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update unknown", args: []string{"update", "bogus"}, wantCode: 2, wantErr: "unknown update command: bogus"},
-
 	}
 
 	for _, tc := range cases {

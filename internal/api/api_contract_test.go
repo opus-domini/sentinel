@@ -80,7 +80,6 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "guardrails-delete", method: http.MethodDelete, path: "/api/ops/guardrails/rules/delete-session"},
 		{name: "guardrails-audit", method: http.MethodGet, path: "/api/ops/guardrails/audit"},
 		{name: "guardrails-evaluate", method: http.MethodPost, path: "/api/ops/guardrails/evaluate", body: `{"action":"kill-session","args":{"session":"dev"}}`},
-
 	}
 
 	for _, tc := range routes {

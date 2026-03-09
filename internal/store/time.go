@@ -18,18 +18,3 @@ func parseStoreTime(raw string) time.Time {
 	}
 	return time.Time{}
 }
-
-func parseStoreTimePtr(raw string) *time.Time {
-	ts := parseStoreTime(raw)
-	if ts.IsZero() {
-		return nil
-	}
-	return &ts
-}
-
-func formatTimePtr(ts *time.Time) string {
-	if ts == nil || ts.IsZero() {
-		return ""
-	}
-	return ts.UTC().Format(time.RFC3339)
-}

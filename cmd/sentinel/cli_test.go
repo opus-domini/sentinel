@@ -634,4 +634,3 @@ func TestDefaultAutoUpdateScopeFlag(t *testing.T) {
 		t.Fatalf("defaultAutoUpdateScopeFlag() = %q, want auto", got)
 	}
 }
-

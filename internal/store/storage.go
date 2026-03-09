@@ -118,7 +118,6 @@ func (s *Store) FlushStorageResource(ctx context.Context, resource string) ([]St
 			StorageResourceTimeline,
 			StorageResourceActivityLog,
 			StorageResourceGuardrailLog,
-	
 			StorageResourceOpsActivity,
 			StorageResourceOpsAlerts,
 			StorageResourceOpsJobs,
@@ -318,7 +317,6 @@ func deleteRows(ctx context.Context, db *sql.DB, query string, args ...any) (int
 	}
 	return result.RowsAffected()
 }
-
 
 func (s *Store) walCheckpoint(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
