@@ -27,20 +27,22 @@ type AlertThresholds struct {
 }
 
 type Config struct {
-	ListenAddr           string
-	Token                string
-	AllowedOrigins       []string
-	CookieSecure         string
-	AllowInsecureCookie  bool
-	DataDir              string
-	LogLevel             string
-	Timezone             string
-	Locale               string
-	RunbookMaxConcurrent int
-	Watchtower           WatchtowerConfig
-	AlertThresholds      AlertThresholds
-	AlertWebhookURL      string
-	AlertWebhookEvents   []string
+	ListenAddr             string
+	Token                  string
+	AllowedOrigins         []string
+	CookieSecure           string
+	AllowInsecureCookie    bool
+	DataDir                string
+	LogLevel               string
+	Timezone               string
+	Locale                 string
+	RunbookMaxConcurrent   int
+	Watchtower             WatchtowerConfig
+	AlertThresholds        AlertThresholds
+	AlertWebhookURL        string
+	AlertWebhookEvents     []string
+	HealthReportWebhookURL string
+	HealthReportSchedule   string
 }
 
 type WatchtowerConfig struct {
@@ -120,6 +122,16 @@ const defaultConfigContent = `# Sentinel configuration
 # Default (when URL is set): "alert.created,alert.resolved"
 # Environment variable: SENTINEL_ALERT_WEBHOOK_EVENTS
 # webhook_events = "alert.created,alert.resolved"
+
+[health_report]
+# Webhook URL for scheduled health report delivery.
+# Environment variable: SENTINEL_HEALTH_REPORT_WEBHOOK_URL
+# webhook_url = ""
+
+# Cron schedule for health report generation (5-field cron or @descriptor).
+# Example: "0 8 * * *" for daily at 8am.
+# Environment variable: SENTINEL_HEALTH_REPORT_SCHEDULE
+# schedule = ""
 
 [watchtower]
 # Enable the watchtower subsystem (background activity projection + unread journal).
@@ -251,6 +263,9 @@ func applyCoreConfig(cfg *Config, file map[string]string) {
 	if evts := readRawEnvOrFile("SENTINEL_ALERT_WEBHOOK_EVENTS", "alert_webhook_events", file); evts != "" {
 		cfg.AlertWebhookEvents = splitCSV(evts)
 	}
+
+	cfg.HealthReportWebhookURL = readRawEnvOrFile("SENTINEL_HEALTH_REPORT_WEBHOOK_URL", "health_report_webhook_url", file)
+	cfg.HealthReportSchedule = readRawEnvOrFile("SENTINEL_HEALTH_REPORT_SCHEDULE", "health_report_schedule", file)
 }
 
 func applyWatchtowerConfig(cfg *Config, file map[string]string) {
@@ -406,6 +421,12 @@ type tomlWatchtower struct {
 	JournalRows    *int64  `toml:"journal_rows"`
 }
 
+// tomlHealthReport maps the [health_report] section of the config file.
+type tomlHealthReport struct {
+	WebhookURL *string `toml:"webhook_url"`
+	Schedule   *string `toml:"schedule"`
+}
+
 // tomlRunbooks maps the [runbooks] section of the config file.
 type tomlRunbooks struct {
 	MaxConcurrent *int64 `toml:"max_concurrent"`
@@ -414,10 +435,11 @@ type tomlRunbooks struct {
 // tomlConfig is the top-level structure for the TOML config file.
 // It supports both sectioned format (preferred) and flat legacy keys.
 type tomlConfig struct {
-	Server     tomlServer     `toml:"server"`
-	Alerts     tomlAlerts     `toml:"alerts"`
-	Watchtower tomlWatchtower `toml:"watchtower"`
-	Runbooks   tomlRunbooks   `toml:"runbooks"`
+	Server       tomlServer       `toml:"server"`
+	Alerts       tomlAlerts       `toml:"alerts"`
+	HealthReport tomlHealthReport `toml:"health_report"`
+	Watchtower   tomlWatchtower   `toml:"watchtower"`
+	Runbooks     tomlRunbooks     `toml:"runbooks"`
 
 	// Legacy flat keys (for backward compatibility with pre-section configs).
 	Listen                   *string  `toml:"listen"`
@@ -439,6 +461,8 @@ type tomlConfig struct {
 	AlertDiskPercent         *float64 `toml:"alert_disk_percent"`
 	AlertWebhookURL          *string  `toml:"alert_webhook_url"`
 	AlertWebhookEvents       *string  `toml:"alert_webhook_events"`
+	HealthReportWebhookURL   *string  `toml:"health_report_webhook_url"`
+	HealthReportSchedule     *string  `toml:"health_report_schedule"`
 }
 
 // flatten converts the parsed TOML config into a flat key-value map.
@@ -488,6 +512,8 @@ func (tc *tomlConfig) flatten() map[string]string {
 	setFloat("alert_disk_percent", tc.AlertDiskPercent)
 	setStr("alert_webhook_url", tc.AlertWebhookURL)
 	setStr("alert_webhook_events", tc.AlertWebhookEvents)
+	setStr("health_report_webhook_url", tc.HealthReportWebhookURL)
+	setStr("health_report_schedule", tc.HealthReportSchedule)
 
 	// Sectioned keys override legacy flat keys.
 	setStr("listen", tc.Server.Listen)
@@ -504,6 +530,9 @@ func (tc *tomlConfig) flatten() map[string]string {
 	setFloat("alert_disk_percent", tc.Alerts.DiskPercent)
 	setStr("alert_webhook_url", tc.Alerts.WebhookURL)
 	setStr("alert_webhook_events", tc.Alerts.WebhookEvts)
+
+	setStr("health_report_webhook_url", tc.HealthReport.WebhookURL)
+	setStr("health_report_schedule", tc.HealthReport.Schedule)
 
 	setBool("watchtower_enabled", tc.Watchtower.Enabled)
 	setStr("watchtower_tick_interval", tc.Watchtower.TickInterval)

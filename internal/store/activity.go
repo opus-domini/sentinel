@@ -100,6 +100,38 @@ func (s *Store) PruneOpsActivityRows(ctx context.Context, maxRows int) (int64, e
 	return n, nil
 }
 
+// CountActivityEventsBySource returns event counts grouped by source for events
+// created after since. Used by the health report generator.
+func (s *Store) CountActivityEventsBySource(ctx context.Context, since time.Time) (map[string]int, error) {
+	sinceRFC3339 := since.UTC().Format(time.RFC3339)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT source, COUNT(*) as cnt
+		FROM ops_timeline_events
+		WHERE created_at >= ?
+		GROUP BY source
+		ORDER BY cnt DESC`,
+		sinceRFC3339,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var source string
+		var count int
+		if err := rows.Scan(&source, &count); err != nil {
+			return nil, err
+		}
+		counts[source] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return counts, nil
+}
+
 func (s *Store) SearchActivityEvents(ctx context.Context, query activity.Query) (activity.Result, error) {
 	limit := query.Limit
 	if limit <= 0 {

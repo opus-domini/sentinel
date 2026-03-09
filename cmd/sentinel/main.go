@@ -23,6 +23,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/httpui"
 	"github.com/opus-domini/sentinel/internal/notify"
+	"github.com/opus-domini/sentinel/internal/report"
 	"github.com/opus-domini/sentinel/internal/scheduler"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/services"
@@ -117,6 +118,20 @@ func serve() int {
 	})
 	schedulerService.Start(context.Background())
 
+	// Health report generator (optional: requires webhook URL + schedule).
+	var reportGen *report.Generator
+	if cfg.HealthReportWebhookURL != "" {
+		reportNotifier := notify.New(cfg.HealthReportWebhookURL, nil)
+		reportGen = report.New(st, opsManager, reportNotifier)
+		if cfg.HealthReportSchedule != "" {
+			if err := reportGen.StartSchedule(context.Background(), cfg.HealthReportSchedule, cfg.Timezone); err != nil {
+				slog.Warn("health report schedule failed to start", "error", err)
+			} else {
+				slog.Info("health report enabled", "url", cfg.HealthReportWebhookURL, "schedule", cfg.HealthReportSchedule)
+			}
+		}
+	}
+
 	metricsCtx, stopMetrics := context.WithCancel(context.Background())
 	metricsDone := startMetricsTicker(metricsCtx, opsManager, eventHub)
 
@@ -150,6 +165,10 @@ func serve() int {
 	<-activityDone
 	<-alertsDone
 	<-metricsDone
+
+	stopReportCtx, cancelReport := context.WithTimeout(context.Background(), 2*time.Second)
+	reportGen.Stop(stopReportCtx)
+	cancelReport()
 
 	stopSchedulerCtx, cancelScheduler := context.WithTimeout(context.Background(), 2*time.Second)
 	schedulerService.Stop(stopSchedulerCtx)
