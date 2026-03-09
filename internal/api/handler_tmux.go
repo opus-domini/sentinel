@@ -239,6 +239,11 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
+	if h.repo != nil && req.Cwd != "" {
+		if err := h.repo.RecordSessionDirectory(ctx, req.Cwd); err != nil {
+			slog.Warn("failed to record session directory", "cwd", req.Cwd, "err", err)
+		}
+	}
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": req.Name, "action": "create"})
 	writeData(w, http.StatusCreated, map[string]any{"name": req.Name})
 }
@@ -272,9 +277,6 @@ func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.repo.Rename(ctx, session, req.NewName); err != nil {
 		slog.Warn("store.Rename failed", "from", session, "to", req.NewName, "err", err)
-	}
-	if err := h.repo.RenameRecoverySession(ctx, session, req.NewName); err != nil {
-		slog.Warn("store.RenameRecoverySession failed", "from", session, "to", req.NewName, "err", err)
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{
 		"session": session,
@@ -340,13 +342,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
-	if h.recovery != nil {
-		if err := h.recovery.ArchiveSession(ctx, session); err != nil {
-			slog.Warn("recovery archive on kill failed", "session", session, "err", err)
-		}
-	}
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "delete"})
-	h.emit(events.TypeRecoveryOverview, map[string]any{"session": session, "action": "archive"})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1046,4 +1042,27 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 	})
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "pane-count"})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) frequentDirectories(w http.ResponseWriter, r *http.Request) {
+	limit := 5
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			if parsed > 20 {
+				parsed = 20
+			}
+			limit = parsed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	dirs, err := h.repo.ListFrequentDirectories(ctx, limit)
+	if err != nil {
+		slog.Warn("failed to list frequent directories", "err", err)
+		writeData(w, http.StatusOK, map[string]any{"dirs": []string{}})
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{"dirs": dirs})
 }

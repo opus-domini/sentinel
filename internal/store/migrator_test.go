@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 2 || name != "recovery-job-meta" {
-		t.Fatalf("latest migration = (%d, %q), want (2, %q)", version, name, "recovery-job-meta")
+	if version != 3 || name != "session-directories" {
+		t.Fatalf("latest migration = (%d, %q), want (3, %q)", version, name, "session-directories")
 	}
 
 	// Spot-check that a few tables exist.

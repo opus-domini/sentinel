@@ -19,7 +19,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
-	"github.com/opus-domini/sentinel/internal/recovery"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
@@ -44,16 +43,6 @@ type tmuxService interface {
 	KillWindow(ctx context.Context, session string, index int) error
 	KillPane(ctx context.Context, paneID string) error
 	SplitPane(ctx context.Context, paneID, direction string) (string, error)
-}
-
-type recoveryService interface {
-	Overview(ctx context.Context) (recovery.Overview, error)
-	ListKilledSessions(ctx context.Context) ([]store.RecoverySession, error)
-	ListSnapshots(ctx context.Context, sessionName string, limit int) ([]store.RecoverySnapshot, error)
-	GetSnapshot(ctx context.Context, id int64) (recovery.SnapshotView, error)
-	RestoreSnapshotAsync(ctx context.Context, snapshotID int64, options recovery.RestoreOptions) (store.RecoveryJob, error)
-	GetJob(ctx context.Context, id string) (store.RecoveryJob, error)
-	ArchiveSession(ctx context.Context, name string) error
 }
 
 type opsControlPlane interface {
@@ -104,7 +93,6 @@ type presenceRepo interface {
 	ListWatchtowerJournalSince(ctx context.Context, sinceRev int64, limit int) ([]store.WatchtowerJournal, error)
 	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
 	SearchWatchtowerTimelineEvents(ctx context.Context, query store.WatchtowerTimelineQuery) (store.WatchtowerTimelineResult, error)
-	RenameRecoverySession(ctx context.Context, oldName, newName string) error
 }
 
 type opsRunbookRepo interface {
@@ -141,6 +129,11 @@ type alertsActivityRepo interface {
 	FlushStorageResource(ctx context.Context, resource string) ([]store.StorageFlushResult, error)
 }
 
+type sessionDirectoryRepo interface {
+	RecordSessionDirectory(ctx context.Context, path string) error
+	ListFrequentDirectories(ctx context.Context, limit int) ([]string, error)
+}
+
 // handlerRepo is the composite repository interface used by Handler.
 // It embeds runbook.Repo for async runbook execution (which provides
 // UpdateOpsRunbookRun, GetOpsRunbook, GetOpsRunbookRun, InsertActivityEvent).
@@ -154,6 +147,7 @@ type handlerRepo interface {
 	opsJobRepo
 	opsScheduleRepo
 	alertsActivityRepo
+	sessionDirectoryRepo
 }
 
 // Compile-time check: *store.Store satisfies handlerRepo.
@@ -162,7 +156,6 @@ var _ handlerRepo = (*store.Store)(nil)
 type Handler struct {
 	guard      *security.Guard
 	tmux       tmuxService
-	recovery   recoveryService
 	ops        opsControlPlane
 	events     *events.Hub
 	repo       handlerRepo
@@ -204,7 +197,6 @@ func Register(
 	guard *security.Guard,
 	st *store.Store,
 	ops opsControlPlane,
-	recoverySvc recoveryService,
 	eventsHub *events.Hub,
 	version string,
 	configPath string,
@@ -215,7 +207,6 @@ func Register(
 	h := &Handler{
 		guard:      guard,
 		tmux:       tmux.Service{},
-		recovery:   recoverySvc,
 		ops:        ops,
 		events:     eventsHub,
 		repo:       st,
@@ -237,7 +228,6 @@ func Register(
 	h.registerMetricsRoutes(mux)
 	h.registerGuardrailsRoutes(mux)
 	h.registerSettingsRoutes(mux)
-	h.registerRecoveryRoutes(mux)
 	return h
 }
 

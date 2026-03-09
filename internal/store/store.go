@@ -180,6 +180,39 @@ func (s *Store) AllocateNextWindowSequence(ctx context.Context, name string, min
 	return current, nil
 }
 
+func (s *Store) RecordSessionDirectory(ctx context.Context, path string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO session_directories (path, use_count, last_used)
+		 VALUES (?, 1, datetime('now'))
+		 ON CONFLICT(path) DO UPDATE SET
+		   use_count = use_count + 1,
+		   last_used = datetime('now')`,
+		path,
+	)
+	return err
+}
+
+func (s *Store) ListFrequentDirectories(ctx context.Context, limit int) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT path FROM session_directories ORDER BY use_count DESC, last_used DESC LIMIT ?",
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var dirs []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		dirs = append(dirs, path)
+	}
+	return dirs, rows.Err()
+}
+
 func (s *Store) Close() error {
 	return s.db.Close()
 }

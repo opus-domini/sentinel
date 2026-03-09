@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -36,6 +36,8 @@ export default function CreateSessionDialog({
   const [cwdLoading, setCwdLoading] = useState(false)
   const [cwdFocused, setCwdFocused] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
+  const [frequentDirs, setFrequentDirs] = useState<Array<string>>([])
+  const frequentDirsFetched = useRef(false)
 
   useEffect(() => {
     if (!open) {
@@ -44,7 +46,36 @@ export default function CreateSessionDialog({
       setCwdLoading(false)
       setCwdFocused(false)
       setActiveSuggestion(-1)
+      frequentDirsFetched.current = false
+      return
     }
+
+    if (frequentDirsFetched.current) return
+    frequentDirsFetched.current = true
+
+    const abort = new AbortController()
+    void (async () => {
+      try {
+        const response = await fetch('/api/tmux/frequent-dirs?limit=5', {
+          signal: abort.signal,
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+        if (!response.ok) return
+        const payload = (await response.json()) as {
+          data?: DirectorySuggestionsResponse
+        }
+        const rawDirs = payload.data?.dirs
+        const dirs = Array.isArray(rawDirs)
+          ? rawDirs.filter((item): item is string => typeof item === 'string')
+          : []
+        setFrequentDirs(dirs)
+      } catch {
+        // ignore
+      }
+    })()
+
+    return () => abort.abort()
   }, [normalizedDefaultCwd, open])
 
   useEffect(() => {
@@ -103,6 +134,24 @@ export default function CreateSessionDialog({
     }
   }, [cwd, normalizedDefaultCwd, open])
 
+  const filteredFrequentDirs = useMemo(() => {
+    if (!normalizedDefaultCwd) return frequentDirs
+    return frequentDirs.filter((d) => d !== normalizedDefaultCwd)
+  }, [frequentDirs, normalizedDefaultCwd])
+
+  function shortenPath(path: string): string {
+    if (normalizedDefaultCwd && path.startsWith(normalizedDefaultCwd + '/')) {
+      return '~/' + path.slice(normalizedDefaultCwd.length + 1)
+    }
+    return path
+  }
+
+  function selectFrequentDir(path: string) {
+    setCwd(path)
+    setCwdSuggestions([])
+    setActiveSuggestion(-1)
+  }
+
   function selectSuggestion(value: string) {
     setCwd(value)
     setCwdSuggestions([])
@@ -151,6 +200,20 @@ export default function CreateSessionDialog({
               onChange={(e) => setName(slugifyTmuxName(e.target.value))}
               autoFocus
             />
+            {filteredFrequentDirs.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {filteredFrequentDirs.map((dir) => (
+                  <button
+                    key={dir}
+                    type="button"
+                    className="cursor-pointer rounded-full border border-border-subtle bg-secondary px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => selectFrequentDir(dir)}
+                  >
+                    {shortenPath(dir)}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="relative">
               <Input
                 placeholder="working directory"
