@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/opus-domini/sentinel/compare/v0.5.1...v0.5.2) (2026-03-10)
+
+
+### Features
+
+* add enable/disable service actions and make pinning user-driven ([c1748ab](https://github.com/opus-domini/sentinel/commit/c1748abd4cc07b652ff4ab1fc73403d8af34bbb5))
+
 ## [0.5.1](https://github.com/opus-domini/sentinel/compare/v0.5.0...v0.5.1) (2026-03-09)
 
 
