@@ -493,6 +493,7 @@ func TestCronRecurrence_AfterRunCompletion(t *testing.T) {
 	}
 	if found == nil {
 		t.Fatal("schedule not found after run")
+		return
 	}
 	if !found.Enabled {
 		t.Fatal("cron schedule should remain enabled after run")
@@ -711,6 +712,7 @@ func TestExecuteDueSchedule_AutoHealsOrphanRunbook(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("schedule not found")
+		return
 	}
 	if got.Enabled {
 		t.Fatal("orphan schedule should be disabled after auto-heal")

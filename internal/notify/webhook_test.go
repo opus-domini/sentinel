@@ -78,6 +78,7 @@ func TestDefaultEvents(t *testing.T) {
 	n := New("http://example.com/hook", nil)
 	if n == nil {
 		t.Fatal("New returned nil for non-empty URL")
+		return
 	}
 	if !n.events["alert.created"] {
 		t.Error("default events should include alert.created")
