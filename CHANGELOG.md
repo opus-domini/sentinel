@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.4](https://github.com/opus-domini/sentinel/compare/v0.5.3...v0.5.4) (2026-03-11)
+
+
+### Bug Fixes
+
+* **ci:** satisfy staticcheck nil guards in tests ([b87524e](https://github.com/opus-domini/sentinel/commit/b87524e75de883a8ddb6c060d105210e82efdac2))
+* **ci:** tidy go.sum ([3243a52](https://github.com/opus-domini/sentinel/commit/3243a522bf3f111b6db41701c99dbac0cc32f5ba))
+
+
+### CI
+
+* opt workflows into node 24 for javascript actions ([0d88ff9](https://github.com/opus-domini/sentinel/commit/0d88ff9a9959170a571b2919d8b23d829d2589db))
+
 ## [0.5.3](https://github.com/opus-domini/sentinel/compare/v0.5.2...v0.5.3) (2026-03-11)
 
 
