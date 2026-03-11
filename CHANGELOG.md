@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/opus-domini/sentinel/compare/v0.5.2...v0.5.3) (2026-03-11)
+
+
+### Bug Fixes
+
+* **deps:** update dependencies and remove unused client tooling ([0244e8d](https://github.com/opus-domini/sentinel/commit/0244e8d5c83cdb86f6a4b0f2a5ee1d10363c49bf))
+
 ## [0.5.2](https://github.com/opus-domini/sentinel/compare/v0.5.1...v0.5.2) (2026-03-10)
 
 
