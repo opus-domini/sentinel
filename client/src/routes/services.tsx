@@ -1,4 +1,13 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -39,7 +48,12 @@ import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
+  defaultOpsBrowseUnitTypes,
+  deriveOpsTrackedServiceName,
+  listOpsBrowseUnitTypes,
+  sortOpsBrowseUnitTypes,
   upsertOpsService,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
@@ -55,6 +69,191 @@ import {
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
+
+function browseServiceKey(
+  service: Pick<OpsBrowsedService, 'manager' | 'scope' | 'unit'>,
+): string {
+  return `${service.manager}:${service.scope}:${service.unit}`
+}
+
+type ServicesBrowseListProps = {
+  browseLoading: boolean
+  browseServicesCount: number
+  browseError: string
+  filteredBrowseServices: Array<OpsBrowsedService>
+  browsePendingActions: Partial<Record<string, OpsServiceAction>>
+  onAction: (svc: OpsBrowsedService, action: OpsServiceAction) => void
+  onInspect: (svc: OpsBrowsedService) => void
+  onLogs: (svc: OpsBrowsedService) => void
+  onToggleTrack: (svc: OpsBrowsedService) => void
+  onResetFilters: () => void
+  onRefreshBrowse: () => void
+}
+
+const ServicesBrowseList = memo(function ServicesBrowseList({
+  browseLoading,
+  browseServicesCount,
+  browseError,
+  filteredBrowseServices,
+  browsePendingActions,
+  onAction,
+  onInspect,
+  onLogs,
+  onToggleTrack,
+  onResetFilters,
+  onRefreshBrowse,
+}: ServicesBrowseListProps) {
+  return (
+    <ScrollArea className="h-full min-h-0">
+      <div className="grid gap-1 p-2">
+        {browseLoading &&
+          Array.from({ length: 6 }).map((_, idx) => (
+            <div
+              key={`svc-row-skeleton-${idx}`}
+              className="h-24 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+            />
+          ))}
+        {filteredBrowseServices.map((svc) => (
+          <ServiceBrowseRow
+            key={browseServiceKey(svc)}
+            service={svc}
+            pendingAction={browsePendingActions[browseServiceKey(svc)]}
+            onAction={onAction}
+            onInspect={onInspect}
+            onLogs={onLogs}
+            onToggleTrack={onToggleTrack}
+          />
+        ))}
+        {!browseLoading && filteredBrowseServices.length === 0 && (
+          <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
+            <p>
+              {browseServicesCount === 0
+                ? 'No units discovered on this host yet.'
+                : 'No units match the current filters.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {browseServicesCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 cursor-pointer text-[11px]"
+                  onClick={onResetFilters}
+                >
+                  Clear filters
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 cursor-pointer text-[11px]"
+                onClick={onRefreshBrowse}
+              >
+                Refresh discovery
+              </Button>
+            </div>
+          </div>
+        )}
+        {browseError !== '' && (
+          <p className="px-2 pb-2 text-[12px] text-destructive-foreground">
+            {browseError}
+          </p>
+        )}
+      </div>
+    </ScrollArea>
+  )
+})
+
+ServicesBrowseList.displayName = 'ServicesBrowseList'
+
+type ServicesBrowseControlsProps = {
+  scopeValue: string
+  searchValue: string
+  filteredCount: number
+  totalCount: number
+  onScopeChange: (value: string) => void
+  onSearchChange: (value: string) => void
+  onRefreshBrowse: () => void
+}
+
+const ServicesBrowseControls = memo(function ServicesBrowseControls({
+  scopeValue,
+  searchValue,
+  filteredCount,
+  totalCount,
+  onScopeChange,
+  onSearchChange,
+  onRefreshBrowse,
+}: ServicesBrowseControlsProps) {
+  const [searchDraft, setSearchDraft] = useState(searchValue)
+  const debouncedSearchDraft = useDebouncedValue(searchDraft)
+
+  useEffect(() => {
+    setSearchDraft(searchValue)
+  }, [searchValue])
+
+  useEffect(() => {
+    if (debouncedSearchDraft === searchValue) {
+      return
+    }
+    startTransition(() => {
+      onSearchChange(debouncedSearchDraft)
+    })
+  }, [debouncedSearchDraft, onSearchChange, searchValue])
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle p-2">
+      <select
+        value={scopeValue}
+        onChange={(e) => onScopeChange(e.target.value)}
+        className="h-7 flex-1 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
+        aria-label="Filter by scope"
+      >
+        <option value="all">All scopes</option>
+        <option value="user">user</option>
+        <option value="system">system</option>
+      </select>
+      <div className="flex w-full items-center gap-2 md:w-auto md:min-w-44 md:flex-1">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-2 top-1.5 h-4 w-4 text-muted-foreground md:top-2" />
+          <input
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder="Search units..."
+            className={cn(
+              'h-7 w-full rounded-md border border-border-subtle bg-surface-overlay pl-8 text-[12px] placeholder:text-muted-foreground md:h-8',
+              searchDraft ? 'pr-7' : 'pr-2',
+            )}
+          />
+          {searchDraft && (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground md:top-1.5"
+              onClick={() => setSearchDraft('')}
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <TooltipHelper content="Refresh service list">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 cursor-pointer text-[11px] md:h-8"
+            onClick={onRefreshBrowse}
+          >
+            <RefreshCw className="h-3 w-3" />
+          </Button>
+        </TooltipHelper>
+      </div>
+      <span className="hidden text-[10px] text-muted-foreground md:inline">
+        {filteredCount}/{totalCount} units
+      </span>
+    </div>
+  )
+})
+
+ServicesBrowseControls.displayName = 'ServicesBrowseControls'
 
 function ServicesPage() {
   const { tokenRequired } = useMetaContext()
@@ -77,6 +276,8 @@ function ServicesPage() {
 
   const [svcStateFilter, setSvcStateFilter] = useState('all')
   const [svcScopeFilter, setSvcScopeFilter] = useState('all')
+  const [svcTypeFilter, setSvcTypeFilter] = useState<Array<string>>([])
+  const [svcTypeFilterTouched, setSvcTypeFilterTouched] = useState(false)
   const [svcSearch, setSvcSearch] = useState('')
   const [browsePendingActions, setBrowsePendingActions] = useState<
     Partial<Record<string, OpsServiceAction>>
@@ -112,6 +313,21 @@ function ServicesPage() {
 
   const services = servicesQuery.data ?? []
   const browseServices = browseQuery.data ?? []
+  const browseUnitTypes = useMemo(
+    () => listOpsBrowseUnitTypes(browseServices),
+    [browseServices],
+  )
+  const defaultSvcTypeFilter = useMemo(
+    () => defaultOpsBrowseUnitTypes(browseUnitTypes),
+    [browseUnitTypes],
+  )
+  const effectiveSvcTypeFilter = svcTypeFilterTouched
+    ? svcTypeFilter
+    : defaultSvcTypeFilter
+  const allBrowseUnitTypesSelected =
+    browseUnitTypes.length > 0 &&
+    effectiveSvcTypeFilter.length === browseUnitTypes.length &&
+    browseUnitTypes.every((type) => effectiveSvcTypeFilter.includes(type))
 
   const servicesLoading = servicesQuery.isLoading
   const servicesError =
@@ -128,18 +344,12 @@ function ServicesPage() {
       ? toErrorMessage(browseQuery.error, 'failed to browse services')
       : ''
 
-  const filteredBrowseServices = useMemo(() => {
+  const baseFilteredBrowseServices = useMemo(() => {
     let list = browseServices
-    if (svcStateFilter !== 'all') {
-      list = list.filter((s) => {
-        const state = s.activeState.trim().toLowerCase()
-        if (svcStateFilter === 'active')
-          return state === 'active' || state === 'running'
-        if (svcStateFilter === 'failed') return state === 'failed'
-        if (svcStateFilter === 'inactive')
-          return state === 'inactive' || state === 'dead'
-        return true
-      })
+    if (effectiveSvcTypeFilter.length > 0) {
+      list = list.filter((s) =>
+        effectiveSvcTypeFilter.includes(s.unitType.trim().toLowerCase()),
+      )
     }
     if (svcScopeFilter !== 'all') {
       list = list.filter(
@@ -155,7 +365,24 @@ function ServicesPage() {
       )
     }
     return list
-  }, [browseServices, svcStateFilter, svcScopeFilter, svcSearch])
+  }, [browseServices, effectiveSvcTypeFilter, svcScopeFilter, svcSearch])
+
+  const filteredBrowseServices = useMemo(() => {
+    let list = baseFilteredBrowseServices
+    if (svcStateFilter !== 'all') {
+      list = list.filter((s) => {
+        const state = s.activeState.trim().toLowerCase()
+        if (svcStateFilter === 'active')
+          return state === 'active' || state === 'running'
+        if (svcStateFilter === 'failed') return state === 'failed'
+        if (svcStateFilter === 'inactive')
+          return state === 'inactive' || state === 'dead'
+        return true
+      })
+    }
+    return list
+  }, [baseFilteredBrowseServices, svcStateFilter])
+  const renderedBrowseServices = useDeferredValue(filteredBrowseServices)
 
   const refreshServices = useCallback(async () => {
     await queryClient.refetchQueries({
@@ -326,7 +553,8 @@ function ServicesPage() {
 
   const actOnBrowsedService = useCallback(
     async (svc: OpsBrowsedService, action: OpsServiceAction) => {
-      setBrowsePendingActions((prev) => ({ ...prev, [svc.unit]: action }))
+      const key = browseServiceKey(svc)
+      setBrowsePendingActions((prev) => ({ ...prev, [key]: action }))
       try {
         if (svc.tracked && svc.trackedName) {
           await runServiceAction(svc.trackedName, action)
@@ -370,7 +598,7 @@ function ServicesPage() {
       } finally {
         setBrowsePendingActions((prev) => {
           const next = { ...prev }
-          delete next[svc.unit]
+          delete next[key]
           return next
         })
       }
@@ -432,9 +660,7 @@ function ServicesPage() {
       if (svc.tracked && svc.trackedName) {
         await unregisterService(svc.trackedName)
       } else {
-        const name = svc.unit
-          .replace(/\.(service|timer|socket|mount|slice)$/, '')
-          .replace(/\./g, '-')
+        const name = deriveOpsTrackedServiceName(svc.unit)
         try {
           const data = await api<{
             services: Array<OpsServiceStatus>
@@ -469,20 +695,46 @@ function ServicesPage() {
     },
     [api, pushToast, queryClient, refreshBrowse, unregisterService],
   )
+  const handleBrowseAction = useCallback(
+    (svc: OpsBrowsedService, action: OpsServiceAction) => {
+      void actOnBrowsedService(svc, action)
+    },
+    [actOnBrowsedService],
+  )
+  const handleInspectBrowsedService = useCallback(
+    (svc: OpsBrowsedService) => {
+      void inspectBrowsedService(svc)
+    },
+    [inspectBrowsedService],
+  )
+  const handleToggleTrack = useCallback(
+    (svc: OpsBrowsedService) => {
+      void toggleTrack(svc)
+    },
+    [toggleTrack],
+  )
 
-  const navigateToService = useCallback((unit: string) => {
-    setSvcStateFilter('all')
-    setSvcScopeFilter('all')
-    setSvcSearch(unit)
-  }, [])
+  const navigateToService = useCallback(
+    (unit: string) => {
+      setSvcStateFilter('all')
+      setSvcScopeFilter('all')
+      const matchingTypes = listOpsBrowseUnitTypes(
+        browseServices.filter((service) => service.unit === unit),
+      )
+      if (matchingTypes.length > 0) {
+        setSvcTypeFilterTouched(true)
+        setSvcTypeFilter(matchingTypes)
+      } else {
+        setSvcTypeFilter([])
+        setSvcTypeFilterTouched(false)
+      }
+      setSvcSearch(unit)
+    },
+    [browseServices],
+  )
 
   const stats = useMemo(() => {
-    let list = browseServices
-    if (svcScopeFilter !== 'all') {
-      list = list.filter(
-        (s) => s.scope.toLowerCase() === svcScopeFilter.toLowerCase(),
-      )
-    }
+    const list = baseFilteredBrowseServices
     const total = list.length
     let active = 0
     let inactive = 0
@@ -499,10 +751,38 @@ function ServicesPage() {
       inactive: `${inactive}`,
       failed: `${failed}`,
     }
-  }, [browseServices, svcScopeFilter])
+  }, [baseFilteredBrowseServices])
 
   const toggleStateFilter = useCallback((filter: string) => {
     setSvcStateFilter((prev) => (prev === filter ? 'all' : filter))
+  }, [])
+
+  const toggleTypeFilter = useCallback(
+    (unitType: string) => {
+      setSvcTypeFilterTouched(true)
+      setSvcTypeFilter((prev) => {
+        const current = svcTypeFilterTouched ? prev : effectiveSvcTypeFilter
+        if (current.includes(unitType)) {
+          if (current.length === 1) return current
+          return current.filter((item) => item !== unitType)
+        }
+        return sortOpsBrowseUnitTypes([...current, unitType])
+      })
+    },
+    [effectiveSvcTypeFilter, svcTypeFilterTouched],
+  )
+
+  const selectAllTypeFilters = useCallback(() => {
+    setSvcTypeFilterTouched(true)
+    setSvcTypeFilter(browseUnitTypes)
+  }, [browseUnitTypes])
+
+  const resetBrowseFilters = useCallback(() => {
+    setSvcSearch('')
+    setSvcStateFilter('all')
+    setSvcScopeFilter('all')
+    setSvcTypeFilter([])
+    setSvcTypeFilterTouched(false)
   }, [])
 
   return (
@@ -528,7 +808,7 @@ function ServicesPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="cursor-pointer md:hidden"
               onClick={() => layout.setSidebarOpen((prev) => !prev)}
               aria-label="Open menu"
             >
@@ -555,7 +835,43 @@ function ServicesPage() {
         </header>
 
         <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2 overflow-hidden p-2 md:gap-3 md:p-3">
-          <section>
+          <section className="grid gap-2">
+            {browseUnitTypes.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-1 rounded-lg border border-border-subtle bg-surface-elevated px-2 py-1.5">
+                <button
+                  type="button"
+                  className={cn(
+                    'h-6 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors',
+                    allBrowseUnitTypesSelected
+                      ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
+                      : 'border-border-subtle text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={selectAllTypeFilters}
+                  aria-pressed={allBrowseUnitTypesSelected}
+                >
+                  all
+                </button>
+                {browseUnitTypes.map((unitType) => {
+                  const selected = effectiveSvcTypeFilter.includes(unitType)
+                  return (
+                    <button
+                      key={unitType}
+                      type="button"
+                      className={cn(
+                        'h-6 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors',
+                        selected
+                          ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
+                          : 'border-border-subtle text-muted-foreground hover:text-foreground',
+                      )}
+                      onClick={() => toggleTypeFilter(unitType)}
+                      aria-pressed={selected}
+                    >
+                      {unitType}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {browseLoading ? (
               <>
                 <div className="hidden gap-2 md:grid md:grid-cols-4">
@@ -661,115 +977,28 @@ function ServicesPage() {
           </section>
 
           <section className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
-            <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle p-2">
-              <select
-                value={svcScopeFilter}
-                onChange={(e) => setSvcScopeFilter(e.target.value)}
-                className="h-7 flex-1 rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
-                aria-label="Filter by scope"
-              >
-                <option value="all">All scopes</option>
-                <option value="user">user</option>
-                <option value="system">system</option>
-              </select>
-              <div className="flex w-full items-center gap-2 md:w-auto md:min-w-44 md:flex-1">
-                <div className="relative min-w-0 flex-1">
-                  <Search className="absolute left-2 top-1.5 h-4 w-4 text-muted-foreground md:top-2" />
-                  <input
-                    value={svcSearch}
-                    onChange={(e) => setSvcSearch(e.target.value)}
-                    placeholder="Search services..."
-                    className={cn(
-                      'h-7 w-full rounded-md border border-border-subtle bg-surface-overlay pl-8 text-[12px] placeholder:text-muted-foreground md:h-8',
-                      svcSearch ? 'pr-7' : 'pr-2',
-                    )}
-                  />
-                  {svcSearch && (
-                    <button
-                      type="button"
-                      className="absolute right-1.5 top-1 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground md:top-1.5"
-                      onClick={() => setSvcSearch('')}
-                      aria-label="Clear search"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                <TooltipHelper content="Refresh service list">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 cursor-pointer text-[11px] md:h-8"
-                    onClick={() => void refreshBrowse()}
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                  </Button>
-                </TooltipHelper>
-              </div>
-              <span className="hidden text-[10px] text-muted-foreground md:inline">
-                {filteredBrowseServices.length}/{browseServices.length} services
-              </span>
-            </div>
-            <ScrollArea className="h-full min-h-0">
-              <div className="grid gap-1 p-2">
-                {browseLoading &&
-                  Array.from({ length: 6 }).map((_, idx) => (
-                    <div
-                      key={`svc-row-skeleton-${idx}`}
-                      className="h-24 animate-pulse rounded border border-border-subtle bg-surface-elevated"
-                    />
-                  ))}
-                {filteredBrowseServices.map((svc) => (
-                  <ServiceBrowseRow
-                    key={`${svc.scope}:${svc.unit}`}
-                    service={svc}
-                    pendingAction={browsePendingActions[svc.unit]}
-                    onAction={actOnBrowsedService}
-                    onInspect={(s) => void inspectBrowsedService(s)}
-                    onLogs={openServiceLogs}
-                    onToggleTrack={(s) => void toggleTrack(s)}
-                  />
-                ))}
-                {!browseLoading && filteredBrowseServices.length === 0 && (
-                  <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
-                    <p>
-                      {browseServices.length === 0
-                        ? 'No services discovered on this host yet.'
-                        : 'No services match the current filters.'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {browseServices.length > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-[11px]"
-                          onClick={() => {
-                            setSvcSearch('')
-                            setSvcStateFilter('all')
-                            setSvcScopeFilter('all')
-                          }}
-                        >
-                          Clear filters
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[11px]"
-                        onClick={() => void refreshBrowse()}
-                      >
-                        Refresh discovery
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {browseError !== '' && (
-                  <p className="px-2 pb-2 text-[12px] text-destructive-foreground">
-                    {browseError}
-                  </p>
-                )}
-              </div>
-            </ScrollArea>
+            <ServicesBrowseControls
+              scopeValue={svcScopeFilter}
+              searchValue={svcSearch}
+              filteredCount={renderedBrowseServices.length}
+              totalCount={browseServices.length}
+              onScopeChange={setSvcScopeFilter}
+              onSearchChange={setSvcSearch}
+              onRefreshBrowse={refreshBrowse}
+            />
+            <ServicesBrowseList
+              browseLoading={browseLoading}
+              browseServicesCount={browseServices.length}
+              browseError={browseError}
+              filteredBrowseServices={renderedBrowseServices}
+              browsePendingActions={browsePendingActions}
+              onAction={handleBrowseAction}
+              onInspect={handleInspectBrowsedService}
+              onLogs={openServiceLogs}
+              onToggleTrack={handleToggleTrack}
+              onResetFilters={resetBrowseFilters}
+              onRefreshBrowse={refreshBrowse}
+            />
           </section>
         </div>
 
@@ -777,7 +1006,7 @@ function ServicesPage() {
           <span className="min-w-0 flex-1 truncate">
             {overviewError !== ''
               ? overviewError
-              : `${filteredBrowseServices.length}/${browseServices.length} services`}
+              : `${renderedBrowseServices.length}/${browseServices.length} units`}
           </span>
         </footer>
       </main>

@@ -37,6 +37,7 @@ describe('useTmuxTimeline', () => {
   let queryClient: QueryClient
 
   beforeEach(() => {
+    vi.useRealTimers()
     queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -49,6 +50,7 @@ describe('useTmuxTimeline', () => {
 
   afterEach(() => {
     queryClient.clear()
+    vi.useRealTimers()
   })
 
   function wrapper({ children }: { children: ReactNode }) {
@@ -99,5 +101,65 @@ describe('useTmuxTimeline', () => {
         ),
       ).toBe(true)
     })
+  })
+
+  it('debounces query-driven reloads', async () => {
+    vi.useFakeTimers()
+
+    const apiMock = vi.fn((path: string) => {
+      const url = new URL(path, 'http://localhost')
+      const session = url.searchParams.get('session') ?? ''
+      return Promise.resolve(buildTimelineResponse(session))
+    })
+    const api = apiMock as unknown as ApiFunction
+
+    const { result } = renderHook(
+      () =>
+        useTmuxTimeline({
+          api,
+          activeSession: 'alpha',
+        }),
+      { wrapper },
+    )
+
+    act(() => {
+      result.current.setTimelineOpen(true)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120)
+    })
+
+    expect(apiMock).toHaveBeenCalledTimes(1)
+
+    apiMock.mockClear()
+
+    act(() => {
+      result.current.setTimelineQuery('sus')
+      result.current.setTimelineQuery('susp')
+      result.current.setTimelineQuery('suspend')
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(179)
+    })
+    expect(apiMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(apiMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(119)
+    })
+    expect(apiMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    expect(apiMock).toHaveBeenCalledTimes(1)
+    expect(String(apiMock.mock.calls[0][0])).toContain('q=suspend')
   })
 })

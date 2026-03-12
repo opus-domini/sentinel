@@ -6,6 +6,7 @@ import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
@@ -55,6 +56,7 @@ export default function RunbooksSidebar({
 }: RunbooksSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
   const [filter, setFilter] = useState('')
+  const debouncedFilter = useDebouncedValue(filter)
 
   const lockLabel = useMemo(() => {
     if (tokenRequired) {
@@ -64,14 +66,14 @@ export default function RunbooksSidebar({
   }, [authenticated, tokenRequired])
 
   const filteredRunbooks = useMemo(() => {
-    const q = filter.trim().toLowerCase()
+    const q = debouncedFilter.trim().toLowerCase()
     if (q === '') return runbooks
     return runbooks.filter(
       (rb) =>
         rb.name.toLowerCase().includes(q) ||
         rb.description.toLowerCase().includes(q),
     )
-  }, [runbooks, filter])
+  }, [debouncedFilter, runbooks])
 
   const hasFilter = filter.trim() !== ''
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { TimelineEvent, TimelineResponse } from '@/types'
 import type { ApiFunction, TmuxTimelineCache } from './tmuxTypes'
+import { useDebouncedValue } from './useDebouncedValue'
 import { tmuxTimelineQueryKey } from '@/lib/tmuxQueryCache'
 import { buildTimelineQueryString } from '@/lib/tmuxTimeline'
 
@@ -43,6 +44,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [timelineError, setTimelineError] = useState('')
   const [timelineQuery, setTimelineQuery] = useState('')
+  const debouncedTimelineQuery = useDebouncedValue(timelineQuery)
   const [timelineSeverity, setTimelineSeverity] = useState('all')
   const [timelineEventType, setTimelineEventType] = useState('all')
   const [timelineSessionFilter, setTimelineSessionFilter] = useState('active')
@@ -82,7 +84,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
     queryClient.setQueryData<TmuxTimelineCache>(
       tmuxTimelineQueryKey({
         session,
-        query: timelineQuery,
+        query: debouncedTimelineQuery,
         severity: timelineSeverity,
         eventType: timelineEventType,
         limit: 180,
@@ -98,7 +100,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
     timelineEventType,
     timelineEvents,
     timelineHasMore,
-    timelineQuery,
+    debouncedTimelineQuery,
     timelineSessionFilter,
     timelineSeverity,
   ])
@@ -114,7 +116,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
       )
       const cacheKey = tmuxTimelineQueryKey({
         session,
-        query: timelineQuery,
+        query: debouncedTimelineQuery,
         severity: timelineSeverity,
         eventType: timelineEventType,
         limit: 180,
@@ -126,7 +128,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
       }
       const queryString = buildTimelineQueryString({
         session,
-        query: timelineQuery,
+        query: debouncedTimelineQuery,
         severity: timelineSeverity,
         eventType: timelineEventType,
         limit: 180,
@@ -156,10 +158,10 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
     },
     [
       api,
+      debouncedTimelineQuery,
       queryClient,
       resolveTimelineSessionScope,
       timelineEventType,
-      timelineQuery,
       timelineSeverity,
     ],
   )
@@ -179,7 +181,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
     const cached = queryClient.getQueryData<TmuxTimelineCache>(
       tmuxTimelineQueryKey({
         session,
-        query: timelineQuery,
+        query: debouncedTimelineQuery,
         severity: timelineSeverity,
         eventType: timelineEventType,
         limit: 180,
@@ -202,7 +204,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
     queryClient,
     resolveTimelineSessionScope,
     timelineOpen,
-    timelineQuery,
+    debouncedTimelineQuery,
     timelineSeverity,
     timelineEventType,
     timelineSessionFilter,

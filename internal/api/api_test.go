@@ -4270,8 +4270,8 @@ func TestBrowseOpsServicesHandler(t *testing.T) {
 	h.ops = &mockOpsControlPlane{
 		browseFn: func(context.Context) ([]opsplane.BrowsedService, error) {
 			return []opsplane.BrowsedService{
-				{Unit: testNginxUnit, ActiveState: "active", Manager: "systemd", Scope: "system", Tracked: false},
-				{Unit: "sentinel", ActiveState: "active", Manager: "systemd", Scope: "user", Tracked: true, TrackedName: "sentinel"},
+				{Unit: testNginxUnit, UnitType: "service", ActiveState: "active", Manager: "systemd", Scope: "system", Tracked: false},
+				{Unit: "sentinel", UnitType: "service", ActiveState: "active", Manager: "systemd", Scope: "user", Tracked: true, TrackedName: "sentinel"},
 			}, nil
 		},
 	}
@@ -4291,6 +4291,9 @@ func TestBrowseOpsServicesHandler(t *testing.T) {
 	first, _ := services[0].(map[string]any)
 	if first["tracked"] != false {
 		t.Fatalf("first service tracked = %v, want false", first["tracked"])
+	}
+	if first["unitType"] != "service" {
+		t.Fatalf("first service unitType = %v, want service", first["unitType"])
 	}
 	second, _ := services[1].(map[string]any)
 	if second["tracked"] != true {
@@ -5661,7 +5664,7 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.ops = &mockOpsControlPlane{
 			discoverFn: func(_ context.Context) ([]opsplane.AvailableService, error) {
-				return []opsplane.AvailableService{{Unit: "test.service"}}, nil
+				return []opsplane.AvailableService{{Unit: "test.service", UnitType: "service"}}, nil
 			},
 		}
 
@@ -5677,6 +5680,10 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 		services, _ := data["services"].([]any)
 		if len(services) != 1 {
 			t.Fatalf("services len = %d, want 1", len(services))
+		}
+		first, _ := services[0].(map[string]any)
+		if first["unitType"] != "service" {
+			t.Fatalf("unitType = %v, want service", first["unitType"])
 		}
 	})
 

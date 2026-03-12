@@ -15,12 +15,13 @@ Custom services can be registered via API or the UI to add them to the tracked s
 
 ## Service Browse
 
-Browse discovers all user-scope service units on the host and annotates them with tracking status.
+Browse discovers manageable units on the host and annotates them with tracking status. On Linux, the default view focuses on `service` units and can be expanded with the type filter to include `timer`, `socket`, `target`, and other systemd unit kinds. On macOS, Browse lists launchd jobs.
 
 `GET /api/ops/services/browse` returns a list where each entry contains:
 
 - `unit` — systemd unit name or launchd label
 - `description` — human-readable service description
+- `unitType` — discovered unit kind (`service`, `timer`, `target`, `job`, etc.)
 - `activeState` — current runtime state (active, inactive, failed, etc.)
 - `enabledState` — whether the unit is enabled
 - `manager` — `systemd` or `launchd`

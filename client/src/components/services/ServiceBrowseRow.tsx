@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import {
   Clock3,
   FileText,
@@ -35,7 +36,7 @@ type ServiceBrowseRowProps = {
   onToggleTrack: (svc: OpsBrowsedService) => void
 }
 
-export function ServiceBrowseRow({
+export const ServiceBrowseRow = memo(function ServiceBrowseRow({
   service: svc,
   pendingAction: pending,
   onAction,
@@ -64,7 +65,12 @@ export function ServiceBrowseRow({
               {svc.unit}
             </p>
             <div className="flex shrink-0 items-center gap-1">
-              <TooltipHelper content="Service scope (user or system)">
+              <TooltipHelper content="Unit type discovered on the host">
+                <span className="cursor-default rounded border border-border-subtle px-1 text-[9px] text-muted-foreground">
+                  {svc.unitType}
+                </span>
+              </TooltipHelper>
+              <TooltipHelper content="Unit scope (user or system)">
                 <span className="cursor-default rounded border border-border-subtle px-1 text-[9px] text-muted-foreground">
                   {svc.scope}
                 </span>
@@ -233,4 +239,6 @@ export function ServiceBrowseRow({
       </div>
     </div>
   )
-}
+})
+
+ServiceBrowseRow.displayName = 'ServiceBrowseRow'

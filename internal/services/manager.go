@@ -36,6 +36,10 @@ const (
 	managerSystemd = "systemd"
 	managerLaunchd = "launchd"
 
+	unitTypeService = "service"
+	unitTypeJob     = "job"
+	unitTypeUnit    = "unit"
+
 	sentinelSystemdUnit = "sentinel"
 	updaterSystemdUnit  = "sentinel-updater.timer"
 
@@ -51,6 +55,19 @@ const (
 var (
 	ErrServiceNotFound = errors.New("ops service not found")
 	ErrInvalidAction   = errors.New("ops invalid action")
+
+	systemdBrowseUnitTypes = []string{
+		unitTypeService,
+		"timer",
+		"socket",
+		"target",
+		"path",
+		"mount",
+		"automount",
+		"swap",
+		"slice",
+		"scope",
+	}
 )
 
 type commandRunner func(ctx context.Context, name string, args ...string) (string, error)
@@ -662,17 +679,19 @@ func parseSystemdShow(raw string) map[string]string {
 	return props
 }
 
-// AvailableService represents a systemd/launchd unit discovered on the host
-// that is not yet tracked by Sentinel.
+// AvailableService represents a manageable systemd/launchd unit discovered on
+// the host that is not yet tracked by Sentinel.
 type AvailableService struct {
-	Unit        string `json:"unit"`
-	Description string `json:"description"`
-	ActiveState string `json:"activeState"`
-	Manager     string `json:"manager"`
-	Scope       string `json:"scope"`
+	Unit         string `json:"unit"`
+	UnitType     string `json:"unitType"`
+	Description  string `json:"description"`
+	ActiveState  string `json:"activeState"`
+	EnabledState string `json:"enabledState"`
+	Manager      string `json:"manager"`
+	Scope        string `json:"scope"`
 }
 
-// DiscoverServices lists service units visible on the host that are not
+// DiscoverServices lists manageable units visible on the host that are not
 // already tracked. On Linux it queries both --user and --system scopes.
 func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, error) {
 	tracked, err := m.ListServices(ctx)
@@ -726,13 +745,22 @@ func (m *Manager) discoverSystemdUnits(ctx context.Context, scope string) ([]Ava
 	if scope == scopeUser {
 		args = append(args, "--user")
 	}
-	args = append(args, "list-units", "--type=service,timer", "--all", "--no-pager", "--no-legend", "--plain")
+	args = append(
+		args,
+		"list-units",
+		"--type="+strings.Join(systemdBrowseUnitTypes, ","),
+		"--all",
+		"--no-pager",
+		"--no-legend",
+		"--plain",
+	)
 	raw, err := m.commandRunner(ctx, "systemctl", args...)
 	if err != nil {
 		return nil, err
 	}
 
 	var units []AvailableService
+	indexByUnit := make(map[string]int)
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -749,9 +777,68 @@ func (m *Manager) discoverSystemdUnits(ctx context.Context, scope string) ([]Ava
 			desc = strings.Join(fields[4:], " ")
 		}
 		units = append(units, AvailableService{
-			Unit:        unit,
-			Description: desc,
-			ActiveState: active,
+			Unit:         unit,
+			UnitType:     browseUnitType(managerSystemd, unit),
+			Description:  desc,
+			ActiveState:  active,
+			EnabledState: stateUnknown,
+		})
+		indexByUnit[strings.ToLower(unit)] = len(units) - 1
+	}
+
+	fileUnits, err := m.discoverSystemdUnitFiles(ctx, scope)
+	if err != nil {
+		slog.Warn("systemd unit-file discovery failed", "scope", scope, "err", err)
+		return units, nil
+	}
+
+	for _, item := range fileUnits {
+		key := strings.ToLower(item.Unit)
+		if idx, ok := indexByUnit[key]; ok {
+			units[idx].EnabledState = item.EnabledState
+			continue
+		}
+		units = append(units, item)
+		indexByUnit[key] = len(units) - 1
+	}
+	return units, nil
+}
+
+func (m *Manager) discoverSystemdUnitFiles(ctx context.Context, scope string) ([]AvailableService, error) {
+	args := make([]string, 0, 8)
+	if scope == scopeUser {
+		args = append(args, "--user")
+	}
+	args = append(
+		args,
+		"list-unit-files",
+		"--type="+strings.Join(systemdBrowseUnitTypes, ","),
+		"--all",
+		"--no-pager",
+		"--no-legend",
+	)
+	raw, err := m.commandRunner(ctx, "systemctl", args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var units []AvailableService
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		unit := fields[0]
+		units = append(units, AvailableService{
+			Unit:         unit,
+			UnitType:     browseUnitType(managerSystemd, unit),
+			Description:  unit,
+			ActiveState:  stateInactive,
+			EnabledState: normalizeState(fields[1]),
 		})
 	}
 	return units, nil
@@ -783,6 +870,7 @@ func (m *Manager) discoverLaunchdUnits(ctx context.Context) ([]AvailableService,
 		}
 		units = append(units, AvailableService{
 			Unit:        label,
+			UnitType:    browseUnitType(managerLaunchd, label),
 			Description: label,
 			ActiveState: state,
 		})
@@ -790,10 +878,11 @@ func (m *Manager) discoverLaunchdUnits(ctx context.Context) ([]AvailableService,
 	return units, nil
 }
 
-// BrowsedService represents a service unit found on the host, enriched with
+// BrowsedService represents a manageable unit found on the host, enriched with
 // tracking information when it matches a registered custom daemon.
 type BrowsedService struct {
 	Unit         string `json:"unit"`
+	UnitType     string `json:"unitType"`
 	Description  string `json:"description"`
 	ActiveState  string `json:"activeState"`
 	EnabledState string `json:"enabledState"`
@@ -803,8 +892,9 @@ type BrowsedService struct {
 	TrackedName  string `json:"trackedName,omitempty"`
 }
 
-// BrowseServices returns all service units discovered on the host, annotated
-// with tracking info for units that are already registered in the store.
+// BrowseServices returns all manageable units discovered on the host,
+// annotated with tracking info for units that are already registered in the
+// store.
 func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) {
 	tracked, err := m.ListServices(ctx)
 	if err != nil {
@@ -836,11 +926,13 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 				}
 				seen[key] = true
 				bs := BrowsedService{
-					Unit:        u.Unit,
-					Description: u.Description,
-					ActiveState: u.ActiveState,
-					Manager:     managerSystemd,
-					Scope:       scope,
+					Unit:         u.Unit,
+					UnitType:     u.UnitType,
+					Description:  u.Description,
+					ActiveState:  u.ActiveState,
+					EnabledState: u.EnabledState,
+					Manager:      managerSystemd,
+					Scope:        scope,
 				}
 				if info, ok := trackedMap[key]; ok {
 					bs.Tracked = true
@@ -861,11 +953,13 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 			}
 			seen[key] = true
 			bs := BrowsedService{
-				Unit:        u.Unit,
-				Description: u.Description,
-				ActiveState: u.ActiveState,
-				Manager:     managerLaunchd,
-				Scope:       scopeUser,
+				Unit:         u.Unit,
+				UnitType:     u.UnitType,
+				Description:  u.Description,
+				ActiveState:  u.ActiveState,
+				EnabledState: u.EnabledState,
+				Manager:      managerLaunchd,
+				Scope:        scopeUser,
 			}
 			if info, ok := trackedMap[key]; ok {
 				bs.Tracked = true
@@ -884,6 +978,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 		seen[key] = true
 		result = append(result, BrowsedService{
 			Unit:         s.Unit,
+			UnitType:     browseUnitType(s.Manager, s.Unit),
 			Description:  s.DisplayName,
 			ActiveState:  s.ActiveState,
 			EnabledState: s.EnabledState,
@@ -1022,4 +1117,22 @@ func buildInspectSummary(props map[string]string) string {
 		parts = append(parts, "sub="+sub)
 	}
 	return strings.Join(parts, " ")
+}
+
+func browseUnitType(manager, unit string) string {
+	switch {
+	case strings.EqualFold(manager, managerLaunchd):
+		return unitTypeJob
+	case !strings.EqualFold(manager, managerSystemd):
+		return unitTypeUnit
+	}
+
+	trimmed := strings.TrimSpace(unit)
+	if trimmed == "" {
+		return unitTypeService
+	}
+	if idx := strings.LastIndexByte(trimmed, '.'); idx > 0 && idx < len(trimmed)-1 {
+		return strings.ToLower(trimmed[idx+1:])
+	}
+	return unitTypeService
 }

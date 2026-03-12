@@ -385,8 +385,10 @@ export type OpsCustomServiceWrite = {
 
 export type OpsAvailableService = {
   unit: string
+  unitType: string
   description: string
   activeState: string
+  enabledState: string
   manager: string
   scope: string
 }
@@ -397,6 +399,7 @@ export type OpsDiscoverServicesResponse = {
 
 export type OpsBrowsedService = {
   unit: string
+  unitType: string
   description: string
   activeState: string
   enabledState: string

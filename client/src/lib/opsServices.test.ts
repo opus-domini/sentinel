@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { OpsServiceStatus } from '@/types'
+import type { OpsBrowsedService, OpsServiceStatus } from '@/types'
 import {
   canStartOpsService,
   canStopOpsService,
+  defaultOpsBrowseUnitTypes,
+  deriveOpsTrackedServiceName,
   filterOpsServicesByQuery,
   isOpsServiceActive,
+  listOpsBrowseUnitTypes,
   upsertOpsService,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
@@ -20,6 +23,22 @@ function buildService(partial: Partial<OpsServiceStatus>): OpsServiceStatus {
     enabledState: 'enabled',
     activeState: 'active',
     updatedAt: '2026-02-15T12:00:00Z',
+    ...partial,
+  }
+}
+
+function buildBrowsedService(
+  partial: Partial<OpsBrowsedService>,
+): OpsBrowsedService {
+  return {
+    unit: 'nginx.service',
+    unitType: 'service',
+    description: 'Nginx',
+    activeState: 'active',
+    enabledState: 'enabled',
+    manager: 'systemd',
+    scope: 'system',
+    tracked: false,
     ...partial,
   }
 }
@@ -121,5 +140,34 @@ describe('opsServices', () => {
       'Queue Worker',
       'Updater',
     ])
+  })
+
+  it('lists browse unit types in stable order', () => {
+    const types = listOpsBrowseUnitTypes([
+      buildBrowsedService({ unitType: 'target' }),
+      buildBrowsedService({ unitType: 'service' }),
+      buildBrowsedService({ unitType: 'job', manager: 'launchd' }),
+      buildBrowsedService({ unitType: 'timer' }),
+      buildBrowsedService({ unitType: 'service' }),
+    ])
+
+    expect(types).toEqual(['service', 'timer', 'target', 'job'])
+  })
+
+  it('defaults browse unit type selection to service when available', () => {
+    expect(defaultOpsBrowseUnitTypes(['timer', 'service', 'target'])).toEqual([
+      'service',
+    ])
+    expect(defaultOpsBrowseUnitTypes(['job'])).toEqual(['job'])
+    expect(defaultOpsBrowseUnitTypes([])).toEqual([])
+  })
+
+  it('derives tracked service names from unit names across unit types', () => {
+    expect(deriveOpsTrackedServiceName('nginx.service')).toBe('nginx')
+    expect(deriveOpsTrackedServiceName('backup.timer')).toBe('backup')
+    expect(deriveOpsTrackedServiceName('multi-user.target')).toBe('multi-user')
+    expect(deriveOpsTrackedServiceName('io.opusdomini.sentinel')).toBe(
+      'io-opusdomini-sentinel',
+    )
   })
 })

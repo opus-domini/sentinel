@@ -6,6 +6,7 @@ import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
@@ -46,10 +47,11 @@ export default function ServicesSidebar({
 }: ServicesSidebarProps) {
   const [isTokenOpen, setIsTokenOpen] = useState(false)
   const [filter, setFilter] = useState('')
+  const debouncedFilter = useDebouncedValue(filter)
   const [removing, setRemoving] = useState<string | null>(null)
   const filteredServices = useMemo(
-    () => filterOpsServicesByQuery(services, filter),
-    [services, filter],
+    () => filterOpsServicesByQuery(services, debouncedFilter),
+    [services, debouncedFilter],
   )
   const hasFilter = filter.trim() !== ''
 

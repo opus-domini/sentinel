@@ -23,6 +23,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useLogStream } from '@/hooks/useLogStream'
 import { parseLogLines, parseSingleLine } from '@/lib/log-parser'
 import { cn } from '@/lib/utils'
@@ -52,6 +53,7 @@ export function ServiceLogsSheet({
   const [logLines, setLogLines] = useState<Array<ParsedLogLine>>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebouncedValue(search)
   const [wrap, setWrap] = useState(false)
   const [follow, setFollow] = useState(true)
   const [streamEnabled, setStreamEnabled] = useState(false)
@@ -297,7 +299,7 @@ export function ServiceLogsSheet({
         <LogViewer
           lines={logLines}
           loading={loading}
-          searchQuery={search}
+          searchQuery={debouncedSearch}
           wordWrap={wrap}
           follow={follow}
           onFollowChange={setFollow}

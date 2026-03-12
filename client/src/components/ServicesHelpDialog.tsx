@@ -49,8 +49,10 @@ export default function ServicesHelpDialog() {
               <h3 className="mb-1 font-medium text-foreground">Browse</h3>
               <p>
                 The Browse panel discovers systemd (Linux) or launchd (macOS)
-                units available on the host. Pin any unit to track it in the
-                sidebar.
+                units available on the host. The default view stays focused on
+                service units, and the type filter lets you expand into timers,
+                targets, sockets, and other unit kinds when needed. Pin any unit
+                to track it in the sidebar.
               </p>
             </section>
             <section>

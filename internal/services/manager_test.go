@@ -440,7 +440,7 @@ func TestListServicesMergesCustomServices(t *testing.T) {
 		goos:           "linux",
 		customServices: repo,
 		commandRunner: func(_ context.Context, _ string, _ ...string) (string, error) {
-			return "ActiveState=active\nLoadState=loaded\nUnitFileState=enabled", nil
+			return probeActiveResponse, nil
 		},
 	}
 
@@ -756,6 +756,9 @@ func TestDiscoverServicesSystemd(t *testing.T) {
 	if discovered[0].Manager != managerSystemd {
 		t.Fatalf("Manager = %q, want systemd", discovered[0].Manager)
 	}
+	if discovered[0].UnitType != unitTypeService {
+		t.Fatalf("UnitType = %q, want service", discovered[0].UnitType)
+	}
 }
 
 func TestDiscoverServicesLaunchd(t *testing.T) {
@@ -782,6 +785,9 @@ func TestDiscoverServicesLaunchd(t *testing.T) {
 	}
 	if discovered[0].Manager != managerLaunchd {
 		t.Fatalf("Manager = %q, want launchd", discovered[0].Manager)
+	}
+	if discovered[0].UnitType != unitTypeJob {
+		t.Fatalf("UnitType = %q, want job", discovered[0].UnitType)
 	}
 }
 
@@ -883,6 +889,56 @@ func TestBrowseServicesSystemd(t *testing.T) {
 	if !foundUntracked {
 		t.Fatal("expected redis.service to be untracked")
 	}
+	for _, bs := range result {
+		if bs.UnitType != unitTypeService {
+			t.Fatalf("UnitType(%s) = %q, want service", bs.Unit, bs.UnitType)
+		}
+	}
+}
+
+func TestBrowseServicesSystemdIncludesInactiveUnitFiles(t *testing.T) {
+	t.Parallel()
+
+	m := newTestManager("linux", func(_ context.Context, name string, args ...string) (string, error) {
+		if name != cmdSystemctl {
+			return "", nil
+		}
+		switch {
+		case slices.Contains(args, "list-units"):
+			return "nginx.service loaded active running Nginx", nil
+		case slices.Contains(args, "list-unit-files"):
+			return "nginx.service enabled\nsuspend.target static", nil
+		case slices.Contains(args, "show"):
+			return "ActiveState=active\nLoadState=loaded\nUnitFileState=enabled", nil
+		default:
+			return "", nil
+		}
+	})
+
+	result, err := m.BrowseServices(context.Background())
+	if err != nil {
+		t.Fatalf("BrowseServices: %v", err)
+	}
+
+	var found bool
+	for _, bs := range result {
+		if bs.Unit != "suspend.target" {
+			continue
+		}
+		found = true
+		if bs.UnitType != "target" {
+			t.Fatalf("UnitType = %q, want target", bs.UnitType)
+		}
+		if bs.ActiveState != stateInactive {
+			t.Fatalf("ActiveState = %q, want inactive", bs.ActiveState)
+		}
+		if bs.EnabledState != "static" {
+			t.Fatalf("EnabledState = %q, want static", bs.EnabledState)
+		}
+	}
+	if !found {
+		t.Fatal("expected suspend.target from list-unit-files to be included")
+	}
 }
 
 func TestBrowseServicesLaunchd(t *testing.T) {
@@ -901,6 +957,9 @@ func TestBrowseServicesLaunchd(t *testing.T) {
 	}
 	if len(result) == 0 {
 		t.Fatal("expected at least one browsed service")
+	}
+	if result[0].UnitType != unitTypeJob {
+		t.Fatalf("UnitType = %q, want job", result[0].UnitType)
 	}
 }
 
@@ -1174,12 +1233,19 @@ func TestDiscoverSystemdUnitsParsing(t *testing.T) {
 	t.Parallel()
 
 	m := &Manager{
-		commandRunner: func(_ context.Context, _ string, _ ...string) (string, error) {
-			// Simulate systemctl list-units output: UNIT LOAD ACTIVE SUB DESCRIPTION...
-			return "nginx.service loaded active running Nginx web server\n" +
-				"redis.service loaded active running Redis\n" +
-				"short\n" +
-				"", nil
+		commandRunner: func(_ context.Context, _ string, args ...string) (string, error) {
+			switch {
+			case slices.Contains(args, "list-units"):
+				// Simulate systemctl list-units output: UNIT LOAD ACTIVE SUB DESCRIPTION...
+				return "nginx.service loaded active running Nginx web server\n" +
+					"redis.service loaded active running Redis\n" +
+					"short\n" +
+					"", nil
+			case slices.Contains(args, "list-unit-files"):
+				return "nginx.service enabled\nredis.service disabled\n", nil
+			default:
+				return "", nil
+			}
 		},
 	}
 
@@ -1195,6 +1261,55 @@ func TestDiscoverSystemdUnitsParsing(t *testing.T) {
 	}
 	if units[0].Description != "Nginx web server" {
 		t.Fatalf("units[0].Description = %q, want 'Nginx web server'", units[0].Description)
+	}
+	if units[0].UnitType != unitTypeService {
+		t.Fatalf("units[0].UnitType = %q, want service", units[0].UnitType)
+	}
+	if units[1].UnitType != unitTypeService {
+		t.Fatalf("units[1].UnitType = %q, want service", units[1].UnitType)
+	}
+	if units[0].EnabledState != "enabled" {
+		t.Fatalf("units[0].EnabledState = %q, want enabled", units[0].EnabledState)
+	}
+	if units[1].EnabledState != "disabled" {
+		t.Fatalf("units[1].EnabledState = %q, want disabled", units[1].EnabledState)
+	}
+}
+
+func TestDiscoverSystemdUnitsIncludesUnitFilesNotLoaded(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{
+		commandRunner: func(_ context.Context, _ string, args ...string) (string, error) {
+			switch {
+			case slices.Contains(args, "list-units"):
+				return "nginx.service loaded active running Nginx web server\n", nil
+			case slices.Contains(args, "list-unit-files"):
+				return "nginx.service enabled\nsuspend.target static\n", nil
+			default:
+				return "", nil
+			}
+		},
+	}
+
+	units, err := m.discoverSystemdUnits(context.Background(), scopeUser)
+	if err != nil {
+		t.Fatalf("discoverSystemdUnits: %v", err)
+	}
+	if len(units) != 2 {
+		t.Fatalf("len(units) = %d, want 2", len(units))
+	}
+	if units[1].Unit != "suspend.target" {
+		t.Fatalf("units[1].Unit = %q, want suspend.target", units[1].Unit)
+	}
+	if units[1].UnitType != "target" {
+		t.Fatalf("units[1].UnitType = %q, want target", units[1].UnitType)
+	}
+	if units[1].ActiveState != stateInactive {
+		t.Fatalf("units[1].ActiveState = %q, want inactive", units[1].ActiveState)
+	}
+	if units[1].EnabledState != "static" {
+		t.Fatalf("units[1].EnabledState = %q, want static", units[1].EnabledState)
 	}
 }
 
@@ -1223,6 +1338,36 @@ func TestDiscoverLaunchdUnitsParsing(t *testing.T) {
 	}
 	if units[1].ActiveState != "inactive" {
 		t.Fatalf("units[1].ActiveState = %q, want inactive (PID is '-')", units[1].ActiveState)
+	}
+	if units[0].UnitType != unitTypeJob || units[1].UnitType != unitTypeJob {
+		t.Fatalf("launchd units should be typed as job: %+v", units)
+	}
+}
+
+func TestBrowseUnitType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		manager string
+		unit    string
+		want    string
+	}{
+		{name: "systemd service suffix", manager: managerSystemd, unit: "nginx.service", want: unitTypeService},
+		{name: "systemd target suffix", manager: managerSystemd, unit: "multi-user.target", want: "target"},
+		{name: "systemd no suffix defaults to service", manager: managerSystemd, unit: "sentinel", want: unitTypeService},
+		{name: "launchd labels are jobs", manager: managerLaunchd, unit: "io.opusdomini.sentinel", want: unitTypeJob},
+		{name: "unknown manager falls back to unit", manager: "openrc", unit: "nginx", want: "unit"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := browseUnitType(tc.manager, tc.unit); got != tc.want {
+				t.Fatalf("browseUnitType(%q, %q) = %q, want %q", tc.manager, tc.unit, got, tc.want)
+			}
+		})
 	}
 }
 

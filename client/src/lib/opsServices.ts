@@ -1,6 +1,41 @@
-import type { OpsServiceAction, OpsServiceStatus } from '@/types'
+import type {
+  OpsBrowsedService,
+  OpsServiceAction,
+  OpsServiceStatus,
+} from '@/types'
+
+const opsBrowseUnitTypeOrder = [
+  'service',
+  'timer',
+  'socket',
+  'target',
+  'path',
+  'mount',
+  'automount',
+  'swap',
+  'slice',
+  'scope',
+  'job',
+  'unit',
+]
 
 type HasActiveState = { activeState: string }
+
+function normalizedBrowseUnitType(raw: string): string {
+  const type = raw.trim().toLowerCase()
+  return type === '' ? 'unit' : type
+}
+
+function compareBrowseUnitTypes(left: string, right: string): number {
+  const leftIndex = opsBrowseUnitTypeOrder.indexOf(left)
+  const rightIndex = opsBrowseUnitTypeOrder.indexOf(right)
+  if (leftIndex !== -1 || rightIndex !== -1) {
+    if (leftIndex === -1) return 1
+    if (rightIndex === -1) return -1
+    return leftIndex - rightIndex
+  }
+  return left.localeCompare(right, undefined, { sensitivity: 'base' })
+}
 
 function normalizedActiveState(service: HasActiveState): string {
   return service.activeState.trim().toLowerCase()
@@ -98,4 +133,34 @@ export function filterOpsServicesByQuery(
       service.name.toLowerCase().includes(normalizedQuery)
     )
   })
+}
+
+export function sortOpsBrowseUnitTypes(types: Array<string>): Array<string> {
+  return [...new Set(types.map(normalizedBrowseUnitType))].sort(
+    compareBrowseUnitTypes,
+  )
+}
+
+export function listOpsBrowseUnitTypes(
+  services: Array<Pick<OpsBrowsedService, 'unitType'>>,
+): Array<string> {
+  const types = services.map((service) => service.unitType)
+  return sortOpsBrowseUnitTypes(types)
+}
+
+export function defaultOpsBrowseUnitTypes(types: Array<string>): Array<string> {
+  const normalized = sortOpsBrowseUnitTypes(types)
+  if (normalized.length === 0) return []
+  if (normalized.includes('service')) return ['service']
+  return normalized
+}
+
+export function deriveOpsTrackedServiceName(unit: string): string {
+  return unit
+    .trim()
+    .replace(
+      /\.(service|timer|socket|target|path|mount|automount|swap|slice|scope)$/,
+      '',
+    )
+    .replace(/\./g, '-')
 }

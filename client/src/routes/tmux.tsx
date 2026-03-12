@@ -30,6 +30,7 @@ import { useTmuxTimeline } from '@/hooks/useTmuxTimeline'
 import { useInspector } from '@/hooks/useInspector'
 import { useSessionCRUD } from '@/hooks/useSessionCRUD'
 import { useTmuxEventsSocket } from '@/hooks/useTmuxEventsSocket'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { TMUX_SESSIONS_QUERY_KEY } from '@/lib/tmuxQueryCache'
 import {
   sanitizeTmuxPaneTitle,
@@ -87,6 +88,7 @@ function TmuxPage() {
       queryClient.getQueryData<Array<Session>>(TMUX_SESSIONS_QUERY_KEY) ?? [],
   )
   const [filter, setFilter] = useState('')
+  const debouncedFilter = useDebouncedValue(filter)
   const [tmuxUnavailable, setTmuxUnavailable] = useState(false)
 
   // ---- Shared refs (created here, passed to hooks) ----
@@ -313,10 +315,10 @@ function TmuxPage() {
   }, [sessions])
 
   const filteredSessions = useMemo(() => {
-    const query = filter.trim().toLowerCase()
+    const query = debouncedFilter.trim().toLowerCase()
     if (!query) return orderedSessions
     return orderedSessions.filter((s) => s.name.toLowerCase().includes(query))
-  }, [filter, orderedSessions])
+  }, [debouncedFilter, orderedSessions])
 
   const timelineSessionOptions = useMemo(
     () => orderedSessions.map((item) => item.name),

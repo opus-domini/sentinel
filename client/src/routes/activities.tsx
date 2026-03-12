@@ -18,6 +18,7 @@ import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { useDateFormat } from '@/hooks/useDateFormat'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useOpsEventsSocket } from '@/hooks/useOpsEventsSocket'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
@@ -64,18 +65,19 @@ function ActivitiesPage() {
   const queryClient = useQueryClient()
 
   const [activityQuery, setActivityQuery] = useState('')
+  const debouncedActivityQuery = useDebouncedValue(activityQuery)
   const [activitySeverity, setActivitySeverity] = useState('all')
   const [activitySource, setActivitySource] = useState('all')
 
   const activityQueryKey = useMemo(
-    () => opsActivityQueryKey(activityQuery, activitySeverity),
-    [activityQuery, activitySeverity],
+    () => opsActivityQueryKey(debouncedActivityQuery, activitySeverity),
+    [activitySeverity, debouncedActivityQuery],
   )
   const activityQueryRef = useRef(activityQuery)
   const activitySeverityRef = useRef(activitySeverity)
   useEffect(() => {
-    activityQueryRef.current = activityQuery
-  }, [activityQuery])
+    activityQueryRef.current = debouncedActivityQuery
+  }, [debouncedActivityQuery])
   useEffect(() => {
     activitySeverityRef.current = activitySeverity
   }, [activitySeverity])
@@ -92,7 +94,9 @@ function ActivitiesPage() {
     queryKey: activityQueryKey,
     queryFn: async () => {
       const params = new URLSearchParams({ limit: '200' })
-      if (activityQuery.trim() !== '') params.set('q', activityQuery.trim())
+      if (debouncedActivityQuery.trim() !== '') {
+        params.set('q', debouncedActivityQuery.trim())
+      }
       if (activitySeverity !== 'all') params.set('severity', activitySeverity)
       const data = await api<OpsActivityResponse>(
         `/api/ops/activity?${params.toString()}`,
