@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.5](https://github.com/opus-domini/sentinel/compare/v0.5.4...v0.5.5) (2026-03-12)
+
+
+### Features
+
+* **ux:** improve tmux consistency and service browsing ([7cd9e75](https://github.com/opus-domini/sentinel/commit/7cd9e75740f9570da4cbddb480a9f27b8ecc9c3c))
+
+
+### Bug Fixes
+
+* **tmux:** harden inspector consistency ([1ee400e](https://github.com/opus-domini/sentinel/commit/1ee400e0e6986959467469485ff21690ff903495))
+
 ## [0.5.4](https://github.com/opus-domini/sentinel/compare/v0.5.3...v0.5.4) (2026-03-11)
 
 
