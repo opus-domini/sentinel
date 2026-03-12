@@ -181,12 +181,16 @@ export type InspectorActions = {
   renameWindowValue: string
   setRenameWindowValue: (value: string) => void
   setRenameWindowDialogOpen: (open: boolean) => void
-  setRenameWindowIndex: (index: number | null) => void
+  setRenameWindowTarget: (
+    target: { session: string; index: number } | null,
+  ) => void
   renamePaneDialogOpen: boolean
   renamePaneValue: string
   setRenamePaneValue: (value: string) => void
   setRenamePaneDialogOpen: (open: boolean) => void
-  setRenamePaneID: (id: string | null) => void
+  setRenamePaneTarget: (
+    target: { session: string; paneID: string } | null,
+  ) => void
   applySessionActivityPatches: (
     rawPatches: Array<SessionActivityPatch> | undefined,
   ) => SessionPatchApplyResult

@@ -1040,7 +1040,10 @@ describe('useTmuxEventsSocket', () => {
 
       // Try second sync while first is in-flight
       await act(async () => {
-        await result.current.syncActivityDelta({ reason: 'test2', force: true })
+        await result.current.syncActivityDelta({
+          reason: 'test2',
+          force: true,
+        })
       })
 
       const deltaCallCount = (
@@ -1582,6 +1585,39 @@ describe('useTmuxEventsSocket', () => {
       )
       expect(deltaCalls.length).toBeGreaterThanOrEqual(2)
     })
+
+    it('schedules refresh recovery on event ID gap for inspector events', async () => {
+      const refreshSessions = vi.fn(() => Promise.resolve())
+      const refreshInspector = vi.fn(() => Promise.resolve())
+      const opts = makeOptions({ refreshSessions, refreshInspector })
+      renderHook(() => useTmuxEventsSocket(opts))
+
+      await act(async () => {
+        lastSocket().emitOpen()
+      })
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.inspector.updated',
+          eventId: 1,
+          payload: { action: 'select-pane', session: 'main' },
+        })
+      })
+
+      await act(async () => {
+        lastSocket().emitMessage({
+          type: 'tmux.inspector.updated',
+          eventId: 4,
+          payload: { action: 'select-pane', session: 'main' },
+        })
+        await vi.advanceTimersByTimeAsync(250)
+      })
+
+      expect(refreshSessions).toHaveBeenCalled()
+      expect(refreshInspector).toHaveBeenCalledWith('main', {
+        background: true,
+      })
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -1819,7 +1855,6 @@ describe('useTmuxEventsSocket', () => {
       act(() => {
         vi.advanceTimersByTime(1000)
       })
-
       ;(api as ReturnType<typeof vi.fn>).mockResolvedValue(
         defaultDeltaResponse(),
       )

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { useInspector } from './useInspector'
 import type { ReactNode } from 'react'
+import { buildPendingSplitPaneID } from '@/lib/tmuxInspectorOptimistic'
 import type { PaneInfo, Session, WindowInfo } from '@/types'
 import type { ApiFunction, RuntimeMetrics, TabsStateRef } from './tmuxTypes'
 
@@ -116,7 +117,6 @@ function createMockOptions(overrides: MockOptions = {}) {
     setTmuxUnavailable: vi.fn(),
     setSessions: vi.fn(),
     refreshSessions: vi.fn(() => Promise.resolve()),
-    eventsSocketConnectedRef: { current: true },
     pushErrorToast: vi.fn(),
     pushSuccessToast: vi.fn(),
     setConnection: vi.fn(),
@@ -324,6 +324,157 @@ describe('useInspector – refreshInspector override reconciliation', () => {
       await result.current.refreshInspector('dev')
     })
     expect(result.current.activeWindowIndexOverride).toBeNull()
+  })
+})
+
+describe('useInspector – selectPane', () => {
+  it('preserves pane override until backend confirms pane selection', async () => {
+    let resolveSelectPane: (() => void) | null = null
+    let serverConfirmed = false
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [makeWindow({ index: 0, active: true })],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({
+              windowIndex: 0,
+              paneId: '%1',
+              active: !serverConfirmed,
+            }),
+            makePane({
+              windowIndex: 0,
+              paneId: '%2',
+              paneIndex: 1,
+              active: serverConfirmed,
+            }),
+          ],
+        })
+      }
+      return new Promise<void>((resolve) => {
+        resolveSelectPane = resolve
+      })
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({
+      api,
+      windows: [makeWindow({ index: 0, active: true })],
+      panes: [
+        makePane({ windowIndex: 0, paneId: '%1', active: true }),
+        makePane({ windowIndex: 0, paneId: '%2', paneIndex: 1, active: false }),
+      ],
+    })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.panes.length).toBe(2)
+    })
+
+    act(() => {
+      result.current.selectPane('%2')
+    })
+    expect(result.current.activePaneIDOverride).toBe('%2')
+
+    await act(async () => {
+      await result.current.refreshInspector('dev')
+    })
+    expect(result.current.activePaneIDOverride).toBe('%2')
+
+    await act(async () => {
+      serverConfirmed = true
+      resolveSelectPane?.()
+      await vi.waitFor(() => {
+        expect(resolveSelectPane).not.toBeNull()
+      })
+    })
+
+    await act(async () => {
+      await result.current.refreshInspector('dev')
+    })
+    expect(result.current.activePaneIDOverride).toBeNull()
+  })
+})
+
+describe('useInspector – optimistic createWindow', () => {
+  it('seeds a pending pane placeholder for the new window', async () => {
+    const never = new Promise<void>(() => {})
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [
+            makeWindow({ index: 0, active: true }),
+            makeWindow({ index: 1, name: 'alt', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({ windowIndex: 0, paneId: '%1', active: true }),
+            makePane({ windowIndex: 1, paneId: '%2', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/new-window')) {
+        return never
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(2)
+    })
+
+    act(() => {
+      result.current.createWindow()
+    })
+
+    const pendingPaneID = buildPendingSplitPaneID('dev', 2, 0)
+    expect(result.current.activeWindowIndexOverride).toBe(2)
+    expect(result.current.activePaneIDOverride).toBe(pendingPaneID)
+    expect(
+      result.current.panes.some(
+        (paneInfo) =>
+          paneInfo.paneId === pendingPaneID &&
+          paneInfo.windowIndex === 2 &&
+          paneInfo.active,
+      ),
+    ).toBe(true)
+  })
+})
+
+describe('useInspector – session switch hygiene', () => {
+  it('closes rename dialogs when the active session changes', async () => {
+    let currentActiveSession = 'dev'
+    const opts = createMockOptions()
+    const { wrapper } = createWrapper()
+    const { result, rerender } = renderHook(
+      () => useInspector({ ...opts, activeSession: currentActiveSession }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBeGreaterThan(0)
+    })
+
+    act(() => {
+      result.current.handleOpenRenameWindow(result.current.windows[0]!)
+    })
+    expect(result.current.renameWindowDialogOpen).toBe(true)
+
+    currentActiveSession = 'ops'
+    opts.tabsStateRef.current.activeSession = 'ops'
+    rerender()
+
+    expect(result.current.renameWindowDialogOpen).toBe(false)
   })
 })
 

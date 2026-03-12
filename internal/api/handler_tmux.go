@@ -18,6 +18,156 @@ import (
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
+func sameProjectedWindowSet(live []tmux.Window, projected []store.WatchtowerWindow) bool {
+	if len(live) != len(projected) {
+		return false
+	}
+	if len(live) == 0 {
+		return false
+	}
+	projectedByIndex := make(map[int]struct{}, len(projected))
+	for _, row := range projected {
+		projectedByIndex[row.WindowIndex] = struct{}{}
+	}
+	for _, row := range live {
+		if _, ok := projectedByIndex[row.Index]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func sameProjectedPaneSet(live []tmux.Pane, projected []store.WatchtowerPane) bool {
+	if len(live) != len(projected) {
+		return false
+	}
+	if len(live) == 0 {
+		return false
+	}
+	projectedByID := make(map[string]struct{}, len(projected))
+	for _, row := range projected {
+		projectedByID[strings.TrimSpace(row.PaneID)] = struct{}{}
+	}
+	for _, row := range live {
+		if _, ok := projectedByID[strings.TrimSpace(row.PaneID)]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func projectedWindowsToEnriched(
+	windows []store.WatchtowerWindow,
+	panes []store.WatchtowerPane,
+) []enrichedWindow {
+	paneCounts := make(map[int]int, len(windows))
+	for _, pane := range panes {
+		paneCounts[pane.WindowIndex]++
+	}
+
+	resp := make([]enrichedWindow, 0, len(windows))
+	for _, row := range windows {
+		resp = append(resp, enrichedWindow{
+			Session:     row.SessionName,
+			Index:       row.WindowIndex,
+			Name:        row.Name,
+			Active:      row.Active,
+			Panes:       paneCounts[row.WindowIndex],
+			Layout:      row.Layout,
+			UnreadPanes: row.UnreadPanes,
+			HasUnread:   row.HasUnread,
+			Rev:         row.Rev,
+			ActivityAt:  row.WindowActivityAt.Format(time.RFC3339),
+		})
+	}
+	return resp
+}
+
+func projectedPanesToEnriched(panes []store.WatchtowerPane) []enrichedPane {
+	resp := make([]enrichedPane, 0, len(panes))
+	for _, row := range panes {
+		resp = append(resp, enrichedPane{
+			Session:        row.SessionName,
+			WindowIndex:    row.WindowIndex,
+			PaneIndex:      row.PaneIndex,
+			PaneID:         row.PaneID,
+			Title:          row.Title,
+			Active:         row.Active,
+			TTY:            row.TTY,
+			CurrentPath:    row.CurrentPath,
+			StartCommand:   row.StartCommand,
+			CurrentCommand: row.CurrentCommand,
+			TailPreview:    row.TailPreview,
+			Revision:       row.Revision,
+			SeenRevision:   row.SeenRevision,
+			HasUnread:      row.Revision > row.SeenRevision,
+			ChangedAt:      row.ChangedAt.Format(time.RFC3339),
+		})
+	}
+	return resp
+}
+
+func (h *Handler) listProjectedWindows(ctx context.Context, session string) ([]store.WatchtowerWindow, []store.WatchtowerPane, bool) {
+	if h.repo == nil {
+		return nil, nil, false
+	}
+
+	windows, err := h.repo.ListWatchtowerWindows(ctx, session)
+	if err != nil {
+		slog.Warn("store.ListWatchtowerWindows failed", "session", session, "err", err)
+		return nil, nil, false
+	}
+	panes, err := h.repo.ListWatchtowerPanes(ctx, session)
+	if err != nil {
+		slog.Warn("store.ListWatchtowerPanes failed", "session", session, "err", err)
+		return nil, nil, false
+	}
+	if len(windows) == 0 {
+		return nil, nil, false
+	}
+	return windows, panes, true
+}
+
+func (h *Handler) listProjectedPanes(ctx context.Context, session string) ([]store.WatchtowerPane, bool) {
+	if h.repo == nil {
+		return nil, false
+	}
+
+	panes, err := h.repo.ListWatchtowerPanes(ctx, session)
+	if err != nil {
+		slog.Warn("store.ListWatchtowerPanes failed", "session", session, "err", err)
+		return nil, false
+	}
+	if len(panes) == 0 {
+		return nil, false
+	}
+	return panes, true
+}
+
+func paneBelongsToSession(panes []tmux.Pane, paneID string) bool {
+	id := strings.TrimSpace(paneID)
+	if id == "" {
+		return false
+	}
+	for _, pane := range panes {
+		if strings.TrimSpace(pane.PaneID) == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Handler) ensureSessionPane(ctx context.Context, session, paneID string) error {
+	panes, err := h.tmux.ListPanes(ctx, session)
+	if err != nil {
+		return err
+	}
+	if !paneBelongsToSession(panes, paneID) {
+		return errors.New("pane does not belong to session")
+	}
+	return nil
+}
+
 func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -355,53 +505,41 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if h.repo != nil {
-		projected, err := h.repo.ListWatchtowerWindows(ctx, session)
-		if err != nil {
-			slog.Warn("store.ListWatchtowerWindows failed", "session", session, "err", err)
-		} else {
-			_, sessionErr := h.repo.GetWatchtowerSession(ctx, session)
-			hasSession := sessionErr == nil
-			if len(projected) > 0 || hasSession {
-				panes, panesErr := h.repo.ListWatchtowerPanes(ctx, session)
-				if panesErr != nil {
-					writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list windows", nil)
-					return
-				}
-
-				paneCounts := make(map[int]int, len(projected))
-				for _, pane := range panes {
-					paneCounts[pane.WindowIndex]++
-				}
-
-				resp := make([]enrichedWindow, 0, len(projected))
-				for _, row := range projected {
-					resp = append(resp, enrichedWindow{
-						Session:     row.SessionName,
-						Index:       row.WindowIndex,
-						Name:        row.Name,
-						Active:      row.Active,
-						Panes:       paneCounts[row.WindowIndex],
-						Layout:      row.Layout,
-						UnreadPanes: row.UnreadPanes,
-						HasUnread:   row.HasUnread,
-						Rev:         row.Rev,
-						ActivityAt:  row.WindowActivityAt.Format(time.RFC3339),
-					})
-				}
-				writeData(w, http.StatusOK, map[string]any{"windows": resp})
-				return
-			}
-		}
-	}
-
 	windows, err := h.tmux.ListWindows(ctx, session)
 	if err != nil {
+		projectedWindows, projectedPanes, ok := h.listProjectedWindows(ctx, session)
+		if ok {
+			writeData(w, http.StatusOK, map[string]any{
+				"windows": projectedWindowsToEnriched(projectedWindows, projectedPanes),
+			})
+			return
+		}
 		writeTmuxError(w, err)
 		return
 	}
+
+	projectedWindows, _, canOverlay := h.listProjectedWindows(ctx, session)
+	projectedByIndex := make(map[int]store.WatchtowerWindow)
+	if canOverlay && sameProjectedWindowSet(windows, projectedWindows) {
+		projectedByIndex = make(map[int]store.WatchtowerWindow, len(projectedWindows))
+		for _, row := range projectedWindows {
+			projectedByIndex[row.WindowIndex] = row
+		}
+	}
+
 	resp := make([]enrichedWindow, 0, len(windows))
 	for _, row := range windows {
+		projected, hasProjected := projectedByIndex[row.Index]
+		activityAt := ""
+		unreadPanes := 0
+		hasUnread := false
+		var rev int64
+		if hasProjected {
+			activityAt = projected.WindowActivityAt.Format(time.RFC3339)
+			unreadPanes = projected.UnreadPanes
+			hasUnread = projected.HasUnread
+			rev = projected.Rev
+		}
 		resp = append(resp, enrichedWindow{
 			Session:     row.Session,
 			Index:       row.Index,
@@ -409,9 +547,10 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 			Active:      row.Active,
 			Panes:       row.Panes,
 			Layout:      row.Layout,
-			UnreadPanes: 0,
-			HasUnread:   false,
-			Rev:         0,
+			UnreadPanes: unreadPanes,
+			HasUnread:   hasUnread,
+			Rev:         rev,
+			ActivityAt:  activityAt,
 		})
 	}
 	writeData(w, http.StatusOK, map[string]any{"windows": resp})
@@ -426,47 +565,43 @@ func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if h.repo != nil {
-		projected, err := h.repo.ListWatchtowerPanes(ctx, session)
-		if err != nil {
-			slog.Warn("store.ListWatchtowerPanes failed", "session", session, "err", err)
-		} else {
-			_, sessionErr := h.repo.GetWatchtowerSession(ctx, session)
-			hasSession := sessionErr == nil
-			if len(projected) > 0 || hasSession {
-				resp := make([]enrichedPane, 0, len(projected))
-				for _, row := range projected {
-					resp = append(resp, enrichedPane{
-						Session:        row.SessionName,
-						WindowIndex:    row.WindowIndex,
-						PaneIndex:      row.PaneIndex,
-						PaneID:         row.PaneID,
-						Title:          row.Title,
-						Active:         row.Active,
-						TTY:            row.TTY,
-						CurrentPath:    row.CurrentPath,
-						StartCommand:   row.StartCommand,
-						CurrentCommand: row.CurrentCommand,
-						TailPreview:    row.TailPreview,
-						Revision:       row.Revision,
-						SeenRevision:   row.SeenRevision,
-						HasUnread:      row.Revision > row.SeenRevision,
-						ChangedAt:      row.ChangedAt.Format(time.RFC3339),
-					})
-				}
-				writeData(w, http.StatusOK, map[string]any{"panes": resp})
-				return
-			}
-		}
-	}
-
 	panes, err := h.tmux.ListPanes(ctx, session)
 	if err != nil {
+		projectedPanes, ok := h.listProjectedPanes(ctx, session)
+		if ok {
+			writeData(w, http.StatusOK, map[string]any{
+				"panes": projectedPanesToEnriched(projectedPanes),
+			})
+			return
+		}
 		writeTmuxError(w, err)
 		return
 	}
+
+	projectedPanes, canOverlay := h.listProjectedPanes(ctx, session)
+	projectedByID := make(map[string]store.WatchtowerPane)
+	if canOverlay && sameProjectedPaneSet(panes, projectedPanes) {
+		projectedByID = make(map[string]store.WatchtowerPane, len(projectedPanes))
+		for _, row := range projectedPanes {
+			projectedByID[strings.TrimSpace(row.PaneID)] = row
+		}
+	}
+
 	resp := make([]enrichedPane, 0, len(panes))
 	for _, row := range panes {
+		projected, hasProjected := projectedByID[strings.TrimSpace(row.PaneID)]
+		tailPreview := ""
+		var revision int64
+		var seenRevision int64
+		hasUnread := false
+		changedAt := ""
+		if hasProjected {
+			tailPreview = projected.TailPreview
+			revision = projected.Revision
+			seenRevision = projected.SeenRevision
+			hasUnread = projected.Revision > projected.SeenRevision
+			changedAt = projected.ChangedAt.Format(time.RFC3339)
+		}
 		resp = append(resp, enrichedPane{
 			Session:        row.Session,
 			WindowIndex:    row.WindowIndex,
@@ -478,9 +613,11 @@ func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
 			CurrentPath:    row.CurrentPath,
 			StartCommand:   row.StartCommand,
 			CurrentCommand: row.CurrentCommand,
-			Revision:       0,
-			SeenRevision:   0,
-			HasUnread:      false,
+			TailPreview:    tailPreview,
+			Revision:       revision,
+			SeenRevision:   seenRevision,
+			HasUnread:      hasUnread,
+			ChangedAt:      changedAt,
 		})
 	}
 	writeData(w, http.StatusOK, map[string]any{"panes": resp})
@@ -696,6 +833,14 @@ func (h *Handler) selectPane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
+		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
+			writeTmuxError(w, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+		return
+	}
 	if err := h.tmux.SelectPane(ctx, req.PaneID); err != nil {
 		writeTmuxError(w, err)
 		return
@@ -778,6 +923,14 @@ func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
+		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
+			writeTmuxError(w, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+		return
+	}
 	if err := h.tmux.RenamePane(ctx, req.PaneID, req.Title); err != nil {
 		writeTmuxError(w, err)
 		return
@@ -962,6 +1115,14 @@ func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
+		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
+			writeTmuxError(w, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+		return
+	}
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
 		Action:      "pane.kill",
 		SessionName: session,
@@ -1013,6 +1174,14 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
+		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
+			writeTmuxError(w, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+		return
+	}
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
 		Action:      "pane.split",
 		SessionName: session,

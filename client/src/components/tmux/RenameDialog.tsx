@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { slugifyTmuxName } from '@/lib/tmuxName'
 
 type RenameDialogProps = {
   open: boolean
@@ -55,7 +54,7 @@ export default function RenameDialog(props: RenameDialogProps) {
         >
           <Input
             value={value}
-            onChange={(e) => onValueChange(slugifyTmuxName(e.target.value))}
+            onChange={(e) => onValueChange(e.target.value)}
             autoFocus
           />
           <DialogFooter className="mt-4">

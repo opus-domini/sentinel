@@ -1141,7 +1141,12 @@ func TestCreateSessionHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"test-session"}`))
 		h.createSession(w, r)
@@ -1266,7 +1271,12 @@ func TestDeleteSessionHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
 		r.SetPathValue("session", "dev")
@@ -1317,7 +1327,12 @@ func TestRenameSessionHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%3"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "old")
@@ -1494,7 +1509,12 @@ func TestRenamePaneHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%5","title":"logs"}`))
 		r.SetPathValue("session", "dev")
@@ -1565,6 +1585,9 @@ func TestRenamePaneHandler(t *testing.T) {
 		t.Parallel()
 
 		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
+			},
 			renamePaneFn: func(_ context.Context, _, _ string) error {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
@@ -1842,6 +1865,62 @@ func TestListWindowsHandlerProjectedFromWatchtower(t *testing.T) {
 	}
 }
 
+func TestListWindowsHandlerPrefersLiveTmuxOverStaleProjection(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	tm := &mockTmux{
+		listWindowsFn: func(_ context.Context, _ string) ([]tmux.Window, error) {
+			return []tmux.Window{
+				{Session: "dev", Index: 0, Name: "live-main", Active: true, Panes: 1},
+			}, nil
+		},
+	}
+	h, st := newTestHandler(t, tm, nil)
+
+	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName: "dev",
+		Windows:     2,
+		Panes:       2,
+		ActivityAt:  now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+	for index, name := range []string{"stale-main", "stale-logs"} {
+		if err := st.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
+			SessionName:      "dev",
+			WindowIndex:      index,
+			Name:             name,
+			Active:           index == 0,
+			WindowActivityAt: now,
+			UpdatedAt:        now,
+		}); err != nil {
+			t.Fatalf("UpsertWatchtowerWindow(%d): %v", index, err)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/windows", nil)
+	r.SetPathValue("session", "dev")
+	h.listWindows(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	windows, _ := data["windows"].([]any)
+	if len(windows) != 1 {
+		t.Fatalf("windows len = %d, want 1", len(windows))
+	}
+	first := windows[0].(map[string]any)
+	if first["name"] != "live-main" {
+		t.Fatalf("window name = %v, want live-main", first["name"])
+	}
+}
+
 func TestListPanesHandler(t *testing.T) {
 	t.Parallel()
 
@@ -1972,6 +2051,77 @@ func TestListPanesHandlerProjectedFromWatchtower(t *testing.T) {
 	}
 }
 
+func TestListPanesHandlerPrefersLiveTmuxOverStaleProjection(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	tm := &mockTmux{
+		listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+			return []tmux.Pane{
+				{
+					Session:        "dev",
+					WindowIndex:    0,
+					PaneIndex:      0,
+					PaneID:         "%9",
+					Title:          "live-shell",
+					Active:         true,
+					TTY:            "pts/9",
+					CurrentPath:    "/work",
+					StartCommand:   "bash",
+					CurrentCommand: "vim",
+				},
+			}, nil
+		},
+	}
+	h, st := newTestHandler(t, tm, nil)
+
+	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName: "dev",
+		Windows:     1,
+		Panes:       1,
+		ActivityAt:  now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+	if err := st.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
+		PaneID:         "%8",
+		SessionName:    "dev",
+		WindowIndex:    0,
+		PaneIndex:      0,
+		Title:          "stale-shell",
+		Active:         true,
+		TailCapturedAt: now,
+		ChangedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/panes", nil)
+	r.SetPathValue("session", "dev")
+	h.listPanes(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	panes, _ := data["panes"].([]any)
+	if len(panes) != 1 {
+		t.Fatalf("panes len = %d, want 1", len(panes))
+	}
+	first := panes[0].(map[string]any)
+	if first["paneId"] != "%9" {
+		t.Fatalf("paneId = %v, want %%9", first["paneId"])
+	}
+	if first["title"] != "live-shell" {
+		t.Fatalf("title = %v, want live-shell", first["title"])
+	}
+}
+
 func TestSelectWindowHandler(t *testing.T) {
 	t.Parallel()
 
@@ -2057,7 +2207,12 @@ func TestSelectPaneHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%5"}`))
 		r.SetPathValue("session", "dev")
@@ -2104,6 +2259,9 @@ func TestSelectPaneHandler(t *testing.T) {
 		t.Parallel()
 
 		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%99"}}, nil
+			},
 			selectPaneFn: func(_ context.Context, _ string) error {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
@@ -2341,7 +2499,12 @@ func TestKillPaneHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%3"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%3"}`))
 		r.SetPathValue("session", "dev")
@@ -2384,6 +2547,9 @@ func TestKillPaneHandler(t *testing.T) {
 		t.Parallel()
 
 		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%99"}}, nil
+			},
 			killPaneFn: func(_ context.Context, _ string) error {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
@@ -2406,7 +2572,12 @@ func TestSplitPaneHandler(t *testing.T) {
 	t.Run("success vertical", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
@@ -2420,7 +2591,12 @@ func TestSplitPaneHandler(t *testing.T) {
 	t.Run("success horizontal", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"horizontal"}`))
 		r.SetPathValue("session", "dev")
@@ -2436,6 +2612,9 @@ func TestSplitPaneHandler(t *testing.T) {
 
 		renamedPane := ""
 		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
+			},
 			splitPaneFn: func(_ context.Context, _, _ string) (string, error) {
 				return "%77", nil
 			},
@@ -2505,6 +2684,9 @@ func TestSplitPaneHandler(t *testing.T) {
 		t.Parallel()
 
 		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
+			},
 			splitPaneFn: func(_ context.Context, _, _ string) (string, error) {
 				return "", &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
@@ -2519,6 +2701,78 @@ func TestSplitPaneHandler(t *testing.T) {
 			t.Errorf("status = %d, want 500", w.Code)
 		}
 	})
+}
+
+func TestPaneScopedHandlersRejectPaneOutsideSession(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		run  func(h *Handler) *httptest.ResponseRecorder
+	}{
+		{
+			name: "select-pane",
+			run: func(h *Handler) *httptest.ResponseRecorder {
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%9"}`))
+				r.SetPathValue("session", "dev")
+				h.selectPane(w, r)
+				return w
+			},
+		},
+		{
+			name: "rename-pane",
+			run: func(h *Handler) *httptest.ResponseRecorder {
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%9","title":"logs"}`))
+				r.SetPathValue("session", "dev")
+				h.renamePane(w, r)
+				return w
+			},
+		},
+		{
+			name: "kill-pane",
+			run: func(h *Handler) *httptest.ResponseRecorder {
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%9"}`))
+				r.SetPathValue("session", "dev")
+				h.killPane(w, r)
+				return w
+			},
+		},
+		{
+			name: "split-pane",
+			run: func(h *Handler) *httptest.ResponseRecorder {
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%9","direction":"vertical"}`))
+				r.SetPathValue("session", "dev")
+				h.splitPane(w, r)
+				return w
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tm := &mockTmux{
+				listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+					return []tmux.Pane{{Session: "dev", PaneID: "%1"}}, nil
+				},
+			}
+			h, _ := newTestHandler(t, tm, nil)
+			w := tc.run(h)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", w.Code)
+			}
+			body := jsonBody(t, w)
+			if errCode(body) != invalidRequestCode {
+				t.Fatalf("code = %q, want %s", errCode(body), invalidRequestCode)
+			}
+		})
+	}
 }
 
 func TestActivityDeltaHandlerOverflow(t *testing.T) {

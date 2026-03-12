@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { slugifyTmuxName } from './tmuxName'
+import {
+  sanitizeTmuxPaneTitle,
+  sanitizeTmuxWindowName,
+  slugifyTmuxName,
+} from './tmuxName'
 
 describe('slugifyTmuxName', () => {
   it('passes through valid names unchanged', () => {
@@ -39,5 +43,26 @@ describe('slugifyTmuxName', () => {
 
   it('handles mixed valid and invalid with spaces', () => {
     expect(slugifyTmuxName('My Session (2)')).toBe('My-Session-2')
+  })
+})
+
+describe('sanitizeTmuxWindowName', () => {
+  it('preserves spaces that backend accepts', () => {
+    expect(sanitizeTmuxWindowName('logs prod')).toBe('logs prod')
+  })
+
+  it('drops disallowed characters but keeps valid punctuation', () => {
+    expect(sanitizeTmuxWindowName('web@prod (1).ok')).toBe('webprod 1.ok')
+  })
+})
+
+describe('sanitizeTmuxPaneTitle', () => {
+  it('preserves broad pane titles', () => {
+    expect(sanitizeTmuxPaneTitle('deploy prod #1')).toBe('deploy prod #1')
+    expect(sanitizeTmuxPaneTitle('λ pane title')).toBe('λ pane title')
+  })
+
+  it('caps pane titles at 128 chars', () => {
+    expect(sanitizeTmuxPaneTitle('a'.repeat(140))).toBe('a'.repeat(128))
   })
 })

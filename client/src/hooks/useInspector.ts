@@ -32,7 +32,7 @@ import {
   tmuxInspectorQueryKey,
 } from '@/lib/tmuxQueryCache'
 import { shouldSkipInspectorRefresh } from '@/lib/tmuxInspectorRefresh'
-import { slugifyTmuxName } from '@/lib/tmuxName'
+import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName } from '@/lib/tmuxName'
 import {
   addPendingPaneClose,
   addPendingWindowClose,
@@ -60,7 +60,6 @@ type UseInspectorOptions = {
   setTmuxUnavailable: (unavailable: boolean) => void
   setSessions: React.Dispatch<React.SetStateAction<Array<Session>>>
   refreshSessions: () => Promise<void>
-  eventsSocketConnectedRef: React.MutableRefObject<boolean>
   pushErrorToast: (title: string, message: string) => void
   pushSuccessToast: (title: string, message: string) => void
   setConnection: (state: ConnectionState, detail: string) => void
@@ -81,7 +80,6 @@ export function useInspector(options: UseInspectorOptions) {
     setTmuxUnavailable,
     setSessions,
     refreshSessions,
-    eventsSocketConnectedRef,
     pushErrorToast,
     pushSuccessToast,
     setConnection,
@@ -97,6 +95,7 @@ export function useInspector(options: UseInspectorOptions) {
   const pendingWindowPaneFloorsRef = useRef(
     new Map<string, Map<number, number>>(),
   )
+  const pendingSelectMutationKindRef = useRef<'window' | 'pane' | null>(null)
 
   const [windows, setWindows] = useState<Array<WindowInfo>>(() => {
     const active = activeSession.trim()
@@ -125,12 +124,16 @@ export function useInspector(options: UseInspectorOptions) {
   const [inspectorLoading, setInspectorLoading] = useState(false)
   const [inspectorError, setInspectorError] = useState('')
   const [renameWindowDialogOpen, setRenameWindowDialogOpen] = useState(false)
-  const [renameWindowIndex, setRenameWindowIndex] = useState<number | null>(
-    null,
-  )
+  const [renameWindowTarget, setRenameWindowTarget] = useState<{
+    session: string
+    index: number
+  } | null>(null)
   const [renameWindowValue, setRenameWindowValue] = useState('')
   const [renamePaneDialogOpen, setRenamePaneDialogOpen] = useState(false)
-  const [renamePaneID, setRenamePaneID] = useState<string | null>(null)
+  const [renamePaneTarget, setRenamePaneTarget] = useState<{
+    session: string
+    paneID: string
+  } | null>(null)
   const [renamePaneValue, setRenamePaneValue] = useState('')
 
   const windowsRef = useRef<Array<WindowInfo>>([])
@@ -177,6 +180,12 @@ export function useInspector(options: UseInspectorOptions) {
   // Restore from cache on session switch
   useEffect(() => {
     const active = activeSession.trim()
+    setRenameWindowDialogOpen(false)
+    setRenameWindowTarget(null)
+    setRenameWindowValue('')
+    setRenamePaneDialogOpen(false)
+    setRenamePaneTarget(null)
+    setRenamePaneValue('')
     if (active === '') {
       setActiveWindowIndexOverride(null)
       setActivePaneIDOverride(null)
@@ -582,21 +591,28 @@ export function useInspector(options: UseInspectorOptions) {
         const fetchedActivePane =
           merged.panes.find((paneInfo) => paneInfo.active)?.paneId ?? null
 
-        // Keep overrides only while a mutation is in-flight AND the server
-        // hasn't confirmed the window switch yet.  The window override is the
-        // single source of truth — once the server reports the expected active
-        // window (or the overridden window disappears), clear everything.
-        const keepOverrides =
+        const keepWindowOverride =
           windowOverride !== null &&
           selectInFlightRef.current > 0 &&
           fetchedActiveWindow !== windowOverride &&
           merged.windows.some(
             (windowInfo) => windowInfo.index === windowOverride,
           )
+        const keepPaneOverride =
+          pendingSelectMutationKindRef.current === 'pane' &&
+          paneOverride !== null &&
+          selectInFlightRef.current > 0 &&
+          fetchedActivePane !== paneOverride &&
+          merged.panes.some((paneInfo) => paneInfo.paneId === paneOverride)
 
-        if (!keepOverrides) {
+        if (!keepWindowOverride) {
           setActiveWindowIndexOverride(null)
+        }
+        if (!keepPaneOverride) {
           setActivePaneIDOverride(null)
+        }
+        if (!keepWindowOverride && !keepPaneOverride) {
+          pendingSelectMutationKindRef.current = null
           if (selectInFlightRef.current > 0) {
             selectInFlightRef.current = 0
           }
@@ -652,6 +668,7 @@ export function useInspector(options: UseInspectorOptions) {
         inspectorLoadingRef.current = false
         setInspectorLoading(false)
       }
+      pendingSelectMutationKindRef.current = 'window'
       selectInFlightRef.current += 1
       setActiveWindowIndexOverride(windowIndex)
       const preferredPaneID =
@@ -679,6 +696,7 @@ export function useInspector(options: UseInspectorOptions) {
         })
         .catch((error) => {
           if (selectInFlightRef.current === gen) selectInFlightRef.current = 0
+          pendingSelectMutationKindRef.current = null
           const msg =
             error instanceof Error ? error.message : 'failed to switch window'
           setInspectorError(msg)
@@ -704,6 +722,7 @@ export function useInspector(options: UseInspectorOptions) {
         inspectorLoadingRef.current = false
         setInspectorLoading(false)
       }
+      pendingSelectMutationKindRef.current = 'pane'
       selectInFlightRef.current += 1
       setActivePaneIDOverride(paneID)
       if (paneInfo) setActiveWindowIndexOverride(paneInfo.windowIndex)
@@ -724,6 +743,7 @@ export function useInspector(options: UseInspectorOptions) {
         })
         .catch((error) => {
           if (selectInFlightRef.current === gen) selectInFlightRef.current = 0
+          pendingSelectMutationKindRef.current = null
           const msg =
             error instanceof Error ? error.message : 'failed to switch pane'
           setInspectorError(msg)
@@ -741,12 +761,14 @@ export function useInspector(options: UseInspectorOptions) {
     if (!active) return
     const changedAt = new Date().toISOString()
     const nextIdx = windows.reduce((h, w) => Math.max(h, w.index), -1) + 1
+    const pendingPaneID = buildPendingSplitPaneID(active, nextIdx, 0)
     removePendingWindowClose(pendingCloseWindowsRef.current, active, nextIdx)
     addPendingWindowCreate(pendingCreateWindowsRef.current, active, nextIdx)
-    clearPendingWindowPaneFloor(
+    setPendingWindowPaneFloor(
       pendingWindowPaneFloorsRef.current,
       active,
       nextIdx,
+      1,
     )
     setInspectorError('')
     setSessions((prev) =>
@@ -767,18 +789,30 @@ export function useInspector(options: UseInspectorOptions) {
         .map((w) => ({ ...w, active: false })),
       { session: active, index: nextIdx, name: 'new', active: true, panes: 1 },
     ])
-    setPanes((prev) => prev.map((p) => ({ ...p, active: false })))
+    setPanes((prev) => [
+      ...prev
+        .filter((paneInfo) => paneInfo.paneId !== pendingPaneID)
+        .map((p) => ({ ...p, active: false })),
+      {
+        session: active,
+        windowIndex: nextIdx,
+        paneIndex: 0,
+        paneId: pendingPaneID,
+        title: 'new',
+        active: true,
+        tty: '',
+        hasUnread: false,
+      },
+    ])
     setActiveWindowIndexOverride(nextIdx)
-    setActivePaneIDOverride(null)
+    setActivePaneIDOverride(pendingPaneID)
     void api<void>(
       `/api/tmux/sessions/${encodeURIComponent(active)}/new-window`,
       { method: 'POST', body: '{}' },
     )
       .then(() => {
-        if (!eventsSocketConnectedRef.current) {
-          void refreshInspector(active, { background: true })
-          void refreshSessions()
-        }
+        void refreshInspector(active, { background: true })
+        void refreshSessions()
       })
       .catch((error) => {
         removePendingWindowCreate(
@@ -828,7 +862,6 @@ export function useInspector(options: UseInspectorOptions) {
       })
   }, [
     api,
-    eventsSocketConnectedRef,
     pushErrorToast,
     refreshInspector,
     refreshSessions,
@@ -905,10 +938,8 @@ export function useInspector(options: UseInspectorOptions) {
         { method: 'POST', body: JSON.stringify({ index: windowIndex }) },
       )
         .then(() => {
-          if (!eventsSocketConnectedRef.current) {
-            void refreshInspector(active, { background: true })
-            void refreshSessions()
-          }
+          void refreshInspector(active, { background: true })
+          void refreshSessions()
         })
         .catch((error) => {
           removePendingWindowClose(
@@ -959,7 +990,6 @@ export function useInspector(options: UseInspectorOptions) {
     },
     [
       api,
-      eventsSocketConnectedRef,
       panes,
       pushErrorToast,
       refreshInspector,
@@ -1068,10 +1098,8 @@ export function useInspector(options: UseInspectorOptions) {
         { method: 'POST', body: JSON.stringify({ paneId: paneID }) },
       )
         .then(() => {
-          if (!eventsSocketConnectedRef.current) {
-            void refreshInspector(active, { background: true })
-            void refreshSessions()
-          }
+          void refreshInspector(active, { background: true })
+          void refreshSessions()
         })
         .catch((error) => {
           removePendingPaneClose(pendingClosePanesRef.current, active, paneID)
@@ -1125,7 +1153,6 @@ export function useInspector(options: UseInspectorOptions) {
     },
     [
       api,
-      eventsSocketConnectedRef,
       panes,
       pushErrorToast,
       refreshInspector,
@@ -1238,9 +1265,8 @@ export function useInspector(options: UseInspectorOptions) {
         },
       )
         .then(() => {
-          if (!eventsSocketConnectedRef.current) {
-            void refreshInspector(active, { background: true })
-          }
+          void refreshInspector(active, { background: true })
+          void refreshSessions()
         })
         .catch((error) => {
           clearPendingWindowPaneFloor(
@@ -1267,6 +1293,7 @@ export function useInspector(options: UseInspectorOptions) {
                 )
                   .then(() => {
                     void refreshInspector(active, { background: true })
+                    void refreshSessions()
                   })
                   .catch((retryError) => {
                     const retryMsg =
@@ -1275,10 +1302,12 @@ export function useInspector(options: UseInspectorOptions) {
                         : 'failed to split pane'
                     pushErrorToast('Split Pane', retryMsg)
                     void refreshInspector(active, { background: true })
+                    void refreshSessions()
                   })
               },
             )
             void refreshInspector(active, { background: true })
+            void refreshSessions()
             return
           }
           const msg =
@@ -1286,14 +1315,15 @@ export function useInspector(options: UseInspectorOptions) {
           setInspectorError(msg)
           pushErrorToast('Split Pane', msg)
           void refreshInspector(active, { background: true })
+          void refreshSessions()
         })
     },
     [
       api,
-      eventsSocketConnectedRef,
       panes,
       pushErrorToast,
       refreshInspector,
+      refreshSessions,
       requestGuardrailConfirm,
       setSessions,
       tabsStateRef,
@@ -1302,14 +1332,14 @@ export function useInspector(options: UseInspectorOptions) {
   )
 
   const renameWindow = useCallback(
-    async (index: number, newName: string) => {
-      const active = tabsStateRef.current.activeSession
+    async (session: string, index: number, newName: string) => {
+      const active = session.trim()
       if (!active) {
         setConnection('error', 'no active session')
         pushErrorToast('Rename Window', 'no active session')
         return
       }
-      const sanitized = slugifyTmuxName(newName).trim()
+      const sanitized = sanitizeTmuxWindowName(newName).trim()
       if (!sanitized) {
         pushErrorToast('Rename Window', 'window name required')
         return
@@ -1326,6 +1356,7 @@ export function useInspector(options: UseInspectorOptions) {
           },
         )
         pushSuccessToast('Rename Window', `window #${index} -> "${sanitized}"`)
+        void refreshInspector(active, { background: true })
       } catch (error) {
         const msg =
           error instanceof Error ? error.message : 'failed to rename window'
@@ -1345,22 +1376,25 @@ export function useInspector(options: UseInspectorOptions) {
   )
 
   const handleOpenRenameWindow = useCallback((windowInfo: WindowInfo) => {
-    setRenameWindowIndex(windowInfo.index)
-    setRenameWindowValue(slugifyTmuxName(windowInfo.name))
+    setRenameWindowTarget({
+      session: windowInfo.session,
+      index: windowInfo.index,
+    })
+    setRenameWindowValue(sanitizeTmuxWindowName(windowInfo.name))
     setRenameWindowDialogOpen(true)
   }, [])
 
   const handleSubmitRenameWindow = useCallback(() => {
-    const index = renameWindowIndex
-    if (index === null) return
+    const target = renameWindowTarget
+    if (target === null) return
     setRenameWindowDialogOpen(false)
-    setRenameWindowIndex(null)
-    void renameWindow(index, renameWindowValue)
-  }, [renameWindow, renameWindowIndex, renameWindowValue])
+    setRenameWindowTarget(null)
+    void renameWindow(target.session, target.index, renameWindowValue)
+  }, [renameWindow, renameWindowTarget, renameWindowValue])
 
   const renamePane = useCallback(
-    async (paneID: string, title: string) => {
-      const active = tabsStateRef.current.activeSession
+    async (session: string, paneID: string, title: string) => {
+      const active = session.trim()
       if (!active) {
         setConnection('error', 'no active session')
         pushErrorToast('Rename Pane', 'no active session')
@@ -1370,7 +1404,7 @@ export function useInspector(options: UseInspectorOptions) {
         pushErrorToast('Rename Pane', 'wait for pane creation to finish')
         return
       }
-      const sanitized = slugifyTmuxName(title).trim()
+      const sanitized = sanitizeTmuxPaneTitle(title).trim()
       if (!sanitized) {
         pushErrorToast('Rename Pane', 'pane title required')
         return
@@ -1387,6 +1421,7 @@ export function useInspector(options: UseInspectorOptions) {
           },
         )
         pushSuccessToast('Rename Pane', `pane ${paneID} renamed`)
+        void refreshInspector(active, { background: true })
       } catch (error) {
         const msg =
           error instanceof Error ? error.message : 'failed to rename pane'
@@ -1408,18 +1443,21 @@ export function useInspector(options: UseInspectorOptions) {
   const handleOpenRenamePane = useCallback((paneInfo: PaneInfo) => {
     const initialTitle =
       paneInfo.title.trim() !== '' ? paneInfo.title : paneInfo.paneId
-    setRenamePaneID(paneInfo.paneId)
-    setRenamePaneValue(slugifyTmuxName(initialTitle))
+    setRenamePaneTarget({
+      session: paneInfo.session,
+      paneID: paneInfo.paneId,
+    })
+    setRenamePaneValue(sanitizeTmuxPaneTitle(initialTitle))
     setRenamePaneDialogOpen(true)
   }, [])
 
   const handleSubmitRenamePane = useCallback(() => {
-    const paneID = renamePaneID
-    if (paneID === null) return
+    const target = renamePaneTarget
+    if (target === null) return
     setRenamePaneDialogOpen(false)
-    setRenamePaneID(null)
-    void renamePane(paneID, renamePaneValue)
-  }, [renamePane, renamePaneID, renamePaneValue])
+    setRenamePaneTarget(null)
+    void renamePane(target.session, target.paneID, renamePaneValue)
+  }, [renamePane, renamePaneTarget, renamePaneValue])
 
   return {
     // State
@@ -1448,10 +1486,10 @@ export function useInspector(options: UseInspectorOptions) {
     handleOpenRenamePane,
     handleSubmitRenamePane,
     setRenameWindowDialogOpen,
-    setRenameWindowIndex,
+    setRenameWindowTarget,
     setRenameWindowValue,
     setRenamePaneDialogOpen,
-    setRenamePaneID,
+    setRenamePaneTarget,
     setRenamePaneValue,
     setWindows,
     setPanes,

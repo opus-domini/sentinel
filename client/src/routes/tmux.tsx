@@ -31,6 +31,11 @@ import { useInspector } from '@/hooks/useInspector'
 import { useSessionCRUD } from '@/hooks/useSessionCRUD'
 import { useTmuxEventsSocket } from '@/hooks/useTmuxEventsSocket'
 import { TMUX_SESSIONS_QUERY_KEY } from '@/lib/tmuxQueryCache'
+import {
+  sanitizeTmuxPaneTitle,
+  sanitizeTmuxWindowName,
+  slugifyTmuxName,
+} from '@/lib/tmuxName'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
 function TmuxPage() {
@@ -172,7 +177,6 @@ function TmuxPage() {
     refreshSessions: async () => {
       await refreshSessionsRef.current()
     },
-    eventsSocketConnectedRef,
     pushErrorToast,
     pushSuccessToast,
     setConnection,
@@ -447,7 +451,9 @@ function TmuxPage() {
         title="Rename session"
         description="Enter a new name for the active session."
         value={sessionCRUD.renameValue}
-        onValueChange={sessionCRUD.setRenameValue}
+        onValueChange={(value) =>
+          sessionCRUD.setRenameValue(slugifyTmuxName(value))
+        }
         onSubmit={sessionCRUD.handleSubmitRename}
         onClose={() => sessionCRUD.setRenameSessionTarget(null)}
       />
@@ -458,9 +464,11 @@ function TmuxPage() {
         title="Rename window"
         description="Enter a new name for this tmux window."
         value={inspector.renameWindowValue}
-        onValueChange={inspector.setRenameWindowValue}
+        onValueChange={(value) =>
+          inspector.setRenameWindowValue(sanitizeTmuxWindowName(value))
+        }
         onSubmit={inspector.handleSubmitRenameWindow}
-        onClose={() => inspector.setRenameWindowIndex(null)}
+        onClose={() => inspector.setRenameWindowTarget(null)}
       />
 
       <RenameDialog
@@ -469,9 +477,11 @@ function TmuxPage() {
         title="Rename pane"
         description="Enter a new title for this tmux pane."
         value={inspector.renamePaneValue}
-        onValueChange={inspector.setRenamePaneValue}
+        onValueChange={(value) =>
+          inspector.setRenamePaneValue(sanitizeTmuxPaneTitle(value))
+        }
         onSubmit={inspector.handleSubmitRenamePane}
-        onClose={() => inspector.setRenamePaneID(null)}
+        onClose={() => inspector.setRenamePaneTarget(null)}
       />
     </AppShell>
   )

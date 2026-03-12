@@ -411,6 +411,12 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
               if (target !== '' && target === active) {
                 schedule('inspector')
               }
+              if (hasEventGap) {
+                schedule('sessions')
+                if (active.trim() !== '') {
+                  schedule('inspector')
+                }
+              }
               break
             }
             case 'tmux.timeline.updated': {
