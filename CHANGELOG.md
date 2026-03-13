@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.7](https://github.com/opus-domini/sentinel/compare/v0.5.6...v0.5.7) (2026-03-13)
+
+
+### Bug Fixes
+
+* **security:** honor X-Forwarded-Proto in CORS origin check ([4263e28](https://github.com/opus-domini/sentinel/commit/4263e280c47c52314dc5721ef7fa13aec147bee4))
+
 ## [0.5.6](https://github.com/opus-domini/sentinel/compare/v0.5.5...v0.5.6) (2026-03-13)
 
 
