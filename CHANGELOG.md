@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.6](https://github.com/opus-domini/sentinel/compare/v0.5.5...v0.5.6) (2026-03-13)
+
+
+### Features
+
+* **ux:** improve mobile UX and add hostname to page title ([32fd35a](https://github.com/opus-domini/sentinel/commit/32fd35ac3b02bf5754c3a8ebafd0e73e024b4495))
+
 ## [0.5.5](https://github.com/opus-domini/sentinel/compare/v0.5.4...v0.5.5) (2026-03-12)
 
 
