@@ -2,18 +2,17 @@ import { defineConfig } from 'vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import viteTsConfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
   base: '/assets/',
   plugins: [
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
-    viteTsConfigPaths({
-      projects: ['./tsconfig.json'],
-    }),
     tailwindcss(),
     viteReact(),
   ],
+  resolve: {
+    tsconfigPaths: true,
+  },
   define: {
     'process.env.NODE_ENV': JSON.stringify(
       process.env.NODE_ENV ?? 'production',
