@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.8](https://github.com/opus-domini/sentinel/compare/v0.5.7...v0.5.8) (2026-03-22)
+
+
+### Bug Fixes
+
+* **ux:** increase PTY read buffer to reduce terminal flickering ([4536151](https://github.com/opus-domini/sentinel/commit/45361512935da00af1229e8d34728956bb9fb9ab))
+
 ## [0.5.7](https://github.com/opus-domini/sentinel/compare/v0.5.6...v0.5.7) (2026-03-13)
 
 
