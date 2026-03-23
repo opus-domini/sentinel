@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.9](https://github.com/opus-domini/sentinel/compare/v0.5.8...v0.5.9) (2026-03-23)
+
+
+### Bug Fixes
+
+* **ux:** resolve tmux window sync desync and add clickable resync badge ([0e816b9](https://github.com/opus-domini/sentinel/commit/0e816b938ce5692db7ade42ed80502d4329d0fcf))
+
 ## [0.5.8](https://github.com/opus-domini/sentinel/compare/v0.5.7...v0.5.8) (2026-03-22)
 
 
