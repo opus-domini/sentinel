@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.10](https://github.com/opus-domini/sentinel/compare/v0.5.9...v0.5.10) (2026-03-25)
+
+
+### Bug Fixes
+
+* support shift in mobile tmux helper ([78fb660](https://github.com/opus-domini/sentinel/commit/78fb660a504f0b7438f1e2621a3f43591068c066))
+
 ## [0.5.9](https://github.com/opus-domini/sentinel/compare/v0.5.8...v0.5.9) (2026-03-23)
 
 
