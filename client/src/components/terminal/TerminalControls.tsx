@@ -10,6 +10,11 @@ import { hapticFeedback } from '@/lib/device'
 type ModifierState = 'off' | 'sticky' | 'locked'
 
 type CsiDef = { type: 'letter'; letter: string } | { type: 'tilde'; n: number }
+type ActiveModifiers = {
+  ctrl: boolean
+  alt: boolean
+  shift: boolean
+}
 
 type TerminalControlsProps = {
   onSendKey: (key: string) => void
@@ -63,12 +68,44 @@ function ctrlCode(ch: string): string | null {
   }
 }
 
-function buildCsi(def: CsiDef, ctrl: boolean, alt: boolean): string {
-  const mod = 1 + (alt ? 2 : 0) + (ctrl ? 4 : 0)
+function buildCsi(def: CsiDef, modifiers: ActiveModifiers): string {
+  const mod =
+    1 +
+    (modifiers.shift ? 1 : 0) +
+    (modifiers.alt ? 2 : 0) +
+    (modifiers.ctrl ? 4 : 0)
   if (def.type === 'letter') {
     return mod === 1 ? `\x1b[${def.letter}` : `\x1b[1;${mod}${def.letter}`
   }
   return mod === 1 ? `\x1b[${def.n}~` : `\x1b[${def.n};${mod}~`
+}
+
+function applySequenceModifiers(
+  sequence: string,
+  modifiers: ActiveModifiers,
+): string {
+  if (sequence === '\t' && modifiers.shift) {
+    const reverseTab = '\x1b[Z'
+    return modifiers.alt ? '\x1b' + reverseTab : reverseTab
+  }
+
+  if (sequence.length !== 1) {
+    return sequence
+  }
+
+  let next = sequence
+  if (modifiers.shift && /^[a-z]$/.test(next)) {
+    next = next.toUpperCase()
+  }
+  if (modifiers.ctrl) {
+    const mapped = ctrlCode(next)
+    if (mapped) next = mapped
+  }
+  if (modifiers.alt) {
+    next = '\x1b' + next
+  }
+
+  return next
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +121,7 @@ type ExtraKeyProps = {
   disabled?: boolean
   ctrlRef: React.RefObject<ModifierState>
   altRef: React.RefObject<ModifierState>
+  shiftRef: React.RefObject<ModifierState>
   onSend: (seq: string) => void
   onFlushComposition?: () => void
   onConsume: () => void
@@ -99,6 +137,7 @@ function ExtraKey({
   disabled,
   ctrlRef,
   altRef,
+  shiftRef,
   onSend,
   onFlushComposition,
   onConsume,
@@ -113,28 +152,33 @@ function ExtraKey({
     // to the PTY before this key sequence.
     onFlushComposition?.()
 
-    const ctrl = ctrlRef.current !== 'off'
-    const alt = altRef.current !== 'off'
+    const modifiers: ActiveModifiers = {
+      ctrl: ctrlRef.current !== 'off',
+      alt: altRef.current !== 'off',
+      shift: shiftRef.current !== 'off',
+    }
 
     let seq: string
     if (csi) {
-      seq = buildCsi(csi, ctrl, alt)
+      seq = buildCsi(csi, modifiers)
     } else {
-      seq = sequence ?? ''
-      if (seq.length === 1) {
-        if (ctrl) {
-          const mapped = ctrlCode(seq)
-          if (mapped) seq = mapped
-        }
-        if (alt) seq = '\x1b' + seq
-      }
+      seq = applySequenceModifiers(sequence ?? '', modifiers)
     }
 
     if (seq) {
       onSend(seq)
       onConsume()
     }
-  }, [csi, sequence, ctrlRef, altRef, onSend, onFlushComposition, onConsume])
+  }, [
+    csi,
+    sequence,
+    ctrlRef,
+    altRef,
+    shiftRef,
+    onSend,
+    onFlushComposition,
+    onConsume,
+  ])
 
   const clearTimers = useCallback(() => {
     if (longTimer.current !== null) {
@@ -189,7 +233,7 @@ function ExtraKey({
 }
 
 // ---------------------------------------------------------------------------
-// ModifierKey — Ctrl / Alt with sticky (tap) and locked (long-press)
+// ModifierKey — modifiers with sticky (tap) and locked (long-press)
 // ---------------------------------------------------------------------------
 
 type ModifierKeyProps = {
@@ -286,8 +330,10 @@ export default function TerminalControls({
   // -- Modifier state (ref + state kept in sync) --
   const [ctrlState, setCtrlState] = useState<ModifierState>('off')
   const [altState, setAltState] = useState<ModifierState>('off')
+  const [shiftState, setShiftState] = useState<ModifierState>('off')
   const ctrlRef = useRef<ModifierState>('off')
   const altRef = useRef<ModifierState>('off')
+  const shiftRef = useRef<ModifierState>('off')
   const controlsRef = useRef<HTMLDivElement>(null)
 
   const setCtrl = useCallback((s: ModifierState) => {
@@ -298,11 +344,16 @@ export default function TerminalControls({
     altRef.current = s
     setAltState(s)
   }, [])
+  const setShift = useCallback((s: ModifierState) => {
+    shiftRef.current = s
+    setShiftState(s)
+  }, [])
 
   const consumeModifiers = useCallback(() => {
     if (ctrlRef.current === 'sticky') setCtrl('off')
     if (altRef.current === 'sticky') setAlt('off')
-  }, [setCtrl, setAlt])
+    if (shiftRef.current === 'sticky') setShift('off')
+  }, [setCtrl, setAlt, setShift])
 
   const ctrlTap = useCallback(
     () => setCtrl(ctrlRef.current === 'off' ? 'sticky' : 'off'),
@@ -314,6 +365,11 @@ export default function TerminalControls({
     [setAlt],
   )
   const altLock = useCallback(() => setAlt('locked'), [setAlt])
+  const shiftTap = useCallback(
+    () => setShift(shiftRef.current === 'off' ? 'sticky' : 'off'),
+    [setShift],
+  )
+  const shiftLock = useCallback(() => setShift('locked'), [setShift])
 
   // -- Prevent focus steal so tapping keys doesn't blur the terminal --
   useEffect(() => {
@@ -333,21 +389,17 @@ export default function TerminalControls({
     }
   }, [disabled])
 
-  // -- Global key interception for Ctrl / Alt modifiers --
+  // -- Global key interception for helper-owned modifiers --
   useEffect(() => {
     const consume = (ch: string): boolean => {
-      const ctrl = ctrlRef.current !== 'off'
-      const alt = altRef.current !== 'off'
-      if (!ctrl && !alt) return false
-
-      let seq: string
-      if (ctrl) {
-        const mapped = ctrlCode(ch)
-        seq = mapped ?? ch
-        if (alt) seq = '\x1b' + seq
-      } else {
-        seq = '\x1b' + ch
+      const modifiers: ActiveModifiers = {
+        ctrl: ctrlRef.current !== 'off',
+        alt: altRef.current !== 'off',
+        shift: shiftRef.current !== 'off',
       }
+      if (!modifiers.ctrl && !modifiers.alt && !modifiers.shift) return false
+
+      const seq = applySequenceModifiers(ch, modifiers)
 
       onSendKey(seq)
       consumeModifiers()
@@ -405,6 +457,7 @@ export default function TerminalControls({
     disabled,
     ctrlRef,
     altRef,
+    shiftRef,
     onSend: onSendKey,
     onFlushComposition,
     onConsume: consumeModifiers,
@@ -420,6 +473,15 @@ export default function TerminalControls({
       <div className="flex">
         <ExtraKey label="ESC" ariaLabel="Escape" sequence={'\x1b'} {...k} />
         <ExtraKey label="TAB" ariaLabel="Tab" sequence={'\t'} {...k} />
+        <ModifierKey
+          label="SHIFT"
+          ariaLabel="Shift modifier — tap: sticky, hold: lock"
+          state={shiftState}
+          disabled={disabled}
+          onTap={shiftTap}
+          onLongPress={shiftLock}
+          onRefocus={onRefocus}
+        />
         <ModifierKey
           label="CTRL"
           ariaLabel="Ctrl modifier — tap: sticky, hold: lock"
