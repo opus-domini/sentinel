@@ -52,7 +52,7 @@
     "jsdom": "^29.0.1",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.51.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "vite": "^8.0.1",
     "vitest": "^4.0.18",
     "web-vitals": "^5.1.0"
