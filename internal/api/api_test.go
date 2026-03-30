@@ -1017,6 +1017,52 @@ func TestListSessionsHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("orders sessions by persisted sort order", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now().UTC().Truncate(time.Second)
+		tm := &mockTmux{
+			listSessionsFn: func(_ context.Context) ([]tmux.Session, error) {
+				return []tmux.Session{
+					{Name: "web", Windows: 1, Attached: 0, CreatedAt: now, ActivityAt: now},
+					{Name: "api", Windows: 1, Attached: 0, CreatedAt: now, ActivityAt: now},
+				}, nil
+			},
+			listActivePaneCommandsFn: func(_ context.Context) (map[string]tmux.PaneSnapshot, error) {
+				return map[string]tmux.PaneSnapshot{}, nil
+			},
+		}
+		h, st := newTestHandler(t, tm, nil)
+
+		if err := st.UpsertSession(context.Background(), "api", "hash-api", "ready"); err != nil {
+			t.Fatalf("UpsertSession(api): %v", err)
+		}
+		if err := st.UpsertSession(context.Background(), "web", "hash-web", "ready"); err != nil {
+			t.Fatalf("UpsertSession(web): %v", err)
+		}
+		if err := st.ReorderSessions(context.Background(), []string{"web", "api"}); err != nil {
+			t.Fatalf("ReorderSessions(): %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+		h.listSessions(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		sessions, _ := data["sessions"].([]any)
+		if len(sessions) != 2 {
+			t.Fatalf("sessions count = %d, want 2", len(sessions))
+		}
+		if sessions[0].(map[string]any)["name"] != "web" || sessions[1].(map[string]any)["name"] != "api" {
+			t.Fatalf("unexpected session order: %#v", sessions)
+		}
+	})
+
 	t.Run("tmux error", func(t *testing.T) {
 		t.Parallel()
 
@@ -1345,6 +1391,40 @@ func TestRenameSessionHandler(t *testing.T) {
 		data, _ := body["data"].(map[string]any)
 		if data["name"] != "new" {
 			t.Errorf("name = %v, want new", data["name"])
+		}
+	})
+
+	t.Run("renames pinned session preset when present", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, &mockTmux{}, nil)
+		ctx := context.Background()
+		if _, err := st.CreateSessionPreset(ctx, store.SessionPresetWrite{
+			Name: "old",
+			Cwd:  "/srv/api",
+			Icon: "server",
+		}); err != nil {
+			t.Fatalf("CreateSessionPreset() error = %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
+		r.SetPathValue("session", "old")
+		h.renameSession(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		presets, err := st.ListSessionPresets(ctx)
+		if err != nil {
+			t.Fatalf("ListSessionPresets() error = %v", err)
+		}
+		if len(presets) != 1 {
+			t.Fatalf("preset count = %d, want 1", len(presets))
+		}
+		if presets[0].Name != "new" {
+			t.Fatalf("preset name = %q, want new", presets[0].Name)
 		}
 	})
 

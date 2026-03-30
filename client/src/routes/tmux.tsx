@@ -8,7 +8,13 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import type { Session } from '@/types'
+import type {
+  LaunchSessionPresetResponse,
+  PanesResponse,
+  Session,
+  SessionPreset,
+  SessionPresetsResponse,
+} from '@/types'
 import type { RuntimeMetrics } from '@/hooks/tmuxTypes'
 import AppShell from '@/components/layout/AppShell'
 import SessionSidebar from '@/components/SessionSidebar'
@@ -33,6 +39,11 @@ import { useTmuxEventsSocket } from '@/hooks/useTmuxEventsSocket'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { TMUX_SESSIONS_QUERY_KEY } from '@/lib/tmuxQueryCache'
 import {
+  applySidebarOrder,
+  moveSidebarItem,
+  sortBySidebarOrder,
+} from '@/lib/sessionSidebarOrder'
+import {
   sanitizeTmuxPaneTitle,
   sanitizeTmuxWindowName,
   slugifyTmuxName,
@@ -49,6 +60,7 @@ function TmuxPage() {
   // ---- Guardrails dialog state ----
   const [guardrailsOpen, setGuardrailsOpen] = useState(false)
   const [createSessionOpen, setCreateSessionOpen] = useState(false)
+  const [sessionPresets, setSessionPresets] = useState<Array<SessionPreset>>([])
 
   // ---- Guardrail confirm state (shared across session CRUD + inspector) ----
   const [guardrailConfirm, setGuardrailConfirm] = useState<{
@@ -135,6 +147,30 @@ function TmuxPage() {
     [pushToast],
   )
 
+  const refreshSessionPresets = useCallback(
+    async (options?: { quiet?: boolean }) => {
+      try {
+        const data = await api<SessionPresetsResponse>(
+          '/api/tmux/session-presets',
+        )
+        setSessionPresets(data.presets)
+      } catch (error) {
+        if (!options?.quiet) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'failed to refresh pinned sessions'
+          pushErrorToast('Pinned Sessions', message)
+        }
+      }
+    },
+    [api, pushErrorToast],
+  )
+
+  useEffect(() => {
+    void refreshSessionPresets({ quiet: true })
+  }, [refreshSessionPresets])
+
   // ---- Terminal hook ----
   const handleAttachedMobile = useCallback(() => {
     layout.setSidebarOpen(false)
@@ -212,6 +248,166 @@ function TmuxPage() {
   useEffect(() => {
     refreshSessionsRef.current = sessionCRUD.refreshSessions
   }, [sessionCRUD.refreshSessions])
+
+  const saveSessionPreset = useCallback(
+    async (input: {
+      previousName: string
+      name: string
+      cwd: string
+      icon: string
+    }) => {
+      const existingByName = sessionPresets.find(
+        (preset) => preset.name === input.name,
+      )
+      const targetName = input.previousName || existingByName?.name || ''
+      const isUpdate = targetName !== ''
+      const path = isUpdate
+        ? `/api/tmux/session-presets/${encodeURIComponent(targetName)}`
+        : '/api/tmux/session-presets'
+
+      try {
+        await api(path, {
+          method: isUpdate ? 'PATCH' : 'POST',
+          body: JSON.stringify({
+            name: input.name,
+            cwd: input.cwd,
+            icon: input.icon,
+          }),
+        })
+        await refreshSessionPresets()
+        pushSuccessToast(
+          'Pinned Sessions',
+          isUpdate
+            ? `pinned session "${input.name}" updated`
+            : `session "${input.name}" pinned`,
+        )
+        return true
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to pin session'
+        pushErrorToast('Pinned Sessions', message)
+        return false
+      }
+    },
+    [
+      api,
+      pushErrorToast,
+      pushSuccessToast,
+      refreshSessionPresets,
+      sessionPresets,
+    ],
+  )
+
+  const deleteSessionPreset = useCallback(
+    async (name: string) => {
+      try {
+        await api<void>(
+          `/api/tmux/session-presets/${encodeURIComponent(name)}`,
+          {
+            method: 'DELETE',
+          },
+        )
+        await refreshSessionPresets()
+        pushSuccessToast('Pinned Sessions', `session "${name}" unpinned`)
+        return true
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to unpin session'
+        pushErrorToast('Pinned Sessions', message)
+        return false
+      }
+    },
+    [api, pushErrorToast, pushSuccessToast, refreshSessionPresets],
+  )
+
+  const pinSession = useCallback(
+    async (sessionName: string) => {
+      const session = sessions.find((item) => item.name === sessionName)
+      if (!session) {
+        pushErrorToast('Pinned Sessions', 'session not found')
+        return
+      }
+
+      try {
+        const data = await api<PanesResponse>(
+          `/api/tmux/sessions/${encodeURIComponent(sessionName)}/panes`,
+        )
+        const cwd =
+          data.panes.find((pane) => pane.active && pane.currentPath)
+            ?.currentPath ??
+          data.panes.find((pane) => pane.currentPath)?.currentPath ??
+          defaultCwd
+
+        const existing = sessionPresets.some(
+          (preset) => preset.name === sessionName,
+        )
+        await saveSessionPreset({
+          previousName: existing ? sessionName : '',
+          name: sessionName,
+          cwd,
+          icon: session.icon || 'terminal',
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to pin session'
+        pushErrorToast('Pinned Sessions', message)
+      }
+    },
+    [
+      api,
+      defaultCwd,
+      pushErrorToast,
+      saveSessionPreset,
+      sessionPresets,
+      sessions,
+    ],
+  )
+
+  const launchSessionPreset = useCallback(
+    async (name: string) => {
+      const preset = sessionPresets.find((item) => item.name === name)
+      if (!preset) {
+        pushErrorToast('Pinned Sessions', 'pinned session not found')
+        return
+      }
+
+      try {
+        const data = await api<LaunchSessionPresetResponse>(
+          `/api/tmux/session-presets/${encodeURIComponent(name)}/launch`,
+          {
+            method: 'POST',
+          },
+        )
+        sessionCRUD.activateSession(data.name, preset.icon)
+        setConnection('connecting', `opening ${data.name}`)
+        void inspector.refreshInspector(data.name)
+        void sessionCRUD.refreshSessions()
+        void refreshSessionPresets({ quiet: true })
+        pushSuccessToast(
+          'Pinned Sessions',
+          data.created
+            ? `session "${data.name}" created`
+            : `session "${data.name}" opened`,
+        )
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'failed to launch pinned session'
+        pushErrorToast('Pinned Sessions', message)
+      }
+    },
+    [
+      api,
+      inspector,
+      pushErrorToast,
+      pushSuccessToast,
+      refreshSessionPresets,
+      sessionCRUD,
+      sessionPresets,
+      setConnection,
+    ],
+  )
 
   // ---- Timeline hook ----
   const timeline = useTmuxTimeline({
@@ -327,12 +523,12 @@ function TmuxPage() {
 
   // ---- Derived state ----
   const orderedSessions = useMemo(() => {
-    const list = [...sessions]
-    list.sort((left, right) =>
-      left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }),
-    )
-    return list
+    return sortBySidebarOrder(sessions)
   }, [sessions])
+
+  const orderedSessionPresets = useMemo(() => {
+    return sortBySidebarOrder(sessionPresets)
+  }, [sessionPresets])
 
   const filteredSessions = useMemo(() => {
     const query = debouncedFilter.trim().toLowerCase()
@@ -343,6 +539,59 @@ function TmuxPage() {
   const timelineSessionOptions = useMemo(
     () => orderedSessions.map((item) => item.name),
     [orderedSessions],
+  )
+
+  const reorderPinnedSessions = useCallback(
+    async (activeName: string, overName: string) => {
+      const current = orderedSessionPresets.map((preset) => preset.name)
+      const next = moveSidebarItem(current, activeName, overName)
+      if (next === current) {
+        return
+      }
+
+      setSessionPresets((prev) => applySidebarOrder(prev, next))
+      try {
+        await api<void>('/api/tmux/session-presets/order', {
+          method: 'PATCH',
+          body: JSON.stringify({ names: next }),
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'failed to reorder pinned sessions'
+        pushErrorToast('Pinned Sessions', message)
+        void refreshSessionPresets({ quiet: true })
+      }
+    },
+    [api, orderedSessionPresets, pushErrorToast, refreshSessionPresets],
+  )
+
+  const reorderVisibleSessions = useCallback(
+    async (activeName: string, overName: string) => {
+      const pinnedNames = new Set(sessionPresets.map((preset) => preset.name))
+      const current = sortBySidebarOrder(sessions)
+        .filter((session) => !pinnedNames.has(session.name))
+        .map((session) => session.name)
+      const next = moveSidebarItem(current, activeName, overName)
+      if (next === current) {
+        return
+      }
+
+      setSessions((prev) => applySidebarOrder(prev, next))
+      try {
+        await api<void>('/api/tmux/sessions/order', {
+          method: 'PATCH',
+          body: JSON.stringify({ names: next }),
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to reorder sessions'
+        pushErrorToast('Sessions', message)
+        void sessionCRUD.refreshSessions()
+      }
+    },
+    [api, pushErrorToast, sessionCRUD, sessionPresets, sessions],
   )
 
   // ---- JSX ----
@@ -359,6 +608,7 @@ function TmuxPage() {
           tokenRequired={tokenRequired}
           authenticated={authenticated}
           defaultCwd={defaultCwd}
+          presets={orderedSessionPresets}
           filter={filter}
           tmuxUnavailable={tmuxUnavailable}
           onFilterChange={setFilter}
@@ -366,6 +616,17 @@ function TmuxPage() {
           onCreate={(name, cwd) => {
             void sessionCRUD.createSession(name, cwd)
           }}
+          onPinSession={(name) => {
+            void pinSession(name)
+          }}
+          onUnpinSession={(name) => {
+            void deleteSessionPreset(name)
+          }}
+          onLaunchPreset={(name) => {
+            void launchSessionPreset(name)
+          }}
+          onReorderPinned={reorderPinnedSessions}
+          onReorderSession={reorderVisibleSessions}
           onAttach={sessionCRUD.activateSession}
           onRename={sessionCRUD.handleOpenRenameDialogForSession}
           onDetach={sessionCRUD.detachSession}

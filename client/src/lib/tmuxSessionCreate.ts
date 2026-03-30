@@ -1,8 +1,15 @@
 import type { Session } from '@/types'
+import { nextFrontSortOrder } from './sessionSidebarOrder'
 
-export function buildOptimisticSession(name: string, at: string): Session {
+export function buildOptimisticSession(
+  name: string,
+  at: string,
+  icon = '',
+  sortOrder = 1,
+): Session {
   return {
     name,
+    sortOrder,
     windows: 1,
     panes: 1,
     attached: 1,
@@ -11,7 +18,7 @@ export function buildOptimisticSession(name: string, at: string): Session {
     command: '',
     hash: '',
     lastContent: '',
-    icon: '',
+    icon,
     unreadWindows: 0,
     unreadPanes: 0,
     rev: 0,
@@ -22,15 +29,29 @@ export function upsertOptimisticAttachedSession(
   sessions: Array<Session>,
   sessionName: string,
   at: string,
+  icon = '',
 ): Array<Session> {
   const index = sessions.findIndex((item) => item.name === sessionName)
   if (index === -1) {
-    return [...sessions, buildOptimisticSession(sessionName, at)]
+    return [
+      buildOptimisticSession(
+        sessionName,
+        at,
+        icon,
+        nextFrontSortOrder(sessions),
+      ),
+      ...sessions,
+    ]
   }
 
   const existing = sessions[index]
   const attached = Math.max(1, existing.attached)
-  if (attached === existing.attached && existing.activityAt === at) {
+  const nextIcon = existing.icon || icon
+  if (
+    attached === existing.attached &&
+    existing.activityAt === at &&
+    existing.icon === nextIcon
+  ) {
     return sessions
   }
 
@@ -39,6 +60,7 @@ export function upsertOptimisticAttachedSession(
     ...existing,
     attached,
     activityAt: at,
+    icon: nextIcon,
   }
   return next
 }

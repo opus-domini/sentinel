@@ -6,6 +6,13 @@ func (h *Handler) registerTmuxRoutes(mux *http.ServeMux) {
 	h.registerRoutes(mux, []routeBinding{
 		{pattern: "GET /api/tmux/sessions", handler: h.listSessions},
 		{pattern: "POST /api/tmux/sessions", handler: h.createSession},
+		{pattern: "PATCH /api/tmux/sessions/order", handler: h.reorderSessions},
+		{pattern: "GET /api/tmux/session-presets", handler: h.listSessionPresets},
+		{pattern: "POST /api/tmux/session-presets", handler: h.createSessionPreset},
+		{pattern: "PATCH /api/tmux/session-presets/order", handler: h.reorderSessionPresets},
+		{pattern: "PATCH /api/tmux/session-presets/{preset}", handler: h.updateSessionPreset},
+		{pattern: "DELETE /api/tmux/session-presets/{preset}", handler: h.deleteSessionPreset},
+		{pattern: "POST /api/tmux/session-presets/{preset}/launch", handler: h.launchSessionPreset},
 		{pattern: "PATCH /api/tmux/sessions/{session}", handler: h.renameSession},
 		{pattern: "DELETE /api/tmux/sessions/{session}", handler: h.deleteSession},
 		{pattern: "PATCH /api/tmux/sessions/{session}/icon", handler: h.setSessionIcon},

@@ -13,6 +13,7 @@ describe('buildOptimisticSession', () => {
 
     expect(session).toEqual({
       name: 'alpha',
+      sortOrder: 1,
       windows: 1,
       panes: 1,
       attached: 1,
@@ -27,17 +28,25 @@ describe('buildOptimisticSession', () => {
       rev: 0,
     })
   })
+
+  it('preserves the requested icon when provided', () => {
+    const session = buildOptimisticSession('bot', '2026-02-14T12:00:00Z', 'bot')
+
+    expect(session.icon).toBe('bot')
+  })
 })
 
 describe('upsertOptimisticAttachedSession', () => {
   it('appends placeholder when session does not exist', () => {
     const at = '2026-02-14T12:00:00Z'
-    const next = upsertOptimisticAttachedSession([], 'beta', at)
+    const next = upsertOptimisticAttachedSession([], 'beta', at, 'code')
 
     expect(next).toHaveLength(1)
     expect(next[0].name).toBe('beta')
     expect(next[0].attached).toBe(1)
     expect(next[0].activityAt).toBe(at)
+    expect(next[0].icon).toBe('code')
+    expect(next[0].sortOrder).toBe(1)
   })
 
   it('marks existing session as attached and updates activity timestamp', () => {
@@ -94,11 +103,11 @@ describe('mergePendingCreateSessions', () => {
     const merged = mergePendingCreateSessions(backend, pending, new Set())
 
     expect(merged.sessions.map((item) => item.name)).toEqual([
-      'stable',
-      'new-a',
       'new-b',
+      'new-a',
+      'stable',
     ])
-    expect(merged.sessionNamesForSync).toEqual(['stable', 'new-a', 'new-b'])
+    expect(merged.sessionNamesForSync).toEqual(['new-b', 'new-a', 'stable'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual([])
     expect(merged.confirmedRenamedNames).toEqual([])
@@ -117,9 +126,9 @@ describe('mergePendingCreateSessions', () => {
     const merged = mergePendingCreateSessions(backend, pending, new Set())
 
     expect(merged.sessions.map((item) => item.name)).toEqual([
+      'new-b',
       'stable',
       'new-a',
-      'new-b',
     ])
     expect(merged.confirmedPendingNames).toEqual(['new-a'])
     expect(merged.confirmedKilledNames).toEqual([])
@@ -142,10 +151,10 @@ describe('mergePendingCreateSessions', () => {
     )
 
     expect(merged.sessions.map((item) => item.name)).toEqual([
-      'stable',
       'new-a',
+      'stable',
     ])
-    expect(merged.sessionNamesForSync).toEqual(['stable', 'new-a'])
+    expect(merged.sessionNamesForSync).toEqual(['new-a', 'stable'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual([])
     expect(merged.confirmedRenamedNames).toEqual([])

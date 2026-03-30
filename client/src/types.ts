@@ -1,5 +1,6 @@
 export type Session = {
   name: string
+  sortOrder?: number
   windows: number
   panes: number
   attached: number
@@ -12,6 +13,26 @@ export type Session = {
   unreadWindows?: number
   unreadPanes?: number
   rev?: number
+}
+
+export type SessionPreset = {
+  name: string
+  cwd: string
+  icon: string
+  sortOrder?: number
+  createdAt: string
+  updatedAt: string
+  lastLaunchedAt: string
+  launchCount: number
+}
+
+export type SessionPresetsResponse = {
+  presets: Array<SessionPreset>
+}
+
+export type LaunchSessionPresetResponse = {
+  name: string
+  created: boolean
 }
 
 export type ConnectionState =
@@ -44,6 +65,9 @@ export type PaneInfo = {
   title: string
   active: boolean
   tty: string
+  currentPath?: string
+  startCommand?: string
+  currentCommand?: string
   tailPreview?: string
   revision?: number
   seenRevision?: number

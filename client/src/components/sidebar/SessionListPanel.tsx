@@ -1,9 +1,19 @@
 import { useMemo } from 'react'
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import SessionListItem from './SessionListItem'
 import { isSessionAttached } from './sessionAttachment'
-import type { Session } from '../../types'
+import type { Session, SessionPreset } from '../../types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { hapticFeedback } from '@/lib/device'
 
 type SessionListPanelProps = {
   sessions: Array<Session>
@@ -11,12 +21,16 @@ type SessionListPanelProps = {
   openTabs: Array<string>
   activeSession: string
   filter: string
+  presets: Array<SessionPreset>
   onFilterChange: (value: string) => void
   onAttach: (session: string) => void
   onRename: (session: string) => void
   onDetach: (session: string) => void
   onKill: (session: string) => void
   onChangeIcon: (session: string, icon: string) => void
+  onPinSession: (session: string) => void
+  onUnpinSession: (session: string) => void
+  onReorder: (activeName: string, overName: string) => void
 }
 
 export default function SessionListPanel({
@@ -25,28 +39,36 @@ export default function SessionListPanel({
   openTabs,
   activeSession,
   filter,
+  presets,
   onFilterChange,
   onAttach,
   onRename,
   onDetach,
   onKill,
   onChangeIcon,
+  onPinSession,
+  onUnpinSession,
+  onReorder,
 }: SessionListPanelProps) {
-  const sortedSessions = useMemo(() => {
-    const next = [...sessions]
-    next.sort((left, right) =>
-      left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }),
-    )
-    return next
-  }, [sessions])
-
   const hasFilter = filter.trim() !== ''
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  )
 
   const openTabsSet = useMemo(() => new Set(openTabs), [openTabs])
+  const pinnedNames = useMemo(
+    () => new Set(presets.map((preset) => preset.name)),
+    [presets],
+  )
   const { attachedSessions, idleSessions } = useMemo(() => {
     const attached: Array<Session> = []
     const idle: Array<Session> = []
-    for (const session of sortedSessions) {
+    for (const session of sessions) {
+      if (pinnedNames.has(session.name)) {
+        continue
+      }
       if (isSessionAttached(session, openTabsSet)) {
         attached.push(session)
       } else {
@@ -54,12 +76,23 @@ export default function SessionListPanel({
       }
     }
     return { attachedSessions: attached, idleSessions: idle }
-  }, [sortedSessions, openTabsSet])
+  }, [openTabsSet, pinnedNames, sessions])
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) {
+      return
+    }
+    hapticFeedback()
+    onReorder(String(active.id), String(over.id))
+  }
+
+  const visibleSessionCount = attachedSessions.length + idleSessions.length
 
   return (
     <section className="h-full min-h-0 overflow-hidden rounded-lg border border-border-subtle bg-secondary">
       <ul className="grid min-h-0 min-w-0 grid-cols-1 list-none gap-1.5 overflow-x-hidden overflow-y-auto p-2">
-        {sessions.length === 0 && (
+        {visibleSessionCount === 0 && (
           <li>
             <EmptyState variant="inline" className="grid gap-1 p-3">
               <span className="text-[12px]">
@@ -67,7 +100,9 @@ export default function SessionListPanel({
                   ? 'No sessions match filter.'
                   : tmuxUnavailable
                     ? 'tmux is not installed on this host.'
-                    : 'No tmux sessions found.'}
+                    : sessions.length > 0 && pinnedNames.size > 0
+                      ? 'All sessions are pinned.'
+                      : 'No tmux sessions found.'}
               </span>
               {hasFilter && (
                 <Button
@@ -84,42 +119,82 @@ export default function SessionListPanel({
         )}
 
         {attachedSessions.length > 0 && (
-          <li className="px-1 pt-1 text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-            Attached
-          </li>
+          <>
+            <li className="px-1 pt-1 text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+              Attached
+            </li>
+            <li>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={attachedSessions.map((session) => session.name)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ul className="grid list-none gap-1.5">
+                    {attachedSessions.map((session) => (
+                      <SessionListItem
+                        key={session.name}
+                        session={session}
+                        isActive={session.name === activeSession}
+                        isPinned={false}
+                        onAttach={onAttach}
+                        onRename={onRename}
+                        onDetach={onDetach}
+                        onKill={onKill}
+                        onChangeIcon={onChangeIcon}
+                        onPinSession={onPinSession}
+                        onUnpinSession={onUnpinSession}
+                        canDetach={openTabsSet.has(session.name)}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
+            </li>
+          </>
         )}
-        {attachedSessions.map((session) => (
-          <SessionListItem
-            key={session.name}
-            session={session}
-            isActive={session.name === activeSession}
-            onAttach={onAttach}
-            onRename={onRename}
-            onDetach={onDetach}
-            onKill={onKill}
-            onChangeIcon={onChangeIcon}
-            canDetach={openTabsSet.has(session.name)}
-          />
-        ))}
 
         {idleSessions.length > 0 && (
-          <li className="px-1 pt-1 text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-            {attachedSessions.length > 0 ? 'Idle' : 'Sessions'}
-          </li>
+          <>
+            <li className="px-1 pt-1 text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+              {attachedSessions.length > 0 ? 'Idle' : 'Sessions'}
+            </li>
+            <li>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={idleSessions.map((session) => session.name)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ul className="grid list-none gap-1.5">
+                    {idleSessions.map((session) => (
+                      <SessionListItem
+                        key={session.name}
+                        session={session}
+                        isActive={session.name === activeSession}
+                        isPinned={false}
+                        onAttach={onAttach}
+                        onRename={onRename}
+                        onDetach={onDetach}
+                        onKill={onKill}
+                        onChangeIcon={onChangeIcon}
+                        onPinSession={onPinSession}
+                        onUnpinSession={onUnpinSession}
+                        canDetach={openTabsSet.has(session.name)}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
+            </li>
+          </>
         )}
-        {idleSessions.map((session) => (
-          <SessionListItem
-            key={session.name}
-            session={session}
-            isActive={session.name === activeSession}
-            onAttach={onAttach}
-            onRename={onRename}
-            onDetach={onDetach}
-            onKill={onKill}
-            onChangeIcon={onChangeIcon}
-            canDetach={openTabsSet.has(session.name)}
-          />
-        ))}
       </ul>
     </section>
   )

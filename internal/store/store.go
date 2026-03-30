@@ -16,6 +16,7 @@ type SessionMeta struct {
 	Hash        string
 	LastContent string
 	Icon        string
+	SortOrder   int
 }
 
 type Store struct {
@@ -59,7 +60,7 @@ func New(dbPath string) (*Store, error) {
 }
 
 func (s *Store) GetAll(ctx context.Context) (map[string]SessionMeta, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT name, hash, last_content, icon FROM sessions")
+	rows, err := s.db.QueryContext(ctx, "SELECT name, hash, last_content, icon, sort_order FROM sessions")
 	if err != nil {
 		return nil, err
 	}
@@ -67,19 +68,31 @@ func (s *Store) GetAll(ctx context.Context) (map[string]SessionMeta, error) {
 
 	result := make(map[string]SessionMeta)
 	for rows.Next() {
-		var name, hash, content, icon string
-		if err := rows.Scan(&name, &hash, &content, &icon); err != nil {
+		var (
+			name, hash, content, icon string
+			sortOrder                 int
+		)
+		if err := rows.Scan(&name, &hash, &content, &icon, &sortOrder); err != nil {
 			return nil, err
 		}
-		result[name] = SessionMeta{Hash: hash, LastContent: content, Icon: icon}
+		result[name] = SessionMeta{
+			Hash:        hash,
+			LastContent: content,
+			Icon:        icon,
+			SortOrder:   sortOrder,
+		}
 	}
 	return result, rows.Err()
 }
 
 func (s *Store) UpsertSession(ctx context.Context, name, hash, content string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions (name, hash, last_content, updated_at)
-		 VALUES (?, ?, ?, datetime('now'))
+		`INSERT INTO sessions (name, hash, last_content, sort_order, updated_at)
+		 VALUES (
+		   ?, ?, ?,
+		   COALESCE((SELECT MAX(sort_order) + 1 FROM sessions), 1),
+		   datetime('now')
+		 )
 		 ON CONFLICT(name) DO UPDATE SET
 		   hash = excluded.hash,
 		   last_content = excluded.last_content,
@@ -127,14 +140,63 @@ func (s *Store) GetSessionIcon(ctx context.Context, name string) (string, error)
 
 func (s *Store) SetIcon(ctx context.Context, name, icon string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions (name, hash, icon, updated_at)
-		 VALUES (?, '', ?, datetime('now'))
+		`INSERT INTO sessions (name, hash, icon, sort_order, updated_at)
+		 VALUES (
+		   ?, '', ?,
+		   COALESCE((SELECT MAX(sort_order) + 1 FROM sessions), 1),
+		   datetime('now')
+		 )
 		 ON CONFLICT(name) DO UPDATE SET
 		   icon = excluded.icon,
 		   updated_at = excluded.updated_at`,
 		name, icon,
 	)
 	return err
+}
+
+func (s *Store) MoveSessionToFront(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("session name is required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO sessions (name, hash, last_content, sort_order, updated_at)
+		 VALUES (
+		   ?, '', '',
+		   COALESCE((SELECT MIN(sort_order) - 1 FROM sessions), 1),
+		   datetime('now')
+		 )
+		 ON CONFLICT(name) DO UPDATE SET
+		   sort_order = COALESCE((SELECT MIN(sort_order) - 1 FROM sessions WHERE name != excluded.name), 1),
+		   updated_at = datetime('now')`,
+		name,
+	)
+	return err
+}
+
+func (s *Store) ReorderSessions(ctx context.Context, names []string) error {
+	normalized, err := normalizeSessionOrderNames(names)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for index, name := range normalized {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE sessions
+			    SET sort_order = ?, updated_at = datetime('now')
+			  WHERE name = ?`,
+			index+1, name,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *Store) AllocateNextWindowSequence(ctx context.Context, name string, minimum int) (int, error) {
@@ -215,4 +277,24 @@ func (s *Store) ListFrequentDirectories(ctx context.Context, limit int) ([]strin
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+func normalizeSessionOrderNames(names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, errors.New("names are required")
+	}
+	normalized := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, raw := range names {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			return nil, errors.New("session name is required")
+		}
+		if _, ok := seen[name]; ok {
+			return nil, errors.New("session names must be unique")
+		}
+		seen[name] = struct{}{}
+		normalized = append(normalized, name)
+	}
+	return normalized, nil
 }

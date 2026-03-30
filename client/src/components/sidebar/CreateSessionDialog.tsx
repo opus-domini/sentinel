@@ -45,13 +45,18 @@ export default function CreateSessionDialog({
   const [frequentDirs, setFrequentDirs] = useState<Array<string>>([])
   const frequentDirsFetched = useRef(false)
 
+  function resetForm() {
+    setName('')
+    setCwd(normalizedDefaultCwd)
+    setCwdSuggestions([])
+    setCwdLoading(false)
+    setCwdFocused(false)
+    setActiveSuggestion(-1)
+  }
+
   useEffect(() => {
     if (!open) {
-      setCwd(normalizedDefaultCwd)
-      setCwdSuggestions([])
-      setCwdLoading(false)
-      setCwdFocused(false)
-      setActiveSuggestion(-1)
+      resetForm()
       frequentDirsFetched.current = false
       return
     }
@@ -167,12 +172,7 @@ export default function CreateSessionDialog({
 
   function handleOpenChange(next: boolean) {
     if (!next) {
-      setName('')
-      setCwd(normalizedDefaultCwd)
-      setCwdSuggestions([])
-      setCwdLoading(false)
-      setCwdFocused(false)
-      setActiveSuggestion(-1)
+      resetForm()
     }
     onOpenChange(next)
   }
@@ -182,12 +182,7 @@ export default function CreateSessionDialog({
     const trimmed = name.trim()
     if (!trimmed) return
     onCreate(trimmed, cwd.trim())
-    setName('')
-    setCwd(normalizedDefaultCwd)
-    setCwdSuggestions([])
-    setCwdLoading(false)
-    setCwdFocused(false)
-    setActiveSuggestion(-1)
+    resetForm()
     onOpenChange(false)
   }
 

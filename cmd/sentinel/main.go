@@ -74,6 +74,15 @@ func serve() int {
 		slog.Info("reconciled orphaned runbook runs", "count", n)
 	}
 
+	restorePinnedCtx, cancelRestorePinned := context.WithTimeout(context.Background(), 15*time.Second)
+	restoredPinned, err := restorePinnedSessions(restorePinnedCtx, st, tmux.Service{})
+	cancelRestorePinned()
+	if err != nil {
+		slog.Warn("failed to restore pinned sessions", "err", err)
+	} else if restoredPinned > 0 {
+		slog.Info("restored pinned sessions", "count", restoredPinned)
+	}
+
 	opsManager := services.NewManager(time.Now(), st)
 
 	mux := http.NewServeMux()
@@ -228,6 +237,46 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 	}
 	slog.Info("sentinel stopped")
 	return 0
+}
+
+type pinnedSessionStore interface {
+	ListSessionPresets(ctx context.Context) ([]store.SessionPreset, error)
+	RecordSessionDirectory(ctx context.Context, path string) error
+	SetIcon(ctx context.Context, name, icon string) error
+	MarkSessionPresetLaunched(ctx context.Context, name string) error
+}
+
+type pinnedSessionStarter interface {
+	CreateSession(ctx context.Context, name, cwd string) error
+}
+
+func restorePinnedSessions(ctx context.Context, repo pinnedSessionStore, tm pinnedSessionStarter) (int, error) {
+	presets, err := repo.ListSessionPresets(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	restored := 0
+	for _, preset := range presets {
+		err := tm.CreateSession(ctx, preset.Name, preset.Cwd)
+		if err != nil && !tmux.IsKind(err, tmux.ErrKindSessionExists) {
+			slog.Warn("failed to restore pinned session", "session", preset.Name, "cwd", preset.Cwd, "err", err)
+			continue
+		}
+
+		restored++
+		if err := repo.RecordSessionDirectory(ctx, preset.Cwd); err != nil {
+			slog.Warn("failed to record pinned session directory", "session", preset.Name, "cwd", preset.Cwd, "err", err)
+		}
+		if err := repo.SetIcon(ctx, preset.Name, preset.Icon); err != nil {
+			slog.Warn("failed to restore pinned session icon", "session", preset.Name, "icon", preset.Icon, "err", err)
+		}
+		if err := repo.MarkSessionPresetLaunched(ctx, preset.Name); err != nil {
+			slog.Warn("failed to mark pinned session launched", "session", preset.Name, "err", err)
+		}
+	}
+
+	return restored, nil
 }
 
 func startMetricsTicker(ctx context.Context, mgr *services.Manager, hub *events.Hub) <-chan struct{} {

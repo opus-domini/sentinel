@@ -1,3 +1,5 @@
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Check, LayoutGrid, Rows3, User } from 'lucide-react'
 import { SESSION_ICONS, getSessionIcon } from './sessionIcons'
 import {
@@ -23,24 +25,40 @@ import { cn } from '@/lib/utils'
 type SessionListItemProps = {
   session: Session
   isActive: boolean
+  isPinned: boolean
   onAttach: (session: string) => void
   onRename: (session: string) => void
   onDetach: (session: string) => void
   onKill: (session: string) => void
   onChangeIcon: (session: string, icon: string) => void
+  onPinSession: (session: string) => void
+  onUnpinSession: (session: string) => void
   canDetach: boolean
 }
 
 export default function SessionListItem({
   session,
   isActive,
+  isPinned,
   onAttach,
   onRename,
   onDetach,
   onKill,
   onChangeIcon,
+  onPinSession,
+  onUnpinSession,
   canDetach,
 }: SessionListItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: session.name,
+  })
   const { formatTimestamp } = useDateFormat()
   const isAttached = isSessionAttachedWithLocalTab(session, canDetach)
   const attachedClients = effectiveAttachedClients(session.attached, canDetach)
@@ -63,7 +81,16 @@ export default function SessionListItem({
   }
 
   return (
-    <li className="min-w-0">
+    <li
+      ref={setNodeRef}
+      className="min-w-0"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : undefined,
+        zIndex: isDragging ? 10 : undefined,
+      }}
+    >
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <button
@@ -75,6 +102,8 @@ export default function SessionListItem({
             )}
             type="button"
             onClick={handleOpen}
+            {...attributes}
+            {...listeners}
           >
             {/* Line 1: Icon + Name + Hash + Activity */}
             <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
@@ -193,13 +222,24 @@ export default function SessionListItem({
               })}
             </ContextMenuSubContent>
           </ContextMenuSub>
+          <ContextMenuSeparator />
+          {!isPinned && (
+            <ContextMenuItem onSelect={() => onPinSession(session.name)}>
+              Pin Session
+            </ContextMenuItem>
+          )}
+          {isPinned && (
+            <ContextMenuItem onSelect={() => onUnpinSession(session.name)}>
+              Unpin Session
+            </ContextMenuItem>
+          )}
+          <ContextMenuSeparator />
           <ContextMenuItem
             disabled={!canDetach}
             onSelect={() => onDetach(session.name)}
           >
             Detach Session
           </ContextMenuItem>
-          <ContextMenuSeparator />
           <ContextMenuItem
             className="text-destructive-foreground focus:text-destructive-foreground"
             onSelect={() => onKill(session.name)}

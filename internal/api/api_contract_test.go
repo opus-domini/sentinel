@@ -29,6 +29,13 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 
 		{name: "tmux-sessions", method: http.MethodGet, path: "/api/tmux/sessions"},
 		{name: "tmux-create", method: http.MethodPost, path: "/api/tmux/sessions", body: `{"name":"dev","cwd":"/tmp"}`},
+		{name: "tmux-reorder", method: http.MethodPatch, path: "/api/tmux/sessions/order", body: `{"names":["dev","api"]}`},
+		{name: "tmux-presets", method: http.MethodGet, path: "/api/tmux/session-presets"},
+		{name: "tmux-preset-create", method: http.MethodPost, path: "/api/tmux/session-presets", body: `{"name":"api","cwd":"/tmp","icon":"server"}`},
+		{name: "tmux-preset-reorder", method: http.MethodPatch, path: "/api/tmux/session-presets/order", body: `{"names":["api","web"]}`},
+		{name: "tmux-preset-update", method: http.MethodPatch, path: "/api/tmux/session-presets/api", body: `{"name":"api","cwd":"/tmp","icon":"server"}`},
+		{name: "tmux-preset-delete", method: http.MethodDelete, path: "/api/tmux/session-presets/api"},
+		{name: "tmux-preset-launch", method: http.MethodPost, path: "/api/tmux/session-presets/api/launch"},
 		{name: "tmux-rename", method: http.MethodPatch, path: "/api/tmux/sessions/dev", body: `{"newName":"dev2"}`},
 		{name: "tmux-delete", method: http.MethodDelete, path: "/api/tmux/sessions/dev"},
 		{name: "tmux-windows", method: http.MethodGet, path: "/api/tmux/sessions/dev/windows"},

@@ -73,6 +73,12 @@ type sessionMetaRepo interface {
 	SetIcon(ctx context.Context, name, icon string) error
 }
 
+type sessionOrderRepo interface {
+	MoveSessionToFront(ctx context.Context, name string) error
+	ReorderSessions(ctx context.Context, names []string) error
+	ReorderSessionPresets(ctx context.Context, names []string) error
+}
+
 type watchtowerReadRepo interface {
 	ListWatchtowerSessions(ctx context.Context) ([]store.WatchtowerSession, error)
 	GetWatchtowerSession(ctx context.Context, sessionName string) (store.WatchtowerSession, error)
@@ -138,6 +144,14 @@ type sessionDirectoryRepo interface {
 	ListFrequentDirectories(ctx context.Context, limit int) ([]string, error)
 }
 
+type sessionPresetRepo interface {
+	ListSessionPresets(ctx context.Context) ([]store.SessionPreset, error)
+	CreateSessionPreset(ctx context.Context, row store.SessionPresetWrite) (store.SessionPreset, error)
+	UpdateSessionPreset(ctx context.Context, oldName string, row store.SessionPresetWrite) (store.SessionPreset, error)
+	DeleteSessionPreset(ctx context.Context, name string) error
+	MarkSessionPresetLaunched(ctx context.Context, name string) error
+}
+
 type markerPatternsRepo interface {
 	ListMarkerPatterns(ctx context.Context) ([]store.MarkerPattern, error)
 	UpsertMarkerPattern(ctx context.Context, row store.MarkerPatternWrite) error
@@ -150,6 +164,7 @@ type markerPatternsRepo interface {
 type handlerRepo interface {
 	runbook.Repo
 	sessionMetaRepo
+	sessionOrderRepo
 	watchtowerReadRepo
 	watchtowerMarkRepo
 	presenceRepo
@@ -158,6 +173,7 @@ type handlerRepo interface {
 	opsScheduleRepo
 	alertsActivityRepo
 	sessionDirectoryRepo
+	sessionPresetRepo
 	markerPatternsRepo
 }
 
@@ -500,6 +516,7 @@ type enrichedSession struct {
 	Hash          string `json:"hash"`
 	LastContent   string `json:"lastContent"`
 	Icon          string `json:"icon"`
+	SortOrder     int    `json:"sortOrder"`
 	UnreadWindows int    `json:"unreadWindows"`
 	UnreadPanes   int    `json:"unreadPanes"`
 	Rev           int64  `json:"rev"`

@@ -282,3 +282,37 @@ describe('useSessionCRUD – killSession', () => {
     )
   })
 })
+
+describe('useSessionCRUD – createSession', () => {
+  it('sends icon when creating a session', async () => {
+    const api = vi
+      .fn()
+      .mockResolvedValueOnce({ name: 'dev' })
+      .mockResolvedValueOnce({ sessions: [] })
+    const opts = createMockOptions({
+      api,
+      sessions: [],
+      activeSession: '',
+      openTabs: [],
+    })
+
+    const { result } = renderHook(() => useSessionCRUD(opts))
+
+    await act(async () => {
+      await result.current.createSession('dev', '/tmp', 'code')
+    })
+
+    expect(api).toHaveBeenNthCalledWith(
+      1,
+      '/api/tmux/sessions',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'dev',
+          cwd: '/tmp',
+          icon: 'code',
+        }),
+      }),
+    )
+  })
+})

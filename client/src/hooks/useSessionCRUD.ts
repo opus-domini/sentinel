@@ -148,17 +148,10 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   ])
 
   const activateSession = useCallback(
-    (session: string) => {
+    (session: string, icon = '') => {
+      const optimisticAt = new Date().toISOString()
       setSessions((prev) =>
-        prev.map((item) =>
-          item.name === session
-            ? {
-                ...item,
-                attached: Math.max(1, item.attached),
-                activityAt: new Date().toISOString(),
-              }
-            : item,
-        ),
+        upsertOptimisticAttachedSession(prev, session, optimisticAt, icon),
       )
       dispatchTabs({ type: 'activate', session })
     },
@@ -166,7 +159,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   )
 
   const createSessionWithConfirm = useCallback(
-    async (name: string, cwd: string, guardrailConfirmed: boolean) => {
+    async (
+      name: string,
+      cwd: string,
+      icon: string,
+      guardrailConfirmed: boolean,
+    ) => {
       const sessionName = name.trim()
       if (!sessionName) {
         setConnection('error', 'session name required')
@@ -186,7 +184,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         const optimisticAt = new Date().toISOString()
         pendingCreateSessionsRef.current.set(sessionName, optimisticAt)
         setSessions((prev) =>
-          upsertOptimisticAttachedSession(prev, sessionName, optimisticAt),
+          upsertOptimisticAttachedSession(
+            prev,
+            sessionName,
+            optimisticAt,
+            icon,
+          ),
         )
         dispatchTabs({ type: 'activate', session: sessionName })
         setConnection('connecting', `creating ${sessionName}`)
@@ -199,11 +202,11 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         }
         await api<{ name: string }>('/api/tmux/sessions', {
           method: 'POST',
-          body: JSON.stringify({ name: sessionName, cwd }),
+          body: JSON.stringify({ name: sessionName, cwd, icon }),
           headers,
         })
 
-        activateSession(sessionName)
+        activateSession(sessionName, icon)
         setConnection('connecting', `opening ${sessionName}`)
         void refreshInspector(sessionName)
         void refreshSessions()
@@ -230,7 +233,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           requestGuardrailConfirm(
             rules[0]?.name ?? '',
             error.decision.message,
-            () => void createSessionWithConfirm(sessionName, cwd, true),
+            () => void createSessionWithConfirm(sessionName, cwd, icon, true),
           )
           return
         }
@@ -261,8 +264,8 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   )
 
   const createSession = useCallback(
-    async (name: string, cwd: string) => {
-      await createSessionWithConfirm(name, cwd, false)
+    async (name: string, cwd: string, icon = '') => {
+      await createSessionWithConfirm(name, cwd, icon, false)
     },
     [createSessionWithConfirm],
   )

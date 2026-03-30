@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -218,6 +219,7 @@ func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[str
 		result = append(result, h.projectedSessionToEnriched(ctx, row, stored[row.SessionName]))
 	}
 	h.purgeStoredSessionsBestEffort(ctx, activeNames)
+	sortSessionsByStoredOrder(result)
 	return result, true
 }
 
@@ -242,6 +244,7 @@ func (h *Handler) projectedSessionToEnriched(ctx context.Context, row store.Watc
 		Hash:          hash,
 		LastContent:   lastContent,
 		Icon:          meta.Icon,
+		SortOrder:     meta.SortOrder,
 		UnreadWindows: row.UnreadWindows,
 		UnreadPanes:   row.UnreadPanes,
 		Rev:           row.Rev,
@@ -271,6 +274,7 @@ func (h *Handler) listSessionsFromTmux(ctx context.Context, stored map[string]st
 		result = append(result, h.tmuxSessionToEnriched(ctx, sess, snapshots[sess.Name], stored[sess.Name]))
 	}
 	h.purgeStoredSessionsBestEffort(ctx, activeNames)
+	sortSessionsByStoredOrder(result)
 	return result, nil
 }
 
@@ -302,10 +306,28 @@ func (h *Handler) tmuxSessionToEnriched(ctx context.Context, sess tmux.Session, 
 		Hash:          hash,
 		LastContent:   lastContent,
 		Icon:          meta.Icon,
+		SortOrder:     meta.SortOrder,
 		UnreadWindows: 0,
 		UnreadPanes:   0,
 		Rev:           0,
 	}
+}
+
+func sortSessionsByStoredOrder(sessions []enrichedSession) {
+	sort.SliceStable(sessions, func(left, right int) bool {
+		leftOrder := sessions[left].SortOrder
+		rightOrder := sessions[right].SortOrder
+		switch {
+		case leftOrder == rightOrder:
+			return strings.ToLower(sessions[left].Name) < strings.ToLower(sessions[right].Name)
+		case leftOrder == 0:
+			return false
+		case rightOrder == 0:
+			return true
+		default:
+			return leftOrder < rightOrder
+		}
+	})
 }
 
 func (h *Handler) resolveSessionLastContent(ctx context.Context, sessionName, fallback string) string {
@@ -354,6 +376,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 		Cwd  string `json:"cwd"`
+		Icon string `json:"icon"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
@@ -362,6 +385,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.Cwd = strings.TrimSpace(req.Cwd)
+	req.Icon = strings.TrimSpace(req.Icon)
 	if req.Cwd == "" {
 		req.Cwd = defaultSessionCWD()
 	}
@@ -371,6 +395,10 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Cwd != "" && !filepath.IsAbs(req.Cwd) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "cwd must be an absolute path", nil)
+		return
+	}
+	if req.Icon != "" && !validate.IconKey(req.Icon) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "icon must match ^[a-z0-9-]{1,32}$", nil)
 		return
 	}
 
@@ -389,10 +417,9 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
-	if h.repo != nil && req.Cwd != "" {
-		if err := h.repo.RecordSessionDirectory(ctx, req.Cwd); err != nil {
-			slog.Warn("failed to record session directory", "cwd", req.Cwd, "err", err)
-		}
+	h.persistSessionLaunchMetadataBestEffort(ctx, req.Name, req.Cwd, req.Icon)
+	if err := h.repo.MoveSessionToFront(ctx, req.Name); err != nil {
+		slog.Warn("failed to move session to front", "session", req.Name, "err", err)
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": req.Name, "action": "create"})
 	writeData(w, http.StatusCreated, map[string]any{"name": req.Name})
@@ -428,6 +455,7 @@ func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
 	if err := h.repo.Rename(ctx, session, req.NewName); err != nil {
 		slog.Warn("store.Rename failed", "from", session, "to", req.NewName, "err", err)
 	}
+	h.renameSessionPresetBestEffort(ctx, session, req.NewName)
 	h.emit(events.TypeTmuxSessions, map[string]any{
 		"session": session,
 		"newName": req.NewName,
