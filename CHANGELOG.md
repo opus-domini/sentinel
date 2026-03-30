@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.11](https://github.com/opus-domini/sentinel/compare/v0.5.10...v0.5.11) (2026-03-30)
+
+
+### Features
+
+* add pinned tmux sessions and sidebar ordering ([33743db](https://github.com/opus-domini/sentinel/commit/33743db3a147536c837780cca16bd9dfc41172e4))
+
+
+### Build
+
+* **deps:** update client dependencies ([cbb86c8](https://github.com/opus-domini/sentinel/commit/cbb86c8a2c0bcb47493f5fcf96f00568843d7d2c))
+
 ## [0.5.10](https://github.com/opus-domini/sentinel/compare/v0.5.9...v0.5.10) (2026-03-25)
 
 
