@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.12](https://github.com/opus-domini/sentinel/compare/v0.5.11...v0.5.12) (2026-03-31)
+
+
+### Features
+
+* add tmux launchers ([144e42b](https://github.com/opus-domini/sentinel/commit/144e42b1eee73d86fcc47a3b741e35aaeed58b26))
+
 ## [0.5.11](https://github.com/opus-domini/sentinel/compare/v0.5.10...v0.5.11) (2026-03-30)
 
 
