@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.13](https://github.com/opus-domini/sentinel/compare/v0.5.12...v0.5.13) (2026-03-31)
+
+
+### Bug Fixes
+
+* use dropdown menu for launcher icon picker ([608733b](https://github.com/opus-domini/sentinel/commit/608733bb1cf49450be2043e7f791562d8fe8af22))
+
 ## [0.5.12](https://github.com/opus-domini/sentinel/compare/v0.5.11...v0.5.12) (2026-03-31)
 
 
