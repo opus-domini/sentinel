@@ -371,34 +371,35 @@ export default function LaunchersDialog({
 
               <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary-foreground">
                 Icon
-                <Select
-                  value={draft.icon}
-                  onValueChange={(value) =>
-                    setDraft((prev) => ({ ...prev, icon: value }))
-                  }
-                >
-                  <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
-                    <span className="flex items-center gap-2 truncate">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full cursor-pointer justify-start bg-surface-overlay text-[12px]"
+                    >
                       <SelectedIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span>{selectedIconEntry.label}</span>
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent className="z-[60]">
+                      {selectedIconEntry.label}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="z-[60]">
                     {SESSION_ICONS.map((entry) => {
                       const Icon = entry.icon
                       return (
-                        <SelectItem
+                        <DropdownMenuItem
                           key={entry.key}
-                          value={entry.key}
                           className="cursor-pointer"
+                          onSelect={() =>
+                            setDraft((prev) => ({ ...prev, icon: entry.key }))
+                          }
                         >
                           <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                           {entry.label}
-                        </SelectItem>
+                        </DropdownMenuItem>
                       )
                     })}
-                  </SelectContent>
-                </Select>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </label>
             </div>
 

@@ -74,6 +74,26 @@ describe('LaunchersDialog', () => {
     expect(screen.queryByRole('button', { name: 'Codex' })).toBeNull()
   })
 
+  it('opens the icon picker inside the dialog', async () => {
+    render(
+      <LaunchersDialog
+        open
+        onOpenChange={vi.fn()}
+        launchers={[]}
+        onSave={vi.fn().mockResolvedValue('launcher-codex')}
+        onDelete={vi.fn().mockResolvedValue(true)}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Icon' }), {
+      button: 0,
+      ctrlKey: false,
+    })
+
+    expect(await screen.findByText('AI')).not.toBeNull()
+  })
+
   it('deletes an existing launcher from the form', async () => {
     const onDelete = vi.fn().mockResolvedValue(true)
     const launchers: Array<TmuxLauncher> = [
