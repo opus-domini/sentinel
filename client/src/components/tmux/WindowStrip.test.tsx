@@ -132,4 +132,52 @@ describe('WindowStrip', () => {
       expect(onOpenLaunchers).toHaveBeenCalledTimes(1)
     })
   })
+
+  it('renders malformed launcher commands as plain shell without crashing', async () => {
+    const launchers: Array<TmuxLauncher> = [
+      {
+        id: 'launcher-runner',
+        name: 'Runner',
+        icon: 'terminal',
+        command: undefined as unknown as string,
+        cwdMode: 'session',
+        cwdValue: '',
+        windowName: 'runner',
+        sortOrder: 0,
+        createdAt: '2026-03-31T12:00:00Z',
+        updatedAt: '2026-03-31T12:00:00Z',
+        lastUsedAt: '',
+      },
+    ]
+
+    renderStrip({
+      hasActiveSession: true,
+      inspectorLoading: false,
+      inspectorError: '',
+      windows: [
+        {
+          session: 'dev',
+          index: 0,
+          name: 'runner',
+          displayName: undefined as unknown as string,
+          active: true,
+          panes: 1,
+        },
+      ],
+      activeWindowIndex: 0,
+      launchers,
+      recentLauncher: launchers[0],
+      onSelectWindow: vi.fn(),
+      onCloseWindow: vi.fn(),
+      onRenameWindow: vi.fn(),
+      onCreateWindow: vi.fn(),
+      onLaunchLauncher: vi.fn(),
+      onOpenLaunchers: vi.fn(),
+    })
+
+    expect(screen.getByText('runner')).not.toBeNull()
+
+    openLauncherMenu()
+    expect(await screen.findAllByText('plain shell')).toHaveLength(1)
+  })
 })

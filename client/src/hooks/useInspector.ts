@@ -52,6 +52,120 @@ import {
   setPendingWindowPaneFloor,
 } from '@/lib/tmuxInspectorOptimistic'
 
+type RawWindowProjection = Partial<WindowInfo> & Record<string, unknown>
+type RawPaneProjection = Partial<PaneInfo> & Record<string, unknown>
+
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function parseWindowProjection(
+  rawWindow: RawWindowProjection,
+  sessionFallback: string,
+): WindowInfo | null {
+  const sessionCandidate = asText(rawWindow.session)
+  const session =
+    sessionCandidate.trim() !== '' ? sessionCandidate : sessionFallback
+  if (session !== sessionFallback) {
+    return null
+  }
+
+  const index = rawWindow.index
+  if (typeof index !== 'number' || !Number.isFinite(index) || index < 0) {
+    return null
+  }
+
+  const name = asText(rawWindow.name)
+  const displayName = asText(rawWindow.displayName)
+  const unreadPanes = asNonNegativeInt(
+    typeof rawWindow.unreadPanes === 'number'
+      ? rawWindow.unreadPanes
+      : undefined,
+    0,
+  )
+
+  return {
+    session,
+    index: Math.trunc(index),
+    name,
+    displayName: displayName.trim() !== '' ? displayName : name,
+    displayIcon: asText(rawWindow.displayIcon) || undefined,
+    tmuxWindowId: asText(rawWindow.tmuxWindowId) || undefined,
+    managed: rawWindow.managed === true,
+    managedWindowId: asText(rawWindow.managedWindowId) || undefined,
+    launcherId: asText(rawWindow.launcherId) || undefined,
+    active: rawWindow.active === true,
+    panes: asNonNegativeInt(
+      typeof rawWindow.panes === 'number' ? rawWindow.panes : undefined,
+      0,
+    ),
+    unreadPanes,
+    hasUnread:
+      typeof rawWindow.hasUnread === 'boolean'
+        ? rawWindow.hasUnread
+        : unreadPanes > 0,
+    rev: asNonNegativeInt64(
+      typeof rawWindow.rev === 'number' ? rawWindow.rev : undefined,
+      0,
+    ),
+    activityAt: asText(rawWindow.activityAt) || undefined,
+  }
+}
+
+function parsePaneProjection(
+  rawPane: RawPaneProjection,
+  sessionFallback: string,
+): PaneInfo | null {
+  const sessionCandidate = asText(rawPane.session)
+  const session =
+    sessionCandidate.trim() !== '' ? sessionCandidate : sessionFallback
+  if (session !== sessionFallback) {
+    return null
+  }
+
+  const windowIndex = rawPane.windowIndex
+  const paneIndex = rawPane.paneIndex
+  const paneId = asText(rawPane.paneId).trim()
+  if (
+    typeof windowIndex !== 'number' ||
+    !Number.isFinite(windowIndex) ||
+    windowIndex < 0 ||
+    typeof paneIndex !== 'number' ||
+    !Number.isFinite(paneIndex) ||
+    paneIndex < 0 ||
+    paneId === ''
+  ) {
+    return null
+  }
+
+  const revision = asNonNegativeInt64(
+    typeof rawPane.revision === 'number' ? rawPane.revision : undefined,
+    0,
+  )
+  const seenRevision = asNonNegativeInt64(
+    typeof rawPane.seenRevision === 'number' ? rawPane.seenRevision : undefined,
+    0,
+  )
+
+  return {
+    session,
+    windowIndex: Math.trunc(windowIndex),
+    paneIndex: Math.trunc(paneIndex),
+    paneId,
+    title: asText(rawPane.title),
+    active: rawPane.active === true,
+    tty: asText(rawPane.tty),
+    tailPreview: asText(rawPane.tailPreview) || undefined,
+    revision,
+    seenRevision,
+    hasUnread:
+      typeof rawPane.hasUnread === 'boolean'
+        ? rawPane.hasUnread
+        : revision > seenRevision,
+    changedAt: asText(rawPane.changedAt) || undefined,
+  }
+}
+
 function stabilizeWindows(
   previousWindows: Array<WindowInfo>,
   nextWindows: Array<WindowInfo>,
@@ -485,57 +599,12 @@ export function useInspector(options: UseInspectorOptions) {
       if (Array.isArray(targetPatch.windows)) {
         const parsedWindows: Array<WindowInfo> = []
         for (const rawWindow of targetPatch.windows) {
-          const session = (rawWindow.session?.trim() ?? '') || activeSessionName
-          if (session !== activeSessionName) continue
-          const index = rawWindow.index
-          if (
-            typeof index !== 'number' ||
-            !Number.isFinite(index) ||
-            index < 0
-          ) {
-            continue
-          }
-
-          const unreadPanes = asNonNegativeInt(rawWindow.unreadPanes, 0)
-          parsedWindows.push({
-            session,
-            index: Math.trunc(index),
-            name: rawWindow.name ?? '',
-            displayName:
-              typeof rawWindow.displayName === 'string' &&
-              rawWindow.displayName.trim() !== ''
-                ? rawWindow.displayName
-                : (rawWindow.name ?? ''),
-            displayIcon:
-              typeof rawWindow.displayIcon === 'string'
-                ? rawWindow.displayIcon
-                : undefined,
-            tmuxWindowId:
-              typeof rawWindow.tmuxWindowId === 'string'
-                ? rawWindow.tmuxWindowId
-                : undefined,
-            managed: rawWindow.managed === true,
-            managedWindowId:
-              typeof rawWindow.managedWindowId === 'string'
-                ? rawWindow.managedWindowId
-                : undefined,
-            launcherId:
-              typeof rawWindow.launcherId === 'string'
-                ? rawWindow.launcherId
-                : undefined,
-            active: rawWindow.active === true,
-            panes: asNonNegativeInt(rawWindow.panes, 0),
-            unreadPanes,
-            hasUnread:
-              typeof rawWindow.hasUnread === 'boolean'
-                ? rawWindow.hasUnread
-                : unreadPanes > 0,
-            rev: asNonNegativeInt64(rawWindow.rev, 0),
-            activityAt:
-              typeof rawWindow.activityAt === 'string'
-                ? rawWindow.activityAt
-                : undefined,
-          })
+          const parsedWindow = parseWindowProjection(
+            rawWindow as RawWindowProjection,
+            activeSessionName,
+          )
+          if (parsedWindow === null) continue
+          parsedWindows.push(parsedWindow)
         }
         parsedWindows.sort((left, right) => left.index - right.index)
         nextWindows = stabilizeWindows(windowsRef.current, parsedWindows)
@@ -545,48 +614,12 @@ export function useInspector(options: UseInspectorOptions) {
       if (Array.isArray(targetPatch.panes)) {
         const parsedPanes: Array<PaneInfo> = []
         for (const rawPane of targetPatch.panes) {
-          const session = (rawPane.session?.trim() ?? '') || activeSessionName
-          if (session !== activeSessionName) continue
-          const windowIndex = rawPane.windowIndex
-          const paneIndex = rawPane.paneIndex
-          const paneId = rawPane.paneId?.trim() ?? ''
-          if (
-            typeof windowIndex !== 'number' ||
-            !Number.isFinite(windowIndex) ||
-            windowIndex < 0 ||
-            typeof paneIndex !== 'number' ||
-            !Number.isFinite(paneIndex) ||
-            paneIndex < 0 ||
-            paneId === ''
-          ) {
-            continue
-          }
-
-          const revision = asNonNegativeInt64(rawPane.revision, 0)
-          const seenRevision = asNonNegativeInt64(rawPane.seenRevision, 0)
-          parsedPanes.push({
-            session,
-            windowIndex: Math.trunc(windowIndex),
-            paneIndex: Math.trunc(paneIndex),
-            paneId,
-            title: rawPane.title ?? '',
-            active: rawPane.active === true,
-            tty: rawPane.tty ?? '',
-            tailPreview:
-              typeof rawPane.tailPreview === 'string'
-                ? rawPane.tailPreview
-                : undefined,
-            revision,
-            seenRevision,
-            hasUnread:
-              typeof rawPane.hasUnread === 'boolean'
-                ? rawPane.hasUnread
-                : revision > seenRevision,
-            changedAt:
-              typeof rawPane.changedAt === 'string'
-                ? rawPane.changedAt
-                : undefined,
-          })
+          const parsedPane = parsePaneProjection(
+            rawPane as RawPaneProjection,
+            activeSessionName,
+          )
+          if (parsedPane === null) continue
+          parsedPanes.push(parsedPane)
         }
         parsedPanes.sort((left, right) => {
           if (left.windowIndex !== right.windowIndex) {
@@ -676,10 +709,35 @@ export function useInspector(options: UseInspectorOptions) {
           `/api/tmux/sessions/${encodeURIComponent(session)}/panes`,
         )
         if (gen !== inspectorGenerationRef.current) return
+        const parsedWindows = Array.isArray(windowsResponse.windows)
+          ? windowsResponse.windows.flatMap((rawWindow) => {
+              const parsedWindow = parseWindowProjection(
+                rawWindow as RawWindowProjection,
+                session,
+              )
+              return parsedWindow === null ? [] : [parsedWindow]
+            })
+          : []
+        parsedWindows.sort((left, right) => left.index - right.index)
+        const parsedPanes = Array.isArray(panesResponse.panes)
+          ? panesResponse.panes.flatMap((rawPane) => {
+              const parsedPane = parsePaneProjection(
+                rawPane as RawPaneProjection,
+                session,
+              )
+              return parsedPane === null ? [] : [parsedPane]
+            })
+          : []
+        parsedPanes.sort((left, right) => {
+          if (left.windowIndex !== right.windowIndex) {
+            return left.windowIndex - right.windowIndex
+          }
+          return left.paneIndex - right.paneIndex
+        })
         const merged = mergeInspectorSnapshotWithPending(
           session,
-          windowsResponse.windows,
-          panesResponse.panes,
+          parsedWindows,
+          parsedPanes,
         )
         const stableWindows = stabilizeWindows(
           windowsRef.current,

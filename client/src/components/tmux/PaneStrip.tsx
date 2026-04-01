@@ -36,8 +36,12 @@ type PaneStripTouchState = {
   axis: 'unknown' | 'x' | 'y'
 }
 
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
 function parsePendingSplitSlot(paneID: string): number {
-  const parts = paneID.trim().split(':')
+  const parts = asText(paneID).trim().split(':')
   const rawSlot = parts.at(-1) ?? ''
   const slot = Number.parseInt(rawSlot, 10)
   if (!Number.isFinite(slot) || slot < 0) {
@@ -47,7 +51,7 @@ function parsePendingSplitSlot(paneID: string): number {
 }
 
 function parsePaneIDOrder(paneID: string): number | null {
-  const trimmed = paneID.trim()
+  const trimmed = asText(paneID).trim()
   if (!trimmed.startsWith('%')) return null
   const raw = trimmed.slice(1)
   if (raw === '') return null
@@ -278,14 +282,24 @@ export default function PaneStrip({
         </EmptyState>
       )}
       {visiblePanes.map((paneInfo) => {
-        const isActive = activePaneID === paneInfo.paneId
+        const paneID = asText(paneInfo.paneId)
+        const paneTitle = asText(paneInfo.title)
+        const paneKey =
+          paneID.trim() !== ''
+            ? paneID
+            : `${paneInfo.windowIndex}:${paneInfo.paneIndex}`
+        const isActive = activePaneID === paneID
         const hasUnread = paneInfo.hasUnread ?? false
-        const isPending = isPendingSplitPaneID(paneInfo.paneId)
-        const canInteract = !isPending
+        const isPending = paneID.trim() !== '' && isPendingSplitPaneID(paneID)
+        const canInteract = !isPending && paneID.trim() !== ''
         const paneLabel =
-          paneInfo.title.trim() !== '' ? paneInfo.title : paneInfo.paneId
+          paneTitle.trim() !== ''
+            ? paneTitle
+            : paneID.trim() !== ''
+              ? paneID
+              : `pane ${paneInfo.paneIndex}`
         return (
-          <ContextMenu key={paneInfo.paneId}>
+          <ContextMenu key={paneKey}>
             <ContextMenuTrigger asChild>
               <div
                 className={cn(
@@ -310,7 +324,7 @@ export default function PaneStrip({
                   disabled={!canInteract}
                   onClick={() => {
                     if (!canInteract) return
-                    onSelectPane(paneInfo.paneId)
+                    onSelectPane(paneID)
                   }}
                 >
                   {isMobile ? paneInfo.paneIndex : paneLabel}
@@ -319,8 +333,8 @@ export default function PaneStrip({
                   <button
                     className="grid h-5 w-5 cursor-pointer place-items-center border-l border-border-subtle text-secondary-foreground hover:bg-surface-close-hover hover:text-destructive-foreground"
                     type="button"
-                    onClick={() => onClosePane(paneInfo.paneId)}
-                    aria-label={`Close pane ${paneInfo.paneId}`}
+                    onClick={() => onClosePane(paneID)}
+                    aria-label={`Close pane ${paneID}`}
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -342,7 +356,7 @@ export default function PaneStrip({
                 className="text-destructive-foreground focus:text-destructive-foreground"
                 onSelect={() => {
                   if (!canInteract) return
-                  onClosePane(paneInfo.paneId)
+                  onClosePane(paneID)
                 }}
               >
                 Close pane
