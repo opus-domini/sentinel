@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.14](https://github.com/opus-domini/sentinel/compare/v0.5.13...v0.5.14) (2026-04-01)
+
+
+### Features
+
+* manage launcher windows and reorder tmux windows ([d2ba1b7](https://github.com/opus-domini/sentinel/commit/d2ba1b73174a02da34d1d1e33ddae477f6883bbc))
+
+
+### Bug Fixes
+
+* harden tmux strip payload parsing ([96f0beb](https://github.com/opus-domini/sentinel/commit/96f0beb4331f27e8bade1ef243d8e81b0ae42f5f))
+* preserve tmux strip state across transient refresh failures ([ae9b657](https://github.com/opus-domini/sentinel/commit/ae9b65744bc78978dbf53f3b1654d117d69497c4))
+* remove duplicate guardrail confirmation toast ([66cde89](https://github.com/opus-domini/sentinel/commit/66cde89ffac31e8e0b54e09cc38fb4476160e502))
+* reorder page title hostname ([c9012ca](https://github.com/opus-domini/sentinel/commit/c9012ca432e2aa11159d82ea10d289f59d654d05))
+* stabilize tmux window strip state ([ca53725](https://github.com/opus-domini/sentinel/commit/ca537255e41a95e3a8d3a1479af11da359450b81))
+* tidy go sum after sqlite bump ([963f2fc](https://github.com/opus-domini/sentinel/commit/963f2fc5831ec2e0fd506ea7f8233ffb7318731d))
+
 ## [0.5.13](https://github.com/opus-domini/sentinel/compare/v0.5.12...v0.5.13) (2026-03-31)
 
 
