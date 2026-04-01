@@ -25,6 +25,7 @@ import { useServerStatus } from '@/hooks/useServerStatus'
 import { useShellLayout } from '@/hooks/useShellLayout'
 import { useToasts } from '@/hooks/useToasts'
 import { useVisualViewport } from '@/hooks/useVisualViewport'
+import { formatPageTitle } from '@/routes/pageTitle'
 
 type AuthCookieUpdateResult = {
   ok: boolean
@@ -167,7 +168,7 @@ function RootComponent() {
   const meta = useSentinelMeta()
 
   useEffect(() => {
-    document.title = meta.hostname ? `Sentinel - ${meta.hostname}` : 'Sentinel'
+    document.title = formatPageTitle(meta.hostname)
   }, [meta.hostname])
 
   const authenticated = !meta.tokenRequired || !meta.unauthorized
