@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.15](https://github.com/opus-domini/sentinel/compare/v0.5.14...v0.5.15) (2026-04-01)
+
+
+### Refactors
+
+* rename shared tmux icon catalog ([7f12911](https://github.com/opus-domini/sentinel/commit/7f12911c5099409a8f8b8ab0060d78d780d2f79a))
+
 ## [0.5.14](https://github.com/opus-domini/sentinel/compare/v0.5.13...v0.5.14) (2026-04-01)
 
 
