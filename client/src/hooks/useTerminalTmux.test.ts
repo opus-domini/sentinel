@@ -24,7 +24,19 @@ vi.mock('@xterm/xterm', () => {
       onResize = vi.fn(() => ({ dispose: _noop }))
       onSelectionChange = vi.fn(() => ({ dispose: _noop }))
       loadAddon = vi.fn()
-      open = vi.fn()
+      open = vi.fn((host: HTMLElement) => {
+        const element = document.createElement('div')
+        element.className = 'xterm'
+        const screen = document.createElement('div')
+        screen.className = 'xterm-screen'
+        const viewport = document.createElement('div')
+        viewport.className = 'xterm-viewport'
+        const textarea = document.createElement('textarea')
+        element.append(screen, viewport, textarea)
+        host.appendChild(element)
+        this.element = element
+        this.textarea = textarea
+      })
       reset = vi.fn()
       focus = vi.fn()
       write = vi.fn()
@@ -140,6 +152,9 @@ const originalWebSocket = globalThis.WebSocket
 function setupEnvironment() {
   MockWebSocket.instances = []
   globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+  document.documentElement.style.setProperty('--surface-inset', '#112233')
+  document.documentElement.style.setProperty('--foreground', '#ddeeff')
+  document.documentElement.style.setProperty('--link', '#88aaff')
 
   if (
     typeof globalThis.localStorage === 'undefined' ||
@@ -534,5 +549,46 @@ describe('useTerminalTmux – auto-reconnect', () => {
 
     // New WebSocket created
     expect(MockWebSocket.instances.length).toBe(countBefore + 1)
+  })
+})
+
+describe('useTerminalTmux – terminal chrome', () => {
+  beforeEach(() => {
+    setupEnvironment()
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWebSocket
+  })
+
+  it('applies themed host gutter and keeps it in sync on theme change', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminalRoot = host.querySelector<HTMLElement>('.xterm')
+    expect(host.style.paddingInlineStart).toBe('8px')
+    expect(host.style.boxSizing).toBe('border-box')
+    expect(host.style.backgroundColor).not.toBe('')
+    expect(terminalRoot?.style.backgroundColor).toBe(host.style.backgroundColor)
+
+    const initialBackground = host.style.backgroundColor
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('sentinel-theme-change', { detail: 'dracula' }),
+      )
+      await Promise.resolve()
+    })
+
+    expect(host.style.backgroundColor).not.toBe(initialBackground)
+    expect(terminalRoot?.style.backgroundColor).toBe(host.style.backgroundColor)
+
+    host.remove()
   })
 })

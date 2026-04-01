@@ -264,14 +264,25 @@
 
 .xterm .xterm-viewport {
   background-color: transparent;
-  scrollbar-width: thin;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 
+.xterm .xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
 /* xterm 6.x uses a VS Code SmoothScrollableElement for scrolling */
 .xterm .xterm-scrollable-element {
+  -ms-overflow-style: none;
   overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.xterm .xterm-scrollable-element::-webkit-scrollbar {
+  display: none;
 }
 
 @media (max-width: 767px) {

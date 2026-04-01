@@ -23,6 +23,14 @@ import { createReconnect } from '@/lib/wsReconnect'
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
 const FONT_SIZE_KEY = 'sentinel_font_size'
+const TERMINAL_LEFT_GUTTER_PX = 8
+
+function applyTerminalChrome(host: HTMLDivElement, themeID: string) {
+  const themeBg = getTerminalTheme(themeID).colors.background ?? ''
+  host.style.setProperty('background-color', themeBg)
+  host.style.setProperty('box-sizing', 'border-box')
+  host.style.setProperty('padding-inline-start', `${TERMINAL_LEFT_GUTTER_PX}px`)
+}
 
 function loadFontSize(): number {
   const stored = localStorage.getItem(FONT_SIZE_KEY)
@@ -265,8 +273,11 @@ export function useTerminalTmux({
 
   const openRuntimeInHost = useCallback(
     (runtime: SessionRuntime, host: HTMLDivElement) => {
+      applyTerminalChrome(host, themeId)
       observeHostResize(runtime, host)
       if (runtime.terminal.element) {
+        runtime.terminal.element.style.backgroundColor =
+          getTerminalTheme(themeId).colors.background ?? ''
         runtime.touchWheelDispose.dispose()
         runtime.touchWheelDispose = { dispose: () => undefined }
         if (isMobileRef.current && allowWheelInAlternateBuffer) {
@@ -354,8 +365,9 @@ export function useTerminalTmux({
 
         // FitAddon floors column/row counts, so a residual strip can appear.
         // Keep the xterm root in sync with theme background to hide it.
-        const themeBg = getTerminalTheme(themeId).colors.background ?? ''
-        host.style.setProperty('background-color', themeBg)
+        applyTerminalChrome(host, themeId)
+        runtime.terminal.element.style.backgroundColor =
+          getTerminalTheme(themeId).colors.background ?? ''
 
         fitRuntime(runtime)
       }
@@ -880,6 +892,10 @@ export function useTerminalTmux({
     const colors = getTerminalTheme(id).colors
     for (const runtime of runtimesRef.current.values()) {
       runtime.terminal.options.theme = colors
+      const host = hostsRef.current.get(runtime.session)
+      if (host) {
+        applyTerminalChrome(host, id)
+      }
       if (runtime.terminal.element) {
         runtime.terminal.element.style.backgroundColor = colors.background ?? ''
       }
