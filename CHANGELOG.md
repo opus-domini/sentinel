@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.17](https://github.com/opus-domini/sentinel/compare/v0.5.16...v0.5.17) (2026-04-01)
+
+
+### Bug Fixes
+
+* polish tmux window and session chips ([ff896c6](https://github.com/opus-domini/sentinel/commit/ff896c6a4792f9356d59c1b42691e55adf6d037d))
+
 ## [0.5.16](https://github.com/opus-domini/sentinel/compare/v0.5.15...v0.5.16) (2026-04-01)
 
 
