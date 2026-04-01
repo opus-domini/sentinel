@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.16](https://github.com/opus-domini/sentinel/compare/v0.5.15...v0.5.16) (2026-04-01)
+
+
+### Features
+
+* compact session cards before sidebar minimum width ([cb96888](https://github.com/opus-domini/sentinel/commit/cb96888f6cbd19fcdf37262b09fc316e2ec7a82f))
+* streamline tmux header and strip interactions ([09a8d52](https://github.com/opus-domini/sentinel/commit/09a8d52ee239b069d914bfb259520df063f51254))
+
+
+### Bug Fixes
+
+* polish tmux terminal viewport chrome ([6e5262b](https://github.com/opus-domini/sentinel/commit/6e5262b42882515761a623553f78bd0665486b3b))
+* track vitest wrapper script ([6ef5483](https://github.com/opus-domini/sentinel/commit/6ef5483939ac7ece04ff05684f8bad8d689a426d))
+
 ## [0.5.15](https://github.com/opus-domini/sentinel/compare/v0.5.14...v0.5.15) (2026-04-01)
 
 
