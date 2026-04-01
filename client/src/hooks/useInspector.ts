@@ -59,6 +59,42 @@ function asText(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+function hasRenderableInspectorState(
+  session: string,
+  windows: Array<WindowInfo>,
+  panes: Array<PaneInfo>,
+): boolean {
+  const trimmedSession = session.trim()
+  if (trimmedSession === '') {
+    return false
+  }
+  return (
+    windows.some((windowInfo) => windowInfo.session === trimmedSession) ||
+    panes.some((paneInfo) => paneInfo.session === trimmedSession)
+  )
+}
+
+function isLikelyTransientInspectorError(message: string): boolean {
+  const normalized = message.trim().toLowerCase()
+  return (
+    normalized === 'failed to fetch' ||
+    normalized === 'network request failed' ||
+    normalized.includes('networkerror') ||
+    normalized.includes('fetch failed') ||
+    normalized.includes('load failed') ||
+    normalized.startsWith('http 502') ||
+    normalized.startsWith('http 503') ||
+    normalized.startsWith('http 504')
+  )
+}
+
+function formatInspectorErrorMessage(message: string): string {
+  if (isLikelyTransientInspectorError(message)) {
+    return 'Unable to refresh session details right now.'
+  }
+  return message
+}
+
 function parseWindowProjection(
   rawWindow: RawWindowProjection,
   sessionFallback: string,
@@ -681,6 +717,12 @@ export function useInspector(options: UseInspectorOptions) {
       runtimeMetricsRef.current.inspectorRefreshCount += 1
       const session = target.trim()
       const bg = params?.background === true
+      const hasRenderableState = hasRenderableInspectorState(
+        session,
+        windowsRef.current,
+        panesRef.current,
+      )
+      const optimisticRefresh = bg || hasRenderableState
       if (session === '') {
         setWindows([])
         setPanes([])
@@ -695,11 +737,10 @@ export function useInspector(options: UseInspectorOptions) {
         return
       }
       const gen = ++inspectorGenerationRef.current
-      if (!bg) {
+      if (!optimisticRefresh) {
         inspectorLoadingRef.current = true
         setInspectorLoading(true)
       }
-      setInspectorError('')
       try {
         const windowsResponse = await api<WindowsResponse>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/windows`,
@@ -750,6 +791,7 @@ export function useInspector(options: UseInspectorOptions) {
             panes: merged.panes,
           },
         )
+        setInspectorError('')
         setWindows((prev) =>
           sameWindowProjection(prev, stableWindows) ? prev : stableWindows,
         )
@@ -803,9 +845,20 @@ export function useInspector(options: UseInspectorOptions) {
         if (unavailable) {
           setTmuxUnavailable(true)
         }
-        setInspectorError(message)
+        const shouldPreserveSnapshot =
+          hasRenderableInspectorState(
+            session,
+            windowsRef.current,
+            panesRef.current,
+          ) &&
+          !unavailable &&
+          isLikelyTransientInspectorError(message)
+        if (shouldPreserveSnapshot) {
+          return
+        }
+        setInspectorError(formatInspectorErrorMessage(message))
       } finally {
-        if (gen === inspectorGenerationRef.current && !bg) {
+        if (gen === inspectorGenerationRef.current && !optimisticRefresh) {
           inspectorLoadingRef.current = false
           setInspectorLoading(false)
         }

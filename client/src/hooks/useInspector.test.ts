@@ -527,6 +527,84 @@ describe('useInspector – window presentation stability', () => {
       title: '',
     })
   })
+
+  it('keeps the last valid snapshot during a transient refresh failure', async () => {
+    let resolveSecondWindows:
+      | ((value: { windows: Array<WindowInfo> }) => void)
+      | null = null
+    let rejectSecondWindows: ((reason?: unknown) => void) | null = null
+    let windowsFetchCount = 0
+
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        windowsFetchCount += 1
+        if (windowsFetchCount === 1) {
+          return Promise.resolve({
+            windows: [makeWindow({ index: 0, active: true })],
+          })
+        }
+        return new Promise<{ windows: Array<WindowInfo> }>(
+          (resolve, reject) => {
+            resolveSecondWindows = resolve
+            rejectSecondWindows = reject
+          },
+        )
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+        })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows).toHaveLength(1)
+    })
+
+    let refreshPromise: Promise<void> | undefined
+    act(() => {
+      refreshPromise = result.current.refreshInspector('dev')
+    })
+
+    expect(result.current.inspectorLoading).toBe(false)
+    expect(result.current.inspectorError).toBe('')
+
+    await act(async () => {
+      rejectSecondWindows?.(new TypeError('Failed to fetch'))
+      await refreshPromise
+    })
+
+    expect(result.current.windows).toHaveLength(1)
+    expect(result.current.windows[0]?.displayName).toBe('main')
+    expect(result.current.inspectorLoading).toBe(false)
+    expect(result.current.inspectorError).toBe('')
+
+    act(() => {
+      refreshPromise = result.current.refreshInspector('dev')
+    })
+
+    await act(async () => {
+      resolveSecondWindows?.({
+        windows: [
+          makeWindow({
+            index: 0,
+            name: 'runner',
+            displayName: 'runner',
+            active: true,
+          }),
+        ],
+      })
+      await refreshPromise
+    })
+
+    expect(result.current.windows[0]?.displayName).toBe('runner')
+    expect(result.current.inspectorError).toBe('')
+  })
 })
 
 // ---------------------------------------------------------------------------

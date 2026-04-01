@@ -123,6 +123,7 @@ export default function PaneStrip({
         )
   const stripClass =
     'flex min-h-[24px] items-center gap-1.5 overflow-x-auto overflow-y-hidden'
+  const hasRenderablePanes = visiblePanes.length > 0
 
   useEffect(() => {
     const strip = stripRef.current
@@ -219,7 +220,7 @@ export default function PaneStrip({
       </div>
     )
   }
-  if (inspectorLoading) {
+  if (inspectorLoading && !hasRenderablePanes) {
     return (
       <div className={stripClass} aria-busy="true" aria-live="polite">
         <div className="h-5 w-5 shrink-0 rounded border border-border-subtle bg-surface-elevated motion-safe:animate-pulse" />
@@ -230,7 +231,7 @@ export default function PaneStrip({
       </div>
     )
   }
-  if (inspectorError) {
+  if (inspectorError && !hasRenderablePanes) {
     return (
       <div className={stripClass}>
         <span className="truncate text-destructive-foreground">

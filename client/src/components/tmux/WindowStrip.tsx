@@ -261,6 +261,7 @@ export default function WindowStrip({
     [reorderEnabled, sortedWindows],
   )
   const stripClass = 'flex min-h-[24px] items-center gap-1.5 overflow-x-auto'
+  const hasRenderableWindows = sortedWindows.length > 0
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -283,7 +284,7 @@ export default function WindowStrip({
       </div>
     )
   }
-  if (inspectorLoading) {
+  if (inspectorLoading && !hasRenderableWindows) {
     return (
       <div className={stripClass} aria-busy="true" aria-live="polite">
         <div className="h-6 w-6 shrink-0 rounded border border-border-subtle bg-surface-elevated motion-safe:animate-pulse" />
@@ -293,7 +294,7 @@ export default function WindowStrip({
       </div>
     )
   }
-  if (inspectorError) {
+  if (inspectorError && !hasRenderableWindows) {
     return (
       <div className={stripClass}>
         <span className="truncate text-[11px] text-destructive-foreground">
