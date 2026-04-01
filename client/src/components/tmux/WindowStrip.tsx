@@ -37,8 +37,12 @@ import { hapticFeedback } from '@/lib/device'
 import { cn } from '@/lib/utils'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 
-function describeLauncherCommand(command: string) {
-  const normalized = command.trim()
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function describeLauncherCommand(command: unknown) {
+  const normalized = asText(command).trim()
   if (normalized !== '') {
     return normalized
   }
@@ -91,9 +95,20 @@ function WindowChip({
 }: WindowChipProps) {
   const unreadPanes = windowInfo.unreadPanes ?? 0
   const hasUnread = windowInfo.hasUnread ?? unreadPanes > 0
+  const displayName = (() => {
+    const normalizedDisplayName = asText(windowInfo.displayName).trim()
+    if (normalizedDisplayName !== '') {
+      return normalizedDisplayName
+    }
+    const normalizedName = asText(windowInfo.name).trim()
+    if (normalizedName !== '') {
+      return normalizedName
+    }
+    return `#${windowInfo.index}`
+  })()
   const WindowIcon =
-    windowInfo.displayIcon && windowInfo.displayIcon !== ''
-      ? getSessionIcon(windowInfo.displayIcon)
+    asText(windowInfo.displayIcon) !== ''
+      ? getSessionIcon(asText(windowInfo.displayIcon))
       : null
 
   const content = (
@@ -117,9 +132,7 @@ function WindowChip({
         )}
         type="button"
         onClick={() => onSelectWindow(windowInfo.index)}
-        aria-label={
-          isMobile ? `Select window ${windowInfo.displayName}` : undefined
-        }
+        aria-label={isMobile ? `Select window ${displayName}` : undefined}
         {...(dragAttributes ?? {})}
         {...(dragListeners ?? {})}
       >
@@ -128,7 +141,7 @@ function WindowChip({
         ) : (
           <>
             {WindowIcon !== null && <WindowIcon className="h-3.5 w-3.5" />}
-            <span className="min-w-0 truncate">{windowInfo.displayName}</span>
+            <span className="min-w-0 truncate">{displayName}</span>
           </>
         )}
       </button>
@@ -236,12 +249,14 @@ export default function WindowStrip({
     typeof onReorderWindow === 'function' &&
     sortedWindows.length > 1 &&
     sortedWindows.every(
-      (windowInfo) => (windowInfo.tmuxWindowId ?? '').trim() !== '',
+      (windowInfo) => asText(windowInfo.tmuxWindowId).trim() !== '',
     )
   const sortableWindowIDs = useMemo(
     () =>
       reorderEnabled
-        ? sortedWindows.map((windowInfo) => windowInfo.tmuxWindowId!.trim())
+        ? sortedWindows.map((windowInfo) =>
+            asText(windowInfo.tmuxWindowId).trim(),
+          )
         : [],
     [reorderEnabled, sortedWindows],
   )

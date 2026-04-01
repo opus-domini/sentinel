@@ -55,6 +55,43 @@ import {
 } from '@/lib/tmuxName'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function normalizeTmuxLauncher(
+  rawLauncher: Partial<TmuxLauncher> & Record<string, unknown>,
+): TmuxLauncher | null {
+  const id = asText(rawLauncher.id)
+  if (id.trim() === '') {
+    return null
+  }
+
+  const cwdMode = rawLauncher.cwdMode
+  const normalizedCwdMode =
+    cwdMode === 'session' || cwdMode === 'active-pane' || cwdMode === 'fixed'
+      ? cwdMode
+      : 'session'
+
+  return {
+    id,
+    name: asText(rawLauncher.name),
+    icon: asText(rawLauncher.icon),
+    command: asText(rawLauncher.command),
+    cwdMode: normalizedCwdMode,
+    cwdValue: asText(rawLauncher.cwdValue),
+    windowName: asText(rawLauncher.windowName),
+    sortOrder:
+      typeof rawLauncher.sortOrder === 'number' &&
+      Number.isFinite(rawLauncher.sortOrder)
+        ? Math.trunc(rawLauncher.sortOrder)
+        : undefined,
+    createdAt: asText(rawLauncher.createdAt),
+    updatedAt: asText(rawLauncher.updatedAt),
+    lastUsedAt: asText(rawLauncher.lastUsedAt),
+  }
+}
+
 function TmuxPage() {
   const { tokenRequired, defaultCwd } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
@@ -178,7 +215,15 @@ function TmuxPage() {
     async (options?: { quiet?: boolean }) => {
       try {
         const data = await api<TmuxLaunchersResponse>('/api/tmux/launchers')
-        setLaunchers(data.launchers)
+        const nextLaunchers = Array.isArray(data.launchers)
+          ? data.launchers.flatMap((rawLauncher) => {
+              const normalized = normalizeTmuxLauncher(
+                rawLauncher as Partial<TmuxLauncher> & Record<string, unknown>,
+              )
+              return normalized === null ? [] : [normalized]
+            })
+          : []
+        setLaunchers(nextLaunchers)
       } catch (error) {
         if (!options?.quiet) {
           const message =

@@ -465,6 +465,68 @@ describe('useInspector – window presentation stability', () => {
       managed: false,
     })
   })
+
+  it('normalizes malformed refresh payloads before exposing them to the strips', async () => {
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [
+            {
+              session: 'dev',
+              index: 0,
+              name: 'runner',
+              displayName: undefined,
+              active: true,
+              panes: 1,
+            },
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            {
+              session: 'dev',
+              windowIndex: 0,
+              paneIndex: 0,
+              paneId: '%1',
+              title: undefined,
+              active: true,
+              tty: '/dev/pts/1',
+            },
+            {
+              session: 'dev',
+              windowIndex: 0,
+              paneIndex: 1,
+              paneId: undefined,
+              title: 'skip-me',
+              active: false,
+              tty: '/dev/pts/2',
+            },
+          ],
+        })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows).toHaveLength(1)
+      expect(result.current.panes).toHaveLength(1)
+    })
+
+    expect(result.current.windows[0]).toMatchObject({
+      name: 'runner',
+      displayName: 'runner',
+    })
+    expect(result.current.panes[0]).toMatchObject({
+      paneId: '%1',
+      title: '',
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
