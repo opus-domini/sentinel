@@ -32,6 +32,7 @@ import {
   tmuxInspectorQueryKey,
 } from '@/lib/tmuxQueryCache'
 import { shouldSkipInspectorRefresh } from '@/lib/tmuxInspectorRefresh'
+import { moveSidebarItem } from '@/lib/sessionSidebarOrder'
 import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName } from '@/lib/tmuxName'
 import {
   addPendingPaneClose,
@@ -411,6 +412,28 @@ export function useInspector(options: UseInspectorOptions) {
             session,
             index: Math.trunc(index),
             name: rawWindow.name ?? '',
+            displayName:
+              typeof rawWindow.displayName === 'string' &&
+              rawWindow.displayName.trim() !== ''
+                ? rawWindow.displayName
+                : (rawWindow.name ?? ''),
+            displayIcon:
+              typeof rawWindow.displayIcon === 'string'
+                ? rawWindow.displayIcon
+                : undefined,
+            tmuxWindowId:
+              typeof rawWindow.tmuxWindowId === 'string'
+                ? rawWindow.tmuxWindowId
+                : undefined,
+            managed: rawWindow.managed === true,
+            managedWindowId:
+              typeof rawWindow.managedWindowId === 'string'
+                ? rawWindow.managedWindowId
+                : undefined,
+            launcherId:
+              typeof rawWindow.launcherId === 'string'
+                ? rawWindow.launcherId
+                : undefined,
             active: rawWindow.active === true,
             panes: asNonNegativeInt(rawWindow.panes, 0),
             unreadPanes,
@@ -652,6 +675,60 @@ export function useInspector(options: UseInspectorOptions) {
     void refreshInspector(activeSession)
   }, [refreshInspector, activeSession])
 
+  const reorderWindows = useCallback(
+    (activeWindowID: string, overWindowID: string) => {
+      const active = tabsStateRef.current.activeSession
+      if (!active) return
+
+      const orderedWindows = [...windowsRef.current].sort(
+        (left, right) => left.index - right.index,
+      )
+      if (orderedWindows.length < 2) {
+        return
+      }
+
+      const currentOrder = orderedWindows.map((windowInfo) =>
+        (windowInfo.tmuxWindowId ?? '').trim(),
+      )
+      if (currentOrder.some((windowID) => windowID === '')) {
+        pushErrorToast(
+          'Reorder Windows',
+          'window order is not ready yet; refresh and try again',
+        )
+        return
+      }
+
+      const nextOrder = moveSidebarItem(
+        currentOrder,
+        activeWindowID,
+        overWindowID,
+      )
+      if (nextOrder === currentOrder) {
+        return
+      }
+
+      setInspectorError('')
+      void api<void>(
+        `/api/tmux/sessions/${encodeURIComponent(active)}/windows/order`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ windowIds: nextOrder }),
+        },
+      )
+        .then(() => {
+          void refreshInspector(active, { background: true })
+        })
+        .catch((error) => {
+          const msg =
+            error instanceof Error ? error.message : 'failed to reorder windows'
+          setInspectorError(msg)
+          pushErrorToast('Reorder Windows', msg)
+          void refreshInspector(active, { background: true })
+        })
+    },
+    [api, pushErrorToast, refreshInspector, tabsStateRef],
+  )
+
   const selectWindow = useCallback(
     (windowIndex: number) => {
       const active = tabsStateRef.current.activeSession
@@ -787,7 +864,15 @@ export function useInspector(options: UseInspectorOptions) {
       ...prev
         .filter((w) => w.index !== nextIdx)
         .map((w) => ({ ...w, active: false })),
-      { session: active, index: nextIdx, name: 'new', active: true, panes: 1 },
+      {
+        session: active,
+        index: nextIdx,
+        name: 'new',
+        displayName: 'new',
+        tmuxWindowId: undefined,
+        active: true,
+        panes: 1,
+      },
     ])
     setPanes((prev) => [
       ...prev
@@ -1405,7 +1490,11 @@ export function useInspector(options: UseInspectorOptions) {
         return
       }
       setWindows((prev) =>
-        prev.map((w) => (w.index === index ? { ...w, name: sanitized } : w)),
+        prev.map((w) =>
+          w.index === index
+            ? { ...w, name: sanitized, displayName: sanitized }
+            : w,
+        ),
       )
       try {
         await api<void>(
@@ -1440,7 +1529,7 @@ export function useInspector(options: UseInspectorOptions) {
       session: windowInfo.session,
       index: windowInfo.index,
     })
-    setRenameWindowValue(sanitizeTmuxWindowName(windowInfo.name))
+    setRenameWindowValue(sanitizeTmuxWindowName(windowInfo.displayName))
     setRenameWindowDialogOpen(true)
   }, [])
 
@@ -1535,6 +1624,7 @@ export function useInspector(options: UseInspectorOptions) {
     pendingCreateSessionsRef,
     // Actions
     refreshInspector,
+    reorderWindows,
     selectWindow,
     selectPane,
     createWindow,

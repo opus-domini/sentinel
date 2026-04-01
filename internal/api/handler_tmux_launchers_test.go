@@ -82,6 +82,47 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 		}
 	})
 
+	t.Run("create accepts blank command", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, &mockTmux{}, nil)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/launchers", strings.NewReader(`{"name":"Runner","icon":"terminal","command":"","cwdMode":"session","windowName":"runner"}`))
+		h.createTmuxLauncher(w, r)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201", w.Code)
+		}
+
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		launcher, _ := data["launcher"].(map[string]any)
+		if command, _ := launcher["command"].(string); command != "" {
+			t.Fatalf("command = %q, want empty", command)
+		}
+	})
+
+	t.Run("create returns invalid request for missing fixed cwd", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, &mockTmux{}, nil)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/launchers", strings.NewReader(`{"name":"Runner","icon":"terminal","command":"runner","cwdMode":"fixed","cwdValue":"","windowName":"runner"}`))
+		h.createTmuxLauncher(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+
+		body := jsonBody(t, w)
+		errBody, _ := body["error"].(map[string]any)
+		if message, _ := errBody["message"].(string); message != "tmux launcher fixed cwd is required" {
+			t.Fatalf("error message = %q, want fixed cwd validation", message)
+		}
+	})
+
 	t.Run("reorder launchers", func(t *testing.T) {
 		t.Parallel()
 
@@ -126,6 +167,8 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 
 	t.Run("launch launcher creates window and sends command", func(t *testing.T) {
 		t.Parallel()
+
+		const sessionName = "dev"
 
 		var (
 			gotSession string
@@ -173,15 +216,15 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/launchers/"+launcher.ID+"/launch", nil)
-		r.SetPathValue("session", "dev")
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/"+sessionName+"/launchers/"+launcher.ID+"/launch", nil)
+		r.SetPathValue("session", sessionName)
 		r.SetPathValue("launcher", launcher.ID)
 		h.launchTmuxLauncher(w, r)
 
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
-		if gotSession != "dev" || gotName != "codex" || gotCWD != "/srv/api" {
+		if gotSession != sessionName || gotName != "codex" || gotCWD != "/srv/api" {
 			t.Fatalf("launch args = (%q, %q, %q), want (dev, codex, /srv/api)", gotSession, gotName, gotCWD)
 		}
 		if gotPaneID != "%22" || gotKeys != "codex" || !gotEnter {
@@ -194,6 +237,46 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 		}
 		if stored.LastUsedAt.IsZero() {
 			t.Fatal("LastUsedAt is zero, want non-zero")
+		}
+	})
+
+	t.Run("launch launcher with blank command skips send keys", func(t *testing.T) {
+		t.Parallel()
+
+		var sendKeysCalls int
+		tm := &mockTmux{
+			newWindowWithOptionsFn: func(_ context.Context, session, name, cwd string) (tmux.NewWindowResult, error) {
+				return tmux.NewWindowResult{ID: "@12", Index: 2, PaneID: "%22"}, nil
+			},
+			sendKeysFn: func(_ context.Context, paneID, keys string, enter bool) error {
+				sendKeysCalls++
+				return nil
+			},
+		}
+		h, st := newTestHandler(t, tm, nil)
+
+		launcher, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
+			Name:       "Runner",
+			Icon:       "terminal",
+			Command:    "",
+			CwdMode:    store.TmuxLauncherCwdModeSession,
+			WindowName: "runner",
+		})
+		if err != nil {
+			t.Fatalf("CreateTmuxLauncher() error = %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/launchers/"+launcher.ID+"/launch", nil)
+		r.SetPathValue("session", "dev")
+		r.SetPathValue("launcher", launcher.ID)
+		h.launchTmuxLauncher(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if sendKeysCalls != 0 {
+			t.Fatalf("SendKeys() calls = %d, want 0", sendKeysCalls)
 		}
 	})
 }

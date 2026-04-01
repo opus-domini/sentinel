@@ -324,6 +324,7 @@ export function mergePendingInspectorSnapshot(
       session: name,
       index,
       name: 'new',
+      displayName: 'new',
       active: false,
       panes: 1,
       unreadPanes: 0,

@@ -54,6 +54,9 @@ type paneRepo interface {
 	GetWatchtowerSession(ctx context.Context, sessionName string) (store.WatchtowerSession, error)
 	ListWatchtowerWindows(ctx context.Context, sessionName string) ([]store.WatchtowerWindow, error)
 	ListWatchtowerPresenceBySession(ctx context.Context, sessionName string) ([]store.WatchtowerPresence, error)
+	ListManagedTmuxWindowsBySession(ctx context.Context, sessionName string) ([]store.ManagedTmuxWindow, error)
+	UpdateManagedTmuxWindowRuntime(ctx context.Context, id, tmuxWindowID string, lastWindowIndex int) error
+	DeleteManagedTmuxWindowsMissingRuntime(ctx context.Context, sessionName string, liveWindowIDs []string) error
 }
 
 // paneRuntimeRepo covers pane runtime tracking.
@@ -443,7 +446,12 @@ func (s *Service) buildInspectorActivityPatches(ctx context.Context, sessionName
 			slog.Warn("watchtower inspector patch panes build failed", "session", sessionName, "err", paneErr)
 			continue
 		}
-		patches = append(patches, store.BuildWatchtowerInspectorPatch(sessionName, windows, panes))
+		managed, managedErr := s.store.ListManagedTmuxWindowsBySession(ctx, sessionName)
+		if managedErr != nil {
+			slog.Warn("watchtower inspector patch managed windows build failed", "session", sessionName, "err", managedErr)
+			managed = nil
+		}
+		patches = append(patches, store.BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, managedWindowIndexMap(managed)))
 	}
 	return patches
 }

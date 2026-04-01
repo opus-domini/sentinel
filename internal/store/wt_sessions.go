@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -30,6 +31,15 @@ func BuildWatchtowerSessionActivityPatch(row WatchtowerSession) map[string]any {
 // BuildWatchtowerInspectorPatch returns a full window/pane projection patch for
 // one session, used by ws activity/seen events to avoid inspector polling.
 func BuildWatchtowerInspectorPatch(sessionName string, windows []WatchtowerWindow, panes []WatchtowerPane) map[string]any {
+	return BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, nil)
+}
+
+func BuildWatchtowerInspectorPatchWithManaged(
+	sessionName string,
+	windows []WatchtowerWindow,
+	panes []WatchtowerPane,
+	managedByIndex map[int]ManagedTmuxWindow,
+) map[string]any {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
 		if len(windows) > 0 {
@@ -40,7 +50,7 @@ func BuildWatchtowerInspectorPatch(sessionName string, windows []WatchtowerWindo
 	}
 	return map[string]any{
 		"session": sessionName,
-		"windows": BuildWatchtowerWindowPatches(windows, panes),
+		"windows": BuildWatchtowerWindowPatchesWithManaged(windows, panes, managedByIndex),
 		"panes":   BuildWatchtowerPanePatches(panes),
 	}
 }
@@ -145,7 +155,11 @@ func (s *Store) GetWatchtowerInspectorPatch(ctx context.Context, sessionName str
 	if err != nil {
 		return nil, err
 	}
-	return BuildWatchtowerInspectorPatch(sessionName, windows, panes), nil
+	managed, err := s.ListManagedTmuxWindowsBySession(ctx, sessionName)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	return BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, managedWindowsByIndex(managed)), nil
 }
 
 func (s *Store) ListWatchtowerSessions(ctx context.Context) ([]WatchtowerSession, error) {

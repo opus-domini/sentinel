@@ -39,6 +39,12 @@ export type InspectorWindowPatch = {
   session?: string
   index?: number
   name?: string
+  displayName?: string
+  displayIcon?: string
+  tmuxWindowId?: string
+  managed?: boolean
+  managedWindowId?: string
+  launcherId?: string
   active?: boolean
   panes?: number
   unreadPanes?: number
@@ -167,6 +173,7 @@ export type InspectorActions = {
     target: string,
     options?: { background?: boolean },
   ) => Promise<void>
+  reorderWindows: (activeWindowID: string, overWindowID: string) => void
   selectWindow: (windowIndex: number) => void
   selectPane: (paneID: string) => void
   createWindow: () => void
@@ -250,6 +257,12 @@ export function sameWindowProjection(
       a.session !== b.session ||
       a.index !== b.index ||
       a.name !== b.name ||
+      a.displayName !== b.displayName ||
+      (a.displayIcon ?? '') !== (b.displayIcon ?? '') ||
+      (a.tmuxWindowId ?? '') !== (b.tmuxWindowId ?? '') ||
+      (a.managed ?? false) !== (b.managed ?? false) ||
+      (a.managedWindowId ?? '') !== (b.managedWindowId ?? '') ||
+      (a.launcherId ?? '') !== (b.launcherId ?? '') ||
       a.active !== b.active ||
       a.panes !== b.panes ||
       (a.unreadPanes ?? 0) !== (b.unreadPanes ?? 0) ||

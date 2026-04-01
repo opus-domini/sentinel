@@ -321,7 +321,7 @@ func TestListWindows(t *testing.T) {
 
 	t.Run("parses_multi_window_output", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t0\tcode\t1\t2\t83ed,204x51,0,0{102x51,0,0,0,101x51,103,0,1}\ndev\t1\tshell\t0\t1\t8502,204x51,0,0,2\n", nil
+			return "dev\t@1\t0\tcode\t1\t2\t83ed,204x51,0,0{102x51,0,0,0,101x51,103,0,1}\ndev\t@2\t1\tshell\t0\t1\t8502,204x51,0,0,2\n", nil
 		})
 
 		windows, err := ListWindows(ctx, "dev")
@@ -331,10 +331,10 @@ func TestListWindows(t *testing.T) {
 		if len(windows) != 2 {
 			t.Fatalf("got %d windows, want 2", len(windows))
 		}
-		if windows[0].Session != "dev" || windows[0].Index != 0 || windows[0].Name != "code" || !windows[0].Active || windows[0].Panes != 2 {
+		if windows[0].Session != "dev" || windows[0].ID != "@1" || windows[0].Index != 0 || windows[0].Name != "code" || !windows[0].Active || windows[0].Panes != 2 {
 			t.Errorf("windows[0] = %+v", windows[0])
 		}
-		if windows[1].Session != "dev" || windows[1].Index != 1 || windows[1].Name != "shell" || windows[1].Active || windows[1].Panes != 1 {
+		if windows[1].Session != "dev" || windows[1].ID != "@2" || windows[1].Index != 1 || windows[1].Name != "shell" || windows[1].Active || windows[1].Panes != 1 {
 			t.Errorf("windows[1] = %+v", windows[1])
 		}
 		if windows[0].Layout == "" {
@@ -372,7 +372,7 @@ func TestListWindows(t *testing.T) {
 
 	t.Run("short_lines_skipped", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "bad\tshort\ndev\t0\tcode\t1\t1\t8502,204x51,0,0,2\n", nil
+			return "bad\tshort\ndev\t@1\t0\tcode\t1\t1\t8502,204x51,0,0,2\n", nil
 		})
 
 		windows, err := ListWindows(ctx, "dev")
@@ -386,7 +386,7 @@ func TestListWindows(t *testing.T) {
 
 	t.Run("no_layout_column", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t0\tcode\t1\t1\n", nil
+			return "dev\t@1\t0\tcode\t1\t1\n", nil
 		})
 
 		windows, err := ListWindows(ctx, "dev")
@@ -398,6 +398,71 @@ func TestListWindows(t *testing.T) {
 		}
 		if windows[0].Layout != "" {
 			t.Errorf("expected empty layout, got %q", windows[0].Layout)
+		}
+	})
+}
+
+func TestReorderWindows(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("reorders by stable tmux window ids", func(t *testing.T) {
+		var commands [][]string
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			commands = append(commands, append([]string{}, args...))
+			switch args[0] {
+			case cmdListWindows:
+				return "dev\t@1\t0\tclaude\t1\t1\tlayout-a\ndev\t@2\t1\tshell\t0\t1\tlayout-b\ndev\t@3\t2\trunner\t0\t1\tlayout-c\n", nil
+			case "swap-window":
+				return "", nil
+			default:
+				t.Fatalf("unexpected tmux command: %v", args)
+				return "", nil
+			}
+		})
+
+		err := ReorderWindows(ctx, "dev", []string{"@2", "@3", "@1"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := [][]string{
+			{
+				"list-windows",
+				"-t",
+				"dev",
+				"-F",
+				"#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}",
+			},
+			{"swap-window", "-d", "-s", "@1", "-t", "@2"},
+			{"swap-window", "-d", "-s", "@1", "-t", "@3"},
+		}
+		if len(commands) != len(want) {
+			t.Fatalf("commands = %#v, want %#v", commands, want)
+		}
+		for index := range want {
+			if fmt.Sprint(commands[index]) != fmt.Sprint(want[index]) {
+				t.Fatalf("command[%d] = %#v, want %#v", index, commands[index], want[index])
+			}
+		}
+	})
+
+	t.Run("rejects stale window order", func(t *testing.T) {
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			if args[0] != cmdListWindows {
+				t.Fatalf("unexpected tmux command: %v", args)
+			}
+			return "dev\t@1\t0\tclaude\t1\t1\tlayout-a\ndev\t@2\t1\tshell\t0\t1\tlayout-b\n", nil
+		})
+
+		err := ReorderWindows(ctx, "dev", []string{"@1", "@3"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !IsKind(err, ErrKindInvalidIdentifier) {
+			t.Fatalf("expected ErrKindInvalidIdentifier, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "does not match live windows") {
+			t.Fatalf("unexpected error message: %v", err)
 		}
 	})
 }
@@ -1022,7 +1087,7 @@ func TestNewWindow(t *testing.T) {
 						t.Errorf("expected -c /home/dev/project, got %s", args[i+1])
 					}
 				}
-				return "3\t%15\n", nil
+				return "@3\t3\t%15\n", nil
 			default:
 				return "", fmt.Errorf("unexpected command: %s", args[0])
 			}
@@ -1032,8 +1097,8 @@ func TestNewWindow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.Index != 3 || result.PaneID != "%15" {
-			t.Errorf("result = %+v, want Index=3 PaneID=%%15", result)
+		if result.ID != "@3" || result.Index != 3 || result.PaneID != "%15" {
+			t.Errorf("result = %+v, want ID=@3 Index=3 PaneID=%%15", result)
 		}
 	})
 
@@ -1053,7 +1118,7 @@ func TestNewWindow(t *testing.T) {
 						t.Errorf("expected fallback target dev:, got %s", args[i+1])
 					}
 				}
-				return "0\t%20\n", nil
+				return "@20\t0\t%20\n", nil
 			default:
 				return "", fmt.Errorf("unexpected command: %s", args[0])
 			}
@@ -1063,7 +1128,7 @@ func TestNewWindow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.Index != 0 || result.PaneID != "%20" {
+		if result.ID != "@20" || result.Index != 0 || result.PaneID != "%20" {
 			t.Errorf("result = %+v", result)
 		}
 	})
@@ -1121,7 +1186,7 @@ func TestNewWindow(t *testing.T) {
 						t.Error("should not pass -c when display-message fails")
 					}
 				}
-				return "1\t%10\n", nil
+				return "@10\t1\t%10\n", nil
 			default:
 				return "", fmt.Errorf("unexpected command: %s", args[0])
 			}
@@ -1131,8 +1196,8 @@ func TestNewWindow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.Index != 1 || result.PaneID != "%10" {
-			t.Errorf("result = %+v, want Index=1 PaneID=%%10", result)
+		if result.ID != "@10" || result.Index != 1 || result.PaneID != "%10" {
+			t.Errorf("result = %+v, want ID=@10 Index=1 PaneID=%%10", result)
 		}
 	})
 
@@ -1149,7 +1214,7 @@ func TestNewWindow(t *testing.T) {
 				if !strings.Contains(joined, "-c /srv/api") {
 					t.Errorf("expected -c /srv/api, got: %v", args)
 				}
-				return "2\t%22\n", nil
+				return "@22\t2\t%22\n", nil
 			default:
 				return "", fmt.Errorf("unexpected command: %s", args[0])
 			}
@@ -1159,8 +1224,8 @@ func TestNewWindow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.Index != 2 || result.PaneID != "%22" {
-			t.Errorf("result = %+v, want Index=2 PaneID=%%22", result)
+		if result.ID != "@22" || result.Index != 2 || result.PaneID != "%22" {
+			t.Errorf("result = %+v, want ID=@22 Index=2 PaneID=%%22", result)
 		}
 	})
 }

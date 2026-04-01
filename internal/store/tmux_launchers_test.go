@@ -86,6 +86,25 @@ func TestTmuxLaunchers(t *testing.T) {
 		}
 	})
 
+	t.Run("create allows blank command", func(t *testing.T) {
+		t.Parallel()
+		s := newTestStore(t)
+
+		launcher, err := s.CreateTmuxLauncher(ctx, TmuxLauncherWrite{
+			Name:       "Runner",
+			Icon:       "terminal",
+			Command:    "",
+			CwdMode:    TmuxLauncherCwdModeSession,
+			WindowName: "runner",
+		})
+		if err != nil {
+			t.Fatalf("CreateTmuxLauncher() error = %v", err)
+		}
+		if launcher.Command != "" {
+			t.Fatalf("launcher command = %q, want empty", launcher.Command)
+		}
+	})
+
 	t.Run("get launcher not found", func(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)

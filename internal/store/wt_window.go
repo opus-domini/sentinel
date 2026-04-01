@@ -10,6 +10,14 @@ import (
 // BuildWatchtowerWindowPatches returns projection rows suitable for
 // client-side window strip reconciliation without additional API reads.
 func BuildWatchtowerWindowPatches(windows []WatchtowerWindow, panes []WatchtowerPane) []map[string]any {
+	return BuildWatchtowerWindowPatchesWithManaged(windows, panes, nil)
+}
+
+func BuildWatchtowerWindowPatchesWithManaged(
+	windows []WatchtowerWindow,
+	panes []WatchtowerPane,
+	managedByIndex map[int]ManagedTmuxWindow,
+) []map[string]any {
 	paneCounts := make(map[int]int, len(windows))
 	for _, pane := range panes {
 		paneCounts[pane.WindowIndex]++
@@ -21,17 +29,28 @@ func BuildWatchtowerWindowPatches(windows []WatchtowerWindow, panes []Watchtower
 		if !row.WindowActivityAt.IsZero() {
 			activityAt = row.WindowActivityAt.UTC().Format(time.RFC3339)
 		}
+		managed := managedByIndex[row.WindowIndex]
+		displayName := strings.TrimSpace(row.Name)
+		if managedName := strings.TrimSpace(managed.WindowName); managedName != "" {
+			displayName = managedName
+		}
 		patches = append(patches, map[string]any{
-			"session":     row.SessionName,
-			"index":       row.WindowIndex,
-			"name":        row.Name,
-			"active":      row.Active,
-			"panes":       paneCounts[row.WindowIndex],
-			"layout":      row.Layout,
-			"unreadPanes": row.UnreadPanes,
-			"hasUnread":   row.HasUnread,
-			"rev":         row.Rev,
-			"activityAt":  activityAt,
+			"session":         row.SessionName,
+			"tmuxWindowId":    strings.TrimSpace(row.TmuxWindowID),
+			"index":           row.WindowIndex,
+			"name":            row.Name,
+			"displayName":     displayName,
+			"displayIcon":     strings.TrimSpace(managed.Icon),
+			"managed":         strings.TrimSpace(managed.ID) != "",
+			"managedWindowId": strings.TrimSpace(managed.ID),
+			"launcherId":      strings.TrimSpace(managed.LauncherID),
+			"active":          row.Active,
+			"panes":           paneCounts[row.WindowIndex],
+			"layout":          row.Layout,
+			"unreadPanes":     row.UnreadPanes,
+			"hasUnread":       row.HasUnread,
+			"rev":             row.Rev,
+			"activityAt":      activityAt,
 		})
 	}
 	return patches
@@ -49,10 +68,11 @@ func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindow
 
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO wt_windows (
-			session_name, window_index, name, active, layout,
+			session_name, tmux_window_id, window_index, name, active, layout,
 			window_activity_at, unread_panes, has_unread, rev, updated_at
-		 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(session_name, window_index) DO UPDATE SET
+			tmux_window_id = excluded.tmux_window_id,
 			name = excluded.name,
 			active = excluded.active,
 			layout = excluded.layout,
@@ -62,6 +82,7 @@ func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindow
 			rev = excluded.rev,
 			updated_at = excluded.updated_at`,
 		name,
+		strings.TrimSpace(row.TmuxWindowID),
 		row.WindowIndex,
 		strings.TrimSpace(row.Name),
 		boolToInt(row.Active),
@@ -77,7 +98,7 @@ func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindow
 
 func (s *Store) ListWatchtowerWindows(ctx context.Context, sessionName string) ([]WatchtowerWindow, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT session_name, window_index, name, active, layout,
+		`SELECT session_name, tmux_window_id, window_index, name, active, layout,
 		        window_activity_at, unread_panes, has_unread, rev, updated_at
 		   FROM wt_windows
 		  WHERE session_name = ?
@@ -98,6 +119,7 @@ func (s *Store) ListWatchtowerWindows(ctx context.Context, sessionName string) (
 		)
 		if err := rows.Scan(
 			&row.SessionName,
+			&row.TmuxWindowID,
 			&row.WindowIndex,
 			&row.Name,
 			&activeRaw,

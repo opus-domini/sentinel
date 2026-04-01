@@ -11,10 +11,16 @@ import (
 
 type fakePinnedStore struct {
 	presets        []store.SessionPreset
+	managed        map[string][]store.ManagedTmuxWindow
 	listErr        error
 	recordedDirs   []string
 	icons          map[string]string
 	markedLaunched []string
+	runtimeUpdates []struct {
+		id           string
+		tmuxWindowID string
+		lastIndex    int
+	}
 }
 
 func (f *fakePinnedStore) ListSessionPresets(context.Context) ([]store.SessionPreset, error) {
@@ -42,11 +48,37 @@ func (f *fakePinnedStore) MarkSessionPresetLaunched(_ context.Context, name stri
 	return nil
 }
 
+func (f *fakePinnedStore) ListManagedTmuxWindowsBySession(_ context.Context, sessionName string) ([]store.ManagedTmuxWindow, error) {
+	return append([]store.ManagedTmuxWindow(nil), f.managed[sessionName]...), nil
+}
+
+func (f *fakePinnedStore) UpdateManagedTmuxWindowRuntime(_ context.Context, id, tmuxWindowID string, lastWindowIndex int) error {
+	f.runtimeUpdates = append(f.runtimeUpdates, struct {
+		id           string
+		tmuxWindowID string
+		lastIndex    int
+	}{id: id, tmuxWindowID: tmuxWindowID, lastIndex: lastWindowIndex})
+	return nil
+}
+
 type fakePinnedTmux struct {
 	errByName map[string]error
 	calls     []struct {
 		name string
 		cwd  string
+	}
+	windowsBySession map[string][]tmux.Window
+	panesBySession   map[string][]tmux.Pane
+	renamedWindows   []string
+	sentKeys         []struct {
+		paneID string
+		keys   string
+		enter  bool
+	}
+	newWindows []struct {
+		session string
+		name    string
+		cwd     string
 	}
 }
 
@@ -56,6 +88,37 @@ func (f *fakePinnedTmux) CreateSession(_ context.Context, name, cwd string) erro
 		cwd  string
 	}{name: name, cwd: cwd})
 	return f.errByName[name]
+}
+
+func (f *fakePinnedTmux) ListWindows(_ context.Context, session string) ([]tmux.Window, error) {
+	return append([]tmux.Window(nil), f.windowsBySession[session]...), nil
+}
+
+func (f *fakePinnedTmux) ListPanes(_ context.Context, session string) ([]tmux.Pane, error) {
+	return append([]tmux.Pane(nil), f.panesBySession[session]...), nil
+}
+
+func (f *fakePinnedTmux) RenameWindow(_ context.Context, session string, index int, name string) error {
+	f.renamedWindows = append(f.renamedWindows, name)
+	return nil
+}
+
+func (f *fakePinnedTmux) NewWindowWithOptions(_ context.Context, session, name, cwd string) (tmux.NewWindowResult, error) {
+	f.newWindows = append(f.newWindows, struct {
+		session string
+		name    string
+		cwd     string
+	}{session: session, name: name, cwd: cwd})
+	return tmux.NewWindowResult{ID: "@restored", Index: 1, PaneID: "%restored"}, nil
+}
+
+func (f *fakePinnedTmux) SendKeys(_ context.Context, paneID, keys string, enter bool) error {
+	f.sentKeys = append(f.sentKeys, struct {
+		paneID string
+		keys   string
+		enter  bool
+	}{paneID: paneID, keys: keys, enter: enter})
+	return nil
 }
 
 func TestRestorePinnedSessions(t *testing.T) {
@@ -118,6 +181,62 @@ func TestRestorePinnedSessions(t *testing.T) {
 		}
 		if len(repo.markedLaunched) != 1 || repo.markedLaunched[0] != "api" {
 			t.Fatalf("marked launched = %v, want [api]", repo.markedLaunched)
+		}
+	})
+
+	t.Run("restores managed tmux windows for newly created pinned session", func(t *testing.T) {
+		repo := &fakePinnedStore{
+			presets: []store.SessionPreset{
+				{Name: "api", Cwd: "/srv/api", Icon: "server"},
+			},
+			managed: map[string][]store.ManagedTmuxWindow{
+				"api": {
+					{
+						ID:              "mw-1",
+						SessionName:     "api",
+						WindowName:      "claude",
+						Command:         "claude",
+						ResolvedCwd:     "/srv/api",
+						LastWindowIndex: 0,
+					},
+					{
+						ID:              "mw-2",
+						SessionName:     "api",
+						WindowName:      "codex",
+						Command:         "codex",
+						ResolvedCwd:     "/srv/api",
+						LastWindowIndex: 1,
+					},
+				},
+			},
+		}
+		tm := &fakePinnedTmux{
+			windowsBySession: map[string][]tmux.Window{
+				"api": {{Session: "api", ID: "@0", Index: 0, Name: "0", Active: true, Panes: 1}},
+			},
+			panesBySession: map[string][]tmux.Pane{
+				"api": {{Session: "api", WindowIndex: 0, PaneIndex: 0, PaneID: "%0", Active: true}},
+			},
+		}
+
+		restored, err := restorePinnedSessions(context.Background(), repo, tm)
+		if err != nil {
+			t.Fatalf("restorePinnedSessions() error = %v", err)
+		}
+		if restored != 1 {
+			t.Fatalf("restored = %d, want 1", restored)
+		}
+		if len(tm.renamedWindows) != 1 || tm.renamedWindows[0] != "claude" {
+			t.Fatalf("renamed windows = %v, want [claude]", tm.renamedWindows)
+		}
+		if len(tm.newWindows) != 1 || tm.newWindows[0].name != "codex" {
+			t.Fatalf("new windows = %+v, want codex restore", tm.newWindows)
+		}
+		if len(tm.sentKeys) != 2 {
+			t.Fatalf("sent keys = %d, want 2", len(tm.sentKeys))
+		}
+		if len(repo.runtimeUpdates) != 2 {
+			t.Fatalf("runtime updates = %d, want 2", len(repo.runtimeUpdates))
 		}
 	})
 

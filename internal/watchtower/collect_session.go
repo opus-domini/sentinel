@@ -103,6 +103,11 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, sess tmux.Sess
 	if err != nil {
 		return nil, true, err
 	}
+	managedWindows, err := s.reconcileManagedTmuxWindows(ctx, name, windows)
+	if err != nil {
+		return nil, true, err
+	}
+	managedByRuntime := managedWindowRuntimeMap(managedWindows)
 
 	state := &collectSessionState{
 		service: s,
@@ -120,7 +125,7 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, sess tmux.Sess
 		existingWindowByID: existingWindowByID,
 		focusedPanes:       focusedPanes,
 		runtimeByPaneID:    runtimeByPaneID,
-		windowNameByIndex:  windowNamesByIndex(windows),
+		windowNameByIndex:  windowNamesByIndex(windows, managedByRuntime),
 
 		windowAgg: make(map[int]*windowAggregate),
 		paneIDs:   make([]string, 0, len(panes)),
@@ -205,18 +210,6 @@ func (s *Service) loadPaneRuntimeByID(ctx context.Context, sessionName string) (
 		byID[paneID] = row
 	}
 	return byID, nil
-}
-
-func windowNamesByIndex(windows []tmux.Window) map[int]string {
-	byIndex := make(map[int]string, len(windows))
-	for _, window := range windows {
-		name := strings.TrimSpace(window.Name)
-		if name == "" {
-			continue
-		}
-		byIndex[window.Index] = name
-	}
-	return byIndex
 }
 
 func (c *collectSessionState) collect() (bool, error) {
@@ -576,6 +569,7 @@ func (c *collectSessionState) collectWindows() error {
 
 		if err := c.service.store.UpsertWatchtowerWindow(c.ctx, store.WatchtowerWindowWrite{
 			SessionName:      c.name,
+			TmuxWindowID:     win.ID,
 			WindowIndex:      win.Index,
 			Name:             win.Name,
 			Active:           win.Active,

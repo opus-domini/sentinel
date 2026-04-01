@@ -60,6 +60,7 @@ func sameProjectedPaneSet(live []tmux.Pane, projected []store.WatchtowerPane) bo
 func projectedWindowsToEnriched(
 	windows []store.WatchtowerWindow,
 	panes []store.WatchtowerPane,
+	managedByIndex map[int]store.ManagedTmuxWindow,
 ) []enrichedWindow {
 	paneCounts := make(map[int]int, len(windows))
 	for _, pane := range panes {
@@ -68,17 +69,24 @@ func projectedWindowsToEnriched(
 
 	resp := make([]enrichedWindow, 0, len(windows))
 	for _, row := range windows {
+		presentation := presentationForProjectedWindow(row.Name, row.WindowIndex, managedByIndex)
 		resp = append(resp, enrichedWindow{
-			Session:     row.SessionName,
-			Index:       row.WindowIndex,
-			Name:        row.Name,
-			Active:      row.Active,
-			Panes:       paneCounts[row.WindowIndex],
-			Layout:      row.Layout,
-			UnreadPanes: row.UnreadPanes,
-			HasUnread:   row.HasUnread,
-			Rev:         row.Rev,
-			ActivityAt:  row.WindowActivityAt.Format(time.RFC3339),
+			Session:         row.SessionName,
+			Index:           row.WindowIndex,
+			Name:            row.Name,
+			DisplayName:     presentation.displayName,
+			DisplayIcon:     presentation.displayIcon,
+			TmuxWindowID:    strings.TrimSpace(row.TmuxWindowID),
+			Managed:         presentation.managed,
+			ManagedWindowID: presentation.managedWindowID,
+			LauncherID:      presentation.launcherID,
+			Active:          row.Active,
+			Panes:           paneCounts[row.WindowIndex],
+			Layout:          row.Layout,
+			UnreadPanes:     row.UnreadPanes,
+			HasUnread:       row.HasUnread,
+			Rev:             row.Rev,
+			ActivityAt:      row.WindowActivityAt.Format(time.RFC3339),
 		})
 	}
 	return resp
@@ -537,14 +545,25 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		projectedWindows, projectedPanes, ok := h.listProjectedWindows(ctx, session)
 		if ok {
+			managedRows, managedErr := h.listManagedTmuxWindows(ctx, session)
+			if managedErr != nil {
+				slog.Warn("store.ListManagedTmuxWindowsBySession failed", "session", session, "err", managedErr)
+			}
 			writeData(w, http.StatusOK, map[string]any{
-				"windows": projectedWindowsToEnriched(projectedWindows, projectedPanes),
+				"windows": projectedWindowsToEnriched(projectedWindows, projectedPanes, managedWindowsByIndex(managedRows)),
 			})
 			return
 		}
 		writeTmuxError(w, err)
 		return
 	}
+
+	managedRows, managedErr := h.reconcileManagedTmuxWindows(ctx, session, windows)
+	if managedErr != nil {
+		slog.Warn("failed to reconcile managed tmux windows", "session", session, "err", managedErr)
+		managedRows = nil
+	}
+	managedByRuntime := managedWindowsByRuntime(managedRows)
 
 	projectedWindows, _, canOverlay := h.listProjectedWindows(ctx, session)
 	projectedByIndex := make(map[int]store.WatchtowerWindow)
@@ -557,6 +576,7 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]enrichedWindow, 0, len(windows))
 	for _, row := range windows {
+		presentation := presentationForLiveWindow(row, managedByRuntime)
 		projected, hasProjected := projectedByIndex[row.Index]
 		activityAt := ""
 		unreadPanes := 0
@@ -569,16 +589,22 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 			rev = projected.Rev
 		}
 		resp = append(resp, enrichedWindow{
-			Session:     row.Session,
-			Index:       row.Index,
-			Name:        row.Name,
-			Active:      row.Active,
-			Panes:       row.Panes,
-			Layout:      row.Layout,
-			UnreadPanes: unreadPanes,
-			HasUnread:   hasUnread,
-			Rev:         rev,
-			ActivityAt:  activityAt,
+			Session:         row.Session,
+			Index:           row.Index,
+			Name:            row.Name,
+			DisplayName:     presentation.displayName,
+			DisplayIcon:     presentation.displayIcon,
+			TmuxWindowID:    strings.TrimSpace(row.ID),
+			Managed:         presentation.managed,
+			ManagedWindowID: presentation.managedWindowID,
+			LauncherID:      presentation.launcherID,
+			Active:          row.Active,
+			Panes:           row.Panes,
+			Layout:          row.Layout,
+			UnreadPanes:     unreadPanes,
+			HasUnread:       hasUnread,
+			Rev:             rev,
+			ActivityAt:      activityAt,
 		})
 	}
 	writeData(w, http.StatusOK, map[string]any{"windows": resp})
@@ -913,6 +939,13 @@ func (h *Handler) renameWindow(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
+	if managedWindow, ok, err := h.managedTmuxWindowForIndex(ctx, session, req.Index); err != nil {
+		slog.Warn("failed to load managed tmux window after rename", "session", session, "index", req.Index, "err", err)
+	} else if ok {
+		if err := h.repo.UpdateManagedTmuxWindowName(ctx, managedWindow.ID, req.Name); err != nil {
+			slog.Warn("failed to persist managed tmux window name", "session", session, "index", req.Index, "managedWindowId", managedWindow.ID, "err", err)
+		}
+	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
 		"session": session,
 		"action":  "rename-window",
@@ -1099,6 +1132,11 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	managedWindow, hasManagedWindow, managedErr := h.managedTmuxWindowForIndex(ctx, session, req.Index)
+	if managedErr != nil {
+		slog.Warn("failed to resolve managed tmux window before delete", "session", session, "index", req.Index, "err", managedErr)
+	}
+
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
 		Action:      "window.kill",
 		SessionName: session,
@@ -1110,6 +1148,11 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 	if err := h.tmux.KillWindow(ctx, session, req.Index); err != nil {
 		writeTmuxError(w, err)
 		return
+	}
+	if hasManagedWindow {
+		if err := h.repo.DeleteManagedTmuxWindow(ctx, managedWindow.ID); err != nil {
+			slog.Warn("failed to delete managed tmux window", "session", session, "index", req.Index, "managedWindowId", managedWindow.ID, "err", err)
+		}
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
 		"session": session,

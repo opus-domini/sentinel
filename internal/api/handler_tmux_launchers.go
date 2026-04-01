@@ -43,6 +43,10 @@ func (h *Handler) createTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "TMUX_LAUNCHER_EXISTS", "tmux launcher already exists", nil)
 			return
 		}
+		if isTmuxLauncherValidationError(err) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create tmux launcher", nil)
 		return
 	}
@@ -72,6 +76,8 @@ func (h *Handler) updateTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "TMUX_LAUNCHER_NOT_FOUND", "tmux launcher not found", nil)
 		case isUniqueConstraintError(err):
 			writeError(w, http.StatusConflict, "TMUX_LAUNCHER_EXISTS", "tmux launcher already exists", nil)
+		case isTmuxLauncherValidationError(err):
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		default:
 			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to update tmux launcher", nil)
 		}
@@ -174,12 +180,31 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
-	if err := h.tmux.SendKeys(ctx, createdWindow.PaneID, launcher.Command, true); err != nil {
-		writeTmuxError(w, err)
-		return
+	if strings.TrimSpace(launcher.Command) != "" {
+		if err := h.tmux.SendKeys(ctx, createdWindow.PaneID, launcher.Command, true); err != nil {
+			writeTmuxError(w, err)
+			return
+		}
 	}
 	if err := h.repo.MarkTmuxLauncherUsed(ctx, launcher.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to record tmux launcher usage", nil)
+		return
+	}
+	managedWindow, err := h.repo.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
+		SessionName:     session,
+		LauncherID:      launcher.ID,
+		LauncherName:    launcher.Name,
+		Icon:            launcher.Icon,
+		Command:         launcher.Command,
+		CwdMode:         launcher.CwdMode,
+		CwdValue:        launcher.CwdValue,
+		ResolvedCwd:     cwd,
+		WindowName:      windowName,
+		TmuxWindowID:    createdWindow.ID,
+		LastWindowIndex: createdWindow.Index,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist managed tmux window", nil)
 		return
 	}
 
@@ -192,10 +217,11 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 	})
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "window-count"})
 	writeData(w, http.StatusOK, map[string]any{
-		"launcherId":  launcher.ID,
-		"windowIndex": createdWindow.Index,
-		"paneId":      createdWindow.PaneID,
-		"windowName":  windowName,
+		"launcherId":      launcher.ID,
+		"windowIndex":     createdWindow.Index,
+		"paneId":          createdWindow.PaneID,
+		"windowName":      windowName,
+		"managedWindowId": managedWindow.ID,
 	})
 }
 
@@ -223,6 +249,21 @@ func (h *Handler) resolveTmuxLauncherCwd(ctx context.Context, session string, la
 		return "", nil
 	default:
 		return "", errors.New("invalid tmux launcher cwd mode")
+	}
+}
+
+func isTmuxLauncherValidationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch err.Error() {
+	case "tmux launcher name is required",
+		"tmux launcher icon is required",
+		"tmux launcher fixed cwd is required",
+		"invalid tmux launcher cwd mode":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -45,6 +45,10 @@ func (Service) ListPanes(ctx context.Context, session string) ([]Pane, error) {
 	return ListPanes(ctx, session)
 }
 
+func (Service) ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
+	return ReorderWindows(ctx, session, orderedWindowIDs)
+}
+
 func (Service) SelectWindow(ctx context.Context, session string, index int) error {
 	return SelectWindow(ctx, session, index)
 }

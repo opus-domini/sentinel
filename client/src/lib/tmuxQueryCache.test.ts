@@ -13,6 +13,7 @@ function windowFor(session: string): WindowInfo {
     session,
     index: 0,
     name: 'win-1',
+    displayName: 'win-1',
     active: true,
     panes: 1,
   }

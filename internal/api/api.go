@@ -38,6 +38,7 @@ type tmuxService interface {
 	KillSession(ctx context.Context, session string) error
 	ListWindows(ctx context.Context, session string) ([]tmux.Window, error)
 	ListPanes(ctx context.Context, session string) ([]tmux.Pane, error)
+	ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error
 	SelectWindow(ctx context.Context, session string, index int) error
 	SelectPane(ctx context.Context, paneID string) error
 	NewWindow(ctx context.Context, session string) (tmux.NewWindowResult, error)
@@ -167,6 +168,16 @@ type tmuxLauncherWriteRepo interface {
 	MarkTmuxLauncherUsed(ctx context.Context, id string) error
 }
 
+type managedTmuxWindowRepo interface {
+	ListManagedTmuxWindowsBySession(ctx context.Context, sessionName string) ([]store.ManagedTmuxWindow, error)
+	CreateManagedTmuxWindow(ctx context.Context, row store.ManagedTmuxWindowWrite) (store.ManagedTmuxWindow, error)
+	UpdateManagedTmuxWindowRuntime(ctx context.Context, id, tmuxWindowID string, lastWindowIndex int) error
+	UpdateManagedTmuxWindowSortOrder(ctx context.Context, id string, sortOrder int) error
+	UpdateManagedTmuxWindowName(ctx context.Context, id, windowName string) error
+	DeleteManagedTmuxWindow(ctx context.Context, id string) error
+	DeleteManagedTmuxWindowsMissingRuntime(ctx context.Context, sessionName string, liveWindowIDs []string) error
+}
+
 type markerPatternsRepo interface {
 	ListMarkerPatterns(ctx context.Context) ([]store.MarkerPattern, error)
 	UpsertMarkerPattern(ctx context.Context, row store.MarkerPatternWrite) error
@@ -191,6 +202,7 @@ type handlerRepo interface {
 	sessionPresetRepo
 	tmuxLauncherReadRepo
 	tmuxLauncherWriteRepo
+	managedTmuxWindowRepo
 	markerPatternsRepo
 }
 
@@ -540,16 +552,22 @@ type enrichedSession struct {
 }
 
 type enrichedWindow struct {
-	Session     string `json:"session"`
-	Index       int    `json:"index"`
-	Name        string `json:"name"`
-	Active      bool   `json:"active"`
-	Panes       int    `json:"panes"`
-	Layout      string `json:"layout,omitempty"`
-	UnreadPanes int    `json:"unreadPanes"`
-	HasUnread   bool   `json:"hasUnread"`
-	Rev         int64  `json:"rev"`
-	ActivityAt  string `json:"activityAt,omitempty"`
+	Session         string `json:"session"`
+	Index           int    `json:"index"`
+	Name            string `json:"name"`
+	DisplayName     string `json:"displayName"`
+	DisplayIcon     string `json:"displayIcon,omitempty"`
+	TmuxWindowID    string `json:"tmuxWindowId,omitempty"`
+	Managed         bool   `json:"managed"`
+	ManagedWindowID string `json:"managedWindowId,omitempty"`
+	LauncherID      string `json:"launcherId,omitempty"`
+	Active          bool   `json:"active"`
+	Panes           int    `json:"panes"`
+	Layout          string `json:"layout,omitempty"`
+	UnreadPanes     int    `json:"unreadPanes"`
+	HasUnread       bool   `json:"hasUnread"`
+	Rev             int64  `json:"rev"`
+	ActivityAt      string `json:"activityAt,omitempty"`
 }
 
 type enrichedPane struct {

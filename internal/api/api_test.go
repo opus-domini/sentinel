@@ -39,6 +39,7 @@ type mockTmux struct {
 	killSessionFn            func(ctx context.Context, session string) error
 	listWindowsFn            func(ctx context.Context, session string) ([]tmux.Window, error)
 	listPanesFn              func(ctx context.Context, session string) ([]tmux.Pane, error)
+	reorderWindowsFn         func(ctx context.Context, session string, orderedWindowIDs []string) error
 	selectWindowFn           func(ctx context.Context, session string, index int) error
 	selectPaneFn             func(ctx context.Context, paneID string) error
 	newWindowFn              func(ctx context.Context, session string) (tmux.NewWindowResult, error)
@@ -117,6 +118,13 @@ func (m *mockTmux) ListPanes(ctx context.Context, session string) ([]tmux.Pane, 
 		return m.listPanesFn(ctx, session)
 	}
 	return nil, nil
+}
+
+func (m *mockTmux) ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
+	if m.reorderWindowsFn != nil {
+		return m.reorderWindowsFn(ctx, session, orderedWindowIDs)
+	}
+	return nil
 }
 
 func (m *mockTmux) SelectWindow(ctx context.Context, session string, index int) error {

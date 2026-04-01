@@ -69,6 +69,7 @@ const (
 
 type Window struct {
 	Session string `json:"session"`
+	ID      string `json:"id"`
 	Index   int    `json:"index"`
 	Name    string `json:"name"`
 	Active  bool   `json:"active"`
@@ -94,6 +95,7 @@ type Pane struct {
 }
 
 type NewWindowResult struct {
+	ID     string
 	Index  int
 	PaneID string
 }
@@ -441,7 +443,7 @@ func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWi
 			target = fmt.Sprintf("%s:%d", session, nextIndex)
 		}
 	}
-	args := []string{"new-window", "-P", "-F", "#{window_index}\t#{pane_id}", "-t", target}
+	args := []string{"new-window", "-P", "-F", "#{window_id}\t#{window_index}\t#{pane_id}", "-t", target}
 	if strings.TrimSpace(name) != "" {
 		args = append(args, "-n", strings.TrimSpace(name))
 	}
@@ -482,6 +484,69 @@ func KillWindow(ctx context.Context, session string, index int) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	_, err := run(ctx, "kill-window", "-t", target)
 	return err
+}
+
+func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
+	session = strings.TrimSpace(session)
+	if session == "" {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux session is required"}
+	}
+	if len(orderedWindowIDs) == 0 {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order is required"}
+	}
+
+	normalized := make([]string, 0, len(orderedWindowIDs))
+	seen := make(map[string]struct{}, len(orderedWindowIDs))
+	for _, item := range orderedWindowIDs {
+		windowID := strings.TrimSpace(item)
+		if windowID == "" {
+			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window id is required"}
+		}
+		if _, exists := seen[windowID]; exists {
+			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window ids must be unique"}
+		}
+		seen[windowID] = struct{}{}
+		normalized = append(normalized, windowID)
+	}
+
+	liveWindows, err := ListWindows(ctx, session)
+	if err != nil {
+		return err
+	}
+	if len(liveWindows) != len(normalized) {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order does not match live windows"}
+	}
+
+	current := make([]string, 0, len(liveWindows))
+	positions := make(map[string]int, len(liveWindows))
+	for index, window := range liveWindows {
+		windowID := strings.TrimSpace(window.ID)
+		if windowID == "" {
+			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux live window id is required"}
+		}
+		current = append(current, windowID)
+		positions[windowID] = index
+	}
+	for _, windowID := range normalized {
+		if _, ok := positions[windowID]; !ok {
+			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order does not match live windows"}
+		}
+	}
+
+	for index, wantID := range normalized {
+		currentID := current[index]
+		if currentID == wantID {
+			continue
+		}
+		swapIndex := positions[wantID]
+		if _, err := run(ctx, "swap-window", "-d", "-s", currentID, "-t", wantID); err != nil {
+			return err
+		}
+		current[index], current[swapIndex] = current[swapIndex], current[index]
+		positions[currentID] = swapIndex
+		positions[wantID] = index
+	}
+	return nil
 }
 
 func KillPane(ctx context.Context, paneID string) error {
@@ -553,7 +618,7 @@ func SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
 }
 
 func ListWindows(ctx context.Context, session string) ([]Window, error) {
-	out, err := run(ctx, "list-windows", "-t", session, "-F", "#{session_name}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}")
+	out, err := run(ctx, "list-windows", "-t", session, "-F", "#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}")
 	if err != nil {
 		return nil, err
 	}
@@ -564,20 +629,22 @@ func ListWindows(ctx context.Context, session string) ([]Window, error) {
 	windows := make([]Window, 0, len(lines))
 	for _, line := range lines {
 		parts := strings.Split(line, "\t")
-		if len(parts) < 5 {
+		if len(parts) < 6 {
 			continue
 		}
-		idx, _ := strconv.Atoi(parts[1])
-		panes, _ := strconv.Atoi(parts[4])
+		windowID := strings.TrimSpace(parts[1])
+		idx, _ := strconv.Atoi(parts[2])
+		panes, _ := strconv.Atoi(parts[5])
 		layout := ""
-		if len(parts) > 5 {
-			layout = parts[5]
+		if len(parts) > 6 {
+			layout = parts[6]
 		}
 		windows = append(windows, Window{
 			Session: parts[0],
+			ID:      windowID,
 			Index:   idx,
-			Name:    parts[2],
-			Active:  parts[3] == "1",
+			Name:    parts[3],
+			Active:  parts[4] == "1",
 			Panes:   panes,
 			Layout:  layout,
 		})
@@ -665,21 +732,28 @@ func valueAt(parts []string, idx int) string {
 func parseNewWindowOutput(out string) (NewWindowResult, error) {
 	line := strings.TrimSpace(out)
 	parts := strings.Split(line, "\t")
-	if len(parts) != 2 {
+	if len(parts) != 3 {
 		return NewWindowResult{}, &Error{
 			Kind: ErrKindCommandFailed,
 			Msg:  fmt.Sprintf("tmux new-window returned unexpected output: %q", line),
 		}
 	}
-	index, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	windowID := strings.TrimSpace(parts[0])
+	if !strings.HasPrefix(windowID, "@") {
+		return NewWindowResult{}, &Error{
+			Kind: ErrKindCommandFailed,
+			Msg:  fmt.Sprintf("tmux new-window returned invalid window id: %q", windowID),
+		}
+	}
+	index, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil || index < 0 {
 		return NewWindowResult{}, &Error{
 			Kind: ErrKindCommandFailed,
-			Msg:  fmt.Sprintf("tmux new-window returned invalid index: %q", parts[0]),
+			Msg:  fmt.Sprintf("tmux new-window returned invalid index: %q", parts[1]),
 			Err:  err,
 		}
 	}
-	paneID := strings.TrimSpace(parts[1])
+	paneID := strings.TrimSpace(parts[2])
 	if !strings.HasPrefix(paneID, "%") {
 		return NewWindowResult{}, &Error{
 			Kind: ErrKindCommandFailed,
@@ -687,6 +761,7 @@ func parseNewWindowOutput(out string) (NewWindowResult, error) {
 		}
 	}
 	return NewWindowResult{
+		ID:     windowID,
 		Index:  index,
 		PaneID: paneID,
 	}, nil

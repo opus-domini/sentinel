@@ -470,7 +470,7 @@ function TmuxPage() {
         const message =
           error instanceof Error ? error.message : 'failed to save launcher'
         pushErrorToast('Launchers', message)
-        return null
+        throw error instanceof Error ? error : new Error(message)
       }
     },
     [api, pushErrorToast, pushSuccessToast, refreshLaunchers],
@@ -856,6 +856,7 @@ function TmuxPage() {
           void launchLauncher(launcherID)
         }}
         onOpenLaunchers={() => setLaunchersOpen(true)}
+        onReorderWindow={inspector.reorderWindows}
         onCloseWindow={inspector.closeWindow}
         onSplitPaneVertical={() => inspector.splitPane('vertical')}
         onSplitPaneHorizontal={() => inspector.splitPane('horizontal')}

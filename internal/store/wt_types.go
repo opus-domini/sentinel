@@ -34,6 +34,7 @@ type WatchtowerSessionWrite struct {
 
 type WatchtowerWindow struct {
 	SessionName      string    `json:"sessionName"`
+	TmuxWindowID     string    `json:"tmuxWindowId"`
 	WindowIndex      int       `json:"windowIndex"`
 	Name             string    `json:"name"`
 	Active           bool      `json:"active"`
@@ -47,6 +48,7 @@ type WatchtowerWindow struct {
 
 type WatchtowerWindowWrite struct {
 	SessionName      string
+	TmuxWindowID     string
 	WindowIndex      int
 	Name             string
 	Active           bool

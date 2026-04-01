@@ -27,6 +27,7 @@ func (h *Handler) registerTmuxRoutes(mux *http.ServeMux) {
 		{pattern: "POST /api/tmux/sessions/{session}/select-window", handler: h.selectWindow},
 		{pattern: "POST /api/tmux/sessions/{session}/select-pane", handler: h.selectPane},
 		{pattern: "POST /api/tmux/sessions/{session}/new-window", handler: h.newWindow},
+		{pattern: "PATCH /api/tmux/sessions/{session}/windows/order", handler: h.reorderWindows},
 		{pattern: "POST /api/tmux/sessions/{session}/kill-window", handler: h.killWindow},
 		{pattern: "POST /api/tmux/sessions/{session}/kill-pane", handler: h.killPane},
 		{pattern: "POST /api/tmux/sessions/{session}/split-pane", handler: h.splitPane},
