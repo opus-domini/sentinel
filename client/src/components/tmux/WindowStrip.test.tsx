@@ -180,4 +180,35 @@ describe('WindowStrip', () => {
     openLauncherMenu()
     expect(await screen.findAllByText('plain shell')).toHaveLength(1)
   })
+
+  it('prefers the last valid window snapshot over transient loading and error states', () => {
+    renderStrip({
+      hasActiveSession: true,
+      inspectorLoading: true,
+      inspectorError: 'Failed to fetch',
+      windows: [
+        {
+          session: 'dev',
+          index: 0,
+          name: 'runner',
+          displayName: 'Runner',
+          active: true,
+          panes: 1,
+        },
+      ],
+      activeWindowIndex: 0,
+      launchers: [],
+      recentLauncher: null,
+      onSelectWindow: vi.fn(),
+      onCloseWindow: vi.fn(),
+      onRenameWindow: vi.fn(),
+      onCreateWindow: vi.fn(),
+      onLaunchLauncher: vi.fn(),
+      onOpenLaunchers: vi.fn(),
+    })
+
+    expect(screen.getByText('Runner')).not.toBeNull()
+    expect(screen.queryByText('Failed to fetch')).toBeNull()
+    expect(screen.queryByText('Loading windows')).toBeNull()
+  })
 })
