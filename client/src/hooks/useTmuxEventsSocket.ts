@@ -403,12 +403,13 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
               if (action === '') {
                 break
               }
-              if (action === 'seen') {
-                break
-              }
               const target = msg.payload?.session?.trim() ?? ''
               const active = tabsStateRef.current.activeSession
-              if (target !== '' && target === active) {
+              const skipInspectorRefresh =
+                action === 'seen' ||
+                action === 'select-window' ||
+                action === 'select-pane'
+              if (!skipInspectorRefresh && target !== '' && target === active) {
                 schedule('inspector')
               }
               if (hasEventGap) {

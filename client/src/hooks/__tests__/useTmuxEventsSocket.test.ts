@@ -539,6 +539,66 @@ describe('useTmuxEventsSocket', () => {
       expect(inspectorCallsAfterOpen).toHaveLength(0)
     })
 
+    it('skips inspector refresh when action is "select-window"', () => {
+      const refreshInspector = vi.fn(() => Promise.resolve())
+      const opts = makeOptions({ refreshInspector })
+      renderHook(() => useTmuxEventsSocket(opts))
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.inspector.updated',
+          eventId: 1,
+          payload: {
+            action: 'select-window',
+            session: 'main',
+          },
+        })
+      })
+
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+
+      const inspectorCallsAfterOpen = refreshInspector.mock.calls.filter(
+        (call) => call[1]?.background === true,
+      )
+      expect(inspectorCallsAfterOpen).toHaveLength(0)
+    })
+
+    it('skips inspector refresh when action is "select-pane"', () => {
+      const refreshInspector = vi.fn(() => Promise.resolve())
+      const opts = makeOptions({ refreshInspector })
+      renderHook(() => useTmuxEventsSocket(opts))
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.inspector.updated',
+          eventId: 1,
+          payload: {
+            action: 'select-pane',
+            session: 'main',
+          },
+        })
+      })
+
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+
+      const inspectorCallsAfterOpen = refreshInspector.mock.calls.filter(
+        (call) => call[1]?.background === true,
+      )
+      expect(inspectorCallsAfterOpen).toHaveLength(0)
+    })
+
     it('skips inspector refresh when action is empty', () => {
       const refreshInspector = vi.fn(() => Promise.resolve())
       const opts = makeOptions({ refreshInspector })

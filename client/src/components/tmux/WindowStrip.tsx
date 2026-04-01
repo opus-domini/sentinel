@@ -101,7 +101,7 @@ function WindowChip({
       ref={containerRef}
       style={containerStyle}
       className={cn(
-        'inline-flex shrink-0 items-center overflow-hidden rounded border text-[11px]',
+        'inline-flex max-w-[16rem] shrink-0 items-center overflow-hidden rounded border text-[11px]',
         isActive
           ? 'border-primary/50 text-primary-text'
           : hasUnread
@@ -112,7 +112,7 @@ function WindowChip({
     >
       <button
         className={cn(
-          'inline-flex items-center gap-1 px-1.5 py-0.5 whitespace-nowrap hover:text-foreground',
+          'inline-flex min-w-0 items-center gap-1 px-1.5 py-0.5 whitespace-nowrap hover:text-foreground',
           'cursor-pointer',
         )}
         type="button"
@@ -128,7 +128,7 @@ function WindowChip({
         ) : (
           <>
             {WindowIcon !== null && <WindowIcon className="h-3.5 w-3.5" />}
-            <span className="truncate">{windowInfo.displayName}</span>
+            <span className="min-w-0 truncate">{windowInfo.displayName}</span>
           </>
         )}
       </button>

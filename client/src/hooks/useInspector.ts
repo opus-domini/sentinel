@@ -52,6 +52,95 @@ import {
   setPendingWindowPaneFloor,
 } from '@/lib/tmuxInspectorOptimistic'
 
+function stabilizeWindows(
+  previousWindows: Array<WindowInfo>,
+  nextWindows: Array<WindowInfo>,
+): Array<WindowInfo> {
+  if (previousWindows.length === 0 || nextWindows.length === 0) {
+    return nextWindows
+  }
+
+  const previousByRuntime = new Map<string, WindowInfo>()
+  const previousByManaged = new Map<string, WindowInfo>()
+  const previousByIndex = new Map<string, WindowInfo>()
+
+  for (const previous of previousWindows) {
+    const runtimeID = (previous.tmuxWindowId ?? '').trim()
+    if (runtimeID !== '') {
+      previousByRuntime.set(runtimeID, previous)
+    }
+
+    const managedWindowID = (previous.managedWindowId ?? '').trim()
+    if (managedWindowID !== '') {
+      previousByManaged.set(managedWindowID, previous)
+    }
+
+    previousByIndex.set(`${previous.session}:${previous.index}`, previous)
+  }
+
+  return nextWindows.map((next) => {
+    const runtimeID = (next.tmuxWindowId ?? '').trim()
+    const managedWindowID = (next.managedWindowId ?? '').trim()
+    let previous: WindowInfo | undefined
+    if (runtimeID !== '') {
+      previous = previousByRuntime.get(runtimeID)
+    } else if (managedWindowID !== '') {
+      previous = previousByManaged.get(managedWindowID)
+    } else {
+      previous = previousByIndex.get(`${next.session}:${next.index}`)
+    }
+
+    if (!previous) {
+      return next
+    }
+
+    const merged = { ...next }
+    if (merged.name.trim() === '' && previous.name.trim() !== '') {
+      merged.name = previous.name
+    }
+    if (
+      merged.displayName.trim() === '' &&
+      previous.displayName.trim() !== ''
+    ) {
+      merged.displayName = previous.displayName
+    }
+    if ((merged.tmuxWindowId ?? '').trim() === '') {
+      merged.tmuxWindowId = previous.tmuxWindowId
+    }
+
+    const sameRuntimeIdentity =
+      runtimeID !== '' && runtimeID === (previous.tmuxWindowId ?? '').trim()
+    const sameManagedIdentity =
+      managedWindowID !== '' &&
+      managedWindowID === (previous.managedWindowId ?? '').trim()
+
+    if (!sameRuntimeIdentity && !sameManagedIdentity) {
+      return merged
+    }
+
+    if (previous.managed) {
+      merged.managed = true
+      if ((merged.managedWindowId ?? '').trim() === '') {
+        merged.managedWindowId = previous.managedWindowId
+      }
+      if ((merged.launcherId ?? '').trim() === '') {
+        merged.launcherId = previous.launcherId
+      }
+      if ((merged.displayIcon ?? '').trim() === '') {
+        merged.displayIcon = previous.displayIcon
+      }
+      const displayNameLooksDegraded =
+        merged.displayName.trim() === '' ||
+        merged.displayName.trim() === merged.name.trim()
+      if (displayNameLooksDegraded && previous.displayName.trim() !== '') {
+        merged.displayName = previous.displayName
+      }
+    }
+
+    return merged
+  })
+}
+
 type UseInspectorOptions = {
   api: ApiFunction
   tabsStateRef: TabsStateRef
@@ -449,7 +538,7 @@ export function useInspector(options: UseInspectorOptions) {
           })
         }
         parsedWindows.sort((left, right) => left.index - right.index)
-        nextWindows = parsedWindows
+        nextWindows = stabilizeWindows(windowsRef.current, parsedWindows)
       }
 
       let nextPanes: Array<PaneInfo> | null = null
@@ -517,16 +606,17 @@ export function useInspector(options: UseInspectorOptions) {
         nextWindows ?? windowsRef.current,
         nextPanes ?? panesRef.current,
       )
+      const stableWindows = stabilizeWindows(windowsRef.current, merged.windows)
       queryClient.setQueryData<TmuxInspectorSnapshot>(
         tmuxInspectorQueryKey(activeSessionName),
         {
-          windows: merged.windows,
+          windows: stableWindows,
           panes: merged.panes,
         },
       )
 
       setWindows((prev) =>
-        sameWindowProjection(prev, merged.windows) ? prev : merged.windows,
+        sameWindowProjection(prev, stableWindows) ? prev : stableWindows,
       )
       setPanes((prev) =>
         samePaneProjection(prev, merged.panes) ? prev : merged.panes,
@@ -535,9 +625,7 @@ export function useInspector(options: UseInspectorOptions) {
       const windowOverride = activeWindowOverrideRef.current
       if (
         windowOverride !== null &&
-        !merged.windows.some(
-          (windowInfo) => windowInfo.index === windowOverride,
-        )
+        !stableWindows.some((windowInfo) => windowInfo.index === windowOverride)
       ) {
         setActiveWindowIndexOverride(null)
       }
@@ -593,15 +681,19 @@ export function useInspector(options: UseInspectorOptions) {
           windowsResponse.windows,
           panesResponse.panes,
         )
+        const stableWindows = stabilizeWindows(
+          windowsRef.current,
+          merged.windows,
+        )
         queryClient.setQueryData<TmuxInspectorSnapshot>(
           tmuxInspectorQueryKey(session),
           {
-            windows: merged.windows,
+            windows: stableWindows,
             panes: merged.panes,
           },
         )
         setWindows((prev) =>
-          sameWindowProjection(prev, merged.windows) ? prev : merged.windows,
+          sameWindowProjection(prev, stableWindows) ? prev : stableWindows,
         )
         setPanes((prev) =>
           samePaneProjection(prev, merged.panes) ? prev : merged.panes,
@@ -610,7 +702,7 @@ export function useInspector(options: UseInspectorOptions) {
         const windowOverride = activeWindowOverrideRef.current
         const paneOverride = activePaneOverrideRef.current
         const fetchedActiveWindow =
-          merged.windows.find((windowInfo) => windowInfo.active)?.index ?? null
+          stableWindows.find((windowInfo) => windowInfo.active)?.index ?? null
         const fetchedActivePane =
           merged.panes.find((paneInfo) => paneInfo.active)?.paneId ?? null
 
@@ -618,7 +710,7 @@ export function useInspector(options: UseInspectorOptions) {
           windowOverride !== null &&
           selectInFlightRef.current > 0 &&
           fetchedActiveWindow !== windowOverride &&
-          merged.windows.some(
+          stableWindows.some(
             (windowInfo) => windowInfo.index === windowOverride,
           )
         const keepPaneOverride =

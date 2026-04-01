@@ -281,6 +281,192 @@ describe('useInspector – reorderWindows', () => {
   })
 })
 
+describe('useInspector – window presentation stability', () => {
+  it('preserves managed launcher presentation across degraded refreshes', async () => {
+    let refreshCount = 0
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        refreshCount += 1
+        if (refreshCount === 1) {
+          return Promise.resolve({
+            windows: [
+              makeWindow({
+                index: 0,
+                name: 'claude',
+                displayName: 'Claude Code',
+                displayIcon: 'bot',
+                tmuxWindowId: '@1',
+                managed: true,
+                managedWindowId: 'managed-1',
+                launcherId: 'launcher-1',
+              }),
+            ],
+          })
+        }
+        return Promise.resolve({
+          windows: [
+            makeWindow({
+              index: 0,
+              name: 'claude',
+              displayName: 'claude',
+              tmuxWindowId: '@1',
+              managed: false,
+            }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+        })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows[0]?.displayName).toBe('Claude Code')
+    })
+
+    await act(async () => {
+      await result.current.refreshInspector('dev', { background: true })
+    })
+
+    expect(result.current.windows[0]).toMatchObject({
+      displayName: 'Claude Code',
+      displayIcon: 'bot',
+      managed: true,
+      managedWindowId: 'managed-1',
+      launcherId: 'launcher-1',
+    })
+  })
+
+  it('does not leak launcher presentation to a different runtime window at the same index', async () => {
+    let refreshCount = 0
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        refreshCount += 1
+        if (refreshCount === 1) {
+          return Promise.resolve({
+            windows: [
+              makeWindow({
+                index: 0,
+                name: 'claude',
+                displayName: 'Claude Code',
+                displayIcon: 'bot',
+                tmuxWindowId: '@1',
+                managed: true,
+                managedWindowId: 'managed-1',
+                launcherId: 'launcher-1',
+              }),
+            ],
+          })
+        }
+        return Promise.resolve({
+          windows: [
+            makeWindow({
+              index: 0,
+              name: 'shell',
+              displayName: 'shell',
+              tmuxWindowId: '@2',
+              managed: false,
+            }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+        })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows[0]?.displayName).toBe('Claude Code')
+    })
+
+    await act(async () => {
+      await result.current.refreshInspector('dev', { background: true })
+    })
+
+    expect(result.current.windows[0]).toMatchObject({
+      name: 'shell',
+      displayName: 'shell',
+      tmuxWindowId: '@2',
+      managed: false,
+    })
+    expect(result.current.windows[0]?.displayIcon).toBeUndefined()
+    expect(result.current.windows[0]?.managedWindowId).toBeUndefined()
+    expect(result.current.windows[0]?.launcherId).toBeUndefined()
+  })
+
+  it('keeps unmanaged windows in sync with tmux renames on the same runtime window', async () => {
+    let refreshCount = 0
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        refreshCount += 1
+        if (refreshCount === 1) {
+          return Promise.resolve({
+            windows: [
+              makeWindow({
+                index: 0,
+                name: 'shell',
+                displayName: 'shell',
+                tmuxWindowId: '@1',
+                managed: false,
+              }),
+            ],
+          })
+        }
+        return Promise.resolve({
+          windows: [
+            makeWindow({
+              index: 0,
+              name: 'runner',
+              displayName: 'runner',
+              tmuxWindowId: '@1',
+              managed: false,
+            }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+        })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows[0]?.displayName).toBe('shell')
+    })
+
+    await act(async () => {
+      await result.current.refreshInspector('dev', { background: true })
+    })
+
+    expect(result.current.windows[0]).toMatchObject({
+      name: 'runner',
+      displayName: 'runner',
+      tmuxWindowId: '@1',
+      managed: false,
+    })
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Tests — refreshInspector override reconciliation
 // ---------------------------------------------------------------------------
