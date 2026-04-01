@@ -64,7 +64,14 @@ describe('WindowStrip', () => {
     const onLaunchLauncher = vi.fn()
     const onOpenLaunchers = vi.fn()
     const windows: Array<WindowInfo> = [
-      { session: 'dev', index: 0, name: 'shell', active: true, panes: 1 },
+      {
+        session: 'dev',
+        index: 0,
+        name: 'shell',
+        displayName: 'shell',
+        active: true,
+        panes: 1,
+      },
     ]
     const launchers: Array<TmuxLauncher> = [
       {

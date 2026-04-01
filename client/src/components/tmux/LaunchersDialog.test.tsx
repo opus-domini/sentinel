@@ -130,4 +130,64 @@ describe('LaunchersDialog', () => {
       expect(onDelete).toHaveBeenCalledWith('launcher-claude')
     })
   })
+
+  it('shows save errors inline', async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error('name is invalid'))
+
+    render(
+      <LaunchersDialog
+        open
+        onOpenChange={vi.fn()}
+        launchers={[]}
+        onSave={onSave}
+        onDelete={vi.fn().mockResolvedValue(true)}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Runner' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText('name is invalid')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      false,
+    )
+  })
+
+  it('accepts a blank command for plain shell launchers', async () => {
+    const onSave = vi.fn().mockResolvedValue('launcher-runner')
+
+    render(
+      <LaunchersDialog
+        open
+        onOpenChange={vi.fn()}
+        launchers={[]}
+        onSave={onSave}
+        onDelete={vi.fn().mockResolvedValue(true)}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Runner' },
+    })
+    fireEvent.change(screen.getByLabelText('Window Name'), {
+      target: { value: 'runner' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith({
+        name: 'Runner',
+        icon: 'terminal',
+        command: '',
+        cwdMode: 'session',
+        cwdValue: '',
+        windowName: 'runner',
+      })
+    })
+  })
 })

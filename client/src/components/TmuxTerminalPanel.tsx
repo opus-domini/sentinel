@@ -42,6 +42,7 @@ type TmuxTerminalPanelProps = {
   recentLauncher: TmuxLauncher | null
   onLaunchLauncher: (launcherID: string) => void
   onOpenLaunchers?: () => void
+  onReorderWindow?: (activeWindowID: string, overWindowID: string) => void
   onCloseWindow: (windowIndex: number) => void
   onSplitPaneVertical: () => void
   onSplitPaneHorizontal: () => void
@@ -86,6 +87,7 @@ export default function TmuxTerminalPanel({
   recentLauncher,
   onLaunchLauncher,
   onOpenLaunchers,
+  onReorderWindow,
   onCloseWindow,
   onSplitPaneVertical,
   onSplitPaneHorizontal,
@@ -289,6 +291,7 @@ export default function TmuxTerminalPanel({
                 onCreateWindow={onCreateWindow}
                 onLaunchLauncher={onLaunchLauncher}
                 onOpenLaunchers={() => onOpenLaunchers?.()}
+                onReorderWindow={onReorderWindow}
               />
             </div>
 

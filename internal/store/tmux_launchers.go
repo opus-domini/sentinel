@@ -272,9 +272,6 @@ func normalizeTmuxLauncherWrite(row TmuxLauncherWrite) (TmuxLauncherWrite, error
 		return TmuxLauncherWrite{}, errors.New("tmux launcher icon is required")
 	}
 	command := strings.TrimSpace(row.Command)
-	if command == "" {
-		return TmuxLauncherWrite{}, errors.New("tmux launcher command is required")
-	}
 	cwdMode := strings.TrimSpace(row.CwdMode)
 	switch cwdMode {
 	case TmuxLauncherCwdModeSession, TmuxLauncherCwdModeActivePane:

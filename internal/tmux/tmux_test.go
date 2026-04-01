@@ -422,12 +422,12 @@ func TestParseNewWindowOutput(t *testing.T) {
 
 	t.Run("valid output", func(t *testing.T) {
 		t.Parallel()
-		got, err := parseNewWindowOutput("3\t%19\n")
+		got, err := parseNewWindowOutput("@19\t3\t%19\n")
 		if err != nil {
 			t.Fatalf("parseNewWindowOutput error = %v", err)
 		}
-		if got.Index != 3 || got.PaneID != "%19" {
-			t.Fatalf("got = %+v, want index=3 paneID=%%19", got)
+		if got.ID != "@19" || got.Index != 3 || got.PaneID != "%19" {
+			t.Fatalf("got = %+v, want id=@19 index=3 paneID=%%19", got)
 		}
 	})
 

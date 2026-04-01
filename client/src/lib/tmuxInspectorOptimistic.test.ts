@@ -28,6 +28,7 @@ function buildWindow(
     session,
     index,
     name: `w-${index}`,
+    displayName: `w-${index}`,
     active: false,
     panes,
     unreadPanes: 0,

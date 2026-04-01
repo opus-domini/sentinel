@@ -19,6 +19,7 @@ function makeWindow(overrides?: Partial<WindowInfo>): WindowInfo {
     session: 'dev',
     index: 0,
     name: 'main',
+    displayName: 'main',
     active: true,
     panes: 1,
     ...overrides,
@@ -200,6 +201,82 @@ describe('useInspector – selectWindow', () => {
     expect(opts.pushErrorToast).toHaveBeenCalledWith(
       'Switch Window',
       'tmux select-window failed',
+    )
+  })
+})
+
+describe('useInspector – reorderWindows', () => {
+  it('sends stable tmux window ids to the reorder endpoint', async () => {
+    const api = vi.fn((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/windows/order')) {
+        expect(init?.method).toBe('PATCH')
+        expect(init?.body).toBe(JSON.stringify({ windowIds: ['@2', '@1'] }))
+        return Promise.resolve(undefined)
+      }
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [
+            makeWindow({ index: 0, active: true, tmuxWindowId: '@1' }),
+            makeWindow({
+              index: 1,
+              name: 'runner',
+              displayName: 'runner',
+              active: false,
+              tmuxWindowId: '@2',
+            }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({ windowIndex: 0, paneId: '%1', active: true }),
+            makePane({ windowIndex: 1, paneId: '%2', active: false }),
+          ],
+        })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows).toHaveLength(2)
+    })
+
+    act(() => {
+      result.current.reorderWindows('@2', '@1')
+    })
+
+    await waitFor(() => {
+      expect(api).toHaveBeenCalledWith(
+        '/api/tmux/sessions/dev/windows/order',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ windowIds: ['@2', '@1'] }),
+        }),
+      )
+    })
+  })
+
+  it('shows an error when runtime ids are unavailable', async () => {
+    const opts = createMockOptions()
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows).toHaveLength(2)
+    })
+
+    act(() => {
+      result.current.reorderWindows('@2', '@1')
+    })
+
+    expect(opts.pushErrorToast).toHaveBeenCalledWith(
+      'Reorder Windows',
+      'window order is not ready yet; refresh and try again',
     )
   })
 })

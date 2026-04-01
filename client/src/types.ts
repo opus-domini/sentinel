@@ -60,6 +60,7 @@ export type LaunchTmuxLauncherResponse = {
   windowIndex: number
   paneId: string
   windowName: string
+  managedWindowId: string
 }
 
 export type ConnectionState =
@@ -76,6 +77,12 @@ export type WindowInfo = {
   session: string
   index: number
   name: string
+  displayName: string
+  displayIcon?: string
+  tmuxWindowId?: string
+  managed?: boolean
+  managedWindowId?: string
+  launcherId?: string
   active: boolean
   panes: number
   unreadPanes?: number
