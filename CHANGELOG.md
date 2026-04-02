@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.20](https://github.com/opus-domini/sentinel/compare/v0.5.19...v0.5.20) (2026-04-02)
+
+
+### Features
+
+* auto-suffix session names on collision + fix Select empty value ([52e23ff](https://github.com/opus-domini/sentinel/commit/52e23ff3ef90ce13712d761f283b615fbf2e244a))
+* load system users at startup as source of truth ([40fcd2c](https://github.com/opus-domini/sentinel/commit/40fcd2cf158800a01ced88d48ba33deb891febe3))
+* move unread indicator from window badge to session icon ([b05d03b](https://github.com/opus-domini/sentinel/commit/b05d03b74bfe6c537deaef3af4f8c1af0596fac0))
+* multi-user tmux session support ([a685f05](https://github.com/opus-domini/sentinel/commit/a685f05dbe1ab0f76ab577de070f239b7ac85f29))
+* replace free-text user input with Select dropdown ([eb67399](https://github.com/opus-domini/sentinel/commit/eb6739973fa2763d05917441e356e2bf92987893))
+* replace free-text user input with Select dropdown ([8dd088f](https://github.com/opus-domini/sentinel/commit/8dd088f62e20680a1e413cfddbecbc234dc93cb3))
+* rich tooltip on session icon with details ([b75aa63](https://github.com/opus-domini/sentinel/commit/b75aa6312db8cf1f77a6bf662008f2ddd3b902ea))
+
+
+### Bug Fixes
+
+* include userMode/userValue in launcher normalization ([4ec4b12](https://github.com/opus-domini/sentinel/commit/4ec4b12fa33791b51d6dca0aceb606bbbbe08c57))
+* suppress gosec G702 for validated sudo user argument ([628e7e7](https://github.com/opus-domini/sentinel/commit/628e7e70c86d7bef8a1c372e2a7dd01cc705e454))
+* validate sudo user against /etc/passwd before execution ([cf645ee](https://github.com/opus-domini/sentinel/commit/cf645ee3d38589008f949e21afddac3d43625ae1))
+
 ## [0.5.19](https://github.com/opus-domini/sentinel/compare/v0.5.18...v0.5.19) (2026-04-02)
 
 
