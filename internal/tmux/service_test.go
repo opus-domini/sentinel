@@ -117,3 +117,35 @@ func TestServiceSessionExistsWithNoUser(t *testing.T) {
 		t.Error("SessionExists = false, want true")
 	}
 }
+
+func TestVerifySystemUser(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		user    string
+		wantErr bool
+	}{
+		{name: "valid root", user: "root", wantErr: false},
+		{name: "empty", user: "", wantErr: true},
+		{name: "shell injection semicolon", user: "test;whoami", wantErr: true},
+		{name: "shell injection space", user: "test whoami", wantErr: true},
+		{name: "shell injection backtick", user: "test`id`", wantErr: true},
+		{name: "path traversal", user: "../etc/passwd", wantErr: true},
+		{name: "starts with dash", user: "-evil", wantErr: true},
+		{name: "too long", user: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wantErr: true},
+		{name: "uppercase rejected", user: "Root", wantErr: true},
+		{name: "nonexistent user", user: "zzz_nonexistent_user_zzz", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// Clear cache for this test
+			verifiedUsers.Delete(tt.user)
+			err := verifySystemUser(tt.user)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("verifySystemUser(%q) error = %v, wantErr %v", tt.user, err, tt.wantErr)
+			}
+		})
+	}
+}

@@ -3,7 +3,11 @@ package tmux
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
+	"os/user"
+	"regexp"
+	"sync"
 )
 
 // Service delegates to the package-level tmux functions. When User is
@@ -16,16 +20,48 @@ func (s Service) run(ctx context.Context, args ...string) (string, error) {
 	return runAsUser(ctx, s.User, args...)
 }
 
+// validUserRe restricts user names to safe characters (POSIX portable).
+var validUserRe = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+
+// verifiedUsers caches os/user.Lookup results so the syscall runs at most
+// once per username for the lifetime of the process.
+var verifiedUsers sync.Map // map[string]bool
+
+// verifySystemUser checks that the username exists in /etc/passwd (or
+// equivalent) and matches the safe character set. Results are cached.
+func verifySystemUser(name string) error {
+	if !validUserRe.MatchString(name) {
+		return fmt.Errorf("invalid username %q", name)
+	}
+	if cached, ok := verifiedUsers.Load(name); ok {
+		if cached.(bool) {
+			return nil
+		}
+		return fmt.Errorf("unknown system user %q", name)
+	}
+	_, err := user.Lookup(name)
+	verifiedUsers.Store(name, err == nil)
+	if err != nil {
+		return fmt.Errorf("unknown system user %q", name)
+	}
+	return nil
+}
+
 // runAsUser executes a tmux command, optionally wrapping it with sudo -n -u
 // when user is non-empty. For the default (no user) case the package-level
 // run variable is used so that tests can inject fakes.
+// The user is validated against the system user database before execution
+// to prevent command injection even when the allowlist is empty.
 func runAsUser(ctx context.Context, user string, args ...string) (string, error) {
 	if user == "" {
 		return run(ctx, args...)
 	}
+	if err := verifySystemUser(user); err != nil {
+		return "", &Error{Kind: ErrKindCommandFailed, Msg: err.Error()}
+	}
 	sudoArgs := []string{"-n", "-u", user, "tmux"}
 	sudoArgs = append(sudoArgs, args...)
-	cmd := exec.CommandContext(ctx, "sudo", sudoArgs...) //nolint:gosec // G702: user is validated against an allowlist in security.ValidateTargetUser before reaching this point
+	cmd := exec.CommandContext(ctx, "sudo", sudoArgs...) //nolint:gosec // user validated by verifySystemUser above
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
