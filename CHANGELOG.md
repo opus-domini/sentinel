@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.18](https://github.com/opus-domini/sentinel/compare/v0.5.17...v0.5.18) (2026-04-02)
+
+
+### Features
+
+* accessibility foundation (WCAG 2.1 AA compliance) ([1aaa64f](https://github.com/opus-domini/sentinel/commit/1aaa64f912d595828c49c21b1f0e9b24df69e8ef))
+* force WebSocket reconnection on resync and tab resume ([29184d1](https://github.com/opus-domini/sentinel/commit/29184d19195d6f3ef3c70c49b99740de8383e98d))
+* interaction refinement — confirmations, submit guards, persist width ([7488ebb](https://github.com/opus-domini/sentinel/commit/7488ebbc673e6cfd44d380e254eecc615f5a221f))
+* terminal and navigation polish ([49939c0](https://github.com/opus-domini/sentinel/commit/49939c0711e5a6e7195397ffd1db3bcacccb7b0f))
+
+
+### Bug Fixes
+
+* critical UX fixes for toasts, sidebar, viewport, and accessibility ([3a4ea65](https://github.com/opus-domini/sentinel/commit/3a4ea6579bee9845d1576426835fbc4f6cf44e2d))
+* fix launchers dialog scroll on mobile and hide strip scrollbars ([bab523e](https://github.com/opus-domini/sentinel/commit/bab523ed65350b83673af720f567902882676b71))
+* fix sidebar scroll on desktop and unify section headers ([5bd28af](https://github.com/opus-domini/sentinel/commit/5bd28af0a20f1f17463b741f42ea2028cc11f268))
+* hide guardrails button from terminal header ([82f147f](https://github.com/opus-domini/sentinel/commit/82f147f613dd32d8770c03844da22e0c1ef8077f))
+* key managed tmux windows by runtime id ([1a8bd47](https://github.com/opus-domini/sentinel/commit/1a8bd4733d7e2edc62b1730fe5938188a0eb38b2))
+* mobile polish — safe areas, touch, overscroll, tap targets ([29f4f75](https://github.com/opus-domini/sentinel/commit/29f4f75e9fc11c666ae6849992b06d2b1c395474))
+* polish services sidebar labels and pinned service navigation ([1d54b6a](https://github.com/opus-domini/sentinel/commit/1d54b6a0c473ead31e874b36098f1dd6ca798e9b))
+* prevent browse search reset when navigating to pinned service ([241b01a](https://github.com/opus-domini/sentinel/commit/241b01a3c555fa1444d4c749d56dac56f969aa1d))
+* prevent stale debounce from resetting pinned service search ([160d540](https://github.com/opus-domini/sentinel/commit/160d540828b26567d457311f3a83f031abe8345a))
+* remove redundant help and launchers buttons from terminal header ([7b635d6](https://github.com/opus-domini/sentinel/commit/7b635d6191384d28ad6acfd1e597a79e9db03fe3))
+
+
+### Refactors
+
+* visual consistency — semantic tokens, unified patterns ([8598340](https://github.com/opus-domini/sentinel/commit/85983403451feedf3c5d8f044ce222ece185a7d2))
+
 ## [0.5.17](https://github.com/opus-domini/sentinel/compare/v0.5.16...v0.5.17) (2026-04-01)
 
 
