@@ -1711,6 +1711,8 @@ func TestRenamePaneHandler(t *testing.T) {
 func TestSetSessionIconHandler(t *testing.T) {
 	t.Parallel()
 
+	const botIconKey = "bot"
+
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
@@ -1720,7 +1722,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 			t.Fatalf("UpsertSession error = %v", err)
 		}
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":"bot"}`))
+		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":"`+botIconKey+`"}`))
 		r.SetPathValue("session", "dev")
 		h.setSessionIcon(w, r)
 
@@ -1733,8 +1735,8 @@ func TestSetSessionIconHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetAll error = %v", err)
 		}
-		if meta["dev"].Icon != "bot" {
-			t.Errorf("icon = %q, want bot", meta["dev"].Icon)
+		if meta["dev"].Icon != botIconKey {
+			t.Errorf("icon = %q, want %s", meta["dev"].Icon, botIconKey)
 		}
 	})
 
@@ -1743,7 +1745,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/bad%20name/icon", strings.NewReader(`{"icon":"bot"}`))
+		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/bad%20name/icon", strings.NewReader(`{"icon":"`+botIconKey+`"}`))
 		r.SetPathValue("session", "bad name")
 		h.setSessionIcon(w, r)
 
@@ -1966,6 +1968,99 @@ func TestListWindowsHandlerProjectedFromWatchtower(t *testing.T) {
 	}
 	if int64(first["rev"].(float64)) != 3 {
 		t.Fatalf("first window rev = %v, want 3", first["rev"])
+	}
+}
+
+func TestListWindowsHandlerProjectedFromWatchtowerUsesManagedRuntimeIdentity(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	tm := &mockTmux{
+		listWindowsFn: func(_ context.Context, _ string) ([]tmux.Window, error) {
+			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
+		},
+	}
+	h, st := newTestHandler(t, tm, nil)
+
+	for _, window := range []store.WatchtowerWindowWrite{
+		{
+			SessionName:      "dev",
+			TmuxWindowID:     "@2",
+			WindowIndex:      0,
+			Name:             "runner-live",
+			Active:           true,
+			Layout:           "layout-0",
+			WindowActivityAt: now,
+			UpdatedAt:        now,
+		},
+		{
+			SessionName:      "dev",
+			TmuxWindowID:     "@1",
+			WindowIndex:      1,
+			Name:             "claude-live",
+			Active:           false,
+			Layout:           "layout-1",
+			WindowActivityAt: now,
+			UpdatedAt:        now,
+		},
+	} {
+		if err := st.UpsertWatchtowerWindow(ctx, window); err != nil {
+			t.Fatalf("UpsertWatchtowerWindow(%s): %v", window.TmuxWindowID, err)
+		}
+	}
+
+	if _, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
+		SessionName:     "dev",
+		LauncherID:      "launcher-claude",
+		LauncherName:    "Claude",
+		Icon:            "bot",
+		Command:         "claude",
+		CwdMode:         store.TmuxLauncherCwdModeSession,
+		WindowName:      "Claude",
+		TmuxWindowID:    "@1",
+		LastWindowIndex: 0,
+	}); err != nil {
+		t.Fatalf("CreateManagedTmuxWindow(claude): %v", err)
+	}
+	if _, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
+		SessionName:     "dev",
+		LauncherID:      "launcher-runner",
+		LauncherName:    "Runner",
+		Icon:            "terminal",
+		Command:         "",
+		CwdMode:         store.TmuxLauncherCwdModeSession,
+		WindowName:      "Runner",
+		TmuxWindowID:    "@2",
+		LastWindowIndex: 1,
+	}); err != nil {
+		t.Fatalf("CreateManagedTmuxWindow(runner): %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/windows", nil)
+	r.SetPathValue("session", "dev")
+	h.listWindows(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	windows, _ := data["windows"].([]any)
+	if len(windows) != 2 {
+		t.Fatalf("windows len = %d, want 2", len(windows))
+	}
+
+	first := windows[0].(map[string]any)
+	if first["tmuxWindowId"] != "@2" || first["displayName"] != "Runner" || first["displayIcon"] != "terminal" {
+		t.Fatalf("first window = %+v, want runtime @2 with Runner metadata", first)
+	}
+
+	second := windows[1].(map[string]any)
+	if second["tmuxWindowId"] != "@1" || second["displayName"] != "Claude" || second["displayIcon"] != "bot" {
+		t.Fatalf("second window = %+v, want runtime @1 with Claude metadata", second)
 	}
 }
 

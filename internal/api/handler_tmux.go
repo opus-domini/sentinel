@@ -60,7 +60,7 @@ func sameProjectedPaneSet(live []tmux.Pane, projected []store.WatchtowerPane) bo
 func projectedWindowsToEnriched(
 	windows []store.WatchtowerWindow,
 	panes []store.WatchtowerPane,
-	managedByIndex map[int]store.ManagedTmuxWindow,
+	managedByRuntime map[string]store.ManagedTmuxWindow,
 ) []enrichedWindow {
 	paneCounts := make(map[int]int, len(windows))
 	for _, pane := range panes {
@@ -69,7 +69,7 @@ func projectedWindowsToEnriched(
 
 	resp := make([]enrichedWindow, 0, len(windows))
 	for _, row := range windows {
-		presentation := presentationForProjectedWindow(row.Name, row.WindowIndex, managedByIndex)
+		presentation := presentationForProjectedWindow(row.Name, row.TmuxWindowID, managedByRuntime)
 		resp = append(resp, enrichedWindow{
 			Session:         row.SessionName,
 			Index:           row.WindowIndex,
@@ -550,7 +550,7 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("store.ListManagedTmuxWindowsBySession failed", "session", session, "err", managedErr)
 			}
 			writeData(w, http.StatusOK, map[string]any{
-				"windows": projectedWindowsToEnriched(projectedWindows, projectedPanes, managedWindowsByIndex(managedRows)),
+				"windows": projectedWindowsToEnriched(projectedWindows, projectedPanes, managedWindowsByRuntime(managedRows)),
 			})
 			return
 		}

@@ -25,10 +25,10 @@ func presentationForLiveWindow(
 
 func presentationForProjectedWindow(
 	name string,
-	windowIndex int,
-	managedByIndex map[int]store.ManagedTmuxWindow,
+	tmuxWindowID string,
+	managedByRuntime map[string]store.ManagedTmuxWindow,
 ) managedWindowPresentation {
-	return presentationForManagedWindow(name, managedByIndex[windowIndex])
+	return presentationForManagedWindow(name, managedByRuntime[strings.TrimSpace(tmuxWindowID)])
 }
 
 func presentationForManagedWindow(
@@ -61,17 +61,6 @@ func managedWindowsByRuntime(rows []store.ManagedTmuxWindow) map[string]store.Ma
 		byRuntime[runtimeID] = row
 	}
 	return byRuntime
-}
-
-func managedWindowsByIndex(rows []store.ManagedTmuxWindow) map[int]store.ManagedTmuxWindow {
-	byIndex := make(map[int]store.ManagedTmuxWindow, len(rows))
-	for _, row := range rows {
-		if row.LastWindowIndex < 0 {
-			continue
-		}
-		byIndex[row.LastWindowIndex] = row
-	}
-	return byIndex
 }
 
 func (h *Handler) listManagedTmuxWindows(ctx context.Context, session string) ([]store.ManagedTmuxWindow, error) {

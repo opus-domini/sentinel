@@ -38,7 +38,7 @@ func BuildWatchtowerInspectorPatchWithManaged(
 	sessionName string,
 	windows []WatchtowerWindow,
 	panes []WatchtowerPane,
-	managedByIndex map[int]ManagedTmuxWindow,
+	managedByRuntime map[string]ManagedTmuxWindow,
 ) map[string]any {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
@@ -50,7 +50,7 @@ func BuildWatchtowerInspectorPatchWithManaged(
 	}
 	return map[string]any{
 		"session": sessionName,
-		"windows": BuildWatchtowerWindowPatchesWithManaged(windows, panes, managedByIndex),
+		"windows": BuildWatchtowerWindowPatchesWithManaged(windows, panes, managedByRuntime),
 		"panes":   BuildWatchtowerPanePatches(panes),
 	}
 }
@@ -159,7 +159,7 @@ func (s *Store) GetWatchtowerInspectorPatch(ctx context.Context, sessionName str
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	return BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, managedWindowsByIndex(managed)), nil
+	return BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, managedWindowsByRuntime(managed)), nil
 }
 
 func (s *Store) ListWatchtowerSessions(ctx context.Context) ([]WatchtowerSession, error) {

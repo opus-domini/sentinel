@@ -8,17 +8,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
-func managedWindowIndexMap(rows []store.ManagedTmuxWindow) map[int]store.ManagedTmuxWindow {
-	byIndex := make(map[int]store.ManagedTmuxWindow, len(rows))
-	for _, row := range rows {
-		if row.LastWindowIndex < 0 {
-			continue
-		}
-		byIndex[row.LastWindowIndex] = row
-	}
-	return byIndex
-}
-
 func managedWindowRuntimeMap(rows []store.ManagedTmuxWindow) map[string]store.ManagedTmuxWindow {
 	byRuntime := make(map[string]store.ManagedTmuxWindow, len(rows))
 	for _, row := range rows {

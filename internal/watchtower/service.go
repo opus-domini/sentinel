@@ -451,7 +451,7 @@ func (s *Service) buildInspectorActivityPatches(ctx context.Context, sessionName
 			slog.Warn("watchtower inspector patch managed windows build failed", "session", sessionName, "err", managedErr)
 			managed = nil
 		}
-		patches = append(patches, store.BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, managedWindowIndexMap(managed)))
+		patches = append(patches, store.BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, managedWindowRuntimeMap(managed)))
 	}
 	return patches
 }

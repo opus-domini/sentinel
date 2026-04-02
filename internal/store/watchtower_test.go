@@ -242,6 +242,90 @@ func TestGetWatchtowerInspectorPatch(t *testing.T) {
 	}
 }
 
+func TestGetWatchtowerInspectorPatchUsesManagedRuntimeIdentity(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	for _, w := range []WatchtowerWindowWrite{
+		{
+			SessionName:      "dev",
+			TmuxWindowID:     "@2",
+			WindowIndex:      0,
+			Name:             "runner-live",
+			Active:           true,
+			Layout:           "layout-0",
+			WindowActivityAt: now,
+			UpdatedAt:        now,
+		},
+		{
+			SessionName:      "dev",
+			TmuxWindowID:     "@1",
+			WindowIndex:      1,
+			Name:             "claude-live",
+			Active:           false,
+			Layout:           "layout-1",
+			WindowActivityAt: now,
+			UpdatedAt:        now,
+		},
+	} {
+		if err := s.UpsertWatchtowerWindow(ctx, w); err != nil {
+			t.Fatalf("UpsertWatchtowerWindow(%s): %v", w.TmuxWindowID, err)
+		}
+	}
+
+	if _, err := s.CreateManagedTmuxWindow(ctx, ManagedTmuxWindowWrite{
+		SessionName:     "dev",
+		LauncherID:      "launcher-claude",
+		LauncherName:    "Claude",
+		Icon:            "bot",
+		Command:         "claude",
+		CwdMode:         TmuxLauncherCwdModeSession,
+		WindowName:      "Claude",
+		TmuxWindowID:    "@1",
+		LastWindowIndex: 0,
+	}); err != nil {
+		t.Fatalf("CreateManagedTmuxWindow(claude): %v", err)
+	}
+	if _, err := s.CreateManagedTmuxWindow(ctx, ManagedTmuxWindowWrite{
+		SessionName:     "dev",
+		LauncherID:      "launcher-runner",
+		LauncherName:    "Runner",
+		Icon:            "terminal",
+		Command:         "",
+		CwdMode:         TmuxLauncherCwdModeSession,
+		WindowName:      "Runner",
+		TmuxWindowID:    "@2",
+		LastWindowIndex: 1,
+	}); err != nil {
+		t.Fatalf("CreateManagedTmuxWindow(runner): %v", err)
+	}
+
+	patch, err := s.GetWatchtowerInspectorPatch(ctx, "dev")
+	if err != nil {
+		t.Fatalf("GetWatchtowerInspectorPatch(dev): %v", err)
+	}
+
+	windows, ok := patch["windows"].([]map[string]any)
+	if !ok || len(windows) != 2 {
+		t.Fatalf("windows patch = %T(%v), want len=2", patch["windows"], patch["windows"])
+	}
+
+	first := windows[0]
+	if first["tmuxWindowId"] != "@2" || first["displayName"] != "Runner" || first["displayIcon"] != "terminal" {
+		t.Fatalf("first window patch = %+v, want runtime @2 with Runner metadata", first)
+	}
+
+	second := windows[1]
+	if second["tmuxWindowId"] != "@1" || second["displayName"] != "Claude" || second["displayIcon"] != "bot" {
+		t.Fatalf("second window patch = %+v, want runtime @1 with Claude metadata", second)
+	}
+}
+
 func TestWatchtowerWindowAndPaneAccessors(t *testing.T) {
 	t.Parallel()
 

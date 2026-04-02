@@ -346,13 +346,14 @@ func normalizeManagedTmuxWindowWrite(row ManagedTmuxWindowWrite) (ManagedTmuxWin
 	return row, nil
 }
 
-func managedWindowsByIndex(rows []ManagedTmuxWindow) map[int]ManagedTmuxWindow {
-	byIndex := make(map[int]ManagedTmuxWindow, len(rows))
+func managedWindowsByRuntime(rows []ManagedTmuxWindow) map[string]ManagedTmuxWindow {
+	byRuntime := make(map[string]ManagedTmuxWindow, len(rows))
 	for _, row := range rows {
-		if row.LastWindowIndex < 0 {
+		runtimeID := strings.TrimSpace(row.TmuxWindowID)
+		if runtimeID == "" {
 			continue
 		}
-		byIndex[row.LastWindowIndex] = row
+		byRuntime[runtimeID] = row
 	}
-	return byIndex
+	return byRuntime
 }

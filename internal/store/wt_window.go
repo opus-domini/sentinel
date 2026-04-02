@@ -16,7 +16,7 @@ func BuildWatchtowerWindowPatches(windows []WatchtowerWindow, panes []Watchtower
 func BuildWatchtowerWindowPatchesWithManaged(
 	windows []WatchtowerWindow,
 	panes []WatchtowerPane,
-	managedByIndex map[int]ManagedTmuxWindow,
+	managedByRuntime map[string]ManagedTmuxWindow,
 ) []map[string]any {
 	paneCounts := make(map[int]int, len(windows))
 	for _, pane := range panes {
@@ -29,7 +29,7 @@ func BuildWatchtowerWindowPatchesWithManaged(
 		if !row.WindowActivityAt.IsZero() {
 			activityAt = row.WindowActivityAt.UTC().Format(time.RFC3339)
 		}
-		managed := managedByIndex[row.WindowIndex]
+		managed := managedByRuntime[strings.TrimSpace(row.TmuxWindowID)]
 		displayName := strings.TrimSpace(row.Name)
 		if managedName := strings.TrimSpace(managed.WindowName); managedName != "" {
 			displayName = managedName
