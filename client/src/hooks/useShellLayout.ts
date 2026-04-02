@@ -69,9 +69,9 @@ export function useShellLayout({
 
   const sidebarDensity: SidebarDensity = sidebarCollapsed
     ? 'full'
-    : sidebarWidth <= 280
+    : sidebarWidth <= 250
       ? 'minimal'
-      : sidebarWidth <= 360
+      : sidebarWidth <= 300
         ? 'compact'
         : 'full'
 
