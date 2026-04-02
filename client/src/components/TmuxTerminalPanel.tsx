@@ -1,9 +1,8 @@
-import { History, Menu, Minus, Plus, Rocket, ShieldAlert } from 'lucide-react'
+import { History, Menu, Minus, Plus, ShieldAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import ConnectionBadge from './ConnectionBadge'
 import SessionTabs from './SessionTabs'
 import { TooltipHelper } from './TooltipHelper'
-import TmuxHelpDialog from './TmuxHelpDialog'
 import TerminalControls from './terminal/TerminalControls'
 import PaneStrip from './tmux/PaneStrip'
 import TerminalHost from './tmux/TerminalHost'
@@ -231,19 +230,6 @@ export default function TmuxTerminalPanel({
               <ShieldAlert className="h-3.5 w-3.5" />
             </Button>
           </TooltipHelper>
-          <TooltipHelper content="Launchers">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 cursor-pointer"
-              onClick={onOpenLaunchers}
-              disabled={!onOpenLaunchers}
-              aria-label="Launchers"
-            >
-              <Rocket className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipHelper>
           <TooltipHelper content="Timeline">
             <Button
               type="button"
@@ -257,10 +243,6 @@ export default function TmuxTerminalPanel({
               <History className="h-3.5 w-3.5" />
             </Button>
           </TooltipHelper>
-          <TmuxHelpDialog
-            buttonClassName="h-6 w-6 cursor-pointer"
-            iconClassName="h-3.5 w-3.5"
-          />
           <ConnectionBadge
             state={connectionState}
             detail={statusDetail}
