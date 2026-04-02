@@ -15,6 +15,15 @@ vi.mock('@/hooks/useIsMobileLayout', () => ({
   useIsMobileLayout: () => false,
 }))
 
+vi.mock('@/contexts/MetaContext', () => ({
+  useMetaContext: () => ({
+    processUser: 'hugo',
+    isRoot: false,
+    canSwitchUser: true,
+    allowedUsers: ['hugo', 'postgres'],
+  }),
+}))
+
 describe('LaunchersDialog', () => {
   afterEach(() => {
     cleanup()
@@ -166,7 +175,7 @@ describe('LaunchersDialog', () => {
     )
   })
 
-  it('always shows user mode field', () => {
+  it('shows user mode field when canSwitchUser is true', () => {
     render(
       <LaunchersDialog
         open

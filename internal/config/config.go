@@ -47,6 +47,7 @@ type Config struct {
 	Locale                 string
 	RunbookMaxConcurrent   int
 	MultiUser              MultiUserConfig
+	SystemUsers            []string // populated at startup from OS, not from config file
 	Watchtower             WatchtowerConfig
 	AlertThresholds        AlertThresholds
 	AlertWebhookURL        string
@@ -402,16 +403,19 @@ func ValidateMultiUser(cfg *Config) {
 		cfg.MultiUser.AllowedUsers = filtered
 	}
 
-	// Validate each user exists on the system.
-	for _, u := range cfg.MultiUser.AllowedUsers {
-		if _, err := userLookup(u); err != nil {
-			slog.Warn("allowed_users entry not found on system", "user", u, "err", err)
+	// Cross-reference allowed_users against system users.
+	if len(cfg.SystemUsers) > 0 {
+		systemSet := make(map[string]struct{}, len(cfg.SystemUsers))
+		for _, u := range cfg.SystemUsers {
+			systemSet[u] = struct{}{}
+		}
+		for _, u := range cfg.MultiUser.AllowedUsers {
+			if _, ok := systemSet[u]; !ok {
+				slog.Warn("allowed_users entry not found in system users", "user", u)
+			}
 		}
 	}
 }
-
-// userLookup is a seam for testing user existence validation.
-var userLookup = user.Lookup //nolint:gochecknoglobals // var enables test injection
 
 func readRawEnvOrFile(envKey, fileKey string, file map[string]string) string {
 	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {

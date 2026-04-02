@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os/user"
 	"testing"
 )
 
@@ -108,19 +107,14 @@ user_switch_method = "direct"
 }
 
 func TestValidateMultiUserRemovesRootWhenNotAllowed(t *testing.T) {
-	// Not parallel: mutates package-level userLookup.
+	t.Parallel()
 
 	cfg := &Config{
+		SystemUsers: []string{"deploy", "postgres", "root"},
 		MultiUser: MultiUserConfig{
 			AllowedUsers:    []string{"postgres", "root", "deploy"},
 			AllowRootTarget: false,
 		},
-	}
-
-	original := userLookup
-	t.Cleanup(func() { userLookup = original })
-	userLookup = func(name string) (*user.User, error) {
-		return &user.User{Username: name}, nil
 	}
 
 	ValidateMultiUser(cfg)
@@ -137,19 +131,14 @@ func TestValidateMultiUserRemovesRootWhenNotAllowed(t *testing.T) {
 }
 
 func TestValidateMultiUserKeepsRootWhenAllowed(t *testing.T) {
-	// Not parallel: mutates package-level userLookup.
+	t.Parallel()
 
 	cfg := &Config{
+		SystemUsers: []string{"root"},
 		MultiUser: MultiUserConfig{
 			AllowedUsers:    []string{"root"},
 			AllowRootTarget: true,
 		},
-	}
-
-	original := userLookup
-	t.Cleanup(func() { userLookup = original })
-	userLookup = func(name string) (*user.User, error) {
-		return &user.User{Username: name}, nil
 	}
 
 	ValidateMultiUser(cfg)
@@ -160,20 +149,15 @@ func TestValidateMultiUserKeepsRootWhenAllowed(t *testing.T) {
 }
 
 func TestValidateMultiUserWarnsForMissingUsers(t *testing.T) {
-	// Not parallel: mutates package-level userLookup.
-
-	original := userLookup
-	t.Cleanup(func() { userLookup = original })
-	userLookup = func(name string) (*user.User, error) {
-		return nil, user.UnknownUserError(name)
-	}
+	t.Parallel()
 
 	cfg := &Config{
+		SystemUsers: []string{"hugo"},
 		MultiUser: MultiUserConfig{
 			AllowedUsers: []string{"nonexistent"},
 		},
 	}
-	// Should not panic — just logs a warning.
+	// Should not panic -- just logs a warning.
 	ValidateMultiUser(cfg)
 }
 
@@ -191,7 +175,7 @@ func TestValidateMultiUserEmptyAllowedUsers(t *testing.T) {
 			AllowedUsers: nil,
 		},
 	}
-	// Should not panic or log a warning — empty means "any user allowed".
+	// Should not panic or log a warning -- empty means "any user allowed".
 	ValidateMultiUser(cfg)
 }
 
@@ -214,4 +198,37 @@ allowed_users = ["postgres"]
 	if len(cfg.MultiUser.AllowedUsers) != 2 {
 		t.Fatalf("AllowedUsers = %v, want [deploy www-data]", cfg.MultiUser.AllowedUsers)
 	}
+}
+
+func TestValidateMultiUserCrossReferencesSystemUsers(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		SystemUsers: []string{"deploy", "hugo"},
+		MultiUser: MultiUserConfig{
+			AllowedUsers: []string{"deploy", "ghost"},
+		},
+	}
+
+	// Should not panic -- logs warning for "ghost" not being in SystemUsers.
+	ValidateMultiUser(cfg)
+
+	// AllowedUsers should be unchanged (warnings only, no removal).
+	if len(cfg.MultiUser.AllowedUsers) != 2 {
+		t.Fatalf("AllowedUsers = %v, want [deploy ghost]", cfg.MultiUser.AllowedUsers)
+	}
+}
+
+func TestValidateMultiUserNoSystemUsersSkipsCrossReference(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		SystemUsers: nil,
+		MultiUser: MultiUserConfig{
+			AllowedUsers: []string{"deploy"},
+		},
+	}
+
+	// Should not panic when SystemUsers is empty.
+	ValidateMultiUser(cfg)
 }

@@ -5,9 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"os/user"
 	"regexp"
-	"sync"
 )
 
 // Service delegates to the package-level tmux functions. When User is
@@ -23,28 +21,22 @@ func (s Service) run(ctx context.Context, args ...string) (string, error) {
 // validUserRe restricts user names to safe characters (POSIX portable).
 var validUserRe = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
-// verifiedUsers caches os/user.Lookup results so the syscall runs at most
-// once per username for the lifetime of the process.
-var verifiedUsers sync.Map // map[string]bool
+// SystemUsers holds the list of valid system users loaded at startup.
+// Set from main.go after config.ReadSystemUsers().
+var SystemUsers []string //nolint:gochecknoglobals // set once at startup from main
 
-// verifySystemUser checks that the username exists in /etc/passwd (or
-// equivalent) and matches the safe character set. Results are cached.
+// verifySystemUser checks that the username matches the safe character set
+// and exists in the in-memory system users list.
 func verifySystemUser(name string) error {
 	if !validUserRe.MatchString(name) {
 		return fmt.Errorf("invalid username %q", name)
 	}
-	if cached, ok := verifiedUsers.Load(name); ok {
-		if cached.(bool) {
+	for _, u := range SystemUsers {
+		if u == name {
 			return nil
 		}
-		return fmt.Errorf("unknown system user %q", name)
 	}
-	_, err := user.Lookup(name)
-	verifiedUsers.Store(name, err == nil)
-	if err != nil {
-		return fmt.Errorf("unknown system user %q", name)
-	}
-	return nil
+	return fmt.Errorf("unknown system user %q", name)
 }
 
 // runAsUser executes a tmux command, optionally wrapping it with sudo -n -u

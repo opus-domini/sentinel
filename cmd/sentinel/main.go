@@ -49,11 +49,20 @@ func serve() int {
 		slog.Warn("consider setting allowed_origins to restrict cross-origin access", "listen", cfg.ListenAddr)
 	}
 
+	cfg.SystemUsers = config.ReadSystemUsers()
+	if len(cfg.SystemUsers) > 0 {
+		slog.Info("system users loaded", "count", len(cfg.SystemUsers))
+	} else {
+		slog.Warn("could not read system users; multi-user switching disabled")
+	}
+
 	config.ValidateMultiUser(&cfg)
+	tmux.SystemUsers = cfg.SystemUsers
 	cookiePolicy := security.ParseCookieSecurePolicy(cfg.CookieSecure)
 	guard := security.NewWithMultiUser(cfg.Token, cfg.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
 		AllowedUsers:    cfg.MultiUser.AllowedUsers,
 		AllowRootTarget: cfg.MultiUser.AllowRootTarget,
+		SystemUsers:     cfg.SystemUsers,
 	})
 
 	if security.ExposesBeyondLoopback(cfg.ListenAddr) && cfg.Token != "" && cookiePolicy == security.CookieSecureNever {

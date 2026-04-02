@@ -8,13 +8,15 @@ import (
 func TestValidateTargetUserEmptyAllowedUsers(t *testing.T) {
 	t.Parallel()
 
-	g := NewWithMultiUser("token", nil, CookieSecureAuto, MultiUserConfig{})
+	g := NewWithMultiUser("token", nil, CookieSecureAuto, MultiUserConfig{
+		SystemUsers: []string{"hugo", "postgres"},
+	})
 	if err := g.ValidateTargetUser(""); err != nil {
 		t.Errorf("empty user should pass: %v", err)
 	}
-	// When AllowedUsers is empty, any non-root user is allowed.
+	// When AllowedUsers is empty but SystemUsers is set, any system user is allowed.
 	if err := g.ValidateTargetUser("postgres"); err != nil {
-		t.Errorf("any user should pass when allowlist is empty: %v", err)
+		t.Errorf("system user should pass when allowlist is empty: %v", err)
 	}
 }
 
@@ -31,6 +33,7 @@ func TestValidateTargetUser(t *testing.T) {
 			name: "empty user always passes",
 			config: MultiUserConfig{
 				AllowedUsers: []string{"postgres"},
+				SystemUsers:  []string{"postgres"},
 			},
 			targetUser: "",
 			wantErr:    nil,
@@ -39,6 +42,7 @@ func TestValidateTargetUser(t *testing.T) {
 			name: "allowed user passes",
 			config: MultiUserConfig{
 				AllowedUsers: []string{"postgres", "deploy"},
+				SystemUsers:  []string{"postgres", "deploy"},
 			},
 			targetUser: "postgres",
 			wantErr:    nil,
@@ -47,6 +51,7 @@ func TestValidateTargetUser(t *testing.T) {
 			name: "unknown user fails",
 			config: MultiUserConfig{
 				AllowedUsers: []string{"postgres"},
+				SystemUsers:  []string{"postgres"},
 			},
 			targetUser: "unknown",
 			wantErr:    ErrUserNotAllowlist,
@@ -56,6 +61,7 @@ func TestValidateTargetUser(t *testing.T) {
 			config: MultiUserConfig{
 				AllowedUsers:    []string{"root"},
 				AllowRootTarget: false,
+				SystemUsers:     []string{"root"},
 			},
 			targetUser: "root",
 			wantErr:    ErrRootNotAllowed,
@@ -65,19 +71,30 @@ func TestValidateTargetUser(t *testing.T) {
 			config: MultiUserConfig{
 				AllowedUsers:    []string{"root"},
 				AllowRootTarget: true,
+				SystemUsers:     []string{"root"},
 			},
 			targetUser: "root",
 			wantErr:    nil,
 		},
 		{
-			name:       "any user allowed when allowlist is empty",
-			config:     MultiUserConfig{},
+			name: "system user allowed when allowlist is empty",
+			config: MultiUserConfig{
+				SystemUsers: []string{"deploy", "hugo"},
+			},
 			targetUser: "deploy",
 			wantErr:    nil,
 		},
 		{
+			name: "non-system user rejected when allowlist is empty",
+			config: MultiUserConfig{
+				SystemUsers: []string{"deploy", "hugo"},
+			},
+			targetUser: "ghost",
+			wantErr:    ErrUserNotSystemUser,
+		},
+		{
 			name:       "root denied when allowlist is empty and root not allowed",
-			config:     MultiUserConfig{},
+			config:     MultiUserConfig{SystemUsers: []string{"hugo", "root"}},
 			targetUser: "root",
 			wantErr:    ErrRootNotAllowed,
 		},
@@ -85,6 +102,7 @@ func TestValidateTargetUser(t *testing.T) {
 			name: "root allowed when allowlist is empty and root allowed",
 			config: MultiUserConfig{
 				AllowRootTarget: true,
+				SystemUsers:     []string{"hugo", "root"},
 			},
 			targetUser: "root",
 			wantErr:    nil,
@@ -121,6 +139,28 @@ func TestValidateTargetUserNilGuard(t *testing.T) {
 	}
 }
 
+func TestValidateTargetUserEmptySystemUsers(t *testing.T) {
+	t.Parallel()
+
+	g := NewWithMultiUser("token", nil, CookieSecureAuto, MultiUserConfig{
+		SystemUsers: nil, // no system users loaded
+	})
+
+	// Empty target user should always pass.
+	if err := g.ValidateTargetUser(""); err != nil {
+		t.Errorf("empty user should pass: %v", err)
+	}
+
+	// Non-empty target user should fail when SystemUsers is empty.
+	err := g.ValidateTargetUser("postgres")
+	if err == nil {
+		t.Fatal("expected error when SystemUsers is empty, got nil")
+	}
+	if !errors.Is(err, ErrNoSystemUsers) {
+		t.Errorf("error = %v, want ErrNoSystemUsers", err)
+	}
+}
+
 func TestAllowedUsers(t *testing.T) {
 	t.Parallel()
 
@@ -132,14 +172,39 @@ func TestAllowedUsers(t *testing.T) {
 		}
 	})
 
-	t.Run("returns list when configured", func(t *testing.T) {
+	t.Run("returns allowlist when configured", func(t *testing.T) {
 		t.Parallel()
 		g := NewWithMultiUser("token", nil, CookieSecureAuto, MultiUserConfig{
 			AllowedUsers: []string{"postgres", "deploy"},
+			SystemUsers:  []string{"postgres", "deploy", "hugo"},
 		})
 		users := g.AllowedUsers()
 		if len(users) != 2 {
 			t.Fatalf("AllowedUsers() = %v, want [postgres deploy]", users)
+		}
+	})
+
+	t.Run("returns system users when no allowlist", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithMultiUser("token", nil, CookieSecureAuto, MultiUserConfig{
+			SystemUsers: []string{"deploy", "hugo", "root"},
+		})
+		users := g.AllowedUsers()
+		// root should be filtered out (AllowRootTarget is false).
+		if len(users) != 2 {
+			t.Fatalf("AllowedUsers() = %v, want [deploy hugo]", users)
+		}
+	})
+
+	t.Run("returns system users including root when allowed", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithMultiUser("token", nil, CookieSecureAuto, MultiUserConfig{
+			AllowRootTarget: true,
+			SystemUsers:     []string{"deploy", "hugo", "root"},
+		})
+		users := g.AllowedUsers()
+		if len(users) != 3 {
+			t.Fatalf("AllowedUsers() = %v, want [deploy hugo root]", users)
 		}
 	})
 
@@ -148,6 +213,29 @@ func TestAllowedUsers(t *testing.T) {
 		var g *Guard
 		if g.AllowedUsers() != nil {
 			t.Errorf("nil guard AllowedUsers() should be nil")
+		}
+	})
+}
+
+func TestSystemUsers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns system users list", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithMultiUser("token", nil, CookieSecureAuto, MultiUserConfig{
+			SystemUsers: []string{"deploy", "hugo"},
+		})
+		su := g.SystemUsers()
+		if len(su) != 2 {
+			t.Fatalf("SystemUsers() = %v, want [deploy hugo]", su)
+		}
+	})
+
+	t.Run("nil guard returns nil", func(t *testing.T) {
+		t.Parallel()
+		var g *Guard
+		if g.SystemUsers() != nil {
+			t.Errorf("nil guard SystemUsers() should be nil")
 		}
 	})
 }

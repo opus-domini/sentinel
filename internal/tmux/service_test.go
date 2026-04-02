@@ -29,10 +29,14 @@ func TestServiceDelegatesToPackageLevelRunWhenNoUser(t *testing.T) {
 }
 
 func TestRunAsUserWrapsWithSudo(t *testing.T) {
-	// Not parallel: mutates package-level run variable.
+	// Not parallel: mutates package-level run variable and SystemUsers.
 
 	original := run
 	t.Cleanup(func() { run = original })
+
+	originalUsers := SystemUsers
+	t.Cleanup(func() { SystemUsers = originalUsers })
+	SystemUsers = []string{"testuser"}
 
 	called := false
 	run = func(_ context.Context, args ...string) (string, error) {
@@ -119,7 +123,11 @@ func TestServiceSessionExistsWithNoUser(t *testing.T) {
 }
 
 func TestVerifySystemUser(t *testing.T) {
-	t.Parallel()
+	// Not parallel: mutates package-level SystemUsers.
+
+	originalUsers := SystemUsers
+	t.Cleanup(func() { SystemUsers = originalUsers })
+	SystemUsers = []string{"root", "hugo", "deploy"}
 
 	tests := []struct {
 		name    string
@@ -127,6 +135,8 @@ func TestVerifySystemUser(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "valid root", user: "root", wantErr: false},
+		{name: "valid hugo", user: "hugo", wantErr: false},
+		{name: "valid deploy", user: "deploy", wantErr: false},
 		{name: "empty", user: "", wantErr: true},
 		{name: "shell injection semicolon", user: "test;whoami", wantErr: true},
 		{name: "shell injection space", user: "test whoami", wantErr: true},
@@ -139,13 +149,23 @@ func TestVerifySystemUser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			// Clear cache for this test
-			verifiedUsers.Delete(tt.user)
 			err := verifySystemUser(tt.user)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("verifySystemUser(%q) error = %v, wantErr %v", tt.user, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestVerifySystemUserEmptyList(t *testing.T) {
+	// Not parallel: mutates package-level SystemUsers.
+
+	originalUsers := SystemUsers
+	t.Cleanup(func() { SystemUsers = originalUsers })
+	SystemUsers = nil
+
+	err := verifySystemUser("hugo")
+	if err == nil {
+		t.Fatal("expected error when SystemUsers is empty, got nil")
 	}
 }

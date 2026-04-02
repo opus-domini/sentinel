@@ -380,7 +380,7 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	}
 	data["processUser"] = processUser
 	data["isRoot"] = osGeteuid() == 0
-	data["canSwitchUser"] = true
+	data["canSwitchUser"] = len(h.guard.SystemUsers()) > 0
 	data["allowedUsers"] = h.guard.AllowedUsers()
 
 	writeData(w, http.StatusOK, data)

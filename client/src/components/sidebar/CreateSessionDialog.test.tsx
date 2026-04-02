@@ -14,7 +14,8 @@ vi.mock('@/contexts/MetaContext', () => ({
   useMetaContext: () => ({
     processUser: 'hugo',
     isRoot: false,
-    allowedUsers: ['postgres'],
+    canSwitchUser: true,
+    allowedUsers: ['hugo', 'postgres'],
   }),
 }))
 

@@ -13,11 +13,13 @@ import (
 )
 
 var (
-	ErrUnauthorized     = errors.New("unauthorized")
-	ErrOriginDenied     = errors.New("origin denied")
-	ErrRemoteToken      = errors.New("token is required for non-loopback listen address")
-	ErrRootNotAllowed   = errors.New("root user is not allowed as a target")
-	ErrUserNotAllowlist = errors.New("user not in allowlist")
+	ErrUnauthorized      = errors.New("unauthorized")
+	ErrOriginDenied      = errors.New("origin denied")
+	ErrRemoteToken       = errors.New("token is required for non-loopback listen address")
+	ErrRootNotAllowed    = errors.New("root user is not allowed as a target")
+	ErrUserNotAllowlist  = errors.New("user not in allowlist")
+	ErrNoSystemUsers     = errors.New("no system users loaded; multi-user switching unavailable")
+	ErrUserNotSystemUser = errors.New("user not found in system users")
 )
 
 const AuthCookieName = "sentinel_auth"
@@ -50,6 +52,7 @@ func ParseCookieSecurePolicy(s string) CookieSecurePolicy {
 type MultiUserConfig struct {
 	AllowedUsers    []string
 	AllowRootTarget bool
+	SystemUsers     []string
 }
 
 type Guard struct {
@@ -80,12 +83,37 @@ func NewWithMultiUser(token string, allowedOrigins []string, cookieSecure Cookie
 	return g
 }
 
-// AllowedUsers returns the configured user allowlist.
+// AllowedUsers returns the effective user list for the frontend.
+// When an explicit allowlist is configured, it is returned.
+// Otherwise, SystemUsers is returned (filtered by AllowRootTarget).
 func (g *Guard) AllowedUsers() []string {
 	if g == nil {
 		return nil
 	}
-	return g.multiUser.AllowedUsers
+	if len(g.multiUser.AllowedUsers) > 0 {
+		return g.multiUser.AllowedUsers
+	}
+	if len(g.multiUser.SystemUsers) == 0 {
+		return nil
+	}
+	if g.multiUser.AllowRootTarget {
+		return g.multiUser.SystemUsers
+	}
+	filtered := make([]string, 0, len(g.multiUser.SystemUsers))
+	for _, u := range g.multiUser.SystemUsers {
+		if u != "root" {
+			filtered = append(filtered, u)
+		}
+	}
+	return filtered
+}
+
+// SystemUsers returns the in-memory system user list loaded at startup.
+func (g *Guard) SystemUsers() []string {
+	if g == nil {
+		return nil
+	}
+	return g.multiUser.SystemUsers
 }
 
 // ValidateTargetUser checks whether targetUser is a permitted multi-user
@@ -101,16 +129,29 @@ func (g *Guard) ValidateTargetUser(targetUser string) error {
 	if targetUser == "root" && !g.multiUser.AllowRootTarget {
 		return ErrRootNotAllowed
 	}
-	// When AllowedUsers is empty, any user is allowed.
-	if len(g.multiUser.AllowedUsers) == 0 {
-		return nil
+
+	// When SystemUsers is empty, we cannot verify users -- block switching.
+	if len(g.multiUser.SystemUsers) == 0 {
+		return ErrNoSystemUsers
 	}
-	for _, allowed := range g.multiUser.AllowedUsers {
-		if allowed == targetUser {
+
+	// When AllowedUsers is set, validate against the allowlist.
+	if len(g.multiUser.AllowedUsers) > 0 {
+		for _, allowed := range g.multiUser.AllowedUsers {
+			if allowed == targetUser {
+				return nil
+			}
+		}
+		return fmt.Errorf("%w: %s", ErrUserNotAllowlist, targetUser)
+	}
+
+	// No allowlist: validate against system users.
+	for _, su := range g.multiUser.SystemUsers {
+		if su == targetUser {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: %s", ErrUserNotAllowlist, targetUser)
+	return fmt.Errorf("%w: %s", ErrUserNotSystemUser, targetUser)
 }
 
 func (g *Guard) TokenRequired() bool {

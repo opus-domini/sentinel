@@ -322,36 +322,43 @@ export default function CreateSessionDialog({
               </div>
             )}
 
-            <div>
-              <button
-                type="button"
-                className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => setAdvancedOpen((prev) => !prev)}
-              >
-                <ChevronRight
-                  className="h-3 w-3 transition-transform"
-                  style={{
-                    transform: advancedOpen ? 'rotate(90deg)' : undefined,
-                  }}
-                />
-                Advanced options
-              </button>
-              {advancedOpen && (
-                <div className="mt-2 rounded-md border border-border-subtle p-2.5">
-                  <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                    Run as user
-                    <Input
-                      value={user}
-                      onChange={(e) => setUser(e.target.value)}
-                      placeholder={`${meta.processUser || 'default'} (default)`}
-                    />
-                    <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
-                      Leave blank to use the default system user.
-                    </span>
-                  </label>
-                </div>
-              )}
-            </div>
+            {meta.canSwitchUser && (
+              <div>
+                <button
+                  type="button"
+                  className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                  onClick={() => setAdvancedOpen((prev) => !prev)}
+                >
+                  <ChevronRight
+                    className="h-3 w-3 transition-transform"
+                    style={{
+                      transform: advancedOpen ? 'rotate(90deg)' : undefined,
+                    }}
+                  />
+                  Advanced options
+                </button>
+                {advancedOpen && (
+                  <div className="mt-2 rounded-md border border-border-subtle p-2.5">
+                    <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                      Run as user
+                      <Input
+                        value={user}
+                        onChange={(e) => setUser(e.target.value)}
+                        placeholder={`${meta.processUser || 'default'} (default)`}
+                      />
+                      {meta.allowedUsers.length > 0 && (
+                        <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                          Available: {meta.allowedUsers.join(', ')}
+                        </span>
+                      )}
+                      <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                        Leave blank to use the default system user.
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter className="mt-4">
             <DialogClose asChild>
