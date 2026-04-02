@@ -205,20 +205,42 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         }
         const body: Record<string, string> = { name: sessionName, cwd, icon }
         if (user) body.user = user
-        await api<{ name: string }>('/api/tmux/sessions', {
+        const result = await api<{ name: string }>('/api/tmux/sessions', {
           method: 'POST',
           body: JSON.stringify(body),
           headers,
         })
 
-        if (sessionAlreadyExists) {
-          activateSession(sessionName, icon)
+        // The server may return a suffixed name (e.g., "dev-1") if the
+        // original name was already taken.
+        const createdName = result.name || sessionName
+        if (createdName !== sessionName) {
+          // Replace the optimistic session with the actual name.
+          pendingCreateSessionsRef.current.delete(sessionName)
+          pendingCreateSessionsRef.current.set(
+            createdName,
+            new Date().toISOString(),
+          )
+          setSessions((prev) => {
+            const without = prev.filter((s) => s.name !== sessionName)
+            return upsertOptimisticAttachedSession(
+              without,
+              createdName,
+              new Date().toISOString(),
+              icon,
+              user,
+            )
+          })
+          dispatchTabs({ type: 'close', session: sessionName })
+          dispatchTabs({ type: 'activate', session: createdName })
+        } else if (sessionAlreadyExists) {
+          activateSession(createdName, icon)
         }
-        setConnection('connecting', `opening ${sessionName}`)
-        await refreshInspector(sessionName, { force: true })
-        pendingCreateSessionsRef.current.delete(sessionName)
+        setConnection('connecting', `opening ${createdName}`)
+        await refreshInspector(createdName, { force: true })
+        pendingCreateSessionsRef.current.delete(createdName)
         void refreshSessions()
-        pushSuccessToast('Create Session', `session "${sessionName}" created`)
+        pushSuccessToast('Create Session', `session "${createdName}" created`)
       } catch (error) {
         pendingCreateSessionsRef.current.delete(sessionName)
         if (!sessionAlreadyExists) {

@@ -482,32 +482,47 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.registerSessionUser(req.Name, req.User)
 	tmuxSvc := h.tmuxForUser(req.User)
-	if err := tmuxSvc.CreateSession(ctx, req.Name, req.Cwd); err != nil {
+
+	// Try the requested name first, then append -1, -2, etc. on collision.
+	finalName := req.Name
+	if err := tmuxSvc.CreateSession(ctx, finalName, req.Cwd); err != nil {
 		if !tmux.IsKind(err, tmux.ErrKindSessionExists) {
-			h.sessionUsers.Delete(req.Name)
-			if h.repo != nil {
-				_ = h.repo.DeleteSessionUser(context.Background(), req.Name)
+			writeTmuxError(w, err)
+			return
+		}
+		created := false
+		for i := 1; i <= 9; i++ {
+			candidate := fmt.Sprintf("%s-%d", req.Name, i)
+			if err := tmuxSvc.CreateSession(ctx, candidate, req.Cwd); err == nil {
+				finalName = candidate
+				created = true
+				break
+			} else if !tmux.IsKind(err, tmux.ErrKindSessionExists) {
+				writeTmuxError(w, err)
+				return
 			}
 		}
-		writeTmuxError(w, err)
-		return
+		if !created {
+			writeTmuxError(w, &tmux.Error{Kind: tmux.ErrKindSessionExists, Msg: "all name variants already exist"})
+			return
+		}
 	}
+	h.registerSessionUser(finalName, req.User)
 	if req.User != "" {
 		slog.Warn("multi-user session created",
 			"action", "session.create",
 			"target_user", req.User,
-			"session", req.Name,
+			"session", finalName,
 			"source_ip", r.RemoteAddr,
 		)
 	}
-	h.persistSessionLaunchMetadataBestEffort(ctx, req.Name, req.Cwd, req.Icon)
-	if err := h.repo.MoveSessionToFront(ctx, req.Name); err != nil {
-		slog.Warn("failed to move session to front", "session", req.Name, "err", err)
+	h.persistSessionLaunchMetadataBestEffort(ctx, finalName, req.Cwd, req.Icon)
+	if err := h.repo.MoveSessionToFront(ctx, finalName); err != nil {
+		slog.Warn("failed to move session to front", "session", finalName, "err", err)
 	}
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": req.Name, "action": "create"})
-	writeData(w, http.StatusCreated, map[string]any{"name": req.Name})
+	h.emit(events.TypeTmuxSessions, map[string]any{"session": finalName, "action": "create"})
+	writeData(w, http.StatusCreated, map[string]any{"name": finalName})
 }
 
 // tmuxForUser returns the tmux service to use for the given user.
