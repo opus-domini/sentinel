@@ -197,18 +197,19 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
 }: ServicesBrowseControlsProps) {
   const [searchDraft, setSearchDraft] = useState(searchValue)
   const debouncedSearchDraft = useDebouncedValue(searchDraft)
+  const searchValueRef = useRef(searchValue)
 
   useEffect(() => {
+    searchValueRef.current = searchValue
     setSearchDraft(searchValue)
   }, [searchValue])
 
   useEffect(() => {
-    if (debouncedSearchDraft === searchValue) return
-    if (debouncedSearchDraft !== searchDraft) return
+    if (debouncedSearchDraft === searchValueRef.current) return
     startTransition(() => {
       onSearchChange(debouncedSearchDraft)
     })
-  }, [debouncedSearchDraft, onSearchChange, searchDraft, searchValue])
+  }, [debouncedSearchDraft, onSearchChange])
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle p-2">
