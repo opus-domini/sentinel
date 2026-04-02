@@ -6,6 +6,7 @@ import SidebarShell from '@/components/sidebar/SidebarShell'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -45,6 +46,7 @@ export default function ServicesSidebar({
   onRemoveService,
   onNavigateToService,
 }: ServicesSidebarProps) {
+  const { sidebarDensity } = useLayoutContext()
   const [isTokenOpen, setIsTokenOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const debouncedFilter = useDebouncedValue(filter)
@@ -158,52 +160,69 @@ export default function ServicesSidebar({
               {filteredServices.map((service) => (
                 <div
                   key={service.name}
-                  className="grid min-w-0 gap-1 overflow-hidden rounded border border-border-subtle px-2 py-1.5 text-[12px]"
+                  className={cn(
+                    'grid min-w-0 overflow-hidden rounded border border-border-subtle',
+                    sidebarDensity === 'minimal'
+                      ? 'px-1.5 py-1 text-[11px]'
+                      : 'gap-1 px-2 py-1.5 text-[12px]',
+                  )}
                 >
-                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                    <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                      <span
+                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full',
+                        sidebarDensity === 'minimal'
+                          ? 'h-1.5 w-1.5'
+                          : 'h-2 w-2',
+                        statusDot(service),
+                      )}
+                    />
+                    <TooltipHelper
+                      content={`${service.displayName} (${service.unit})`}
+                    >
+                      <button
+                        type="button"
                         className={cn(
-                          'h-2 w-2 shrink-0 rounded-full',
-                          statusDot(service),
+                          'block w-full min-w-0 flex-1 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap text-left hover:text-primary-text-bright',
+                          sidebarDensity === 'minimal'
+                            ? 'font-medium'
+                            : 'font-semibold',
                         )}
-                      />
-                      <TooltipHelper
-                        content={`${service.displayName} (${service.unit})`}
+                        onClick={() => onNavigateToService(service.unit)}
                       >
-                        <button
-                          type="button"
-                          className="block w-full min-w-0 flex-1 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap text-left font-semibold hover:text-primary-text-bright"
-                          onClick={() => onNavigateToService(service.unit)}
-                        >
-                          {service.displayName}
-                        </button>
-                      </TooltipHelper>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <span className="rounded border border-border-subtle bg-surface-overlay px-1 text-[10px] text-muted-foreground">
-                        {service.scope}
-                      </span>
-                      <TooltipHelper content="Unpin service">
-                        <button
-                          type="button"
-                          className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive-foreground"
-                          onClick={() => void handleRemove(service.name)}
-                          disabled={removing === service.name}
-                          aria-label={`Unpin ${service.displayName}`}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </TooltipHelper>
-                    </div>
-                  </div>
-                  <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
-                    <TooltipHelper content={service.unit}>
-                      <span className="min-w-0 flex-1 truncate">
-                        {service.unit}
-                      </span>
+                        {service.displayName}
+                      </button>
                     </TooltipHelper>
+                    {sidebarDensity !== 'minimal' && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        {sidebarDensity === 'full' && (
+                          <span className="rounded border border-border-subtle bg-surface-overlay px-1 text-[10px] text-muted-foreground">
+                            {service.scope}
+                          </span>
+                        )}
+                        <TooltipHelper content="Unpin service">
+                          <button
+                            type="button"
+                            className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive-foreground"
+                            onClick={() => void handleRemove(service.name)}
+                            disabled={removing === service.name}
+                            aria-label={`Unpin ${service.displayName}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </TooltipHelper>
+                      </div>
+                    )}
                   </div>
+                  {sidebarDensity !== 'minimal' && (
+                    <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <TooltipHelper content={service.unit}>
+                        <span className="min-w-0 flex-1 truncate">
+                          {service.unit}
+                        </span>
+                      </TooltipHelper>
+                    </div>
+                  )}
                 </div>
               ))}
 
