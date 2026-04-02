@@ -24,6 +24,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import { cn } from '@/lib/utils'
 import { hapticFeedback } from '@/lib/device'
 
@@ -41,6 +42,7 @@ type SessionTabsProps = {
 function SortableTab({
   tabName,
   isActive,
+  dragEnabled,
   onSelect,
   onClose,
   onRename,
@@ -48,6 +50,7 @@ function SortableTab({
 }: {
   tabName: string
   isActive: boolean
+  dragEnabled: boolean
   onSelect: () => void
   onClose: () => void
   onRename?: () => void
@@ -65,10 +68,11 @@ function SortableTab({
   })
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : undefined,
-    zIndex: isDragging ? 10 : undefined,
+    transform: dragEnabled ? CSS.Transform.toString(transform) : undefined,
+    transition: dragEnabled ? transition : undefined,
+    opacity: dragEnabled && isDragging ? 0.5 : undefined,
+    zIndex: dragEnabled && isDragging ? 10 : undefined,
+    touchAction: dragEnabled ? undefined : ('pan-x' as const),
   }
 
   const tabContent = (
@@ -82,8 +86,8 @@ function SortableTab({
           : 'bg-surface-elevated text-secondary-foreground hover:bg-surface-active',
       )}
       onClick={onSelect}
-      {...attributes}
-      {...listeners}
+      {...(dragEnabled ? attributes : {})}
+      {...(dragEnabled ? listeners : {})}
       role="tab"
       aria-selected={isActive}
     >
@@ -91,7 +95,7 @@ function SortableTab({
       <Button
         variant="ghost"
         size="icon-xs"
-        className="ml-auto h-3.5 w-3.5 min-w-0 text-muted-foreground hover:text-foreground"
+        className="ml-auto h-5 w-5 min-w-0 p-1 text-muted-foreground hover:text-foreground"
         onClick={(event) => {
           event.stopPropagation()
           onClose()
@@ -148,6 +152,8 @@ export default function SessionTabs({
   onReorder,
   emptyLabel = 'No open sessions',
 }: SessionTabsProps) {
+  const isMobile = useIsMobileLayout()
+  const dragEnabled = !isMobile
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -199,6 +205,7 @@ export default function SessionTabs({
                 key={tabName}
                 tabName={tabName}
                 isActive={tabName === activeSession}
+                dragEnabled={dragEnabled}
                 onSelect={() => onSelect(tabName)}
                 onClose={() => onClose(tabName)}
                 onRename={onRename ? () => onRename(tabName) : undefined}

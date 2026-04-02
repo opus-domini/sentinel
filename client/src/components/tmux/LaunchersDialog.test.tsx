@@ -11,6 +11,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import LaunchersDialog from './LaunchersDialog'
 import type { TmuxLauncher } from '@/types'
 
+vi.mock('@/hooks/useIsMobileLayout', () => ({
+  useIsMobileLayout: () => false,
+}))
+
 describe('LaunchersDialog', () => {
   afterEach(() => {
     cleanup()

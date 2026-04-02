@@ -217,7 +217,7 @@ export function RunbookJobHistory({
                           {stepOpen && (
                             <div className="border-t border-border-subtle px-2 py-1.5">
                               {sr.output ? (
-                                <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-[var(--background)] px-2 py-1 font-mono text-[10px] text-secondary-foreground">
+                                <pre className="max-h-40 overflow-y-auto overscroll-contain whitespace-pre-wrap rounded bg-[var(--background)] px-2 py-1 font-mono text-[10px] text-secondary-foreground">
                                   {sr.output}
                                 </pre>
                               ) : !sr.error ? (

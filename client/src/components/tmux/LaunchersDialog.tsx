@@ -43,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import { hapticFeedback } from '@/lib/device'
 import { cn } from '@/lib/utils'
 
@@ -120,10 +121,12 @@ function describeLauncherCommand(command: string) {
 function SortableLauncherItem({
   launcher,
   selected,
+  dragEnabled,
   onSelect,
 }: {
   launcher: TmuxLauncher
   selected: boolean
+  dragEnabled: boolean
   onSelect: (id: string) => void
 }) {
   const {
@@ -140,10 +143,10 @@ function SortableLauncherItem({
     <li
       ref={setNodeRef}
       style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.5 : undefined,
-        zIndex: isDragging ? 10 : undefined,
+        transform: dragEnabled ? CSS.Transform.toString(transform) : undefined,
+        transition: dragEnabled ? transition : undefined,
+        opacity: dragEnabled && isDragging ? 0.5 : undefined,
+        zIndex: dragEnabled && isDragging ? 10 : undefined,
       }}
     >
       <button
@@ -155,8 +158,9 @@ function SortableLauncherItem({
             : 'border-transparent hover:border-border-subtle hover:bg-surface-hover',
         )}
         onClick={() => onSelect(launcher.id)}
-        {...attributes}
-        {...listeners}
+        style={{ touchAction: dragEnabled ? undefined : 'pan-y' }}
+        {...(dragEnabled ? attributes : {})}
+        {...(dragEnabled ? listeners : {})}
       >
         <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
@@ -183,6 +187,8 @@ export default function LaunchersDialog({
   onDelete,
   onReorder,
 }: LaunchersDialogProps) {
+  const isMobile = useIsMobileLayout()
+  const dragEnabled = !isMobile
   const [selectedID, setSelectedID] = useState<string>('new')
   const [draft, setDraft] = useState<LauncherDraft>(DEFAULT_DRAFT)
   const [saveError, setSaveError] = useState('')
@@ -384,6 +390,7 @@ export default function LaunchersDialog({
                           key={launcher.id}
                           launcher={launcher}
                           selected={launcher.id === selectedID}
+                          dragEnabled={dragEnabled}
                           onSelect={selectLauncher}
                         />
                       ))}

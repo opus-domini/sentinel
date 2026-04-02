@@ -365,7 +365,7 @@ export default function TmuxTerminalPanel({
         <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
           <button
             type="button"
-            className="inline-flex h-5 w-5 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
+            className="inline-flex h-7 w-7 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
             onClick={onZoomOut}
             disabled={!hasActiveSession}
             aria-label="Decrease font size"
@@ -374,7 +374,7 @@ export default function TmuxTerminalPanel({
           </button>
           <button
             type="button"
-            className="inline-flex h-5 w-5 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
+            className="inline-flex h-7 w-7 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
             onClick={onZoomIn}
             disabled={!hasActiveSession}
             aria-label="Increase font size"

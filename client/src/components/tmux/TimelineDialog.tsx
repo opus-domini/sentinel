@@ -248,7 +248,7 @@ export default function TimelineDialog({
           </p>
         </section>
 
-        <section className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-surface-overlay p-2">
+        <section className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-surface-overlay p-2">
           {error.trim() !== '' && (
             <div className="mb-2 rounded border border-destructive/45 bg-destructive/10 px-2 py-1 text-[11px] text-destructive-foreground">
               {error}

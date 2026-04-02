@@ -353,7 +353,7 @@ export default function SettingsDialog({
               id="settings-panel-appearance"
               role="tabpanel"
               aria-labelledby="settings-tab-appearance"
-              className="min-h-0 overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-secondary p-3"
+              className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
             >
               <h3 className="mb-1 text-xs font-medium">Terminal Theme</h3>
               <p className="mb-3 text-xs text-muted-foreground">
@@ -368,7 +368,7 @@ export default function SettingsDialog({
               id="settings-panel-app"
               role="tabpanel"
               aria-labelledby="settings-tab-app"
-              className="min-h-0 overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-secondary p-3"
+              className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
             >
               <div className="mb-1 flex items-center gap-2">
                 <h3 className="text-xs font-medium">Progressive App</h3>
@@ -474,7 +474,7 @@ export default function SettingsDialog({
               id="settings-panel-notifications"
               role="tabpanel"
               aria-labelledby="settings-tab-notifications"
-              className="min-h-0 overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-secondary p-3"
+              className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
             >
               <h3 className="mb-1 text-xs font-medium">Alert Webhooks</h3>
               <p className="mb-3 text-xs text-muted-foreground">
@@ -553,7 +553,7 @@ export default function SettingsDialog({
               id="settings-panel-data"
               role="tabpanel"
               aria-labelledby="settings-tab-data"
-              className="min-h-0 overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-secondary p-3"
+              className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
             >
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-xs font-medium">Data & Storage</h3>
@@ -673,7 +673,7 @@ export default function SettingsDialog({
               id="settings-panel-about"
               role="tabpanel"
               aria-labelledby="settings-tab-about"
-              className="min-h-0 overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-secondary p-3"
+              className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
             >
               <h3 className="mb-1 text-xs font-medium">Sentinel</h3>
               <p className="text-xs text-muted-foreground">

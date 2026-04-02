@@ -162,7 +162,7 @@ export function LogViewer({
       ref={scrollRef}
       onScroll={handleScroll}
       className={cn(
-        'overflow-auto rounded border border-border-subtle bg-background',
+        'overflow-auto overscroll-contain rounded border border-border-subtle bg-background',
         wordWrap ? 'overflow-x-hidden' : '',
         className,
       )}

@@ -611,7 +611,7 @@ export default function GuardrailsDialog({
           </div>
         )}
 
-        <section className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border-subtle bg-secondary">
+        <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border-subtle bg-secondary">
           <div className="grid gap-1.5 p-2">
             {activeTab === 'rules' && (
               <div
