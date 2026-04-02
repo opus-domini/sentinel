@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.19](https://github.com/opus-domini/sentinel/compare/v0.5.18...v0.5.19) (2026-04-02)
+
+
+### Features
+
+* 3-tier density for services sidebar cards ([c06baa8](https://github.com/opus-domini/sentinel/commit/c06baa8ab86029f6a102eaf21a789d71e6f90547))
+* 3-tier session card density based on sidebar width ([0869b88](https://github.com/opus-domini/sentinel/commit/0869b88f09bde37a4104d44911e91afb634edec0))
+
+
+### Bug Fixes
+
+* adjust sidebar density thresholds ([7824116](https://github.com/opus-domini/sentinel/commit/782411683ac3080e7bd0d3ca9c741284bab0a64e))
+* soften minimal density session card typography ([4c04c95](https://github.com/opus-domini/sentinel/commit/4c04c95d9a2248ad34c4a0e8c0633ba00454fafe))
+* spread full density service card across cleaner lines ([06115df](https://github.com/opus-domini/sentinel/commit/06115df9fbed3e9d13ded155f41decd1867d7f2d))
+
 ## [0.5.18](https://github.com/opus-domini/sentinel/compare/v0.5.17...v0.5.18) (2026-04-02)
 
 
