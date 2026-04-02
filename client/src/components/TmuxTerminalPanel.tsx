@@ -1,4 +1,4 @@
-import { History, Menu, Minus, Plus, ShieldAlert } from 'lucide-react'
+import { History, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import ConnectionBadge from './ConnectionBadge'
 import SessionTabs from './SessionTabs'
@@ -217,19 +217,6 @@ export default function TmuxTerminalPanel({
           <span className="truncate text-muted-foreground">tmux</span>
         </div>
         <div className="flex items-center gap-1">
-          <TooltipHelper content="Guardrails">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 cursor-pointer"
-              onClick={onOpenGuardrails}
-              disabled={!onOpenGuardrails}
-              aria-label="Guardrails"
-            >
-              <ShieldAlert className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipHelper>
           <TooltipHelper content="Timeline">
             <Button
               type="button"
