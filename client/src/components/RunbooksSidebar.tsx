@@ -34,9 +34,9 @@ function runbookStatusDot(
   const lastJob = jobs.find((j) => j.runbookId === runbook.id)
   if (!lastJob) return 'bg-muted-foreground/50'
   const status = lastJob.status.trim().toLowerCase()
-  if (status === 'succeeded') return 'bg-emerald-500'
-  if (status === 'failed') return 'bg-red-500'
-  if (status === 'running') return 'bg-amber-500'
+  if (status === 'succeeded') return 'bg-ok'
+  if (status === 'failed') return 'bg-destructive'
+  if (status === 'running') return 'bg-warning'
   return 'bg-muted-foreground/50'
 }
 

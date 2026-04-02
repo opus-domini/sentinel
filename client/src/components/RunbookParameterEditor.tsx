@@ -36,7 +36,7 @@ export function RunbookParameterEditor({
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 cursor-pointer text-red-400 hover:text-red-300"
+          className="h-6 w-6 cursor-pointer text-destructive-foreground hover:text-destructive-foreground"
           onClick={onRemove}
           aria-label="Remove parameter"
         >
@@ -52,14 +52,16 @@ export function RunbookParameterEditor({
           <Input
             className={cn(
               'mt-0.5 h-7 bg-surface-overlay font-mono text-[11px]',
-              errors.name && 'border-red-500',
+              errors.name && 'border-destructive',
             )}
             placeholder="ENV"
             value={param.name}
             onChange={(e) => onChange({ ...param, name: e.target.value })}
           />
           {errors.name && (
-            <p className="mt-0.5 text-[10px] text-red-400">{errors.name}</p>
+            <p className="mt-0.5 text-[10px] text-destructive-foreground">
+              {errors.name}
+            </p>
           )}
         </div>
         <div>
@@ -130,14 +132,16 @@ export function RunbookParameterEditor({
           <Input
             className={cn(
               'mt-0.5 h-7 bg-surface-overlay text-[12px]',
-              errors.options && 'border-red-500',
+              errors.options && 'border-destructive',
             )}
             placeholder="production, staging, development"
             value={param.options}
             onChange={(e) => onChange({ ...param, options: e.target.value })}
           />
           {errors.options && (
-            <p className="mt-0.5 text-[10px] text-red-400">{errors.options}</p>
+            <p className="mt-0.5 text-[10px] text-destructive-foreground">
+              {errors.options}
+            </p>
           )}
         </div>
       )}

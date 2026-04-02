@@ -134,7 +134,7 @@ export default function SessionListItem({
                   className={cn(
                     'inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full border bg-surface-overlay px-1 text-[10px]',
                     isAttached && hasUnreadActivity
-                      ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
+                      ? 'border-warning/50 bg-warning/15 text-warning-foreground'
                       : 'border-border-subtle text-secondary-foreground',
                   )}
                   aria-label={

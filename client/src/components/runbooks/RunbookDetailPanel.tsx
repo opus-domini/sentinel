@@ -116,7 +116,7 @@ export function RunbookDetailPanel({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 cursor-pointer gap-1 px-3 text-[11px] text-red-400 hover:text-red-300"
+              className="h-8 cursor-pointer gap-1 px-3 text-[11px] text-destructive-foreground hover:text-destructive-foreground"
               onClick={() => onDelete(runbook)}
             >
               <Trash2 className="h-3 w-3" />
@@ -216,7 +216,7 @@ export function RunbookDetailPanel({
               {param.required && (
                 <Badge
                   variant="outline"
-                  className="h-4 px-1 text-[9px] text-amber-400"
+                  className="h-4 px-1 text-[9px] text-warning-foreground"
                 >
                   required
                 </Badge>
@@ -268,7 +268,7 @@ export function RunbookDetailPanel({
                 ({schedule.timezone})
               </span>
               {!schedule.enabled && (
-                <span className="rounded bg-amber-500/20 px-1 text-[9px] font-medium text-amber-400">
+                <span className="rounded bg-warning/20 px-1 text-[9px] font-medium text-warning-foreground">
                   paused
                 </span>
               )}
@@ -331,7 +331,7 @@ export function RunbookDetailPanel({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-6 cursor-pointer gap-1 px-2 text-[10px] text-red-400 hover:text-red-300"
+                className="h-6 cursor-pointer gap-1 px-2 text-[10px] text-destructive-foreground hover:text-destructive-foreground"
                 onClick={() => onDeleteSchedule(schedule.id)}
               >
                 <Trash2 className="h-2.5 w-2.5" />

@@ -6,6 +6,14 @@ import SidebarShell from '@/components/sidebar/SidebarShell'
 import ActivitiesHelpDialog from '@/components/ActivitiesHelpDialog'
 import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { formatUptime } from '@/lib/opsUtils'
 
@@ -132,34 +140,53 @@ export default function ActivitiesSidebar({
           <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             Filters
           </span>
-          <input
+          <Input
             value={activityQuery}
             onChange={(e) => onActivityQueryChange(e.target.value)}
             placeholder="search activities"
-            className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
+            className="h-7 bg-surface-overlay text-[12px] md:h-8"
           />
-          <select
+          <Select
             value={activitySeverity}
-            onChange={(e) => onActivitySeverityChange(e.target.value)}
-            className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
+            onValueChange={onActivitySeverityChange}
           >
-            <option value="all">all severities</option>
-            <option value="info">info</option>
-            <option value="warn">warn</option>
-            <option value="error">error</option>
-          </select>
-          <select
-            value={activitySource}
-            onChange={(e) => onActivitySourceChange(e.target.value)}
-            className="h-7 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
-          >
-            <option value="all">all sources</option>
-            {ACTIVITY_SOURCES.map((source) => (
-              <option key={source} value={source}>
-                {source}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-7 w-full cursor-pointer bg-surface-overlay text-[12px] md:h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="cursor-pointer">
+                all severities
+              </SelectItem>
+              <SelectItem value="info" className="cursor-pointer">
+                info
+              </SelectItem>
+              <SelectItem value="warn" className="cursor-pointer">
+                warn
+              </SelectItem>
+              <SelectItem value="error" className="cursor-pointer">
+                error
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={activitySource} onValueChange={onActivitySourceChange}>
+            <SelectTrigger className="h-7 w-full cursor-pointer bg-surface-overlay text-[12px] md:h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="cursor-pointer">
+                all sources
+              </SelectItem>
+              {ACTIVITY_SOURCES.map((source) => (
+                <SelectItem
+                  key={source}
+                  value={source}
+                  className="cursor-pointer"
+                >
+                  {source}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </section>
       </div>
     </SidebarShell>

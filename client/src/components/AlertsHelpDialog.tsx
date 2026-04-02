@@ -55,12 +55,12 @@ export default function AlertsHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Severity</h3>
               <p>
-                <strong className="text-amber-400">warn</strong> — degraded
-                state or unusual activity that may need attention.
+                <strong className="text-warning-foreground">warn</strong> —
+                degraded state or unusual activity that may need attention.
               </p>
               <p className="mt-1">
-                <strong className="text-red-400">error</strong> — a failure that
-                requires immediate action (e.g. a service crash).
+                <strong className="text-destructive-foreground">error</strong> —
+                a failure that requires immediate action (e.g. a service crash).
               </p>
             </section>
             <section>

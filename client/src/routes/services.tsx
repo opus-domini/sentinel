@@ -40,6 +40,7 @@ import { ServiceLogsSheet } from '@/components/services/ServiceLogsSheet'
 import { ServiceStatusDialog } from '@/components/services/ServiceStatusDialog'
 import ServicesSidebar from '@/components/ServicesSidebar'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -110,7 +111,7 @@ const ServicesBrowseList = memo(function ServicesBrowseList({
           Array.from({ length: 6 }).map((_, idx) => (
             <div
               key={`svc-row-skeleton-${idx}`}
-              className="h-24 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+              className="h-24 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
             />
           ))}
         {filteredBrowseServices.map((svc) => (
@@ -125,7 +126,7 @@ const ServicesBrowseList = memo(function ServicesBrowseList({
           />
         ))}
         {!browseLoading && filteredBrowseServices.length === 0 && (
-          <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
+          <EmptyState variant="inline" className="grid gap-2 p-3 text-[12px]">
             <p>
               {browseServicesCount === 0
                 ? 'No units discovered on this host yet.'
@@ -151,7 +152,7 @@ const ServicesBrowseList = memo(function ServicesBrowseList({
                 Refresh discovery
               </Button>
             </div>
-          </div>
+          </EmptyState>
         )}
         {browseError !== '' && (
           <p className="px-2 pb-2 text-[12px] text-destructive-foreground">
@@ -878,11 +879,11 @@ function ServicesPage() {
                   {Array.from({ length: 4 }).map((_, idx) => (
                     <div
                       key={`svc-metric-skeleton-${idx}`}
-                      className="h-20 animate-pulse rounded-lg border border-border-subtle bg-surface-elevated"
+                      className="h-20 motion-safe:animate-pulse rounded-lg border border-border-subtle bg-surface-elevated"
                     />
                   ))}
                 </div>
-                <div className="h-9 animate-pulse rounded-lg border border-border-subtle bg-surface-elevated md:hidden" />
+                <div className="h-9 motion-safe:animate-pulse rounded-lg border border-border-subtle bg-surface-elevated md:hidden" />
               </>
             ) : (
               <>
@@ -933,7 +934,7 @@ function ServicesPage() {
                     className={cn(
                       'flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px] transition-colors',
                       svcStateFilter === 'active'
-                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                        ? 'border-ok/40 bg-ok/10 text-ok-foreground'
                         : 'border-border-subtle text-muted-foreground hover:text-foreground',
                     )}
                     onClick={() => toggleStateFilter('active')}
@@ -961,9 +962,9 @@ function ServicesPage() {
                     className={cn(
                       'flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px] transition-colors',
                       svcStateFilter === 'failed'
-                        ? 'border-red-500/40 bg-red-500/10 text-red-400'
+                        ? 'border-destructive/40 bg-destructive/10 text-destructive-foreground'
                         : Number(stats.failed) > 0
-                          ? 'border-red-500/30 text-red-400 hover:text-red-300'
+                          ? 'border-destructive/30 text-destructive-foreground hover:text-destructive-foreground'
                           : 'border-border-subtle text-muted-foreground hover:text-foreground',
                     )}
                     onClick={() => toggleStateFilter('failed')}
@@ -1005,7 +1006,7 @@ function ServicesPage() {
 
         <footer
           aria-live="polite"
-          className="flex items-center overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground"
+          className="flex items-center justify-between gap-2 overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground"
         >
           <span className="min-w-0 flex-1 truncate">
             {overviewError !== ''

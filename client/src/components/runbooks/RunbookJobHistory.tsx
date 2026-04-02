@@ -15,9 +15,9 @@ import { cn } from '@/lib/utils'
 
 function runbookJobStatusClass(status: string): string {
   const s = status.trim().toLowerCase()
-  if (s === 'succeeded') return 'text-emerald-400'
-  if (s === 'failed') return 'text-red-400'
-  if (s === 'running') return 'text-amber-400'
+  if (s === 'succeeded') return 'text-ok-foreground'
+  if (s === 'failed') return 'text-destructive-foreground'
+  if (s === 'running') return 'text-warning-foreground'
   return 'text-muted-foreground'
 }
 
@@ -129,7 +129,7 @@ export function RunbookJobHistory({
                       {job.currentStep && ` · ${job.currentStep}`}
                     </p>
                     {job.error && (
-                      <p className="mt-1 text-[10px] text-red-400">
+                      <p className="mt-1 text-[10px] text-destructive-foreground">
                         {job.error}
                       </p>
                     )}
@@ -157,7 +157,7 @@ export function RunbookJobHistory({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-5 shrink-0 cursor-pointer px-1.5 text-[10px] text-red-400 hover:text-red-300"
+                        className="h-5 shrink-0 cursor-pointer px-1.5 text-[10px] text-destructive-foreground hover:text-destructive-foreground"
                         onClick={() => {
                           setDeleteJobTarget(null)
                           void deleteJob(job.id)
@@ -168,7 +168,7 @@ export function RunbookJobHistory({
                     ) : (
                       <button
                         type="button"
-                        className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover/job:opacity-100"
+                        className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground opacity-0 transition-opacity hover:text-destructive-foreground group-hover/job:opacity-100"
                         onClick={() => setDeleteJobTarget(job.id)}
                         aria-label="Delete job"
                       >
@@ -199,9 +199,9 @@ export function RunbookJobHistory({
                                 )}
                               </span>
                               {sr.error ? (
-                                <XCircle className="h-3 w-3 shrink-0 text-red-400" />
+                                <XCircle className="h-3 w-3 shrink-0 text-destructive-foreground" />
                               ) : (
-                                <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" />
+                                <CheckCircle2 className="h-3 w-3 shrink-0 text-ok-foreground" />
                               )}
                               <span className="shrink-0 rounded border border-border-subtle px-1 text-[9px] uppercase text-muted-foreground">
                                 {sr.type}
@@ -226,7 +226,7 @@ export function RunbookJobHistory({
                                 </p>
                               ) : null}
                               {sr.error && (
-                                <p className="mt-1 text-[10px] text-red-400">
+                                <p className="mt-1 text-[10px] text-destructive-foreground">
                                   {sr.error}
                                 </p>
                               )}

@@ -88,7 +88,7 @@ export function RunbookStepEditor({
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 cursor-pointer text-red-400 hover:text-red-300"
+            className="h-6 w-6 cursor-pointer text-destructive-foreground hover:text-destructive-foreground"
             onClick={onRemove}
             aria-label="Remove step"
           >
@@ -105,14 +105,16 @@ export function RunbookStepEditor({
           <Input
             className={cn(
               'mt-0.5 h-7 bg-surface-overlay text-[12px]',
-              errors.title && 'border-red-500',
+              errors.title && 'border-destructive',
             )}
             placeholder="Step title"
             value={step.title}
             onChange={(e) => onChange({ ...step, title: e.target.value })}
           />
           {errors.title && (
-            <p className="mt-0.5 text-[10px] text-red-400">{errors.title}</p>
+            <p className="mt-0.5 text-[10px] text-destructive-foreground">
+              {errors.title}
+            </p>
           )}
         </div>
 
@@ -124,14 +126,14 @@ export function RunbookStepEditor({
             <Input
               className={cn(
                 'mt-0.5 h-7 bg-surface-overlay font-mono text-[11px]',
-                errors.command && 'border-red-500',
+                errors.command && 'border-destructive',
               )}
               placeholder="systemctl restart nginx"
               value={step.command}
               onChange={(e) => onChange({ ...step, command: e.target.value })}
             />
             {errors.command && (
-              <p className="mt-0.5 text-[10px] text-red-400">
+              <p className="mt-0.5 text-[10px] text-destructive-foreground">
                 {errors.command}
               </p>
             )}
@@ -146,7 +148,7 @@ export function RunbookStepEditor({
             <Textarea
               className={cn(
                 'mt-0.5 min-h-36 bg-surface-overlay font-mono text-sm leading-relaxed',
-                errors.script && 'border-red-500',
+                errors.script && 'border-destructive',
               )}
               placeholder={
                 '#!/bin/bash\nset -euo pipefail\n\n# your script here'
@@ -155,7 +157,9 @@ export function RunbookStepEditor({
               onChange={(e) => onChange({ ...step, script: e.target.value })}
             />
             {errors.script && (
-              <p className="mt-0.5 text-[10px] text-red-400">{errors.script}</p>
+              <p className="mt-0.5 text-[10px] text-destructive-foreground">
+                {errors.script}
+              </p>
             )}
           </div>
         )}

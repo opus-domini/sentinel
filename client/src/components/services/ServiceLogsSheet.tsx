@@ -209,8 +209,8 @@ export function ServiceLogsSheet({
             {streamEnabled && streamStatus === 'connected' ? (
               <span className="inline-flex items-center gap-1.5">
                 <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
                 </span>
                 Streaming live
               </span>
@@ -274,7 +274,7 @@ export function ServiceLogsSheet({
               className={cn(
                 'h-7 w-7 cursor-pointer p-0',
                 streamEnabled && streamStatus === 'connected'
-                  ? 'text-emerald-400'
+                  ? 'text-ok-foreground'
                   : '',
               )}
               onClick={() => setStreamEnabled((v) => !v)}

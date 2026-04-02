@@ -13,6 +13,7 @@ import ConnectionBadge from '@/components/ConnectionBadge'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import ActivitiesSidebar from '@/components/ActivitiesSidebar'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
@@ -266,7 +267,7 @@ function ActivitiesPage() {
                   Array.from({ length: 5 }).map((_, idx) => (
                     <div
                       key={`activity-skeleton-${idx}`}
-                      className="h-20 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+                      className="h-20 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}
                 {activityEvents.map((event) => {
@@ -300,7 +301,10 @@ function ActivitiesPage() {
                   )
                 })}
                 {!activityLoading && activityEvents.length === 0 && (
-                  <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
+                  <EmptyState
+                    variant="inline"
+                    className="grid gap-2 p-3 text-[12px]"
+                  >
                     <p>No activity events for the selected filters.</p>
                     <div className="flex flex-wrap gap-2">
                       {(activityQuery.trim() !== '' ||
@@ -328,7 +332,7 @@ function ActivitiesPage() {
                         Refresh activities
                       </Button>
                     </div>
-                  </div>
+                  </EmptyState>
                 )}
                 {activityError !== '' && (
                   <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3">

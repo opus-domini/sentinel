@@ -114,9 +114,9 @@ function decisionBadgeClass(mode: string): string {
     case 'block':
       return 'border-destructive/45 bg-destructive/10 text-destructive-foreground'
     case 'confirm':
-      return 'border-amber-500/45 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+      return 'border-warning/45 bg-warning/10 text-warning-foreground'
     case 'warn':
-      return 'border-amber-500/45 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+      return 'border-warning/45 bg-warning/10 text-warning-foreground'
     default:
       return 'border-ok/45 bg-ok/10 text-ok-foreground'
   }
@@ -127,7 +127,7 @@ function severityBadgeClass(severity: string): string {
     case 'error':
       return 'border-destructive/45 bg-destructive/10 text-destructive-foreground'
     case 'warn':
-      return 'border-amber-500/45 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+      return 'border-warning/45 bg-warning/10 text-warning-foreground'
     default:
       return 'border-border-subtle bg-surface-overlay text-muted-foreground'
   }
@@ -642,7 +642,7 @@ export default function GuardrailsDialog({
                   Array.from({ length: 3 }).map((_, idx) => (
                     <div
                       key={`rule-skeleton-${idx}`}
-                      className="h-20 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+                      className="h-20 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}
 
@@ -796,7 +796,7 @@ export default function GuardrailsDialog({
                   Array.from({ length: 5 }).map((_, idx) => (
                     <div
                       key={`audit-skeleton-${idx}`}
-                      className="h-16 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+                      className="h-16 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}
 
@@ -823,7 +823,7 @@ export default function GuardrailsDialog({
                           {entry.override && (
                             <Badge
                               variant="outline"
-                              className="shrink-0 border-amber-500/45 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              className="shrink-0 border-warning/45 bg-warning/10 text-warning-foreground"
                             >
                               override
                             </Badge>

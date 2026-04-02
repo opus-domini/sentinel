@@ -155,7 +155,7 @@ export function RunbookEditor({
               <Input
                 className={cn(
                   'mt-0.5 h-8 bg-surface-overlay text-[12px]',
-                  errors.name && 'border-red-500',
+                  errors.name && 'border-destructive',
                 )}
                 placeholder="Runbook name"
                 value={draft.name}
@@ -164,7 +164,9 @@ export function RunbookEditor({
                 }
               />
               {errors.name && (
-                <p className="mt-0.5 text-[10px] text-red-400">{errors.name}</p>
+                <p className="mt-0.5 text-[10px] text-destructive-foreground">
+                  {errors.name}
+                </p>
               )}
             </div>
             <div>
@@ -198,7 +200,7 @@ export function RunbookEditor({
               <Input
                 className={cn(
                   'mt-0.5 h-8 bg-surface-overlay text-[12px]',
-                  errors.webhookURL && 'border-red-500',
+                  errors.webhookURL && 'border-destructive',
                 )}
                 placeholder="https://hooks.example.com/..."
                 value={draft.webhookURL}
@@ -207,7 +209,7 @@ export function RunbookEditor({
                 }
               />
               {errors.webhookURL && (
-                <p className="mt-0.5 text-[10px] text-red-400">
+                <p className="mt-0.5 text-[10px] text-destructive-foreground">
                   {errors.webhookURL}
                 </p>
               )}
@@ -230,7 +232,7 @@ export function RunbookEditor({
               </Button>
             </div>
             {errors.parameters && (
-              <p className="px-1 text-[10px] text-red-400">
+              <p className="px-1 text-[10px] text-destructive-foreground">
                 {errors.parameters}
               </p>
             )}
@@ -275,7 +277,9 @@ export function RunbookEditor({
               </Button>
             </div>
             {errors.steps && (
-              <p className="px-1 text-[10px] text-red-400">{errors.steps}</p>
+              <p className="px-1 text-[10px] text-destructive-foreground">
+                {errors.steps}
+              </p>
             )}
             {draft.steps.map((step, i) => (
               <RunbookStepEditor

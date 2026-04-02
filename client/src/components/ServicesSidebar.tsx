@@ -28,8 +28,8 @@ type ServicesSidebarProps = {
 
 function statusDot(service: OpsServiceStatus): string {
   const state = service.activeState.trim().toLowerCase()
-  if (state === 'active' || state === 'running') return 'bg-emerald-500'
-  if (state === 'failed') return 'bg-red-500'
+  if (state === 'active' || state === 'running') return 'bg-ok'
+  if (state === 'failed') return 'bg-destructive'
   return 'bg-muted-foreground/50'
 }
 
@@ -196,7 +196,7 @@ export default function ServicesSidebar({
                       <TooltipHelper content="Unpin service">
                         <button
                           type="button"
-                          className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-red-500/20 hover:text-red-300"
+                          className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive-foreground"
                           onClick={() => void handleRemove(service.name)}
                           disabled={removing === service.name}
                           aria-label={`Unpin ${service.displayName}`}

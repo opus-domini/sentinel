@@ -13,6 +13,7 @@ import ConnectionBadge from '@/components/ConnectionBadge'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import MetricsSidebar from '@/components/MetricsSidebar'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
@@ -289,7 +290,7 @@ function MetricsPage() {
                       (_, idx) => (
                         <div
                           key={`metrics-skeleton-${idx}`}
-                          className="h-28 animate-pulse rounded-lg border border-border-subtle bg-surface-elevated"
+                          className="h-28 motion-safe:animate-pulse rounded-lg border border-border-subtle bg-surface-elevated"
                         />
                       ),
                     )}
@@ -311,7 +312,10 @@ function MetricsPage() {
                   </div>
                 )}
                 {!metricsLoading && metrics == null && metricsError === '' && (
-                  <div className="grid gap-2 rounded border border-dashed border-border-subtle p-3 text-[12px] text-muted-foreground">
+                  <EmptyState
+                    variant="inline"
+                    className="grid gap-2 p-3 text-[12px]"
+                  >
                     <p>No metric sample received yet.</p>
                     <Button
                       variant="outline"
@@ -321,7 +325,7 @@ function MetricsPage() {
                     >
                       Refresh metrics
                     </Button>
-                  </div>
+                  </EmptyState>
                 )}
                 {!metricsLoading &&
                   metrics != null &&
@@ -331,7 +335,7 @@ function MetricsPage() {
                         className={cn(
                           'rounded-lg border p-2.5',
                           metrics.cpuPercent > 90
-                            ? 'border-red-500/40 bg-red-500/10'
+                            ? 'border-destructive/40 bg-destructive/10'
                             : 'border-border-subtle bg-surface-elevated',
                         )}
                       >
@@ -363,7 +367,7 @@ function MetricsPage() {
                         className={cn(
                           'rounded-lg border p-2.5',
                           metrics.memPercent > 90
-                            ? 'border-red-500/40 bg-red-500/10'
+                            ? 'border-destructive/40 bg-destructive/10'
                             : 'border-border-subtle bg-surface-elevated',
                         )}
                       >
@@ -393,7 +397,7 @@ function MetricsPage() {
                         className={cn(
                           'rounded-lg border p-2.5',
                           metrics.diskPercent > 95
-                            ? 'border-red-500/40 bg-red-500/10'
+                            ? 'border-destructive/40 bg-destructive/10'
                             : 'border-border-subtle bg-surface-elevated',
                         )}
                       >

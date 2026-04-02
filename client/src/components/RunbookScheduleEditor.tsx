@@ -248,7 +248,7 @@ export function RunbookScheduleEditor({
               <Input
                 className={cn(
                   'mt-0.5 h-8 bg-surface-overlay font-mono text-[12px]',
-                  cronError && 'border-red-500',
+                  cronError && 'border-destructive',
                 )}
                 placeholder="0 9 * * 1-5"
                 value={draft.cronExpr}
@@ -259,7 +259,9 @@ export function RunbookScheduleEditor({
                 }}
               />
               {cronError && (
-                <p className="mt-0.5 text-[10px] text-red-400">{cronError}</p>
+                <p className="mt-0.5 text-[10px] text-destructive-foreground">
+                  {cronError}
+                </p>
               )}
             </div>
 
@@ -358,7 +360,7 @@ export function RunbookScheduleEditor({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 cursor-pointer gap-1 px-3 text-[11px] text-red-400 hover:text-red-300"
+            className="h-7 cursor-pointer gap-1 px-3 text-[11px] text-destructive-foreground hover:text-destructive-foreground"
             onClick={onDelete}
           >
             <Trash2 className="h-3 w-3" />

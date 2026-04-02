@@ -402,7 +402,7 @@ export default function LaunchersDialog({
 
             <section className="grid min-h-0 gap-3 rounded-lg border border-border-subtle bg-secondary p-3 md:overflow-y-auto">
               <div className="grid gap-2 md:grid-cols-2">
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary-foreground">
+                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                   Name
                   <Input
                     className="bg-surface-overlay"
@@ -417,7 +417,7 @@ export default function LaunchersDialog({
                   />
                 </label>
 
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary-foreground">
+                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                   Icon
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -454,7 +454,7 @@ export default function LaunchersDialog({
                 </label>
               </div>
 
-              <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary-foreground">
+              <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                 Command
                 <Input
                   className="bg-surface-overlay font-mono"
@@ -473,7 +473,7 @@ export default function LaunchersDialog({
               </label>
 
               <div className="grid gap-2 md:grid-cols-2">
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary-foreground">
+                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                   Working Directory
                   <Select
                     value={draft.cwdMode}
@@ -505,7 +505,7 @@ export default function LaunchersDialog({
                   </Select>
                 </label>
 
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary-foreground">
+                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                   Window Name
                   <Input
                     className="bg-surface-overlay"
@@ -522,7 +522,7 @@ export default function LaunchersDialog({
               </div>
 
               {draft.cwdMode === 'fixed' && (
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary-foreground">
+                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                   Fixed Path
                   <Input
                     className="bg-surface-overlay font-mono"

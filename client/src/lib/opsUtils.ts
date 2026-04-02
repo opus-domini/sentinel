@@ -29,7 +29,7 @@ export function toErrorMessage(error: unknown, fallback: string): string {
 
 export function browsedServiceDot(state: string): string {
   const s = state.trim().toLowerCase()
-  if (s === 'active' || s === 'running') return 'bg-emerald-500'
-  if (s === 'failed') return 'bg-red-500'
+  if (s === 'active' || s === 'running') return 'bg-ok'
+  if (s === 'failed') return 'bg-destructive'
   return 'bg-muted-foreground/50'
 }

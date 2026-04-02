@@ -81,9 +81,9 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
                     'cursor-default rounded border px-1 text-[9px]',
                     svc.activeState === 'active' ||
                       svc.activeState === 'running'
-                      ? 'border-emerald-500/30 text-emerald-400'
+                      ? 'border-ok/30 text-ok-foreground'
                       : svc.activeState === 'failed'
-                        ? 'border-red-500/30 text-red-400'
+                        ? 'border-destructive/30 text-destructive-foreground'
                         : 'border-border-subtle text-muted-foreground',
                   )}
                 >
@@ -95,9 +95,9 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
                   className={cn(
                     'cursor-default rounded border px-1 text-[9px]',
                     svc.enabledState === 'enabled'
-                      ? 'border-emerald-500/30 text-emerald-400'
+                      ? 'border-ok/30 text-ok-foreground'
                       : svc.enabledState === 'disabled'
-                        ? 'border-amber-500/30 text-amber-400'
+                        ? 'border-warning/30 text-warning-foreground'
                         : 'border-border-subtle text-muted-foreground',
                   )}
                 >

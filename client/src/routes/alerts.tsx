@@ -500,7 +500,7 @@ function AlertsPage() {
                     Array.from({ length: 5 }).map((_, idx) => (
                       <div
                         key={`alerts-skeleton-${idx}`}
-                        className="h-24 animate-pulse rounded border border-border-subtle bg-surface-elevated"
+                        className="h-24 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                       />
                     ))}
                   {filteredAlerts.map((alert) => (
@@ -513,8 +513,8 @@ function AlertsPage() {
                           : alert.status === 'acked'
                             ? 'border-border-subtle bg-surface-elevated opacity-70'
                             : alert.severity === 'error'
-                              ? 'border-red-500/45 bg-red-500/10'
-                              : 'border-amber-500/45 bg-amber-500/10',
+                              ? 'border-destructive/45 bg-destructive/10'
+                              : 'border-warning/45 bg-warning/10',
                       )}
                     >
                       <div className="flex min-w-0 items-center justify-between gap-2">
@@ -542,7 +542,7 @@ function AlertsPage() {
                             className={cn(
                               'rounded-full border px-1.5 py-0.5 text-[10px]',
                               alert.status === 'open'
-                                ? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
+                                ? 'border-warning/40 bg-warning/15 text-warning-foreground'
                                 : alert.status === 'acked'
                                   ? 'border-blue-500/30 bg-blue-500/10 text-blue-400'
                                   : 'border-border-subtle bg-surface-overlay text-muted-foreground',

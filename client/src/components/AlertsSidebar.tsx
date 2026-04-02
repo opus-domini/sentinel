@@ -64,7 +64,7 @@ export default function AlertsSidebar({
               {alertCount}
             </span>
             {openCount > 0 && (
-              <span className="rounded-full bg-amber-500/20 px-1.5 text-[10px] text-amber-200">
+              <span className="rounded-full bg-warning/20 px-1.5 text-[10px] text-warning-foreground">
                 {openCount} open
               </span>
             )}

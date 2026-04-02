@@ -110,7 +110,11 @@ export function RunbookRunDialog({
               <div key={p.name}>
                 <label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   {p.label || p.name}
-                  {p.required && <span className="ml-0.5 text-red-400">*</span>}
+                  {p.required && (
+                    <span className="ml-0.5 text-destructive-foreground">
+                      *
+                    </span>
+                  )}
                 </label>
 
                 {p.type === 'boolean' ? (
@@ -119,7 +123,7 @@ export function RunbookRunDialog({
                     onChange={(e) => setValue(p.name, e.target.value)}
                     className={cn(
                       'mt-0.5 h-8 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]',
-                      errors[p.name] && 'border-red-500',
+                      errors[p.name] && 'border-destructive',
                     )}
                   >
                     <option value="false">false</option>
@@ -133,7 +137,7 @@ export function RunbookRunDialog({
                     <SelectTrigger
                       className={cn(
                         'mt-0.5 h-8 w-full bg-surface-overlay text-[12px]',
-                        errors[p.name] && 'border-red-500',
+                        errors[p.name] && 'border-destructive',
                       )}
                     >
                       <SelectValue placeholder="Select..." />
@@ -150,7 +154,7 @@ export function RunbookRunDialog({
                   <Input
                     className={cn(
                       'mt-0.5 h-8 bg-surface-overlay text-[12px]',
-                      errors[p.name] && 'border-red-500',
+                      errors[p.name] && 'border-destructive',
                     )}
                     type={p.type === 'number' ? 'text' : 'text'}
                     inputMode={p.type === 'number' ? 'numeric' : undefined}
@@ -161,7 +165,7 @@ export function RunbookRunDialog({
                 )}
 
                 {errors[p.name] && (
-                  <p className="mt-0.5 text-[10px] text-red-400">
+                  <p className="mt-0.5 text-[10px] text-destructive-foreground">
                     {errors[p.name]}
                   </p>
                 )}

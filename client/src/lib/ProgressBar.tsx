@@ -3,11 +3,7 @@ import { cn } from '@/lib/utils'
 export function ProgressBar({ percent }: { percent: number }) {
   const clamped = Math.min(percent, 100)
   const color =
-    percent > 90
-      ? 'bg-red-500'
-      : percent > 80
-        ? 'bg-amber-500'
-        : 'bg-emerald-500'
+    percent > 90 ? 'bg-destructive' : percent > 80 ? 'bg-warning' : 'bg-ok'
 
   return (
     <div

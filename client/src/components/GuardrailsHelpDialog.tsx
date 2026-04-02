@@ -17,13 +17,13 @@ export default function GuardrailsHelpDialog() {
     <>
       <TooltipHelper content="About Guardrails">
         <Button
-          variant="outline"
-          size="sm"
-          className="h-6 cursor-pointer gap-1 px-2 text-[11px]"
+          variant="ghost"
+          size="icon"
+          className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
           onClick={() => setOpen(true)}
           aria-label="About Guardrails"
         >
-          <CircleHelp className="h-3.5 w-3.5" />
+          <CircleHelp className="h-4 w-4" />
         </Button>
       </TooltipHelper>
       <Dialog open={open} onOpenChange={setOpen}>

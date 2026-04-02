@@ -94,25 +94,25 @@ describe('toErrorMessage', () => {
 
 describe('browsedServiceDot', () => {
   it('returns green for active', () => {
-    expect(browsedServiceDot('active')).toBe('bg-emerald-500')
+    expect(browsedServiceDot('active')).toBe('bg-ok')
   })
 
   it('returns green for running', () => {
-    expect(browsedServiceDot('running')).toBe('bg-emerald-500')
+    expect(browsedServiceDot('running')).toBe('bg-ok')
   })
 
   it('is case-insensitive', () => {
-    expect(browsedServiceDot('Active')).toBe('bg-emerald-500')
-    expect(browsedServiceDot('RUNNING')).toBe('bg-emerald-500')
-    expect(browsedServiceDot('Failed')).toBe('bg-red-500')
+    expect(browsedServiceDot('Active')).toBe('bg-ok')
+    expect(browsedServiceDot('RUNNING')).toBe('bg-ok')
+    expect(browsedServiceDot('Failed')).toBe('bg-destructive')
   })
 
   it('trims whitespace', () => {
-    expect(browsedServiceDot('  active  ')).toBe('bg-emerald-500')
+    expect(browsedServiceDot('  active  ')).toBe('bg-ok')
   })
 
   it('returns red for failed', () => {
-    expect(browsedServiceDot('failed')).toBe('bg-red-500')
+    expect(browsedServiceDot('failed')).toBe('bg-destructive')
   })
 
   it('returns muted for unknown states', () => {

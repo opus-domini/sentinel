@@ -54,7 +54,7 @@ export default function TokenDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           {authenticated && (
-            <p className="mb-3 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-2 text-[11px] text-emerald-200">
+            <p className="mb-3 rounded-md border border-ok/40 bg-ok/10 px-2.5 py-2 text-[11px] text-ok-foreground">
               Authenticated
             </p>
           )}
