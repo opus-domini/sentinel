@@ -17,6 +17,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { slugifyTmuxName } from '@/lib/tmuxName'
 
@@ -341,19 +348,29 @@ export default function CreateSessionDialog({
                   <div className="mt-2 rounded-md border border-border-subtle p-2.5">
                     <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                       Run as user
-                      <Input
-                        value={user}
-                        onChange={(e) => setUser(e.target.value)}
-                        placeholder={`${meta.processUser || 'default'} (default)`}
-                      />
-                      {meta.allowedUsers.length > 0 && (
-                        <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
-                          Available: {meta.allowedUsers.join(', ')}
-                        </span>
-                      )}
-                      <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
-                        Leave blank to use the default system user.
-                      </span>
+                      <Select value={user} onValueChange={setUser}>
+                        <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                          <SelectValue
+                            placeholder={`${meta.processUser || 'default'} (default)`}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="" className="cursor-pointer">
+                            {meta.processUser || 'default'} (default)
+                          </SelectItem>
+                          {meta.allowedUsers
+                            .filter((u) => u !== meta.processUser)
+                            .map((u) => (
+                              <SelectItem
+                                key={u}
+                                value={u}
+                                className="cursor-pointer"
+                              >
+                                {u}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
                     </label>
                   </div>
                 )}

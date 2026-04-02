@@ -591,17 +591,30 @@ export default function LaunchersDialog({
                   {draft.userMode === 'fixed' && (
                     <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
                       Fixed User
-                      <Input
-                        className="bg-surface-overlay"
+                      <Select
                         value={draft.userValue}
-                        onChange={(event) =>
+                        onValueChange={(value) =>
                           updateDraft((prev) => ({
                             ...prev,
-                            userValue: event.target.value,
+                            userValue: value,
                           }))
                         }
-                        placeholder="postgres"
-                      />
+                      >
+                        <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                          <SelectValue placeholder="Select user" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[60]">
+                          {meta.allowedUsers.map((u) => (
+                            <SelectItem
+                              key={u}
+                              value={u}
+                              className="cursor-pointer"
+                            >
+                              {u}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </label>
                   )}
                 </>
