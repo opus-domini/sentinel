@@ -10,6 +10,7 @@ export type Session = {
   hash: string
   lastContent: string
   icon: string
+  user?: string
   unreadWindows?: number
   unreadPanes?: number
   rev?: number
@@ -19,6 +20,7 @@ export type SessionPreset = {
   name: string
   cwd: string
   icon: string
+  user?: string
   sortOrder?: number
   createdAt: string
   updatedAt: string
@@ -37,6 +39,8 @@ export type LaunchSessionPresetResponse = {
 
 export type LauncherCwdMode = 'session' | 'active-pane' | 'fixed'
 
+export type LauncherUserMode = 'session' | 'fixed'
+
 export type TmuxLauncher = {
   id: string
   name: string
@@ -45,6 +49,8 @@ export type TmuxLauncher = {
   cwdMode: LauncherCwdMode
   cwdValue: string
   windowName: string
+  userMode?: string
+  userValue?: string
   sortOrder?: number
   createdAt: string
   updatedAt: string
@@ -85,6 +91,7 @@ export type WindowInfo = {
   launcherId?: string
   active: boolean
   panes: number
+  user?: string
   unreadPanes?: number
   hasUnread?: boolean
   rev?: number

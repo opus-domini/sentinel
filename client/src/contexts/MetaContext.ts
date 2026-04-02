@@ -7,6 +7,10 @@ type MetaContextValue = {
   timezone: string
   locale: string
   hostname: string
+  processUser: string
+  isRoot: boolean
+  canSwitchUser: boolean
+  allowedUsers: Array<string>
   unauthorized: boolean
   loaded: boolean
 }

@@ -24,6 +24,7 @@ type TmuxTerminalPanelProps = {
   sidebarCollapsed: boolean
   openTabs: Array<string>
   activeSession: string
+  sessionUser?: string
   inspectorLoading: boolean
   inspectorError: string
   windows: Array<WindowInfo>
@@ -70,6 +71,7 @@ export default function TmuxTerminalPanel({
   sidebarCollapsed,
   openTabs,
   activeSession,
+  sessionUser,
   inspectorLoading,
   inspectorError,
   windows,
@@ -267,6 +269,7 @@ export default function TmuxTerminalPanel({
                 inspectorError={inspectorError}
                 windows={windows}
                 activeWindowIndex={activeWindowIndex}
+                sessionUser={sessionUser}
                 launchers={launchers}
                 recentLauncher={recentLauncher}
                 onSelectWindow={(idx) => {

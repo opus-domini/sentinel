@@ -240,6 +240,12 @@ func CreateSession(ctx context.Context, name, cwd string) error {
 	return err
 }
 
+// HasSession reports whether a tmux session with the given name exists.
+func HasSession(ctx context.Context, session string) bool {
+	_, err := run(ctx, "has-session", "-t", session)
+	return err == nil
+}
+
 // SetSessionMouse toggles tmux mouse support for a target session.
 // When enabled, wheel gestures are handled by tmux copy-mode instead of
 // being interpreted as terminal cursor keys by applications.
@@ -257,6 +263,9 @@ func SetSessionStatus(ctx context.Context, session string, enabled bool) error {
 const (
 	tmuxOn  = "on"
 	tmuxOff = "off"
+
+	dirVertical   = "vertical"
+	dirHorizontal = "horizontal"
 )
 
 func setSessionOption(ctx context.Context, session, option string, enabled bool) error {
@@ -557,9 +566,9 @@ func KillPane(ctx context.Context, paneID string) error {
 func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	args := []string{"split-window", "-t", paneID}
 	switch direction {
-	case "vertical":
+	case dirVertical:
 		args = append(args, "-h")
-	case "horizontal":
+	case dirHorizontal:
 		args = append(args, "-v")
 	default:
 		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
@@ -579,9 +588,9 @@ func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
 	args := []string{"split-window", "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
 	switch direction {
-	case "vertical":
+	case dirVertical:
 		args = append(args, "-h")
-	case "horizontal":
+	case dirHorizontal:
 		args = append(args, "-v")
 	default:
 		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}

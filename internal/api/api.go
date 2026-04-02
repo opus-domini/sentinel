@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -25,6 +26,11 @@ import (
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
+)
+
+var (
+	osCurrentUser = user.Current //nolint:gochecknoglobals // seam for testing
+	osGeteuid     = os.Geteuid   //nolint:gochecknoglobals // seam for testing
 )
 
 type tmuxService interface {
@@ -187,6 +193,13 @@ type markerPatternsRepo interface {
 // handlerRepo is the composite repository interface used by Handler.
 // It embeds runbook.Repo for async runbook execution (which provides
 // UpdateOpsRunbookRun, GetOpsRunbook, GetOpsRunbookRun, InsertActivityEvent).
+type sessionUserRepo interface {
+	SetSessionUser(ctx context.Context, session, user string) error
+	DeleteSessionUser(ctx context.Context, session string) error
+	ListSessionUsers(ctx context.Context) (map[string]string, error)
+	RenameSessionUser(ctx context.Context, oldName, newName string) error
+}
+
 type handlerRepo interface {
 	runbook.Repo
 	sessionMetaRepo
@@ -204,6 +217,7 @@ type handlerRepo interface {
 	tmuxLauncherWriteRepo
 	managedTmuxWindowRepo
 	markerPatternsRepo
+	sessionUserRepo
 }
 
 // Compile-time check: *store.Store satisfies handlerRepo.
@@ -223,6 +237,11 @@ type Handler struct {
 	timezone   string
 	locale     string
 	mu         sync.Mutex // protects mutable settings (timezone, locale)
+
+	// sessionUsers tracks which OS user owns each tmux session.
+	// Keys are session names, values are usernames (empty string = default user).
+	// Populated on session create/launch and from session presets.
+	sessionUsers sync.Map // map[sessionName]string
 
 	// runCtx is the parent context for fire-and-forget goroutines (runbook
 	// execution). Cancelled during Shutdown to signal in-flight runs.
@@ -296,6 +315,7 @@ func Register(
 	h.registerGuardrailsRoutes(mux)
 	h.registerMarkersRoutes(mux)
 	h.registerSettingsRoutes(mux)
+	h.populateSessionUsersFromPresets(context.Background())
 	return h
 }
 
@@ -344,14 +364,26 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	loc := h.locale
 	h.mu.Unlock()
 	host, _ := os.Hostname()
-	writeData(w, http.StatusOK, map[string]any{
+	data := map[string]any{
 		"tokenRequired": h.guard.TokenRequired(),
 		"defaultCwd":    defaultCwd,
 		"version":       version,
 		"timezone":      tz,
 		"locale":        loc,
 		"hostname":      host,
-	})
+	}
+
+	// Multi-user session info.
+	processUser := ""
+	if current, err := osCurrentUser(); err == nil && current != nil {
+		processUser = current.Username
+	}
+	data["processUser"] = processUser
+	data["isRoot"] = osGeteuid() == 0
+	data["canSwitchUser"] = true
+	data["allowedUsers"] = h.guard.AllowedUsers()
+
+	writeData(w, http.StatusOK, data)
 }
 
 type setAuthTokenRequest struct {
@@ -545,6 +577,7 @@ type enrichedSession struct {
 	Hash          string `json:"hash"`
 	LastContent   string `json:"lastContent"`
 	Icon          string `json:"icon"`
+	User          string `json:"user,omitempty"`
 	SortOrder     int    `json:"sortOrder"`
 	UnreadWindows int    `json:"unreadWindows"`
 	UnreadPanes   int    `json:"unreadPanes"`

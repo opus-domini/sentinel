@@ -22,6 +22,8 @@ type TmuxLauncher struct {
 	CwdMode    string    `json:"cwdMode"`
 	CwdValue   string    `json:"cwdValue"`
 	WindowName string    `json:"windowName"`
+	UserMode   string    `json:"userMode"`
+	UserValue  string    `json:"userValue"`
 	SortOrder  int       `json:"sortOrder"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
@@ -35,11 +37,13 @@ type TmuxLauncherWrite struct {
 	CwdMode    string
 	CwdValue   string
 	WindowName string
+	UserMode   string
+	UserValue  string
 }
 
 func (s *Store) ListTmuxLaunchers(ctx context.Context) ([]TmuxLauncher, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, icon, command, cwd_mode, cwd_value, window_name, sort_order, created_at, updated_at, last_used_at
+		`SELECT id, name, icon, command, cwd_mode, cwd_value, window_name, user_mode, user_value, sort_order, created_at, updated_at, last_used_at
 		   FROM tmux_launchers
 		  ORDER BY sort_order ASC, name ASC`,
 	)
@@ -62,6 +66,8 @@ func (s *Store) ListTmuxLaunchers(ctx context.Context) ([]TmuxLauncher, error) {
 			&row.CwdMode,
 			&row.CwdValue,
 			&row.WindowName,
+			&row.UserMode,
+			&row.UserValue,
 			&row.SortOrder,
 			&createdAtRaw,
 			&updatedAtRaw,
@@ -88,7 +94,7 @@ func (s *Store) GetTmuxLauncher(ctx context.Context, id string) (TmuxLauncher, e
 		createdAtRaw, updatedAtRaw, usedAt string
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, name, icon, command, cwd_mode, cwd_value, window_name, sort_order, created_at, updated_at, last_used_at
+		`SELECT id, name, icon, command, cwd_mode, cwd_value, window_name, user_mode, user_value, sort_order, created_at, updated_at, last_used_at
 		   FROM tmux_launchers
 		  WHERE id = ?`,
 		id,
@@ -100,6 +106,8 @@ func (s *Store) GetTmuxLauncher(ctx context.Context, id string) (TmuxLauncher, e
 		&row.CwdMode,
 		&row.CwdValue,
 		&row.WindowName,
+		&row.UserMode,
+		&row.UserValue,
 		&row.SortOrder,
 		&createdAtRaw,
 		&updatedAtRaw,
@@ -123,10 +131,10 @@ func (s *Store) CreateTmuxLauncher(ctx context.Context, row TmuxLauncherWrite) (
 	id := randomID()
 	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO tmux_launchers (
-		   id, name, icon, command, cwd_mode, cwd_value, window_name, sort_order, created_at, updated_at, last_used_at
+		   id, name, icon, command, cwd_mode, cwd_value, window_name, user_mode, user_value, sort_order, created_at, updated_at, last_used_at
 		 )
 		 VALUES (
-		   ?, ?, ?, ?, ?, ?, ?,
+		   ?, ?, ?, ?, ?, ?, ?, ?, ?,
 		   COALESCE((SELECT MAX(sort_order) + 1 FROM tmux_launchers), 1),
 		   datetime('now'),
 		   datetime('now'),
@@ -139,6 +147,8 @@ func (s *Store) CreateTmuxLauncher(ctx context.Context, row TmuxLauncherWrite) (
 		normalized.CwdMode,
 		normalized.CwdValue,
 		normalized.WindowName,
+		normalized.UserMode,
+		normalized.UserValue,
 	); err != nil {
 		return TmuxLauncher{}, err
 	}
@@ -159,7 +169,7 @@ func (s *Store) UpdateTmuxLauncher(ctx context.Context, id string, row TmuxLaunc
 
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE tmux_launchers
-		    SET name = ?, icon = ?, command = ?, cwd_mode = ?, cwd_value = ?, window_name = ?, updated_at = datetime('now')
+		    SET name = ?, icon = ?, command = ?, cwd_mode = ?, cwd_value = ?, window_name = ?, user_mode = ?, user_value = ?, updated_at = datetime('now')
 		  WHERE id = ?`,
 		normalized.Name,
 		normalized.Icon,
@@ -167,6 +177,8 @@ func (s *Store) UpdateTmuxLauncher(ctx context.Context, id string, row TmuxLaunc
 		normalized.CwdMode,
 		normalized.CwdValue,
 		normalized.WindowName,
+		normalized.UserMode,
+		normalized.UserValue,
 		id,
 	)
 	if err != nil {
@@ -262,6 +274,11 @@ func (s *Store) MarkTmuxLauncherUsed(ctx context.Context, id string) error {
 	return nil
 }
 
+const (
+	TmuxLauncherUserModeSession = "session"
+	TmuxLauncherUserModeFixed   = "fixed"
+)
+
 func normalizeTmuxLauncherWrite(row TmuxLauncherWrite) (TmuxLauncherWrite, error) {
 	name := strings.TrimSpace(row.Name)
 	if name == "" {
@@ -290,6 +307,18 @@ func normalizeTmuxLauncherWrite(row TmuxLauncherWrite) (TmuxLauncherWrite, error
 		windowName = name
 	}
 
+	userMode := strings.TrimSpace(row.UserMode)
+	userValue := strings.TrimSpace(row.UserValue)
+	switch userMode {
+	case "", TmuxLauncherUserModeSession:
+		userMode = TmuxLauncherUserModeSession
+		userValue = ""
+	case TmuxLauncherUserModeFixed:
+		// userValue kept as-is (can be validated at the API layer)
+	default:
+		return TmuxLauncherWrite{}, errors.New("invalid tmux launcher user mode")
+	}
+
 	return TmuxLauncherWrite{
 		Name:       name,
 		Icon:       icon,
@@ -297,5 +326,7 @@ func normalizeTmuxLauncherWrite(row TmuxLauncherWrite) (TmuxLauncherWrite, error
 		CwdMode:    cwdMode,
 		CwdValue:   row.CwdValue,
 		WindowName: windowName,
+		UserMode:   userMode,
+		UserValue:  userValue,
 	}, nil
 }

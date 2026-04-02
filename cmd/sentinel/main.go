@@ -49,8 +49,12 @@ func serve() int {
 		slog.Warn("consider setting allowed_origins to restrict cross-origin access", "listen", cfg.ListenAddr)
 	}
 
+	config.ValidateMultiUser(&cfg)
 	cookiePolicy := security.ParseCookieSecurePolicy(cfg.CookieSecure)
-	guard := security.New(cfg.Token, cfg.AllowedOrigins, cookiePolicy)
+	guard := security.NewWithMultiUser(cfg.Token, cfg.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
+		AllowedUsers:    cfg.MultiUser.AllowedUsers,
+		AllowRootTarget: cfg.MultiUser.AllowRootTarget,
+	})
 
 	if security.ExposesBeyondLoopback(cfg.ListenAddr) && cfg.Token != "" && cookiePolicy == security.CookieSecureNever {
 		if cfg.AllowInsecureCookie {
@@ -87,7 +91,10 @@ func serve() int {
 	opsManager := services.NewManager(time.Now(), st)
 
 	mux := http.NewServeMux()
-	if err := httpui.Register(mux, guard, st, eventHub, opsManager); err != nil {
+	configPath := filepath.Join(cfg.DataDir, "config.toml")
+	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, currentVersion(), configPath, cfg.Timezone, cfg.Locale, cfg.RunbookMaxConcurrent)
+
+	if err := httpui.Register(mux, guard, st, eventHub, opsManager, apiHandler.SessionUser); err != nil {
 		slog.Error("frontend init failed", "err", err)
 		return 1
 	}
@@ -99,6 +106,23 @@ func serve() int {
 		JournalRows:    cfg.Watchtower.JournalRows,
 		Publish: func(eventType string, payload map[string]any) {
 			eventHub.Publish(events.NewEvent(eventType, payload))
+		},
+		UserProvider: func(ctx context.Context) []string {
+			userMap, err := st.ListSessionUsers(ctx)
+			if err != nil {
+				return nil
+			}
+			seen := make(map[string]struct{})
+			for _, u := range userMap {
+				if u != "" {
+					seen[u] = struct{}{}
+				}
+			}
+			users := make([]string, 0, len(seen))
+			for u := range seen {
+				users = append(users, u)
+			}
+			return users
 		},
 	})
 	if cfg.Watchtower.Enabled {
@@ -154,8 +178,6 @@ func serve() int {
 	pruneCtx, stopPrune := context.WithCancel(context.Background())
 	pruneDone := startOpsPruneTicker(pruneCtx, st)
 
-	configPath := filepath.Join(cfg.DataDir, "config.toml")
-	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, currentVersion(), configPath, cfg.Timezone, cfg.Locale, cfg.RunbookMaxConcurrent)
 	apiHandler.SetNotifier(alertNotifier)
 
 	exitCode := run(cfg, mux)

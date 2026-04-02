@@ -23,6 +23,14 @@ vi.mock('@/hooks/useDateFormat', () => ({
   }),
 }))
 
+vi.mock('@/contexts/MetaContext', () => ({
+  useMetaContext: () => ({
+    processUser: 'hugo',
+    isRoot: false,
+    allowedUsers: ['postgres'],
+  }),
+}))
+
 afterEach(() => {
   cleanup()
   useIsMobileLayoutMock.mockReturnValue(false)

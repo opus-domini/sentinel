@@ -53,6 +53,8 @@ describe('LaunchersDialog', () => {
         cwdMode: 'active-pane',
         cwdValue: '',
         windowName: 'codex',
+        userMode: 'session',
+        userValue: '',
       })
     })
   })
@@ -164,6 +166,22 @@ describe('LaunchersDialog', () => {
     )
   })
 
+  it('always shows user mode field', () => {
+    render(
+      <LaunchersDialog
+        open
+        onOpenChange={vi.fn()}
+        launchers={[]}
+        onSave={vi.fn().mockResolvedValue('launcher-codex')}
+        onDelete={vi.fn().mockResolvedValue(true)}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Run as user')).not.toBeNull()
+    expect(screen.getByText('session user')).not.toBeNull()
+  })
+
   it('accepts a blank command for plain shell launchers', async () => {
     const onSave = vi.fn().mockResolvedValue('launcher-runner')
 
@@ -194,6 +212,8 @@ describe('LaunchersDialog', () => {
         cwdMode: 'session',
         cwdValue: '',
         windowName: 'runner',
+        userMode: 'session',
+        userValue: '',
       })
     })
   })

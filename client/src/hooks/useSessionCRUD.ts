@@ -96,9 +96,10 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         pendingKillSessionsRef.current,
         pendingRenameSessionsRef.current,
       )
-      for (const name of merged.confirmedPendingNames) {
-        pendingCreateSessionsRef.current.delete(name)
-      }
+      // Note: pending creates are removed by the creation flow itself
+      // (after the force inspector refresh completes), NOT here. This
+      // prevents a race where an event-triggered refreshSessions clears
+      // the pending set while the inspector is still loading windows/panes.
       for (const name of merged.confirmedKilledNames) {
         pendingKillSessionsRef.current.delete(name)
       }
@@ -164,6 +165,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       cwd: string,
       icon: string,
       guardrailConfirmed: boolean,
+      user?: string,
     ) => {
       const sessionName = name.trim()
       if (!sessionName) {
@@ -189,6 +191,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
             sessionName,
             optimisticAt,
             icon,
+            user,
           ),
         )
         dispatchTabs({ type: 'activate', session: sessionName })
@@ -200,15 +203,20 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         if (guardrailConfirmed) {
           headers['X-Sentinel-Guardrail-Confirm'] = 'true'
         }
+        const body: Record<string, string> = { name: sessionName, cwd, icon }
+        if (user) body.user = user
         await api<{ name: string }>('/api/tmux/sessions', {
           method: 'POST',
-          body: JSON.stringify({ name: sessionName, cwd, icon }),
+          body: JSON.stringify(body),
           headers,
         })
 
-        activateSession(sessionName, icon)
+        if (sessionAlreadyExists) {
+          activateSession(sessionName, icon)
+        }
         setConnection('connecting', `opening ${sessionName}`)
-        void refreshInspector(sessionName)
+        await refreshInspector(sessionName, { force: true })
+        pendingCreateSessionsRef.current.delete(sessionName)
         void refreshSessions()
         pushSuccessToast('Create Session', `session "${sessionName}" created`)
       } catch (error) {
@@ -233,7 +241,8 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           requestGuardrailConfirm(
             rules[0]?.name ?? '',
             error.decision.message,
-            () => void createSessionWithConfirm(sessionName, cwd, icon, true),
+            () =>
+              void createSessionWithConfirm(sessionName, cwd, icon, true, user),
           )
           return
         }
@@ -264,8 +273,8 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   )
 
   const createSession = useCallback(
-    async (name: string, cwd: string, icon = '') => {
-      await createSessionWithConfirm(name, cwd, icon, false)
+    async (name: string, cwd: string, icon = '', user?: string) => {
+      await createSessionWithConfirm(name, cwd, icon, false, user)
     },
     [createSessionWithConfirm],
   )

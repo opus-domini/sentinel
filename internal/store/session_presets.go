@@ -12,6 +12,7 @@ type SessionPreset struct {
 	Name           string    `json:"name"`
 	Cwd            string    `json:"cwd"`
 	Icon           string    `json:"icon"`
+	User           string    `json:"user"`
 	SortOrder      int       `json:"sortOrder"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
@@ -23,11 +24,12 @@ type SessionPresetWrite struct {
 	Name string
 	Cwd  string
 	Icon string
+	User string
 }
 
 func (s *Store) ListSessionPresets(ctx context.Context) ([]SessionPreset, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT name, cwd, icon, sort_order, created_at, updated_at, last_launched_at, launch_count
+		`SELECT name, cwd, icon, user, sort_order, created_at, updated_at, last_launched_at, launch_count
 		   FROM session_presets
 		  ORDER BY sort_order ASC, name ASC`,
 	)
@@ -46,6 +48,7 @@ func (s *Store) ListSessionPresets(ctx context.Context) ([]SessionPreset, error)
 			&row.Name,
 			&row.Cwd,
 			&row.Icon,
+			&row.User,
 			&row.SortOrder,
 			&createdAtRaw,
 			&updatedAtRaw,
@@ -67,20 +70,21 @@ func (s *Store) CreateSessionPreset(ctx context.Context, row SessionPresetWrite)
 	if err != nil {
 		return SessionPreset{}, err
 	}
+	user := strings.TrimSpace(row.User)
 
 	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO session_presets (
-		   name, cwd, icon, sort_order, created_at, updated_at, last_launched_at, launch_count
+		   name, cwd, icon, user, sort_order, created_at, updated_at, last_launched_at, launch_count
 		 )
 		 VALUES (
-		   ?, ?, ?,
+		   ?, ?, ?, ?,
 		   COALESCE((SELECT MIN(sort_order) - 1 FROM session_presets), 1),
 		   datetime('now'),
 		   datetime('now'),
 		   '',
 		   0
 		 )`,
-		name, cwd, icon,
+		name, cwd, icon, user,
 	); err != nil {
 		return SessionPreset{}, err
 	}
@@ -99,11 +103,12 @@ func (s *Store) UpdateSessionPreset(ctx context.Context, oldName string, row Ses
 		return SessionPreset{}, err
 	}
 
+	user := strings.TrimSpace(row.User)
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE session_presets
-		    SET name = ?, cwd = ?, icon = ?, updated_at = datetime('now')
+		    SET name = ?, cwd = ?, icon = ?, user = ?, updated_at = datetime('now')
 		  WHERE name = ?`,
-		name, cwd, icon, oldName,
+		name, cwd, icon, user, oldName,
 	)
 	if err != nil {
 		return SessionPreset{}, err
@@ -200,7 +205,7 @@ func (s *Store) getSessionPreset(ctx context.Context, name string) (SessionPrese
 		createdAtRaw, updatedAtRaw, launchedRaw string
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT name, cwd, icon, sort_order, created_at, updated_at, last_launched_at, launch_count
+		`SELECT name, cwd, icon, user, sort_order, created_at, updated_at, last_launched_at, launch_count
 		   FROM session_presets
 		  WHERE name = ?`,
 		name,
@@ -208,6 +213,7 @@ func (s *Store) getSessionPreset(ctx context.Context, name string) (SessionPrese
 		&row.Name,
 		&row.Cwd,
 		&row.Icon,
+		&row.User,
 		&row.SortOrder,
 		&createdAtRaw,
 		&updatedAtRaw,

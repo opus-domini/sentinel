@@ -13,9 +13,11 @@ import (
 )
 
 var (
-	ErrUnauthorized = errors.New("unauthorized")
-	ErrOriginDenied = errors.New("origin denied")
-	ErrRemoteToken  = errors.New("token is required for non-loopback listen address")
+	ErrUnauthorized     = errors.New("unauthorized")
+	ErrOriginDenied     = errors.New("origin denied")
+	ErrRemoteToken      = errors.New("token is required for non-loopback listen address")
+	ErrRootNotAllowed   = errors.New("root user is not allowed as a target")
+	ErrUserNotAllowlist = errors.New("user not in allowlist")
 )
 
 const AuthCookieName = "sentinel_auth"
@@ -44,17 +46,29 @@ func ParseCookieSecurePolicy(s string) CookieSecurePolicy {
 	}
 }
 
+// MultiUserConfig holds the multi-user session settings consumed by Guard.
+type MultiUserConfig struct {
+	AllowedUsers    []string
+	AllowRootTarget bool
+}
+
 type Guard struct {
 	token          string
 	allowedOrigins map[string]struct{}
 	cookieSecure   CookieSecurePolicy
+	multiUser      MultiUserConfig
 }
 
 func New(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy) *Guard {
+	return NewWithMultiUser(token, allowedOrigins, cookieSecure, MultiUserConfig{})
+}
+
+func NewWithMultiUser(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy, mu MultiUserConfig) *Guard {
 	g := &Guard{
 		token:          strings.TrimSpace(token),
 		allowedOrigins: make(map[string]struct{}),
 		cookieSecure:   cookieSecure,
+		multiUser:      mu,
 	}
 	for _, origin := range allowedOrigins {
 		trimmed := strings.TrimSpace(origin)
@@ -64,6 +78,39 @@ func New(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy)
 		g.allowedOrigins[trimmed] = struct{}{}
 	}
 	return g
+}
+
+// AllowedUsers returns the configured user allowlist.
+func (g *Guard) AllowedUsers() []string {
+	if g == nil {
+		return nil
+	}
+	return g.multiUser.AllowedUsers
+}
+
+// ValidateTargetUser checks whether targetUser is a permitted multi-user
+// session target. Returns nil when targetUser is empty (use default user).
+func (g *Guard) ValidateTargetUser(targetUser string) error {
+	if g == nil {
+		return ErrRootNotAllowed
+	}
+	targetUser = strings.TrimSpace(targetUser)
+	if targetUser == "" {
+		return nil
+	}
+	if targetUser == "root" && !g.multiUser.AllowRootTarget {
+		return ErrRootNotAllowed
+	}
+	// When AllowedUsers is empty, any user is allowed.
+	if len(g.multiUser.AllowedUsers) == 0 {
+		return nil
+	}
+	for _, allowed := range g.multiUser.AllowedUsers {
+		if allowed == targetUser {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %s", ErrUserNotAllowlist, targetUser)
 }
 
 func (g *Guard) TokenRequired() bool {

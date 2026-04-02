@@ -126,6 +126,11 @@ func (h *Handler) launchSessionPreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.guard.ValidateTargetUser(preset.User); err != nil {
+		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
+		return
+	}
+
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
 		Action:      "session.create",
 		SessionName: preset.Name,
@@ -134,14 +139,25 @@ func (h *Handler) launchSessionPreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.registerSessionUser(preset.Name, preset.User)
+	tmuxSvc := h.tmuxForUser(preset.User)
 	created := true
-	if err := h.tmux.CreateSession(ctx, preset.Name, preset.Cwd); err != nil {
+	if err := tmuxSvc.CreateSession(ctx, preset.Name, preset.Cwd); err != nil {
 		if tmux.IsKind(err, tmux.ErrKindSessionExists) {
 			created = false
 		} else {
+			h.sessionUsers.Delete(preset.Name)
 			writeTmuxError(w, err)
 			return
 		}
+	}
+	if preset.User != "" {
+		slog.Warn("multi-user session created",
+			"action", "session.preset.launch",
+			"target_user", preset.User,
+			"session", preset.Name,
+			"source_ip", r.RemoteAddr,
+		)
 	}
 
 	h.persistSessionLaunchMetadataBestEffort(ctx, preset.Name, preset.Cwd, preset.Icon)
@@ -188,6 +204,7 @@ func (h *Handler) renameSessionPresetBestEffort(ctx context.Context, oldName, ne
 		Name: newName,
 		Cwd:  preset.Cwd,
 		Icon: preset.Icon,
+		User: preset.User,
 	}); err != nil {
 		slog.Warn("failed to rename session preset", "from", oldName, "to", newName, "err", err)
 	}
@@ -214,6 +231,7 @@ func decodeSessionPresetWrite(r *http.Request) (store.SessionPresetWrite, error)
 		Name string `json:"name"`
 		Cwd  string `json:"cwd"`
 		Icon string `json:"icon"`
+		User string `json:"user"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		return store.SessionPresetWrite{}, err
@@ -228,6 +246,7 @@ func decodeSessionPresetWrite(r *http.Request) (store.SessionPresetWrite, error)
 	if req.Icon == "" {
 		req.Icon = defaultSessionPresetIcon
 	}
+	req.User = strings.TrimSpace(req.User)
 
 	switch {
 	case !validate.SessionName(req.Name):
@@ -244,6 +263,7 @@ func decodeSessionPresetWrite(r *http.Request) (store.SessionPresetWrite, error)
 		Name: req.Name,
 		Cwd:  req.Cwd,
 		Icon: req.Icon,
+		User: req.User,
 	}, nil
 }
 

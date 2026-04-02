@@ -21,7 +21,7 @@ type SessionSidebarProps = {
   tmuxUnavailable: boolean
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
-  onCreate: (name: string, cwd: string) => void
+  onCreate: (name: string, cwd: string, user?: string) => void
   onPinSession: (session: string) => void
   onUnpinSession: (name: string) => void
   onLaunchPreset: (name: string) => void

@@ -109,6 +109,11 @@ type Options struct {
 	TimelineRows   int
 	Collect        CollectFunc
 	Publish        func(eventType string, payload map[string]any)
+
+	// UserProvider returns the list of OS users with active multi-user sessions.
+	// Called periodically to discover which additional tmux servers to scan.
+	// Returns nil or empty when no multi-user sessions exist.
+	UserProvider func(ctx context.Context) []string
 }
 
 type Service struct {
@@ -128,11 +133,41 @@ type Service struct {
 	markerCache    []store.MarkerPattern
 	markerCacheAt  time.Time
 	markerCacheTTL time.Duration
+
+	// userCache holds the last resolved multi-user list with a TTL.
+	userCache     []string
+	userCacheTime time.Time
 }
 
 type windowAggregate struct {
 	unreadPanes int
 	latestAt    time.Time
+}
+
+type taggedSession struct {
+	tmux.Session
+	client tmuxClient
+	user   string // "" for default
+}
+
+func (s *Service) resolveUsers(ctx context.Context) []string {
+	if s.options.UserProvider == nil {
+		return nil
+	}
+	if time.Since(s.userCacheTime) < 10*time.Second {
+		return s.userCache
+	}
+	users := s.options.UserProvider(ctx)
+	s.userCache = users
+	s.userCacheTime = time.Now()
+	return users
+}
+
+func qualifyPaneID(user, paneID string) string {
+	if user == "" {
+		return paneID
+	}
+	return user + ":" + paneID
 }
 
 func New(st watchtowerStore, tm tmuxClient, options Options) *Service {
@@ -232,16 +267,16 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 	s.refreshMarkerCache(ctx)
 	s.prunePresenceBestEffort(ctx)
 
-	sessions, proceed, err := s.listCollectSessions(ctx)
+	tagged, proceed, err := s.listCollectSessions(ctx)
 	if err != nil {
 		return err
 	}
 	if !proceed {
 		return nil
 	}
-	sessionsCount = len(sessions)
+	sessionsCount = len(tagged)
 
-	summary := s.collectSessionsProjection(ctx, sessions)
+	summary := s.collectSessionsProjection(ctx, tagged)
 	if err := s.store.PurgeWatchtowerSessions(ctx, summary.activeSessions); err != nil {
 		return err
 	}
@@ -270,40 +305,70 @@ func (s *Service) prunePresenceBestEffort(ctx context.Context) {
 	}
 }
 
-func (s *Service) listCollectSessions(ctx context.Context) ([]tmux.Session, bool, error) {
+func (s *Service) listCollectSessions(ctx context.Context) ([]taggedSession, bool, error) {
+	var tagged []taggedSession
+	anySourceReachable := false
+
 	sessions, err := s.tmux.ListSessions(ctx)
 	if err != nil {
 		if tmux.IsKind(err, tmux.ErrKindServerNotRunning) || tmux.IsKind(err, tmux.ErrKindNotFound) {
-			return nil, false, nil
+			// Default server not running — still try multi-user below.
+		} else {
+			return nil, false, err
 		}
-		return nil, false, err
+	} else {
+		anySourceReachable = true
+		for _, sess := range sessions {
+			tagged = append(tagged, taggedSession{Session: sess, client: s.tmux})
+		}
 	}
-	return sessions, true, nil
+
+	for _, user := range s.resolveUsers(ctx) {
+		userClient := tmux.Service{User: user}
+		userSessions, userErr := userClient.ListSessions(ctx)
+		if userErr != nil {
+			if tmux.IsKind(userErr, tmux.ErrKindServerNotRunning) || tmux.IsKind(userErr, tmux.ErrKindNotFound) {
+				slog.Debug("watchtower: user tmux server not running", "user", user)
+				continue
+			}
+			slog.Warn("watchtower: list sessions for user failed", "user", user, "err", userErr)
+			continue
+		}
+		anySourceReachable = true
+		for _, sess := range userSessions {
+			tagged = append(tagged, taggedSession{Session: sess, client: userClient, user: user})
+		}
+	}
+
+	if !anySourceReachable {
+		return nil, false, nil
+	}
+	return tagged, true, nil
 }
 
-func (s *Service) collectSessionsProjection(ctx context.Context, sessions []tmux.Session) collectSummary {
+func (s *Service) collectSessionsProjection(ctx context.Context, sessions []taggedSession) collectSummary {
 	summary := collectSummary{
 		activeSessions:          make([]string, 0, len(sessions)),
 		changedSessions:         make([]string, 0, len(sessions)),
 		timelineChangedSessions: make(map[string]struct{}, len(sessions)),
 	}
-	for _, sess := range sessions {
-		keep, changed, timelineChanged, activeWindowSwitched, collectErr := s.collectSession(ctx, sess)
+	for _, ts := range sessions {
+		keep, changed, timelineChanged, activeWindowSwitched, collectErr := s.collectSession(ctx, ts)
 		if collectErr != nil {
-			slog.Warn("watchtower collect session failed", "session", sess.Name, "err", collectErr)
+			slog.Warn("watchtower collect session failed", "session", ts.Name, "user", ts.user, "err", collectErr)
 		}
 		if !keep {
 			continue
 		}
-		summary.activeSessions = append(summary.activeSessions, sess.Name)
+		summary.activeSessions = append(summary.activeSessions, ts.Name)
 		if changed {
-			summary.changedSessions = append(summary.changedSessions, sess.Name)
+			summary.changedSessions = append(summary.changedSessions, ts.Name)
 		}
 		if activeWindowSwitched {
-			summary.activeWindowChangedSessions = append(summary.activeWindowChangedSessions, sess.Name)
+			summary.activeWindowChangedSessions = append(summary.activeWindowChangedSessions, ts.Name)
 		}
 		if timelineChanged {
-			summary.timelineChangedSessions[sess.Name] = struct{}{}
+			summary.timelineChangedSessions[ts.Name] = struct{}{}
 		}
 	}
 	return summary
@@ -457,8 +522,8 @@ func (s *Service) buildInspectorActivityPatches(ctx context.Context, sessionName
 }
 
 // collectSession returns (keep, changed, timelineChanged, activeWindowSwitched, err).
-func (s *Service) collectSession(ctx context.Context, sess tmux.Session) (bool, bool, bool, bool, error) {
-	state, keep, err := s.prepareCollectSessionState(ctx, sess)
+func (s *Service) collectSession(ctx context.Context, ts taggedSession) (bool, bool, bool, bool, error) {
+	state, keep, err := s.prepareCollectSessionState(ctx, ts)
 	if err != nil {
 		return keep, false, false, false, err
 	}

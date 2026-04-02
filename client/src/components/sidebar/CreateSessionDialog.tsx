@@ -4,6 +4,7 @@
 // Combobox wraps Base UI's Combobox primitive, which restricts selection to
 // predefined items and does not support free-form values. Base UI's Autocomplete
 // would be the correct primitive, but it is not yet available in the project.
+import { ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,13 +17,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useMetaContext } from '@/contexts/MetaContext'
 import { slugifyTmuxName } from '@/lib/tmuxName'
 
 type CreateSessionDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultCwd: string
-  onCreate: (name: string, cwd: string) => void | Promise<void>
+  onCreate: (name: string, cwd: string, user?: string) => void | Promise<void>
 }
 
 type DirectorySuggestionsResponse = {
@@ -35,6 +37,7 @@ export default function CreateSessionDialog({
   defaultCwd,
   onCreate,
 }: CreateSessionDialogProps) {
+  const meta = useMetaContext()
   const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState(normalizedDefaultCwd)
@@ -45,6 +48,8 @@ export default function CreateSessionDialog({
   const [saving, setSaving] = useState(false)
   const [frequentDirs, setFrequentDirs] = useState<Array<string>>([])
   const frequentDirsFetched = useRef(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [user, setUser] = useState('')
 
   function resetForm() {
     setName('')
@@ -54,6 +59,8 @@ export default function CreateSessionDialog({
     setCwdFocused(false)
     setActiveSuggestion(-1)
     setSaving(false)
+    setAdvancedOpen(false)
+    setUser('')
   }
 
   useEffect(() => {
@@ -185,7 +192,8 @@ export default function CreateSessionDialog({
     if (!trimmed || saving) return
     setSaving(true)
     try {
-      await onCreate(trimmed, cwd.trim())
+      const trimmedUser = user.trim()
+      await onCreate(trimmed, cwd.trim(), trimmedUser || undefined)
     } finally {
       resetForm()
       onOpenChange(false)
@@ -313,6 +321,37 @@ export default function CreateSessionDialog({
                 ))}
               </div>
             )}
+
+            <div>
+              <button
+                type="button"
+                className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setAdvancedOpen((prev) => !prev)}
+              >
+                <ChevronRight
+                  className="h-3 w-3 transition-transform"
+                  style={{
+                    transform: advancedOpen ? 'rotate(90deg)' : undefined,
+                  }}
+                />
+                Advanced options
+              </button>
+              {advancedOpen && (
+                <div className="mt-2 rounded-md border border-border-subtle p-2.5">
+                  <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                    Run as user
+                    <Input
+                      value={user}
+                      onChange={(e) => setUser(e.target.value)}
+                      placeholder={`${meta.processUser || 'default'} (default)`}
+                    />
+                    <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                      Leave blank to use the default system user.
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter className="mt-4">
             <DialogClose asChild>

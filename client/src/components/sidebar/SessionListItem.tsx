@@ -9,6 +9,7 @@ import { formatRelativeTime } from './sessionTime'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
 import type { Session } from '../../types'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { useMetaContext } from '@/contexts/MetaContext'
 import { useDateFormat } from '@/hooks/useDateFormat'
 import {
   ContextMenu,
@@ -64,6 +65,7 @@ export default function SessionListItem({
   } = useSortable({
     id: session.name,
   })
+  const { processUser } = useMetaContext()
   const { formatTimestamp } = useDateFormat()
   const isAttached = isSessionAttachedWithLocalTab(session, canDetach)
   const attachedClients = effectiveAttachedClients(session.attached, canDetach)
@@ -219,10 +221,10 @@ export default function SessionListItem({
                   </div>
                 )}
 
-                {/* Line 3: hash + time */}
+                {/* Line 3: hash + user + time */}
                 <div
                   className={cn(
-                    'flex items-center justify-between',
+                    'flex items-center gap-1.5',
                     density === 'full' && 'mt-1',
                   )}
                 >
@@ -233,6 +235,27 @@ export default function SessionListItem({
                       </span>
                     </TooltipHelper>
                   )}
+                  {session.user &&
+                    session.user !== processUser &&
+                    density === 'compact' && (
+                      <TooltipHelper content={`Running as: ${session.user}`}>
+                        <span className="inline-flex shrink items-center gap-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                          <User className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{session.user}</span>
+                        </span>
+                      </TooltipHelper>
+                    )}
+                  {session.user &&
+                    session.user !== processUser &&
+                    density === 'full' && (
+                      <TooltipHelper content={`Running as: ${session.user}`}>
+                        <span className="inline-flex shrink items-center gap-0.5 truncate rounded-sm bg-primary/10 px-1 py-px font-mono text-[10px] text-primary-text">
+                          <User className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{session.user}</span>
+                        </span>
+                      </TooltipHelper>
+                    )}
+                  <span className="flex-1" />
                   <TooltipHelper content={`Last activity: ${activityAbsolute}`}>
                     <time
                       className="shrink-0 tabular-nums text-[10px] text-muted-foreground"

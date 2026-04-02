@@ -34,6 +34,14 @@ vi.mock('@/hooks/useDateFormat', () => ({
   }),
 }))
 
+vi.mock('@/contexts/MetaContext', () => ({
+  useMetaContext: () => ({
+    processUser: 'hugo',
+    isRoot: false,
+    allowedUsers: ['postgres'],
+  }),
+}))
+
 afterEach(() => {
   cleanup()
 })
@@ -238,6 +246,52 @@ describe('SessionListItem', () => {
     expect(screen.queryByText('abc…456')).toBeNull()
     expect(screen.queryByLabelText(/window/i)).toBeNull()
     expect(screen.queryByLabelText(/pane/i)).toBeNull()
+  })
+
+  it('shows a user indicator when session user differs from process user', () => {
+    render(
+      <SortableTestShell>
+        <SessionListItem
+          session={{ ...baseSession, user: 'postgres' }}
+          isActive={false}
+          isPinned={false}
+          density="compact"
+          onAttach={() => {}}
+          onRename={() => {}}
+          onDetach={() => {}}
+          onKill={() => {}}
+          onChangeIcon={() => {}}
+          onPinSession={() => {}}
+          onUnpinSession={() => {}}
+          canDetach={false}
+        />
+      </SortableTestShell>,
+    )
+
+    expect(screen.getByText('postgres')).toBeTruthy()
+  })
+
+  it('hides the user indicator when session user matches process user', () => {
+    render(
+      <SortableTestShell>
+        <SessionListItem
+          session={{ ...baseSession, user: 'hugo' }}
+          isActive={false}
+          isPinned={false}
+          density="compact"
+          onAttach={() => {}}
+          onRename={() => {}}
+          onDetach={() => {}}
+          onKill={() => {}}
+          onChangeIcon={() => {}}
+          onPinSession={() => {}}
+          onUnpinSession={() => {}}
+          canDetach={false}
+        />
+      </SortableTestShell>,
+    )
+
+    expect(screen.queryByText('hugo')).toBeNull()
   })
 
   it('uses touch pan-y when drag is disabled', () => {

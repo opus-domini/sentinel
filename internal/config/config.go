@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -28,6 +29,12 @@ type AlertThresholds struct {
 	DiskPercent float64
 }
 
+type MultiUserConfig struct {
+	AllowedUsers     []string
+	AllowRootTarget  bool
+	UserSwitchMethod string // "sudo" (default) or "direct"
+}
+
 type Config struct {
 	ListenAddr             string
 	Token                  string
@@ -39,6 +46,7 @@ type Config struct {
 	Timezone               string
 	Locale                 string
 	RunbookMaxConcurrent   int
+	MultiUser              MultiUserConfig
 	Watchtower             WatchtowerConfig
 	AlertThresholds        AlertThresholds
 	AlertWebhookURL        string
@@ -160,6 +168,22 @@ const defaultConfigContent = `# Sentinel configuration
 # Maximum number of concurrent manual runbook executions.
 # Environment variable: SENTINEL_RUNBOOK_MAX_CONCURRENT
 # max_concurrent = 5
+
+[multi_user]
+# Multi-user tmux session support is always active. Sessions can be
+# created as a different OS user via sudo.
+
+# List of OS users allowed as session targets. When empty, any user is allowed.
+# Environment variable: SENTINEL_ALLOWED_USERS (comma-separated)
+# allowed_users = []
+
+# Allow targeting the root user for sessions.
+# Environment variable: SENTINEL_ALLOW_ROOT_TARGET
+# allow_root_target = false
+
+# Method for switching users: "sudo" (default) or "direct".
+# Environment variable: SENTINEL_USER_SWITCH_METHOD
+# user_switch_method = "sudo"
 `
 
 func Load() Config {
@@ -189,6 +213,7 @@ func Load() Config {
 	applyCoreConfig(&cfg, file)
 	applyWatchtowerConfig(&cfg, file)
 	applyAlertThresholdsConfig(&cfg, file)
+	applyMultiUserConfig(&cfg, file)
 
 	return cfg
 }
@@ -331,6 +356,63 @@ func applyAlertThresholdsConfig(cfg *Config, file map[string]string) {
 	)
 }
 
+func applyMultiUserConfig(cfg *Config, file map[string]string) {
+	if cfg == nil {
+		return
+	}
+
+	if users := readRawEnvOrFile("SENTINEL_ALLOWED_USERS", "allowed_users", file); users != "" {
+		cfg.MultiUser.AllowedUsers = splitCSV(users)
+	}
+
+	cfg.MultiUser.AllowRootTarget = readBoolEnvOrFile(
+		"SENTINEL_ALLOW_ROOT_TARGET",
+		"allow_root_target",
+		file,
+		false,
+	)
+
+	cfg.MultiUser.UserSwitchMethod = "sudo"
+	if method := readRawEnvOrFile("SENTINEL_USER_SWITCH_METHOD", "user_switch_method", file); method != "" {
+		switch strings.ToLower(method) {
+		case "sudo", "direct":
+			cfg.MultiUser.UserSwitchMethod = strings.ToLower(method)
+		}
+	}
+}
+
+// ValidateMultiUser checks multi-user config consistency and logs warnings
+// for recoverable issues. It modifies the config in place when corrections
+// are needed (e.g. removing root from allowlist).
+func ValidateMultiUser(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	// Remove root from allowlist if allow_root_target is false.
+	if !cfg.MultiUser.AllowRootTarget {
+		filtered := cfg.MultiUser.AllowedUsers[:0]
+		for _, u := range cfg.MultiUser.AllowedUsers {
+			if u == "root" {
+				slog.Warn("removing root from allowed_users because allow_root_target is false")
+				continue
+			}
+			filtered = append(filtered, u)
+		}
+		cfg.MultiUser.AllowedUsers = filtered
+	}
+
+	// Validate each user exists on the system.
+	for _, u := range cfg.MultiUser.AllowedUsers {
+		if _, err := userLookup(u); err != nil {
+			slog.Warn("allowed_users entry not found on system", "user", u, "err", err)
+		}
+	}
+}
+
+// userLookup is a seam for testing user existence validation.
+var userLookup = user.Lookup //nolint:gochecknoglobals // var enables test injection
+
 func readRawEnvOrFile(envKey, fileKey string, file map[string]string) string {
 	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
 		return v
@@ -434,6 +516,13 @@ type tomlRunbooks struct {
 	MaxConcurrent *int64 `toml:"max_concurrent"`
 }
 
+// tomlMultiUser maps the [multi_user] section of the config file.
+type tomlMultiUser struct {
+	AllowedUsers     []string `toml:"allowed_users"`
+	AllowRootTarget  *bool    `toml:"allow_root_target"`
+	UserSwitchMethod *string  `toml:"user_switch_method"`
+}
+
 // tomlConfig is the top-level structure for the TOML config file.
 // It supports both sectioned format (preferred) and flat legacy keys.
 type tomlConfig struct {
@@ -442,6 +531,7 @@ type tomlConfig struct {
 	HealthReport tomlHealthReport `toml:"health_report"`
 	Watchtower   tomlWatchtower   `toml:"watchtower"`
 	Runbooks     tomlRunbooks     `toml:"runbooks"`
+	MultiUser    tomlMultiUser    `toml:"multi_user"`
 
 	// Legacy flat keys (for backward compatibility with pre-section configs).
 	Listen                   *string  `toml:"listen"`
@@ -543,6 +633,13 @@ func (tc *tomlConfig) flatten() map[string]string {
 	setInt("watchtower_journal_rows", tc.Watchtower.JournalRows)
 
 	setInt("runbook_max_concurrent", tc.Runbooks.MaxConcurrent)
+
+	if len(tc.MultiUser.AllowedUsers) > 0 {
+		joined := strings.Join(tc.MultiUser.AllowedUsers, ",")
+		m["allowed_users"] = joined
+	}
+	setBool("allow_root_target", tc.MultiUser.AllowRootTarget)
+	setStr("user_switch_method", tc.MultiUser.UserSwitchMethod)
 
 	return m
 }

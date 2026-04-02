@@ -492,6 +492,8 @@ function TmuxPage() {
         cwdMode: draft.cwdMode,
         cwdValue: draft.cwdValue,
         windowName: draft.windowName,
+        userMode: draft.userMode,
+        userValue: draft.userValue,
       }
       const isUpdate = Boolean(draft.id)
       const path = isUpdate
@@ -836,6 +838,11 @@ function TmuxPage() {
     [api, pushErrorToast, sessionCRUD, sessionPresets, sessions],
   )
 
+  const activeSessionUser = useMemo(
+    () => sessions.find((s) => s.name === tabsState.activeSession)?.user ?? '',
+    [sessions, tabsState.activeSession],
+  )
+
   // ---- JSX ----
   return (
     <AppShell
@@ -855,8 +862,8 @@ function TmuxPage() {
           tmuxUnavailable={tmuxUnavailable}
           onFilterChange={setFilter}
           onTokenChange={setToken}
-          onCreate={(name, cwd) => {
-            void sessionCRUD.createSession(name, cwd)
+          onCreate={(name, cwd, user) => {
+            void sessionCRUD.createSession(name, cwd, '', user)
           }}
           onPinSession={(name) => {
             void pinSession(name)
@@ -885,6 +892,7 @@ function TmuxPage() {
         sidebarCollapsed={layout.sidebarCollapsed}
         openTabs={tabsState.openTabs}
         activeSession={tabsState.activeSession}
+        sessionUser={activeSessionUser}
         inspectorLoading={inspector.inspectorLoading}
         inspectorError={inspector.inspectorError}
         windows={inspector.windows}
@@ -952,8 +960,8 @@ function TmuxPage() {
         open={createSessionOpen}
         onOpenChange={setCreateSessionOpen}
         defaultCwd={defaultCwd}
-        onCreate={(name, cwd) => {
-          void sessionCRUD.createSession(name, cwd)
+        onCreate={(name, cwd, user) => {
+          void sessionCRUD.createSession(name, cwd, '', user)
         }}
       />
 

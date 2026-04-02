@@ -1013,7 +1013,7 @@ func TestRegisterSetsUpRoutes(t *testing.T) {
 	hub := events.NewHub()
 
 	mux := http.NewServeMux()
-	if err := Register(mux, guard, st, hub, nil); err != nil {
+	if err := Register(mux, guard, st, hub, nil, nil); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 
@@ -1054,7 +1054,7 @@ func TestSpaPageServesIndexForUnknownPaths(t *testing.T) {
 	// Register to populate distFS.
 	mux := http.NewServeMux()
 	st := newHTTPUIStore(t)
-	if err := Register(mux, guard, st, events.NewHub(), nil); err != nil {
+	if err := Register(mux, guard, st, events.NewHub(), nil, nil); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 
@@ -1096,7 +1096,7 @@ func TestStartTmuxPTYContinuesWhenWebMousePatchFails(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), testSessionName)
+	got, err := h.startTmuxPTY(context.Background(), testSessionName, "")
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}

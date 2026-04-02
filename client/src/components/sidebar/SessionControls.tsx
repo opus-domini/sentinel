@@ -14,7 +14,7 @@ type SessionControlsProps = {
   filter: string
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
-  onCreate: (name: string, cwd: string) => void
+  onCreate: (name: string, cwd: string, user?: string) => void
 }
 
 export default function SessionControls({

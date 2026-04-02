@@ -793,8 +793,8 @@ Environment=SENTINEL_LOG_LEVEL=info
 Environment=HOME=%%h
 Environment=TERM=xterm-256color
 Environment=LANG=C.UTF-8
-SystemCallArchitectures=native
-NoNewPrivileges=true
+# Note: NoNewPrivileges and SystemCallArchitectures are intentionally
+# omitted — sudo requires new-privilege capability for multi-user sessions.
 
 [Install]
 WantedBy=default.target
@@ -812,7 +812,6 @@ After=network-online.target
 Type=oneshot
 ExecStart=%s update apply -restart=true -service=%s -systemd-scope=%s
 Environment=SENTINEL_LOG_LEVEL=info
-NoNewPrivileges=true
 
 [Install]
 WantedBy=default.target

@@ -713,10 +713,14 @@ export function useInspector(options: UseInspectorOptions) {
   )
 
   const refreshInspector = useCallback(
-    async (target: string, params?: { background?: boolean }) => {
+    async (
+      target: string,
+      params?: { background?: boolean; force?: boolean },
+    ) => {
       runtimeMetricsRef.current.inspectorRefreshCount += 1
       const session = target.trim()
       const bg = params?.background === true
+      const force = params?.force === true
       const hasRenderableState = hasRenderableInspectorState(
         session,
         windowsRef.current,
@@ -733,6 +737,11 @@ export function useInspector(options: UseInspectorOptions) {
         inspectorLoadingRef.current = false
         return
       }
+      // Skip if the session is being created — the creation flow will
+      // call us explicitly (with force) after the POST succeeds.
+      if (!force && pendingCreateSessionsRef.current.has(session)) {
+        return
+      }
       if (shouldSkipInspectorRefresh(bg, inspectorLoadingRef.current)) {
         return
       }
@@ -745,11 +754,15 @@ export function useInspector(options: UseInspectorOptions) {
         const windowsResponse = await api<WindowsResponse>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/windows`,
         )
-        if (gen !== inspectorGenerationRef.current) return
+        if (gen !== inspectorGenerationRef.current) {
+          return
+        }
         const panesResponse = await api<PanesResponse>(
           `/api/tmux/sessions/${encodeURIComponent(session)}/panes`,
         )
-        if (gen !== inspectorGenerationRef.current) return
+        if (gen !== inspectorGenerationRef.current) {
+          return
+        }
         const parsedWindows = Array.isArray(windowsResponse.windows)
           ? windowsResponse.windows.flatMap((rawWindow) => {
               const parsedWindow = parseWindowProjection(
@@ -873,7 +886,7 @@ export function useInspector(options: UseInspectorOptions) {
     ],
   )
 
-  // Keep inspector in sync when user switches active session/tab
+  // Keep inspector in sync when user switches active session/tab.
   useEffect(() => {
     void refreshInspector(activeSession)
   }, [refreshInspector, activeSession])

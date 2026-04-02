@@ -23,6 +23,14 @@ vi.mock('@/hooks/useDateFormat', () => ({
   }),
 }))
 
+vi.mock('@/contexts/MetaContext', () => ({
+  useMetaContext: () => ({
+    processUser: 'hugo',
+    isRoot: false,
+    allowedUsers: ['postgres'],
+  }),
+}))
+
 afterEach(() => {
   cleanup()
   useIsMobileLayoutMock.mockReturnValue(false)
@@ -127,6 +135,30 @@ describe('PinnedSessionsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /api/i }))
 
     expect(onLaunchPreset).toHaveBeenCalledWith('api')
+  })
+
+  it('shows user on preset cwd subtitle when present', () => {
+    render(
+      <PinnedSessionsPanel
+        sessions={[]}
+        presets={[{ ...pinnedPreset, user: 'postgres' }]}
+        filter=""
+        openTabs={[]}
+        activeSession=""
+        tmuxUnavailable={false}
+        onAttach={() => {}}
+        onRename={() => {}}
+        onDetach={() => {}}
+        onKill={() => {}}
+        onChangeIcon={() => {}}
+        onPinSession={() => {}}
+        onUnpinSession={() => {}}
+        onLaunchPreset={() => {}}
+        onReorder={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('postgres')).toBeTruthy()
   })
 
   it('keeps pinned preset launch buttons scrollable on mobile', () => {

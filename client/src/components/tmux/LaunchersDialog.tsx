@@ -17,7 +17,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { ChevronDown, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DEFAULT_ICON_KEY, TMUX_ICONS, getTmuxIcon } from '@/lib/tmuxIcons'
-import type { LauncherCwdMode, TmuxLauncher } from '@/types'
+import type { LauncherCwdMode, LauncherUserMode, TmuxLauncher } from '@/types'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +66,8 @@ export type LauncherDraft = {
   cwdMode: LauncherCwdMode
   cwdValue: string
   windowName: string
+  userMode: LauncherUserMode
+  userValue: string
 }
 
 type LaunchersDialogProps = {
@@ -84,6 +86,8 @@ const DEFAULT_DRAFT: LauncherDraft = {
   cwdMode: 'session',
   cwdValue: '',
   windowName: '',
+  userMode: 'session',
+  userValue: '',
 }
 
 const QUICK_STARTS: Array<{
@@ -118,6 +122,8 @@ function draftFromLauncher(launcher: TmuxLauncher): LauncherDraft {
     cwdMode: launcher.cwdMode,
     cwdValue: launcher.cwdValue,
     windowName: launcher.windowName,
+    userMode: (launcher.userMode as LauncherUserMode) || 'session',
+    userValue: launcher.userValue ?? '',
   }
 }
 
@@ -545,6 +551,52 @@ export default function LaunchersDialog({
                       }))
                     }
                     placeholder="/home/hugo/project"
+                  />
+                </label>
+              )}
+
+              <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                Run as user
+                <Select
+                  value={draft.userMode}
+                  onValueChange={(value: LauncherUserMode) =>
+                    updateDraft((prev) => ({
+                      ...prev,
+                      userMode: value,
+                      userValue: value === 'fixed' ? prev.userValue : '',
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-[60]">
+                    <SelectItem value="session" className="cursor-pointer">
+                      session user
+                    </SelectItem>
+                    <SelectItem value="fixed" className="cursor-pointer">
+                      fixed user
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
+                  Override the system user for this window. Leave blank to
+                  inherit from the session.
+                </span>
+              </label>
+              {draft.userMode === 'fixed' && (
+                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                  Fixed User
+                  <Input
+                    className="bg-surface-overlay"
+                    value={draft.userValue}
+                    onChange={(event) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        userValue: event.target.value,
+                      }))
+                    }
+                    placeholder="postgres"
                   />
                 </label>
               )}

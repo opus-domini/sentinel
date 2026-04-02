@@ -117,7 +117,7 @@ func (h *Handler) reconcileManagedTmuxWindows(ctx context.Context, session strin
 }
 
 func (h *Handler) managedTmuxWindowForIndex(ctx context.Context, session string, index int) (store.ManagedTmuxWindow, bool, error) {
-	liveWindows, err := h.tmux.ListWindows(ctx, session)
+	liveWindows, err := h.tmuxForSession(session).ListWindows(ctx, session)
 	if err != nil {
 		return store.ManagedTmuxWindow{}, false, err
 	}

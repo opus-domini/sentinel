@@ -174,7 +174,7 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), testSessionName)
+	got, err := h.startTmuxPTY(context.Background(), testSessionName, "")
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}
@@ -216,7 +216,7 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), testSessionName)
+	got, err := h.startTmuxPTY(context.Background(), testSessionName, "")
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}

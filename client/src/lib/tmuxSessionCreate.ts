@@ -6,6 +6,7 @@ export function buildOptimisticSession(
   at: string,
   icon = '',
   sortOrder = 1,
+  user = '',
 ): Session {
   return {
     name,
@@ -19,6 +20,7 @@ export function buildOptimisticSession(
     hash: '',
     lastContent: '',
     icon,
+    user: user || undefined,
     unreadWindows: 0,
     unreadPanes: 0,
     rev: 0,
@@ -30,6 +32,7 @@ export function upsertOptimisticAttachedSession(
   sessionName: string,
   at: string,
   icon = '',
+  user = '',
 ): Array<Session> {
   const index = sessions.findIndex((item) => item.name === sessionName)
   if (index === -1) {
@@ -39,6 +42,7 @@ export function upsertOptimisticAttachedSession(
         at,
         icon,
         nextFrontSortOrder(sessions),
+        user,
       ),
       ...sessions,
     ]

@@ -1,102 +1,272 @@
 package tmux
 
-import "context"
+import (
+	"bytes"
+	"context"
+	"os/exec"
+)
 
-// Service delegates to the package-level tmux functions.
-type Service struct{}
-
-func (Service) ListSessions(ctx context.Context) ([]Session, error) {
-	return ListSessions(ctx)
+// Service delegates to the package-level tmux functions. When User is
+// non-empty, commands are wrapped with sudo -n -u <user>.
+type Service struct {
+	User string
 }
 
-func (Service) ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
-	return ListActivePaneCommands(ctx)
+func (s Service) run(ctx context.Context, args ...string) (string, error) {
+	return runAsUser(ctx, s.User, args...)
 }
 
-func (Service) CapturePane(ctx context.Context, session string) (string, error) {
-	return CapturePane(ctx, session)
+// runAsUser executes a tmux command, optionally wrapping it with sudo -n -u
+// when user is non-empty. For the default (no user) case the package-level
+// run variable is used so that tests can inject fakes.
+func runAsUser(ctx context.Context, user string, args ...string) (string, error) {
+	if user == "" {
+		return run(ctx, args...)
+	}
+	sudoArgs := []string{"-n", "-u", user, "tmux"}
+	sudoArgs = append(sudoArgs, args...)
+	cmd := exec.CommandContext(ctx, "sudo", sudoArgs...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", classifyError(err, stderr.String(), args)
+	}
+	return stdout.String(), nil
 }
 
-func (Service) CreateSession(ctx context.Context, name, cwd string) error {
-	return CreateSession(ctx, name, cwd)
+func (s Service) ListSessions(ctx context.Context) ([]Session, error) {
+	if s.User == "" {
+		return ListSessions(ctx)
+	}
+	out, err := s.run(ctx, "list-sessions", "-F", listSessionsFormatWithActivity)
+	if err != nil {
+		if IsKind(err, ErrKindServerNotRunning) {
+			return []Session{}, nil
+		}
+		if !shouldRetryListSessionsWithoutActivity(err) {
+			return nil, err
+		}
+		out, err = s.run(ctx, "list-sessions", "-F", listSessionsFormatWithoutActivity)
+		if err != nil {
+			if IsKind(err, ErrKindServerNotRunning) {
+				return []Session{}, nil
+			}
+			return nil, err
+		}
+	}
+	return parseSessionListOutput(out), nil
 }
 
-func (Service) RenameSession(ctx context.Context, session, newName string) error {
-	return RenameSession(ctx, session, newName)
+func (s Service) ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
+	if s.User == "" {
+		return ListActivePaneCommands(ctx)
+	}
+	out, err := s.run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_start_command}\t#{pane_current_command}")
+	if err != nil {
+		if IsKind(err, ErrKindServerNotRunning) {
+			return map[string]PaneSnapshot{}, nil
+		}
+		return nil, err
+	}
+	return parseActivePaneCommandsOutput(out), nil
 }
 
-func (Service) RenameWindow(ctx context.Context, session string, index int, name string) error {
-	return RenameWindow(ctx, session, index, name)
+func (s Service) CapturePane(ctx context.Context, session string) (string, error) {
+	if s.User == "" {
+		return CapturePane(ctx, session)
+	}
+	return capturePane(ctx, s.run, session)
 }
 
-func (Service) RenamePane(ctx context.Context, paneID, title string) error {
-	return RenamePane(ctx, paneID, title)
+func (s Service) HasSession(ctx context.Context, session string) bool {
+	if s.User == "" {
+		return HasSession(ctx, session)
+	}
+	_, err := s.run(ctx, "has-session", "-t", session)
+	return err == nil
 }
 
-func (Service) KillSession(ctx context.Context, session string) error {
-	return KillSession(ctx, session)
+func (s Service) CreateSession(ctx context.Context, name, cwd string) error {
+	if s.User == "" {
+		return CreateSession(ctx, name, cwd)
+	}
+	args := []string{"new-session", "-d", "-s", name}
+	if cwd != "" {
+		args = append(args, "-c", cwd)
+	}
+	_, err := s.run(ctx, args...)
+	return err
 }
 
-func (Service) ListWindows(ctx context.Context, session string) ([]Window, error) {
-	return ListWindows(ctx, session)
+func (s Service) RenameSession(ctx context.Context, session, newName string) error {
+	if s.User == "" {
+		return RenameSession(ctx, session, newName)
+	}
+	_, err := s.run(ctx, "rename-session", "-t", session, newName)
+	return err
 }
 
-func (Service) ListPanes(ctx context.Context, session string) ([]Pane, error) {
-	return ListPanes(ctx, session)
+func (s Service) RenameWindow(ctx context.Context, session string, index int, name string) error {
+	if s.User == "" {
+		return RenameWindow(ctx, session, index, name)
+	}
+	return renameWindowVia(ctx, s.run, session, index, name)
 }
 
-func (Service) ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
-	return ReorderWindows(ctx, session, orderedWindowIDs)
+func (s Service) RenamePane(ctx context.Context, paneID, title string) error {
+	if s.User == "" {
+		return RenamePane(ctx, paneID, title)
+	}
+	_, err := s.run(ctx, "select-pane", "-t", paneID, "-T", title)
+	return err
 }
 
-func (Service) SelectWindow(ctx context.Context, session string, index int) error {
-	return SelectWindow(ctx, session, index)
+func (s Service) KillSession(ctx context.Context, session string) error {
+	if s.User == "" {
+		return KillSession(ctx, session)
+	}
+	_, err := s.run(ctx, "kill-session", "-t", session)
+	return err
 }
 
-func (Service) SelectPane(ctx context.Context, paneID string) error {
-	return SelectPane(ctx, paneID)
+func (s Service) ListWindows(ctx context.Context, session string) ([]Window, error) {
+	if s.User == "" {
+		return ListWindows(ctx, session)
+	}
+	return listWindowsVia(ctx, s.run, session)
 }
 
-func (Service) NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
-	return NewWindow(ctx, session)
+func (s Service) ListPanes(ctx context.Context, session string) ([]Pane, error) {
+	if s.User == "" {
+		return ListPanes(ctx, session)
+	}
+	return listPanesVia(ctx, s.run, session)
 }
 
-func (Service) NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWindowResult, error) {
-	return NewWindowWithOptions(ctx, session, name, cwd)
+func (s Service) ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
+	if s.User == "" {
+		return ReorderWindows(ctx, session, orderedWindowIDs)
+	}
+	return reorderWindowsVia(ctx, s.run, session, orderedWindowIDs)
 }
 
-func (Service) NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
-	return NewWindowAt(ctx, session, index, name, cwd)
+func (s Service) SelectWindow(ctx context.Context, session string, index int) error {
+	if s.User == "" {
+		return SelectWindow(ctx, session, index)
+	}
+	return selectWindowVia(ctx, s.run, session, index)
 }
 
-func (Service) KillWindow(ctx context.Context, session string, index int) error {
-	return KillWindow(ctx, session, index)
+func (s Service) SelectPane(ctx context.Context, paneID string) error {
+	if s.User == "" {
+		return SelectPane(ctx, paneID)
+	}
+	_, err := s.run(ctx, "select-pane", "-t", paneID)
+	return err
 }
 
-func (Service) KillPane(ctx context.Context, paneID string) error {
-	return KillPane(ctx, paneID)
+func (s Service) NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
+	return s.NewWindowWithOptions(ctx, session, "", "")
 }
 
-func (Service) SplitPane(ctx context.Context, paneID, direction string) (string, error) {
-	return SplitPane(ctx, paneID, direction)
+func (s Service) NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWindowResult, error) {
+	if s.User == "" {
+		return NewWindowWithOptions(ctx, session, name, cwd)
+	}
+	return newWindowWithOptionsVia(ctx, s.run, session, name, cwd)
 }
 
-func (Service) SessionExists(ctx context.Context, session string) (bool, error) {
-	return SessionExists(ctx, session)
+func (s Service) NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
+	if s.User == "" {
+		return NewWindowAt(ctx, session, index, name, cwd)
+	}
+	return newWindowAtVia(ctx, s.run, session, index, name, cwd)
 }
 
-func (Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
-	return SplitPaneIn(ctx, paneID, direction, cwd)
+func (s Service) KillWindow(ctx context.Context, session string, index int) error {
+	if s.User == "" {
+		return KillWindow(ctx, session, index)
+	}
+	return killWindowVia(ctx, s.run, session, index)
 }
 
-func (Service) SelectLayout(ctx context.Context, session string, index int, layout string) error {
-	return SelectLayout(ctx, session, index, layout)
+func (s Service) KillPane(ctx context.Context, paneID string) error {
+	if s.User == "" {
+		return KillPane(ctx, paneID)
+	}
+	_, err := s.run(ctx, "kill-pane", "-t", paneID)
+	return err
 }
 
-func (Service) SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
-	return SendKeys(ctx, paneID, keys, enter)
+func (s Service) SplitPane(ctx context.Context, paneID, direction string) (string, error) {
+	if s.User == "" {
+		return SplitPane(ctx, paneID, direction)
+	}
+	return splitPaneVia(ctx, s.run, paneID, direction)
 }
 
-func (Service) CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
-	return CapturePaneLines(ctx, target, lines)
+func (s Service) SessionExists(ctx context.Context, session string) (bool, error) {
+	if s.User == "" {
+		return SessionExists(ctx, session)
+	}
+	_, err := s.run(ctx, "has-session", "-t", session)
+	if err != nil {
+		if IsKind(err, ErrKindSessionNotFound) || IsKind(err, ErrKindServerNotRunning) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (s Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
+	if s.User == "" {
+		return SplitPaneIn(ctx, paneID, direction, cwd)
+	}
+	return splitPaneInVia(ctx, s.run, paneID, direction, cwd)
+}
+
+func (s Service) SelectLayout(ctx context.Context, session string, index int, layout string) error {
+	if s.User == "" {
+		return SelectLayout(ctx, session, index, layout)
+	}
+	return selectLayoutVia(ctx, s.run, session, index, layout)
+}
+
+func (s Service) SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
+	if s.User == "" {
+		return SendKeys(ctx, paneID, keys, enter)
+	}
+	return sendKeysVia(ctx, s.run, paneID, keys, enter)
+}
+
+func (s Service) CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
+	if s.User == "" {
+		return CapturePaneLines(ctx, target, lines)
+	}
+	return capturePaneLinesVia(ctx, s.run, target, lines)
+}
+
+func (s Service) SetSessionMouse(ctx context.Context, session string, enabled bool) error {
+	if s.User == "" {
+		return SetSessionMouse(ctx, session, enabled)
+	}
+	return setSessionOptionVia(ctx, s.run, session, "mouse", enabled)
+}
+
+func (s Service) SetSessionStatus(ctx context.Context, session string, enabled bool) error {
+	if s.User == "" {
+		return SetSessionStatus(ctx, session, enabled)
+	}
+	return setSessionOptionVia(ctx, s.run, session, "status", enabled)
+}
+
+func (s Service) EnsureWebMouseBindings(ctx context.Context) error {
+	if s.User == "" {
+		return EnsureWebMouseBindings(ctx)
+	}
+	// Best-effort for multi-user: apply global bindings via the user's server.
+	_, _ = s.run(ctx, "set-option", "-s", "set-clipboard", "on")
+	return nil
 }

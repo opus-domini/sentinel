@@ -12,8 +12,10 @@ import (
 )
 
 type collectSessionState struct {
-	service *Service
-	ctx     context.Context
+	service      *Service
+	ctx          context.Context
+	tmuxOverride tmuxClient
+	user         string // "" for default
 
 	sess tmux.Session
 	name string
@@ -60,20 +62,33 @@ type paneRevisionSnapshot struct {
 	changed      bool
 }
 
-func (s *Service) prepareCollectSessionState(ctx context.Context, sess tmux.Session) (*collectSessionState, bool, error) {
+func (c *collectSessionState) resolveTmuxClient() tmuxClient {
+	if c.tmuxOverride != nil {
+		return c.tmuxOverride
+	}
+	return c.service.tmux
+}
+
+func (s *Service) prepareCollectSessionState(ctx context.Context, ts taggedSession) (*collectSessionState, bool, error) {
+	sess := ts.Session
 	name := strings.TrimSpace(sess.Name)
 	if name == "" {
 		return nil, false, nil
 	}
 
-	windows, err := s.tmux.ListWindows(ctx, name)
+	client := ts.client
+	if client == nil {
+		client = s.tmux
+	}
+
+	windows, err := client.ListWindows(ctx, name)
 	if err != nil {
 		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
 			return nil, false, nil
 		}
 		return nil, true, err
 	}
-	panes, err := s.tmux.ListPanes(ctx, name)
+	panes, err := client.ListPanes(ctx, name)
 	if err != nil {
 		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
 			return nil, false, nil
@@ -110,11 +125,13 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, sess tmux.Sess
 	managedByRuntime := managedWindowRuntimeMap(managedWindows)
 
 	state := &collectSessionState{
-		service: s,
-		ctx:     ctx,
-		sess:    sess,
-		name:    name,
-		now:     now,
+		service:      s,
+		ctx:          ctx,
+		tmuxOverride: client,
+		user:         ts.user,
+		sess:         sess,
+		name:         name,
+		now:          now,
 
 		windows: windows,
 		panes:   panes,
@@ -238,29 +255,36 @@ func (c *collectSessionState) collectPanes() error {
 }
 
 func (c *collectSessionState) collectPane(pane tmux.Pane) error {
-	c.paneIDs = append(c.paneIDs, pane.PaneID)
+	rawPaneID := pane.PaneID
+	qualifiedID := qualifyPaneID(c.user, rawPaneID)
+
+	c.paneIDs = append(c.paneIDs, qualifiedID)
 
 	command := normalizeRuntimeCommand(pane.CurrentCommand, pane.StartCommand)
 	paneTitle := strings.TrimSpace(pane.Title)
 	windowName := c.resolveWindowName(pane.WindowIndex)
 	metadata := paneTimelineMetadata(pane.PaneIndex, paneTitle, windowName)
 
-	prev, hadPrev := c.existingPaneByID[pane.PaneID]
-	tail := c.capturePaneTail(pane.PaneID, prev, hadPrev)
-	revision := c.computePaneRevision(pane.PaneID, prev, hadPrev, tail)
+	prev, hadPrev := c.existingPaneByID[qualifiedID]
+	tail := c.capturePaneTail(rawPaneID, prev, hadPrev)
+	revision := c.computePaneRevision(qualifiedID, prev, hadPrev, tail)
 
-	if err := c.recordOutputMarker(pane, command, metadata, tail.preview, revision); err != nil {
+	// Use qualified pane ID for store writes, raw for tmux calls.
+	qualifiedPane := pane
+	qualifiedPane.PaneID = qualifiedID
+
+	if err := c.recordOutputMarker(qualifiedPane, command, metadata, tail.preview, revision); err != nil {
 		return err
 	}
-	if err := c.updatePaneRuntime(pane, command, metadata); err != nil {
+	if err := c.updatePaneRuntime(qualifiedPane, command, metadata); err != nil {
 		return err
 	}
 
 	c.updateWindowAggregate(pane.WindowIndex, revision)
-	c.updateBestPreview(pane.PaneID, tail.preview, revision.changedAt)
+	c.updateBestPreview(qualifiedID, tail.preview, revision.changedAt)
 
 	return c.service.store.UpsertWatchtowerPane(c.ctx, store.WatchtowerPaneWrite{
-		PaneID:         pane.PaneID,
+		PaneID:         qualifiedID,
 		SessionName:    c.name,
 		WindowIndex:    pane.WindowIndex,
 		PaneIndex:      pane.PaneIndex,
@@ -309,7 +333,7 @@ func (c *collectSessionState) capturePaneTail(paneID string, prev store.Watchtow
 	tail := paneTailSnapshot{}
 
 	capCtx, cancel := context.WithTimeout(c.ctx, c.service.options.CaptureTimeout)
-	captured, capErr := c.service.tmux.CapturePaneLines(capCtx, paneID, c.service.options.CaptureLines)
+	captured, capErr := c.resolveTmuxClient().CapturePaneLines(capCtx, paneID, c.service.options.CaptureLines)
 	cancel()
 
 	if capErr == nil {

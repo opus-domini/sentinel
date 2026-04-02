@@ -17,7 +17,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { DragEndEvent, Modifier, ClientRect } from '@dnd-kit/core'
 import type { CSSProperties, WheelEvent as ReactWheelEvent } from 'react'
 import type { Transform } from '@dnd-kit/utilities'
-import { ChevronDown, Plus, X } from 'lucide-react'
+import { ChevronDown, Plus, User, X } from 'lucide-react'
 import type { TmuxLauncher, WindowInfo } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -107,6 +107,7 @@ type WindowStripProps = {
   inspectorError: string
   windows: Array<WindowInfo>
   activeWindowIndex: number | null
+  sessionUser?: string
   launchers: Array<TmuxLauncher>
   recentLauncher: TmuxLauncher | null
   onSelectWindow: (windowIndex: number) => void
@@ -122,6 +123,7 @@ type WindowChipProps = {
   windowInfo: WindowInfo
   isActive: boolean
   isMobile: boolean
+  sessionUser?: string
   onSelectWindow: (windowIndex: number) => void
   onCloseWindow: (windowIndex: number) => void
   onRenameWindow: (windowInfo: WindowInfo) => void
@@ -136,6 +138,7 @@ function WindowChip({
   windowInfo,
   isActive,
   isMobile,
+  sessionUser,
   onSelectWindow,
   onCloseWindow,
   onRenameWindow,
@@ -192,6 +195,11 @@ function WindowChip({
           windowInfo.index
         ) : (
           <>
+            {windowInfo.user && windowInfo.user !== sessionUser && (
+              <TooltipHelper content={`Running as: ${windowInfo.user}`}>
+                <User className="h-2.5 w-2.5 shrink-0 text-primary-text/60" />
+              </TooltipHelper>
+            )}
             {WindowIcon !== null && (
               <WindowIcon className="size-3.5 shrink-0" />
             )}
@@ -241,6 +249,7 @@ function SortableWindowChip(props: {
   windowInfo: WindowInfo
   isActive: boolean
   isMobile: boolean
+  sessionUser?: string
   onSelectWindow: (windowIndex: number) => void
   onCloseWindow: (windowIndex: number) => void
   onRenameWindow: (windowInfo: WindowInfo) => void
@@ -278,6 +287,7 @@ export default function WindowStrip({
   inspectorError,
   windows,
   activeWindowIndex,
+  sessionUser,
   launchers,
   recentLauncher,
   onSelectWindow,
@@ -413,6 +423,7 @@ export default function WindowStrip({
               windowInfo={windowInfo}
               isActive={activeWindowIndex === windowInfo.index}
               isMobile={isMobile}
+              sessionUser={sessionUser}
               onSelectWindow={onSelectWindow}
               onCloseWindow={onCloseWindow}
               onRenameWindow={onRenameWindow}
@@ -430,6 +441,7 @@ export default function WindowStrip({
           windowInfo={windowInfo}
           isActive={activeWindowIndex === windowInfo.index}
           isMobile={isMobile}
+          sessionUser={sessionUser}
           onSelectWindow={onSelectWindow}
           onCloseWindow={onCloseWindow}
           onRenameWindow={onRenameWindow}

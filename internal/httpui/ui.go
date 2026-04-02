@@ -27,11 +27,12 @@ const (
 )
 
 var (
-	tmuxSessionExistsFn  = tmux.SessionExists
-	tmuxEnsureWebMouse   = tmux.EnsureWebMouseBindings
-	tmuxSetSessionMouse  = tmux.SetSessionMouse
-	tmuxSetSessionStatus = tmux.SetSessionStatus
-	startTmuxAttachFn    = term.StartTmuxAttach
+	tmuxSessionExistsFn     = tmux.SessionExists
+	tmuxEnsureWebMouse      = tmux.EnsureWebMouseBindings
+	tmuxSetSessionMouse     = tmux.SetSessionMouse
+	tmuxSetSessionStatus    = tmux.SetSessionStatus
+	startTmuxAttachFn       = term.StartTmuxAttach
+	startTmuxAttachAsUserFn = term.StartTmuxAttachAsUser //nolint:gochecknoglobals // seam for testing
 )
 
 // OpsLogStreamer provides streaming log access for managed services.
@@ -64,15 +65,20 @@ type httpuiStore interface {
 // Compile-time check: *store.Store satisfies httpuiStore.
 var _ httpuiStore = (*store.Store)(nil)
 
+// SessionUserLookup resolves the OS user that owns a tmux session.
+// Returns empty string when the session runs as the default user.
+type SessionUserLookup func(session string) string
+
 type Handler struct {
-	guard  *security.Guard
-	events *events.Hub
-	store  httpuiStore
-	ops    OpsLogStreamer
+	guard             *security.Guard
+	events            *events.Hub
+	store             httpuiStore
+	ops               OpsLogStreamer
+	sessionUserLookup SessionUserLookup
 }
 
-func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, eventsHub *events.Hub, ops OpsLogStreamer) error {
-	h := &Handler{guard: guard, events: eventsHub, store: st, ops: ops}
+func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, eventsHub *events.Hub, ops OpsLogStreamer, sessionUserLookup SessionUserLookup) error {
+	h := &Handler{guard: guard, events: eventsHub, store: st, ops: ops, sessionUserLookup: sessionUserLookup}
 	if err := registerAssetRoutes(mux); err != nil {
 		return err
 	}
@@ -132,8 +138,21 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve the OS user from the backend registry — no frontend hint needed.
+	targetUser := ""
+	if h.sessionUserLookup != nil {
+		targetUser = h.sessionUserLookup(session)
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	exists, err := tmuxSessionExistsFn(ctx, session)
+	var exists bool
+	var err error
+	if targetUser != "" {
+		svc := tmux.Service{User: targetUser}
+		exists, err = svc.SessionExists(ctx, session)
+	} else {
+		exists, err = tmuxSessionExistsFn(ctx, session)
+	}
 	cancel()
 	if err != nil {
 		status, message := tmuxHTTPError(err)
@@ -155,7 +174,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 		parentCtx: r.Context(),
 		label:     session,
 		startPTY: func(ctx context.Context) (*term.PTY, error) {
-			return h.startTmuxPTY(ctx, session)
+			return h.startTmuxPTY(ctx, session, targetUser)
 		},
 		statusMsg: map[string]any{
 			"type":    "status",
@@ -165,20 +184,30 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) startTmuxPTY(ctx context.Context, session string) (*term.PTY, error) {
-	// Best-effort: patch default tmux mouse bindings for web terminals.
+func (h *Handler) startTmuxPTY(ctx context.Context, session, targetUser string) (*term.PTY, error) {
+	if targetUser != "" {
+		svc := tmux.Service{User: targetUser}
+
+		// Best-effort: apply web mouse bindings for the target user's tmux server.
+		if err := svc.EnsureWebMouseBindings(ctx); err != nil {
+			slog.Warn("tmux web mouse patch failed", "session", session, "user", targetUser, "err", err)
+		}
+		if err := svc.SetSessionMouse(ctx, session, true); err != nil {
+			slog.Warn("tmux mouse enable failed", "session", session, "user", targetUser, "err", err)
+		}
+		if err := svc.SetSessionStatus(ctx, session, false); err != nil {
+			slog.Warn("tmux status hide failed", "session", session, "user", targetUser, "err", err)
+		}
+		return startTmuxAttachAsUserFn(ctx, session, targetUser, defaultTermCols, defaultTermRows)
+	}
+
+	// Default user: use var-based seams for test injection.
 	if err := tmuxEnsureWebMouse(ctx); err != nil {
 		slog.Warn("tmux web mouse patch failed", "session", session, "err", err)
 	}
-
-	// Best-effort: keep wheel events as tmux mouse scroll instead of
-	// application ArrowUp/ArrowDown in alternate buffer contexts.
 	if err := tmuxSetSessionMouse(ctx, session, true); err != nil {
 		slog.Warn("tmux mouse enable failed", "session", session, "err", err)
 	}
-
-	// Best-effort: hide status bar — the web UI provides its own
-	// window/pane management, making the tmux status line redundant.
 	if err := tmuxSetSessionStatus(ctx, session, false); err != nil {
 		slog.Warn("tmux status hide failed", "session", session, "err", err)
 	}

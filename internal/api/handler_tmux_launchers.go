@@ -175,13 +175,14 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		windowName = launcher.Name
 	}
 
-	createdWindow, err := h.tmux.NewWindowWithOptions(ctx, session, windowName, cwd)
+	svc := h.tmuxForSession(session)
+	createdWindow, err := svc.NewWindowWithOptions(ctx, session, windowName, cwd)
 	if err != nil {
 		writeTmuxError(w, err)
 		return
 	}
 	if strings.TrimSpace(launcher.Command) != "" {
-		if err := h.tmux.SendKeys(ctx, createdWindow.PaneID, launcher.Command, true); err != nil {
+		if err := svc.SendKeys(ctx, createdWindow.PaneID, launcher.Command, true); err != nil {
 			writeTmuxError(w, err)
 			return
 		}
@@ -232,7 +233,7 @@ func (h *Handler) resolveTmuxLauncherCwd(ctx context.Context, session string, la
 	case store.TmuxLauncherCwdModeFixed:
 		return launcher.CwdValue, nil
 	case store.TmuxLauncherCwdModeActivePane:
-		panes, err := h.tmux.ListPanes(ctx, session)
+		panes, err := h.tmuxForSession(session).ListPanes(ctx, session)
 		if err != nil {
 			return "", err
 		}
@@ -260,7 +261,8 @@ func isTmuxLauncherValidationError(err error) bool {
 	case "tmux launcher name is required",
 		"tmux launcher icon is required",
 		"tmux launcher fixed cwd is required",
-		"invalid tmux launcher cwd mode":
+		"invalid tmux launcher cwd mode",
+		"invalid tmux launcher user mode":
 		return true
 	default:
 		return false
@@ -275,6 +277,8 @@ func decodeTmuxLauncherWrite(r *http.Request) (store.TmuxLauncherWrite, error) {
 		CwdMode    string `json:"cwdMode"`
 		CwdValue   string `json:"cwdValue"`
 		WindowName string `json:"windowName"`
+		UserMode   string `json:"userMode"`
+		UserValue  string `json:"userValue"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		return store.TmuxLauncherWrite{}, err
@@ -286,6 +290,8 @@ func decodeTmuxLauncherWrite(r *http.Request) (store.TmuxLauncherWrite, error) {
 	req.CwdMode = strings.TrimSpace(req.CwdMode)
 	req.CwdValue = strings.TrimSpace(req.CwdValue)
 	req.WindowName = strings.TrimSpace(req.WindowName)
+	req.UserMode = strings.TrimSpace(req.UserMode)
+	req.UserValue = strings.TrimSpace(req.UserValue)
 
 	if !validate.WindowName(req.Name) {
 		return store.TmuxLauncherWrite{}, errors.New("tmux launcher name must match ^[A-Za-z0-9._\\- ]{1,64}$")
@@ -307,5 +313,7 @@ func decodeTmuxLauncherWrite(r *http.Request) (store.TmuxLauncherWrite, error) {
 		CwdMode:    req.CwdMode,
 		CwdValue:   req.CwdValue,
 		WindowName: req.WindowName,
+		UserMode:   req.UserMode,
+		UserValue:  req.UserValue,
 	}, nil
 }

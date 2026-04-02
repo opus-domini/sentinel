@@ -63,7 +63,8 @@ func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	liveWindows, err := h.tmux.ListWindows(ctx, session)
+	svc := h.tmuxForSession(session)
+	liveWindows, err := svc.ListWindows(ctx, session)
 	if err != nil {
 		writeTmuxError(w, err)
 		return
@@ -74,7 +75,7 @@ func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
 	}
 
 	activeWindowID := activeWindowRuntimeID(liveWindows)
-	if err := h.tmux.ReorderWindows(ctx, session, windowIDs); err != nil {
+	if err := svc.ReorderWindows(ctx, session, windowIDs); err != nil {
 		switch {
 		case tmux.IsKind(err, tmux.ErrKindInvalidIdentifier) && isWindowOrderStaleError(err):
 			writeError(w, http.StatusConflict, "WINDOW_ORDER_STALE", "window order is stale; refresh and retry", nil)
@@ -88,7 +89,7 @@ func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	liveWindows, err = h.tmux.ListWindows(ctx, session)
+	liveWindows, err = svc.ListWindows(ctx, session)
 	if err != nil {
 		writeTmuxError(w, err)
 		return
@@ -97,7 +98,7 @@ func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to sync managed tmux windows", nil)
 		return
 	}
-	restoreActiveWindowBestEffort(ctx, h.tmux, session, activeWindowID, liveWindows)
+	restoreActiveWindowBestEffort(ctx, svc, session, activeWindowID, liveWindows)
 
 	h.emit(events.TypeTmuxInspector, map[string]any{
 		"session": session,

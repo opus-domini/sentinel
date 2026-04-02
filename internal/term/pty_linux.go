@@ -26,6 +26,17 @@ func StartTmuxAttach(ctx context.Context, session string, cols, rows int) (*PTY,
 	return startCommand(ctx, cmd, cols, rows)
 }
 
+// StartTmuxAttachAsUser wraps the tmux attach command with sudo -n -u
+// to attach as a different OS user. When user is empty, it falls back
+// to the default StartTmuxAttach.
+func StartTmuxAttachAsUser(ctx context.Context, session, user string, cols, rows int) (*PTY, error) {
+	if user == "" {
+		return StartTmuxAttach(ctx, session, cols, rows)
+	}
+	cmd := exec.CommandContext(ctx, "sudo", "-n", "-u", user, "tmux", "attach", "-t", session)
+	return startCommand(ctx, cmd, cols, rows)
+}
+
 func StartShell(ctx context.Context, requestedShell string, cols, rows int) (*PTY, error) {
 	shellPath, err := resolveShell(requestedShell)
 	if err != nil {

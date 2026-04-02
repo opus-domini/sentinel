@@ -90,6 +90,12 @@ function SortablePresetLaunchItem({
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">
             {preset.cwd}
+            {preset.user && (
+              <>
+                <span className="mx-1 opacity-40">{'·'}</span>
+                <span className="text-primary-text/70">{preset.user}</span>
+              </>
+            )}
           </span>
         </span>
         <span className="shrink-0 text-[10px] text-muted-foreground">

@@ -10,6 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CreateSessionDialog from './CreateSessionDialog'
 
+vi.mock('@/contexts/MetaContext', () => ({
+  useMetaContext: () => ({
+    processUser: 'hugo',
+    isRoot: false,
+    allowedUsers: ['postgres'],
+  }),
+}))
+
 describe('CreateSessionDialog', () => {
   const originalFetch = globalThis.fetch
 
@@ -23,6 +31,60 @@ describe('CreateSessionDialog', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch
     cleanup()
+  })
+
+  it('shows the advanced section with run-as-user field', async () => {
+    render(
+      <CreateSessionDialog
+        open
+        onOpenChange={vi.fn()}
+        defaultCwd=""
+        onCreate={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('Advanced options'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Run as user')).toBeTruthy()
+    })
+  })
+
+  it('passes user when advanced section is filled', async () => {
+    const onOpenChange = vi.fn()
+    const onCreate = vi.fn()
+
+    render(
+      <CreateSessionDialog
+        open
+        onOpenChange={onOpenChange}
+        defaultCwd=""
+        onCreate={onCreate}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('session name'), {
+      target: { value: 'db' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('working directory'), {
+      target: { value: '/tmp' },
+    })
+    fireEvent.click(screen.getByText('Advanced options'))
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('hugo (default)')).toBeTruthy()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText('hugo (default)'), {
+      target: { value: 'postgres' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(onCreate).toHaveBeenCalledWith('db', '/tmp', 'postgres')
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+    })
   })
 
   it('creates sessions with name and working directory', async () => {
@@ -47,7 +109,7 @@ describe('CreateSessionDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
 
-    expect(onCreate).toHaveBeenCalledWith('dev', '/tmp')
+    expect(onCreate).toHaveBeenCalledWith('dev', '/tmp', undefined)
     await waitFor(() => {
       expect(onOpenChange).toHaveBeenCalledWith(false)
     })
