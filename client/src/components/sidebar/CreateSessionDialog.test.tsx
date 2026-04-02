@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CreateSessionDialog from './CreateSessionDialog'
@@ -19,7 +25,7 @@ describe('CreateSessionDialog', () => {
     cleanup()
   })
 
-  it('creates sessions with name and working directory', () => {
+  it('creates sessions with name and working directory', async () => {
     const onOpenChange = vi.fn()
     const onCreate = vi.fn()
 
@@ -42,6 +48,8 @@ describe('CreateSessionDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
 
     expect(onCreate).toHaveBeenCalledWith('dev', '/tmp')
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+    })
   })
 })

@@ -3,6 +3,17 @@ import cronstrue from 'cronstrue'
 import { CronExpressionParser } from 'cron-parser'
 import { Clock, Save, Trash2, X } from 'lucide-react'
 import type { OpsSchedule } from '@/types'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -357,15 +368,32 @@ export function RunbookScheduleEditor({
           Cancel
         </Button>
         {isEditing && onDelete && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 cursor-pointer gap-1 px-3 text-[11px] text-destructive-foreground hover:text-destructive-foreground"
-            onClick={onDelete}
-          >
-            <Trash2 className="h-3 w-3" />
-            Delete
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 cursor-pointer gap-1 px-3 text-[11px] text-destructive-foreground hover:text-destructive-foreground"
+              >
+                <Trash2 className="h-3 w-3" />
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete schedule?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={onDelete}>
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
     </div>

@@ -155,9 +155,19 @@ const ServicesBrowseList = memo(function ServicesBrowseList({
           </EmptyState>
         )}
         {browseError !== '' && (
-          <p className="px-2 pb-2 text-[12px] text-destructive-foreground">
-            {browseError}
-          </p>
+          <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3 mx-2 mb-2">
+            <p className="text-[12px] text-destructive-foreground">
+              {browseError}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 w-fit text-[11px]"
+              onClick={onRefreshBrowse}
+            >
+              Try again
+            </Button>
+          </div>
         )}
       </div>
     </ScrollArea>

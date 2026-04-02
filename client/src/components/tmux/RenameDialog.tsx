@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -17,7 +18,7 @@ type RenameDialogProps = {
   description: string
   value: string
   onValueChange: (value: string) => void
-  onSubmit: () => void
+  onSubmit: () => void | Promise<void>
   onClose?: () => void
 }
 
@@ -32,13 +33,17 @@ export default function RenameDialog(props: RenameDialogProps) {
     onSubmit,
     onClose,
   } = props
+  const [saving, setSaving] = useState(false)
 
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
         onOpenChange(nextOpen)
-        if (!nextOpen && onClose) onClose()
+        if (!nextOpen) {
+          setSaving(false)
+          if (onClose) onClose()
+        }
       }}
     >
       <DialogContent>
@@ -47,9 +52,15 @@ export default function RenameDialog(props: RenameDialogProps) {
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
-            onSubmit()
+            if (saving) return
+            setSaving(true)
+            try {
+              await onSubmit()
+            } finally {
+              setSaving(false)
+            }
           }}
         >
           <Input
@@ -61,7 +72,9 @@ export default function RenameDialog(props: RenameDialogProps) {
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>
             </DialogClose>
-            <Button type="submit">Rename</Button>
+            <Button type="submit" disabled={saving}>
+              Rename
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

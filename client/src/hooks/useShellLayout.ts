@@ -24,12 +24,30 @@ export function useShellLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => window.localStorage.getItem(storageKey) === '1',
   )
-  const [sidebarWidth, setSidebarWidth] = useState(defaultSidebarWidth)
+  const widthStorageKey = `${storageKey}_width`
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = window.localStorage.getItem(widthStorageKey)
+    if (stored !== null) {
+      const parsed = Number.parseFloat(stored)
+      if (
+        Number.isFinite(parsed) &&
+        parsed >= minSidebarWidth &&
+        parsed <= maxSidebarWidth
+      ) {
+        return parsed
+      }
+    }
+    return defaultSidebarWidth
+  })
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed, storageKey])
+
+  useEffect(() => {
+    window.localStorage.setItem(widthStorageKey, String(sidebarWidth))
+  }, [sidebarWidth, widthStorageKey])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

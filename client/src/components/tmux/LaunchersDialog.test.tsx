@@ -130,6 +130,9 @@ describe('LaunchersDialog', () => {
     fireEvent.click(screen.getByText('Claude Code').closest('button')!)
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
+    const confirmButton = await screen.findByRole('button', { name: 'Delete' })
+    fireEvent.click(confirmButton)
+
     await waitFor(() => {
       expect(onDelete).toHaveBeenCalledWith('launcher-claude')
     })

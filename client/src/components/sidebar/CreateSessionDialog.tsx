@@ -22,7 +22,7 @@ type CreateSessionDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultCwd: string
-  onCreate: (name: string, cwd: string) => void
+  onCreate: (name: string, cwd: string) => void | Promise<void>
 }
 
 type DirectorySuggestionsResponse = {
@@ -42,6 +42,7 @@ export default function CreateSessionDialog({
   const [cwdLoading, setCwdLoading] = useState(false)
   const [cwdFocused, setCwdFocused] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
+  const [saving, setSaving] = useState(false)
   const [frequentDirs, setFrequentDirs] = useState<Array<string>>([])
   const frequentDirsFetched = useRef(false)
 
@@ -52,6 +53,7 @@ export default function CreateSessionDialog({
     setCwdLoading(false)
     setCwdFocused(false)
     setActiveSuggestion(-1)
+    setSaving(false)
   }
 
   useEffect(() => {
@@ -177,13 +179,17 @@ export default function CreateSessionDialog({
     onOpenChange(next)
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = name.trim()
-    if (!trimmed) return
-    onCreate(trimmed, cwd.trim())
-    resetForm()
-    onOpenChange(false)
+    if (!trimmed || saving) return
+    setSaving(true)
+    try {
+      await onCreate(trimmed, cwd.trim())
+    } finally {
+      resetForm()
+      onOpenChange(false)
+    }
   }
 
   return (
@@ -312,7 +318,7 @@ export default function CreateSessionDialog({
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>
             </DialogClose>
-            <Button type="submit" disabled={!name.trim()}>
+            <Button type="submit" disabled={!name.trim() || saving}>
               Create
             </Button>
           </DialogFooter>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
   CheckCircle2,
   ChevronDown,
@@ -7,6 +7,17 @@ import {
   XCircle,
 } from 'lucide-react'
 import type { OpsRunbookRun } from '@/types'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -35,18 +46,10 @@ export function RunbookJobHistory({
   const [expandedStepIndices, setExpandedStepIndices] = useState<Set<number>>(
     new Set(),
   )
-  const [deleteJobTarget, setDeleteJobTarget] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (deleteJobTarget == null) return
-    const timer = setTimeout(() => setDeleteJobTarget(null), 3000)
-    return () => clearTimeout(timer)
-  }, [deleteJobTarget])
 
   const toggleJobExpand = useCallback((jobId: string) => {
     setExpandedJobId((prev) => (prev === jobId ? null : jobId))
     setExpandedStepIndices(new Set())
-    setDeleteJobTarget(null)
   }, [])
 
   const toggleStepExpand = useCallback((index: number) => {
@@ -62,7 +65,6 @@ export function RunbookJobHistory({
     async (jobId: string) => {
       await onDeleteJob(jobId)
       if (expandedJobId === jobId) setExpandedJobId(null)
-      setDeleteJobTarget(null)
     },
     [expandedJobId, onDeleteJob],
   )
@@ -152,29 +154,36 @@ export function RunbookJobHistory({
                         </div>
                       )}
                   </div>
-                  {job.status !== 'running' &&
-                    (deleteJobTarget === job.id ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 shrink-0 cursor-pointer px-1.5 text-[10px] text-destructive-foreground hover:text-destructive-foreground"
-                        onClick={() => {
-                          setDeleteJobTarget(null)
-                          void deleteJob(job.id)
-                        }}
-                      >
-                        Confirm?
-                      </Button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground opacity-0 transition-opacity hover:text-destructive-foreground group-hover/job:opacity-100"
-                        onClick={() => setDeleteJobTarget(job.id)}
-                        aria-label="Delete job"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    ))}
+                  {job.status !== 'running' && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button
+                          type="button"
+                          className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground opacity-0 transition-opacity hover:text-destructive-foreground group-hover/job:opacity-100"
+                          aria-label="Delete job"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete job?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            variant="destructive"
+                            onClick={() => void deleteJob(job.id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                 </div>
                 {isExpanded && steps.length > 0 && (
                   <div className="grid min-w-0 gap-0.5 border-t border-border-subtle px-2.5 py-2">

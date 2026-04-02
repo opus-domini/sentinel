@@ -355,7 +355,10 @@ export default function TmuxTerminalPanel({
             panes={panes}
             activeWindowIndex={activeWindowIndex}
             activePaneID={activePaneID}
-            onSelectPane={onSelectPane}
+            onSelectPane={(paneID) => {
+              onSelectPane(paneID)
+              onFocusTerminal?.()
+            }}
             onClosePane={onClosePane}
             onRenamePane={onRenamePane}
             onSplitPaneVertical={onSplitPaneVertical}
