@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.21](https://github.com/opus-domini/sentinel/compare/v0.5.20...v0.5.21) (2026-04-03)
+
+
+### Bug Fixes
+
+* add StartTmuxAttachAsUser to darwin PTY layer ([3045cb5](https://github.com/opus-domini/sentinel/commit/3045cb5e85ce5b9e153e3c17622926783b106997))
+
+
+### Documentation
+
+* comprehensive documentation update for multi-user sessions ([ef6d79b](https://github.com/opus-domini/sentinel/commit/ef6d79b500fab2cea0c467d1e8b167ef32d7bb03))
+
 ## [0.5.20](https://github.com/opus-domini/sentinel/compare/v0.5.19...v0.5.20) (2026-04-02)
 
 
