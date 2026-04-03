@@ -80,6 +80,7 @@ function createMockOptions(overrides: MockOptions = {}) {
   const pushSuccessToast = vi.fn()
   const setTmuxUnavailable = vi.fn()
   const requestGuardrailConfirm = vi.fn()
+  const refreshSessionPresets = vi.fn(() => Promise.resolve())
 
   const tabsStateRef: TabsStateRef = {
     current: { openTabs, activeSession, activeEpoch: 0 },
@@ -119,6 +120,7 @@ function createMockOptions(overrides: MockOptions = {}) {
     pushSuccessToast,
     pendingCreateSessionsRef,
     requestGuardrailConfirm,
+    refreshSessionPresets,
   }
 }
 

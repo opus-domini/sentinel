@@ -734,6 +734,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	h.sessionUsers.Delete(session)
 	if h.repo != nil {
 		_ = h.repo.DeleteSessionUser(context.Background(), session)
+		_ = h.repo.DeleteSessionPreset(context.Background(), session)
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "delete"})
 	w.WriteHeader(http.StatusNoContent)

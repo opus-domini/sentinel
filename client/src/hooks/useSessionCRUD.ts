@@ -39,6 +39,7 @@ type UseSessionCRUDOptions = {
     message: string,
     onConfirm: () => void,
   ) => void
+  refreshSessionPresets: () => Promise<void> | void
 }
 
 export function useSessionCRUD(options: UseSessionCRUDOptions) {
@@ -60,6 +61,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     pushSuccessToast,
     pendingCreateSessionsRef,
     requestGuardrailConfirm,
+    refreshSessionPresets,
   } = options
 
   const refreshGenerationRef = useRef(0)
@@ -371,6 +373,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           applyKillOptimisticUI(sessionName)
         }
         void refreshSessions()
+        void refreshSessionPresets()
         pushSuccessToast('Kill Session', `session "${sessionName}" killed`)
       } catch (error) {
         if (error instanceof GuardrailConfirmError) {

@@ -322,6 +322,7 @@ function TmuxPage() {
     pushSuccessToast,
     pendingCreateSessionsRef: inspector.pendingCreateSessionsRef,
     requestGuardrailConfirm,
+    refreshSessionPresets: () => refreshSessionPresets(),
   })
 
   // Wire the forwarding ref
