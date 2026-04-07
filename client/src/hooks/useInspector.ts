@@ -21,6 +21,7 @@ import type {
   SessionActivityPatch,
   SessionPatchApplyResult,
 } from '@/lib/tmuxSessionEvents'
+import { classifySessionPatches } from '@/lib/tmuxSessionEvents'
 import type {
   ApiFunction,
   InspectorSessionPatch,
@@ -518,14 +519,6 @@ export function useInspector(options: UseInspectorOptions) {
     (
       rawPatches: Array<SessionActivityPatch> | undefined,
     ): SessionPatchApplyResult => {
-      if (!Array.isArray(rawPatches) || rawPatches.length === 0) {
-        return {
-          hasInputPatches: false,
-          applied: false,
-          hasUnknownSession: false,
-        }
-      }
-
       const knownSessions = new Set(
         sessionsRef.current.map((item) => item.name.trim()),
       )
@@ -541,21 +534,22 @@ export function useInspector(options: UseInspectorOptions) {
         }
       }
 
-      let hasInputPatches = false
-      let hasUnknownSession = false
+      const classified = classifySessionPatches(
+        rawPatches,
+        knownSessions,
+        trackedSessions,
+      )
+      const { hasInputPatches, hasUnknownSession, applicableNames } = classified
+
       const patchesByName = new Map<string, SessionActivityPatch>()
-      for (const patch of rawPatches) {
-        const name = patch.name?.trim() ?? ''
-        if (name === '') continue
-        hasInputPatches = true
-        if (!trackedSessions.has(name)) {
-          continue
+      if (Array.isArray(rawPatches)) {
+        const applicable = new Set(applicableNames)
+        for (const patch of rawPatches) {
+          const name = patch.name?.trim() ?? ''
+          if (applicable.has(name)) {
+            patchesByName.set(name, patch)
+          }
         }
-        if (!knownSessions.has(name)) {
-          hasUnknownSession = true
-          continue
-        }
-        patchesByName.set(name, patch)
       }
       if (patchesByName.size === 0) {
         return { hasInputPatches, applied: false, hasUnknownSession }

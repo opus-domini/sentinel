@@ -198,8 +198,9 @@ func (g *Guard) SetAuthCookie(w http.ResponseWriter, r *http.Request) {
 		Value:    encodeBase64URL(g.token),
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 		Secure:   g.resolveSecure(r),
+		MaxAge:   30 * 24 * 60 * 60, // 30 days
 	})
 }
 
@@ -209,7 +210,7 @@ func (g *Guard) ClearAuthCookie(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 		Secure:   g.resolveSecure(r),
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0).UTC(),

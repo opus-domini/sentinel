@@ -238,8 +238,12 @@ func TestAuthCookieLifecycle(t *testing.T) {
 		if c.Secure {
 			t.Fatal("cookie Secure = true, want false on plain http")
 		}
-		if c.SameSite != http.SameSiteStrictMode {
-			t.Fatalf("cookie SameSite = %v, want %v", c.SameSite, http.SameSiteStrictMode)
+		if c.SameSite != http.SameSiteLaxMode {
+			t.Fatalf("cookie SameSite = %v, want %v", c.SameSite, http.SameSiteLaxMode)
+		}
+		wantMaxAge := 30 * 24 * 60 * 60
+		if c.MaxAge != wantMaxAge {
+			t.Fatalf("cookie MaxAge = %d, want %d", c.MaxAge, wantMaxAge)
 		}
 	})
 
@@ -293,6 +297,9 @@ func TestAuthCookieLifecycle(t *testing.T) {
 		}
 		if !c.Secure {
 			t.Fatal("cookie Secure = false, want true for tls request")
+		}
+		if c.SameSite != http.SameSiteLaxMode {
+			t.Fatalf("cookie SameSite = %v, want %v", c.SameSite, http.SameSiteLaxMode)
 		}
 	})
 }

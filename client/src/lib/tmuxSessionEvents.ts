@@ -24,6 +24,44 @@ export type SessionProjectionSnapshot = {
   unreadPanes: number
 }
 
+export type ClassifyPatchesResult = {
+  hasInputPatches: boolean
+  hasUnknownSession: boolean
+  applicableNames: Array<string>
+}
+
+export function classifySessionPatches(
+  rawPatches: Array<SessionActivityPatch> | undefined,
+  knownSessionNames: ReadonlySet<string>,
+  trackedSessionNames: ReadonlySet<string>,
+): ClassifyPatchesResult {
+  if (!Array.isArray(rawPatches) || rawPatches.length === 0) {
+    return {
+      hasInputPatches: false,
+      hasUnknownSession: false,
+      applicableNames: [],
+    }
+  }
+
+  let hasInputPatches = false
+  let hasUnknownSession = false
+  const applicableNames: Array<string> = []
+  for (const patch of rawPatches) {
+    const name = patch.name?.trim() ?? ''
+    if (name === '') continue
+    hasInputPatches = true
+    if (!knownSessionNames.has(name)) {
+      hasUnknownSession = true
+      continue
+    }
+    if (!trackedSessionNames.has(name)) {
+      continue
+    }
+    applicableNames.push(name)
+  }
+  return { hasInputPatches, hasUnknownSession, applicableNames }
+}
+
 export type InspectorProjectionRefreshMode = 'none' | 'windows' | 'full'
 
 export function shouldRefreshSessionsFromEvent(
@@ -34,10 +72,10 @@ export function shouldRefreshSessionsFromEvent(
   const { hasInputPatches, applied, hasUnknownSession } = patchResult
 
   if (action === 'activity' || action === 'seen') {
-    if (applied) {
+    if (applied && !hasUnknownSession) {
       return { refresh: false }
     }
-    if (hasInputPatches) {
+    if (hasInputPatches && !hasUnknownSession) {
       // Server already sent patch data; local policy may intentionally
       // skip applying patches for untracked idle sessions.
       return { refresh: false }
