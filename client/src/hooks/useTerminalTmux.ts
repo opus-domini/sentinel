@@ -1028,6 +1028,9 @@ export function useTerminalTmux({
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return
+      for (const runtime of runtimesRef.current.values()) {
+        runtime.terminal.clearTextureAtlas()
+      }
       const sessionName = activeSessionRef.current.trim()
       if (sessionName === '') return
       const runtime = runtimesRef.current.get(sessionName)
@@ -1040,6 +1043,17 @@ export function useTerminalTmux({
     return () =>
       document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [connectRuntime])
+
+  useEffect(() => {
+    const ATLAS_REFRESH_MS = 5 * 60 * 1000
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      for (const runtime of runtimesRef.current.values()) {
+        runtime.terminal.clearTextureAtlas()
+      }
+    }, ATLAS_REFRESH_MS)
+    return () => window.clearInterval(id)
+  }, [])
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {

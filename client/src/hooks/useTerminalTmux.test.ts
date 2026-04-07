@@ -43,6 +43,7 @@ vi.mock('@xterm/xterm', () => {
       getSelection = vi.fn(() => '')
       scrollToBottom = vi.fn()
       dispose = vi.fn()
+      clearTextureAtlas = vi.fn()
       attachCustomWheelEventHandler = vi.fn()
     },
   }
