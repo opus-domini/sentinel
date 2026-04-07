@@ -2558,7 +2558,7 @@ func TestNewWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, tm, nil)
 
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
 			r.SetPathValue("session", "dev")
@@ -4854,6 +4854,7 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("schedule not found after trigger")
+		return // unreachable; helps staticcheck prove got != nil
 	}
 	if got.LastRunStatus == "running" {
 		t.Fatalf("schedule stuck in running; expected terminal status")
@@ -4931,6 +4932,7 @@ func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("schedule not found after trigger")
+		return // unreachable; helps staticcheck prove got != nil
 	}
 	if got.LastRunStatus == "running" {
 		t.Fatalf("once schedule stuck in running; expected terminal status")
@@ -5116,6 +5118,7 @@ func TestTriggerCronScheduleRecomputesNextRunAt(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("schedule not found")
+		return // unreachable; helps staticcheck prove got != nil
 	}
 	if got.NextRunAt == stale {
 		t.Fatal("next_run_at was not recomputed; still has stale value")
