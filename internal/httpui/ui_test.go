@@ -35,6 +35,7 @@ type fakePingConn struct {
 const (
 	testSessionName   = "dev"
 	testSeenScopePane = "pane"
+	testMessageStatus = "status"
 )
 
 func (f *fakePingConn) WritePing(_ []byte) error {
@@ -157,7 +158,7 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 		if enabled {
 			t.Fatal("enabled = true, want false")
 		}
-		callOrder = append(callOrder, "status")
+		callOrder = append(callOrder, testMessageStatus)
 		return nil
 	}
 
@@ -181,7 +182,7 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 	if got != wantPTY {
 		t.Fatalf("startTmuxPTY returned unexpected PTY pointer")
 	}
-	if !slices.Equal(callOrder, []string{"mouse", "status", "attach"}) {
+	if !slices.Equal(callOrder, []string{"mouse", testMessageStatus, "attach"}) {
 		t.Fatalf("call order = %v, want [mouse status attach]", callOrder)
 	}
 }
@@ -205,7 +206,7 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 		return errors.New("set-option failed")
 	}
 	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error {
-		callOrder = append(callOrder, "status")
+		callOrder = append(callOrder, testMessageStatus)
 		return nil
 	}
 
@@ -223,7 +224,7 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 	if got != wantPTY {
 		t.Fatalf("startTmuxPTY returned unexpected PTY pointer")
 	}
-	if !slices.Equal(callOrder, []string{"mouse", "status", "attach"}) {
+	if !slices.Equal(callOrder, []string{"mouse", testMessageStatus, "attach"}) {
 		t.Fatalf("call order = %v, want [mouse status attach]", callOrder)
 	}
 }
@@ -266,7 +267,7 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	}
 	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error {
 		mu.Lock()
-		callOrder = append(callOrder, "status")
+		callOrder = append(callOrder, testMessageStatus)
 		mu.Unlock()
 		return nil
 	}
@@ -302,14 +303,14 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	if err := json.Unmarshal(payload, &status); err != nil {
 		t.Fatalf("status payload is not JSON: %v", err)
 	}
-	if status["type"] != "status" || status["state"] != testStateAttached || status["session"] != testSessionName {
+	if status["type"] != testMessageStatus || status["state"] != testStateAttached || status["session"] != testSessionName {
 		t.Fatalf("unexpected status payload: %s", string(payload))
 	}
 
 	mu.Lock()
 	gotOrder := append([]string{}, callOrder...)
 	mu.Unlock()
-	if !slices.Equal(gotOrder, []string{"mouse", "status", "attach"}) {
+	if !slices.Equal(gotOrder, []string{"mouse", testMessageStatus, "attach"}) {
 		t.Fatalf("call order = %v, want [mouse status attach]", gotOrder)
 	}
 }
@@ -343,7 +344,7 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	}
 	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error {
 		mu.Lock()
-		callOrder = append(callOrder, "status")
+		callOrder = append(callOrder, testMessageStatus)
 		mu.Unlock()
 		return nil
 	}
@@ -380,8 +381,101 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	mu.Lock()
 	gotOrder := append([]string{}, callOrder...)
 	mu.Unlock()
-	if !slices.Equal(gotOrder, []string{"mouse", "status", "attach"}) {
+	if !slices.Equal(gotOrder, []string{"mouse", testMessageStatus, "attach"}) {
 		t.Fatalf("call order = %v, want [mouse status attach]", gotOrder)
+	}
+}
+
+func TestAttachWSAllowsConcurrentClientsForSameSession(t *testing.T) {
+	originalExists := tmuxSessionExistsFn
+	originalEnsureMouse := tmuxEnsureWebMouse
+	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
+	originalAttach := startTmuxAttachFn
+	t.Cleanup(func() {
+		tmuxSessionExistsFn = originalExists
+		tmuxEnsureWebMouse = originalEnsureMouse
+		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
+		startTmuxAttachFn = originalAttach
+	})
+	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
+	tmuxSessionExistsFn = func(_ context.Context, session string) (bool, error) {
+		if session != testSessionName {
+			t.Fatalf("session = %q, want %q", session, testSessionName)
+		}
+		return true, nil
+	}
+	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error { return nil }
+	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error { return nil }
+	startTmuxAttachFn = func(ctx context.Context, _ string, cols, rows int) (*term.PTY, error) {
+		return term.StartShell(ctx, "/bin/sh", cols, rows)
+	}
+
+	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
+	srv := httptest.NewServer(http.HandlerFunc(h.attachWS))
+	defer srv.Close()
+
+	connA := dialWebSocketPath(t, srv.URL, "/ws/tmux?session="+testSessionName)
+	defer func() { _ = connA.Close() }()
+	connB := dialWebSocketPath(t, srv.URL, "/ws/tmux?session="+testSessionName)
+	defer func() { _ = connB.Close() }()
+
+	for _, conn := range []net.Conn{connA, connB} {
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		opcode, payload, err := readServerFrame(conn)
+		if err != nil {
+			t.Fatalf("readServerFrame error = %v", err)
+		}
+		if opcode != ws.OpText {
+			t.Fatalf("opcode = %d, want %d (text)", opcode, ws.OpText)
+		}
+		var status map[string]any
+		if err := json.Unmarshal(payload, &status); err != nil {
+			t.Fatalf("status payload is not JSON: %v", err)
+		}
+		if status["type"] != testMessageStatus || status["state"] != testStateAttached || status["session"] != testSessionName {
+			t.Fatalf("unexpected status payload: %s", string(payload))
+		}
+	}
+}
+
+func TestAttachEventsWSAllowsConcurrentSubscribers(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		guard:  security.New("", nil, security.CookieSecureAuto),
+		events: events.NewHub(),
+	}
+	srv := httptest.NewServer(http.HandlerFunc(h.attachEventsWS))
+	defer srv.Close()
+
+	connA := dialWebSocketPath(t, srv.URL, "/ws/events")
+	defer func() { _ = connA.Close() }()
+	connB := dialWebSocketPath(t, srv.URL, "/ws/events")
+	defer func() { _ = connB.Close() }()
+
+	for _, conn := range []net.Conn{connA, connB} {
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		opcode, payload, err := readServerFrame(conn)
+		if err != nil {
+			t.Fatalf("readServerFrame error = %v", err)
+		}
+		if opcode != ws.OpText {
+			t.Fatalf("opcode = %d, want %d (text)", opcode, ws.OpText)
+		}
+		var ready struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Message string `json:"message"`
+			} `json:"payload"`
+		}
+		if err := json.Unmarshal(payload, &ready); err != nil {
+			t.Fatalf("ready payload is not JSON: %v", err)
+		}
+		if ready.Type != events.TypeReady || ready.Payload.Message != "subscribed" {
+			t.Fatalf("unexpected ready payload: %s", string(payload))
+		}
 	}
 }
 
