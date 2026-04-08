@@ -169,6 +169,8 @@ function makeOptions(overrides?: Partial<Options>): Options {
     timelineOpenRef: makeRef(false),
     timelineSessionFilterRef: makeRef('all'),
     loadTimelineRef: makeRef(vi.fn()),
+    handleTmuxSessionsEvent: vi.fn(() => false),
+    handleTmuxInspectorEvent: vi.fn(() => false),
     ...overrides,
   }
 }
@@ -437,6 +439,49 @@ describe('useTmuxEventsSocket', () => {
       )
     })
 
+    it('lets a correlated tmux.sessions.updated handler suppress the generic session refresh schedule', () => {
+      mockedShouldRefreshSessions.mockReturnValue({ refresh: true })
+      const refreshSessions = vi.fn(() => Promise.resolve())
+      const handleTmuxSessionsEvent = vi.fn(() => true)
+      const opts = makeOptions({
+        refreshSessions,
+        handleTmuxSessionsEvent,
+      })
+      renderHook(() => useTmuxEventsSocket(opts))
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+      const refreshSessionsCallsBeforeEvent = refreshSessions.mock.calls.length
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.sessions.updated',
+          eventId: 1,
+          payload: {
+            action: 'create',
+            session: 'main',
+            operationId: 'session-create-1',
+          },
+        })
+      })
+
+      act(() => {
+        vi.advanceTimersByTime(250)
+      })
+
+      expect(handleTmuxSessionsEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'create',
+          session: 'main',
+          operationId: 'session-create-1',
+        }),
+      )
+      expect(refreshSessions.mock.calls.length).toBe(
+        refreshSessionsCallsBeforeEvent,
+      )
+    })
+
     it('handles tmux.activity.updated and applies patches', () => {
       const applySessionActivityPatches = vi.fn(() => NO_PATCHES)
       const applyInspectorProjectionPatches = vi.fn(() => false)
@@ -485,6 +530,8 @@ describe('useTmuxEventsSocket', () => {
       act(() => {
         lastSocket().emitOpen()
       })
+      const refreshInspectorCallsBeforeEvent =
+        refreshInspector.mock.calls.length
 
       act(() => {
         lastSocket().emitMessage({
@@ -505,6 +552,49 @@ describe('useTmuxEventsSocket', () => {
       expect(refreshInspector).toHaveBeenCalledWith('main', {
         background: true,
       })
+    })
+
+    it('lets a correlated tmux.inspector.updated handler suppress the generic inspector refresh schedule', () => {
+      const refreshInspector = vi.fn(() => Promise.resolve())
+      const handleTmuxInspectorEvent = vi.fn(() => true)
+      const opts = makeOptions({
+        refreshInspector,
+        handleTmuxInspectorEvent,
+      })
+      renderHook(() => useTmuxEventsSocket(opts))
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+      const refreshInspectorCallsBeforeEvent =
+        refreshInspector.mock.calls.length
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.inspector.updated',
+          eventId: 1,
+          payload: {
+            action: 'new-window',
+            session: 'main',
+            operationId: 'window-create-1',
+          },
+        })
+      })
+
+      act(() => {
+        vi.advanceTimersByTime(250)
+      })
+
+      expect(handleTmuxInspectorEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'new-window',
+          session: 'main',
+          operationId: 'window-create-1',
+        }),
+      )
+      expect(refreshInspector.mock.calls.length).toBe(
+        refreshInspectorCallsBeforeEvent,
+      )
     })
 
     it('skips inspector refresh when action is "seen"', () => {

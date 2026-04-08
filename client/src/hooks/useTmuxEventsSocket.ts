@@ -6,6 +6,8 @@ import type {
   PresenceSocketRef,
   RuntimeMetrics,
   SeenAckMessage,
+  TmuxInspectorUpdatedPayload,
+  TmuxSessionsUpdatedPayload,
   TabsStateRef,
 } from './tmuxTypes'
 import type {
@@ -30,7 +32,7 @@ type UseTmuxEventsSocketOptions = {
   refreshSessions: () => Promise<void>
   refreshInspector: (
     target: string,
-    options?: { background?: boolean },
+    options?: { background?: boolean; force?: boolean },
   ) => Promise<void>
   pushErrorToast: (title: string, message: string) => void
   applySessionActivityPatches: (
@@ -46,6 +48,12 @@ type UseTmuxEventsSocketOptions = {
   loadTimelineRef: React.MutableRefObject<
     (options?: { quiet?: boolean }) => void
   >
+  handleTmuxSessionsEvent?: (
+    payload: TmuxSessionsUpdatedPayload | undefined,
+  ) => boolean
+  handleTmuxInspectorEvent?: (
+    payload: TmuxInspectorUpdatedPayload | undefined,
+  ) => boolean
 }
 
 export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
@@ -70,6 +78,8 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     timelineOpenRef,
     timelineSessionFilterRef,
     loadTimelineRef,
+    handleTmuxSessionsEvent,
+    handleTmuxInspectorEvent,
   } = options
 
   const [eventsSocketConnected, setEventsSocketConnected] = useState(false)
@@ -381,11 +391,13 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
             }
             case 'tmux.sessions.updated': {
               applyInspectorProjectionPatches(msg.payload?.inspectorPatches)
+              const handledTmuxSessionsEvent =
+                handleTmuxSessionsEvent?.(msg.payload) === true
               const decision = shouldRefreshSessionsFromEvent(
                 msg.payload?.action,
                 applySessionActivityPatches(msg.payload?.sessionPatches),
               )
-              if (decision.refresh) {
+              if (!handledTmuxSessionsEvent && decision.refresh) {
                 if (typeof decision.minGapMs === 'number') {
                   schedule('sessions', { minGapMs: decision.minGapMs })
                 } else {
@@ -405,13 +417,20 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
               if (action === '') {
                 break
               }
+              const handledTmuxInspectorEvent =
+                handleTmuxInspectorEvent?.(msg.payload) === true
               const target = msg.payload?.session?.trim() ?? ''
               const active = tabsStateRef.current.activeSession
               const skipInspectorRefresh =
                 action === 'seen' ||
                 action === 'select-window' ||
                 action === 'select-pane'
-              if (!skipInspectorRefresh && target !== '' && target === active) {
+              if (
+                !handledTmuxInspectorEvent &&
+                !skipInspectorRefresh &&
+                target !== '' &&
+                target === active
+              ) {
                 schedule('inspector')
               }
               if (hasEventGap) {
@@ -530,6 +549,8 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     runtimeMetricsRef,
     seenAckWaitersRef,
     sendPresenceOverWS,
+    handleTmuxInspectorEvent,
+    handleTmuxSessionsEvent,
     setToken,
     settlePendingSeenAcks,
     syncActivityDelta,

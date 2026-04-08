@@ -1231,6 +1231,43 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("emits operation id on create event", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		hub := events.NewHub()
+		eventsCh, unsubscribe := hub.Subscribe(8)
+		defer unsubscribe()
+		h.events = hub
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(
+			"POST",
+			"/api/tmux/sessions",
+			strings.NewReader(`{"name":"test-session","operationId":"op-session-1"}`),
+		)
+		h.createSession(w, r)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201", w.Code)
+		}
+
+		select {
+		case event := <-eventsCh:
+			if event.Type != events.TypeTmuxSessions {
+				t.Fatalf("event type = %q, want %q", event.Type, events.TypeTmuxSessions)
+			}
+			if event.Payload["action"] != "create" {
+				t.Fatalf("event action = %v, want create", event.Payload["action"])
+			}
+			if event.Payload["operationId"] != "op-session-1" {
+				t.Fatalf("operationId = %v, want op-session-1", event.Payload["operationId"])
+			}
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("timed out waiting for create event")
+		}
+	})
+
 	t.Run("success with cwd", func(t *testing.T) {
 		t.Parallel()
 
@@ -1354,6 +1391,46 @@ func TestDeleteSessionHandler(t *testing.T) {
 
 		if w.Code != http.StatusNoContent {
 			t.Errorf("status = %d, want 204", w.Code)
+		}
+	})
+
+	t.Run("emits operation id on new window events", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		hub := events.NewHub()
+		eventsCh, unsubscribe := hub.Subscribe(8)
+		defer unsubscribe()
+		h.events = hub
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(
+			"POST",
+			"/api/tmux/sessions/dev/new-window",
+			strings.NewReader(`{"operationId":"op-window-1"}`),
+		)
+		r.SetPathValue("session", "dev")
+		h.newWindow(w, r)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", w.Code)
+		}
+
+		gotTypes := map[string]bool{}
+		timeout := time.After(200 * time.Millisecond)
+		for len(gotTypes) < 2 {
+			select {
+			case event := <-eventsCh:
+				if event.Type != events.TypeTmuxInspector && event.Type != events.TypeTmuxSessions {
+					continue
+				}
+				if event.Payload["operationId"] != "op-window-1" {
+					t.Fatalf("operationId = %v, want op-window-1", event.Payload["operationId"])
+				}
+				gotTypes[event.Type] = true
+			case <-timeout:
+				t.Fatalf("timed out waiting for new window events, got=%v", gotTypes)
+			}
 		}
 	})
 
@@ -2784,6 +2861,51 @@ func TestSplitPaneHandler(t *testing.T) {
 
 		if w.Code != http.StatusNoContent {
 			t.Errorf("status = %d, want 204", w.Code)
+		}
+	})
+
+	t.Run("emits operation id on split pane events", func(t *testing.T) {
+		t.Parallel()
+
+		tm := &mockTmux{
+			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
+				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
+		hub := events.NewHub()
+		eventsCh, unsubscribe := hub.Subscribe(8)
+		defer unsubscribe()
+		h.events = hub
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(
+			"POST",
+			"/api/tmux/sessions/dev/split-pane",
+			strings.NewReader(`{"paneId":"%0","direction":"vertical","operationId":"op-pane-1"}`),
+		)
+		r.SetPathValue("session", "dev")
+		h.splitPane(w, r)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", w.Code)
+		}
+
+		gotTypes := map[string]bool{}
+		timeout := time.After(200 * time.Millisecond)
+		for len(gotTypes) < 2 {
+			select {
+			case event := <-eventsCh:
+				if event.Type != events.TypeTmuxInspector && event.Type != events.TypeTmuxSessions {
+					continue
+				}
+				if event.Payload["operationId"] != "op-pane-1" {
+					t.Fatalf("operationId = %v, want op-pane-1", event.Payload["operationId"])
+				}
+				gotTypes[event.Type] = true
+			case <-timeout:
+				t.Fatalf("timed out waiting for split pane events, got=%v", gotTypes)
+			}
 		}
 	})
 

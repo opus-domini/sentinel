@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { GuardrailConfirmError } from './useTmuxApi'
 import { isTmuxBinaryMissingMessage } from './tmuxTypes'
 import type { ConnectionState, Session, SessionsResponse } from '@/types'
@@ -6,9 +6,11 @@ import type {
   ApiFunction,
   DispatchTabs,
   RuntimeMetrics,
+  TmuxSessionsUpdatedPayload,
   TabsStateRef,
 } from './tmuxTypes'
 import { slugifyTmuxName } from '@/lib/tmuxName'
+import { createTmuxOperationId } from '@/lib/tmuxOperationId'
 import {
   mergePendingCreateSessions,
   upsertOptimisticAttachedSession,
@@ -28,7 +30,7 @@ type UseSessionCRUDOptions = {
   connectionState: ConnectionState
   refreshInspector: (
     target: string,
-    options?: { background?: boolean },
+    options?: { background?: boolean; force?: boolean },
   ) => Promise<void>
   clearPendingInspectorSessionState: (session: string) => void
   pushErrorToast: (title: string, message: string) => void
@@ -41,6 +43,18 @@ type UseSessionCRUDOptions = {
   ) => void
   refreshSessionPresets: () => Promise<void> | void
 }
+
+type PendingSessionCreateOperation = {
+  operationId: string
+  sessionName: string
+  optimisticSessionName: string | null
+  previousActiveSession: string
+  eventSeen: boolean
+  converged: boolean
+  timeoutId: number | null
+}
+
+const sessionCreateConvergenceTimeoutMs = 4_000
 
 export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const {
@@ -67,7 +81,11 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const refreshGenerationRef = useRef(0)
   const pendingKillSessionsRef = useRef(new Set<string>())
   const pendingRenameSessionsRef = useRef(new Map<string, string>())
+  const pendingSessionCreateOpsRef = useRef(
+    new Map<string, PendingSessionCreateOperation>(),
+  )
   const lastSessionsRefreshAtRef = useRef(0)
+  const refreshSessionsFnRef = useRef<() => Promise<void>>(async () => {})
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameSessionTarget, setRenameSessionTarget] = useState<string | null>(
@@ -85,6 +103,151 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     }
   }, [])
 
+  const clearSessionCreateTimeout = useCallback((operationId: string) => {
+    const op = pendingSessionCreateOpsRef.current.get(operationId)
+    if (!op || op.timeoutId === null) {
+      return
+    }
+    window.clearTimeout(op.timeoutId)
+    op.timeoutId = null
+  }, [])
+
+  const settlePendingSessionCreateSuccess = useCallback(
+    (operationId: string) => {
+      const op = pendingSessionCreateOpsRef.current.get(operationId)
+      if (!op) {
+        return
+      }
+      clearSessionCreateTimeout(operationId)
+      pendingSessionCreateOpsRef.current.delete(operationId)
+      pushSuccessToast('Create Session', `session "${op.sessionName}" created`)
+    },
+    [clearSessionCreateTimeout, pushSuccessToast],
+  )
+
+  const rollbackPendingSessionCreate = useCallback(
+    (operationId: string, message: string) => {
+      const op = pendingSessionCreateOpsRef.current.get(operationId)
+      if (!op) {
+        return
+      }
+      clearSessionCreateTimeout(operationId)
+      pendingSessionCreateOpsRef.current.delete(operationId)
+      pendingCreateSessionsRef.current.delete(op.sessionName)
+      clearPendingInspectorSessionState(op.sessionName)
+      clearPendingSessionRenamesForName(op.sessionName)
+
+      const optimisticSessionName = op.optimisticSessionName?.trim() ?? ''
+      if (optimisticSessionName !== '') {
+        setSessions((prev) =>
+          prev.filter((item) => item.name !== optimisticSessionName),
+        )
+        dispatchTabs({ type: 'close', session: optimisticSessionName })
+        const currentActiveSession = tabsStateRef.current.activeSession
+        if (
+          currentActiveSession === optimisticSessionName &&
+          op.previousActiveSession !== '' &&
+          op.previousActiveSession !== optimisticSessionName
+        ) {
+          dispatchTabs({
+            type: 'activate',
+            session: op.previousActiveSession,
+          })
+        }
+      }
+
+      setConnection('error', message)
+      pushErrorToast('Create Session', message)
+    },
+    [
+      clearPendingInspectorSessionState,
+      clearPendingSessionRenamesForName,
+      clearSessionCreateTimeout,
+      dispatchTabs,
+      pendingCreateSessionsRef,
+      pushErrorToast,
+      setConnection,
+      setSessions,
+      tabsStateRef,
+    ],
+  )
+
+  const settlePendingSessionCreateIfReady = useCallback(
+    (operationId: string) => {
+      const op = pendingSessionCreateOpsRef.current.get(operationId)
+      if (!op || !op.eventSeen || !op.converged) {
+        return
+      }
+      settlePendingSessionCreateSuccess(operationId)
+    },
+    [settlePendingSessionCreateSuccess],
+  )
+
+  const markPendingSessionCreateConverged = useCallback(
+    (sessionName: string) => {
+      const target = sessionName.trim()
+      if (target === '') {
+        return
+      }
+      for (const [operationId, op] of pendingSessionCreateOpsRef.current) {
+        if (op.sessionName !== target) {
+          continue
+        }
+        op.converged = true
+        settlePendingSessionCreateIfReady(operationId)
+      }
+    },
+    [settlePendingSessionCreateIfReady],
+  )
+
+  const armPendingSessionCreateTimeout = useCallback(
+    (operationId: string) => {
+      const op = pendingSessionCreateOpsRef.current.get(operationId)
+      if (!op || op.timeoutId !== null) {
+        return
+      }
+      op.timeoutId = window.setTimeout(() => {
+        void (async () => {
+          const currentOp = pendingSessionCreateOpsRef.current.get(operationId)
+          if (!currentOp) {
+            return
+          }
+          await refreshSessionsFnRef.current()
+          if (currentOp.sessionName.trim() !== '') {
+            await refreshInspector(currentOp.sessionName, { force: true })
+          }
+          const refreshedOp =
+            pendingSessionCreateOpsRef.current.get(operationId)
+          if (!refreshedOp) {
+            return
+          }
+          if (refreshedOp.converged) {
+            settlePendingSessionCreateSuccess(operationId)
+            return
+          }
+          rollbackPendingSessionCreate(
+            operationId,
+            `timed out waiting for session "${refreshedOp.sessionName}" to be ready`,
+          )
+        })()
+      }, sessionCreateConvergenceTimeoutMs)
+    },
+    [
+      refreshInspector,
+      rollbackPendingSessionCreate,
+      settlePendingSessionCreateSuccess,
+    ],
+  )
+
+  useEffect(() => {
+    return () => {
+      for (const operationId of pendingSessionCreateOpsRef.current.keys()) {
+        clearSessionCreateTimeout(operationId)
+      }
+      pendingSessionCreateOpsRef.current.clear()
+    }
+  }, [clearSessionCreateTimeout])
+
   const refreshSessions = useCallback(async () => {
     runtimeMetricsRef.current.sessionsRefreshCount += 1
     const gen = ++refreshGenerationRef.current
@@ -98,10 +261,13 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         pendingKillSessionsRef.current,
         pendingRenameSessionsRef.current,
       )
-      // Note: pending creates are removed by the creation flow itself
-      // (after the force inspector refresh completes), NOT here. This
-      // prevents a race where an event-triggered refreshSessions clears
-      // the pending set while the inspector is still loading windows/panes.
+      // Pending creates are cleared only after the sessions endpoint
+      // confirms them. This keeps optimistic sidebar entries visible while
+      // tmux/watchtower convergence is still catching up after creation.
+      for (const name of merged.confirmedPendingNames) {
+        markPendingSessionCreateConverged(name)
+        pendingCreateSessionsRef.current.delete(name)
+      }
       for (const name of merged.confirmedKilledNames) {
         pendingKillSessionsRef.current.delete(name)
       }
@@ -138,6 +304,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   }, [
     api,
     clearPendingInspectorSessionState,
+    markPendingSessionCreateConverged,
     clearPendingSessionRenamesForName,
     closeCurrentSocket,
     dispatchTabs,
@@ -149,6 +316,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     setTmuxUnavailable,
     tabsStateRef,
   ])
+  refreshSessionsFnRef.current = refreshSessions
 
   const activateSession = useCallback(
     (session: string, icon = '') => {
@@ -184,9 +352,21 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       const sessionAlreadyExists = sessionsRef.current.some(
         (item) => item.name === sessionName,
       )
+      const operationId = createTmuxOperationId('session-create')
+      const operation: PendingSessionCreateOperation = {
+        operationId,
+        sessionName,
+        optimisticSessionName: null,
+        previousActiveSession,
+        eventSeen: false,
+        converged: false,
+        timeoutId: null,
+      }
+      pendingSessionCreateOpsRef.current.set(operationId, operation)
       if (!sessionAlreadyExists) {
         const optimisticAt = new Date().toISOString()
         pendingCreateSessionsRef.current.set(sessionName, optimisticAt)
+        operation.optimisticSessionName = sessionName
         setSessions((prev) =>
           upsertOptimisticAttachedSession(
             prev,
@@ -205,7 +385,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         if (guardrailConfirmed) {
           headers['X-Sentinel-Guardrail-Confirm'] = 'true'
         }
-        const body: Record<string, string> = { name: sessionName, cwd, icon }
+        const body: Record<string, string> = {
+          name: sessionName,
+          cwd,
+          icon,
+          operationId,
+        }
         if (user) body.user = user
         const result = await api<{ name: string }>('/api/tmux/sessions', {
           method: 'POST',
@@ -217,50 +402,71 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         // original name was already taken.
         const createdName = result.name || sessionName
         if (createdName !== sessionName) {
-          // Replace the optimistic session with the actual name.
+          operation.sessionName = createdName
           pendingCreateSessionsRef.current.delete(sessionName)
           pendingCreateSessionsRef.current.set(
             createdName,
             new Date().toISOString(),
           )
-          setSessions((prev) => {
-            const without = prev.filter((s) => s.name !== sessionName)
-            return upsertOptimisticAttachedSession(
-              without,
-              createdName,
-              new Date().toISOString(),
-              icon,
-              user,
+          if (!sessionAlreadyExists) {
+            setSessions((prev) => {
+              const without = prev.filter((s) => s.name !== sessionName)
+              return upsertOptimisticAttachedSession(
+                without,
+                createdName,
+                new Date().toISOString(),
+                icon,
+                user,
+              )
+            })
+            operation.optimisticSessionName = createdName
+            dispatchTabs({ type: 'close', session: sessionName })
+            dispatchTabs({ type: 'activate', session: createdName })
+          } else {
+            setSessions((prev) =>
+              upsertOptimisticAttachedSession(
+                prev,
+                createdName,
+                new Date().toISOString(),
+                icon,
+                user,
+              ),
             )
-          })
-          dispatchTabs({ type: 'close', session: sessionName })
-          dispatchTabs({ type: 'activate', session: createdName })
+            operation.optimisticSessionName = createdName
+            dispatchTabs({ type: 'activate', session: createdName })
+          }
         } else if (sessionAlreadyExists) {
           activateSession(createdName, icon)
         }
         setConnection('connecting', `opening ${createdName}`)
-        await refreshInspector(createdName, { force: true })
-        pendingCreateSessionsRef.current.delete(createdName)
-        void refreshSessions()
-        pushSuccessToast('Create Session', `session "${createdName}" created`)
+        armPendingSessionCreateTimeout(operationId)
+        settlePendingSessionCreateIfReady(operationId)
       } catch (error) {
-        pendingCreateSessionsRef.current.delete(sessionName)
-        if (!sessionAlreadyExists) {
-          setSessions((prev) =>
-            prev.filter((item) => item.name !== sessionName),
-          )
-          dispatchTabs({ type: 'close', session: sessionName })
-          const currentActiveSession = tabsStateRef.current.activeSession
-          if (
-            currentActiveSession === sessionName &&
-            previousActiveSession !== '' &&
-            previousActiveSession !== sessionName
-          ) {
-            dispatchTabs({ type: 'activate', session: previousActiveSession })
-          }
-        }
-
         if (error instanceof GuardrailConfirmError) {
+          pendingSessionCreateOpsRef.current.delete(operationId)
+          if (operation.optimisticSessionName !== null) {
+            pendingCreateSessionsRef.current.delete(operation.sessionName)
+            setSessions((prev) =>
+              prev.filter(
+                (item) => item.name !== operation.optimisticSessionName,
+              ),
+            )
+            dispatchTabs({
+              type: 'close',
+              session: operation.optimisticSessionName,
+            })
+            const currentActiveSession = tabsStateRef.current.activeSession
+            if (
+              currentActiveSession === operation.optimisticSessionName &&
+              previousActiveSession !== '' &&
+              previousActiveSession !== operation.optimisticSessionName
+            ) {
+              dispatchTabs({
+                type: 'activate',
+                session: previousActiveSession,
+              })
+            }
+          }
           const rules = error.decision.matchedRules
           requestGuardrailConfirm(
             rules[0]?.name ?? '',
@@ -273,21 +479,20 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
 
         const msg =
           error instanceof Error ? error.message : 'failed to create session'
-        setConnection('error', msg)
-        pushErrorToast('Create Session', msg)
+        rollbackPendingSessionCreate(operationId, msg)
       }
     },
     [
       activateSession,
       api,
+      armPendingSessionCreateTimeout,
       clearPendingInspectorSessionState,
       clearPendingSessionRenamesForName,
       dispatchTabs,
       pendingCreateSessionsRef,
+      rollbackPendingSessionCreate,
+      settlePendingSessionCreateIfReady,
       pushErrorToast,
-      pushSuccessToast,
-      refreshInspector,
-      refreshSessions,
       requestGuardrailConfirm,
       sessionsRef,
       setConnection,
@@ -301,6 +506,73 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       await createSessionWithConfirm(name, cwd, icon, false, user)
     },
     [createSessionWithConfirm],
+  )
+
+  const handleTmuxSessionsEvent = useCallback(
+    (payload: TmuxSessionsUpdatedPayload | undefined) => {
+      const operationId = payload?.operationId?.trim() ?? ''
+      const action = payload?.action?.trim().toLowerCase() ?? ''
+      if (operationId === '' || action !== 'create') {
+        return false
+      }
+      const op = pendingSessionCreateOpsRef.current.get(operationId)
+      if (!op) {
+        return false
+      }
+      op.eventSeen = true
+      const eventSessionName = payload?.session?.trim() ?? ''
+      if (eventSessionName !== '') {
+        if (eventSessionName !== op.sessionName) {
+          const pendingCreatedAt =
+            pendingCreateSessionsRef.current.get(op.sessionName) ??
+            new Date().toISOString()
+          pendingCreateSessionsRef.current.delete(op.sessionName)
+          pendingCreateSessionsRef.current.set(
+            eventSessionName,
+            pendingCreatedAt,
+          )
+          if (
+            op.optimisticSessionName !== null &&
+            op.optimisticSessionName !== eventSessionName
+          ) {
+            setSessions((prev) => {
+              const previousOptimistic = prev.find(
+                (item) => item.name === op.optimisticSessionName,
+              )
+              const withoutPrevious = prev.filter(
+                (item) => item.name !== op.optimisticSessionName,
+              )
+              return upsertOptimisticAttachedSession(
+                withoutPrevious,
+                eventSessionName,
+                pendingCreatedAt,
+                previousOptimistic?.icon ?? '',
+                previousOptimistic?.user,
+              )
+            })
+            dispatchTabs({ type: 'close', session: op.optimisticSessionName })
+            dispatchTabs({ type: 'activate', session: eventSessionName })
+            op.optimisticSessionName = eventSessionName
+          }
+        }
+        op.sessionName = eventSessionName
+      }
+      const targetSession = op.sessionName
+      if (targetSession !== '') {
+        void refreshInspector(targetSession, { force: true })
+      }
+      void refreshSessions()
+      settlePendingSessionCreateIfReady(operationId)
+      return true
+    },
+    [
+      dispatchTabs,
+      pendingCreateSessionsRef,
+      refreshInspector,
+      refreshSessions,
+      setSessions,
+      settlePendingSessionCreateIfReady,
+    ],
   )
 
   const applyKillOptimisticUI = useCallback(
@@ -457,7 +729,10 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       try {
         await api<{ name: string }>(
           `/api/tmux/sessions/${encodeURIComponent(active)}`,
-          { method: 'PATCH', body: JSON.stringify({ newName: sanitized }) },
+          {
+            method: 'PATCH',
+            body: JSON.stringify({ newName: sanitized }),
+          },
         )
         void refreshSessions()
         setConnection(
@@ -614,6 +889,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     refreshSessions,
     activateSession,
     createSession,
+    handleTmuxSessionsEvent,
     killSession,
     renameActive,
     setSessionIcon,

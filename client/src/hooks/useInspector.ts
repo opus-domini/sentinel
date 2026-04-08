@@ -26,6 +26,7 @@ import type {
   ApiFunction,
   InspectorSessionPatch,
   RuntimeMetrics,
+  TmuxInspectorUpdatedPayload,
   TabsStateRef,
 } from './tmuxTypes'
 import {
@@ -34,6 +35,7 @@ import {
 } from '@/lib/tmuxQueryCache'
 import { shouldSkipInspectorRefresh } from '@/lib/tmuxInspectorRefresh'
 import { moveSidebarItem } from '@/lib/sessionSidebarOrder'
+import { createTmuxOperationId } from '@/lib/tmuxOperationId'
 import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName } from '@/lib/tmuxName'
 import {
   addPendingPaneClose,
@@ -311,6 +313,26 @@ type UseInspectorOptions = {
   ) => void
 }
 
+type PendingWindowCreateOperation = {
+  operationId: string
+  sessionName: string
+  windowIndex: number
+  eventSeen: boolean
+  converged: boolean
+  timeoutId: number | null
+}
+
+type PendingPaneSplitOperation = {
+  operationId: string
+  sessionName: string
+  windowIndex: number
+  eventSeen: boolean
+  converged: boolean
+  timeoutId: number | null
+}
+
+const inspectorCreateConvergenceTimeoutMs = 4_000
+
 export function useInspector(options: UseInspectorOptions) {
   const {
     api,
@@ -336,7 +358,19 @@ export function useInspector(options: UseInspectorOptions) {
   const pendingWindowPaneFloorsRef = useRef(
     new Map<string, Map<number, number>>(),
   )
+  const pendingWindowCreateOpsRef = useRef(
+    new Map<string, PendingWindowCreateOperation>(),
+  )
+  const pendingPaneSplitOpsRef = useRef(
+    new Map<string, PendingPaneSplitOperation>(),
+  )
   const pendingSelectMutationKindRef = useRef<'window' | 'pane' | null>(null)
+  const refreshInspectorFnRef = useRef<
+    (
+      target: string,
+      params?: { background?: boolean; force?: boolean },
+    ) => Promise<void>
+  >(async () => {})
 
   const [windows, setWindows] = useState<Array<WindowInfo>>(() => {
     const active = activeSession.trim()
@@ -464,7 +498,276 @@ export function useInspector(options: UseInspectorOptions) {
       pendingWindowPaneFloorsRef.current,
       session,
     )
+    for (const [operationId, operation] of pendingWindowCreateOpsRef.current) {
+      if (operation.sessionName !== session) {
+        continue
+      }
+      if (operation.timeoutId !== null) {
+        window.clearTimeout(operation.timeoutId)
+      }
+      pendingWindowCreateOpsRef.current.delete(operationId)
+    }
+    for (const [operationId, operation] of pendingPaneSplitOpsRef.current) {
+      if (operation.sessionName !== session) {
+        continue
+      }
+      if (operation.timeoutId !== null) {
+        window.clearTimeout(operation.timeoutId)
+      }
+      pendingPaneSplitOpsRef.current.delete(operationId)
+    }
   }, [])
+
+  const clearInspectorCreateTimeout = useCallback(
+    (
+      operations:
+        | Map<string, PendingWindowCreateOperation>
+        | Map<string, PendingPaneSplitOperation>,
+      operationId: string,
+    ) => {
+      const operation = operations.get(operationId)
+      if (!operation || operation.timeoutId === null) {
+        return
+      }
+      window.clearTimeout(operation.timeoutId)
+      operation.timeoutId = null
+    },
+    [],
+  )
+
+  const settlePendingWindowCreateIfReady = useCallback(
+    (operationId: string) => {
+      const operation = pendingWindowCreateOpsRef.current.get(operationId)
+      if (!operation || !operation.eventSeen || !operation.converged) {
+        return
+      }
+      clearInspectorCreateTimeout(
+        pendingWindowCreateOpsRef.current,
+        operationId,
+      )
+      pendingWindowCreateOpsRef.current.delete(operationId)
+    },
+    [clearInspectorCreateTimeout],
+  )
+
+  const settlePendingPaneSplitIfReady = useCallback(
+    (operationId: string) => {
+      const operation = pendingPaneSplitOpsRef.current.get(operationId)
+      if (!operation || !operation.eventSeen || !operation.converged) {
+        return
+      }
+      clearInspectorCreateTimeout(pendingPaneSplitOpsRef.current, operationId)
+      pendingPaneSplitOpsRef.current.delete(operationId)
+    },
+    [clearInspectorCreateTimeout],
+  )
+
+  const markPendingWindowCreateConverged = useCallback(
+    (session: string, windowIndex: number) => {
+      const name = session.trim()
+      if (name === '' || !Number.isFinite(windowIndex) || windowIndex < 0) {
+        return
+      }
+      const normalizedIndex = Math.trunc(windowIndex)
+      for (const [
+        operationId,
+        operation,
+      ] of pendingWindowCreateOpsRef.current) {
+        if (
+          operation.sessionName !== name ||
+          operation.windowIndex !== normalizedIndex
+        ) {
+          continue
+        }
+        operation.converged = true
+        settlePendingWindowCreateIfReady(operationId)
+      }
+    },
+    [settlePendingWindowCreateIfReady],
+  )
+
+  const markPendingPaneSplitConverged = useCallback(
+    (session: string, windowIndex: number) => {
+      const name = session.trim()
+      if (name === '' || !Number.isFinite(windowIndex) || windowIndex < 0) {
+        return
+      }
+      const normalizedIndex = Math.trunc(windowIndex)
+      for (const [operationId, operation] of pendingPaneSplitOpsRef.current) {
+        if (
+          operation.sessionName !== name ||
+          operation.windowIndex !== normalizedIndex
+        ) {
+          continue
+        }
+        operation.converged = true
+        settlePendingPaneSplitIfReady(operationId)
+      }
+    },
+    [settlePendingPaneSplitIfReady],
+  )
+
+  const rollbackPendingWindowCreate = useCallback(
+    (
+      operationId: string,
+      message: string,
+      rollbackOptions?: { quiet?: boolean },
+    ) => {
+      const operation = pendingWindowCreateOpsRef.current.get(operationId)
+      if (!operation) {
+        return
+      }
+      clearInspectorCreateTimeout(
+        pendingWindowCreateOpsRef.current,
+        operationId,
+      )
+      pendingWindowCreateOpsRef.current.delete(operationId)
+      removePendingWindowCreate(
+        pendingCreateWindowsRef.current,
+        operation.sessionName,
+        operation.windowIndex,
+      )
+      clearPendingWindowPaneFloor(
+        pendingWindowPaneFloorsRef.current,
+        operation.sessionName,
+        operation.windowIndex,
+      )
+      if (!rollbackOptions?.quiet) {
+        setInspectorError(message)
+        pushErrorToast('New Window', message)
+      }
+      void refreshInspectorFnRef.current(operation.sessionName, {
+        background: true,
+      })
+      void refreshSessions()
+    },
+    [clearInspectorCreateTimeout, pushErrorToast, refreshSessions],
+  )
+
+  const rollbackPendingPaneSplit = useCallback(
+    (
+      operationId: string,
+      message: string,
+      rollbackOptions?: { quiet?: boolean },
+    ) => {
+      const operation = pendingPaneSplitOpsRef.current.get(operationId)
+      if (!operation) {
+        return
+      }
+      clearInspectorCreateTimeout(pendingPaneSplitOpsRef.current, operationId)
+      pendingPaneSplitOpsRef.current.delete(operationId)
+      clearPendingWindowPaneFloor(
+        pendingWindowPaneFloorsRef.current,
+        operation.sessionName,
+        operation.windowIndex,
+      )
+      if (!rollbackOptions?.quiet) {
+        setInspectorError(message)
+        pushErrorToast('Split Pane', message)
+      }
+      void refreshInspectorFnRef.current(operation.sessionName, {
+        background: true,
+      })
+      void refreshSessions()
+    },
+    [clearInspectorCreateTimeout, pushErrorToast, refreshSessions],
+  )
+
+  const armPendingWindowCreateTimeout = useCallback(
+    (operationId: string) => {
+      const operation = pendingWindowCreateOpsRef.current.get(operationId)
+      if (!operation || operation.timeoutId !== null) {
+        return
+      }
+      operation.timeoutId = window.setTimeout(() => {
+        void (async () => {
+          const currentOperation =
+            pendingWindowCreateOpsRef.current.get(operationId)
+          if (!currentOperation) {
+            return
+          }
+          await refreshInspectorFnRef.current(currentOperation.sessionName, {
+            background: true,
+          })
+          await refreshSessions()
+          const refreshedOperation =
+            pendingWindowCreateOpsRef.current.get(operationId)
+          if (!refreshedOperation) {
+            return
+          }
+          if (refreshedOperation.converged) {
+            clearInspectorCreateTimeout(
+              pendingWindowCreateOpsRef.current,
+              operationId,
+            )
+            pendingWindowCreateOpsRef.current.delete(operationId)
+            return
+          }
+          rollbackPendingWindowCreate(
+            operationId,
+            'timed out waiting for window creation confirmation',
+          )
+        })()
+      }, inspectorCreateConvergenceTimeoutMs)
+    },
+    [clearInspectorCreateTimeout, refreshSessions, rollbackPendingWindowCreate],
+  )
+
+  const armPendingPaneSplitTimeout = useCallback(
+    (operationId: string) => {
+      const operation = pendingPaneSplitOpsRef.current.get(operationId)
+      if (!operation || operation.timeoutId !== null) {
+        return
+      }
+      operation.timeoutId = window.setTimeout(() => {
+        void (async () => {
+          const currentOperation =
+            pendingPaneSplitOpsRef.current.get(operationId)
+          if (!currentOperation) {
+            return
+          }
+          await refreshInspectorFnRef.current(currentOperation.sessionName, {
+            background: true,
+          })
+          await refreshSessions()
+          const refreshedOperation =
+            pendingPaneSplitOpsRef.current.get(operationId)
+          if (!refreshedOperation) {
+            return
+          }
+          if (refreshedOperation.converged) {
+            clearInspectorCreateTimeout(
+              pendingPaneSplitOpsRef.current,
+              operationId,
+            )
+            pendingPaneSplitOpsRef.current.delete(operationId)
+            return
+          }
+          rollbackPendingPaneSplit(
+            operationId,
+            'timed out waiting for pane split confirmation',
+          )
+        })()
+      }, inspectorCreateConvergenceTimeoutMs)
+    },
+    [clearInspectorCreateTimeout, refreshSessions, rollbackPendingPaneSplit],
+  )
+
+  useEffect(() => {
+    return () => {
+      for (const operationId of pendingWindowCreateOpsRef.current.keys()) {
+        clearInspectorCreateTimeout(
+          pendingWindowCreateOpsRef.current,
+          operationId,
+        )
+      }
+      for (const operationId of pendingPaneSplitOpsRef.current.keys()) {
+        clearInspectorCreateTimeout(pendingPaneSplitOpsRef.current, operationId)
+      }
+      pendingWindowCreateOpsRef.current.clear()
+      pendingPaneSplitOpsRef.current.clear()
+    }
+  }, [clearInspectorCreateTimeout])
 
   const mergeInspectorSnapshotWithPending = useCallback(
     (
@@ -509,10 +812,12 @@ export function useInspector(options: UseInspectorOptions) {
           session,
           index,
         )
+        markPendingWindowCreateConverged(session, index)
+        markPendingPaneSplitConverged(session, index)
       }
       return merged
     },
-    [],
+    [markPendingPaneSplitConverged, markPendingWindowCreateConverged],
   )
 
   const applySessionActivityPatches = useCallback(
@@ -879,6 +1184,7 @@ export function useInspector(options: UseInspectorOptions) {
       setTmuxUnavailable,
     ],
   )
+  refreshInspectorFnRef.current = refreshInspector
 
   // Keep inspector in sync when user switches active session/tab.
   useEffect(() => {
@@ -973,7 +1279,10 @@ export function useInspector(options: UseInspectorOptions) {
       const gen = selectInFlightRef.current
       void api<void>(
         `/api/tmux/sessions/${encodeURIComponent(active)}/select-window`,
-        { method: 'POST', body: JSON.stringify({ index: windowIndex }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ index: windowIndex }),
+        },
       )
         .then(() => {
           // Prompt refresh so the override is confirmed without waiting for
@@ -1023,7 +1332,10 @@ export function useInspector(options: UseInspectorOptions) {
       const gen = selectInFlightRef.current
       void api<void>(
         `/api/tmux/sessions/${encodeURIComponent(active)}/select-pane`,
-        { method: 'POST', body: JSON.stringify({ paneId: paneID }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ paneId: paneID }),
+        },
       )
         .then(() => {
           void refreshInspector(active, { background: true })
@@ -1043,148 +1355,132 @@ export function useInspector(options: UseInspectorOptions) {
     [api, panes, pushErrorToast, refreshInspector, tabsStateRef],
   )
 
-  const createWindow = useCallback(() => {
-    const active = tabsStateRef.current.activeSession
-    if (!active) return
-    const changedAt = new Date().toISOString()
-    const nextIdx = windows.reduce((h, w) => Math.max(h, w.index), -1) + 1
-    const pendingPaneID = buildPendingSplitPaneID(active, nextIdx, 0)
-    removePendingWindowClose(pendingCloseWindowsRef.current, active, nextIdx)
-    addPendingWindowCreate(pendingCreateWindowsRef.current, active, nextIdx)
-    setPendingWindowPaneFloor(
-      pendingWindowPaneFloorsRef.current,
-      active,
-      nextIdx,
-      1,
-    )
-    setInspectorError('')
-    setSessions((prev) =>
-      prev.map((item) =>
-        item.name === active
-          ? {
-              ...item,
-              windows: item.windows + 1,
-              panes: item.panes + 1,
-              activityAt: changedAt,
-            }
-          : item,
-      ),
-    )
-    setWindows((prev) => [
-      ...prev
-        .filter((w) => w.index !== nextIdx)
-        .map((w) => ({ ...w, active: false })),
-      {
-        session: active,
-        index: nextIdx,
-        name: 'new',
-        displayName: 'new',
-        tmuxWindowId: undefined,
-        active: true,
-        panes: 1,
-      },
-    ])
-    setPanes((prev) => [
-      ...prev
-        .filter((paneInfo) => paneInfo.paneId !== pendingPaneID)
-        .map((p) => ({ ...p, active: false })),
-      {
-        session: active,
+  const createWindowWithConfirm = useCallback(
+    async (guardrailConfirmed: boolean) => {
+      const active = tabsStateRef.current.activeSession
+      if (!active) return
+
+      const changedAt = new Date().toISOString()
+      const nextIdx =
+        windows.reduce((highest, windowInfo) => {
+          return Math.max(highest, windowInfo.index)
+        }, -1) + 1
+      const pendingPaneID = buildPendingSplitPaneID(active, nextIdx, 0)
+      const operationId = createTmuxOperationId('window-create')
+
+      removePendingWindowClose(pendingCloseWindowsRef.current, active, nextIdx)
+      addPendingWindowCreate(pendingCreateWindowsRef.current, active, nextIdx)
+      setPendingWindowPaneFloor(
+        pendingWindowPaneFloorsRef.current,
+        active,
+        nextIdx,
+        1,
+      )
+      pendingWindowCreateOpsRef.current.set(operationId, {
+        operationId,
+        sessionName: active,
         windowIndex: nextIdx,
-        paneIndex: 0,
-        paneId: pendingPaneID,
-        title: 'new',
-        active: true,
-        tty: '',
-        hasUnread: false,
-      },
-    ])
-    setActiveWindowIndexOverride(nextIdx)
-    setActivePaneIDOverride(pendingPaneID)
-    void api<void>(
-      `/api/tmux/sessions/${encodeURIComponent(active)}/new-window`,
-      { method: 'POST', body: '{}' },
-    )
-      .then(() => {
-        removePendingWindowCreate(
-          pendingCreateWindowsRef.current,
-          active,
-          nextIdx,
-        )
-        clearPendingWindowPaneFloor(
-          pendingWindowPaneFloorsRef.current,
-          active,
-          nextIdx,
-        )
-        void refreshInspector(active, { background: true })
-        void refreshSessions()
+        eventSeen: false,
+        converged: false,
+        timeoutId: null,
       })
-      .catch((error) => {
-        removePendingWindowCreate(
-          pendingCreateWindowsRef.current,
-          active,
-          nextIdx,
+
+      setInspectorError('')
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.name === active
+            ? {
+                ...item,
+                windows: item.windows + 1,
+                panes: item.panes + 1,
+                activityAt: changedAt,
+              }
+            : item,
+        ),
+      )
+      setWindows((prev) => [
+        ...prev
+          .filter((windowInfo) => windowInfo.index !== nextIdx)
+          .map((windowInfo) => ({ ...windowInfo, active: false })),
+        {
+          session: active,
+          index: nextIdx,
+          name: 'new',
+          displayName: 'new',
+          tmuxWindowId: undefined,
+          active: true,
+          panes: 1,
+        },
+      ])
+      setPanes((prev) => [
+        ...prev
+          .filter((paneInfo) => paneInfo.paneId !== pendingPaneID)
+          .map((paneInfo) => ({ ...paneInfo, active: false })),
+        {
+          session: active,
+          windowIndex: nextIdx,
+          paneIndex: 0,
+          paneId: pendingPaneID,
+          title: 'new',
+          active: true,
+          tty: '',
+          hasUnread: false,
+        },
+      ])
+      setActiveWindowIndexOverride(nextIdx)
+      setActivePaneIDOverride(pendingPaneID)
+
+      try {
+        const headers: Record<string, string> = {}
+        if (guardrailConfirmed) {
+          headers['X-Sentinel-Guardrail-Confirm'] = 'true'
+        }
+        await api<void>(
+          `/api/tmux/sessions/${encodeURIComponent(active)}/new-window`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ operationId }),
+            headers,
+          },
         )
+        armPendingWindowCreateTimeout(operationId)
+        settlePendingWindowCreateIfReady(operationId)
+      } catch (error) {
         if (error instanceof GuardrailConfirmError) {
+          rollbackPendingWindowCreate(operationId, error.decision.message, {
+            quiet: true,
+          })
           const rules = error.decision.matchedRules
           requestGuardrailConfirm(
             rules[0]?.name ?? '',
             error.decision.message,
             () => {
-              void api<void>(
-                `/api/tmux/sessions/${encodeURIComponent(active)}/new-window`,
-                {
-                  method: 'POST',
-                  body: '{}',
-                  headers: { 'X-Sentinel-Guardrail-Confirm': 'true' },
-                },
-              )
-                .then(() => {
-                  removePendingWindowCreate(
-                    pendingCreateWindowsRef.current,
-                    active,
-                    nextIdx,
-                  )
-                  clearPendingWindowPaneFloor(
-                    pendingWindowPaneFloorsRef.current,
-                    active,
-                    nextIdx,
-                  )
-                  void refreshInspector(active, { background: true })
-                  void refreshSessions()
-                })
-                .catch((retryError) => {
-                  const retryMsg =
-                    retryError instanceof Error
-                      ? retryError.message
-                      : 'failed to create window'
-                  pushErrorToast('New Window', retryMsg)
-                  void refreshInspector(active, { background: true })
-                  void refreshSessions()
-                })
+              void createWindowWithConfirm(true)
             },
           )
-          void refreshInspector(active, { background: true })
-          void refreshSessions()
           return
         }
-        const msg =
+
+        const message =
           error instanceof Error ? error.message : 'failed to create window'
-        setInspectorError(msg)
-        pushErrorToast('New Window', msg)
-        void refreshInspector(active, { background: true })
-        void refreshSessions()
-      })
-  }, [
-    api,
-    pushErrorToast,
-    refreshInspector,
-    refreshSessions,
-    requestGuardrailConfirm,
-    setSessions,
-    tabsStateRef,
-    windows,
-  ])
+        rollbackPendingWindowCreate(operationId, message)
+      }
+    },
+    [
+      api,
+      armPendingWindowCreateTimeout,
+      requestGuardrailConfirm,
+      rollbackPendingWindowCreate,
+      setSessions,
+      settlePendingWindowCreateIfReady,
+      tabsStateRef,
+      windows,
+    ],
+  )
+
+  const createWindow = useCallback(() => {
+    void createWindowWithConfirm(false)
+  }, [createWindowWithConfirm])
 
   const closeWindow = useCallback(
     (windowIndex: number) => {
@@ -1250,7 +1546,10 @@ export function useInspector(options: UseInspectorOptions) {
       setActivePaneIDOverride(nextPI)
       void api<void>(
         `/api/tmux/sessions/${encodeURIComponent(active)}/kill-window`,
-        { method: 'POST', body: JSON.stringify({ index: windowIndex }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ index: windowIndex }),
+        },
       )
         .then(() => {
           removePendingWindowClose(
@@ -1420,7 +1719,10 @@ export function useInspector(options: UseInspectorOptions) {
       setActivePaneIDOverride(nextPI)
       void api<void>(
         `/api/tmux/sessions/${encodeURIComponent(active)}/kill-pane`,
-        { method: 'POST', body: JSON.stringify({ paneId: paneID }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ paneId: paneID }),
+        },
       )
         .then(() => {
           removePendingPaneClose(pendingClosePanesRef.current, active, paneID)
@@ -1509,8 +1811,11 @@ export function useInspector(options: UseInspectorOptions) {
     ],
   )
 
-  const splitPane = useCallback(
-    (direction: 'vertical' | 'horizontal') => {
+  const splitPaneWithConfirm = useCallback(
+    async (
+      direction: 'vertical' | 'horizontal',
+      guardrailConfirmed: boolean,
+    ) => {
       const active = tabsStateRef.current.activeSession
       if (!active) return
       const changedAt = new Date().toISOString()
@@ -1549,12 +1854,21 @@ export function useInspector(options: UseInspectorOptions) {
         target.windowIndex,
         inWin.length,
       )
+      const operationId = createTmuxOperationId('pane-split')
       setPendingWindowPaneFloor(
         pendingWindowPaneFloorsRef.current,
         active,
         target.windowIndex,
         expectedPaneFloor,
       )
+      pendingPaneSplitOpsRef.current.set(operationId, {
+        operationId,
+        sessionName: active,
+        windowIndex: target.windowIndex,
+        eventSeen: false,
+        converged: false,
+        timeoutId: null,
+      })
       setInspectorError('')
       setSessions((prev) =>
         prev.map((item) =>
@@ -1602,87 +1916,106 @@ export function useInspector(options: UseInspectorOptions) {
       })
       setActiveWindowIndexOverride(target.windowIndex)
       setActivePaneIDOverride(pendingPaneID)
-      void api<void>(
-        `/api/tmux/sessions/${encodeURIComponent(active)}/split-pane`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ paneId: targetID, direction }),
-        },
-      )
-        .then(() => {
-          clearPendingWindowPaneFloor(
-            pendingWindowPaneFloorsRef.current,
-            active,
-            target.windowIndex,
+      try {
+        const headers: Record<string, string> = {}
+        if (guardrailConfirmed) {
+          headers['X-Sentinel-Guardrail-Confirm'] = 'true'
+        }
+        await api<void>(
+          `/api/tmux/sessions/${encodeURIComponent(active)}/split-pane`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ paneId: targetID, direction, operationId }),
+            headers,
+          },
+        )
+        armPendingPaneSplitTimeout(operationId)
+        settlePendingPaneSplitIfReady(operationId)
+      } catch (error) {
+        if (error instanceof GuardrailConfirmError) {
+          rollbackPendingPaneSplit(operationId, error.decision.message, {
+            quiet: true,
+          })
+          const rules = error.decision.matchedRules
+          requestGuardrailConfirm(
+            rules[0]?.name ?? '',
+            error.decision.message,
+            () => {
+              void splitPaneWithConfirm(direction, true)
+            },
           )
-          void refreshInspector(active, { background: true })
-          void refreshSessions()
-        })
-        .catch((error) => {
-          clearPendingWindowPaneFloor(
-            pendingWindowPaneFloorsRef.current,
-            active,
-            target.windowIndex,
-          )
-          if (error instanceof GuardrailConfirmError) {
-            const rules = error.decision.matchedRules
-            requestGuardrailConfirm(
-              rules[0]?.name ?? '',
-              error.decision.message,
-              () => {
-                void api<void>(
-                  `/api/tmux/sessions/${encodeURIComponent(active)}/split-pane`,
-                  {
-                    method: 'POST',
-                    body: JSON.stringify({
-                      paneId: targetID,
-                      direction,
-                    }),
-                    headers: { 'X-Sentinel-Guardrail-Confirm': 'true' },
-                  },
-                )
-                  .then(() => {
-                    clearPendingWindowPaneFloor(
-                      pendingWindowPaneFloorsRef.current,
-                      active,
-                      target.windowIndex,
-                    )
-                    void refreshInspector(active, { background: true })
-                    void refreshSessions()
-                  })
-                  .catch((retryError) => {
-                    const retryMsg =
-                      retryError instanceof Error
-                        ? retryError.message
-                        : 'failed to split pane'
-                    pushErrorToast('Split Pane', retryMsg)
-                    void refreshInspector(active, { background: true })
-                    void refreshSessions()
-                  })
-              },
-            )
-            void refreshInspector(active, { background: true })
-            void refreshSessions()
-            return
-          }
-          const msg =
-            error instanceof Error ? error.message : 'failed to split pane'
-          setInspectorError(msg)
-          pushErrorToast('Split Pane', msg)
-          void refreshInspector(active, { background: true })
-          void refreshSessions()
-        })
+          return
+        }
+        const message =
+          error instanceof Error ? error.message : 'failed to split pane'
+        rollbackPendingPaneSplit(operationId, message)
+      }
     },
     [
       api,
+      armPendingPaneSplitTimeout,
       panes,
-      pushErrorToast,
-      refreshInspector,
-      refreshSessions,
       requestGuardrailConfirm,
+      rollbackPendingPaneSplit,
       setSessions,
+      settlePendingPaneSplitIfReady,
       tabsStateRef,
       windows,
+    ],
+  )
+
+  const splitPane = useCallback(
+    (direction: 'vertical' | 'horizontal') => {
+      void splitPaneWithConfirm(direction, false)
+    },
+    [splitPaneWithConfirm],
+  )
+
+  const handleTmuxInspectorEvent = useCallback(
+    (payload: TmuxInspectorUpdatedPayload | undefined) => {
+      const operationId = payload?.operationId?.trim() ?? ''
+      const action = payload?.action?.trim().toLowerCase() ?? ''
+      const session = payload?.session?.trim() ?? ''
+      if (operationId === '') {
+        return false
+      }
+
+      if (action === 'new-window') {
+        const operation = pendingWindowCreateOpsRef.current.get(operationId)
+        if (!operation) {
+          return false
+        }
+        operation.eventSeen = true
+        void refreshInspectorFnRef.current(session || operation.sessionName, {
+          background: true,
+          force: true,
+        })
+        void refreshSessions()
+        settlePendingWindowCreateIfReady(operationId)
+        return true
+      }
+
+      if (action === 'split-pane') {
+        const operation = pendingPaneSplitOpsRef.current.get(operationId)
+        if (!operation) {
+          return false
+        }
+        operation.eventSeen = true
+        void refreshInspectorFnRef.current(session || operation.sessionName, {
+          background: true,
+          force: true,
+        })
+        void refreshSessions()
+        settlePendingPaneSplitIfReady(operationId)
+        return true
+      }
+
+      return false
+    },
+    [
+      refreshSessions,
+      settlePendingPaneSplitIfReady,
+      settlePendingWindowCreateIfReady,
     ],
   )
 
@@ -1841,6 +2174,7 @@ export function useInspector(options: UseInspectorOptions) {
     closeWindow,
     splitPane,
     closePane,
+    handleTmuxInspectorEvent,
     handleOpenRenameWindow,
     handleSubmitRenameWindow,
     handleOpenRenamePane,

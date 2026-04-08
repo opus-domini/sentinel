@@ -57,6 +57,14 @@ func sameProjectedPaneSet(live []tmux.Pane, projected []store.WatchtowerPane) bo
 	return true
 }
 
+func setOperationID(payload map[string]any, operationID string) {
+	trimmed := strings.TrimSpace(operationID)
+	if trimmed == "" {
+		return
+	}
+	payload["operationId"] = trimmed
+}
+
 func projectedWindowsToEnriched(
 	windows []store.WatchtowerWindow,
 	panes []store.WatchtowerPane,
@@ -437,10 +445,11 @@ func (h *Handler) purgeStoredSessionsBestEffort(ctx context.Context, activeNames
 
 func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
-		Cwd  string `json:"cwd"`
-		Icon string `json:"icon"`
-		User string `json:"user"`
+		Name        string `json:"name"`
+		Cwd         string `json:"cwd"`
+		Icon        string `json:"icon"`
+		User        string `json:"user"`
+		OperationID string `json:"operationId"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
@@ -451,6 +460,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	req.Cwd = strings.TrimSpace(req.Cwd)
 	req.Icon = strings.TrimSpace(req.Icon)
 	req.User = strings.TrimSpace(req.User)
+	req.OperationID = strings.TrimSpace(req.OperationID)
 	if req.Cwd == "" {
 		req.Cwd = defaultSessionCWD()
 	}
@@ -521,7 +531,12 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	if err := h.repo.MoveSessionToFront(ctx, finalName); err != nil {
 		slog.Warn("failed to move session to front", "session", finalName, "err", err)
 	}
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": finalName, "action": "create"})
+	payload := map[string]any{
+		"session": finalName,
+		"action":  "create",
+	}
+	setOperationID(payload, req.OperationID)
+	h.emit(events.TypeTmuxSessions, payload)
 	writeData(w, http.StatusCreated, map[string]any{"name": finalName})
 }
 
@@ -1265,6 +1280,15 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var req struct {
+		OperationID string `json:"operationId"`
+	}
+	if err := decodeOptionalJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	req.OperationID = strings.TrimSpace(req.OperationID)
+
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
@@ -1310,13 +1334,20 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("failed to apply default pane title", "session", session, "paneId", createdWindow.PaneID, "title", paneTitle, "err", err)
 		}
 	}
-	h.emit(events.TypeTmuxInspector, map[string]any{
+	inspectorPayload := map[string]any{
 		"session": session,
 		"action":  "new-window",
 		"index":   createdWindow.Index,
 		"paneId":  createdWindow.PaneID,
-	})
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "window-count"})
+	}
+	setOperationID(inspectorPayload, req.OperationID)
+	h.emit(events.TypeTmuxInspector, inspectorPayload)
+	sessionsPayload := map[string]any{
+		"session": session,
+		"action":  "window-count",
+	}
+	setOperationID(sessionsPayload, req.OperationID)
+	h.emit(events.TypeTmuxSessions, sessionsPayload)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1434,8 +1465,9 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		PaneID    string `json:"paneId"`
-		Direction string `json:"direction"`
+		PaneID      string `json:"paneId"`
+		Direction   string `json:"direction"`
+		OperationID string `json:"operationId"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
@@ -1443,6 +1475,7 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 	}
 	req.PaneID = strings.TrimSpace(req.PaneID)
 	req.Direction = strings.TrimSpace(strings.ToLower(req.Direction))
+	req.OperationID = strings.TrimSpace(req.OperationID)
 	if !strings.HasPrefix(req.PaneID, "%") {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId must start with %", nil)
 		return
@@ -1484,14 +1517,21 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("failed to apply default pane title", "session", session, "paneId", createdPaneID, "title", paneTitle, "err", err)
 		}
 	}
-	h.emit(events.TypeTmuxInspector, map[string]any{
+	inspectorPayload := map[string]any{
 		"session":   session,
 		"action":    "split-pane",
 		"paneId":    req.PaneID,
 		"createdId": createdPaneID,
 		"direction": req.Direction,
-	})
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "pane-count"})
+	}
+	setOperationID(inspectorPayload, req.OperationID)
+	h.emit(events.TypeTmuxInspector, inspectorPayload)
+	sessionsPayload := map[string]any{
+		"session": session,
+		"action":  "pane-count",
+	}
+	setOperationID(sessionsPayload, req.OperationID)
+	h.emit(events.TypeTmuxSessions, sessionsPayload)
 	w.WriteHeader(http.StatusNoContent)
 }
 

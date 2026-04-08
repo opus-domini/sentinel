@@ -28,6 +28,26 @@ export type SeenAckMessage = {
   inspectorPatches?: Array<InspectorSessionPatch>
 }
 
+export type TmuxSessionsUpdatedPayload = {
+  session?: string
+  action?: string
+  globalRev?: number
+  sessionPatches?: Array<SessionActivityPatch>
+  inspectorPatches?: Array<InspectorSessionPatch>
+  sessions?: Array<string>
+  operationId?: string
+}
+
+export type TmuxInspectorUpdatedPayload = {
+  session?: string
+  action?: string
+  index?: number
+  paneId?: string
+  createdId?: string
+  direction?: string
+  operationId?: string
+}
+
 export type SeenCommandPayload = {
   session: string
   scope: 'pane' | 'window' | 'session'
@@ -171,7 +191,7 @@ export type InspectorState = {
 export type InspectorActions = {
   refreshInspector: (
     target: string,
-    options?: { background?: boolean },
+    options?: { background?: boolean; force?: boolean },
   ) => Promise<void>
   reorderWindows: (activeWindowID: string, overWindowID: string) => void
   selectWindow: (windowIndex: number) => void

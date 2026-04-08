@@ -287,6 +287,37 @@ describe('useSessionCRUD – killSession', () => {
 
 describe('useSessionCRUD – createSession', () => {
   it('sends icon when creating a session', async () => {
+    const api = vi.fn().mockResolvedValueOnce({ name: 'dev' })
+    const opts = createMockOptions({
+      api,
+      sessions: [],
+      activeSession: '',
+      openTabs: [],
+    })
+
+    const { result } = renderHook(() => useSessionCRUD(opts))
+
+    await act(async () => {
+      await result.current.createSession('dev', '/tmp', 'code')
+    })
+
+    expect(api).toHaveBeenNthCalledWith(1, '/api/tmux/sessions', {
+      method: 'POST',
+      headers: {},
+      body: expect.any(String),
+    })
+    const request = api.mock.calls[0]?.[1]
+    const body =
+      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+    expect(body).toMatchObject({
+      name: 'dev',
+      cwd: '/tmp',
+      icon: 'code',
+      operationId: expect.stringMatching(/^session-create-/),
+    })
+  })
+
+  it('keeps pending create until the sessions list confirms the new session', async () => {
     const api = vi
       .fn()
       .mockResolvedValueOnce({ name: 'dev' })
@@ -301,20 +332,46 @@ describe('useSessionCRUD – createSession', () => {
     const { result } = renderHook(() => useSessionCRUD(opts))
 
     await act(async () => {
-      await result.current.createSession('dev', '/tmp', 'code')
+      await result.current.createSession('dev', '/tmp')
     })
 
-    expect(api).toHaveBeenNthCalledWith(
-      1,
-      '/api/tmux/sessions',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          name: 'dev',
-          cwd: '/tmp',
-          icon: 'code',
-        }),
-      }),
-    )
+    expect(opts.refreshInspector).not.toHaveBeenCalled()
+    expect(opts.pendingCreateSessionsRef.current.has('dev')).toBe(true)
+
+    const request = api.mock.calls[0]?.[1]
+    const body =
+      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+
+    act(() => {
+      result.current.handleTmuxSessionsEvent({
+        action: 'create',
+        session: 'dev',
+        operationId: body?.operationId,
+      })
+    })
+
+    expect(opts.refreshInspector).toHaveBeenCalledWith('dev', { force: true })
+    expect(opts.pendingCreateSessionsRef.current.has('dev')).toBe(true)
+  })
+
+  it('clears pending create after refreshSessions sees the session in backend state', async () => {
+    const api = vi.fn().mockResolvedValue({
+      sessions: [makeSession('dev')],
+    })
+    const opts = createMockOptions({
+      api,
+      sessions: [],
+      activeSession: '',
+      openTabs: [],
+    })
+    opts.pendingCreateSessionsRef.current.set('dev', '2026-02-14T12:00:00Z')
+
+    const { result } = renderHook(() => useSessionCRUD(opts))
+
+    await act(async () => {
+      await result.current.refreshSessions()
+    })
+
+    expect(opts.pendingCreateSessionsRef.current.has('dev')).toBe(false)
   })
 })

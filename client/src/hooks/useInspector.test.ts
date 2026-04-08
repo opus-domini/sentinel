@@ -852,6 +852,137 @@ describe('useInspector – optimistic createWindow', () => {
       ),
     ).toBe(true)
   })
+
+  it('sends an operation id and waits for the correlated event before refreshing session state', async () => {
+    const api = vi.fn((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [
+            makeWindow({ index: 0, active: true }),
+            makeWindow({ index: 1, name: 'alt', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({ windowIndex: 0, paneId: '%1', active: true }),
+            makePane({ windowIndex: 1, paneId: '%2', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/new-window')) {
+        expect(init?.method).toBe('POST')
+        const body =
+          typeof init?.body === 'string' ? JSON.parse(init.body) : null
+        expect(body).toMatchObject({
+          operationId: expect.stringMatching(/^window-create-/),
+        })
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(2)
+    })
+
+    act(() => {
+      result.current.createWindow()
+    })
+
+    expect(opts.refreshSessions).not.toHaveBeenCalled()
+
+    const request = api.mock.calls.find(
+      ([url]) => typeof url === 'string' && url.includes('/new-window'),
+    )?.[1]
+    const body =
+      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+
+    act(() => {
+      const handled = result.current.handleTmuxInspectorEvent?.({
+        action: 'new-window',
+        session: 'dev',
+        index: 2,
+        operationId: body?.operationId,
+      })
+      expect(handled).toBe(true)
+    })
+
+    expect(opts.refreshSessions).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useInspector – splitPane', () => {
+  it('sends an operation id and waits for the correlated event before refreshing session state', async () => {
+    const api = vi.fn((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [
+            makeWindow({ index: 0, active: true }),
+            makeWindow({ index: 1, name: 'alt', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({ windowIndex: 0, paneId: '%1', active: true }),
+            makePane({ windowIndex: 1, paneId: '%2', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/split-pane')) {
+        expect(init?.method).toBe('POST')
+        const body =
+          typeof init?.body === 'string' ? JSON.parse(init.body) : null
+        expect(body).toMatchObject({
+          paneId: '%1',
+          direction: 'vertical',
+          operationId: expect.stringMatching(/^pane-split-/),
+        })
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.panes.length).toBe(2)
+    })
+
+    act(() => {
+      result.current.splitPane('vertical')
+    })
+
+    expect(opts.refreshSessions).not.toHaveBeenCalled()
+
+    const request = api.mock.calls.find(
+      ([url]) => typeof url === 'string' && url.includes('/split-pane'),
+    )?.[1]
+    const body =
+      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+
+    act(() => {
+      const handled = result.current.handleTmuxInspectorEvent?.({
+        action: 'split-pane',
+        session: 'dev',
+        paneId: '%1',
+        createdId: '%9',
+        operationId: body?.operationId,
+      })
+      expect(handled).toBe(true)
+    })
+
+    expect(opts.refreshSessions).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('useInspector – session switch hygiene', () => {

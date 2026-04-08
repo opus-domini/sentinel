@@ -713,6 +713,8 @@ function TmuxPage() {
       timelineOpenRef: timeline.timelineOpenRef,
       timelineSessionFilterRef: timeline.timelineSessionFilterRef,
       loadTimelineRef: timeline.loadTimelineRef,
+      handleTmuxSessionsEvent: sessionCRUD.handleTmuxSessionsEvent,
+      handleTmuxInspectorEvent: inspector.handleTmuxInspectorEvent,
     })
 
   // ---- Resync handler ----
