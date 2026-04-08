@@ -69,7 +69,7 @@ const baseProps = {
 }
 
 describe('SessionSidebar', () => {
-  it('hides the regular session panel when every visible session is pinned', () => {
+  it('keeps the regular session panel mounted when every visible session is pinned', () => {
     render(
       <SessionSidebar
         {...baseProps}
@@ -103,7 +103,7 @@ describe('SessionSidebar', () => {
     )
 
     expect(screen.getByText('Pinned')).toBeTruthy()
-    expect(screen.queryByText('Session List')).toBeNull()
+    expect(screen.getByText('Session List')).toBeTruthy()
   })
 
   it('keeps the regular session panel when there are non-pinned sessions', () => {

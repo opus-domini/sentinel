@@ -117,6 +117,22 @@ export default function TmuxTerminalPanel({
   const showSessionTabs = isMobileLayout || sidebarCollapsed
   const showControls =
     isMobileLayout && hasActiveSession && !!onSendKey && !!onFocusTerminal
+  const terminalLoadingMessage = (() => {
+    if (!hasActiveSession || connectionState !== 'connecting') {
+      return ''
+    }
+    const normalizedDetail = statusDetail.trim().toLowerCase()
+    if (normalizedDetail.startsWith('reconnecting')) {
+      return 'Reconnecting to tmux...'
+    }
+    if (
+      normalizedDetail.startsWith('creating') ||
+      normalizedDetail.startsWith('opening')
+    ) {
+      return 'Waiting for tmux server...'
+    }
+    return 'Loading terminal...'
+  })()
 
   const isKeyboardVisible = useCallback(() => {
     if (document.documentElement.classList.contains('keyboard-visible'))
@@ -291,6 +307,13 @@ export default function TmuxTerminalPanel({
                 activeSession={activeSession}
                 getTerminalHostRef={getTerminalHostRef}
               />
+              {terminalLoadingMessage !== '' && (
+                <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-[radial-gradient(circle_at_center,rgba(15,23,42,0.72),rgba(2,6,23,0.92))]">
+                  <div className="rounded-full border border-border/70 bg-card/80 px-3 py-1.5 text-[11px] font-medium tracking-[0.02em] text-secondary-foreground backdrop-blur-sm">
+                    {terminalLoadingMessage}
+                  </div>
+                </div>
+              )}
             </div>
           </>
         ) : (

@@ -438,6 +438,9 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         } else if (sessionAlreadyExists) {
           activateSession(createdName, icon)
         }
+        // Once the POST succeeds the session exists in tmux, so bump the
+        // active tab epoch to give the terminal hook a fresh attach attempt.
+        dispatchTabs({ type: 'activate', session: createdName })
         setConnection('connecting', `opening ${createdName}`)
         armPendingSessionCreateTimeout(operationId)
         settlePendingSessionCreateIfReady(operationId)

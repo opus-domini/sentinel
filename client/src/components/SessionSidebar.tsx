@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import SidebarShell from './sidebar/SidebarShell'
 import PinnedSessionsPanel from './sidebar/PinnedSessionsPanel'
 import SessionControls from './sidebar/SessionControls'
@@ -62,21 +61,6 @@ export default function SessionSidebar({
   onChangeIcon,
 }: SessionSidebarProps) {
   const { sidebarDensity } = useLayoutContext()
-  const pinnedNames = useMemo(
-    () => new Set(presets.map((preset) => preset.name)),
-    [presets],
-  )
-  const hasVisibleRegularSessions = useMemo(
-    () => sessions.some((session) => !pinnedNames.has(session.name)),
-    [pinnedNames, sessions],
-  )
-  const shouldHideRegularPanel =
-    filter.trim() === '' &&
-    !tmuxUnavailable &&
-    sessions.length > 0 &&
-    presets.length > 0 &&
-    !hasVisibleRegularSessions
-
   return (
     <SidebarShell isOpen={isOpen} collapsed={collapsed}>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain no-scrollbar">
@@ -111,26 +95,24 @@ export default function SessionSidebar({
           density={sidebarDensity}
         />
 
-        {!shouldHideRegularPanel && (
-          <SessionListPanel
-            sessions={sessions}
-            tmuxUnavailable={tmuxUnavailable}
-            openTabs={openTabs}
-            activeSession={activeSession}
-            filter={filter}
-            presets={presets}
-            onFilterChange={onFilterChange}
-            onAttach={onAttach}
-            onRename={onRename}
-            onDetach={onDetach}
-            onKill={onKill}
-            onChangeIcon={onChangeIcon}
-            onPinSession={onPinSession}
-            onUnpinSession={onUnpinSession}
-            onReorder={onReorderSession}
-            density={sidebarDensity}
-          />
-        )}
+        <SessionListPanel
+          sessions={sessions}
+          tmuxUnavailable={tmuxUnavailable}
+          openTabs={openTabs}
+          activeSession={activeSession}
+          filter={filter}
+          presets={presets}
+          onFilterChange={onFilterChange}
+          onAttach={onAttach}
+          onRename={onRename}
+          onDetach={onDetach}
+          onKill={onKill}
+          onChangeIcon={onChangeIcon}
+          onPinSession={onPinSession}
+          onUnpinSession={onUnpinSession}
+          onReorder={onReorderSession}
+          density={sidebarDensity}
+        />
       </div>
     </SidebarShell>
   )

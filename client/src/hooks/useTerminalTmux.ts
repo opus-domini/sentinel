@@ -959,7 +959,7 @@ export function useTerminalTmux({
       return
     }
 
-    if (!runtime.socket || runtime.connectionState === 'error') {
+    if (runtime.socket?.readyState !== WebSocket.OPEN) {
       connectRuntime(runtime, { resetTerminal: false })
     }
 

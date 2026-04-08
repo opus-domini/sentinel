@@ -118,4 +118,35 @@ describe('TmuxTerminalPanel', () => {
 
     expect(screen.getByText('Session Tabs')).toBeTruthy()
   })
+
+  it('shows a loading overlay while tmux is still attaching', () => {
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        connectionState="connecting"
+        statusDetail="opening dev"
+      />,
+    )
+
+    expect(screen.getByText('Waiting for tmux server...')).toBeTruthy()
+  })
+
+  it('shows reconnect copy when recovering the terminal socket', () => {
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        connectionState="connecting"
+        statusDetail="reconnecting in 2s"
+      />,
+    )
+
+    expect(screen.getByText('Reconnecting to tmux...')).toBeTruthy()
+  })
+
+  it('hides the loading overlay once connected', () => {
+    render(<TmuxTerminalPanel {...baseProps} />)
+
+    expect(screen.queryByText('Waiting for tmux server...')).toBeNull()
+    expect(screen.queryByText('Reconnecting to tmux...')).toBeNull()
+  })
 })

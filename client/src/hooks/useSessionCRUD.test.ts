@@ -315,6 +315,11 @@ describe('useSessionCRUD – createSession', () => {
       icon: 'code',
       operationId: expect.stringMatching(/^session-create-/),
     })
+    expect(
+      opts.dispatchTabs.mock.calls.filter(
+        ([action]) => action.type === 'activate' && action.session === 'dev',
+      ),
+    ).toHaveLength(2)
   })
 
   it('keeps pending create until the sessions list confirms the new session', async () => {

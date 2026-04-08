@@ -353,6 +353,29 @@ describe('useTerminalTmux – setConnection guard', () => {
     expect(result.current.connectionState).toBe('connected')
     expect(result.current.statusDetail).toBe('attached session-a')
   })
+
+  it('retries attach on active epoch bump when the current socket is not open', () => {
+    const { rerender } = renderTerminalHook({
+      openTabs: ['session-b'],
+      activeSession: 'session-b',
+      activeEpoch: 0,
+    })
+
+    const firstSocket = latestWS()
+    Object.defineProperty(firstSocket, 'readyState', {
+      value: 3,
+      configurable: true,
+    })
+
+    rerender({
+      openTabs: ['session-b'],
+      activeSession: 'session-b',
+      activeEpoch: 1,
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(2)
+    expect(latestWS()).not.toBe(firstSocket)
+  })
 })
 
 // ---------------------------------------------------------------------------
