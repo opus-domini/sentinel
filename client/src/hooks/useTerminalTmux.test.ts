@@ -12,6 +12,12 @@ import { useTerminalTmux } from './useTerminalTmux'
 
 vi.mock('@xterm/xterm', () => {
   const _noop = () => undefined
+  const instancesKey = '__SENTINEL_TERMINAL_INSTANCES'
+  ;(
+    globalThis as typeof globalThis & {
+      [instancesKey]?: Array<unknown>
+    }
+  )[instancesKey] = []
   return {
     Terminal: class {
       options: Record<string, unknown> = {}
@@ -45,6 +51,14 @@ vi.mock('@xterm/xterm', () => {
       dispose = vi.fn()
       clearTextureAtlas = vi.fn()
       attachCustomWheelEventHandler = vi.fn()
+
+      constructor() {
+        ;(
+          globalThis as typeof globalThis & {
+            __SENTINEL_TERMINAL_INSTANCES?: Array<unknown>
+          }
+        ).__SENTINEL_TERMINAL_INSTANCES?.push(this)
+      }
     },
   }
 })
@@ -152,6 +166,11 @@ const originalWebSocket = globalThis.WebSocket
 
 function setupEnvironment() {
   MockWebSocket.instances = []
+  ;(
+    globalThis as typeof globalThis & {
+      __SENTINEL_TERMINAL_INSTANCES?: Array<unknown>
+    }
+  ).__SENTINEL_TERMINAL_INSTANCES = []
   globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
   document.documentElement.style.setProperty('--surface-inset', '#112233')
   document.documentElement.style.setProperty('--foreground', '#ddeeff')
@@ -183,6 +202,30 @@ function setupEnvironment() {
     writable: true,
     configurable: true,
   })
+}
+
+function latestTerminal() {
+  return (
+    (
+      globalThis as typeof globalThis & {
+        __SENTINEL_TERMINAL_INSTANCES?: Array<{
+          clearTextureAtlas: ReturnType<typeof vi.fn>
+        }>
+      }
+    ).__SENTINEL_TERMINAL_INSTANCES?.at(-1) ?? null
+  )
+}
+
+function terminalInstances() {
+  return (
+    (
+      globalThis as typeof globalThis & {
+        __SENTINEL_TERMINAL_INSTANCES?: Array<{
+          clearTextureAtlas: ReturnType<typeof vi.fn>
+        }>
+      }
+    ).__SENTINEL_TERMINAL_INSTANCES ?? []
+  )
 }
 
 function renderTerminalHook(
@@ -716,6 +759,33 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
     // No reconnection on hidden.
     expect(MockWebSocket.instances.length).toBe(countBefore)
   })
+
+  it('clears the texture atlas when the window regains focus', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.clearTextureAtlas.mockClear()
+
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
+
+    host.remove()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -750,6 +820,7 @@ describe('useTerminalTmux – terminal chrome', () => {
     const initialBackground = host.style.backgroundColor
 
     await act(async () => {
+      latestTerminal()?.clearTextureAtlas.mockClear()
       window.dispatchEvent(
         new CustomEvent('sentinel-theme-change', { detail: 'dracula' }),
       )
@@ -758,7 +829,52 @@ describe('useTerminalTmux – terminal chrome', () => {
 
     expect(host.style.backgroundColor).not.toBe(initialBackground)
     expect(terminalRoot?.style.backgroundColor).toBe(host.style.backgroundColor)
+    expect(latestTerminal()?.clearTextureAtlas).toHaveBeenCalledTimes(1)
 
     host.remove()
+  })
+})
+
+describe('useTerminalTmux – renderer refresh', () => {
+  beforeEach(() => {
+    setupEnvironment()
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWebSocket
+  })
+
+  it('clears the newly active session atlas when switching tabs', async () => {
+    const { result, rerender } = renderTerminalHook({
+      openTabs: ['session-a', 'session-b'],
+      activeSession: 'session-a',
+      activeEpoch: 0,
+    })
+    const hostA = document.createElement('div')
+    const hostB = document.createElement('div')
+    document.body.append(hostA, hostB)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('session-a')(hostA)
+      result.current.getTerminalHostRef('session-b')(hostB)
+      await Promise.resolve()
+    })
+
+    const terminals = terminalInstances()
+    const activeNextTerminal = terminals[1]
+    activeNextTerminal?.clearTextureAtlas.mockClear()
+
+    act(() => {
+      rerender({
+        openTabs: ['session-a', 'session-b'],
+        activeSession: 'session-b',
+        activeEpoch: 1,
+      })
+    })
+
+    expect(activeNextTerminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
+
+    hostA.remove()
+    hostB.remove()
   })
 })

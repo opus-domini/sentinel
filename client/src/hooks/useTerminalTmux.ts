@@ -238,6 +238,19 @@ export function useTerminalTmux({
     }
   }, [])
 
+  const clearRuntimeTextureAtlas = useCallback((runtime: SessionRuntime) => {
+    if (!runtime.terminal.element) {
+      return
+    }
+    runtime.terminal.clearTextureAtlas()
+  }, [])
+
+  const clearAllTextureAtlases = useCallback(() => {
+    for (const runtime of runtimesRef.current.values()) {
+      clearRuntimeTextureAtlas(runtime)
+    }
+  }, [clearRuntimeTextureAtlas])
+
   const observeHostResize = useCallback(
     (runtime: SessionRuntime, host: HTMLDivElement) => {
       cleanupHostResizeObserver(runtime)
@@ -288,6 +301,7 @@ export function useTerminalTmux({
             dispatchTarget: screen ?? runtime.terminal.element,
           })
         }
+        clearRuntimeTextureAtlas(runtime)
         return
       }
 
@@ -368,6 +382,7 @@ export function useTerminalTmux({
         applyTerminalChrome(host, themeId)
         runtime.terminal.element.style.backgroundColor =
           getTerminalTheme(themeId).colors.background ?? ''
+        clearRuntimeTextureAtlas(runtime)
 
         fitRuntime(runtime)
       }
@@ -380,6 +395,7 @@ export function useTerminalTmux({
       suppressBrowserContextMenu,
       themeId,
       allowWheelInAlternateBuffer,
+      clearRuntimeTextureAtlas,
     ],
   )
 
@@ -853,6 +869,7 @@ export function useTerminalTmux({
       for (const runtime of runtimesRef.current.values()) {
         runtime.terminal.options.fontSize = size
         if (runtime.terminal.element) {
+          clearRuntimeTextureAtlas(runtime)
           runtime.fitAddon.fit()
           runtime.cols = runtime.terminal.cols
           runtime.rows = runtime.terminal.rows
@@ -868,7 +885,7 @@ export function useTerminalTmux({
         setTermRows(activeRuntime.rows)
       }
     },
-    [sendResize],
+    [clearRuntimeTextureAtlas, sendResize],
   )
 
   const zoomIn = useCallback(() => {
@@ -887,20 +904,25 @@ export function useTerminalTmux({
     })
   }, [applyFontSize])
 
-  const applyTheme = useCallback((id: string) => {
-    setThemeId(id)
-    const colors = getTerminalTheme(id).colors
-    for (const runtime of runtimesRef.current.values()) {
-      runtime.terminal.options.theme = colors
-      const host = hostsRef.current.get(runtime.session)
-      if (host) {
-        applyTerminalChrome(host, id)
+  const applyTheme = useCallback(
+    (id: string) => {
+      setThemeId(id)
+      const colors = getTerminalTheme(id).colors
+      for (const runtime of runtimesRef.current.values()) {
+        runtime.terminal.options.theme = colors
+        const host = hostsRef.current.get(runtime.session)
+        if (host) {
+          applyTerminalChrome(host, id)
+        }
+        if (runtime.terminal.element) {
+          runtime.terminal.element.style.backgroundColor =
+            colors.background ?? ''
+          clearRuntimeTextureAtlas(runtime)
+        }
       }
-      if (runtime.terminal.element) {
-        runtime.terminal.element.style.backgroundColor = colors.background ?? ''
-      }
-    }
-  }, [])
+    },
+    [clearRuntimeTextureAtlas],
+  )
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -941,12 +963,15 @@ export function useTerminalTmux({
       connectRuntime(runtime, { resetTerminal: false })
     }
 
+    clearRuntimeTextureAtlas(runtime)
+
     if (!isMobileRef.current) {
       runtime.terminal.focus()
     }
   }, [
     activeEpoch,
     activeSession,
+    clearRuntimeTextureAtlas,
     connectRuntime,
     fitTerminal,
     publishActiveRuntimeState,
@@ -1026,11 +1051,9 @@ export function useTerminalTmux({
   }, [fitRuntime])
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    const reconcileForegroundRenderer = () => {
       if (document.visibilityState !== 'visible') return
-      for (const runtime of runtimesRef.current.values()) {
-        runtime.terminal.clearTextureAtlas()
-      }
+      clearAllTextureAtlases()
       const sessionName = activeSessionRef.current.trim()
       if (sessionName === '') return
       const runtime = runtimesRef.current.get(sessionName)
@@ -1039,21 +1062,25 @@ export function useTerminalTmux({
       runtime.reconnect.reset()
       connectRuntime(runtime, { resetTerminal: false })
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () =>
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [connectRuntime])
+    document.addEventListener('visibilitychange', reconcileForegroundRenderer)
+    window.addEventListener('focus', reconcileForegroundRenderer)
+    return () => {
+      document.removeEventListener(
+        'visibilitychange',
+        reconcileForegroundRenderer,
+      )
+      window.removeEventListener('focus', reconcileForegroundRenderer)
+    }
+  }, [clearAllTextureAtlases, connectRuntime])
 
   useEffect(() => {
     const ATLAS_REFRESH_MS = 5 * 60 * 1000
     const id = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
-      for (const runtime of runtimesRef.current.values()) {
-        runtime.terminal.clearTextureAtlas()
-      }
+      clearAllTextureAtlases()
     }, ATLAS_REFRESH_MS)
     return () => window.clearInterval(id)
-  }, [])
+  }, [clearAllTextureAtlases])
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
