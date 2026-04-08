@@ -22,7 +22,7 @@ type PTY struct {
 }
 
 func StartTmuxAttach(ctx context.Context, session string, cols, rows int) (*PTY, error) {
-	cmd := exec.CommandContext(ctx, "tmux", "attach", "-t", session)
+	cmd := exec.CommandContext(ctx, "tmux", tmuxAttachArgs(session)...)
 	return startCommand(ctx, cmd, cols, rows)
 }
 
@@ -33,7 +33,7 @@ func StartTmuxAttachAsUser(ctx context.Context, session, user string, cols, rows
 	if user == "" {
 		return StartTmuxAttach(ctx, session, cols, rows)
 	}
-	cmd := exec.CommandContext(ctx, "sudo", "-n", "-u", user, "tmux", "attach", "-t", session)
+	cmd := exec.CommandContext(ctx, "sudo", append([]string{"-n", "-u", user, "tmux"}, tmuxAttachArgs(session)...)...)
 	return startCommand(ctx, cmd, cols, rows)
 }
 
