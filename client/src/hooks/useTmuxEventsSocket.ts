@@ -489,7 +489,9 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       }
 
       socket.onerror = () => {
-        socket.close()
+        // Let the browser drive the terminal close sequence. Forcing close()
+        // during the handshake creates spurious "closed before the connection
+        // is established" errors in the console.
       }
 
       socket.onclose = () => {

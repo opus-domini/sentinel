@@ -381,7 +381,7 @@ describe('useTmuxEventsSocket', () => {
       expect(MockWebSocket.instances.length).toBeGreaterThanOrEqual(1)
     })
 
-    it('closes socket on error then triggers onclose', () => {
+    it('does not force-close the socket on error', () => {
       const opts = makeOptions()
       renderHook(() => useTmuxEventsSocket(opts))
 
@@ -391,8 +391,7 @@ describe('useTmuxEventsSocket', () => {
         socket.emitError()
       })
 
-      // onerror calls socket.close() which triggers onclose
-      expect(socket.closed).toBe(true)
+      expect(socket.closed).toBe(false)
     })
   })
 

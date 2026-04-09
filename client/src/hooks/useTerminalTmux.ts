@@ -102,6 +102,16 @@ type UseTerminalTmuxResult = {
   reconnectActiveSession: (options?: { force?: boolean }) => void
 }
 
+function isSocketOpenOrConnecting(socket: WebSocket | null): boolean {
+  if (socket === null) {
+    return false
+  }
+  return (
+    socket.readyState === WebSocket.OPEN ||
+    socket.readyState === WebSocket.CONNECTING
+  )
+}
+
 export function useTerminalTmux({
   openTabs,
   activeSession,
@@ -959,7 +969,7 @@ export function useTerminalTmux({
       return
     }
 
-    if (runtime.socket?.readyState !== WebSocket.OPEN) {
+    if (!isSocketOpenOrConnecting(runtime.socket)) {
       connectRuntime(runtime, { resetTerminal: false })
     }
 
@@ -1058,7 +1068,7 @@ export function useTerminalTmux({
       if (sessionName === '') return
       const runtime = runtimesRef.current.get(sessionName)
       if (!runtime) return
-      if (runtime.socket?.readyState === WebSocket.OPEN) return
+      if (isSocketOpenOrConnecting(runtime.socket)) return
       runtime.reconnect.reset()
       connectRuntime(runtime, { resetTerminal: false })
     }
@@ -1109,8 +1119,7 @@ export function useTerminalTmux({
       if (sessionName === '') return
       const runtime = runtimesRef.current.get(sessionName)
       if (!runtime) return
-      if (!options?.force && runtime.socket?.readyState === WebSocket.OPEN)
-        return
+      if (!options?.force && isSocketOpenOrConnecting(runtime.socket)) return
       runtime.reconnect.reset()
       connectRuntime(runtime, { resetTerminal: false })
     },

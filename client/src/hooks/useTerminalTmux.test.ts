@@ -121,7 +121,10 @@ vi.mock('@/lib/wsAuth', () => ({
 
 class MockWebSocket {
   static instances: Array<MockWebSocket> = []
+  static readonly CONNECTING = 0
   static readonly OPEN = 1
+  static readonly CLOSING = 2
+  static readonly CLOSED = 3
 
   url: string
   protocols: Array<string> | string | undefined
@@ -140,16 +143,19 @@ class MockWebSocket {
   }
 
   close() {
+    this.readyState = MockWebSocket.CLOSED
     this.onclose?.(new CloseEvent('close'))
   }
 
   send = vi.fn()
 
   emitOpen() {
+    this.readyState = MockWebSocket.OPEN
     this.onopen?.(new Event('open'))
   }
 
   emitClose() {
+    this.readyState = MockWebSocket.CLOSED
     this.onclose?.(new CloseEvent('close'))
   }
 }
@@ -375,6 +381,29 @@ describe('useTerminalTmux – setConnection guard', () => {
 
     expect(MockWebSocket.instances).toHaveLength(2)
     expect(latestWS()).not.toBe(firstSocket)
+  })
+
+  it('does not retry attach on active epoch bump while the socket is still connecting', () => {
+    const { rerender } = renderTerminalHook({
+      openTabs: ['session-b'],
+      activeSession: 'session-b',
+      activeEpoch: 0,
+    })
+
+    const firstSocket = latestWS()
+    Object.defineProperty(firstSocket, 'readyState', {
+      value: 0,
+      configurable: true,
+    })
+
+    rerender({
+      openTabs: ['session-b'],
+      activeSession: 'session-b',
+      activeEpoch: 1,
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(latestWS()).toBe(firstSocket)
   })
 })
 
@@ -760,6 +789,28 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
 
     // No new WebSocket — already connected.
     expect(MockWebSocket.instances.length).toBe(countBefore)
+  })
+
+  it('does not reconnect on visibilitychange while socket is still connecting', () => {
+    renderTerminalHook()
+    const ws = latestWS()
+    Object.defineProperty(ws, 'readyState', {
+      value: 0,
+      configurable: true,
+    })
+    const countBefore = MockWebSocket.instances.length
+
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(MockWebSocket.instances.length).toBe(countBefore)
+    expect(latestWS()).toBe(ws)
   })
 
   it('ignores visibilitychange when document becomes hidden', () => {
