@@ -8,6 +8,7 @@ import type {
   OpsOverviewResponse,
 } from '@/types'
 import type { MetricsSnapshot } from '@/lib/MetricsHistory'
+import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { TooltipHelper } from '@/components/TooltipHelper'
@@ -97,7 +98,7 @@ function buildMetricsFooterSummary({
 type MetricsTab = 'system' | 'runtime'
 
 function MetricsPage() {
-  const { tokenRequired } = useMetaContext()
+  const { tokenRequired, hostname } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const layout = useLayoutContext()
   const api = useTmuxApi()
@@ -233,9 +234,7 @@ function MetricsPage() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="truncate">Sentinel</span>
-            <span className="text-muted-foreground">/</span>
-            <span className="truncate text-muted-foreground">metrics</span>
+            <AppSectionTitle hostname={hostname} section="metrics" />
           </div>
           <div className="flex items-center gap-1.5">
             <TooltipHelper content="Refresh">

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'sentinel-v6'
+const CACHE_VERSION = 'sentinel-v7'
 const CORE_CACHE = `${CACHE_VERSION}-core`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 const APP_SHELL = '/index.html'

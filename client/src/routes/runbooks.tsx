@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu, RefreshCw } from 'lucide-react'
+import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { RunbookDeleteDialog } from '@/components/RunbookDeleteDialog'
@@ -16,7 +17,7 @@ import { useTokenContext } from '@/contexts/TokenContext'
 import { useRunbooksPage } from '@/hooks/useRunbooksPage'
 
 function RunbooksPage() {
-  const { tokenRequired } = useMetaContext()
+  const { tokenRequired, hostname } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const layout = useLayoutContext()
 
@@ -93,9 +94,7 @@ function RunbooksPage() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="truncate">Sentinel</span>
-            <span className="text-muted-foreground">/</span>
-            <span className="truncate text-muted-foreground">runbooks</span>
+            <AppSectionTitle hostname={hostname} section="runbooks" />
           </div>
           <div className="flex items-center gap-1.5">
             <TooltipHelper content="Refresh">

@@ -82,6 +82,7 @@ func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, events
 	if err := registerAssetRoutes(mux); err != nil {
 		return err
 	}
+	mux.HandleFunc("GET /manifest.webmanifest", h.serveManifest)
 	mux.HandleFunc("GET /ws/tmux", h.attachWS)
 	mux.HandleFunc("GET /ws/events", h.attachEventsWS)
 	mux.HandleFunc("GET /ws/logs", h.attachLogsWS)

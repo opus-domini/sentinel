@@ -1,3 +1,5 @@
+import { formatInstalledAppName } from './appBrand'
+
 export function formatPageTitle(hostname?: string | null): string {
-  return hostname ? `${hostname} - Sentinel` : 'Sentinel'
+  return formatInstalledAppName(hostname)
 }

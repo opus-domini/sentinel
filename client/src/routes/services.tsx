@@ -33,6 +33,7 @@ import type {
   OpsServicesResponse,
   OpsUnitActionResponse,
 } from '@/types'
+import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { ServiceBrowseRow } from '@/components/services/ServiceBrowseRow'
@@ -267,7 +268,7 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
 ServicesBrowseControls.displayName = 'ServicesBrowseControls'
 
 function ServicesPage() {
-  const { tokenRequired } = useMetaContext()
+  const { tokenRequired, hostname } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
@@ -826,9 +827,7 @@ function ServicesPage() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="truncate">Sentinel</span>
-            <span className="text-muted-foreground">/</span>
-            <span className="truncate text-muted-foreground">services</span>
+            <AppSectionTitle hostname={hostname} section="services" />
           </div>
           <div className="flex items-center gap-1.5">
             <TooltipHelper content="Refresh">

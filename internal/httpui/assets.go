@@ -1,9 +1,11 @@
 package httpui
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -54,6 +56,62 @@ func serveDistPath(w http.ResponseWriter, r *http.Request, filePath string) bool
 
 	http.ServeFileFS(w, r, distFS, clean)
 	return true
+}
+
+func formatManifestAppName(hostname string) string {
+	trimmedHostname := strings.TrimSpace(hostname)
+	if trimmedHostname == "" {
+		return "Sentinel"
+	}
+	return trimmedHostname + " - Sentinel"
+}
+
+func formatManifestAppShortName(hostname string) string {
+	trimmedHostname := strings.TrimSpace(hostname)
+	if trimmedHostname == "" {
+		return "Sentinel"
+	}
+	return trimmedHostname
+}
+
+func (h *Handler) serveManifest(w http.ResponseWriter, r *http.Request) {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if ensureDistFS() != nil {
+		http.Error(w, "frontend bundle missing", http.StatusInternalServerError)
+		return
+	}
+
+	rawManifest, err := fs.ReadFile(distFS, "manifest.webmanifest")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	var manifest map[string]any
+	if err := json.Unmarshal(rawManifest, &manifest); err != nil {
+		http.Error(w, "invalid manifest", http.StatusInternalServerError)
+		return
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = ""
+	}
+
+	manifest["name"] = formatManifestAppName(hostname)
+	manifest["short_name"] = formatManifestAppShortName(hostname)
+
+	encodedManifest, err := json.Marshal(manifest)
+	if err != nil {
+		http.Error(w, "invalid manifest", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+	_, _ = w.Write(encodedManifest)
 }
 
 func isReservedPath(urlPath string) bool {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -1039,6 +1040,71 @@ func TestRegisterSetsUpRoutes(t *testing.T) {
 	mux.ServeHTTP(rec3, req3)
 	if rec3.Code != http.StatusNotFound {
 		t.Fatalf("GET /api/sessions status = %d, want 404", rec3.Code)
+	}
+}
+
+func TestFormatManifestAppBrand(t *testing.T) {
+	t.Parallel()
+
+	if got := formatManifestAppName(""); got != "Sentinel" {
+		t.Fatalf("formatManifestAppName(\"\") = %q, want Sentinel", got)
+	}
+	if got := formatManifestAppShortName(""); got != "Sentinel" {
+		t.Fatalf("formatManifestAppShortName(\"\") = %q, want Sentinel", got)
+	}
+	if got := formatManifestAppName("drako"); got != "drako - Sentinel" {
+		t.Fatalf("formatManifestAppName(\"drako\") = %q, want drako - Sentinel", got)
+	}
+	if got := formatManifestAppShortName("drako"); got != "drako" {
+		t.Fatalf("formatManifestAppShortName(\"drako\") = %q, want drako", got)
+	}
+}
+
+func TestRegisterServesBrandedManifest(t *testing.T) {
+	t.Parallel()
+
+	st := newHTTPUIStore(t)
+	guard := security.New("", nil, security.CookieSecureNever)
+	hub := events.NewHub()
+
+	mux := http.NewServeMux()
+	if err := Register(mux, guard, st, hub, nil, nil); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/manifest.webmanifest", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /manifest.webmanifest status = %d, want 200", rec.Code)
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/manifest+json") {
+		t.Fatalf("manifest Content-Type = %q, want application/manifest+json", contentType)
+	}
+
+	var manifest map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &manifest); err != nil {
+		t.Fatalf("manifest json = %v", err)
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		t.Fatalf("os.Hostname() error = %v", err)
+	}
+	hostname = strings.TrimSpace(hostname)
+
+	expectedName := "Sentinel"
+	expectedShortName := "Sentinel"
+	if hostname != "" {
+		expectedName = hostname + " - Sentinel"
+		expectedShortName = hostname
+	}
+
+	if got := manifest["name"]; got != expectedName {
+		t.Fatalf("manifest name = %v, want %q", got, expectedName)
+	}
+	if got := manifest["short_name"]; got != expectedShortName {
+		t.Fatalf("manifest short_name = %v, want %q", got, expectedShortName)
 	}
 }
 

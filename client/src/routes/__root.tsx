@@ -26,7 +26,7 @@ import { useServerStatus } from '@/hooks/useServerStatus'
 import { useShellLayout } from '@/hooks/useShellLayout'
 import { useToasts } from '@/hooks/useToasts'
 import { useVisualViewport } from '@/hooks/useVisualViewport'
-import { formatPageTitle } from '@/lib/pageTitle'
+import { applyDocumentAppBrand } from '@/lib/appBrand'
 
 type AuthCookieUpdateResult = {
   ok: boolean
@@ -173,7 +173,7 @@ function RootComponent() {
   })
 
   useEffect(() => {
-    document.title = formatPageTitle(meta.hostname)
+    applyDocumentAppBrand(meta.hostname)
   }, [meta.hostname])
 
   useEffect(() => {

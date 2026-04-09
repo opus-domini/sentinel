@@ -1,5 +1,6 @@
 import { History, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
+import AppSectionTitle from './layout/AppSectionTitle'
 import ConnectionBadge from './ConnectionBadge'
 import SessionTabs from './SessionTabs'
 import { TooltipHelper } from './TooltipHelper'
@@ -19,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 
 type TmuxTerminalPanelProps = {
+  hostname?: string
   connectionState: ConnectionState
   statusDetail: string
   sidebarCollapsed: boolean
@@ -66,6 +68,7 @@ type TmuxTerminalPanelProps = {
 }
 
 export default function TmuxTerminalPanel({
+  hostname,
   connectionState,
   statusDetail,
   sidebarCollapsed,
@@ -230,9 +233,7 @@ export default function TmuxTerminalPanel({
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <span className="truncate">Sentinel</span>
-          <span className="text-muted-foreground">/</span>
-          <span className="truncate text-muted-foreground">tmux</span>
+          <AppSectionTitle hostname={hostname} section="tmux" />
         </div>
         <div className="flex items-center gap-1">
           <TooltipHelper content="Timeline">

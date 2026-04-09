@@ -8,6 +8,7 @@ import type {
   OpsAlertsResponse,
   OpsOverviewResponse,
 } from '@/types'
+import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import AlertsSidebar from '@/components/AlertsSidebar'
 import ConnectionBadge from '@/components/ConnectionBadge'
@@ -63,7 +64,7 @@ function buildAlertsFooterSummary({
 }
 
 function AlertsPage() {
-  const { tokenRequired } = useMetaContext()
+  const { tokenRequired, hostname } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const { formatRelativeTime } = useDateFormat()
@@ -388,9 +389,7 @@ function AlertsPage() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="truncate">Sentinel</span>
-            <span className="text-muted-foreground">/</span>
-            <span className="truncate text-muted-foreground">alerts</span>
+            <AppSectionTitle hostname={hostname} section="alerts" />
           </div>
           <div className="flex items-center gap-1.5">
             {selectedIds.size > 0 && (

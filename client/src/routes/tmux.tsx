@@ -99,7 +99,7 @@ function normalizeTmuxLauncher(
 }
 
 function TmuxPage() {
-  const { tokenRequired, defaultCwd } = useMetaContext()
+  const { tokenRequired, defaultCwd, hostname } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
@@ -896,6 +896,7 @@ function TmuxPage() {
       }
     >
       <TmuxTerminalPanel
+        hostname={hostname}
         connectionState={connectionState}
         statusDetail={statusDetail}
         sidebarCollapsed={layout.sidebarCollapsed}

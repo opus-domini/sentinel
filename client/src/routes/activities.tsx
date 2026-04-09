@@ -8,6 +8,7 @@ import type {
   OpsOverviewResponse,
 } from '@/types'
 import { getActivitySourceIcon } from '@/lib/activityIcons'
+import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { TooltipHelper } from '@/components/TooltipHelper'
@@ -58,7 +59,7 @@ function buildActivitiesFooterSummary({
 }
 
 function ActivitiesPage() {
-  const { tokenRequired } = useMetaContext()
+  const { tokenRequired, hostname } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const { formatDateTime } = useDateFormat()
   const layout = useLayoutContext()
@@ -239,9 +240,7 @@ function ActivitiesPage() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="truncate">Sentinel</span>
-            <span className="text-muted-foreground">/</span>
-            <span className="truncate text-muted-foreground">activities</span>
+            <AppSectionTitle hostname={hostname} section="activities" />
           </div>
           <div className="flex items-center gap-1.5">
             <TooltipHelper content="Refresh">
