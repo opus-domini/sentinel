@@ -1046,14 +1046,15 @@ func TestRegisterSetsUpRoutes(t *testing.T) {
 func TestFormatManifestAppBrand(t *testing.T) {
 	t.Parallel()
 
-	if got := formatManifestAppName(""); got != "Sentinel" {
-		t.Fatalf("formatManifestAppName(\"\") = %q, want Sentinel", got)
+	if got := formatManifestAppName(""); got != manifestAppName {
+		t.Fatalf("formatManifestAppName(\"\") = %q, want %s", got, manifestAppName)
 	}
-	if got := formatManifestAppShortName(""); got != "Sentinel" {
-		t.Fatalf("formatManifestAppShortName(\"\") = %q, want Sentinel", got)
+	if got := formatManifestAppShortName(""); got != manifestAppName {
+		t.Fatalf("formatManifestAppShortName(\"\") = %q, want %s", got, manifestAppName)
 	}
-	if got := formatManifestAppName("drako"); got != "drako - Sentinel" {
-		t.Fatalf("formatManifestAppName(\"drako\") = %q, want drako - Sentinel", got)
+	expectedBrandedName := "drako - " + manifestAppName
+	if got := formatManifestAppName("drako"); got != expectedBrandedName {
+		t.Fatalf("formatManifestAppName(\"drako\") = %q, want %s", got, expectedBrandedName)
 	}
 	if got := formatManifestAppShortName("drako"); got != "drako" {
 		t.Fatalf("formatManifestAppShortName(\"drako\") = %q, want drako", got)
@@ -1093,10 +1094,10 @@ func TestRegisterServesBrandedManifest(t *testing.T) {
 	}
 	hostname = strings.TrimSpace(hostname)
 
-	expectedName := "Sentinel"
-	expectedShortName := "Sentinel"
+	expectedName := manifestAppName
+	expectedShortName := manifestAppName
 	if hostname != "" {
-		expectedName = hostname + " - Sentinel"
+		expectedName = hostname + " - " + manifestAppName
 		expectedShortName = hostname
 	}
 
