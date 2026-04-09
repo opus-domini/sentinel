@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.23](https://github.com/opus-domini/sentinel/compare/v0.5.22...v0.5.23) (2026-04-09)
+
+
+### Features
+
+* brand the app with the host name ([adf997f](https://github.com/opus-domini/sentinel/commit/adf997fdfc65a3c4c3169cadd9c2f3e66320848e))
+
+
+### Bug Fixes
+
+* align manifest tests with lint rules ([b0ec963](https://github.com/opus-domini/sentinel/commit/b0ec963ecad2776b036a438434431364ef4f99c8))
+* avoid websocket handshake self-aborts ([c78a710](https://github.com/opus-domini/sentinel/commit/c78a71009865cf104aaac28c81dcd69de40a5ff9))
+* correlate tmux create operations with socket acks ([52c0222](https://github.com/opus-domini/sentinel/commit/52c0222b449b7ce1cbecda92e3fa445c86884dd7))
+* harden xterm texture atlas refreshes ([ea8a978](https://github.com/opus-domini/sentinel/commit/ea8a9786152cb7f6ff62b2dcbaa57b33747335a9))
+* isolate concurrent tmux web clients ([0e793b8](https://github.com/opus-domini/sentinel/commit/0e793b85e114bb7403ce04a85c85c130be8e3739))
+* restore pinned sessions with configured user ([3322342](https://github.com/opus-domini/sentinel/commit/33223427a0f9e680fc0fdb65dd157d9911de38d3))
+* satisfy httpui manifest lint ([b2efb7d](https://github.com/opus-domini/sentinel/commit/b2efb7dd2cbf116faf21845ce5ff3f946c276b59))
+* stabilize tmux terminal attach UX ([5c5e2f2](https://github.com/opus-domini/sentinel/commit/5c5e2f28e1880cbff3300bd45d902dd15d24e81a))
+
 ## [0.5.22](https://github.com/opus-domini/sentinel/compare/v0.5.21...v0.5.22) (2026-04-07)
 
 
