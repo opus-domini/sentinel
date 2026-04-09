@@ -19,6 +19,8 @@ var (
 	distFSErr  error
 )
 
+const manifestAppName = "Sentinel"
+
 func ensureDistFS() error {
 	distFSInit.Do(func() {
 		distFS, distFSErr = fs.Sub(clientassets.DistFS, "dist")
@@ -61,15 +63,15 @@ func serveDistPath(w http.ResponseWriter, r *http.Request, filePath string) bool
 func formatManifestAppName(hostname string) string {
 	trimmedHostname := strings.TrimSpace(hostname)
 	if trimmedHostname == "" {
-		return "Sentinel"
+		return manifestAppName
 	}
-	return trimmedHostname + " - Sentinel"
+	return trimmedHostname + " - " + manifestAppName
 }
 
 func formatManifestAppShortName(hostname string) string {
 	trimmedHostname := strings.TrimSpace(hostname)
 	if trimmedHostname == "" {
-		return "Sentinel"
+		return manifestAppName
 	}
 	return trimmedHostname
 }
