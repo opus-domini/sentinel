@@ -62,6 +62,7 @@ func (f *fakePinnedStore) UpdateManagedTmuxWindowRuntime(_ context.Context, id, 
 }
 
 type fakePinnedTmux struct {
+	user      string
 	errByName map[string]error
 	calls     []struct {
 		name string
@@ -80,6 +81,22 @@ type fakePinnedTmux struct {
 		name    string
 		cwd     string
 	}
+}
+
+type fakePinnedTmuxFactory struct {
+	byUser map[string]*fakePinnedTmux
+}
+
+func (f *fakePinnedTmuxFactory) starter(user string) pinnedSessionStarter {
+	if f.byUser == nil {
+		f.byUser = make(map[string]*fakePinnedTmux)
+	}
+	tm, ok := f.byUser[user]
+	if !ok {
+		tm = &fakePinnedTmux{user: user}
+		f.byUser[user] = tm
+	}
+	return tm
 }
 
 func (f *fakePinnedTmux) CreateSession(_ context.Context, name, cwd string) error {
@@ -135,7 +152,7 @@ func TestRestorePinnedSessions(t *testing.T) {
 			},
 		}
 
-		restored, err := restorePinnedSessions(context.Background(), repo, tm)
+		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm })
 		if err != nil {
 			t.Fatalf("restorePinnedSessions() error = %v", err)
 		}
@@ -172,7 +189,7 @@ func TestRestorePinnedSessions(t *testing.T) {
 			},
 		}
 
-		restored, err := restorePinnedSessions(context.Background(), repo, tm)
+		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm })
 		if err != nil {
 			t.Fatalf("restorePinnedSessions() error = %v", err)
 		}
@@ -219,7 +236,7 @@ func TestRestorePinnedSessions(t *testing.T) {
 			},
 		}
 
-		restored, err := restorePinnedSessions(context.Background(), repo, tm)
+		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm })
 		if err != nil {
 			t.Fatalf("restorePinnedSessions() error = %v", err)
 		}
@@ -240,11 +257,39 @@ func TestRestorePinnedSessions(t *testing.T) {
 		}
 	})
 
+	t.Run("restores pinned sessions with their configured user", func(t *testing.T) {
+		repo := &fakePinnedStore{
+			presets: []store.SessionPreset{
+				{Name: "api", Cwd: "/srv/api", Icon: "server", User: "postgres"},
+				{Name: "web", Cwd: "/srv/web", Icon: "globe"},
+			},
+		}
+		factory := &fakePinnedTmuxFactory{}
+
+		restored, err := restorePinnedSessions(context.Background(), repo, factory.starter)
+		if err != nil {
+			t.Fatalf("restorePinnedSessions() error = %v", err)
+		}
+		if restored != 2 {
+			t.Fatalf("restored = %d, want 2", restored)
+		}
+
+		postgresTm := factory.byUser["postgres"]
+		if postgresTm == nil || len(postgresTm.calls) != 1 || postgresTm.calls[0].name != "api" {
+			t.Fatalf("postgres restore calls = %+v, want api", postgresTm)
+		}
+
+		defaultTm := factory.byUser[""]
+		if defaultTm == nil || len(defaultTm.calls) != 1 || defaultTm.calls[0].name != "web" {
+			t.Fatalf("default restore calls = %+v, want web", defaultTm)
+		}
+	})
+
 	t.Run("returns list error", func(t *testing.T) {
 		wantErr := errors.New("list failed")
 		repo := &fakePinnedStore{listErr: wantErr}
 
-		_, err := restorePinnedSessions(context.Background(), repo, &fakePinnedTmux{})
+		_, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return &fakePinnedTmux{} })
 		if !errors.Is(err, wantErr) {
 			t.Fatalf("error = %v, want %v", err, wantErr)
 		}

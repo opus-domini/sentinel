@@ -89,7 +89,9 @@ func serve() int {
 	}
 
 	restorePinnedCtx, cancelRestorePinned := context.WithTimeout(context.Background(), 15*time.Second)
-	restoredPinned, err := restorePinnedSessions(restorePinnedCtx, st, tmux.Service{})
+	restoredPinned, err := restorePinnedSessions(restorePinnedCtx, st, func(user string) pinnedSessionStarter {
+		return tmux.Service{User: strings.TrimSpace(user)}
+	})
 	cancelRestorePinned()
 	if err != nil {
 		slog.Warn("failed to restore pinned sessions", "err", err)
@@ -289,7 +291,9 @@ type pinnedSessionStarter interface {
 	SendKeys(ctx context.Context, paneID, keys string, enter bool) error
 }
 
-func restorePinnedSessions(ctx context.Context, repo pinnedSessionStore, tm pinnedSessionStarter) (int, error) {
+type pinnedSessionStarterFactory func(user string) pinnedSessionStarter
+
+func restorePinnedSessions(ctx context.Context, repo pinnedSessionStore, starterForUser pinnedSessionStarterFactory) (int, error) {
 	presets, err := repo.ListSessionPresets(ctx)
 	if err != nil {
 		return 0, err
@@ -297,6 +301,7 @@ func restorePinnedSessions(ctx context.Context, repo pinnedSessionStore, tm pinn
 
 	restored := 0
 	for _, preset := range presets {
+		tm := starterForUser(strings.TrimSpace(preset.User))
 		created := true
 		err := tm.CreateSession(ctx, preset.Name, preset.Cwd)
 		if err != nil && !tmux.IsKind(err, tmux.ErrKindSessionExists) {
