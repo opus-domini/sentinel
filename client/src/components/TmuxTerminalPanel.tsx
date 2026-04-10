@@ -1,4 +1,4 @@
-import { History, Menu, Minus, Plus } from 'lucide-react'
+import { History, Loader2, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import AppSectionTitle from './layout/AppSectionTitle'
 import ConnectionBadge from './ConnectionBadge'
@@ -126,15 +126,15 @@ export default function TmuxTerminalPanel({
     }
     const normalizedDetail = statusDetail.trim().toLowerCase()
     if (normalizedDetail.startsWith('reconnecting')) {
-      return 'Reconnecting to tmux...'
+      return 'Reconnecting to tmux'
     }
     if (
       normalizedDetail.startsWith('creating') ||
       normalizedDetail.startsWith('opening')
     ) {
-      return 'Waiting for tmux server...'
+      return 'Waiting for tmux server'
     }
-    return 'Loading terminal...'
+    return 'Loading terminal'
   })()
 
   const isKeyboardVisible = useCallback(() => {
@@ -309,8 +309,9 @@ export default function TmuxTerminalPanel({
                 getTerminalHostRef={getTerminalHostRef}
               />
               {terminalLoadingMessage !== '' && (
-                <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-[radial-gradient(circle_at_center,rgba(15,23,42,0.72),rgba(2,6,23,0.92))]">
-                  <div className="rounded-full border border-border/70 bg-card/80 px-3 py-1.5 text-[11px] font-medium tracking-[0.02em] text-secondary-foreground backdrop-blur-sm">
+                <div className="absolute inset-0 z-10 grid place-items-center bg-[#0a0e17]">
+                  <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.02em] text-secondary-foreground/70">
+                    <Loader2 className="size-3.5 animate-spin" />
                     {terminalLoadingMessage}
                   </div>
                 </div>

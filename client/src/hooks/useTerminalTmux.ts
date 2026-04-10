@@ -962,12 +962,26 @@ export function useTerminalTmux({
     runtime.terminal.focus()
   }, [])
 
+  const prevActiveSessionRef = useRef('')
+
   useEffect(() => {
+    const activeName = activeSession.trim()
+    const prevActive = prevActiveSessionRef.current
     activeSessionRef.current = activeSession
+    prevActiveSessionRef.current = activeName
     publishActiveRuntimeState()
     fitTerminal()
 
-    const runtime = runtimesRef.current.get(activeSession.trim())
+    // Disconnect the PREVIOUS session's socket when switching tabs,
+    // freeing a Chrome socket pool slot for the new session.
+    if (prevActive !== '' && prevActive !== activeName) {
+      const prevRuntime = runtimesRef.current.get(prevActive)
+      if (prevRuntime && isSocketOpenOrConnecting(prevRuntime.socket)) {
+        closeRuntimeSocket(prevRuntime, 'background')
+      }
+    }
+
+    const runtime = runtimesRef.current.get(activeName)
     if (!runtime) {
       return
     }
@@ -985,6 +999,7 @@ export function useTerminalTmux({
     activeEpoch,
     activeSession,
     clearRuntimeTextureAtlas,
+    closeRuntimeSocket,
     connectRuntime,
     fitTerminal,
     publishActiveRuntimeState,
@@ -995,19 +1010,16 @@ export function useTerminalTmux({
       openTabs.filter((session) => session.trim() !== ''),
     )
 
+    const activeName = activeSessionRef.current.trim()
     for (const session of allowedSessions) {
       if (!runtimesRef.current.has(session)) {
-        createRuntime(session)
-      }
-    }
-
-    // Connect the active session now — background tabs stay disconnected
-    // until the user switches to them (via the activeSession effect).
-    const active = activeSessionRef.current.trim()
-    if (active !== '') {
-      const runtime = runtimesRef.current.get(active)
-      if (runtime && !isSocketOpenOrConnecting(runtime.socket)) {
-        connectRuntime(runtime, { resetTerminal: false })
+        const rt = createRuntime(session)
+        // Connect newly created runtimes for the active session so the
+        // terminal attaches on initial page load.  Subsequent session
+        // switches are handled by the activeSession effect.
+        if (session === activeName && !isSocketOpenOrConnecting(rt.socket)) {
+          connectRuntime(rt, { resetTerminal: false })
+        }
       }
     }
 

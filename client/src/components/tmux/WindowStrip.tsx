@@ -203,7 +203,9 @@ function WindowChip({
             {WindowIcon !== null && (
               <WindowIcon className="size-3.5 shrink-0" />
             )}
-            <span className="min-w-0 truncate pt-[3px] leading-none">
+            <span
+              className={`min-w-0 truncate leading-none${WindowIcon !== null ? ' pt-[3px]' : ''}`}
+            >
               {displayName}
             </span>
             {hasUnread && unreadPanes > 1 && (

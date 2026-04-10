@@ -102,6 +102,11 @@ export default function SessionListPanel({
   }
 
   const visibleSessionCount = attachedSessions.length + idleSessions.length
+  const allPinned = sessions.length > 0 && pinnedNames.size > 0
+
+  if (visibleSessionCount === 0 && allPinned) {
+    return null
+  }
 
   return (
     <section className="rounded-lg border border-border-subtle bg-secondary">
@@ -114,9 +119,7 @@ export default function SessionListPanel({
                   ? 'No sessions match filter.'
                   : tmuxUnavailable
                     ? 'tmux is not installed on this host.'
-                    : sessions.length > 0 && pinnedNames.size > 0
-                      ? 'All sessions are pinned.'
-                      : 'No tmux sessions found.'}
+                    : 'No tmux sessions found.'}
               </span>
               {hasFilter && (
                 <Button

@@ -349,13 +349,15 @@ describe('useTerminalTmux – setConnection guard', () => {
     connectSession()
     expect(result.current.connectionState).toBe('connected')
 
-    // Switch back to session A — it should still be connected.
+    // Switch back to session A — its background socket was closed,
+    // so it reconnects on activation.
     rerender({
       openTabs: ['session-a', 'session-b'],
       activeSession: 'session-a',
       activeEpoch: 2,
     })
 
+    connectSession()
     expect(result.current.connectionState).toBe('connected')
     expect(result.current.statusDetail).toBe('attached session-a')
   })
