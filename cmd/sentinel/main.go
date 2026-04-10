@@ -240,8 +240,14 @@ func run(cfg config.Config, mux *http.ServeMux) int {
 		Handler:      requestLog(mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
 	}
+	// Disable HTTP/1.1 keep-alive so each response closes the TCP
+	// connection immediately.  This prevents idle connections from
+	// occupying Chrome's per-site socket pool (max 6, shared across
+	// all ports on the same domain) and starving WebSocket upgrades.
+	// Hijacked WebSocket connections are unaffected — they bypass the
+	// HTTP server's connection lifecycle entirely.
+	server.SetKeepAlivesEnabled(false)
 
 	shutdownCh := make(chan os.Signal, 1)
 	signal.Notify(shutdownCh, syscall.SIGINT, syscall.SIGTERM)
