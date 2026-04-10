@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.25](https://github.com/opus-domini/sentinel/compare/v0.5.24...v0.5.25) (2026-04-10)
+
+
+### Bug Fixes
+
+* eliminate WebSocket socket pool starvation in Chrome ([c901b9a](https://github.com/opus-domini/sentinel/commit/c901b9a5aa34f1205cd19c7936b96a650a72f41d))
+* fall back to default tmux server in WS attach handler ([23be911](https://github.com/opus-domini/sentinel/commit/23be911eda24ca808fb9c7e8276db83b86408895))
+* stabilize refreshSessions callback passed to useInspector ([daa15bc](https://github.com/opus-domini/sentinel/commit/daa15bce2098360a7eaf3b8b25dcc584372dc7e2))
+* UI polish and lazy terminal connection improvements ([1c579b2](https://github.com/opus-domini/sentinel/commit/1c579b28f4bd0928fd5ace7da24f8996bbd4ac08))
+
 ## [0.5.24](https://github.com/opus-domini/sentinel/compare/v0.5.23...v0.5.24) (2026-04-10)
 
 
