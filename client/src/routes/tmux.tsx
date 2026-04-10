@@ -283,6 +283,9 @@ function TmuxPage() {
 
   // ---- Forwarding ref for refreshSessions (resolves circular dependency) ----
   const refreshSessionsRef = useRef<() => Promise<void>>(async () => {})
+  const refreshSessionsViaRef = useCallback(async () => {
+    await refreshSessionsRef.current()
+  }, [])
 
   // ---- Inspector hook ----
   const inspector = useInspector({
@@ -293,9 +296,7 @@ function TmuxPage() {
     activeSession: tabsState.activeSession,
     setTmuxUnavailable,
     setSessions,
-    refreshSessions: async () => {
-      await refreshSessionsRef.current()
-    },
+    refreshSessions: refreshSessionsViaRef,
     pushErrorToast,
     pushSuccessToast,
     setConnection,
