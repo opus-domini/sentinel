@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.24](https://github.com/opus-domini/sentinel/compare/v0.5.23...v0.5.24) (2026-04-10)
+
+
+### Bug Fixes
+
+* build frontend before go test -race in ci-full ([bb75c3d](https://github.com/opus-domini/sentinel/commit/bb75c3d96814863e3c2e5eb9766baea1184c0249))
+* decouple WebSocket reconnect from rendering triggers ([f5184db](https://github.com/opus-domini/sentinel/commit/f5184db92e2f34c6d81f69953926db3a354b506b))
+
 ## [0.5.23](https://github.com/opus-domini/sentinel/compare/v0.5.22...v0.5.23) (2026-04-09)
 
 
