@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.26](https://github.com/opus-domini/sentinel/compare/v0.5.25...v0.5.26) (2026-04-11)
+
+
+### Bug Fixes
+
+* disable HTTP keep-alive to avoid cross-port socket pool contention ([6d26e7d](https://github.com/opus-domini/sentinel/commit/6d26e7d5bbc5b97e6d4b4aefc7728edadbf5049d))
+* harden tmux websocket recovery ([6784112](https://github.com/opus-domini/sentinel/commit/67841123c237e46cd5d20d9ddf5817707e3f335a))
+
 ## [0.5.25](https://github.com/opus-domini/sentinel/compare/v0.5.24...v0.5.25) (2026-04-10)
 
 
