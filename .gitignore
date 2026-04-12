@@ -27,6 +27,7 @@
 !/.golangci.yml
 
 !/install.sh
+!/uninstall.sh
 !/contrib/**/*
 !/scripts/**/*
 
