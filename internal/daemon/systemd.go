@@ -19,6 +19,8 @@ const (
 	userAutoUpdateTimerName   = "sentinel-updater.timer"
 	systemAutoUpdateService   = "/etc/systemd/system/sentinel-updater.service"
 	systemAutoUpdateTimer     = "/etc/systemd/system/sentinel-updater.timer"
+	needrestartConfDir        = "/etc/needrestart/conf.d"
+	needrestartConfPath       = "/etc/needrestart/conf.d/sentinel.conf"
 	systemdSupportedOS        = "linux"
 	managerScopeAuto          = "auto"
 	managerScopeUser          = "user"
@@ -556,6 +558,8 @@ func installSystemServiceLinux(opts InstallUserOptions) error {
 		return fmt.Errorf("write system service: %w", err)
 	}
 
+	installNeedrestartOverride(needrestartConfDir, needrestartConfPath)
+
 	if err := runSystemctlSystem("daemon-reload"); err != nil {
 		return err
 	}
@@ -579,6 +583,7 @@ func uninstallSystemServiceLinux(opts UninstallUserOptions) error {
 		if err := os.Remove(systemUnitPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove system service: %w", err)
 		}
+		removeNeedrestartOverride(needrestartConfPath)
 	}
 	return runSystemctlSystem("daemon-reload")
 }
@@ -836,6 +841,24 @@ WantedBy=timers.target
 func escapeSystemdExec(path string) string {
 	path = strings.ReplaceAll(path, "\\", "\\\\")
 	return strings.ReplaceAll(path, " ", "\\x20")
+}
+
+// installNeedrestartOverride writes a config snippet that prevents needrestart
+// from automatically restarting sentinel during unattended package upgrades.
+// Sentinel is a static Go binary — its child processes (tmux, bash) naturally
+// pick up new libraries when recreated, so an automatic service restart is
+// both unnecessary and harmful (rapid restarts trigger systemd start-limit).
+func installNeedrestartOverride(confDir, confPath string) {
+	if info, err := os.Stat(confDir); err != nil || !info.IsDir() {
+		return
+	}
+	const content = "# Sentinel: static Go binary, does not need restart after library upgrades.\n" +
+		"$nrconf{override_rc}{qr(^sentinel)} = 0;\n"
+	_ = os.WriteFile(confPath, []byte(content), 0o644) //nolint:gosec // needrestart reads config as root; 0644 matches /etc/needrestart/conf.d/* convention
+}
+
+func removeNeedrestartOverride(confPath string) {
+	_ = os.Remove(confPath)
 }
 
 func resolveExecPath(raw string) (string, error) {

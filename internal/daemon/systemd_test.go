@@ -1875,3 +1875,59 @@ func TestReadSystemctlStateReturnsNonEmpty(t *testing.T) {
 		t.Fatal("expected non-empty state")
 	}
 }
+
+func TestInstallNeedrestartOverride(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	confDir := filepath.Join(dir, "conf.d")
+	confPath := filepath.Join(confDir, "sentinel.conf")
+
+	// Does nothing when conf dir doesn't exist.
+	installNeedrestartOverride(confDir, confPath)
+	if _, err := os.Stat(confPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("expected no file when conf dir is absent")
+	}
+
+	// Creates override when conf dir exists.
+	if err := os.MkdirAll(confDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	installNeedrestartOverride(confDir, confPath)
+	data, err := os.ReadFile(confPath) //nolint:gosec // test reads from temp dir
+	if err != nil {
+		t.Fatalf("read override: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "override_rc") {
+		t.Fatalf("override missing override_rc directive: %s", content)
+	}
+	if !strings.Contains(content, "sentinel") {
+		t.Fatalf("override missing sentinel pattern: %s", content)
+	}
+
+	// File should be world-readable (0644).
+	info, _ := os.Stat(confPath)
+	if perm := info.Mode().Perm(); perm != 0o644 {
+		t.Fatalf("permissions = %o, want 0644", perm)
+	}
+}
+
+func TestRemoveNeedrestartOverride(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	confPath := filepath.Join(dir, "sentinel.conf")
+
+	// No error when file doesn't exist.
+	removeNeedrestartOverride(confPath)
+
+	// Removes existing file.
+	if err := os.WriteFile(confPath, []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	removeNeedrestartOverride(confPath)
+	if _, err := os.Stat(confPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("expected file to be removed")
+	}
+}
