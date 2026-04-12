@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.27](https://github.com/opus-domini/sentinel/compare/v0.5.26...v0.5.27) (2026-04-12)
+
+
+### Features
+
+* add uninstall.sh script ([15b424a](https://github.com/opus-domini/sentinel/commit/15b424af587233d59e7a96dab5117a692528254f))
+
+
+### Bug Fixes
+
+* prevent needrestart from bouncing sentinel during unattended upgrades ([aac1a99](https://github.com/opus-domini/sentinel/commit/aac1a9989e4d9363b76dc423cac9ad9c8dbec654))
+
 ## [0.5.26](https://github.com/opus-domini/sentinel/compare/v0.5.25...v0.5.26) (2026-04-11)
 
 
