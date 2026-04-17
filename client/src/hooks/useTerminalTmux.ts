@@ -9,7 +9,6 @@ import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
 import type { ReconnectState } from '@/lib/wsReconnect'
-import { useToastContext } from '@/contexts/ToastContext'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import {
   createWebClipboardProvider,
@@ -70,6 +69,7 @@ type SessionRuntime = {
   session: string
   terminal: Terminal
   fitAddon: FitAddon
+  webglAddon: WebglAddon | null
   encoder: TextEncoder
   socket: WebSocket | null
   generation: number
@@ -156,10 +156,6 @@ export function useTerminalTmux({
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
-
-  const { pushToast } = useToastContext()
-  const pushToastRef = useRef(pushToast)
-  pushToastRef.current = pushToast
 
   const isMobile = useIsMobileLayout()
   const isMobileRef = useRef(isMobile)
@@ -704,6 +700,7 @@ export function useTerminalTmux({
         session,
         terminal,
         fitAddon,
+        webglAddon,
         encoder: new TextEncoder(),
         socket: null,
         generation: 0,
@@ -718,20 +715,30 @@ export function useTerminalTmux({
         onSelectionDispose: { dispose: () => undefined },
         contextMenuDispose: { dispose: () => undefined },
         touchWheelDispose: { dispose: () => undefined },
-        webglContextLossDispose: webglAddon?.onContextLoss(() => {
-          console.warn(`sentinel: webgl context lost (${session})`)
-          pushToastRef.current({
-            level: 'error',
-            title: 'WebGL context lost',
-            message:
-              'Terminal rendering was interrupted. Try reconnecting the session.',
-          })
-        }) ?? { dispose: () => undefined },
+        webglContextLossDispose: { dispose: () => undefined },
         hostResizeObserver: null,
         hostResizeRafId: null,
         reconnect: createReconnect(),
         reconnectTimer: null,
         handshakeTimer: null,
+      }
+
+      // VSCode pattern: on WebGL context loss, dispose the addon so xterm
+      // falls back to the DOM renderer. Keeping the addon loaded against a
+      // dead context leaves glyphs as black rectangles until the user
+      // manually reconnects.
+      if (webglAddon) {
+        runtime.webglContextLossDispose = webglAddon.onContextLoss(() => {
+          console.warn(`sentinel: webgl context lost (${session})`)
+          const addon = runtime.webglAddon
+          if (!addon) return
+          runtime.webglAddon = null
+          try {
+            addon.dispose()
+          } catch {
+            // addon may already be disposed — ignore
+          }
+        })
       }
 
       runtime.onDataDispose = terminal.onData((data) => {
@@ -801,6 +808,7 @@ export function useTerminalTmux({
       runtime.contextMenuDispose.dispose()
       runtime.touchWheelDispose.dispose()
       runtime.webglContextLossDispose.dispose()
+      runtime.webglAddon = null
       runtime.terminal.dispose()
       runtimesRef.current.delete(runtime.session)
       hostsRef.current.delete(runtime.session)

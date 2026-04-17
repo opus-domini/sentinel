@@ -88,12 +88,32 @@ vi.mock('@xterm/addon-web-links', () => ({
     dispose() {}
   },
 }))
-vi.mock('@xterm/addon-webgl', () => ({
-  WebglAddon: class {
-    onContextLoss = vi.fn(() => ({ dispose() {} }))
-    dispose() {}
-  },
-}))
+vi.mock('@xterm/addon-webgl', () => {
+  const instancesKey = '__SENTINEL_WEBGL_ADDON_INSTANCES'
+  ;(
+    globalThis as typeof globalThis & {
+      [instancesKey]?: Array<unknown>
+    }
+  )[instancesKey] = []
+  return {
+    WebglAddon: class {
+      contextLossCallbacks: Array<() => void> = []
+      onContextLoss = vi.fn((cb: () => void) => {
+        this.contextLossCallbacks.push(cb)
+        return { dispose() {} }
+      })
+      dispose = vi.fn()
+
+      constructor() {
+        ;(
+          globalThis as typeof globalThis & {
+            __SENTINEL_WEBGL_ADDON_INSTANCES?: Array<unknown>
+          }
+        ).__SENTINEL_WEBGL_ADDON_INSTANCES?.push(this)
+      }
+    },
+  }
+})
 
 vi.mock('@/contexts/ToastContext', () => ({
   useToastContext: () => ({ pushToast: vi.fn() }),
@@ -177,6 +197,7 @@ function setupEnvironment() {
       __SENTINEL_TERMINAL_INSTANCES?: Array<unknown>
     }
   ).__SENTINEL_TERMINAL_INSTANCES = []
+  resetWebglAddonInstances()
   globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
   document.documentElement.style.setProperty('--surface-inset', '#112233')
   document.documentElement.style.setProperty('--foreground', '#ddeeff')
@@ -208,6 +229,27 @@ function setupEnvironment() {
     writable: true,
     configurable: true,
   })
+}
+
+function latestWebglAddon() {
+  return (
+    (
+      globalThis as typeof globalThis & {
+        __SENTINEL_WEBGL_ADDON_INSTANCES?: Array<{
+          contextLossCallbacks: Array<() => void>
+          dispose: ReturnType<typeof vi.fn>
+        }>
+      }
+    ).__SENTINEL_WEBGL_ADDON_INSTANCES?.at(-1) ?? null
+  )
+}
+
+function resetWebglAddonInstances() {
+  ;(
+    globalThis as typeof globalThis & {
+      __SENTINEL_WEBGL_ADDON_INSTANCES?: Array<unknown>
+    }
+  ).__SENTINEL_WEBGL_ADDON_INSTANCES = []
 }
 
 function latestTerminal() {
@@ -996,6 +1038,69 @@ describe('useTerminalTmux – terminal chrome', () => {
     )
 
     host.remove()
+  })
+})
+
+describe('useTerminalTmux – webgl context loss', () => {
+  let originalWebGL2: unknown
+  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext
+
+  beforeEach(() => {
+    setupEnvironment()
+    originalWebGL2 = (globalThis as { WebGL2RenderingContext?: unknown })
+      .WebGL2RenderingContext
+    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
+      value: function WebGL2RenderingContext() {},
+      writable: true,
+      configurable: true,
+    })
+    originalGetContext = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function stubGetContext(
+      this: HTMLCanvasElement,
+      type: string,
+    ) {
+      if (type === 'webgl2') return {} as RenderingContext
+      return null
+    } as typeof HTMLCanvasElement.prototype.getContext
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWebSocket
+    HTMLCanvasElement.prototype.getContext = originalGetContext
+    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
+      value: originalWebGL2,
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('disposes the WebGL addon on context loss so xterm falls back to DOM', () => {
+    renderTerminalHook()
+    const addon = latestWebglAddon()
+    expect(addon).not.toBeNull()
+    expect(addon?.dispose).not.toHaveBeenCalled()
+
+    act(() => {
+      for (const cb of addon?.contextLossCallbacks ?? []) {
+        cb()
+      }
+    })
+
+    expect(addon?.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('guards against a second context-loss firing after dispose', () => {
+    renderTerminalHook()
+    const addon = latestWebglAddon()
+    const cb = addon?.contextLossCallbacks[0]
+    expect(cb).toBeDefined()
+
+    act(() => {
+      cb?.()
+      cb?.()
+    })
+
+    expect(addon?.dispose).toHaveBeenCalledTimes(1)
   })
 })
 
