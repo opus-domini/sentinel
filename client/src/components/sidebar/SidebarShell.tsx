@@ -106,11 +106,13 @@ export default function SidebarShell({
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      <FocusScope trapped={isMobile && isOpen} loop>
+      <FocusScope
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        trapped={isMobile && isOpen}
+        loop
+      >
         <MobileNav />
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {children}
-        </div>
+        {children}
       </FocusScope>
     </aside>
   )
