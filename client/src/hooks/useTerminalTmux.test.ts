@@ -98,10 +98,17 @@ vi.mock('@xterm/addon-webgl', () => {
   return {
     WebglAddon: class {
       contextLossCallbacks: Array<() => void> = []
+      atlasGrowthCallbacks: Array<(canvas: HTMLCanvasElement) => void> = []
       onContextLoss = vi.fn((cb: () => void) => {
         this.contextLossCallbacks.push(cb)
         return { dispose() {} }
       })
+      onAddTextureAtlasCanvas = vi.fn(
+        (cb: (canvas: HTMLCanvasElement) => void) => {
+          this.atlasGrowthCallbacks.push(cb)
+          return { dispose() {} }
+        },
+      )
       dispose = vi.fn()
 
       constructor() {
@@ -237,6 +244,7 @@ function latestWebglAddon() {
       globalThis as typeof globalThis & {
         __SENTINEL_WEBGL_ADDON_INSTANCES?: Array<{
           contextLossCallbacks: Array<() => void>
+          atlasGrowthCallbacks: Array<(canvas: HTMLCanvasElement) => void>
           dispose: ReturnType<typeof vi.fn>
         }>
       }
@@ -1101,6 +1109,154 @@ describe('useTerminalTmux – webgl context loss', () => {
     })
 
     expect(addon?.dispose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useTerminalTmux – webgl atlas growth', () => {
+  let originalWebGL2: unknown
+  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    setupEnvironment()
+    originalWebGL2 = (globalThis as { WebGL2RenderingContext?: unknown })
+      .WebGL2RenderingContext
+    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
+      value: function WebGL2RenderingContext() {},
+      writable: true,
+      configurable: true,
+    })
+    originalGetContext = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function stubGetContext(
+      this: HTMLCanvasElement,
+      type: string,
+    ) {
+      if (type === 'webgl2') return {} as RenderingContext
+      return null
+    } as typeof HTMLCanvasElement.prototype.getContext
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    globalThis.WebSocket = originalWebSocket
+    HTMLCanvasElement.prototype.getContext = originalGetContext
+    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
+      value: originalWebGL2,
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('does not clear atlas for the first two page additions', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.clearTextureAtlas.mockClear()
+
+    const addon = latestWebglAddon()
+    const growthCb = addon?.atlasGrowthCallbacks[0]
+    expect(growthCb).toBeDefined()
+
+    const fakeCanvas = document.createElement('canvas')
+    act(() => {
+      growthCb?.(fakeCanvas)
+      growthCb?.(fakeCanvas)
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(1_000)
+    })
+
+    expect(terminal?.clearTextureAtlas).not.toHaveBeenCalled()
+
+    host.remove()
+  })
+
+  it('debounces an atlas clear once the third page is added', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.clearTextureAtlas.mockClear()
+
+    const addon = latestWebglAddon()
+    const growthCb = addon?.atlasGrowthCallbacks[0]
+    const fakeCanvas = document.createElement('canvas')
+
+    act(() => {
+      growthCb?.(fakeCanvas)
+      growthCb?.(fakeCanvas)
+      growthCb?.(fakeCanvas)
+      growthCb?.(fakeCanvas) // burst — additional events collapse into one clear
+    })
+
+    expect(terminal?.clearTextureAtlas).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
+
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
+
+    host.remove()
+  })
+
+  it('resets the page counter after a clear so growth can be detected again', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.clearTextureAtlas.mockClear()
+
+    const addon = latestWebglAddon()
+    const growthCb = addon?.atlasGrowthCallbacks[0]
+    const fakeCanvas = document.createElement('canvas')
+
+    act(() => {
+      growthCb?.(fakeCanvas)
+      growthCb?.(fakeCanvas)
+      growthCb?.(fakeCanvas)
+    })
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
+
+    // Second wave must not clear until 3 fresh pages were added.
+    act(() => {
+      growthCb?.(fakeCanvas)
+      growthCb?.(fakeCanvas)
+    })
+    act(() => {
+      vi.advanceTimersByTime(1_000)
+    })
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      growthCb?.(fakeCanvas)
+    })
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(2)
+
+    host.remove()
   })
 })
 

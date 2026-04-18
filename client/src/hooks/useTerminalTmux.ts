@@ -85,6 +85,9 @@ type SessionRuntime = {
   contextMenuDispose: Disposable
   touchWheelDispose: Disposable
   webglContextLossDispose: Disposable
+  webglAtlasGrowthDispose: Disposable
+  atlasPageCount: number
+  atlasClearTimer: number | null
   hostResizeObserver: ResizeObserver | null
   hostResizeRafId: number | null
   reconnect: ReconnectState
@@ -274,6 +277,11 @@ export function useTerminalTmux({
   }, [])
 
   const clearRuntimeTextureAtlas = useCallback((runtime: SessionRuntime) => {
+    runtime.atlasPageCount = 0
+    if (runtime.atlasClearTimer !== null) {
+      window.clearTimeout(runtime.atlasClearTimer)
+      runtime.atlasClearTimer = null
+    }
     if (!runtime.terminal.element) {
       return
     }
@@ -716,6 +724,9 @@ export function useTerminalTmux({
         contextMenuDispose: { dispose: () => undefined },
         touchWheelDispose: { dispose: () => undefined },
         webglContextLossDispose: { dispose: () => undefined },
+        webglAtlasGrowthDispose: { dispose: () => undefined },
+        atlasPageCount: 0,
+        atlasClearTimer: null,
         hostResizeObserver: null,
         hostResizeRafId: null,
         reconnect: createReconnect(),
@@ -739,6 +750,23 @@ export function useTerminalTmux({
             // addon may already be disposed — ignore
           }
         })
+
+        // The WebGL atlas adds a new page every time it runs out of room
+        // for fresh glyphs — common with emoji, CJK, and long sessions
+        // on HiDPI displays. Some drivers start returning black sprites
+        // once the atlas grows past a few pages. Proactively flush when
+        // the atlas has added multiple pages in a short window, capped
+        // by a debounce so a burst of paste doesn't thrash the GPU.
+        runtime.webglAtlasGrowthDispose = webglAddon.onAddTextureAtlasCanvas(
+          () => {
+            runtime.atlasPageCount += 1
+            if (runtime.atlasPageCount < 3) return
+            if (runtime.atlasClearTimer !== null) return
+            runtime.atlasClearTimer = window.setTimeout(() => {
+              clearRuntimeTextureAtlas(runtime)
+            }, 250)
+          },
+        )
       }
 
       runtime.onDataDispose = terminal.onData((data) => {
@@ -788,6 +816,7 @@ export function useTerminalTmux({
     },
     [
       allowWheelInAlternateBuffer,
+      clearRuntimeTextureAtlas,
       fontSize,
       openRuntimeInHost,
       sendResize,
@@ -808,6 +837,11 @@ export function useTerminalTmux({
       runtime.contextMenuDispose.dispose()
       runtime.touchWheelDispose.dispose()
       runtime.webglContextLossDispose.dispose()
+      runtime.webglAtlasGrowthDispose.dispose()
+      if (runtime.atlasClearTimer !== null) {
+        window.clearTimeout(runtime.atlasClearTimer)
+        runtime.atlasClearTimer = null
+      }
       runtime.webglAddon = null
       runtime.terminal.dispose()
       runtimesRef.current.delete(runtime.session)
