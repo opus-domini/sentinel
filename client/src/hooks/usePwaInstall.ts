@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { BeforeInstallPromptEvent } from '@/lib/pwa'
+import type { BeforeInstallPromptEvent, CheckForUpdateResult } from '@/lib/pwa'
 import {
   applySentinelPwaUpdate,
+  checkAndApplyPwaUpdate,
   getPwaUpdateReadyEventName,
   hasSentinelPwaUpdate,
 } from '@/lib/pwa'
@@ -90,6 +91,19 @@ export function usePwaInstall() {
     return applied
   }, [])
 
+  const checkForUpdate =
+    useCallback(async (): Promise<CheckForUpdateResult> => {
+      setUpdating(true)
+      const result = await checkAndApplyPwaUpdate()
+      if (result !== 'applied') {
+        setUpdating(false)
+      }
+      if (result === 'applied') {
+        setUpdateAvailable(false)
+      }
+      return result
+    }, [])
+
   return {
     supportsPwa: canUsePwaFeatures(),
     installed,
@@ -97,6 +111,7 @@ export function usePwaInstall() {
     installApp,
     updateAvailable,
     applyUpdate,
+    checkForUpdate,
     updating,
   }
 }

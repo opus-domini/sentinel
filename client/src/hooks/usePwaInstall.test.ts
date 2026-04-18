@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePwaInstall } from './usePwaInstall'
-import { applySentinelPwaUpdate } from '@/lib/pwa'
+import { applySentinelPwaUpdate, checkAndApplyPwaUpdate } from '@/lib/pwa'
 
 vi.mock('@/lib/pwa', () => ({
   applySentinelPwaUpdate: vi.fn(() => true),
+  checkAndApplyPwaUpdate: vi.fn(async () => 'applied' as const),
   getPwaUpdateReadyEventName: () => 'sentinel.pwa.update-ready',
   hasSentinelPwaUpdate: () => false,
 }))
@@ -104,5 +105,47 @@ describe('usePwaInstall', () => {
     expect(result.current.updateAvailable).toBe(true)
     expect(result.current.applyUpdate()).toBe(true)
     expect(applySentinelPwaUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('checkForUpdate keeps updating=true when an update is applied', async () => {
+    vi.mocked(checkAndApplyPwaUpdate).mockResolvedValueOnce('applied')
+    const { result } = renderHook(() => usePwaInstall())
+
+    let outcome: string | undefined
+    await act(async () => {
+      outcome = await result.current.checkForUpdate()
+    })
+
+    expect(outcome).toBe('applied')
+    // Page will reload via controllerchange — the button stays disabled
+    // (updating = true) until the reload kicks in.
+    expect(result.current.updating).toBe(true)
+    expect(result.current.updateAvailable).toBe(false)
+  })
+
+  it('checkForUpdate clears updating when no update is available', async () => {
+    vi.mocked(checkAndApplyPwaUpdate).mockResolvedValueOnce('no-update')
+    const { result } = renderHook(() => usePwaInstall())
+
+    let outcome: string | undefined
+    await act(async () => {
+      outcome = await result.current.checkForUpdate()
+    })
+
+    expect(outcome).toBe('no-update')
+    await waitFor(() => {
+      expect(result.current.updating).toBe(false)
+    })
+  })
+
+  it('checkForUpdate clears updating on unsupported or failed results', async () => {
+    vi.mocked(checkAndApplyPwaUpdate).mockResolvedValueOnce('unsupported')
+    const { result } = renderHook(() => usePwaInstall())
+
+    await act(async () => {
+      await result.current.checkForUpdate()
+    })
+
+    expect(result.current.updating).toBe(false)
   })
 })

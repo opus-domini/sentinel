@@ -104,3 +104,83 @@ export function hasSentinelPwaUpdate(): boolean {
 export function getPwaUpdateReadyEventName(): string {
   return PWA_UPDATE_READY_EVENT
 }
+
+export type CheckForUpdateResult =
+  | 'applied'
+  | 'no-update'
+  | 'unsupported'
+  | 'failed'
+
+const INSTALL_TIMEOUT_MS = 10_000
+
+function activateWaitingWorker(worker: ServiceWorker): void {
+  waitingServiceWorker = worker
+  worker.postMessage({ type: 'SKIP_WAITING' })
+}
+
+async function waitForInstall(installing: ServiceWorker): Promise<boolean> {
+  if (installing.state === 'installed') return true
+  if (installing.state === 'activated' || installing.state === 'redundant') {
+    return installing.state === 'activated'
+  }
+  return new Promise<boolean>((resolve) => {
+    const onStateChange = () => {
+      if (installing.state === 'installed') {
+        installing.removeEventListener('statechange', onStateChange)
+        window.clearTimeout(timer)
+        resolve(true)
+      } else if (installing.state === 'redundant') {
+        installing.removeEventListener('statechange', onStateChange)
+        window.clearTimeout(timer)
+        resolve(false)
+      }
+    }
+    installing.addEventListener('statechange', onStateChange)
+    const timer = window.setTimeout(() => {
+      installing.removeEventListener('statechange', onStateChange)
+      resolve(false)
+    }, INSTALL_TIMEOUT_MS)
+  })
+}
+
+// Actively probe for a new service worker and activate it if one is
+// waiting. Returns 'applied' when a new worker has been told to
+// skipWaiting — the page will reload via the controllerchange listener.
+// Returns 'no-update' when the server serves the same worker bytes.
+export async function checkAndApplyPwaUpdate(): Promise<CheckForUpdateResult> {
+  if (!canRegisterServiceWorker()) {
+    return 'unsupported'
+  }
+  try {
+    const registration = await navigator.serviceWorker.getRegistration()
+    if (!registration) {
+      return 'unsupported'
+    }
+    bindControllerChangeReload()
+
+    if (registration.waiting) {
+      activateWaitingWorker(registration.waiting)
+      return 'applied'
+    }
+
+    await registration.update()
+
+    if (registration.waiting) {
+      activateWaitingWorker(registration.waiting)
+      return 'applied'
+    }
+
+    const installing = registration.installing
+    if (installing) {
+      const installed = await waitForInstall(installing)
+      if (installed && registration.waiting) {
+        activateWaitingWorker(registration.waiting)
+        return 'applied'
+      }
+    }
+
+    return 'no-update'
+  } catch {
+    return 'failed'
+  }
+}

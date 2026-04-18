@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useMetaContext } from '@/contexts/MetaContext'
+import { useToastContext } from '@/contexts/ToastContext'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { OPS_STORAGE_STATS_QUERY_KEY } from '@/lib/opsQueryCache'
@@ -91,9 +92,33 @@ export default function SettingsDialog({
     installAvailable,
     installApp,
     updateAvailable,
-    applyUpdate,
+    checkForUpdate,
     updating,
   } = usePwaInstall()
+  const { pushToast } = useToastContext()
+
+  const handleUpdateApp = useCallback(async () => {
+    const result = await checkForUpdate()
+    if (result === 'applied') {
+      // Controller change listener will reload automatically.
+      return
+    }
+    if (result === 'no-update') {
+      // Nothing new to install — reload anyway so the user sees a
+      // refreshed surface. Covers the case where an asset cache is
+      // stale but the SW bytes match.
+      window.location.reload()
+      return
+    }
+    pushToast({
+      level: 'error',
+      title: 'Update unavailable',
+      message:
+        result === 'unsupported'
+          ? 'Service workers require HTTPS or localhost.'
+          : 'Failed to reach the update channel. Check connectivity.',
+    })
+  }, [checkForUpdate, pushToast])
 
   const selectTheme = (id: string) => {
     setThemeId(id)
@@ -407,10 +432,21 @@ export default function SettingsDialog({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={applyUpdate}
-                  disabled={!updateAvailable || updating}
+                  onClick={() => {
+                    void handleUpdateApp()
+                  }}
+                  disabled={!supportsPwa || updating}
+                  title={
+                    updateAvailable
+                      ? 'A new version is ready — tap to activate and reload.'
+                      : 'Check the server for a new version and reload.'
+                  }
                 >
-                  {updating ? 'Updating...' : 'Apply Update'}
+                  {updating
+                    ? 'Updating...'
+                    : updateAvailable
+                      ? 'Apply Update'
+                      : 'Check for Update'}
                 </Button>
                 {!supportsPwa && (
                   <span className="text-[11px] text-warning-foreground">
