@@ -664,6 +664,9 @@ export function useTerminalTmux({
   const createRuntime = useCallback(
     (session: string): SessionRuntime => {
       const terminal = new Terminal({
+        // Required to switch unicode.activeVersion to the graphemes
+        // provider below — xterm gates the unicode API behind this flag.
+        allowProposedApi: true,
         cursorBlink: true,
         fontFamily:
           'JetBrains Mono Variable, JetBrains Mono, SF Mono, monospace',
