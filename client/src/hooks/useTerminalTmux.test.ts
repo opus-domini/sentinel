@@ -25,6 +25,7 @@ vi.mock('@xterm/xterm', () => {
       textarea: HTMLTextAreaElement | null = null
       cols = 80
       rows = 24
+      unicode: { activeVersion: string } = { activeVersion: '6' }
       buffer = { active: { type: 'normal' } }
       onData = vi.fn(() => ({ dispose: _noop }))
       onResize = vi.fn(() => ({ dispose: _noop }))
@@ -85,6 +86,11 @@ vi.mock('@xterm/addon-serialize', () => ({
 }))
 vi.mock('@xterm/addon-web-links', () => ({
   WebLinksAddon: class {
+    dispose() {}
+  },
+}))
+vi.mock('@xterm/addon-unicode-graphemes', () => ({
+  UnicodeGraphemesAddon: class {
     dispose() {}
   },
 }))
@@ -1021,7 +1027,7 @@ describe('useTerminalTmux – terminal chrome', () => {
 
     try {
       renderTerminalHook()
-      expect(latestTerminal()?.loadAddon).toHaveBeenCalledTimes(5)
+      expect(latestTerminal()?.loadAddon).toHaveBeenCalledTimes(6)
     } finally {
       Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
         value: originalWebGL2RenderingContext,
@@ -1046,6 +1052,11 @@ describe('useTerminalTmux – terminal chrome', () => {
     )
 
     host.remove()
+  })
+
+  it('activates the unicode-graphemes provider so emoji widths match tmux', () => {
+    renderTerminalHook()
+    expect(latestTerminal()?.unicode.activeVersion).toBe('15-graphemes')
   })
 })
 

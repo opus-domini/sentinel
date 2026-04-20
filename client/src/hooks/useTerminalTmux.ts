@@ -3,6 +3,7 @@ import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { SerializeAddon } from '@xterm/addon-serialize'
+import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
@@ -693,6 +694,11 @@ export function useTerminalTmux({
         event.preventDefault()
         window.open(uri, '_blank', 'noopener,noreferrer')
       })
+      // Align xterm's column-width table with modern tmux (Unicode 15 +
+      // grapheme clusters). Without this, emoji, flags, ZWJ sequences and
+      // CJK render as 1 column in xterm while tmux advances the cursor by
+      // 2 — the buffer then drifts out of sync and the screen garbles.
+      const unicodeGraphemesAddon = new UnicodeGraphemesAddon()
       const webglAddon = supportsWebgl2() ? new WebglAddon() : null
 
       terminal.loadAddon(fitAddon)
@@ -700,6 +706,8 @@ export function useTerminalTmux({
       terminal.loadAddon(searchAddon)
       terminal.loadAddon(serializeAddon)
       terminal.loadAddon(webLinksAddon)
+      terminal.loadAddon(unicodeGraphemesAddon)
+      terminal.unicode.activeVersion = '15-graphemes'
       if (webglAddon) {
         terminal.loadAddon(webglAddon)
       }
