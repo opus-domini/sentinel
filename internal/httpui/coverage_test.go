@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/security"
@@ -1058,6 +1059,25 @@ func TestFormatManifestAppBrand(t *testing.T) {
 	}
 	if got := formatManifestAppShortName("drako"); got != "drako" {
 		t.Fatalf("formatManifestAppShortName(\"drako\") = %q, want drako", got)
+	}
+}
+
+func TestReadManifestFileFallsBackToPublic(t *testing.T) {
+	t.Parallel()
+
+	rawManifest, err := readManifestFile(
+		fstest.MapFS{
+			"index.placeholder.html": &fstest.MapFile{Data: []byte("placeholder")},
+		},
+		fstest.MapFS{
+			"manifest.webmanifest": &fstest.MapFile{Data: []byte(`{"name":"Sentinel"}`)},
+		},
+	)
+	if err != nil {
+		t.Fatalf("readManifestFile() error = %v", err)
+	}
+	if got := string(rawManifest); got != `{"name":"Sentinel"}` {
+		t.Fatalf("readManifestFile() = %q, want public manifest", got)
 	}
 }
 

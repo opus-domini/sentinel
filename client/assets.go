@@ -6,3 +6,8 @@ import "embed"
 //
 //go:embed dist
 var DistFS embed.FS
+
+// PublicFS embeds tracked public assets that exist before a frontend build.
+//
+//go:embed public
+var PublicFS embed.FS

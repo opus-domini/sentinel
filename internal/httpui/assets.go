@@ -14,9 +14,12 @@ import (
 )
 
 var (
-	distFS     fs.FS
-	distFSInit sync.Once
-	distFSErr  error
+	distFS       fs.FS
+	distFSInit   sync.Once
+	distFSErr    error
+	publicFS     fs.FS
+	publicFSInit sync.Once
+	publicFSErr  error
 )
 
 const manifestAppName = "Sentinel"
@@ -26,6 +29,13 @@ func ensureDistFS() error {
 		distFS, distFSErr = fs.Sub(clientassets.DistFS, "dist")
 	})
 	return distFSErr
+}
+
+func ensurePublicFS() error {
+	publicFSInit.Do(func() {
+		publicFS, publicFSErr = fs.Sub(clientassets.PublicFS, "public")
+	})
+	return publicFSErr
 }
 
 func registerAssetRoutes(mux *http.ServeMux) error {
@@ -76,17 +86,41 @@ func formatManifestAppShortName(hostname string) string {
 	return trimmedHostname
 }
 
+func readManifestFile(dist, public fs.FS) ([]byte, error) {
+	if dist != nil {
+		rawManifest, err := fs.ReadFile(dist, "manifest.webmanifest")
+		if err == nil {
+			return rawManifest, nil
+		}
+	}
+	if public == nil {
+		return nil, fs.ErrNotExist
+	}
+	return fs.ReadFile(public, "manifest.webmanifest")
+}
+
 func (h *Handler) serveManifest(w http.ResponseWriter, r *http.Request) {
 	if err := h.guard.CheckOrigin(r); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if ensureDistFS() != nil {
+
+	var manifestDistFS fs.FS
+	if ensureDistFS() == nil {
+		manifestDistFS = distFS
+	}
+
+	var manifestPublicFS fs.FS
+	if ensurePublicFS() == nil {
+		manifestPublicFS = publicFS
+	}
+
+	if manifestDistFS == nil && manifestPublicFS == nil {
 		http.Error(w, "frontend bundle missing", http.StatusInternalServerError)
 		return
 	}
 
-	rawManifest, err := fs.ReadFile(distFS, "manifest.webmanifest")
+	rawManifest, err := readManifestFile(manifestDistFS, manifestPublicFS)
 	if err != nil {
 		http.NotFound(w, r)
 		return
