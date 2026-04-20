@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.28](https://github.com/opus-domini/sentinel/compare/v0.5.27...v0.5.28) (2026-04-20)
+
+
+### Features
+
+* make PWA Update App button actively probe and activate a new worker ([356e00d](https://github.com/opus-domini/sentinel/commit/356e00d2afb55e05ee8b8d8bb2c28d188c70be7c))
+
+
+### Bug Fixes
+
+* align xterm column widths with tmux via unicode-graphemes addon ([03461ff](https://github.com/opus-domini/sentinel/commit/03461ff8e50b318227d84db50afef58e35e5cb0f))
+* clear WebGL atlas on growth to avoid black glyphs in emoji-heavy sessions ([dfc8467](https://github.com/opus-domini/sentinel/commit/dfc8467c23530a0884bcf3bade0959ce11fe971d))
+* dispose WebGL addon on context loss to prevent black glyphs ([6d2d7ee](https://github.com/opus-domini/sentinel/commit/6d2d7eeef9d4180391bad5f2542b827dd10911a7))
+* enable allowProposedApi so the unicode-graphemes addon can activate ([90b9ddf](https://github.com/opus-domini/sentinel/commit/90b9ddf1466828dba7efcc41c2d7842600281983))
+* fall back to client/public for the PWA manifest so go tests work without a build ([c756be6](https://github.com/opus-domini/sentinel/commit/c756be6307181fa4ce7253a61d09e9c14ae41f89))
+* restore mobile sidebar scroll by passing flex chain through FocusScope ([5a2b422](https://github.com/opus-domini/sentinel/commit/5a2b422efba193dbb776a11d94cbfb82fb0bf140))
+
 ## [0.5.27](https://github.com/opus-domini/sentinel/compare/v0.5.26...v0.5.27) (2026-04-12)
 
 
