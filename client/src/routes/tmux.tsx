@@ -337,6 +337,7 @@ function TmuxPage() {
       name: string
       cwd: string
       icon: string
+      user: string
     }) => {
       const existingByName = sessionPresets.find(
         (preset) => preset.name === input.name,
@@ -354,6 +355,7 @@ function TmuxPage() {
             name: input.name,
             cwd: input.cwd,
             icon: input.icon,
+            user: input.user,
           }),
         })
         await refreshSessionPresets()
@@ -428,6 +430,7 @@ function TmuxPage() {
           name: sessionName,
           cwd,
           icon: session.icon || 'terminal',
+          user: session.user ?? '',
         })
       } catch (error) {
         const message =
@@ -875,15 +878,15 @@ function TmuxPage() {
           onCreate={(name, cwd, user) => {
             void sessionCRUD.createSession(name, cwd, '', user)
           }}
+          onSavePreset={saveSessionPreset}
           onPinSession={(name) => {
             void pinSession(name)
           }}
-          onUnpinSession={(name) => {
-            void deleteSessionPreset(name)
-          }}
+          onUnpinSession={deleteSessionPreset}
           onLaunchPreset={(name) => {
             void launchSessionPreset(name)
           }}
+          onReorderPresets={reorderPinnedSessions}
           onReorderPinned={reorderPinnedSessions}
           onReorderSession={reorderVisibleSessions}
           onAttach={sessionCRUD.activateSession}

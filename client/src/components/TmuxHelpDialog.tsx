@@ -41,11 +41,15 @@ const shellShortcuts: ReadonlyArray<Shortcut> = [
 ]
 
 type TmuxHelpDialogProps = {
+  buttonVariant?: React.ComponentProps<typeof Button>['variant']
+  buttonSize?: React.ComponentProps<typeof Button>['size']
   buttonClassName?: string
   iconClassName?: string
 }
 
 export default function TmuxHelpDialog({
+  buttonVariant = 'ghost',
+  buttonSize = 'icon',
   buttonClassName = 'cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground',
   iconClassName = 'h-4 w-4',
 }: TmuxHelpDialogProps) {
@@ -55,8 +59,8 @@ export default function TmuxHelpDialog({
     <>
       <TooltipHelper content="About Terminal">
         <Button
-          variant="ghost"
-          size="icon"
+          variant={buttonVariant}
+          size={buttonSize}
           className={buttonClassName}
           onClick={() => setOpen(true)}
           aria-label="About Terminal"

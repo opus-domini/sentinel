@@ -68,20 +68,20 @@ export default function AlertsSidebar({
                 {openCount} open
               </span>
             )}
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="ml-auto flex items-center gap-1">
               <AlertsHelpDialog />
               <TooltipHelper content={lockLabel}>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
+                  variant="outline"
+                  size="icon-xs"
+                  className="cursor-pointer text-secondary-foreground"
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
                   {authenticated ? (
-                    <Lock className="h-4 w-4" />
+                    <Lock className="h-3 w-3" />
                   ) : (
-                    <LockOpen className="h-4 w-4" />
+                    <LockOpen className="h-3 w-3" />
                   )}
                 </Button>
               </TooltipHelper>

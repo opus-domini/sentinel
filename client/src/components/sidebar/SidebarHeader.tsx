@@ -9,6 +9,7 @@ type SidebarHeaderProps = {
   lockTitle: string
   canCreate: boolean
   helpDialog?: React.ReactNode
+  addControl?: React.ReactNode
   onToggleAdd: () => void
   onToggleLock: () => void
 }
@@ -20,6 +21,7 @@ export default function SidebarHeader({
   lockTitle,
   canCreate,
   helpDialog,
+  addControl,
   onToggleAdd,
   onToggleLock,
 }: SidebarHeaderProps) {
@@ -31,34 +33,36 @@ export default function SidebarHeader({
       <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
         {count}
       </span>
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex items-center gap-1">
         {helpDialog}
-        <TooltipHelper
-          content={canCreate ? 'New session' : 'tmux not available'}
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            className="border border-border bg-surface-hover text-foreground hover:bg-accent"
-            onClick={onToggleAdd}
-            aria-label="New session"
-            disabled={!canCreate}
+        {addControl ?? (
+          <TooltipHelper
+            content={canCreate ? 'New session' : 'tmux not available'}
           >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </TooltipHelper>
+            <Button
+              variant="outline"
+              size="icon-xs"
+              className="text-foreground"
+              onClick={onToggleAdd}
+              aria-label="New session"
+              disabled={!canCreate}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </TooltipHelper>
+        )}
         <TooltipHelper content={lockTitle}>
           <Button
-            variant="ghost"
-            size="icon"
-            className="border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
+            variant="outline"
+            size="icon-xs"
+            className="text-secondary-foreground"
             onClick={onToggleLock}
             aria-label="API token"
           >
             {hasToken ? (
-              <Lock className="h-4 w-4" />
+              <Lock className="h-3 w-3" />
             ) : (
-              <LockOpen className="h-4 w-4" />
+              <LockOpen className="h-3 w-3" />
             )}
           </Button>
         </TooltipHelper>

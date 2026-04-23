@@ -21,9 +21,17 @@ type SessionSidebarProps = {
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string, user?: string) => void
+  onSavePreset: (input: {
+    previousName: string
+    name: string
+    cwd: string
+    icon: string
+    user: string
+  }) => Promise<boolean>
   onPinSession: (session: string) => void
-  onUnpinSession: (name: string) => void
+  onUnpinSession: (name: string) => Promise<boolean>
   onLaunchPreset: (name: string) => void
+  onReorderPresets: (activeName: string, overName: string) => void
   onReorderPinned: (activeName: string, overName: string) => void
   onReorderSession: (activeName: string, overName: string) => void
   onAttach: (session: string) => void
@@ -49,9 +57,11 @@ export default function SessionSidebar({
   onFilterChange,
   onTokenChange,
   onCreate,
+  onSavePreset,
   onPinSession,
   onUnpinSession,
   onLaunchPreset,
+  onReorderPresets,
   onReorderPinned,
   onReorderSession,
   onAttach,
@@ -69,11 +79,16 @@ export default function SessionSidebar({
           tokenRequired={tokenRequired}
           authenticated={authenticated}
           defaultCwd={defaultCwd}
+          presets={presets}
           filter={filter}
           tmuxUnavailable={tmuxUnavailable}
           onFilterChange={onFilterChange}
           onTokenChange={onTokenChange}
           onCreate={onCreate}
+          onSavePreset={onSavePreset}
+          onLaunchPreset={onLaunchPreset}
+          onDeletePreset={onUnpinSession}
+          onReorderPresets={onReorderPresets}
         />
 
         <PinnedSessionsPanel

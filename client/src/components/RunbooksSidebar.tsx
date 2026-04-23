@@ -88,33 +88,33 @@ export default function RunbooksSidebar({
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
               {runbooks.length}
             </span>
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="ml-auto flex items-center gap-1">
               <RunbooksHelpDialog />
               {onCreateRunbook && (
                 <TooltipHelper content="New runbook">
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
+                    variant="outline"
+                    size="icon-xs"
+                    className="cursor-pointer text-secondary-foreground"
                     onClick={onCreateRunbook}
                     aria-label="New runbook"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-3 w-3" />
                   </Button>
                 </TooltipHelper>
               )}
               <TooltipHelper content={lockLabel}>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
+                  variant="outline"
+                  size="icon-xs"
+                  className="cursor-pointer text-secondary-foreground"
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
                   {authenticated ? (
-                    <Lock className="h-4 w-4" />
+                    <Lock className="h-3 w-3" />
                   ) : (
-                    <LockOpen className="h-4 w-4" />
+                    <LockOpen className="h-3 w-3" />
                   )}
                 </Button>
               </TooltipHelper>

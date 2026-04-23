@@ -17,13 +17,13 @@ export default function RunbooksHelpDialog() {
     <>
       <TooltipHelper content="About Runbooks">
         <Button
-          variant="ghost"
-          size="icon"
-          className="cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground"
+          variant="outline"
+          size="icon-xs"
+          className="cursor-pointer text-secondary-foreground"
           onClick={() => setOpen(true)}
           aria-label="About Runbooks"
         >
-          <CircleHelp className="h-4 w-4" />
+          <CircleHelp className="h-3 w-3" />
         </Button>
       </TooltipHelper>
       <Dialog open={open} onOpenChange={setOpen}>
