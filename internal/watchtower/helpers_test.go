@@ -228,7 +228,7 @@ func TestBuildSessionActivityPatches(t *testing.T) {
 
 	now := time.Date(2026, time.April, 23, 10, 0, 0, 0, time.UTC)
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
-		SessionName:   "dev",
+		SessionName:   testDevSession,
 		Attached:      1,
 		Windows:       2,
 		Panes:         3,
@@ -243,14 +243,14 @@ func TestBuildSessionActivityPatches(t *testing.T) {
 	}
 
 	svc := New(st, fakeTmux{}, Options{})
-	patches := svc.buildSessionActivityPatches(ctx, []string{" ", "missing", " dev "})
+	patches := svc.buildSessionActivityPatches(ctx, []string{" ", "missing", " " + testDevSession + " "})
 	if len(patches) != 1 {
 		t.Fatalf("buildSessionActivityPatches len = %d, want 1", len(patches))
 	}
 
 	patch := patches[0]
-	if patch["name"] != "dev" {
-		t.Fatalf("patch name = %#v, want dev", patch["name"])
+	if patch["name"] != testDevSession {
+		t.Fatalf("patch name = %#v, want %s", patch["name"], testDevSession)
 	}
 	if patch["lastContent"] != "deploy failed" {
 		t.Fatalf("patch lastContent = %#v, want deploy failed", patch["lastContent"])
@@ -272,7 +272,7 @@ func TestBuildInspectorActivityPatches(t *testing.T) {
 
 	now := time.Date(2026, time.April, 23, 11, 0, 0, 0, time.UTC)
 	if err := st.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
-		SessionName:      "dev",
+		SessionName:      testDevSession,
 		TmuxWindowID:     "@1",
 		WindowIndex:      0,
 		Name:             "main",
@@ -288,7 +288,7 @@ func TestBuildInspectorActivityPatches(t *testing.T) {
 	}
 	if err := st.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
 		PaneID:         "%1",
-		SessionName:    "dev",
+		SessionName:    testDevSession,
 		WindowIndex:    0,
 		PaneIndex:      0,
 		Title:          "shell",
@@ -306,7 +306,7 @@ func TestBuildInspectorActivityPatches(t *testing.T) {
 		t.Fatalf("UpsertWatchtowerPane: %v", err)
 	}
 	managed, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
-		SessionName:     "dev",
+		SessionName:     testDevSession,
 		LauncherID:      "launcher-codex",
 		LauncherName:    "Codex",
 		Icon:            "bot",
@@ -323,14 +323,14 @@ func TestBuildInspectorActivityPatches(t *testing.T) {
 	}
 
 	svc := New(st, fakeTmux{}, Options{})
-	patches := svc.buildInspectorActivityPatches(ctx, []string{" ", "dev", "missing"})
+	patches := svc.buildInspectorActivityPatches(ctx, []string{" ", testDevSession, "missing"})
 	if len(patches) != 2 {
 		t.Fatalf("buildInspectorActivityPatches len = %d, want 2", len(patches))
 	}
 
 	patch := patches[0]
-	if patch["session"] != "dev" {
-		t.Fatalf("patch session = %#v, want dev", patch["session"])
+	if patch["session"] != testDevSession {
+		t.Fatalf("patch session = %#v, want %s", patch["session"], testDevSession)
 	}
 
 	windows, ok := patch["windows"].([]map[string]any)
@@ -389,7 +389,7 @@ func TestReconcileManagedTmuxWindows(t *testing.T) {
 	defer func() { _ = st.Close() }()
 
 	blankRuntime, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
-		SessionName:     "dev",
+		SessionName:     testDevSession,
 		LauncherID:      "launcher-blank",
 		LauncherName:    "Blank",
 		Icon:            "terminal",
@@ -404,7 +404,7 @@ func TestReconcileManagedTmuxWindows(t *testing.T) {
 		t.Fatalf("CreateManagedTmuxWindow(blankRuntime): %v", err)
 	}
 	updatedRuntime, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
-		SessionName:     "dev",
+		SessionName:     testDevSession,
 		LauncherID:      "launcher-codex",
 		LauncherName:    "Codex",
 		Icon:            "bot",
@@ -420,7 +420,7 @@ func TestReconcileManagedTmuxWindows(t *testing.T) {
 		t.Fatalf("CreateManagedTmuxWindow(updatedRuntime): %v", err)
 	}
 	staleRuntime, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
-		SessionName:     "dev",
+		SessionName:     testDevSession,
 		LauncherID:      "launcher-stale",
 		LauncherName:    "Stale",
 		Icon:            "ghost",
@@ -437,7 +437,7 @@ func TestReconcileManagedTmuxWindows(t *testing.T) {
 	}
 
 	svc := New(st, fakeTmux{}, Options{})
-	filtered, err := svc.reconcileManagedTmuxWindows(ctx, "dev", []tmux.Window{
+	filtered, err := svc.reconcileManagedTmuxWindows(ctx, testDevSession, []tmux.Window{
 		{ID: "@1", Index: 2, Name: "main"},
 	})
 	if err != nil {
@@ -461,7 +461,7 @@ func TestReconcileManagedTmuxWindows(t *testing.T) {
 		t.Fatalf("stale runtime row still present: %#v", filteredByID[staleRuntime.ID])
 	}
 
-	rows, err := st.ListManagedTmuxWindowsBySession(ctx, "dev")
+	rows, err := st.ListManagedTmuxWindowsBySession(ctx, testDevSession)
 	if err != nil {
 		t.Fatalf("ListManagedTmuxWindowsBySession: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestLoadFocusedPanes(t *testing.T) {
 	for _, row := range []store.WatchtowerPresenceWrite{
 		{
 			TerminalID:  "term-focused",
-			SessionName: "dev",
+			SessionName: testDevSession,
 			WindowIndex: 0,
 			PaneID:      "%1",
 			Visible:     true,
@@ -491,7 +491,7 @@ func TestLoadFocusedPanes(t *testing.T) {
 		},
 		{
 			TerminalID:  "term-hidden",
-			SessionName: "dev",
+			SessionName: testDevSession,
 			WindowIndex: 0,
 			PaneID:      "%2",
 			Visible:     false,
@@ -501,7 +501,7 @@ func TestLoadFocusedPanes(t *testing.T) {
 		},
 		{
 			TerminalID:  "term-unfocused",
-			SessionName: "dev",
+			SessionName: testDevSession,
 			WindowIndex: 0,
 			PaneID:      "%3",
 			Visible:     true,
@@ -511,7 +511,7 @@ func TestLoadFocusedPanes(t *testing.T) {
 		},
 		{
 			TerminalID:  "term-expired",
-			SessionName: "dev",
+			SessionName: testDevSession,
 			WindowIndex: 0,
 			PaneID:      "%4",
 			Visible:     true,
@@ -521,7 +521,7 @@ func TestLoadFocusedPanes(t *testing.T) {
 		},
 		{
 			TerminalID:  "term-blank-pane",
-			SessionName: "dev",
+			SessionName: testDevSession,
 			WindowIndex: 0,
 			PaneID:      "   ",
 			Visible:     true,
@@ -536,7 +536,7 @@ func TestLoadFocusedPanes(t *testing.T) {
 	}
 
 	svc := New(st, fakeTmux{}, Options{})
-	focused, err := svc.loadFocusedPanes(ctx, "dev", now)
+	focused, err := svc.loadFocusedPanes(ctx, testDevSession, now)
 	if err != nil {
 		t.Fatalf("loadFocusedPanes: %v", err)
 	}
@@ -559,7 +559,7 @@ func TestListCollectSessions(t *testing.T) {
 
 		svc := New(st, fakeTmux{
 			listSessionsFn: func(context.Context) ([]tmux.Session, error) {
-				return []tmux.Session{{Name: "dev"}}, nil
+				return []tmux.Session{{Name: testDevSession}}, nil
 			},
 		}, Options{})
 
@@ -570,7 +570,7 @@ func TestListCollectSessions(t *testing.T) {
 		if !proceed {
 			t.Fatal("proceed = false, want true")
 		}
-		if len(tagged) != 1 || tagged[0].Name != "dev" || tagged[0].user != "" {
+		if len(tagged) != 1 || tagged[0].Name != testDevSession || tagged[0].user != "" {
 			t.Fatalf("tagged = %#v", tagged)
 		}
 	})
