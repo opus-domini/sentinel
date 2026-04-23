@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.29](https://github.com/opus-domini/sentinel/compare/v0.5.28...v0.5.29) (2026-04-23)
+
+
+### Features
+
+* **ui:** add session launchers and compact sidebar header actions ([4b216bd](https://github.com/opus-domini/sentinel/commit/4b216bd67e0aa7eb199dcafaa137447e024527d5))
+
+
+### Bug Fixes
+
+* satisfy watchtower lint checks ([136ca23](https://github.com/opus-domini/sentinel/commit/136ca2385aaafc20c2db5368784888cd3f0c6bc9))
+
+
+### Documentation
+
+* refresh tmux launcher guides ([01749fe](https://github.com/opus-domini/sentinel/commit/01749fe870671aaad3fa63f051bf8bec01d8864b))
+
 ## [0.5.28](https://github.com/opus-domini/sentinel/compare/v0.5.27...v0.5.28) (2026-04-20)
 
 
