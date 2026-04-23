@@ -5,7 +5,7 @@
 </div>
 
 Sentinel is a host operations platform delivered as a single binary.
-It provides tmux session control, service monitoring, alerts, metrics, runbooks, and recovery workflows in a realtime browser UI.
+It provides tmux session control, reusable session and window launchers, service monitoring, alerts, metrics, runbooks, and recovery workflows in a realtime browser UI.
 
 ## What You Will Find Here
 

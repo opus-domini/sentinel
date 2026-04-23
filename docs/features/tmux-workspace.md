@@ -13,7 +13,9 @@ The UI and API are built to keep this hierarchy consistent with realtime updates
 ## Core Capabilities
 
 - List/create/rename/kill sessions.
+- Create sessions from reusable session launchers in the sidebar `+` menu.
 - List/select/create/kill windows.
+- Create windows from reusable launchers in the window-strip `+` menu.
 - List/select/split/kill panes.
 - Attach to any session over WebSocket PTY stream.
 - Rename window and pane labels.
@@ -52,6 +54,15 @@ This avoids repeated ambiguous names after tmux index reuse.
 
 When creating a session with a name that already exists, the server auto-suffixes the name with `-1`, `-2`, ... up to `-9` to resolve the collision. The response `name` field may differ from the requested name.
 
+## Launchers and Session Presets
+
+Sentinel uses the same split-button pattern for reusable tmux entrypoints at both workspace levels:
+
+- The window-strip `+` button opens a blank window immediately. Its dropdown exposes the last used launcher, saved window launchers, and `Manage launchers...`.
+- The sessions sidebar `+` button opens a blank session immediately. Its dropdown exposes `New blank session`, `Last used`, saved session launchers, and `Manage session launchers...`.
+
+Session launchers are backed by tmux session presets (`/api/tmux/session-presets`). A preset stores the reusable launch configuration for a session, including icon, working directory, command, optional name seed, and optional target user.
+
 ## Multi-User Sessions
 
 Sessions can be created as different OS users via the `user` field in the create payload. This allows a single Sentinel instance to manage sessions across multiple system accounts.
@@ -78,3 +89,5 @@ The sidebar adapts to 3 tiers based on available width:
 - Minimal (<=250px): icon + name only.
 - Compact (<=300px): badges visible.
 - Full (>300px): content preview visible.
+
+Sidebar header actions use compact icon controls for add, help, and auth so the same pattern fits tmux and the operational sidebars on narrow layouts.

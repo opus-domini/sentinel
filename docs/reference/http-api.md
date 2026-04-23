@@ -89,6 +89,8 @@ Create payload:
 
 ## Session Presets
 
+The tmux sidebar exposes these presets as session launchers from the session `+` split button.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/tmux/session-presets` | List session presets |

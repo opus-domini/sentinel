@@ -12,7 +12,7 @@
 </div>
 
 Sentinel is a host operations platform delivered as a single binary.
-It gives you a realtime browser interface to manage tmux sessions, monitor services, track alerts, run operational procedures, and recover from failures — all on your own machine.
+It gives you a realtime browser interface to manage tmux sessions and reusable launchers, monitor services, track alerts, run operational procedures, and recover from failures — all on your own machine.
 
 No Electron. No cloud relay. Just your host and your shell.
 
@@ -36,7 +36,7 @@ No Electron. No cloud relay. Just your host and your shell.
 
 ## Core Capabilities
 
-- **Tmux** — Interactive PTY in the browser with tmux workspace management.
+- **Tmux** — Interactive PTY in the browser with tmux workspace management, window launchers, and reusable session launchers.
 - **Multi-user sessions** — Run tmux sessions as different OS users with security allowlist and sudo integration.
 - **Services** — Monitor and control systemd/launchd units from `/services`.
 - **Alerts** — Deduplicated alert feed from watchtower and service health at `/alerts`.
