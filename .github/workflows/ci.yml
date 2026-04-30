@@ -31,6 +31,7 @@ jobs:
 
       - run: npm ci --prefix client
       - run: npm --prefix client run lint
+      - run: npm --prefix client run typecheck
       - run: npm --prefix client run test:unit
       - run: npm --prefix client run build
 

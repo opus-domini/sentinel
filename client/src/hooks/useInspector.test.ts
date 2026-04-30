@@ -207,7 +207,7 @@ describe('useInspector – selectWindow', () => {
 
 describe('useInspector – reorderWindows', () => {
   it('sends stable tmux window ids to the reorder endpoint', async () => {
-    const api = vi.fn((url: string, init?: RequestInit) => {
+    const apiMock = vi.fn((url: string, init?: RequestInit) => {
       if (typeof url === 'string' && url.includes('/windows/order')) {
         expect(init?.method).toBe('PATCH')
         expect(init?.body).toBe(JSON.stringify({ windowIds: ['@2', '@1'] }))
@@ -236,7 +236,8 @@ describe('useInspector – reorderWindows', () => {
         })
       }
       return Promise.resolve(undefined)
-    }) as unknown as ApiFunction
+    })
+    const api = apiMock as unknown as ApiFunction
 
     const opts = createMockOptions({ api })
     const { wrapper } = createWrapper()
@@ -854,7 +855,7 @@ describe('useInspector – optimistic createWindow', () => {
   })
 
   it('sends an operation id and waits for the correlated event before refreshing session state', async () => {
-    const api = vi.fn((url: string, init?: RequestInit) => {
+    const apiMock = vi.fn((url: string, init?: RequestInit) => {
       if (typeof url === 'string' && url.includes('/windows')) {
         return Promise.resolve({
           windows: [
@@ -881,7 +882,8 @@ describe('useInspector – optimistic createWindow', () => {
         return Promise.resolve(undefined)
       }
       return Promise.resolve(undefined)
-    }) as unknown as ApiFunction
+    })
+    const api = apiMock as unknown as ApiFunction
 
     const opts = createMockOptions({ api })
     const { wrapper } = createWrapper()
@@ -897,7 +899,7 @@ describe('useInspector – optimistic createWindow', () => {
 
     expect(opts.refreshSessions).not.toHaveBeenCalled()
 
-    const request = api.mock.calls.find(
+    const request = apiMock.mock.calls.find(
       ([url]) => typeof url === 'string' && url.includes('/new-window'),
     )?.[1]
     const body =
@@ -919,7 +921,7 @@ describe('useInspector – optimistic createWindow', () => {
 
 describe('useInspector – splitPane', () => {
   it('sends an operation id and waits for the correlated event before refreshing session state', async () => {
-    const api = vi.fn((url: string, init?: RequestInit) => {
+    const apiMock = vi.fn((url: string, init?: RequestInit) => {
       if (typeof url === 'string' && url.includes('/windows')) {
         return Promise.resolve({
           windows: [
@@ -948,7 +950,8 @@ describe('useInspector – splitPane', () => {
         return Promise.resolve(undefined)
       }
       return Promise.resolve(undefined)
-    }) as unknown as ApiFunction
+    })
+    const api = apiMock as unknown as ApiFunction
 
     const opts = createMockOptions({ api })
     const { wrapper } = createWrapper()
@@ -964,7 +967,7 @@ describe('useInspector – splitPane', () => {
 
     expect(opts.refreshSessions).not.toHaveBeenCalled()
 
-    const request = api.mock.calls.find(
+    const request = apiMock.mock.calls.find(
       ([url]) => typeof url === 'string' && url.includes('/split-pane'),
     )?.[1]
     const body =

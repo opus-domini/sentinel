@@ -597,7 +597,7 @@ export function useRunbooksPage() {
     [api, pushToast, refreshRunbooks],
   )
 
-  const selectRunbook = useCallback((id: string) => {
+  const selectRunbook = useCallback((id: string | null) => {
     setSelectedRunbookId(id)
     setEditingDraft(null)
     setEditorErrors({})

@@ -78,33 +78,6 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
     [activeSession],
   )
 
-  // Sync timeline cache
-  useEffect(() => {
-    const session = resolveTimelineSessionScope(timelineSessionFilter)
-    queryClient.setQueryData<TmuxTimelineCache>(
-      tmuxTimelineQueryKey({
-        session,
-        query: debouncedTimelineQuery,
-        severity: timelineSeverity,
-        eventType: timelineEventType,
-        limit: 180,
-      }),
-      {
-        events: timelineEvents,
-        hasMore: timelineHasMore,
-      },
-    )
-  }, [
-    queryClient,
-    resolveTimelineSessionScope,
-    timelineEventType,
-    timelineEvents,
-    timelineHasMore,
-    debouncedTimelineQuery,
-    timelineSessionFilter,
-    timelineSeverity,
-  ])
-
   const loadTimeline = useCallback(
     async (params?: { quiet?: boolean }) => {
       const gen = ++timelineGenerationRef.current

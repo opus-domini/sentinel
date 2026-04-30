@@ -183,13 +183,18 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     tokenRequired,
   ])
 
-  // Initial sync on page load
+  // Initial sessions sync on page load. The inspector hook owns active-session
+  // details, so doing both here would duplicate /windows and /panes requests on
+  // first attach.
   useEffect(() => {
     if (document.visibilityState !== 'visible') {
       return
     }
-    refreshAllState()
-  }, [refreshAllState])
+    if (tokenRequired && !authenticated) {
+      return
+    }
+    void refreshSessions()
+  }, [authenticated, refreshSessions, tokenRequired])
 
   // Visibility / online reconciliation
   useEffect(() => {
@@ -232,7 +237,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       refreshAllState()
     }
 
-    runFallbackRefresh()
     const id = window.setInterval(() => {
       runFallbackRefresh()
     }, 8_000)

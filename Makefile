@@ -102,6 +102,11 @@ lint-client: check-npm ## Lint frontend code
 	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
 	$(NPM) --prefix $(CLIENT) run lint
 
+.PHONY: typecheck-client
+typecheck-client: check-npm ## Typecheck frontend code
+	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
+	$(NPM) --prefix $(CLIENT) run typecheck
+
 .PHONY: tidy
 tidy: check-go ## Tidy go.mod and go.sum
 	$(GOCMD) mod tidy
@@ -115,7 +120,7 @@ check-docs: ## Validate docs navigation and file references
 	$(DOCS_CHECK)
 
 .PHONY: ci-fast
-ci-fast: fmt lint lint-client test-unit test-contract build-server check-docs ## Fast PR gate
+ci-fast: fmt lint lint-client typecheck-client test-unit test-contract build-server check-docs ## Fast PR gate
 
 .PHONY: ci-full
 ci-full: ci-fast test-integration test-e2e test-coverage test-perf ## Full mainline gate

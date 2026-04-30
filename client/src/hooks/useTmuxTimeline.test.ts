@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useTmuxTimeline } from './useTmuxTimeline'
+import { tmuxTimelineQueryKey } from '@/lib/tmuxQueryCache'
 import type { TimelineResponse } from '@/types'
-import type { ApiFunction } from './tmuxTypes'
+import type { ApiFunction, TmuxTimelineCache } from './tmuxTypes'
 import type { ReactNode } from 'react'
 
 function buildTimelineResponse(session: string): TimelineResponse {
@@ -161,5 +162,50 @@ describe('useTmuxTimeline', () => {
 
     expect(apiMock).toHaveBeenCalledTimes(1)
     expect(String(apiMock.mock.calls[0][0])).toContain('q=suspend')
+  })
+
+  it('does not cache previous events under a newly selected scope before reload', async () => {
+    vi.useFakeTimers()
+
+    const apiMock = vi.fn((path: string) => {
+      const url = new URL(path, 'http://localhost')
+      const session = url.searchParams.get('session') ?? ''
+      return Promise.resolve(buildTimelineResponse(session || 'all'))
+    })
+    const api = apiMock as unknown as ApiFunction
+
+    const { result } = renderHook(
+      () =>
+        useTmuxTimeline({
+          api,
+          activeSession: 'alpha',
+        }),
+      { wrapper },
+    )
+
+    act(() => {
+      result.current.setTimelineOpen(true)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120)
+    })
+    await act(async () => {})
+    expect(result.current.timelineEvents[0]?.session).toBe('alpha')
+
+    act(() => {
+      result.current.setTimelineSessionFilter('all')
+    })
+
+    const allScopeCache = queryClient.getQueryData<TmuxTimelineCache>(
+      tmuxTimelineQueryKey({
+        session: '',
+        query: '',
+        severity: 'all',
+        eventType: 'all',
+        limit: 180,
+      }),
+    )
+    expect(allScopeCache).toBeUndefined()
   })
 })

@@ -38,6 +38,20 @@ export default defineConfig({
       output: {
         entryFileNames: 'app.js',
         chunkFileNames: 'chunks/[name]-[hash].js',
+        manualChunks(id) {
+          if (id.includes('/node_modules/@xterm/xterm/')) {
+            return 'vendor-xterm-core'
+          }
+          if (id.includes('/node_modules/@xterm/addon-webgl/')) {
+            return 'vendor-xterm-webgl'
+          }
+          if (id.includes('/node_modules/@xterm/')) {
+            return 'vendor-xterm-addons'
+          }
+          if (id.includes('/node_modules/@tanstack/')) {
+            return 'vendor-tanstack'
+          }
+        },
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
             return 'app.css'

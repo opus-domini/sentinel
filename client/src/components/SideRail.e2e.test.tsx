@@ -31,7 +31,7 @@ const layoutValue = {
   setSidebarOpen: () => {},
   sidebarCollapsed: false,
   setSidebarCollapsed: () => {},
-  sidebarCompact: false,
+  sidebarDensity: 'full' as const,
   settingsOpen: false,
   setSettingsOpen: () => {},
   shellStyle: {},

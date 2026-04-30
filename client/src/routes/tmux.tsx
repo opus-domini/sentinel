@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -23,10 +25,6 @@ import type { LauncherDraft } from '@/components/tmux/LaunchersDialog'
 import AppShell from '@/components/layout/AppShell'
 import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
-import CreateSessionDialog from '@/components/sidebar/CreateSessionDialog'
-import GuardrailsDialog from '@/components/tmux/GuardrailsDialog'
-import LaunchersDialog from '@/components/tmux/LaunchersDialog'
-import TimelineDialog from '@/components/tmux/TimelineDialog'
 import GuardrailConfirmDialog from '@/components/GuardrailConfirmDialog'
 import RenameDialog from '@/components/tmux/RenameDialog'
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -54,6 +52,15 @@ import {
   slugifyTmuxName,
 } from '@/lib/tmuxName'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
+
+const CreateSessionDialog = lazy(
+  () => import('@/components/sidebar/CreateSessionDialog'),
+)
+const GuardrailsDialog = lazy(
+  () => import('@/components/tmux/GuardrailsDialog'),
+)
+const LaunchersDialog = lazy(() => import('@/components/tmux/LaunchersDialog'))
+const TimelineDialog = lazy(() => import('@/components/tmux/TimelineDialog'))
 
 function asText(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -323,7 +330,7 @@ function TmuxPage() {
     pushSuccessToast,
     pendingCreateSessionsRef: inspector.pendingCreateSessionsRef,
     requestGuardrailConfirm,
-    refreshSessionPresets: () => refreshSessionPresets(),
+    refreshSessionPresets,
   })
 
   // Wire the forwarding ref
@@ -954,52 +961,62 @@ function TmuxPage() {
         onResync={handleResync}
       />
 
-      <GuardrailsDialog
-        open={guardrailsOpen}
-        onOpenChange={setGuardrailsOpen}
-      />
+      <Suspense fallback={null}>
+        {guardrailsOpen && (
+          <GuardrailsDialog
+            open={guardrailsOpen}
+            onOpenChange={setGuardrailsOpen}
+          />
+        )}
 
-      <LaunchersDialog
-        open={launchersOpen}
-        onOpenChange={setLaunchersOpen}
-        launchers={launchers}
-        onSave={saveLauncher}
-        onDelete={deleteLauncher}
-        onReorder={(activeID, overID) => {
-          void reorderLaunchers(activeID, overID)
-        }}
-      />
+        {launchersOpen && (
+          <LaunchersDialog
+            open={launchersOpen}
+            onOpenChange={setLaunchersOpen}
+            launchers={launchers}
+            onSave={saveLauncher}
+            onDelete={deleteLauncher}
+            onReorder={(activeID, overID) => {
+              void reorderLaunchers(activeID, overID)
+            }}
+          />
+        )}
 
-      <CreateSessionDialog
-        open={createSessionOpen}
-        onOpenChange={setCreateSessionOpen}
-        defaultCwd={defaultCwd}
-        onCreate={(name, cwd, user) => {
-          void sessionCRUD.createSession(name, cwd, '', user)
-        }}
-      />
+        {createSessionOpen && (
+          <CreateSessionDialog
+            open={createSessionOpen}
+            onOpenChange={setCreateSessionOpen}
+            defaultCwd={defaultCwd}
+            onCreate={(name, cwd, user) => {
+              void sessionCRUD.createSession(name, cwd, '', user)
+            }}
+          />
+        )}
 
-      <TimelineDialog
-        open={timeline.timelineOpen}
-        onOpenChange={timeline.setTimelineOpen}
-        loading={timeline.timelineLoading}
-        error={timeline.timelineError}
-        events={timeline.timelineEvents}
-        hasMore={timeline.timelineHasMore}
-        query={timeline.timelineQuery}
-        severity={timeline.timelineSeverity}
-        eventType={timeline.timelineEventType}
-        sessionFilter={timeline.timelineSessionFilter}
-        sessionOptions={timelineSessionOptions}
-        onQueryChange={timeline.setTimelineQuery}
-        onSeverityChange={timeline.setTimelineSeverity}
-        onEventTypeChange={timeline.setTimelineEventType}
-        onSessionFilterChange={timeline.setTimelineSessionFilter}
-        onRefresh={() => {
-          void timeline.loadTimeline()
-        }}
-        onRunRunbook={handleRunRunbookFromTimeline}
-      />
+        {timeline.timelineOpen && (
+          <TimelineDialog
+            open={timeline.timelineOpen}
+            onOpenChange={timeline.setTimelineOpen}
+            loading={timeline.timelineLoading}
+            error={timeline.timelineError}
+            events={timeline.timelineEvents}
+            hasMore={timeline.timelineHasMore}
+            query={timeline.timelineQuery}
+            severity={timeline.timelineSeverity}
+            eventType={timeline.timelineEventType}
+            sessionFilter={timeline.timelineSessionFilter}
+            sessionOptions={timelineSessionOptions}
+            onQueryChange={timeline.setTimelineQuery}
+            onSeverityChange={timeline.setTimelineSeverity}
+            onEventTypeChange={timeline.setTimelineEventType}
+            onSessionFilterChange={timeline.setTimelineSessionFilter}
+            onRefresh={() => {
+              void timeline.loadTimeline()
+            }}
+            onRunRunbook={handleRunRunbookFromTimeline}
+          />
+        )}
+      </Suspense>
 
       <GuardrailConfirmDialog
         open={guardrailConfirm !== null}

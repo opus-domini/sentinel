@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useTerminalTmux } from './useTerminalTmux'
@@ -53,7 +53,8 @@ vi.mock('@xterm/xterm', () => {
       clearTextureAtlas = vi.fn()
       attachCustomWheelEventHandler = vi.fn()
 
-      constructor() {
+      constructor(options?: Record<string, unknown>) {
+        this.options = options ?? {}
         ;(
           globalThis as typeof globalThis & {
             __SENTINEL_TERMINAL_INSTANCES?: Array<unknown>
@@ -203,6 +204,10 @@ class MockWebSocket {
 
 const originalWebSocket = globalThis.WebSocket
 
+afterEach(() => {
+  cleanup()
+})
+
 function setupEnvironment() {
   MockWebSocket.instances = []
   ;(
@@ -266,55 +271,67 @@ function resetWebglAddonInstances() {
   ).__SENTINEL_WEBGL_ADDON_INSTANCES = []
 }
 
-function latestTerminal() {
+type MockTerminalInstance = {
+  options: Record<string, unknown>
+  clearTextureAtlas: ReturnType<typeof vi.fn>
+  loadAddon: ReturnType<typeof vi.fn>
+  unicode: { activeVersion: string }
+}
+
+function latestTerminal(): MockTerminalInstance | null {
   return (
     (
       globalThis as typeof globalThis & {
-        __SENTINEL_TERMINAL_INSTANCES?: Array<{
-          clearTextureAtlas: ReturnType<typeof vi.fn>
-        }>
+        __SENTINEL_TERMINAL_INSTANCES?: Array<MockTerminalInstance>
       }
     ).__SENTINEL_TERMINAL_INSTANCES?.at(-1) ?? null
   )
 }
 
-function terminalInstances() {
+function terminalInstances(): Array<MockTerminalInstance> {
   return (
     (
       globalThis as typeof globalThis & {
-        __SENTINEL_TERMINAL_INSTANCES?: Array<{
-          clearTextureAtlas: ReturnType<typeof vi.fn>
-        }>
+        __SENTINEL_TERMINAL_INSTANCES?: Array<MockTerminalInstance>
       }
     ).__SENTINEL_TERMINAL_INSTANCES ?? []
   )
 }
 
-function renderTerminalHook(
-  overrides: {
-    openTabs?: Array<string>
-    activeSession?: string
-    activeEpoch?: number
-  } = {},
-) {
-  const props = {
+type TerminalHookProps = {
+  openTabs: Array<string>
+  activeSession: string
+  activeEpoch: number
+  sidebarCollapsed: boolean
+  onAttachedMobile: () => void
+}
+
+function renderTerminalHook(overrides: Partial<TerminalHookProps> = {}) {
+  let props: TerminalHookProps = {
     openTabs: overrides.openTabs ?? ['test-session'],
     activeSession: overrides.activeSession ?? 'test-session',
     activeEpoch: overrides.activeEpoch ?? 0,
-    sidebarCollapsed: false,
-    onAttachedMobile: vi.fn(),
+    sidebarCollapsed: overrides.sidebarCollapsed ?? false,
+    onAttachedMobile: overrides.onAttachedMobile ?? vi.fn(),
   }
-  return renderHook(
-    ({ openTabs, activeSession, activeEpoch }) =>
+  const hook = renderHook(
+    (nextProps: TerminalHookProps) =>
       useTerminalTmux({
-        openTabs,
-        activeSession,
-        activeEpoch,
-        sidebarCollapsed: props.sidebarCollapsed,
-        onAttachedMobile: props.onAttachedMobile,
+        openTabs: nextProps.openTabs,
+        activeSession: nextProps.activeSession,
+        activeEpoch: nextProps.activeEpoch,
+        sidebarCollapsed: nextProps.sidebarCollapsed,
+        onAttachedMobile: nextProps.onAttachedMobile,
       }),
     { initialProps: props },
   )
+  return {
+    ...hook,
+    rerender(nextOverrides: Partial<TerminalHookProps> = {}) {
+      props = { ...props, ...nextOverrides }
+      hook.rerender(props)
+    },
+  }
 }
 
 function latestWS(): MockWebSocket {
@@ -1058,6 +1075,59 @@ describe('useTerminalTmux – terminal chrome', () => {
     renderTerminalHook()
     expect(latestTerminal()?.unicode.activeVersion).toBe('15-graphemes')
   })
+
+  it('uses fallback fonts for powerline symbols and emoji before generic monospace', () => {
+    renderTerminalHook()
+
+    const fontFamily = latestTerminal()?.options.fontFamily
+    expect(fontFamily).toEqual(expect.stringContaining('Symbols Nerd Font'))
+    expect(fontFamily).toEqual(expect.stringContaining('Noto Color Emoji'))
+    expect(fontFamily).toEqual(expect.stringMatching(/monospace$/))
+  })
+
+  it('enables glyph options that keep box drawing and ambiguous symbols aligned', () => {
+    renderTerminalHook()
+
+    expect(latestTerminal()?.options.customGlyphs).toBe(true)
+    expect(latestTerminal()?.options.rescaleOverlappingGlyphs).toBe(true)
+    expect(latestTerminal()?.options.smoothScrollDuration).toBe(0)
+  })
+})
+
+describe('useTerminalTmux – resize traffic', () => {
+  beforeEach(() => {
+    setupEnvironment()
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWebSocket
+  })
+
+  it('sends the terminal size once per socket and skips unchanged fit repeats', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const ws = connectSession()
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'resize', cols: 80, rows: 24 }),
+    )
+
+    ws.send.mockClear()
+    act(() => {
+      result.current.fitTerminal()
+      result.current.fitTerminal()
+    })
+
+    expect(ws.send).not.toHaveBeenCalled()
+
+    host.remove()
+  })
 })
 
 describe('useTerminalTmux – webgl context loss', () => {
@@ -1266,6 +1336,107 @@ describe('useTerminalTmux – webgl atlas growth', () => {
       vi.advanceTimersByTime(250)
     })
     expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(2)
+
+    host.remove()
+  })
+
+  it('falls back to DOM rendering after repeated atlas-growth clears', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.clearTextureAtlas.mockClear()
+
+    const addon = latestWebglAddon()
+    const growthCb = addon?.atlasGrowthCallbacks[0]
+    const fakeCanvas = document.createElement('canvas')
+
+    for (let wave = 0; wave < 3; wave += 1) {
+      act(() => {
+        growthCb?.(fakeCanvas)
+        growthCb?.(fakeCanvas)
+        growthCb?.(fakeCanvas)
+      })
+      act(() => {
+        vi.advanceTimersByTime(250)
+      })
+    }
+
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(3)
+    expect(addon?.dispose).toHaveBeenCalledTimes(1)
+
+    host.remove()
+  })
+
+  it('keeps WebGL when atlas-growth clears are spaced apart', async () => {
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.clearTextureAtlas.mockClear()
+
+    const addon = latestWebglAddon()
+    const growthCb = addon?.atlasGrowthCallbacks[0]
+    const fakeCanvas = document.createElement('canvas')
+
+    for (let wave = 0; wave < 3; wave += 1) {
+      act(() => {
+        growthCb?.(fakeCanvas)
+        growthCb?.(fakeCanvas)
+        growthCb?.(fakeCanvas)
+      })
+      act(() => {
+        vi.advanceTimersByTime(250)
+      })
+      vi.setSystemTime(Date.now() + 30_001)
+    }
+
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(3)
+    expect(addon?.dispose).not.toHaveBeenCalled()
+
+    host.remove()
+  })
+
+  it('does not treat font-size atlas refreshes as WebGL degradation', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.clearTextureAtlas.mockClear()
+
+    const addon = latestWebglAddon()
+
+    act(() => {
+      result.current.zoomIn()
+    })
+    act(() => {
+      result.current.zoomOut()
+    })
+    act(() => {
+      result.current.zoomIn()
+    })
+    act(() => {
+      result.current.zoomOut()
+    })
+
+    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(4)
+    expect(addon?.dispose).not.toHaveBeenCalled()
 
     host.remove()
   })

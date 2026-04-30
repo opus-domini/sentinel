@@ -8,7 +8,11 @@ function touch(identifier: number, x: number, y: number): Touch {
 }
 
 function touchEvent(type: string, touches: ReadonlyArray<Touch>): TouchEvent {
-  return new TouchEvent(type, { touches, bubbles: true, cancelable: true })
+  return new TouchEvent(type, {
+    touches: [...touches],
+    bubbles: true,
+    cancelable: true,
+  })
 }
 
 function withVisualViewport(height: number): () => void {

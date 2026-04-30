@@ -86,7 +86,9 @@
 
 @theme inline {
   --font-mono:
-    'JetBrains Mono Variable', 'JetBrains Mono', 'SF Mono', monospace;
+    'JetBrains Mono Variable', 'JetBrains Mono', 'Symbols Nerd Font Mono',
+    'Symbols Nerd Font', 'Noto Color Emoji', 'Apple Color Emoji',
+    'Segoe UI Emoji', 'SF Mono', monospace;
 
   /* shadcn standard */
   --color-background: var(--background);

@@ -6,7 +6,6 @@ import type {
   InspectorSessionPatch,
   PresenceSocketRef,
   RuntimeMetrics,
-  TabsStateRef,
 } from '../tmuxTypes'
 import type {
   SessionActivityPatch,
@@ -140,6 +139,10 @@ function defaultDeltaResponse(): ActivityDeltaResponse {
 
 type Options = Parameters<typeof useTmuxEventsSocket>[0]
 
+function makeRefreshInspectorMock() {
+  return vi.fn<Options['refreshInspector']>(() => Promise.resolve())
+}
+
 function makeOptions(overrides?: Partial<Options>): Options {
   return {
     api: vi.fn(() =>
@@ -150,17 +153,16 @@ function makeOptions(overrides?: Partial<Options>): Options {
     setToken: vi.fn(),
     presenceSocketRef: makeRef<WebSocket | null>(null) as PresenceSocketRef,
     tabsStateRef: makeRef({
+      openTabs: ['main'],
       activeSession: 'main',
-      sessions: [],
-      activeWindowIndex: null,
-      activePaneID: null,
-    }) as TabsStateRef,
+      activeEpoch: 0,
+    }),
     eventsSocketConnectedRef: makeRef(false),
     runtimeMetricsRef: makeRef(makeMetrics()),
     lastSessionsRefreshAtRef: makeRef(0),
     sendPresenceOverWS: vi.fn(() => true),
     refreshSessions: vi.fn(() => Promise.resolve()),
-    refreshInspector: vi.fn(() => Promise.resolve()),
+    refreshInspector: makeRefreshInspectorMock(),
     pushErrorToast: vi.fn(),
     applySessionActivityPatches: vi.fn(() => NO_PATCHES),
     applyInspectorProjectionPatches: vi.fn(() => false),
@@ -527,23 +529,20 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('handles tmux.inspector.updated and schedules inspector refresh', () => {
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({
         refreshInspector,
         tabsStateRef: makeRef({
+          openTabs: ['main'],
           activeSession: 'main',
-          sessions: [],
-          activeWindowIndex: null,
-          activePaneID: null,
-        }) as TabsStateRef,
+          activeEpoch: 0,
+        }),
       })
       renderEventsHook(opts)
 
       act(() => {
         lastSocket().emitOpen()
       })
-      const refreshInspectorCallsBeforeEvent =
-        refreshInspector.mock.calls.length
 
       act(() => {
         lastSocket().emitMessage({
@@ -567,7 +566,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('lets a correlated tmux.inspector.updated handler suppress the generic inspector refresh schedule', () => {
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const handleTmuxInspectorEvent = vi.fn(() => true)
       const opts = makeOptions({
         refreshInspector,
@@ -610,7 +609,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('skips inspector refresh when action is "seen"', () => {
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({ refreshInspector })
       renderEventsHook(opts)
 
@@ -642,7 +641,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('skips inspector refresh when action is "select-window"', () => {
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({ refreshInspector })
       renderEventsHook(opts)
 
@@ -672,7 +671,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('skips inspector refresh when action is "select-pane"', () => {
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({ refreshInspector })
       renderEventsHook(opts)
 
@@ -702,7 +701,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('skips inspector refresh when action is empty', () => {
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({ refreshInspector })
       renderEventsHook(opts)
 
@@ -732,15 +731,14 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('skips inspector refresh when session does not match active', () => {
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({
         refreshInspector,
         tabsStateRef: makeRef({
+          openTabs: ['main'],
           activeSession: 'main',
-          sessions: [],
-          activeWindowIndex: null,
-          activePaneID: null,
-        }) as TabsStateRef,
+          activeEpoch: 0,
+        }),
       })
       renderEventsHook(opts)
 
@@ -837,11 +835,10 @@ describe('useTmuxEventsSocket', () => {
         timelineOpenRef: makeRef(true),
         timelineSessionFilterRef: makeRef('active'),
         tabsStateRef: makeRef({
+          openTabs: ['dev'],
           activeSession: 'dev',
-          sessions: [],
-          activeWindowIndex: null,
-          activePaneID: null,
-        }) as TabsStateRef,
+          activeEpoch: 0,
+        }),
         loadTimelineRef: makeRef(loadTimeline),
       })
       renderEventsHook(opts)
@@ -1295,17 +1292,16 @@ describe('useTmuxEventsSocket', () => {
         }),
       ) as unknown as ApiFunction
       const refreshSessions = vi.fn(() => Promise.resolve())
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({
         api,
         refreshSessions,
         refreshInspector,
         tabsStateRef: makeRef({
+          openTabs: ['main'],
           activeSession: 'main',
-          sessions: [],
-          activeWindowIndex: null,
-          activePaneID: null,
-        }) as TabsStateRef,
+          activeEpoch: 0,
+        }),
       })
       renderEventsHook(opts)
 
@@ -1449,8 +1445,6 @@ describe('useTmuxEventsSocket', () => {
       act(() => {
         lastSocket().emitOpen()
       })
-
-      const callCountConnected = refreshSessions.mock.calls.length
 
       act(() => {
         lastSocket().emitClose()
@@ -1782,7 +1776,7 @@ describe('useTmuxEventsSocket', () => {
 
     it('schedules refresh recovery on event ID gap for inspector events', async () => {
       const refreshSessions = vi.fn(() => Promise.resolve())
-      const refreshInspector = vi.fn(() => Promise.resolve())
+      const refreshInspector = makeRefreshInspectorMock()
       const opts = makeOptions({ refreshSessions, refreshInspector })
       renderEventsHook(opts)
 

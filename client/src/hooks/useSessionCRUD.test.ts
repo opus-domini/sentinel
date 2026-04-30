@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { GuardrailConfirmError } from './useTmuxApi'
 import { useSessionCRUD } from './useSessionCRUD'
 import type { Session } from '@/types'
+import type { Dispatch, SetStateAction } from 'react'
 import type {
   ApiFunction,
   DispatchTabs,
@@ -45,9 +46,15 @@ function makeGuardrailError(): GuardrailConfirmError {
         {
           id: 'rule-1',
           name: 'protect-prod',
+          scope: 'action',
           pattern: 'prod*',
-          action: 'confirm',
+          mode: 'confirm',
+          severity: 'warn',
+          message: 'This will destroy the session',
           enabled: true,
+          priority: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
         },
       ],
     },
@@ -71,8 +78,8 @@ function createMockOptions(overrides: MockOptions = {}) {
   const connectionState = overrides.connectionState ?? 'connected'
 
   const api = (overrides.api ?? vi.fn()) as ApiFunction
-  const dispatchTabs: DispatchTabs = vi.fn()
-  const setSessions = vi.fn<[React.SetStateAction<Array<Session>>], void>()
+  const dispatchTabs = vi.fn<DispatchTabs>()
+  const setSessions = vi.fn<Dispatch<SetStateAction<Array<Session>>>>()
   const setConnection = vi.fn()
   const closeCurrentSocket = vi.fn()
   const resetTerminal = vi.fn()
@@ -418,6 +425,35 @@ describe('useSessionCRUD – refreshSessions', () => {
         expect.objectContaining({ name: 'Home' }),
       ]),
     )
+  })
+
+  it('uses the latest connection state when preserving a connecting active session', async () => {
+    const api = vi.fn().mockResolvedValue({
+      sessions: [makeSession('Home')],
+    })
+    const opts = createMockOptions({
+      api,
+      sessions: [makeSession('Hugo'), makeSession('Home')],
+      activeSession: 'Hugo',
+      openTabs: ['Hugo'],
+      connectionState: 'disconnected',
+    })
+
+    const { result, rerender } = renderHook(() => useSessionCRUD(opts))
+
+    opts.connectionState = 'connecting'
+    rerender()
+
+    await act(async () => {
+      await result.current.refreshSessions()
+    })
+
+    expect(opts.closeCurrentSocket).not.toHaveBeenCalled()
+    expect(opts.resetTerminal).not.toHaveBeenCalled()
+    expect(opts.dispatchTabs).toHaveBeenCalledWith({
+      type: 'sync',
+      sessions: ['Hugo', 'Home'],
+    })
   })
 
   it('removes the active session when it disappears after the terminal is connected', async () => {

@@ -1,4 +1,4 @@
-import { History, Loader2, Menu, Minus, Plus } from 'lucide-react'
+import { History, Loader2, Menu, Minus, Plus, ShieldCheck } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import AppSectionTitle from './layout/AppSectionTitle'
 import ConnectionBadge from './ConnectionBadge'
@@ -247,6 +247,19 @@ export default function TmuxTerminalPanel({
               aria-label="Timeline"
             >
               <History className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHelper>
+          <TooltipHelper content="Guardrails">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 cursor-pointer"
+              onClick={onOpenGuardrails}
+              disabled={!onOpenGuardrails}
+              aria-label="Guardrails"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
             </Button>
           </TooltipHelper>
           <ConnectionBadge
