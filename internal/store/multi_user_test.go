@@ -167,3 +167,20 @@ func TestTmuxLauncherInvalidUserMode(t *testing.T) {
 		t.Fatal("expected error for invalid user mode")
 	}
 }
+
+func TestTmuxLauncherFixedUserRequiresUserValue(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	_, err := st.CreateTmuxLauncher(ctx, TmuxLauncherWrite{
+		Name:     "bad",
+		Icon:     "terminal",
+		CwdMode:  TmuxLauncherCwdModeSession,
+		UserMode: TmuxLauncherUserModeFixed,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing fixed user")
+	}
+}

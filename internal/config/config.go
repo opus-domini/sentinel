@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 const (
@@ -32,7 +33,7 @@ type AlertThresholds struct {
 type MultiUserConfig struct {
 	AllowedUsers     []string
 	AllowRootTarget  bool
-	UserSwitchMethod string // "sudo" (default) or "direct"
+	UserSwitchMethod string // "systemd-run" on Linux by default; "sudo" elsewhere
 }
 
 type Config struct {
@@ -182,9 +183,9 @@ const defaultConfigContent = `# Sentinel configuration
 # Environment variable: SENTINEL_ALLOW_ROOT_TARGET
 # allow_root_target = false
 
-# Method for switching users: "sudo" (default) or "direct".
+# Method for switching users: "systemd-run" (Linux default) or "sudo" (non-Linux default).
 # Environment variable: SENTINEL_USER_SWITCH_METHOD
-# user_switch_method = "sudo"
+# user_switch_method = "systemd-run"
 `
 
 func Load() Config {
@@ -373,13 +374,14 @@ func applyMultiUserConfig(cfg *Config, file map[string]string) {
 		false,
 	)
 
-	cfg.MultiUser.UserSwitchMethod = "sudo"
+	cfg.MultiUser.UserSwitchMethod = defaultUserSwitchMethod()
 	if method := readRawEnvOrFile("SENTINEL_USER_SWITCH_METHOD", "user_switch_method", file); method != "" {
-		switch strings.ToLower(method) {
-		case "sudo", "direct":
-			cfg.MultiUser.UserSwitchMethod = strings.ToLower(method)
-		}
+		cfg.MultiUser.UserSwitchMethod = userswitch.NormalizeMethod(method, cfg.MultiUser.UserSwitchMethod)
 	}
+}
+
+func defaultUserSwitchMethod() string {
+	return userswitch.DefaultMethod(runtime.GOOS)
 }
 
 // ValidateMultiUser checks multi-user config consistency and logs warnings

@@ -17,8 +17,8 @@ Environment=TERM=xterm-256color
 Environment=LANG=C.UTF-8
 
 # Hardening
-# Note: NoNewPrivileges is intentionally omitted — sudo is required for multi-user
-# session support (running tmux as a different OS user).
+# Note: NoNewPrivileges is intentionally omitted — sudo is required for
+# multi-user session support (including sudo systemd-run on Linux).
 # Note: NoNewPrivileges and SystemCallArchitectures are intentionally
 # omitted — sudo requires new-privilege capability for multi-user sessions.
 ProtectSystem=full

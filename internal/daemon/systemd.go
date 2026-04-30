@@ -798,8 +798,8 @@ Environment=SENTINEL_LOG_LEVEL=info
 Environment=HOME=%%h
 Environment=TERM=xterm-256color
 Environment=LANG=C.UTF-8
-# Note: NoNewPrivileges and SystemCallArchitectures are intentionally
-# omitted — sudo requires new-privilege capability for multi-user sessions.
+# Note: NoNewPrivileges and SystemCallArchitectures are intentionally omitted —
+# sudo requires new-privilege capability for multi-user sessions.
 
 [Install]
 WantedBy=default.target

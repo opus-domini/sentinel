@@ -18,8 +18,8 @@ Environment=LANG=C.UTF-8
 # Hardening
 # Note: ProtectHome, PrivateDevices and PrivateTmp are NOT set because
 # Sentinel needs access to ~/.sentinel/, /dev/ptmx (PTY) and /tmp/tmux-* sockets.
-# Note: NoNewPrivileges is intentionally omitted — sudo is required for multi-user
-# session support (running tmux as a different OS user).
+# Note: NoNewPrivileges is intentionally omitted — sudo is required for
+# multi-user session support (including sudo systemd-run on Linux).
 # Note: NoNewPrivileges and SystemCallArchitectures are intentionally
 # omitted — sudo requires new-privilege capability for multi-user sessions.
 

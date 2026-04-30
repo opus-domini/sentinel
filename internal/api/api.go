@@ -224,19 +224,20 @@ type handlerRepo interface {
 var _ handlerRepo = (*store.Store)(nil)
 
 type Handler struct {
-	guard      *security.Guard
-	tmux       tmuxService
-	ops        opsControlPlane
-	events     *events.Hub
-	repo       handlerRepo
-	orch       *opsOrchestrator
-	guardrails *guardrails.Service
-	notifier   *notify.Notifier
-	version    string
-	configPath string
-	timezone   string
-	locale     string
-	mu         sync.Mutex // protects mutable settings (timezone, locale)
+	guard            *security.Guard
+	tmux             tmuxService
+	ops              opsControlPlane
+	events           *events.Hub
+	repo             handlerRepo
+	orch             *opsOrchestrator
+	guardrails       *guardrails.Service
+	notifier         *notify.Notifier
+	version          string
+	configPath       string
+	timezone         string
+	locale           string
+	userSwitchMethod string
+	mu               sync.Mutex // protects mutable settings (timezone, locale)
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).
@@ -290,20 +291,21 @@ func Register(
 	}
 	runCtx, runCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel called in Handler.Close()
 	h := &Handler{
-		guard:      guard,
-		tmux:       tmux.Service{},
-		ops:        ops,
-		events:     eventsHub,
-		repo:       st,
-		orch:       &opsOrchestrator{repo: st},
-		guardrails: guardrails.New(st),
-		version:    strings.TrimSpace(version),
-		configPath: configPath,
-		timezone:   timezone,
-		locale:     locale,
-		runCtx:     runCtx,
-		runCancel:  runCancel,
-		runSem:     make(chan struct{}, runbookMaxConcurrent),
+		guard:            guard,
+		tmux:             tmux.Service{},
+		ops:              ops,
+		events:           eventsHub,
+		repo:             st,
+		orch:             &opsOrchestrator{repo: st},
+		guardrails:       guardrails.New(st),
+		version:          strings.TrimSpace(version),
+		configPath:       configPath,
+		timezone:         timezone,
+		locale:           locale,
+		userSwitchMethod: tmux.UserSwitchMethod,
+		runCtx:           runCtx,
+		runCancel:        runCancel,
+		runSem:           make(chan struct{}, runbookMaxConcurrent),
 	}
 	h.registerMetaRoutes(mux)
 	h.registerTmuxRoutes(mux)

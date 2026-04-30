@@ -314,7 +314,9 @@ func normalizeTmuxLauncherWrite(row TmuxLauncherWrite) (TmuxLauncherWrite, error
 		userMode = TmuxLauncherUserModeSession
 		userValue = ""
 	case TmuxLauncherUserModeFixed:
-		// userValue kept as-is (can be validated at the API layer)
+		if userValue == "" {
+			return TmuxLauncherWrite{}, errors.New("tmux launcher fixed user is required")
+		}
 	default:
 		return TmuxLauncherWrite{}, errors.New("invalid tmux launcher user mode")
 	}

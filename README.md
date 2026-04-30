@@ -37,7 +37,7 @@ No Electron. No cloud relay. Just your host and your shell.
 ## Core Capabilities
 
 - **Tmux** — Interactive PTY in the browser with tmux workspace management, window launchers, and reusable session launchers.
-- **Multi-user sessions** — Run tmux sessions as different OS users with security allowlist and sudo integration.
+- **Multi-user sessions** — Run tmux sessions as different OS users with a security allowlist and systemd-aware user switching on Linux.
 - **Services** — Monitor and control systemd/launchd units from `/services`.
 - **Alerts** — Deduplicated alert feed from watchtower and service health at `/alerts`.
 - **Timeline** — Searchable operational audit log at `/timeline`.

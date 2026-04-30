@@ -1,6 +1,6 @@
 # Multi-User Sessions
 
-Sentinel supports running tmux sessions as different OS users via `sudo -u`. Each session tracks which user owns it through a session-user registry persisted in SQLite. This is useful for multi-tenant dev environments, CI agents, or managing services that run under dedicated system accounts.
+Sentinel supports running tmux sessions as different OS users. On Linux the default path uses `sudo -n systemd-run --user --machine=<user>@.host` so tmux servers inherit the target user's systemd user environment, including variables such as `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`. Each session tracks which user owns it through a session-user registry persisted in SQLite. This is useful for multi-tenant dev environments, CI agents, or managing services that run under dedicated system accounts.
 
 ## Configuration
 
@@ -16,9 +16,9 @@ allowed_users = ["alice", "deploy", "postgres"]
 # Environment variable: SENTINEL_ALLOW_ROOT_TARGET
 allow_root_target = false
 
-# Method for switching users: "sudo" (default) or "direct".
+# Method for switching users: "systemd-run" (Linux default) or "sudo" (non-Linux default).
 # Environment variable: SENTINEL_USER_SWITCH_METHOD
-user_switch_method = "sudo"
+user_switch_method = "systemd-run"
 ```
 
 When `allowed_users` is empty (the default), any system user with UID >= 1000 and an interactive login shell is permitted as a target. System users are loaded at startup from `/etc/passwd` and serve as the source of truth for the session lifetime.
@@ -76,6 +76,8 @@ Launchers support two user modes via `userMode`:
 }
 ```
 
+Fixed-user window launchers create the tmux window in the owning session and run the launcher command through the configured user switch method inside that pane. This keeps window management attached to the session while giving the launched process the target user's environment.
+
 ### UI indicators
 
 The sidebar shows a user badge on sessions owned by a different user than the Sentinel process user. This makes it easy to distinguish which sessions belong to which OS account at a glance.
@@ -100,10 +102,24 @@ Pane IDs from multi-user sessions are namespaced as `user:paneID` (e.g., `alice:
 
 ## Requirements
 
-- `sudo` must be installed and the Sentinel process user must have NOPASSWD sudoer rules for each allowed target user. Example sudoers entry:
+- `sudo` must be installed. With the Linux default `user_switch_method = "systemd-run"`, the Sentinel process user must be able to run `systemd-run` through sudo without a password:
 
   ```
-  sentinel ALL=(alice,deploy,postgres) NOPASSWD: ALL
+  sentinel ALL=(root) NOPASSWD: /usr/bin/systemd-run
+  ```
+
+  If you opt into `user_switch_method = "sudo"`, allow direct tmux execution as each target user instead:
+
+  ```
+  sentinel ALL=(alice,deploy,postgres) NOPASSWD: /usr/bin/tmux
+  ```
+
+  Fixed-user window launchers run the user switch command from inside the owning tmux session, so the session owner also needs the corresponding sudo permission when targeting a different user.
+
+- On Linux, target users need an active systemd user manager. Enable lingering for service-style accounts that are not normally logged in:
+
+  ```bash
+  sudo loginctl enable-linger deploy
   ```
 
 - The systemd unit must **not** set `NoNewPrivileges=true` or `SystemCallArchitectures=native`, as these restrict the ability to execute `sudo`.

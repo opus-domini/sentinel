@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 type PTY struct {
@@ -21,6 +23,8 @@ type PTY struct {
 	cmd       *exec.Cmd
 	closeOnce sync.Once
 }
+
+var UserSwitchMethod = userswitch.MethodSudo //nolint:gochecknoglobals // set once at startup from config
 
 func StartTmuxAttach(ctx context.Context, session string, cols, rows int) (*PTY, error) {
 	cmd := exec.CommandContext(ctx, "tmux", tmuxAttachArgs(session)...)
@@ -31,7 +35,11 @@ func StartTmuxAttachAsUser(ctx context.Context, session, user string, cols, rows
 	if user == "" {
 		return StartTmuxAttach(ctx, session, cols, rows)
 	}
-	cmd := exec.CommandContext(ctx, "sudo", append([]string{"-n", "-u", user, "tmux"}, tmuxAttachArgs(session)...)...)
+	name, args, err := userswitch.BuildTmuxCommand(UserSwitchMethod, user, tmuxAttachArgs(session), true)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
 	return startCommand(ctx, cmd, cols, rows)
 }
 

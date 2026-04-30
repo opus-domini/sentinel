@@ -12,6 +12,8 @@ import (
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/userswitch"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
@@ -31,6 +33,10 @@ func (h *Handler) createTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 	row, err := decodeTmuxLauncherWrite(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if err := h.validateTmuxLauncherUser(row); err != nil {
+		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
 		return
 	}
 
@@ -63,6 +69,10 @@ func (h *Handler) updateTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 	row, err := decodeTmuxLauncherWrite(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if err := h.validateTmuxLauncherUser(row); err != nil {
+		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
 		return
 	}
 
@@ -181,8 +191,13 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
-	if strings.TrimSpace(launcher.Command) != "" {
-		if err := svc.SendKeys(ctx, createdWindow.PaneID, launcher.Command, true); err != nil {
+	launcherCommand, err := h.tmuxLauncherCommand(session, launcher)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
+		return
+	}
+	if strings.TrimSpace(launcherCommand) != "" {
+		if err := svc.SendKeys(ctx, createdWindow.PaneID, launcherCommand, true); err != nil {
 			writeTmuxError(w, err)
 			return
 		}
@@ -226,6 +241,33 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) validateTmuxLauncherUser(row store.TmuxLauncherWrite) error {
+	if strings.TrimSpace(row.UserMode) != store.TmuxLauncherUserModeFixed {
+		return nil
+	}
+	return h.guard.ValidateTargetUser(row.UserValue)
+}
+
+func (h *Handler) tmuxLauncherCommand(session string, launcher store.TmuxLauncher) (string, error) {
+	command := strings.TrimSpace(launcher.Command)
+	if strings.TrimSpace(launcher.UserMode) != store.TmuxLauncherUserModeFixed {
+		return command, nil
+	}
+
+	targetUser := strings.TrimSpace(launcher.UserValue)
+	if err := h.guard.ValidateTargetUser(targetUser); err != nil {
+		return "", err
+	}
+	if targetUser == strings.TrimSpace(h.SessionUser(session)) {
+		return command, nil
+	}
+	method := strings.TrimSpace(h.userSwitchMethod)
+	if method == "" {
+		method = tmux.UserSwitchMethod
+	}
+	return userswitch.BuildShellCommand(method, targetUser, command)
+}
+
 func (h *Handler) resolveTmuxLauncherCwd(ctx context.Context, session string, launcher store.TmuxLauncher) (string, error) {
 	switch launcher.CwdMode {
 	case store.TmuxLauncherCwdModeSession:
@@ -261,6 +303,7 @@ func isTmuxLauncherValidationError(err error) bool {
 	case "tmux launcher name is required",
 		"tmux launcher icon is required",
 		"tmux launcher fixed cwd is required",
+		"tmux launcher fixed user is required",
 		"invalid tmux launcher cwd mode",
 		"invalid tmux launcher user mode":
 		return true

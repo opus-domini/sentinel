@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 func TestTmuxLauncherHandlers(t *testing.T) {
@@ -277,6 +279,64 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 		}
 		if sendKeysCalls != 0 {
 			t.Fatalf("SendKeys() calls = %d, want 0", sendKeysCalls)
+		}
+	})
+
+	t.Run("launch fixed-user launcher wraps command", func(t *testing.T) {
+		const sessionName = "dev"
+
+		var gotKeys string
+		tm := &mockTmux{
+			newWindowWithOptionsFn: func(_ context.Context, session, name, cwd string) (tmux.NewWindowResult, error) {
+				if session != sessionName {
+					t.Fatalf("session = %q, want %q", session, sessionName)
+				}
+				return tmux.NewWindowResult{ID: "@12", Index: 2, PaneID: "%22"}, nil
+			},
+			sendKeysFn: func(_ context.Context, paneID, keys string, enter bool) error {
+				if paneID != "%22" || !enter {
+					t.Fatalf("send keys target = (%q, %v), want (%%22, true)", paneID, enter)
+				}
+				gotKeys = keys
+				return nil
+			},
+		}
+		h, st := newTestHandler(t, tm, nil)
+		h.userSwitchMethod = userswitch.MethodSystemdRun
+		h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
+			AllowedUsers: []string{"postgres"},
+			SystemUsers:  []string{"postgres"},
+		})
+
+		launcher, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
+			Name:       "PSQL",
+			Icon:       "database",
+			Command:    "echo '$HOME'",
+			CwdMode:    store.TmuxLauncherCwdModeSession,
+			WindowName: "psql",
+			UserMode:   store.TmuxLauncherUserModeFixed,
+			UserValue:  "postgres",
+		})
+		if err != nil {
+			t.Fatalf("CreateTmuxLauncher() error = %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/"+sessionName+"/launchers/"+launcher.ID+"/launch", nil)
+		r.SetPathValue("session", sessionName)
+		r.SetPathValue("launcher", launcher.ID)
+		h.launchTmuxLauncher(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		for _, want := range []string{"'systemd-run'", "'--machine=postgres@.host'", "'--pty'", "'--same-dir'", "'/bin/sh'", "'-lc'"} {
+			if !strings.Contains(gotKeys, want) {
+				t.Fatalf("wrapped command missing %s: %s", want, gotKeys)
+			}
+		}
+		if !strings.Contains(gotKeys, "'echo '\\''$HOME'\\'''") {
+			t.Fatalf("wrapped command did not preserve target shell expansion safely: %s", gotKeys)
 		}
 	})
 }

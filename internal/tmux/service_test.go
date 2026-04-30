@@ -2,8 +2,13 @@ package tmux
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 func TestServiceDelegatesToPackageLevelRunWhenNoUser(t *testing.T) {
@@ -29,30 +34,64 @@ func TestServiceDelegatesToPackageLevelRunWhenNoUser(t *testing.T) {
 }
 
 func TestRunAsUserWrapsWithSudo(t *testing.T) {
-	// Not parallel: mutates package-level run variable and SystemUsers.
-
-	original := run
-	t.Cleanup(func() { run = original })
+	// Not parallel: mutates package-level execCommandContext, UserSwitchMethod and SystemUsers.
 
 	originalUsers := SystemUsers
 	t.Cleanup(func() { SystemUsers = originalUsers })
 	SystemUsers = []string{"testuser"}
 
-	called := false
-	run = func(_ context.Context, args ...string) (string, error) {
-		called = true
-		return "", nil
-	}
+	originalMethod := UserSwitchMethod
+	t.Cleanup(func() { UserSwitchMethod = originalMethod })
+	UserSwitchMethod = userswitch.MethodSudo
 
-	// runAsUser with a non-empty user should NOT call the package-level run.
-	// It will fail because sudo is not available, but that's expected.
-	_, err := runAsUser(context.Background(), "testuser", "list-sessions")
-	if called {
-		t.Fatal("package-level run should NOT be called when user is set")
+	installExecCommandRecorder(t)
+
+	out, err := runAsUser(context.Background(), "testuser", "list-sessions")
+	if err != nil {
+		t.Fatalf("runAsUser error = %v", err)
 	}
-	// We expect an error because sudo won't work in test env.
-	if err == nil {
-		t.Fatal("expected error from sudo, got nil")
+	got := strings.Split(strings.TrimSpace(out), "\n")
+	want := []string{"sudo", "-n", "-u", "testuser", "tmux", "list-sessions"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("command = %#v, want %#v", got, want)
+	}
+}
+
+func TestRunAsUserWrapsWithSystemdRun(t *testing.T) {
+	// Not parallel: mutates package-level execCommandContext, UserSwitchMethod and SystemUsers.
+
+	originalUsers := SystemUsers
+	t.Cleanup(func() { SystemUsers = originalUsers })
+	SystemUsers = []string{"testuser"}
+
+	originalMethod := UserSwitchMethod
+	t.Cleanup(func() { UserSwitchMethod = originalMethod })
+	UserSwitchMethod = userswitch.MethodSystemdRun
+
+	installExecCommandRecorder(t)
+
+	out, err := runAsUser(context.Background(), "testuser", "list-sessions")
+	if err != nil {
+		t.Fatalf("runAsUser error = %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(out), "\n")
+	want := []string{
+		"sudo",
+		"-n",
+		"systemd-run",
+		"--user",
+		"--machine=testuser@.host",
+		"--collect",
+		"--quiet",
+		"--service-type=exec",
+		"--expand-environment=no",
+		"--wait",
+		"--pipe",
+		"tmux",
+		"list-sessions",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("command = %#v, want %#v", got, want)
 	}
 }
 
@@ -168,4 +207,33 @@ func TestVerifySystemUserEmptyList(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when SystemUsers is empty, got nil")
 	}
+}
+
+func installExecCommandRecorder(t *testing.T) {
+	t.Helper()
+
+	original := execCommandContext
+	t.Cleanup(func() { execCommandContext = original })
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		helperArgs := []string{"-test.run=TestExecCommandRecorder", "--", name}
+		helperArgs = append(helperArgs, args...)
+		cmd := exec.CommandContext(ctx, os.Args[0], helperArgs...) //nolint:gosec // test helper re-execs the current test binary with recorded args
+		cmd.Env = append(os.Environ(), "SENTINEL_EXEC_COMMAND_RECORDER=1")
+		return cmd
+	}
+}
+
+func TestExecCommandRecorder(t *testing.T) {
+	if os.Getenv("SENTINEL_EXEC_COMMAND_RECORDER") != "1" {
+		return
+	}
+	for i, arg := range os.Args {
+		if arg == "--" {
+			for _, item := range os.Args[i+1:] {
+				_, _ = os.Stdout.WriteString(item + "\n")
+			}
+			os.Exit(0)
+		}
+	}
+	os.Exit(2)
 }

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 // Service delegates to the package-level tmux functions. When User is
-// non-empty, commands are wrapped with sudo -n -u <user>.
+// non-empty, commands are wrapped according to UserSwitchMethod.
 type Service struct {
 	User string
 }
@@ -25,6 +27,12 @@ var validUserRe = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 // Set from main.go after config.ReadSystemUsers().
 var SystemUsers []string //nolint:gochecknoglobals // set once at startup from main
 
+// UserSwitchMethod controls how multi-user tmux commands are launched.
+// Set from main.go after config.Load().
+var UserSwitchMethod = userswitch.MethodSudo //nolint:gochecknoglobals // set once at startup from config
+
+var execCommandContext = exec.CommandContext //nolint:gochecknoglobals // var enables test injection
+
 // verifySystemUser checks that the username matches the safe character set
 // and exists in the in-memory system users list.
 func verifySystemUser(name string) error {
@@ -39,9 +47,9 @@ func verifySystemUser(name string) error {
 	return fmt.Errorf("unknown system user %q", name)
 }
 
-// runAsUser executes a tmux command, optionally wrapping it with sudo -n -u
-// when user is non-empty. For the default (no user) case the package-level
-// run variable is used so that tests can inject fakes.
+// runAsUser executes a tmux command through the configured user switch method
+// when user is non-empty. For the default (no user) case the package-level run
+// variable is used so that tests can inject fakes.
 // The user is validated against the system user database before execution
 // to prevent command injection even when the allowlist is empty.
 func runAsUser(ctx context.Context, user string, args ...string) (string, error) {
@@ -51,9 +59,11 @@ func runAsUser(ctx context.Context, user string, args ...string) (string, error)
 	if err := verifySystemUser(user); err != nil {
 		return "", &Error{Kind: ErrKindCommandFailed, Msg: err.Error()}
 	}
-	sudoArgs := []string{"-n", "-u", user, "tmux"}
-	sudoArgs = append(sudoArgs, args...)
-	cmd := exec.CommandContext(ctx, "sudo", sudoArgs...) //nolint:gosec // user validated by verifySystemUser above
+	name, commandArgs, err := userswitch.BuildTmuxCommand(UserSwitchMethod, user, args, false)
+	if err != nil {
+		return "", &Error{Kind: ErrKindCommandFailed, Msg: err.Error()}
+	}
+	cmd := execCommandContext(ctx, name, commandArgs...) //nolint:gosec // user validated by verifySystemUser above
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

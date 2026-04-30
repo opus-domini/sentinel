@@ -19,29 +19,34 @@ func TestApplyMultiUserConfigFromEnvVars(t *testing.T) {
 			envVars:    nil,
 			wantUsers:  nil,
 			wantRoot:   false,
-			wantMethod: "sudo",
+			wantMethod: defaultUserSwitchMethod(),
 		},
 		{
 			name:       "allowed users from env",
 			envVars:    map[string]string{"SENTINEL_ALLOWED_USERS": "postgres,deploy"},
 			wantUsers:  []string{"postgres", "deploy"},
-			wantMethod: "sudo",
+			wantMethod: defaultUserSwitchMethod(),
 		},
 		{
 			name:       "allow root target",
 			envVars:    map[string]string{"SENTINEL_ALLOW_ROOT_TARGET": "true"},
 			wantRoot:   true,
+			wantMethod: defaultUserSwitchMethod(),
+		},
+		{
+			name:       "systemd-run switch method",
+			envVars:    map[string]string{"SENTINEL_USER_SWITCH_METHOD": "systemd-run"},
+			wantMethod: "systemd-run",
+		},
+		{
+			name:       "sudo switch method",
+			envVars:    map[string]string{"SENTINEL_USER_SWITCH_METHOD": "sudo"},
 			wantMethod: "sudo",
 		},
 		{
-			name:       "direct switch method",
-			envVars:    map[string]string{"SENTINEL_USER_SWITCH_METHOD": "direct"},
-			wantMethod: "direct",
-		},
-		{
-			name:       "invalid switch method defaults to sudo",
+			name:       "invalid switch method keeps default",
 			envVars:    map[string]string{"SENTINEL_USER_SWITCH_METHOD": "runas"},
-			wantMethod: "sudo",
+			wantMethod: defaultUserSwitchMethod(),
 		},
 	}
 
@@ -82,7 +87,7 @@ func TestApplyMultiUserConfigFromTOML(t *testing.T) {
 	content := `[multi_user]
 allowed_users = ["postgres", "deploy"]
 allow_root_target = false
-user_switch_method = "direct"
+user_switch_method = "sudo"
 `
 	file, err := decodeTOML(content)
 	if err != nil {
@@ -101,8 +106,8 @@ user_switch_method = "direct"
 	if cfg.MultiUser.AllowRootTarget {
 		t.Error("AllowRootTarget = true, want false")
 	}
-	if cfg.MultiUser.UserSwitchMethod != "direct" {
-		t.Errorf("UserSwitchMethod = %q, want direct", cfg.MultiUser.UserSwitchMethod)
+	if cfg.MultiUser.UserSwitchMethod != "sudo" {
+		t.Errorf("UserSwitchMethod = %q, want sudo", cfg.MultiUser.UserSwitchMethod)
 	}
 }
 

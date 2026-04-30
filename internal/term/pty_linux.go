@@ -13,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 type PTY struct {
@@ -21,19 +23,26 @@ type PTY struct {
 	closeOnce sync.Once
 }
 
+// UserSwitchMethod controls how multi-user tmux attach commands are launched.
+// Set from main.go after config.Load().
+var UserSwitchMethod = userswitch.MethodSudo //nolint:gochecknoglobals // set once at startup from config
+
 func StartTmuxAttach(ctx context.Context, session string, cols, rows int) (*PTY, error) {
 	cmd := exec.CommandContext(ctx, "tmux", tmuxAttachArgs(session)...)
 	return startCommand(ctx, cmd, cols, rows)
 }
 
-// StartTmuxAttachAsUser wraps the tmux attach command with sudo -n -u
-// to attach as a different OS user. When user is empty, it falls back
-// to the default StartTmuxAttach.
+// StartTmuxAttachAsUser wraps the tmux attach command using the configured
+// user switch method. When user is empty, it falls back to StartTmuxAttach.
 func StartTmuxAttachAsUser(ctx context.Context, session, user string, cols, rows int) (*PTY, error) {
 	if user == "" {
 		return StartTmuxAttach(ctx, session, cols, rows)
 	}
-	cmd := exec.CommandContext(ctx, "sudo", append([]string{"-n", "-u", user, "tmux"}, tmuxAttachArgs(session)...)...)
+	name, args, err := userswitch.BuildTmuxCommand(UserSwitchMethod, user, tmuxAttachArgs(session), true)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
 	return startCommand(ctx, cmd, cols, rows)
 }
 

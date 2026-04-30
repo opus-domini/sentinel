@@ -52,7 +52,7 @@ max_concurrent = 5
 [multi_user]
 # allowed_users = ["alice", "bob"]
 # allow_root_target = false
-# user_switch_method = "sudo"
+# user_switch_method = "systemd-run" # Linux default; use "sudo" elsewhere
 ```
 
 ## Environment Variables
@@ -83,7 +83,7 @@ max_concurrent = 5
 | `SENTINEL_RUNBOOK_MAX_CONCURRENT` | `5` | Max concurrent manual runbook executions |
 | `SENTINEL_ALLOWED_USERS` | (empty) | Comma-separated list of OS users allowed as session targets |
 | `SENTINEL_ALLOW_ROOT_TARGET` | `false` | Whether to allow targeting the root user |
-| `SENTINEL_USER_SWITCH_METHOD` | `sudo` | Method for switching users: `sudo` or `direct` |
+| `SENTINEL_USER_SWITCH_METHOD` | `systemd-run` on Linux, `sudo` elsewhere | Method for switching users: `systemd-run` or `sudo` |
 
 ## Recommended Profiles
 

@@ -29,6 +29,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
+	"github.com/opus-domini/sentinel/internal/term"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/watchtower"
 )
@@ -58,6 +59,8 @@ func serve() int {
 
 	config.ValidateMultiUser(&cfg)
 	tmux.SystemUsers = cfg.SystemUsers
+	tmux.UserSwitchMethod = cfg.MultiUser.UserSwitchMethod
+	term.UserSwitchMethod = cfg.MultiUser.UserSwitchMethod
 	cookiePolicy := security.ParseCookieSecurePolicy(cfg.CookieSecure)
 	guard := security.NewWithMultiUser(cfg.Token, cfg.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
 		AllowedUsers:    cfg.MultiUser.AllowedUsers,
