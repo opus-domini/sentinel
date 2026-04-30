@@ -620,6 +620,56 @@ func TestBuildWebhookPayloadFailedRun(t *testing.T) {
 	}
 }
 
+func TestResumeRunCompletesAfterApproval(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		runbookOK: true,
+		runbook: store.OpsRunbook{
+			ID:   "rb-approval",
+			Name: "Approval",
+			Steps: []store.OpsRunbookStep{
+				{Type: "approval", Title: "Approve"},
+			},
+		},
+	}
+	var emitted []string
+	emit := func(eventType string, _ map[string]any) {
+		emitted = append(emitted, eventType)
+	}
+
+	ResumeRun(context.Background(), repo, emit, RunParams{
+		Job: store.OpsRunbookRun{
+			ID:          "run-approval",
+			RunbookID:   "rb-approval",
+			RunbookName: "Approval",
+			Status:      store.OpsRunbookStatusWaitingApproval,
+			StepResults: []store.OpsRunbookStepResult{{
+				StepIndex: 0,
+				Title:     "Approve",
+				Type:      "approval",
+			}},
+		},
+		Source:      "runbook",
+		StepTimeout: 10 * time.Millisecond,
+		RunTimeout:  time.Second,
+	}, 0)
+
+	last := repo.lastUpdate()
+	if last.Status != runnerStatusSucceeded {
+		t.Fatalf("last status = %q, want %q", last.Status, runnerStatusSucceeded)
+	}
+	if last.CompletedSteps != 1 {
+		t.Fatalf("completed steps = %d, want 1", last.CompletedSteps)
+	}
+	if repo.timelineCount() == 0 {
+		t.Fatal("expected timeline event for resumed run")
+	}
+	if len(emitted) == 0 {
+		t.Fatal("expected emitted events")
+	}
+}
+
 func TestBuildWebhookPayloadOmitsEmptyFields(t *testing.T) {
 	t.Parallel()
 

@@ -35,12 +35,16 @@ func StartTmuxAttachAsUser(ctx context.Context, session, user string, cols, rows
 	if user == "" {
 		return StartTmuxAttach(ctx, session, cols, rows)
 	}
-	name, args, err := userswitch.BuildTmuxCommand(UserSwitchMethod, user, tmuxAttachArgs(session), true)
+	name, args, err := buildTmuxAttachCommandAsUser(session, user)
 	if err != nil {
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	return startCommand(ctx, cmd, cols, rows)
+}
+
+func buildTmuxAttachCommandAsUser(session, user string) (string, []string, error) {
+	return userswitch.BuildTmuxCommand(UserSwitchMethod, user, tmuxAttachArgs(session), true)
 }
 
 func StartShell(ctx context.Context, requestedShell string, cols, rows int) (*PTY, error) {

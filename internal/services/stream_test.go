@@ -3,74 +3,82 @@ package services
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestStreamLogs_LaunchdUnsupported(t *testing.T) {
+func TestStreamLogsByUnitRejectsUnsupportedManager(t *testing.T) {
 	t.Parallel()
 
-	m := &Manager{
-		nowFn:          time.Now,
-		goos:           "darwin",
-		uidFn:          func() int { return 1000 },
-		customServices: builtinServicesRepo("darwin"),
-		commandRunner: func(_ context.Context, _ string, _ ...string) (string, error) {
-			return "loaded service info", nil
-		},
-	}
-
-	_, err := m.StreamLogs(t.Context(), "sentinel")
-	if err == nil {
-		t.Fatal("expected error for launchd streaming")
-	}
+	m := NewManager(time.Time{}, nil)
+	_, err := m.StreamLogsByUnit(context.Background(), "sentinel.service", scopeUser, managerLaunchd)
 	if !errors.Is(err, ErrStreamingUnsupported) {
-		t.Errorf("expected ErrStreamingUnsupported, got: %v", err)
+		t.Fatalf("StreamLogsByUnit() error = %v, want ErrStreamingUnsupported", err)
 	}
 }
 
-func TestStreamLogsByUnit_LaunchdUnsupported(t *testing.T) {
-	t.Parallel()
+func TestStreamLogsByUnitBuildsJournalctlCommand(t *testing.T) {
+	// Not parallel: mutates package-level journalctlCommandContext.
 
-	m := &Manager{
-		goos: "darwin",
-	}
+	installJournalctlCommandRecorder(t)
 
-	_, err := m.StreamLogsByUnit(t.Context(), "com.example.app", "system", "launchd")
-	if err == nil {
-		t.Fatal("expected error for launchd streaming")
+	m := NewManager(time.Time{}, nil)
+	reader, err := m.StreamLogsByUnit(context.Background(), "sentinel.service", scopeUser, managerSystemd)
+	if err != nil {
+		t.Fatalf("StreamLogsByUnit() error = %v", err)
 	}
-	if !errors.Is(err, ErrStreamingUnsupported) {
-		t.Errorf("expected ErrStreamingUnsupported, got: %v", err)
+	defer func() { _ = reader.Close() }()
+
+	out, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(string(out)), "\n")
+	want := []string{
+		"journalctl",
+		"--user",
+		"-u",
+		"sentinel.service",
+		"--no-pager",
+		"-n",
+		"50",
+		"--output=short-iso",
+		"--follow",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("journalctl command = %#v, want %#v", got, want)
 	}
 }
 
-func TestStreamLogs_ServiceNotFound(t *testing.T) {
-	t.Parallel()
+func installJournalctlCommandRecorder(t *testing.T) {
+	t.Helper()
 
-	m := &Manager{
-		goos: "linux",
-	}
-
-	_, err := m.StreamLogs(t.Context(), "")
-	if err == nil {
-		t.Fatal("expected error for empty service name")
-	}
-	if !errors.Is(err, ErrServiceNotFound) {
-		t.Errorf("expected ErrServiceNotFound, got: %v", err)
+	original := journalctlCommandContext
+	t.Cleanup(func() { journalctlCommandContext = original })
+	journalctlCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		helperArgs := []string{"-test.run=TestJournalctlCommandRecorder", "--", name}
+		helperArgs = append(helperArgs, args...)
+		cmd := exec.CommandContext(ctx, os.Args[0], helperArgs...) //nolint:gosec // test helper re-execs the current test binary with recorded args
+		cmd.Env = append(os.Environ(), "SENTINEL_JOURNALCTL_COMMAND_RECORDER=1")
+		return cmd
 	}
 }
 
-func TestStreamLogsByUnit_UnsupportedManager(t *testing.T) {
-	t.Parallel()
-
-	m := &Manager{}
-
-	_, err := m.StreamLogsByUnit(t.Context(), "unit", "user", "unknown")
-	if err == nil {
-		t.Fatal("expected error for unknown manager")
+func TestJournalctlCommandRecorder(t *testing.T) {
+	if os.Getenv("SENTINEL_JOURNALCTL_COMMAND_RECORDER") != "1" {
+		return
 	}
-	if !errors.Is(err, ErrStreamingUnsupported) {
-		t.Errorf("expected ErrStreamingUnsupported, got: %v", err)
+	for i, arg := range os.Args {
+		if arg == "--" {
+			for _, item := range os.Args[i+1:] {
+				_, _ = os.Stdout.WriteString(item + "\n")
+			}
+			os.Exit(0)
+		}
 	}
+	os.Exit(2)
 }

@@ -13,6 +13,8 @@ import (
 // for the service manager in use (e.g. launchd).
 var ErrStreamingUnsupported = errors.New("log streaming is not supported for this service manager")
 
+var journalctlCommandContext = exec.CommandContext //nolint:gochecknoglobals // var enables test injection
+
 // logStreamCloser wraps a journalctl process pipe so callers can read
 // streaming log output and cleanly tear down the child process.
 type logStreamCloser struct {
@@ -86,7 +88,7 @@ func streamLogsSystemd(ctx context.Context, target ServiceStatus) (io.ReadCloser
 		"--follow",
 	)
 
-	cmd := exec.CommandContext(ctx, "journalctl", args...)
+	cmd := journalctlCommandContext(ctx, "journalctl", args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("journalctl stdout pipe: %w", err)

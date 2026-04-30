@@ -2,7 +2,12 @@
 
 package term
 
-import "testing"
+import (
+	"slices"
+	"testing"
+
+	"github.com/opus-domini/sentinel/internal/userswitch"
+)
 
 func TestResolveShell(t *testing.T) {
 	t.Parallel()
@@ -35,6 +40,39 @@ func TestResolveShell(t *testing.T) {
 				t.Errorf("resolveShell(%q) returned empty path", tt.requestedShell)
 			}
 		})
+	}
+}
+
+func TestBuildTmuxAttachCommandAsUser(t *testing.T) {
+	// Not parallel: mutates package-level UserSwitchMethod.
+
+	originalMethod := UserSwitchMethod
+	t.Cleanup(func() { UserSwitchMethod = originalMethod })
+	UserSwitchMethod = userswitch.MethodSystemdRun
+
+	name, args, err := buildTmuxAttachCommandAsUser("dev", "deploy")
+	if err != nil {
+		t.Fatalf("buildTmuxAttachCommandAsUser() error = %v", err)
+	}
+	if name != userswitch.MethodSudo {
+		t.Fatalf("command name = %q, want sudo", name)
+	}
+	for _, want := range []string{
+		"systemd-run",
+		"--machine=deploy@.host",
+		"--pty",
+		"--send-sighup",
+		"tmux",
+		"attach",
+		"-t",
+		"dev",
+	} {
+		if !slices.Contains(args, want) {
+			t.Fatalf("args missing %q: %#v", want, args)
+		}
+	}
+	if slices.Contains(args, "--pipe") {
+		t.Fatalf("interactive attach args should not contain --pipe: %#v", args)
 	}
 }
 

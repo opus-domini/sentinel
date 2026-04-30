@@ -11,6 +11,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -335,7 +336,7 @@ func upsertConfigKey(path, key, value string) error {
 	var lines []string
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	found := false
-	newLine := key + ` = "` + value + `"`
+	newLine := key + " = " + strconv.Quote(value)
 	for scanner.Scan() {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)

@@ -91,6 +91,36 @@ func TestDefaultEvents(t *testing.T) {
 	}
 }
 
+func TestNotifierAccessors(t *testing.T) {
+	t.Parallel()
+
+	var disabled *Notifier
+	if got := disabled.URL(); got != "" {
+		t.Fatalf("nil URL() = %q, want empty", got)
+	}
+	if got := disabled.Events(); got != nil {
+		t.Fatalf("nil Events() = %#v, want nil", got)
+	}
+
+	n := New("http://example.com/hook", []string{"alert.acked", "alert.created"})
+	if got := n.URL(); got != "http://example.com/hook" {
+		t.Fatalf("URL() = %q, want configured URL", got)
+	}
+	events := n.Events()
+	if len(events) != 2 {
+		t.Fatalf("len(Events()) = %d, want 2", len(events))
+	}
+	got := map[string]bool{}
+	for _, event := range events {
+		got[event] = true
+	}
+	for _, want := range []string{"alert.acked", "alert.created"} {
+		if !got[want] {
+			t.Fatalf("Events() missing %q: %#v", want, events)
+		}
+	}
+}
+
 func TestEventFiltering(t *testing.T) {
 	t.Parallel()
 
@@ -198,6 +228,59 @@ func TestSendDeliversPayload(t *testing.T) {
 	}
 	if decoded.Host != "db-01" {
 		t.Errorf("host = %s, want db-01", decoded.Host)
+	}
+}
+
+func TestSendJSONDeliversPayload(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var receivedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		receivedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	n := New(srv.URL, []string{"alert.created"})
+	if err := n.SendJSON(context.Background(), map[string]any{"ok": true}); err != nil {
+		t.Fatalf("SendJSON returned error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	var decoded map[string]bool
+	if err := json.Unmarshal(receivedBody, &decoded); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if !decoded["ok"] {
+		t.Fatalf("decoded body = %#v, want ok=true", decoded)
+	}
+}
+
+func TestSendJSONNilNotifierIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	var n *Notifier
+	if err := n.SendJSON(context.Background(), map[string]any{"ok": true}); err != nil {
+		t.Fatalf("nil SendJSON returned error: %v", err)
+	}
+}
+
+func TestSendJSONReturnsErrorOnClientError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	n := New(srv.URL, []string{"alert.created"})
+	if err := n.SendJSON(context.Background(), map[string]any{"ok": true}); err == nil {
+		t.Fatal("expected SendJSON error for 400 response")
 	}
 }
 

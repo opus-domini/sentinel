@@ -17,6 +17,47 @@ func TestDefaultMethod(t *testing.T) {
 	}
 }
 
+func TestNormalizeMethod(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		method   string
+		fallback string
+		want     string
+	}{
+		{name: "sudo", method: " sudo ", fallback: MethodSystemdRun, want: MethodSudo},
+		{name: "systemd alias", method: "systemd", fallback: MethodSudo, want: MethodSystemdRun},
+		{name: "systemd-run", method: "SYSTEMD-RUN", fallback: MethodSudo, want: MethodSystemdRun},
+		{name: "invalid uses fallback", method: "bad", fallback: MethodSystemdRun, want: MethodSystemdRun},
+		{name: "empty fallback defaults to sudo", method: "bad", fallback: "", want: MethodSudo},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := NormalizeMethod(tt.method, tt.fallback); got != tt.want {
+				t.Fatalf("NormalizeMethod(%q, %q) = %q, want %q", tt.method, tt.fallback, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildTmuxCommandDefaultUser(t *testing.T) {
+	t.Parallel()
+
+	name, args, err := BuildTmuxCommand(MethodSystemdRun, "", []string{"list-sessions"}, false)
+	if err != nil {
+		t.Fatalf("BuildTmuxCommand() error = %v", err)
+	}
+	if name != "tmux" {
+		t.Fatalf("command name = %q, want tmux", name)
+	}
+	if !slices.Equal(args, []string{"list-sessions"}) {
+		t.Fatalf("args = %#v, want list-sessions", args)
+	}
+}
+
 func TestBuildTmuxCommandSystemdRun(t *testing.T) {
 	t.Parallel()
 
@@ -82,6 +123,33 @@ func TestBuildTmuxCommandSudo(t *testing.T) {
 	want := []string{"-n", "-u", "deploy", "tmux", "list-sessions"}
 	if !slices.Equal(args, want) {
 		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+}
+
+func TestBuildShellCommandSudoLogin(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildShellCommand(MethodSudo, "deploy", "")
+	if err != nil {
+		t.Fatalf("BuildShellCommand() error = %v", err)
+	}
+	want := "'sudo' '-n' '-i' '-u' 'deploy'"
+	if got != want {
+		t.Fatalf("BuildShellCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildShellCommandSystemdShell(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildShellCommand(MethodSystemdRun, "deploy", "  ")
+	if err != nil {
+		t.Fatalf("BuildShellCommand() error = %v", err)
+	}
+	for _, want := range []string{"'systemd-run'", "'--machine=deploy@.host'", "'--shell'"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("command missing %q: %s", want, got)
+		}
 	}
 }
 
