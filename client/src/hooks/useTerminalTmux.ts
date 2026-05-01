@@ -29,6 +29,11 @@ const ATLAS_GROWTH_PAGE_THRESHOLD = 3
 const ATLAS_GROWTH_CLEAR_DEBOUNCE_MS = 250
 const ATLAS_GROWTH_DEGRADE_THRESHOLD = 3
 const ATLAS_GROWTH_DEGRADE_WINDOW_MS = 30_000
+const TERMINAL_MIN_CONTRAST_RATIO = 4.5
+const TERMINAL_WRITE_BATCH_MAX_BYTES = 1_048_576
+const TERMINAL_WRITE_FLUSH_FALLBACK_MS = 50
+const TERMINAL_WRITE_IN_FLIGHT_TIMEOUT_MS = 5_000
+const TERMINAL_WRITE_QUEUE_MAX_BYTES = 16 * 1_048_576
 const TERMINAL_FONT_FAMILY = [
   'JetBrains Mono Variable',
   'JetBrains Mono',
@@ -80,12 +85,18 @@ function loadFontSize(): number {
 }
 
 type Disposable = { dispose: () => void }
+type WebglDisabledReason =
+  | 'mobile layout'
+  | 'context lost'
+  | 'load failed'
+  | 'repeated texture atlas growth'
 
 type SessionRuntime = {
   session: string
   terminal: Terminal
   fitAddon: FitAddon
   webglAddon: WebglAddon | null
+  webglDisabledReason: WebglDisabledReason | null
   encoder: TextEncoder
   socket: WebSocket | null
   generation: number
@@ -112,6 +123,13 @@ type SessionRuntime = {
   reconnect: ReconnectState
   reconnectTimer: number | null
   handshakeTimer: number | null
+  writeQueue: Array<Uint8Array>
+  writeQueueBytes: number
+  writeFlushToken: number
+  writeFlushRafId: number | null
+  writeFlushTimeoutId: number | null
+  writeInFlightGeneration: number | null
+  writeInFlightTimeoutId: number | null
 }
 
 type UseTerminalTmuxArgs = {
@@ -146,11 +164,42 @@ type UseTerminalTmuxResult = {
   reconnectActiveSession: (options?: { force?: boolean }) => void
 }
 
-function disposeRuntimeWebglAddon(runtime: SessionRuntime, reason: string) {
+type TerminalRuntimeMetrics = {
+  writeBatchCount: number
+  writeBytes: number
+  writeMaxQueueBytes: number
+  writeRecoveries: number
+  writeBacklogRecoveries: number
+  writeStallRecoveries: number
+  webglLoadCount: number
+  webglDisposals: number
+  webglMobileDisposals: number
+  webglContextLossDisposals: number
+  webglAtlasGrowthDisposals: number
+  webglLoadFailures: number
+}
+
+function disposeRuntimeWebglAddon(
+  runtime: SessionRuntime,
+  reason: WebglDisabledReason,
+  metrics?: TerminalRuntimeMetrics,
+) {
   const addon = runtime.webglAddon
   if (!addon) return
 
+  if (metrics) {
+    metrics.webglDisposals += 1
+    if (reason === 'mobile layout') {
+      metrics.webglMobileDisposals += 1
+    } else if (reason === 'context lost') {
+      metrics.webglContextLossDisposals += 1
+    } else if (reason === 'repeated texture atlas growth') {
+      metrics.webglAtlasGrowthDisposals += 1
+    }
+  }
+
   runtime.webglAddon = null
+  runtime.webglDisabledReason = reason
   runtime.webglContextLossDispose.dispose()
   runtime.webglContextLossDispose = { dispose: () => undefined }
   runtime.webglAtlasGrowthDispose.dispose()
@@ -170,6 +219,125 @@ function disposeRuntimeWebglAddon(runtime: SessionRuntime, reason: string) {
   } catch {
     // addon may already be disposed by xterm/webgl internals
   }
+}
+
+function enableRuntimeWebglAddon(
+  runtime: SessionRuntime,
+  metrics: TerminalRuntimeMetrics,
+  onAtlasGrowth: (runtime: SessionRuntime) => void,
+): boolean {
+  if (runtime.webglAddon) {
+    return false
+  }
+  if (!supportsWebgl2()) {
+    runtime.webglDisabledReason = null
+    return false
+  }
+
+  const addon = new WebglAddon()
+  runtime.webglAddon = addon
+  runtime.webglDisabledReason = null
+
+  try {
+    runtime.terminal.loadAddon(addon)
+  } catch {
+    runtime.webglAddon = null
+    runtime.webglDisabledReason = 'load failed'
+    metrics.webglLoadFailures += 1
+    try {
+      addon.dispose()
+    } catch {
+      // ignore partial addon initialization failures
+    }
+    return false
+  }
+
+  metrics.webglLoadCount += 1
+
+  runtime.webglContextLossDispose = addon.onContextLoss(() => {
+    disposeRuntimeWebglAddon(runtime, 'context lost', metrics)
+  })
+  runtime.webglAtlasGrowthDispose = addon.onAddTextureAtlasCanvas(() => {
+    if (!runtime.webglAddon) return
+    runtime.atlasPageCount += 1
+    if (runtime.atlasPageCount < ATLAS_GROWTH_PAGE_THRESHOLD) return
+    if (runtime.atlasClearTimer !== null) return
+    runtime.atlasClearTimer = window.setTimeout(() => {
+      onAtlasGrowth(runtime)
+    }, ATLAS_GROWTH_CLEAR_DEBOUNCE_MS)
+  })
+
+  return true
+}
+
+function clearRuntimeWriteQueue(runtime: SessionRuntime) {
+  if (runtime.writeFlushRafId !== null) {
+    window.cancelAnimationFrame(runtime.writeFlushRafId)
+    runtime.writeFlushRafId = null
+  }
+  if (runtime.writeFlushTimeoutId !== null) {
+    window.clearTimeout(runtime.writeFlushTimeoutId)
+    runtime.writeFlushTimeoutId = null
+  }
+  if (runtime.writeInFlightTimeoutId !== null) {
+    window.clearTimeout(runtime.writeInFlightTimeoutId)
+    runtime.writeInFlightTimeoutId = null
+  }
+  runtime.writeFlushToken += 1
+  runtime.writeQueue = []
+  runtime.writeQueueBytes = 0
+  runtime.writeInFlightGeneration = null
+}
+
+function refreshRuntimeTextureAtlas(runtime: SessionRuntime): boolean {
+  runtime.atlasPageCount = 0
+  if (runtime.atlasClearTimer !== null) {
+    window.clearTimeout(runtime.atlasClearTimer)
+    runtime.atlasClearTimer = null
+  }
+  if (!runtime.terminal.element) {
+    return false
+  }
+  runtime.terminal.clearTextureAtlas()
+  runtime.terminal.refresh(0, Math.max(0, runtime.terminal.rows - 1))
+  return true
+}
+
+function takeRuntimeWriteBatch(
+  runtime: SessionRuntime,
+  maxBytes: number,
+): Uint8Array | null {
+  if (runtime.writeQueueBytes <= 0 || runtime.writeQueue.length === 0) {
+    return null
+  }
+
+  let batchBytes = 0
+  let batchCount = 0
+  for (const chunk of runtime.writeQueue) {
+    if (batchBytes > 0 && batchBytes + chunk.byteLength > maxBytes) {
+      break
+    }
+    batchBytes += chunk.byteLength
+    batchCount += 1
+    if (batchBytes >= maxBytes) {
+      break
+    }
+  }
+
+  const chunks = runtime.writeQueue.splice(0, batchCount)
+  runtime.writeQueueBytes -= batchBytes
+
+  if (chunks.length === 1) {
+    return chunks[0]
+  }
+
+  const batch = new Uint8Array(batchBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    batch.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return batch
 }
 
 function isSocketOpenOrConnecting(socket: WebSocket | null): boolean {
@@ -216,6 +384,20 @@ export function useTerminalTmux({
   const hostCallbacksRef = useRef(
     new Map<string, RefCallback<HTMLDivElement>>(),
   )
+  const terminalMetricsRef = useRef<TerminalRuntimeMetrics>({
+    writeBatchCount: 0,
+    writeBytes: 0,
+    writeMaxQueueBytes: 0,
+    writeRecoveries: 0,
+    writeBacklogRecoveries: 0,
+    writeStallRecoveries: 0,
+    webglLoadCount: 0,
+    webglDisposals: 0,
+    webglMobileDisposals: 0,
+    webglContextLossDisposals: 0,
+    webglAtlasGrowthDisposals: 0,
+    webglLoadFailures: 0,
+  })
 
   const setRuntimeStatus = useCallback(
     (runtime: SessionRuntime, next: ConnectionState, detail: string) => {
@@ -295,28 +477,6 @@ export function useTerminalTmux({
     [],
   )
 
-  const fitRuntime = useCallback(
-    (runtime: SessionRuntime) => {
-      if (!runtime.terminal.element) {
-        return
-      }
-      runtime.fitAddon.fit()
-      runtime.cols = runtime.terminal.cols
-      runtime.rows = runtime.terminal.rows
-      sendResize(runtime, runtime.cols, runtime.rows)
-
-      if (
-        !isMountedRef.current ||
-        activeSessionRef.current !== runtime.session
-      ) {
-        return
-      }
-      setTermCols(runtime.cols)
-      setTermRows(runtime.rows)
-    },
-    [sendResize],
-  )
-
   const cleanupHostResizeObserver = useCallback((runtime: SessionRuntime) => {
     runtime.hostResizeObserver?.disconnect()
     runtime.hostResizeObserver = null
@@ -327,16 +487,7 @@ export function useTerminalTmux({
   }, [])
 
   const clearRuntimeTextureAtlas = useCallback((runtime: SessionRuntime) => {
-    runtime.atlasPageCount = 0
-    if (runtime.atlasClearTimer !== null) {
-      window.clearTimeout(runtime.atlasClearTimer)
-      runtime.atlasClearTimer = null
-    }
-    if (!runtime.terminal.element) {
-      return false
-    }
-    runtime.terminal.clearTextureAtlas()
-    return true
+    return refreshRuntimeTextureAtlas(runtime)
   }, [])
 
   const clearRuntimeTextureAtlasAfterGrowth = useCallback(
@@ -358,14 +509,66 @@ export function useTerminalTmux({
         runtime.atlasGrowthClearTimestamps.length >=
         ATLAS_GROWTH_DEGRADE_THRESHOLD
       ) {
-        disposeRuntimeWebglAddon(runtime, 'repeated texture atlas growth')
+        disposeRuntimeWebglAddon(
+          runtime,
+          'repeated texture atlas growth',
+          terminalMetricsRef.current,
+        )
       }
     },
     [clearRuntimeTextureAtlas],
   )
 
-  const clearAllTextureAtlases = useCallback(() => {
-    for (const runtime of runtimesRef.current.values()) {
+  const fitRuntime = useCallback(
+    (runtime: SessionRuntime) => {
+      if (!runtime.terminal.element) {
+        return
+      }
+      const previousCols = runtime.cols
+      const previousRows = runtime.rows
+      runtime.fitAddon.fit()
+      runtime.cols = runtime.terminal.cols
+      runtime.rows = runtime.terminal.rows
+      const sizeChanged =
+        runtime.cols !== previousCols || runtime.rows !== previousRows
+      sendResize(runtime, runtime.cols, runtime.rows)
+      let rendererChanged = false
+      if (isMobileRef.current && runtime.webglAddon) {
+        disposeRuntimeWebglAddon(
+          runtime,
+          'mobile layout',
+          terminalMetricsRef.current,
+        )
+        rendererChanged = true
+      } else if (
+        !isMobileRef.current &&
+        runtime.webglDisabledReason === 'mobile layout'
+      ) {
+        rendererChanged = enableRuntimeWebglAddon(
+          runtime,
+          terminalMetricsRef.current,
+          clearRuntimeTextureAtlasAfterGrowth,
+        )
+      }
+      if (sizeChanged || rendererChanged) {
+        refreshRuntimeTextureAtlas(runtime)
+      }
+
+      if (
+        !isMountedRef.current ||
+        activeSessionRef.current !== runtime.session
+      ) {
+        return
+      }
+      setTermCols(runtime.cols)
+      setTermRows(runtime.rows)
+    },
+    [clearRuntimeTextureAtlasAfterGrowth, sendResize],
+  )
+
+  const clearActiveTextureAtlas = useCallback(() => {
+    const runtime = runtimesRef.current.get(activeSessionRef.current.trim())
+    if (runtime) {
       clearRuntimeTextureAtlas(runtime)
     }
   }, [clearRuntimeTextureAtlas])
@@ -552,6 +755,126 @@ export function useTerminalTmux({
     [],
   )
 
+  const recoverRuntimeWritePipeline = useCallback(
+    (runtime: SessionRuntime, detail: string, reason: 'backlog' | 'stall') => {
+      terminalMetricsRef.current.writeRecoveries += 1
+      if (reason === 'backlog') {
+        terminalMetricsRef.current.writeBacklogRecoveries += 1
+      } else {
+        terminalMetricsRef.current.writeStallRecoveries += 1
+      }
+      clearRuntimeWriteQueue(runtime)
+      runtime.terminal.reset()
+      setRuntimeStatus(runtime, 'connecting', detail)
+      if (runtime.socket && isSocketOpenOrConnecting(runtime.socket)) {
+        runtime.manualCloseReason = null
+        runtime.socket.close()
+      }
+    },
+    [setRuntimeStatus],
+  )
+
+  const enqueueRuntimeWrite = useCallback(
+    (runtime: SessionRuntime, generation: number, chunk: Uint8Array) => {
+      if (chunk.byteLength === 0 || !isRuntimeCurrent(runtime, generation)) {
+        return
+      }
+
+      runtime.writeQueue.push(chunk)
+      runtime.writeQueueBytes += chunk.byteLength
+      terminalMetricsRef.current.writeMaxQueueBytes = Math.max(
+        terminalMetricsRef.current.writeMaxQueueBytes,
+        runtime.writeQueueBytes,
+      )
+      if (runtime.writeQueueBytes > TERMINAL_WRITE_QUEUE_MAX_BYTES) {
+        recoverRuntimeWritePipeline(
+          runtime,
+          'terminal output backlog; reconnecting',
+          'backlog',
+        )
+        return
+      }
+      if (
+        runtime.writeFlushRafId !== null ||
+        runtime.writeFlushTimeoutId !== null ||
+        runtime.writeInFlightGeneration !== null
+      ) {
+        return
+      }
+
+      const flush = (flushToken: number) => {
+        if (
+          runtime.writeFlushToken !== flushToken ||
+          !isRuntimeCurrent(runtime, generation)
+        ) {
+          return
+        }
+        runtime.writeFlushToken += 1
+        if (runtime.writeFlushRafId !== null) {
+          window.cancelAnimationFrame(runtime.writeFlushRafId)
+          runtime.writeFlushRafId = null
+        }
+        if (runtime.writeFlushTimeoutId !== null) {
+          window.clearTimeout(runtime.writeFlushTimeoutId)
+          runtime.writeFlushTimeoutId = null
+        }
+
+        const payload = takeRuntimeWriteBatch(
+          runtime,
+          TERMINAL_WRITE_BATCH_MAX_BYTES,
+        )
+        if (payload !== null) {
+          runtime.writeInFlightGeneration = generation
+          terminalMetricsRef.current.writeBatchCount += 1
+          terminalMetricsRef.current.writeBytes += payload.byteLength
+          runtime.writeInFlightTimeoutId = window.setTimeout(() => {
+            if (
+              runtime.writeInFlightGeneration !== generation ||
+              !isRuntimeCurrent(runtime, generation)
+            ) {
+              return
+            }
+            recoverRuntimeWritePipeline(
+              runtime,
+              'terminal renderer stalled; reconnecting',
+              'stall',
+            )
+          }, TERMINAL_WRITE_IN_FLIGHT_TIMEOUT_MS)
+          runtime.terminal.write(payload, () => {
+            if (runtime.writeInFlightGeneration !== generation) {
+              return
+            }
+            if (runtime.writeInFlightTimeoutId !== null) {
+              window.clearTimeout(runtime.writeInFlightTimeoutId)
+              runtime.writeInFlightTimeoutId = null
+            }
+            runtime.writeInFlightGeneration = null
+            if (!isRuntimeCurrent(runtime, generation)) {
+              return
+            }
+            if (runtime.writeQueue.length > 0) {
+              scheduleFlush()
+            }
+          })
+        }
+      }
+
+      const scheduleFlush = () => {
+        const flushToken = runtime.writeFlushToken + 1
+        runtime.writeFlushToken = flushToken
+        runtime.writeFlushRafId = window.requestAnimationFrame(() => {
+          flush(flushToken)
+        })
+        runtime.writeFlushTimeoutId = window.setTimeout(() => {
+          flush(flushToken)
+        }, TERMINAL_WRITE_FLUSH_FALLBACK_MS)
+      }
+
+      scheduleFlush()
+    },
+    [isRuntimeCurrent, recoverRuntimeWritePipeline],
+  )
+
   const connectRuntime = useCallback(
     (
       runtime: SessionRuntime,
@@ -565,6 +888,7 @@ export function useTerminalTmux({
       clearHandshakeTimer(runtime)
       runtime.generation += 1
       const generation = runtime.generation
+      clearRuntimeWriteQueue(runtime)
 
       const previousSocket = runtime.socket
       if (previousSocket) {
@@ -586,6 +910,10 @@ export function useTerminalTmux({
 
       const wsURL = new URL(wsPath, window.location.origin)
       wsURL.searchParams.set(wsQueryKey, runtime.session)
+      if (runtime.cols > 0 && runtime.rows > 0) {
+        wsURL.searchParams.set('cols', String(runtime.cols))
+        wsURL.searchParams.set('rows', String(runtime.rows))
+      }
       const socket = new WebSocket(
         wsURL.toString().replace(/^http/, 'ws'),
         buildWSProtocols(),
@@ -654,7 +982,7 @@ export function useTerminalTmux({
         }
 
         if (event.data instanceof ArrayBuffer) {
-          runtime.terminal.write(new Uint8Array(event.data))
+          enqueueRuntimeWrite(runtime, generation, new Uint8Array(event.data))
           return
         }
 
@@ -663,7 +991,7 @@ export function useTerminalTmux({
             if (!isSocketCurrent(runtime, generation, socket)) {
               return
             }
-            runtime.terminal.write(new Uint8Array(buffer))
+            enqueueRuntimeWrite(runtime, generation, new Uint8Array(buffer))
           })
         }
       }
@@ -709,6 +1037,7 @@ export function useTerminalTmux({
       clearReconnectTimer,
       connectedVerb,
       connectingVerb,
+      enqueueRuntimeWrite,
       fitRuntime,
       isSocketOpenOrConnecting,
       isRuntimeCurrent,
@@ -754,6 +1083,7 @@ export function useTerminalTmux({
         fontFamily: TERMINAL_FONT_FAMILY,
         fontSize,
         lineHeight: 1,
+        minimumContrastRatio: TERMINAL_MIN_CONTRAST_RATIO,
         rescaleOverlappingGlyphs: true,
         scrollback: 5000,
         smoothScrollDuration: 0,
@@ -786,7 +1116,6 @@ export function useTerminalTmux({
       // CJK render as 1 column in xterm while tmux advances the cursor by
       // 2 — the buffer then drifts out of sync and the screen garbles.
       const unicodeGraphemesAddon = new UnicodeGraphemesAddon()
-      const webglAddon = supportsWebgl2() ? new WebglAddon() : null
 
       terminal.loadAddon(fitAddon)
       terminal.loadAddon(clipboardAddon)
@@ -795,15 +1124,13 @@ export function useTerminalTmux({
       terminal.loadAddon(webLinksAddon)
       terminal.loadAddon(unicodeGraphemesAddon)
       terminal.unicode.activeVersion = '15-graphemes'
-      if (webglAddon) {
-        terminal.loadAddon(webglAddon)
-      }
 
       const runtime: SessionRuntime = {
         session,
         terminal,
         fitAddon,
-        webglAddon,
+        webglAddon: null,
+        webglDisabledReason: isMobileRef.current ? 'mobile layout' : null,
         encoder: new TextEncoder(),
         socket: null,
         generation: 0,
@@ -830,33 +1157,30 @@ export function useTerminalTmux({
         reconnect: createReconnect(),
         reconnectTimer: null,
         handshakeTimer: null,
+        writeQueue: [],
+        writeQueueBytes: 0,
+        writeFlushToken: 0,
+        writeFlushRafId: null,
+        writeFlushTimeoutId: null,
+        writeInFlightGeneration: null,
+        writeInFlightTimeoutId: null,
       }
 
       // VSCode pattern: on WebGL context loss, dispose the addon so xterm
       // falls back to the DOM renderer. Keeping the addon loaded against a
       // dead context leaves glyphs as black rectangles until the user
       // manually reconnects.
-      if (webglAddon) {
-        runtime.webglContextLossDispose = webglAddon.onContextLoss(() => {
-          disposeRuntimeWebglAddon(runtime, 'context lost')
-        })
-
-        // The WebGL atlas adds a new page every time it runs out of room
-        // for fresh glyphs — common with emoji, CJK, and long sessions
-        // on HiDPI displays. Some drivers start returning black sprites
-        // once the atlas grows past a few pages. Proactively flush when
-        // the atlas has added multiple pages in a short window, capped
-        // by a debounce so a burst of paste doesn't thrash the GPU.
-        runtime.webglAtlasGrowthDispose = webglAddon.onAddTextureAtlasCanvas(
-          () => {
-            if (!runtime.webglAddon) return
-            runtime.atlasPageCount += 1
-            if (runtime.atlasPageCount < ATLAS_GROWTH_PAGE_THRESHOLD) return
-            if (runtime.atlasClearTimer !== null) return
-            runtime.atlasClearTimer = window.setTimeout(() => {
-              clearRuntimeTextureAtlasAfterGrowth(runtime)
-            }, ATLAS_GROWTH_CLEAR_DEBOUNCE_MS)
-          },
+      // The WebGL atlas adds a new page every time it runs out of room
+      // for fresh glyphs — common with emoji, CJK, and long sessions
+      // on HiDPI displays. Some drivers start returning black sprites
+      // once the atlas grows past a few pages. Proactively flush when
+      // the atlas has added multiple pages in a short window, capped
+      // by a debounce so a burst of paste doesn't thrash the GPU.
+      if (!isMobileRef.current) {
+        enableRuntimeWebglAddon(
+          runtime,
+          terminalMetricsRef.current,
+          clearRuntimeTextureAtlasAfterGrowth,
         )
       }
 
@@ -929,6 +1253,7 @@ export function useTerminalTmux({
       runtime.touchWheelDispose.dispose()
       runtime.webglContextLossDispose.dispose()
       runtime.webglAtlasGrowthDispose.dispose()
+      clearRuntimeWriteQueue(runtime)
       if (runtime.atlasClearTimer !== null) {
         window.clearTimeout(runtime.atlasClearTimer)
         runtime.atlasClearTimer = null
@@ -1022,7 +1347,11 @@ export function useTerminalTmux({
       return
     }
     const runtime = runtimesRef.current.get(sessionName)
-    runtime?.terminal.reset()
+    if (!runtime) {
+      return
+    }
+    clearRuntimeWriteQueue(runtime)
+    runtime.terminal.reset()
   }, [])
 
   const fitTerminal = useCallback(() => {
@@ -1134,6 +1463,17 @@ export function useTerminalTmux({
     },
     [clearRuntimeTextureAtlas],
   )
+
+  useEffect(() => {
+    ;(
+      window as typeof window & { __SENTINEL_TERMINAL_METRICS?: unknown }
+    ).__SENTINEL_TERMINAL_METRICS = terminalMetricsRef.current
+    return () => {
+      ;(
+        window as typeof window & { __SENTINEL_TERMINAL_METRICS?: unknown }
+      ).__SENTINEL_TERMINAL_METRICS = undefined
+    }
+  }, [])
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -1292,7 +1632,7 @@ export function useTerminalTmux({
   useEffect(() => {
     const refreshAtlases = () => {
       if (document.visibilityState !== 'visible') return
-      clearAllTextureAtlases()
+      clearActiveTextureAtlas()
     }
     document.addEventListener('visibilitychange', refreshAtlases)
     window.addEventListener('focus', refreshAtlases)
@@ -1300,7 +1640,7 @@ export function useTerminalTmux({
       document.removeEventListener('visibilitychange', refreshAtlases)
       window.removeEventListener('focus', refreshAtlases)
     }
-  }, [clearAllTextureAtlases])
+  }, [clearActiveTextureAtlas])
 
   // Reconnect dead sockets when the tab resumes from background. Only fires
   // on visibilitychange (not focus) to avoid retriggering on every window
@@ -1326,10 +1666,10 @@ export function useTerminalTmux({
     const ATLAS_REFRESH_MS = 5 * 60 * 1000
     const id = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
-      clearAllTextureAtlases()
+      clearActiveTextureAtlas()
     }, ATLAS_REFRESH_MS)
     return () => window.clearInterval(id)
-  }, [clearAllTextureAtlases])
+  }, [clearActiveTextureAtlas])
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {

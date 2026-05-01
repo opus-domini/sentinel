@@ -40,6 +40,19 @@ Thank you for contributing to Sentinel. We prioritize reliability, clear UX, and
   make test-e2e
   make test-perf
   ```
+- For tmux terminal rendering changes, run the browser smoke. It starts a
+  temporary Sentinel server, creates a real tmux session, attaches through a
+  real browser, validates desktop and mobile terminal pixels, and checks runtime
+  stability metrics:
+  ```bash
+  make smoke-client-terminal
+  ```
+- For changes that can affect long terminal sessions, also run the heavier soak:
+  ```bash
+  make smoke-client-terminal-soak
+  ```
+  These targets require `agent-browser`, `curl`, `go`, `npm`, `python3`, and
+  `tmux` on the local machine.
 - `make ci` remains the full local gate and should pass before merge.
 
 ## Coding and Testing Expectations

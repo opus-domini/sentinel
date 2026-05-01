@@ -127,6 +127,55 @@ func TestRunPingLoopReportsPingError(t *testing.T) {
 	}
 }
 
+func TestParseAttachDimensions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		target   string
+		wantCols int
+		wantRows int
+	}{
+		{
+			name:     "valid requested size",
+			target:   "/ws/tmux?cols=132&rows=43",
+			wantCols: 132,
+			wantRows: 43,
+		},
+		{
+			name:     "missing values use defaults",
+			target:   "/ws/tmux",
+			wantCols: defaultTermCols,
+			wantRows: defaultTermRows,
+		},
+		{
+			name:     "out of range values use defaults",
+			target:   "/ws/tmux?cols=9999&rows=1",
+			wantCols: defaultTermCols,
+			wantRows: defaultTermRows,
+		},
+		{
+			name:     "invalid values use defaults",
+			target:   "/ws/tmux?cols=wide&rows=tall",
+			wantCols: defaultTermCols,
+			wantRows: defaultTermRows,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			gotCols, gotRows := parseAttachDimensions(req)
+			if gotCols != tt.wantCols || gotRows != tt.wantRows {
+				t.Fatalf("parseAttachDimensions() = %dx%d, want %dx%d", gotCols, gotRows, tt.wantCols, tt.wantRows)
+			}
+		})
+	}
+}
+
 func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
@@ -175,7 +224,7 @@ func TestStartTmuxPTYEnablesMouseBeforeAttach(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), testSessionName, "")
+	got, err := h.startTmuxPTY(context.Background(), testSessionName, "", defaultTermCols, defaultTermRows)
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}
@@ -217,7 +266,7 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), testSessionName, "")
+	got, err := h.startTmuxPTY(context.Background(), testSessionName, "", defaultTermCols, defaultTermRows)
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}
@@ -312,6 +361,59 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 	mu.Unlock()
 	if !slices.Equal(gotOrder, []string{"mouse", testMessageStatus, "attach"}) {
 		t.Fatalf("call order = %v, want [mouse status attach]", gotOrder)
+	}
+}
+
+func TestAttachWSIntegrationUsesRequestedTerminalSize(t *testing.T) {
+	originalExists := tmuxSessionExistsFn
+	originalEnsureMouse := tmuxEnsureWebMouse
+	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
+	originalAttach := startTmuxAttachFn
+	t.Cleanup(func() {
+		tmuxSessionExistsFn = originalExists
+		tmuxEnsureWebMouse = originalEnsureMouse
+		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
+		startTmuxAttachFn = originalAttach
+	})
+	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
+	tmuxSessionExistsFn = func(_ context.Context, _ string) (bool, error) {
+		return true, nil
+	}
+	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error { return nil }
+	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error { return nil }
+
+	gotSize := make(chan [2]int, 1)
+	startTmuxAttachFn = func(ctx context.Context, _ string, cols, rows int) (*term.PTY, error) {
+		gotSize <- [2]int{cols, rows}
+		return term.StartShell(ctx, "/bin/sh", cols, rows)
+	}
+
+	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
+	srv := httptest.NewServer(http.HandlerFunc(h.attachWS))
+	defer srv.Close()
+
+	conn := dialWebSocketPath(t, srv.URL, "/ws/tmux?session="+testSessionName+"&cols=132&rows=43")
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	opcode, _, err := readServerFrame(conn)
+	if err != nil {
+		t.Fatalf("readServerFrame error = %v", err)
+	}
+	if opcode != ws.OpText {
+		t.Fatalf("opcode = %d, want %d (text)", opcode, ws.OpText)
+	}
+
+	select {
+	case size := <-gotSize:
+		want := [2]int{132, 43}
+		if size != want {
+			t.Fatalf("terminal size = %dx%d, want 132x43", size[0], size[1])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("startTmuxAttachFn was not called")
 	}
 }
 

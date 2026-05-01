@@ -131,7 +131,7 @@ describe('TmuxTerminalPanel', () => {
     expect(screen.getByText('Waiting for tmux server')).toBeTruthy()
   })
 
-  it('shows reconnect copy when recovering the terminal socket', () => {
+  it('keeps terminal content visible while recovering the terminal socket', () => {
     render(
       <TmuxTerminalPanel
         {...baseProps}
@@ -140,7 +140,8 @@ describe('TmuxTerminalPanel', () => {
       />,
     )
 
-    expect(screen.getByText('Reconnecting to tmux')).toBeTruthy()
+    expect(screen.queryByText('Reconnecting to tmux')).toBeNull()
+    expect(screen.getByText('Terminal Host')).toBeTruthy()
   })
 
   it('hides the loading overlay once connected', () => {

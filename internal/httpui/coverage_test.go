@@ -1183,7 +1183,7 @@ func TestStartTmuxPTYContinuesWhenWebMousePatchFails(t *testing.T) {
 	}
 
 	h := &Handler{}
-	got, err := h.startTmuxPTY(context.Background(), testSessionName, "")
+	got, err := h.startTmuxPTY(context.Background(), testSessionName, "", defaultTermCols, defaultTermRows)
 	if err != nil {
 		t.Fatalf("startTmuxPTY error = %v", err)
 	}

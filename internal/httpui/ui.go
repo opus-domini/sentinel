@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,10 @@ import (
 const (
 	defaultTermCols = 120
 	defaultTermRows = 40
+	minTermCols     = 20
+	maxTermCols     = 500
+	minTermRows     = 5
+	maxTermRows     = 200
 )
 
 var (
@@ -171,6 +176,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+	cols, rows := parseAttachDimensions(r)
 
 	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
 	if err != nil {
@@ -182,7 +188,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 		parentCtx: r.Context(),
 		label:     session,
 		startPTY: func(ctx context.Context) (*term.PTY, error) {
-			return h.startTmuxPTY(ctx, session, targetUser)
+			return h.startTmuxPTY(ctx, session, targetUser, cols, rows)
 		},
 		statusMsg: map[string]any{
 			"type":    "status",
@@ -192,7 +198,21 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) startTmuxPTY(ctx context.Context, session, targetUser string) (*term.PTY, error) {
+func parseAttachDimensions(r *http.Request) (int, int) {
+	query := r.URL.Query()
+	return parseAttachDimension(query.Get("cols"), defaultTermCols, minTermCols, maxTermCols),
+		parseAttachDimension(query.Get("rows"), defaultTermRows, minTermRows, maxTermRows)
+}
+
+func parseAttachDimension(raw string, fallback, minValue, maxValue int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value < minValue || value > maxValue {
+		return fallback
+	}
+	return value
+}
+
+func (h *Handler) startTmuxPTY(ctx context.Context, session, targetUser string, cols, rows int) (*term.PTY, error) {
 	if targetUser != "" {
 		svc := tmux.Service{User: targetUser}
 
@@ -206,7 +226,7 @@ func (h *Handler) startTmuxPTY(ctx context.Context, session, targetUser string) 
 		if err := svc.SetSessionStatus(ctx, session, false); err != nil {
 			slog.Warn("tmux status hide failed", "session", session, "user", targetUser, "err", err)
 		}
-		return startTmuxAttachAsUserFn(ctx, session, targetUser, defaultTermCols, defaultTermRows)
+		return startTmuxAttachAsUserFn(ctx, session, targetUser, cols, rows)
 	}
 
 	// Default user: use var-based seams for test injection.
@@ -219,7 +239,7 @@ func (h *Handler) startTmuxPTY(ctx context.Context, session, targetUser string) 
 	if err := tmuxSetSessionStatus(ctx, session, false); err != nil {
 		slog.Warn("tmux status hide failed", "session", session, "err", err)
 	}
-	return startTmuxAttachFn(ctx, session, defaultTermCols, defaultTermRows)
+	return startTmuxAttachFn(ctx, session, cols, rows)
 }
 
 func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {

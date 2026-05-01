@@ -78,6 +78,16 @@ test-e2e: check-npm ## Run frontend end-to-end component flows
 	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
 	$(NPM) --prefix $(CLIENT) run test:e2e
 
+.PHONY: smoke-client-terminal
+smoke-client-terminal: check-go check-npm ## Run browser smoke for tmux terminal rendering
+	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
+	./scripts/client-terminal-smoke.sh
+
+.PHONY: smoke-client-terminal-soak
+smoke-client-terminal-soak: check-go check-npm ## Run heavier browser soak for tmux terminal rendering
+	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
+	SENTINEL_SMOKE_INITIAL_LINES=4000 SENTINEL_SMOKE_LIVE_LINES=12000 ./scripts/client-terminal-smoke.sh
+
 .PHONY: test-coverage
 test-coverage: check-go ## Run tests with race detection and coverage
 	$(GOCMD) test -race -covermode=atomic -coverprofile=coverage.txt ./...

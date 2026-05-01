@@ -126,7 +126,7 @@ export default function TmuxTerminalPanel({
     }
     const normalizedDetail = statusDetail.trim().toLowerCase()
     if (normalizedDetail.startsWith('reconnecting')) {
-      return 'Reconnecting to tmux'
+      return ''
     }
     if (
       normalizedDetail.startsWith('creating') ||
@@ -212,7 +212,7 @@ export default function TmuxTerminalPanel({
   return (
     <main
       className={cn(
-        'grid min-h-0 min-w-0 grid-cols-1 overflow-hidden bg-[radial-gradient(circle_at_20%_-10%,rgba(30,64,175,.18),transparent_34%),var(--background)]',
+        'grid min-h-0 min-w-0 grid-cols-1 overflow-hidden bg-background',
         showSessionTabs
           ? showControls
             ? 'grid-rows-[40px_30px_1fr_auto_28px]'
@@ -322,7 +322,7 @@ export default function TmuxTerminalPanel({
                 getTerminalHostRef={getTerminalHostRef}
               />
               {terminalLoadingMessage !== '' && (
-                <div className="absolute inset-0 z-10 grid place-items-center bg-[#0a0e17]">
+                <div className="absolute inset-0 z-10 grid place-items-center bg-surface-inset">
                   <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.02em] text-secondary-foreground/70">
                     <Loader2 className="size-3.5 animate-spin" />
                     {terminalLoadingMessage}
