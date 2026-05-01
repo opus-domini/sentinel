@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import {
   formatRunbookDuration,
   isActiveRunbookJob,
+  isWaitingApprovalRunbookJob,
   runbookJobDurationMs,
   runbookJobProgress,
   runbookStatusMeta,
@@ -105,11 +106,16 @@ export function RunbookDetailPanel({
   const status = runbookStatusMeta(runbook, lastJob ? [lastJob] : [])
   const activeRun = lastJob != null && isActiveRunbookJob(lastJob)
   const progress = lastJob ? runbookJobProgress(lastJob) : 0
+  const waitingApproval =
+    lastJob != null && isWaitingApprovalRunbookJob(lastJob)
+  const lastRunStatusLabel = waitingApproval
+    ? 'Waiting approval'
+    : (lastJob?.status ?? '')
   const runDuration = lastJob
     ? formatRunbookDuration(runbookJobDurationMs(lastJob))
     : 'n/a'
   const lastRunLabel = lastJob
-    ? `${lastJob.status} · ${formatDateTime(lastJob.createdAt)}`
+    ? `${lastRunStatusLabel} · ${formatDateTime(lastJob.createdAt)}`
     : 'No runs recorded'
   const scheduleLabel = schedule
     ? schedule.enabled
@@ -197,6 +203,8 @@ export function RunbookDetailPanel({
           <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
             {lastJob == null ? (
               <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+            ) : waitingApproval ? (
+              <Pause className="h-3 w-3 shrink-0 text-warning-foreground" />
             ) : lastJob.status.trim().toLowerCase() === 'failed' ? (
               <XCircle className="h-3 w-3 shrink-0 text-destructive-foreground" />
             ) : (

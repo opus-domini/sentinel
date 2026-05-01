@@ -142,6 +142,8 @@ Marks the run as `failed` with error "approval rejected". Returns `200`.
 
 Both endpoints return `409 INVALID_STATE` if the run is not in `waiting_approval` status.
 
+Runs paused at `waiting_approval` are persisted decision points. They remain pending across Sentinel restarts until an operator approves or rejects them.
+
 At each step completion, the job is updated in the store and an `ops.job.updated` event is emitted with the full job object including accumulated step results.
 
 Timeline events are created at runbook start (`runbook.started`) and completion (`runbook.succeeded` or `runbook.failed`).

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   OpsActivityEvent,
@@ -23,6 +23,7 @@ import {
   prependOpsActivityEvent,
   upsertOpsRunbookJob,
 } from '@/lib/opsQueryCache'
+import { isActiveRunbookJob } from '@/lib/runbookPresentation'
 import { randomId } from '@/lib/utils'
 
 function runbookToDraft(runbook: OpsRunbook): RunbookDraft {
@@ -173,10 +174,15 @@ function draftToPayload(draft: RunbookDraft) {
   }
 }
 
+const runbookJobRefreshDelays = [250, 750, 1500, 3000, 6000, 10000] as const
+
 export function useRunbooksPage() {
   const { pushToast } = useToastContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
+  const jobPollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
+    new Set(),
+  )
 
   const [selectedRunbookId, setSelectedRunbookId] = useState<string | null>(
     null,
@@ -195,11 +201,14 @@ export function useRunbooksPage() {
   } | null>(null)
   const [scheduleSaving, setScheduleSaving] = useState(false)
 
+  const fetchRunbooks = useCallback(
+    () => api<OpsRunbooksResponse>('/api/ops/runbooks'),
+    [api],
+  )
+
   const runbooksQuery = useQuery({
     queryKey: OPS_RUNBOOKS_QUERY_KEY,
-    queryFn: async () => {
-      return api<OpsRunbooksResponse>('/api/ops/runbooks')
-    },
+    queryFn: fetchRunbooks,
   })
 
   const runbooks = runbooksQuery.data?.runbooks ?? []
@@ -212,7 +221,43 @@ export function useRunbooksPage() {
       queryKey: OPS_RUNBOOKS_QUERY_KEY,
       exact: true,
     })
+    return queryClient.getQueryData<OpsRunbooksResponse>(OPS_RUNBOOKS_QUERY_KEY)
   }, [queryClient])
+
+  const scheduleJobPoll = useCallback((callback: () => void, delay: number) => {
+    const timeout = setTimeout(() => {
+      jobPollTimeoutsRef.current.delete(timeout)
+      callback()
+    }, delay)
+    jobPollTimeoutsRef.current.add(timeout)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      jobPollTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout))
+      jobPollTimeoutsRef.current.clear()
+    }
+  }, [])
+
+  const trackJobUntilSettled = useCallback(
+    (jobId: string) => {
+      const poll = async (attempt: number) => {
+        const data = await refreshRunbooks()
+        const job = data?.jobs.find((candidate) => candidate.id === jobId)
+        if (job == null || !isActiveRunbookJob(job)) return
+        const nextAttempt = attempt + 1
+        if (nextAttempt >= runbookJobRefreshDelays.length) return
+        scheduleJobPoll(() => {
+          void poll(nextAttempt)
+        }, runbookJobRefreshDelays[nextAttempt])
+      }
+
+      scheduleJobPoll(() => {
+        void poll(0)
+      }, runbookJobRefreshDelays[0])
+    },
+    [refreshRunbooks, scheduleJobPoll],
+  )
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
@@ -281,6 +326,7 @@ export function useRunbooksPage() {
               ),
           )
         }
+        trackJobUntilSettled(job.id)
         pushToast({
           level: 'success',
           title: 'Runbook queued',
@@ -295,7 +341,7 @@ export function useRunbooksPage() {
         })
       }
     },
-    [api, pushToast, queryClient, runbooks],
+    [api, pushToast, queryClient, runbooks, trackJobUntilSettled],
   )
 
   // --- Run dialog callbacks ---
@@ -451,6 +497,66 @@ export function useRunbooksPage() {
           title: 'Delete failed',
           message:
             error instanceof Error ? error.message : 'failed to delete job',
+        })
+      }
+    },
+    [api, pushToast, queryClient],
+  )
+
+  const approveJob = useCallback(
+    async (jobId: string) => {
+      try {
+        await api<OpsRunbookRunResponse>(
+          `/api/ops/runs/${encodeURIComponent(jobId)}/approve`,
+          { method: 'POST' },
+        )
+        await refreshRunbooks()
+        trackJobUntilSettled(jobId)
+        pushToast({
+          level: 'success',
+          title: 'Approval accepted',
+          message: `Run ${jobId.slice(0, 8)} resumed`,
+        })
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: 'Approve failed',
+          message:
+            error instanceof Error ? error.message : 'failed to approve run',
+        })
+      }
+    },
+    [api, pushToast, refreshRunbooks, trackJobUntilSettled],
+  )
+
+  const rejectJob = useCallback(
+    async (jobId: string) => {
+      try {
+        const data = await api<OpsRunbookRunResponse>(
+          `/api/ops/runs/${encodeURIComponent(jobId)}/reject`,
+          { method: 'POST' },
+        )
+        queryClient.setQueryData<OpsRunbooksResponse>(
+          OPS_RUNBOOKS_QUERY_KEY,
+          (previous) => {
+            if (previous == null) return previous
+            return {
+              ...previous,
+              jobs: upsertOpsRunbookJob(previous.jobs, data.job),
+            }
+          },
+        )
+        pushToast({
+          level: 'success',
+          title: 'Approval rejected',
+          message: `Run ${jobId.slice(0, 8)} marked failed`,
+        })
+      } catch (error) {
+        pushToast({
+          level: 'error',
+          title: 'Reject failed',
+          message:
+            error instanceof Error ? error.message : 'failed to reject run',
         })
       }
     },
@@ -675,6 +781,8 @@ export function useRunbooksPage() {
     cancelDelete,
     executeDelete,
     deleteJob,
+    approveJob,
+    rejectJob,
     saveSchedule,
     deleteSchedule,
     toggleScheduleEnabled,

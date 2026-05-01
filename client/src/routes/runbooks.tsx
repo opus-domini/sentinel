@@ -54,6 +54,8 @@ function RunbooksPage() {
     cancelDelete,
     executeDelete,
     deleteJob,
+    approveJob,
+    rejectJob,
     saveSchedule,
     deleteSchedule,
     toggleScheduleEnabled,
@@ -131,6 +133,8 @@ function RunbooksPage() {
                 runbooks={runbooks}
                 jobs={jobs}
                 schedules={schedules}
+                selectedRunbookId={selectedRunbookId}
+                onSelectRunbook={selectRunbook}
               />
 
               {showDetail ? (
@@ -156,6 +160,8 @@ function RunbooksPage() {
                   <RunbookJobHistory
                     jobs={selectedJobs}
                     onDeleteJob={deleteJob}
+                    onApproveJob={approveJob}
+                    onRejectJob={rejectJob}
                   />
                 </div>
               ) : (

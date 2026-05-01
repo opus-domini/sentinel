@@ -469,6 +469,25 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now().UTC()
+	runningJob, err := h.repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+		RunID:          job.ID,
+		Status:         "running",
+		CompletedSteps: approvalStepIndex + 1,
+		CurrentStep:    job.CurrentStep,
+		StartedAt:      now.Format(time.RFC3339),
+	})
+	if err != nil {
+		<-h.runSem
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to resume run", nil)
+		return
+	}
+	globalRev := now.UnixMilli()
+	h.emit(events.TypeOpsJob, map[string]any{
+		"globalRev": globalRev,
+		"job":       runningJob,
+	})
+
 	// Resolve parameters from the run record.
 	resolved := job.ParametersUsed
 
@@ -478,7 +497,7 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		defer h.wg.Done()
 		defer func() { <-h.runSem }()
 		runbook.ResumeRun(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
-			Job:           job,
+			Job:           runningJob,
 			Source:        "runbook",
 			StepTimeout:   30 * time.Second,
 			Parameters:    resolved,
@@ -487,15 +506,8 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		}, approvalStepIndex)
 	}()
 
-	now := time.Now().UTC()
-	globalRev := now.UnixMilli()
-	h.emit(events.TypeOpsJob, map[string]any{
-		"globalRev": globalRev,
-		"job":       job,
-	})
-
 	writeData(w, http.StatusAccepted, map[string]any{
-		"job":       job,
+		"job":       runningJob,
 		"globalRev": globalRev,
 	})
 }

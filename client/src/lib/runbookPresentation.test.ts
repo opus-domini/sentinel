@@ -3,6 +3,8 @@ import type { OpsRunbook, OpsRunbookRun } from '@/types'
 import {
   formatRunbookDuration,
   isActiveRunbookJob,
+  isExecutingRunbookJob,
+  isWaitingApprovalRunbookJob,
   latestRunbookJob,
   runbookJobDurationMs,
   runbookJobProgress,
@@ -116,5 +118,21 @@ describe('runbookPresentation', () => {
     ).toBe(150000)
     expect(formatRunbookDuration(150000)).toBe('2m 30s')
     expect(formatRunbookDuration(700)).toBe('700ms')
+  })
+
+  it('treats approval waits as active jobs with a dedicated status', () => {
+    const waiting = job({
+      status: 'waiting_approval',
+      completedSteps: 2,
+      totalSteps: 4,
+    })
+
+    expect(isActiveRunbookJob(waiting)).toBe(true)
+    expect(isExecutingRunbookJob(waiting)).toBe(false)
+    expect(isWaitingApprovalRunbookJob(waiting)).toBe(true)
+    expect(runbookStatusMeta(runbook(), [waiting])).toMatchObject({
+      label: 'Waiting approval',
+      tone: 'warning',
+    })
   })
 })

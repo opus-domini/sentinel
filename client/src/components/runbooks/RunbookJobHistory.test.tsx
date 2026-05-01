@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { OpsRunbookRun } from '@/types'
 import { RunbookJobHistory } from './RunbookJobHistory'
@@ -53,6 +59,8 @@ describe('RunbookJobHistory', () => {
           }),
         ]}
         onDeleteJob={vi.fn()}
+        onApproveJob={vi.fn()}
+        onRejectJob={vi.fn()}
       />,
     )
 
@@ -65,5 +73,60 @@ describe('RunbookJobHistory', () => {
     expect(screen.queryByText('succeeded')).toBeNull()
     expect(screen.getByText('failed')).toBeTruthy()
     expect(screen.queryByText('running')).toBeNull()
+  })
+
+  it('surfaces waiting approvals and sends approve or reject actions', async () => {
+    const onApproveJob = vi.fn().mockResolvedValue(undefined)
+    const onRejectJob = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <RunbookJobHistory
+        jobs={[
+          job({
+            id: 'approval',
+            status: 'waiting_approval',
+            completedSteps: 2,
+            totalSteps: 3,
+            currentStep: 'Approve restart',
+            finishedAt: '',
+            stepResults: [
+              {
+                stepIndex: 0,
+                title: 'Check status',
+                type: 'run',
+                output: 'service is degraded',
+                error: '',
+                durationMs: 120,
+              },
+              {
+                stepIndex: 1,
+                title: 'Approve restart',
+                type: 'approval',
+                output: 'Confirm restart after reviewing status.',
+                error: '',
+                durationMs: 0,
+              },
+            ],
+          }),
+        ]}
+        onDeleteJob={vi.fn()}
+        onApproveJob={onApproveJob}
+        onRejectJob={onRejectJob}
+      />,
+    )
+
+    expect(screen.getByText('Waiting approval')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Delete job' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approvals 1' }))
+    expect(screen.getByText('Waiting approval')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve run' }))
+    await waitFor(() => expect(onApproveJob).toHaveBeenCalledWith('approval'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reject approval' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+
+    await waitFor(() => expect(onRejectJob).toHaveBeenCalledWith('approval'))
   })
 })

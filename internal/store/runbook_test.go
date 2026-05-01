@@ -493,7 +493,19 @@ func TestUpdateOpsRunbookRun(t *testing.T) {
 		}
 	})
 
-	t.Run("empty step_results defaults to empty array", func(t *testing.T) {
+	t.Run("empty step_results preserves previous results", func(t *testing.T) {
+		stepResults := []OpsRunbookStepResult{
+			{StepIndex: 0, Title: "Step 1", Type: "run", Output: "kept", DurationMs: 150},
+		}
+		resultsJSON, _ := json.Marshal(stepResults)
+		if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+			RunID:       run.ID,
+			Status:      opsRunbookStatusRunning,
+			StepResults: string(resultsJSON),
+		}); err != nil {
+			t.Fatalf("seed step results: %v", err)
+		}
+
 		updated, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
 			RunID:       run.ID,
 			Status:      opsRunbookStatusSucceeded,
@@ -502,8 +514,25 @@ func TestUpdateOpsRunbookRun(t *testing.T) {
 		if err != nil {
 			t.Fatalf("UpdateOpsRunbookRun: %v", err)
 		}
-		if updated.StepResults == nil {
-			t.Fatalf("stepResults should be empty slice, not nil")
+		if len(updated.StepResults) != 1 {
+			t.Fatalf("stepResults = %d, want previous result preserved", len(updated.StepResults))
+		}
+		if updated.StepResults[0].Output != "kept" {
+			t.Fatalf("stepResults[0].output = %q, want kept", updated.StepResults[0].Output)
+		}
+	})
+
+	t.Run("explicit empty array clears step results", func(t *testing.T) {
+		updated, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+			RunID:       run.ID,
+			Status:      opsRunbookStatusSucceeded,
+			StepResults: "[]",
+		})
+		if err != nil {
+			t.Fatalf("UpdateOpsRunbookRun: %v", err)
+		}
+		if len(updated.StepResults) != 0 {
+			t.Fatalf("stepResults = %d, want empty slice", len(updated.StepResults))
 		}
 	})
 
@@ -698,7 +727,8 @@ func TestFailOrphanedRuns(t *testing.T) {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
 
-	// Create three runs: one stays queued, one advanced to running (step 2), one succeeded.
+	// Create four runs: one stays queued, one advanced to running (step 2),
+	// one waits for approval, and one succeeded.
 	queuedRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun(queued): %v", err)
@@ -723,6 +753,25 @@ func TestFailOrphanedRuns(t *testing.T) {
 		StepResults:    string(stepResults),
 	}); err != nil {
 		t.Fatalf("UpdateOpsRunbookRun(running): %v", err)
+	}
+
+	waitingRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
+	if err != nil {
+		t.Fatalf("CreateOpsRunbookRun(waiting): %v", err)
+	}
+	waitingStepResults, _ := json.Marshal([]OpsRunbookStepResult{
+		{StepIndex: 0, Title: "Check status", Type: "run", Output: "ok", DurationMs: 120},
+		{StepIndex: 1, Title: "Approve restart", Type: "approval", Output: "review output"},
+	})
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:          waitingRun.ID,
+		Status:         OpsRunbookStatusWaitingApproval,
+		CompletedSteps: 2,
+		CurrentStep:    "Approve restart",
+		StartedAt:      now.Format(time.RFC3339),
+		StepResults:    string(waitingStepResults),
+	}); err != nil {
+		t.Fatalf("UpdateOpsRunbookRun(waiting): %v", err)
 	}
 
 	succeededRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
@@ -799,6 +848,22 @@ func TestFailOrphanedRuns(t *testing.T) {
 	}
 	if prePopulated.Output != "" || prePopulated.Error != "" {
 		t.Fatalf("pre-populated should have empty output/error, got output=%q error=%q", prePopulated.Output, prePopulated.Error)
+	}
+
+	// Verify waiting approval run is intentionally preserved. It is not an
+	// orphaned process; it is a persisted decision point.
+	w, err := s.GetOpsRunbookRun(ctx, waitingRun.ID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbookRun(waiting): %v", err)
+	}
+	if w.Status != OpsRunbookStatusWaitingApproval {
+		t.Fatalf("waiting run status = %q, want %q", w.Status, OpsRunbookStatusWaitingApproval)
+	}
+	if w.Error != "" {
+		t.Fatalf("waiting run error = %q, want empty", w.Error)
+	}
+	if len(w.StepResults) != 2 {
+		t.Fatalf("waiting run stepResults = %d, want 2", len(w.StepResults))
 	}
 
 	// Verify succeeded run is untouched.

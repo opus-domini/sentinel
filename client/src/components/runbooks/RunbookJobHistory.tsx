@@ -24,6 +24,7 @@ import { useDateFormat } from '@/hooks/useDateFormat'
 import {
   formatRunbookDuration,
   isActiveRunbookJob,
+  isWaitingApprovalRunbookJob,
   runbookJobDurationMs,
   runbookJobProgress,
 } from '@/lib/runbookPresentation'
@@ -33,20 +34,32 @@ function runbookJobStatusClass(status: string): string {
   const s = status.trim().toLowerCase()
   if (s === 'succeeded') return 'text-ok-foreground'
   if (s === 'failed') return 'text-destructive-foreground'
-  if (s === 'running' || s === 'queued') return 'text-warning-foreground'
+  if (s === 'running' || s === 'queued' || s === 'waiting_approval') {
+    return 'text-warning-foreground'
+  }
   return 'text-muted-foreground'
+}
+
+function runbookJobStatusLabel(status: string): string {
+  const s = status.trim().toLowerCase()
+  if (s === 'waiting_approval') return 'Waiting approval'
+  return status
 }
 
 type RunbookJobHistoryProps = {
   jobs: Array<OpsRunbookRun>
   onDeleteJob: (jobId: string) => Promise<void>
+  onApproveJob: (jobId: string) => Promise<void>
+  onRejectJob: (jobId: string) => Promise<void>
 }
 
-type JobFilter = 'all' | 'active' | 'failed' | 'succeeded'
+type JobFilter = 'all' | 'active' | 'approval' | 'failed' | 'succeeded'
 
 export function RunbookJobHistory({
   jobs,
   onDeleteJob,
+  onApproveJob,
+  onRejectJob,
 }: RunbookJobHistoryProps) {
   const { formatDateTime } = useDateFormat()
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
@@ -54,12 +67,14 @@ export function RunbookJobHistory({
     new Set(),
   )
   const [filter, setFilter] = useState<JobFilter>('all')
+  const [actingJobId, setActingJobId] = useState<string | null>(null)
 
   const filteredJobs = useMemo(() => {
     if (filter === 'all') return jobs
     return jobs.filter((job) => {
       const status = job.status.trim().toLowerCase()
       if (filter === 'active') return isActiveRunbookJob(job)
+      if (filter === 'approval') return isWaitingApprovalRunbookJob(job)
       return status === filter
     })
   }, [filter, jobs])
@@ -67,6 +82,7 @@ export function RunbookJobHistory({
   const counts = useMemo(
     () => ({
       active: jobs.filter(isActiveRunbookJob).length,
+      approval: jobs.filter(isWaitingApprovalRunbookJob).length,
       failed: jobs.filter((job) => job.status.trim().toLowerCase() === 'failed')
         .length,
       succeeded: jobs.filter(
@@ -98,6 +114,30 @@ export function RunbookJobHistory({
     [expandedJobId, onDeleteJob],
   )
 
+  const approveJob = useCallback(
+    async (jobId: string) => {
+      setActingJobId(jobId)
+      try {
+        await onApproveJob(jobId)
+      } finally {
+        setActingJobId(null)
+      }
+    },
+    [onApproveJob],
+  )
+
+  const rejectJob = useCallback(
+    async (jobId: string) => {
+      setActingJobId(jobId)
+      try {
+        await onRejectJob(jobId)
+      } finally {
+        setActingJobId(null)
+      }
+    },
+    [onRejectJob],
+  )
+
   return (
     <div className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
       <ScrollArea className="h-full min-h-0">
@@ -115,6 +155,7 @@ export function RunbookJobHistory({
               {[
                 ['all', `All ${jobs.length}`],
                 ['active', `Active ${counts.active}`],
+                ['approval', `Approvals ${counts.approval}`],
                 ['failed', `Failed ${counts.failed}`],
                 ['succeeded', `Succeeded ${counts.succeeded}`],
               ].map(([value, label]) => (
@@ -139,6 +180,8 @@ export function RunbookJobHistory({
             const isExpanded = expandedJobId === job.id
             const steps = job.stepResults
             const isActive = isActiveRunbookJob(job)
+            const isWaitingApproval = isWaitingApprovalRunbookJob(job)
+            const isActing = actingJobId === job.id
             const progress = runbookJobProgress(job)
             const duration = formatRunbookDuration(runbookJobDurationMs(job))
             return (
@@ -177,7 +220,7 @@ export function RunbookJobHistory({
                           runbookJobStatusClass(job.status),
                         )}
                       >
-                        {job.status}
+                        {runbookJobStatusLabel(job.status)}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
                         {job.completedSteps}/{job.totalSteps} steps
@@ -196,6 +239,12 @@ export function RunbookJobHistory({
                       {` · ${duration}`}
                       {job.currentStep && ` · ${job.currentStep}`}
                     </p>
+                    {isWaitingApproval && (
+                      <p className="mt-1 text-[10px] text-warning-foreground">
+                        Review the recorded output and choose whether this run
+                        can continue.
+                      </p>
+                    )}
                     {job.error && (
                       <p className="mt-1 text-[10px] text-destructive-foreground">
                         {job.error}
@@ -220,6 +269,51 @@ export function RunbookJobHistory({
                         </div>
                       )}
                   </div>
+                  {isWaitingApproval && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        className="h-6 cursor-pointer rounded border border-ok/40 bg-ok/10 px-2 text-[10px] font-medium text-ok-foreground hover:bg-ok/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={isActing}
+                        onClick={() => void approveJob(job.id)}
+                        aria-label="Approve run"
+                      >
+                        Approve
+                      </button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button
+                            type="button"
+                            className="h-6 cursor-pointer rounded border border-destructive/40 bg-destructive/10 px-2 text-[10px] font-medium text-destructive-foreground hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={isActing}
+                            aria-label="Reject approval"
+                          >
+                            Reject
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              Reject approval?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This marks the run as failed and it will not
+                              execute the remaining steps.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              variant="destructive"
+                              onClick={() => void rejectJob(job.id)}
+                            >
+                              Reject
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  )}
                   {!isActive && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>

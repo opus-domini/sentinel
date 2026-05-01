@@ -474,9 +474,6 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 		return OpsRunbookRun{}, sql.ErrNoRows
 	}
 	stepResults := strings.TrimSpace(u.StepResults)
-	if stepResults == "" {
-		stepResults = "[]"
-	}
 	startedAt := strings.TrimSpace(u.StartedAt)
 	finishedAt := strings.TrimSpace(u.FinishedAt)
 	if _, err := s.db.ExecContext(ctx, `UPDATE ops_runbook_runs SET
@@ -484,7 +481,7 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 		completed_steps = ?,
 		current_step = ?,
 		error = ?,
-		step_results = ?,
+		step_results = CASE WHEN ? != '' THEN ? ELSE step_results END,
 		started_at = CASE WHEN ? != '' THEN ? ELSE started_at END,
 		finished_at = CASE WHEN ? != '' THEN ? ELSE finished_at END
 	WHERE id = ?`,
@@ -492,7 +489,7 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 		u.CompletedSteps,
 		strings.TrimSpace(u.CurrentStep),
 		strings.TrimSpace(u.Error),
-		stepResults,
+		stepResults, stepResults,
 		startedAt, startedAt,
 		finishedAt, finishedAt,
 		runID,
@@ -574,9 +571,9 @@ func (s *Store) FailOrphanedRuns(ctx context.Context) (int64, error) {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE ops_runbook_runs
 			SET status = ?, error = ?, finished_at = ?
-		  WHERE status IN (?, ?, ?)`,
+		  WHERE status IN (?, ?)`,
 		opsRunbookStatusFailed, opsRunbookOrphanError, now,
-		opsRunbookStatusRunning, opsRunbookStatusQueued, OpsRunbookStatusWaitingApproval,
+		opsRunbookStatusRunning, opsRunbookStatusQueued,
 	)
 	if err != nil {
 		return 0, err

@@ -28,7 +28,22 @@ export function isActiveRunbookJob(
   job: Pick<OpsRunbookRun, 'status'>,
 ): boolean {
   const status = normalizeRunbookStatus(job.status)
+  return (
+    status === 'queued' || status === 'running' || status === 'waiting_approval'
+  )
+}
+
+export function isExecutingRunbookJob(
+  job: Pick<OpsRunbookRun, 'status'>,
+): boolean {
+  const status = normalizeRunbookStatus(job.status)
   return status === 'queued' || status === 'running'
+}
+
+export function isWaitingApprovalRunbookJob(
+  job: Pick<OpsRunbookRun, 'status'>,
+): boolean {
+  return normalizeRunbookStatus(job.status) === 'waiting_approval'
 }
 
 export function latestRunbookJob(
@@ -94,6 +109,14 @@ export function runbookStatusMeta(
   if (status === 'queued') {
     return {
       label: 'Queued',
+      tone: 'warning',
+      dotClass: 'bg-warning',
+      textClass: 'text-warning-foreground',
+    }
+  }
+  if (status === 'waiting_approval') {
+    return {
+      label: 'Waiting approval',
       tone: 'warning',
       dotClass: 'bg-warning',
       textClass: 'text-warning-foreground',

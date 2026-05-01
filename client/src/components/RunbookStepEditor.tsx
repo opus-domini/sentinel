@@ -167,34 +167,43 @@ export function RunbookStepEditor({
         {step.type === 'approval' && (
           <div>
             <label className="text-[10px] font-medium text-muted-foreground">
-              Description
+              Approval instructions
             </label>
             <Textarea
-              className="mt-0.5 min-h-12 bg-surface-overlay text-[12px]"
+              className={cn(
+                'mt-0.5 min-h-12 bg-surface-overlay text-[12px]',
+                errors.description && 'border-destructive',
+              )}
               placeholder="Describe what the operator should verify before approving..."
               value={step.description}
               onChange={(e) =>
                 onChange({ ...step, description: e.target.value })
               }
             />
+            {errors.description && (
+              <p className="mt-0.5 text-[10px] text-destructive-foreground">
+                {errors.description}
+              </p>
+            )}
           </div>
         )}
 
-        {/* Advanced options */}
-        <button
-          type="button"
-          className="flex cursor-pointer items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-foreground"
-          onClick={() => setAdvancedOpen(!advancedOpen)}
-        >
-          {advancedOpen ? (
-            <ChevronDown className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
-          )}
-          Advanced
-        </button>
+        {step.type !== 'approval' && (
+          <button
+            type="button"
+            className="flex cursor-pointer items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-foreground"
+            onClick={() => setAdvancedOpen(!advancedOpen)}
+          >
+            {advancedOpen ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            Advanced
+          </button>
+        )}
 
-        {advancedOpen && (
+        {advancedOpen && step.type !== 'approval' && (
           <div className="grid gap-2 rounded border border-border-subtle bg-surface-overlay p-2">
             <label className="flex cursor-pointer items-center gap-2 text-[11px] select-none">
               <input
