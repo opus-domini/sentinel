@@ -366,9 +366,9 @@ func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
 }
 
 var validStepTypes = map[string]bool{
-	"run":      true,
-	"script":   true,
-	"approval": true,
+	"run":            true,
+	"script":         true,
+	stepTypeApproval: true,
 }
 
 func validateRunbookSteps(steps []store.OpsRunbookStep) error {
@@ -448,10 +448,10 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the approval step index: it's the last step result that has type "approval".
+	// Find the approval step index: it's the last approval step result.
 	approvalStepIndex := -1
 	for _, sr := range job.StepResults {
-		if sr.Type == "approval" {
+		if sr.Type == stepTypeApproval {
 			approvalStepIndex = sr.StepIndex
 		}
 	}
@@ -472,7 +472,7 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	runningJob, err := h.repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          job.ID,
-		Status:         "running",
+		Status:         stateRunning,
 		CompletedSteps: approvalStepIndex + 1,
 		CurrentStep:    job.CurrentStep,
 		StartedAt:      now.Format(time.RFC3339),
@@ -544,7 +544,7 @@ func (h *Handler) rejectOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	updated, err := h.repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          runID,
-		Status:         "failed",
+		Status:         stateFailed,
 		CompletedSteps: job.CompletedSteps,
 		CurrentStep:    job.CurrentStep,
 		Error:          "approval rejected",

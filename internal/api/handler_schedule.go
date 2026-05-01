@@ -288,7 +288,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), "running", finalNextRunAt, finalEnabled); err != nil {
+	if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), stateRunning, finalNextRunAt, finalEnabled); err != nil {
 		slog.Warn("trigger schedule: update after run failed", "schedule", scheduleID, "err", err)
 	}
 

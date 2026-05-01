@@ -5156,10 +5156,10 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 		t.Fatal("schedule not found after trigger")
 		return // unreachable; helps staticcheck prove got != nil
 	}
-	if got.LastRunStatus == "running" {
+	if got.LastRunStatus == stateRunning {
 		t.Fatalf("schedule stuck in running; expected terminal status")
 	}
-	if got.LastRunStatus != "succeeded" && got.LastRunStatus != "failed" {
+	if got.LastRunStatus != stateSucceeded && got.LastRunStatus != stateFailed {
 		t.Fatalf("schedule last_run_status = %q, want succeeded or failed", got.LastRunStatus)
 	}
 	if !got.Enabled {
@@ -5234,7 +5234,7 @@ func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
 		t.Fatal("schedule not found after trigger")
 		return // unreachable; helps staticcheck prove got != nil
 	}
-	if got.LastRunStatus == "running" {
+	if got.LastRunStatus == stateRunning {
 		t.Fatalf("once schedule stuck in running; expected terminal status")
 	}
 }

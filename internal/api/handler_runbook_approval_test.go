@@ -31,7 +31,7 @@ func TestRejectOpsRunbookRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun: %v", err)
 	}
-	if updated.Status != "failed" {
+	if updated.Status != stateFailed {
 		t.Fatalf("run status = %q, want failed", updated.Status)
 	}
 	if updated.Error != "approval rejected" {
@@ -43,7 +43,7 @@ func TestRejectOpsRunbookRun(t *testing.T) {
 	if len(updated.StepResults) != 1 {
 		t.Fatalf("step results = %d, want approval evidence preserved", len(updated.StepResults))
 	}
-	if updated.StepResults[0].Type != "approval" {
+	if updated.StepResults[0].Type != stepTypeApproval {
 		t.Fatalf("step result type = %q, want approval", updated.StepResults[0].Type)
 	}
 }
@@ -69,7 +69,7 @@ func TestApproveOpsRunbookRunResumesRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun: %v", err)
 	}
-	if updated.Status != "succeeded" {
+	if updated.Status != stateSucceeded {
 		t.Fatalf("run status = %q, want succeeded", updated.Status)
 	}
 	if updated.CompletedSteps != 1 {
@@ -78,7 +78,7 @@ func TestApproveOpsRunbookRunResumesRun(t *testing.T) {
 	if len(updated.StepResults) != 1 {
 		t.Fatalf("step results = %d, want approval evidence preserved", len(updated.StepResults))
 	}
-	if updated.StepResults[0].Type != "approval" {
+	if updated.StepResults[0].Type != stepTypeApproval {
 		t.Fatalf("step result type = %q, want approval", updated.StepResults[0].Type)
 	}
 }
@@ -89,7 +89,7 @@ func TestApproveOpsRunbookRunResumesFollowingSteps(t *testing.T) {
 	h, st := newTestHandler(t, nil, nil)
 	h.events = events.NewHub()
 	run := createWaitingApprovalRunWithSteps(t, st, []store.OpsRunbookStep{
-		{Type: "approval", Title: "Approve"},
+		{Type: stepTypeApproval, Title: "Approve"},
 		{Type: "run", Title: "After approval", Command: "printf after"},
 	})
 
@@ -107,7 +107,7 @@ func TestApproveOpsRunbookRunResumesFollowingSteps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun: %v", err)
 	}
-	if updated.Status != "succeeded" {
+	if updated.Status != stateSucceeded {
 		t.Fatalf("run status = %q, want succeeded", updated.Status)
 	}
 	if updated.CompletedSteps != 2 {
@@ -131,7 +131,7 @@ func TestApproveOpsRunbookRunRejectsInvalidState(t *testing.T) {
 	run := createWaitingApprovalRun(t, st)
 	if _, err := st.UpdateOpsRunbookRun(context.Background(), store.OpsRunbookRunUpdate{
 		RunID:          run.ID,
-		Status:         "succeeded",
+		Status:         stateSucceeded,
 		CompletedSteps: 1,
 		CurrentStep:    "Approve",
 		StepResults:    "[]",
@@ -153,7 +153,7 @@ func TestApproveOpsRunbookRunRejectsInvalidState(t *testing.T) {
 func createWaitingApprovalRun(t *testing.T, st *store.Store) store.OpsRunbookRun {
 	t.Helper()
 
-	return createWaitingApprovalRunWithSteps(t, st, []store.OpsRunbookStep{{Type: "approval", Title: "Approve"}})
+	return createWaitingApprovalRunWithSteps(t, st, []store.OpsRunbookStep{{Type: stepTypeApproval, Title: "Approve"}})
 }
 
 func createWaitingApprovalRunWithSteps(
@@ -178,7 +178,7 @@ func createWaitingApprovalRunWithSteps(
 	results, err := json.Marshal([]store.OpsRunbookStepResult{{
 		StepIndex: 0,
 		Title:     "Approve",
-		Type:      "approval",
+		Type:      stepTypeApproval,
 	}})
 	if err != nil {
 		t.Fatalf("marshal step results: %v", err)

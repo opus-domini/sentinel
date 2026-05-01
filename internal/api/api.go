@@ -271,9 +271,12 @@ const (
 	defaultDirectorySuggestLimit = 12
 	maxDirectorySuggestLimit     = 64
 	defaultMetaVersion           = "dev"
+	stateRunning                 = "running"
+	stateSucceeded               = "succeeded"
 	stateFailed                  = "failed"
 	scheduleTypeCron             = "cron"
 	scheduleTypeOnce             = "once"
+	stepTypeApproval             = "approval"
 )
 
 func marshalMetadata(v any) string {
