@@ -10,16 +10,7 @@ import {
 } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  AlertTriangle,
-  CheckCircle2,
-  CircleOff,
-  Layers,
-  Menu,
-  RefreshCw,
-  Search,
-  X,
-} from 'lucide-react'
+import { Menu, RefreshCw, Search, X } from 'lucide-react'
 import type {
   OpsActivityEvent,
   OpsBrowseServicesResponse,
@@ -38,6 +29,7 @@ import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { ServiceBrowseRow } from '@/components/services/ServiceBrowseRow'
 import { ServiceLogsSheet } from '@/components/services/ServiceLogsSheet'
+import { ServicesOperationsSummary } from '@/components/services/ServicesOperationsSummary'
 import { ServiceStatusDialog } from '@/components/services/ServiceStatusDialog'
 import ServicesSidebar from '@/components/ServicesSidebar'
 import { Button } from '@/components/ui/button'
@@ -56,11 +48,16 @@ import {
   deriveOpsTrackedServiceName,
   formatOpsUnitName,
   listOpsBrowseUnitTypes,
+  matchesOpsServiceStateFilter,
+  matchesOpsServiceTrackFilter,
   sortOpsBrowseUnitTypes,
   upsertOpsService,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
-import { MetricCard } from '@/lib/MetricCard'
+import type {
+  OpsServiceStateFilter,
+  OpsServiceTrackFilter,
+} from '@/lib/opsServices'
 import {
   OPS_ALERTS_QUERY_KEY,
   OPS_BROWSE_QUERY_KEY,
@@ -180,20 +177,24 @@ ServicesBrowseList.displayName = 'ServicesBrowseList'
 
 type ServicesBrowseControlsProps = {
   scopeValue: string
+  trackValue: OpsServiceTrackFilter
   searchValue: string
   filteredCount: number
   totalCount: number
   onScopeChange: (value: string) => void
+  onTrackChange: (value: OpsServiceTrackFilter) => void
   onSearchChange: (value: string) => void
   onRefreshBrowse: () => void
 }
 
 const ServicesBrowseControls = memo(function ServicesBrowseControls({
   scopeValue,
+  trackValue,
   searchValue,
   filteredCount,
   totalCount,
   onScopeChange,
+  onTrackChange,
   onSearchChange,
   onRefreshBrowse,
 }: ServicesBrowseControlsProps) {
@@ -219,30 +220,41 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
         name="services-scope"
         value={scopeValue}
         onChange={(e) => onScopeChange(e.target.value)}
-        className="h-7 flex-1 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
+        className="h-9 flex-1 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
         aria-label="Filter by scope"
       >
         <option value="all">All scopes</option>
         <option value="user">user</option>
         <option value="system">system</option>
       </select>
+      <select
+        name="services-tracking"
+        value={trackValue}
+        onChange={(e) => onTrackChange(e.target.value as OpsServiceTrackFilter)}
+        className="h-9 flex-1 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
+        aria-label="Filter by tracking"
+      >
+        <option value="all">All pins</option>
+        <option value="tracked">Pinned</option>
+        <option value="untracked">Unpinned</option>
+      </select>
       <div className="flex w-full items-center gap-2 md:w-auto md:min-w-44 md:flex-1">
         <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-2 top-1.5 h-4 w-4 text-muted-foreground md:top-2" />
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground md:top-2" />
           <input
             name="services-search"
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             placeholder="Search units..."
             className={cn(
-              'h-7 w-full rounded-md border border-border-subtle bg-surface-overlay pl-8 text-[12px] placeholder:text-muted-foreground md:h-8',
+              'h-9 w-full rounded-md border border-border-subtle bg-surface-overlay pl-8 text-[12px] placeholder:text-muted-foreground md:h-8',
               searchDraft ? 'pr-7' : 'pr-2',
             )}
           />
           {searchDraft && (
             <button
               type="button"
-              className="absolute right-1.5 top-1 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground md:top-1.5"
+              className="absolute right-1.5 top-2 inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground md:top-1.5"
               onClick={() => setSearchDraft('')}
               aria-label="Clear search"
             >
@@ -254,7 +266,7 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 cursor-pointer text-[11px] md:h-8"
+            className="h-9 w-9 cursor-pointer text-[11px] md:h-8 md:w-auto"
             onClick={onRefreshBrowse}
           >
             <RefreshCw className="h-3 w-3" />
@@ -289,8 +301,11 @@ function ServicesPage() {
     useState<OpsBrowsedService | null>(null)
   const [serviceLogsFetchKey, setServiceLogsFetchKey] = useState(0)
 
-  const [svcStateFilter, setSvcStateFilter] = useState('all')
+  const [svcStateFilter, setSvcStateFilter] =
+    useState<OpsServiceStateFilter>('all')
   const [svcScopeFilter, setSvcScopeFilter] = useState('all')
+  const [svcTrackFilter, setSvcTrackFilter] =
+    useState<OpsServiceTrackFilter>('all')
   const [svcTypeFilter, setSvcTypeFilter] = useState<Array<string>>([])
   const [svcTypeFilterTouched, setSvcTypeFilterTouched] = useState(false)
   const [svcSearch, setSvcSearch] = useState('')
@@ -383,21 +398,17 @@ function ServicesPage() {
     return list
   }, [browseServices, effectiveSvcTypeFilter, svcScopeFilter, svcSearch])
 
+  const trackFilteredBrowseServices = useMemo(() => {
+    return baseFilteredBrowseServices.filter((service) =>
+      matchesOpsServiceTrackFilter(service, svcTrackFilter),
+    )
+  }, [baseFilteredBrowseServices, svcTrackFilter])
+
   const filteredBrowseServices = useMemo(() => {
-    let list = baseFilteredBrowseServices
-    if (svcStateFilter !== 'all') {
-      list = list.filter((s) => {
-        const state = s.activeState.trim().toLowerCase()
-        if (svcStateFilter === 'active')
-          return state === 'active' || state === 'running'
-        if (svcStateFilter === 'failed') return state === 'failed'
-        if (svcStateFilter === 'inactive')
-          return state === 'inactive' || state === 'dead'
-        return true
-      })
-    }
-    return list
-  }, [baseFilteredBrowseServices, svcStateFilter])
+    return trackFilteredBrowseServices.filter((service) =>
+      matchesOpsServiceStateFilter(service, svcStateFilter),
+    )
+  }, [svcStateFilter, trackFilteredBrowseServices])
   const renderedBrowseServices = useDeferredValue(filteredBrowseServices)
 
   const refreshServices = useCallback(async () => {
@@ -740,34 +751,19 @@ function ServicesPage() {
         setSvcTypeFilter([])
         setSvcTypeFilterTouched(false)
       }
+      setSvcTrackFilter('all')
       setSvcSearch(unit)
       layout.setSidebarOpen(false)
     },
     [browseServices, layout],
   )
 
-  const stats = useMemo(() => {
-    const list = baseFilteredBrowseServices
-    const total = list.length
-    let active = 0
-    let inactive = 0
-    let failed = 0
-    for (const s of list) {
-      const state = s.activeState.trim().toLowerCase()
-      if (state === 'active' || state === 'running') active++
-      else if (state === 'failed') failed++
-      else if (state === 'inactive' || state === 'dead') inactive++
-    }
-    return {
-      total: `${total}`,
-      active: `${active}`,
-      inactive: `${inactive}`,
-      failed: `${failed}`,
-    }
-  }, [baseFilteredBrowseServices])
-
-  const toggleStateFilter = useCallback((filter: string) => {
+  const toggleStateFilter = useCallback((filter: OpsServiceStateFilter) => {
     setSvcStateFilter((prev) => (prev === filter ? 'all' : filter))
+  }, [])
+
+  const toggleTrackFilter = useCallback((filter: OpsServiceTrackFilter) => {
+    setSvcTrackFilter((prev) => (prev === filter ? 'all' : filter))
   }, [])
 
   const toggleTypeFilter = useCallback(
@@ -794,6 +790,7 @@ function ServicesPage() {
     setSvcSearch('')
     setSvcStateFilter('all')
     setSvcScopeFilter('all')
+    setSvcTrackFilter('all')
     setSvcTypeFilter([])
     setSvcTypeFilterTouched(false)
   }, [])
@@ -834,7 +831,7 @@ function ServicesPage() {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-6 w-6 cursor-pointer"
+                className="h-8 w-8 cursor-pointer md:h-6 md:w-6"
                 onClick={refreshPage}
                 aria-label="Refresh services"
               >
@@ -852,7 +849,7 @@ function ServicesPage() {
                 <button
                   type="button"
                   className={cn(
-                    'h-6 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors',
+                    'h-7 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
                     allBrowseUnitTypesSelected
                       ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
                       : 'border-border-subtle text-muted-foreground hover:text-foreground',
@@ -869,7 +866,7 @@ function ServicesPage() {
                       key={unitType}
                       type="button"
                       className={cn(
-                        'h-6 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors',
+                        'h-7 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
                         selected
                           ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
                           : 'border-border-subtle text-muted-foreground hover:text-foreground',
@@ -885,116 +882,36 @@ function ServicesPage() {
             )}
             {browseLoading ? (
               <>
-                <div className="hidden gap-2 md:grid md:grid-cols-4">
-                  {Array.from({ length: 4 }).map((_, idx) => (
+                <div className="grid grid-cols-5 gap-1.5">
+                  {Array.from({ length: 5 }).map((_, idx) => (
                     <div
                       key={`svc-metric-skeleton-${idx}`}
-                      className="h-20 motion-safe:animate-pulse rounded-lg border border-border-subtle bg-surface-elevated"
+                      className="h-10 motion-safe:animate-pulse rounded-md border border-border-subtle bg-surface-elevated sm:h-12"
                     />
                   ))}
                 </div>
-                <div className="h-9 motion-safe:animate-pulse rounded-lg border border-border-subtle bg-surface-elevated md:hidden" />
               </>
             ) : (
-              <>
-                <div className="hidden gap-2 md:grid md:grid-cols-4">
-                  <MetricCard
-                    label="Total"
-                    value={stats.total}
-                    onClick={() => setSvcStateFilter('all')}
-                    selected={svcStateFilter === 'all'}
-                  />
-                  <MetricCard
-                    label="Active"
-                    value={stats.active}
-                    onClick={() => toggleStateFilter('active')}
-                    selected={svcStateFilter === 'active'}
-                  />
-                  <MetricCard
-                    label="Inactive"
-                    value={stats.inactive}
-                    onClick={() => toggleStateFilter('inactive')}
-                    selected={svcStateFilter === 'inactive'}
-                  />
-                  <MetricCard
-                    label="Failed"
-                    value={stats.failed}
-                    alert={Number(stats.failed) > 0}
-                    onClick={() => toggleStateFilter('failed')}
-                    selected={svcStateFilter === 'failed'}
-                  />
-                </div>
-                <div className="flex items-center justify-center gap-1 md:hidden">
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px] transition-colors',
-                      svcStateFilter === 'all'
-                        ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
-                        : 'border-border-subtle text-muted-foreground hover:text-foreground',
-                    )}
-                    onClick={() => setSvcStateFilter('all')}
-                    aria-pressed={svcStateFilter === 'all'}
-                  >
-                    <Layers className="h-3 w-3" />
-                    <span className="font-semibold">{stats.total}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px] transition-colors',
-                      svcStateFilter === 'active'
-                        ? 'border-ok/40 bg-ok/10 text-ok-foreground'
-                        : 'border-border-subtle text-muted-foreground hover:text-foreground',
-                    )}
-                    onClick={() => toggleStateFilter('active')}
-                    aria-pressed={svcStateFilter === 'active'}
-                  >
-                    <CheckCircle2 className="h-3 w-3" />
-                    <span className="font-semibold">{stats.active}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px] transition-colors',
-                      svcStateFilter === 'inactive'
-                        ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
-                        : 'border-border-subtle text-muted-foreground hover:text-foreground',
-                    )}
-                    onClick={() => toggleStateFilter('inactive')}
-                    aria-pressed={svcStateFilter === 'inactive'}
-                  >
-                    <CircleOff className="h-3 w-3" />
-                    <span className="font-semibold">{stats.inactive}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px] transition-colors',
-                      svcStateFilter === 'failed'
-                        ? 'border-destructive/40 bg-destructive/10 text-destructive-foreground'
-                        : Number(stats.failed) > 0
-                          ? 'border-destructive/30 text-destructive-foreground hover:text-destructive-foreground'
-                          : 'border-border-subtle text-muted-foreground hover:text-foreground',
-                    )}
-                    onClick={() => toggleStateFilter('failed')}
-                    aria-pressed={svcStateFilter === 'failed'}
-                  >
-                    <AlertTriangle className="h-3 w-3" />
-                    <span className="font-semibold">{stats.failed}</span>
-                  </button>
-                </div>
-              </>
+              <ServicesOperationsSummary
+                services={trackFilteredBrowseServices}
+                trackingServices={baseFilteredBrowseServices}
+                stateFilter={svcStateFilter}
+                trackFilter={svcTrackFilter}
+                onStateFilterChange={toggleStateFilter}
+                onTrackFilterChange={toggleTrackFilter}
+              />
             )}
           </section>
 
           <section className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
             <ServicesBrowseControls
               scopeValue={svcScopeFilter}
+              trackValue={svcTrackFilter}
               searchValue={svcSearch}
               filteredCount={renderedBrowseServices.length}
               totalCount={browseServices.length}
               onScopeChange={setSvcScopeFilter}
+              onTrackChange={setSvcTrackFilter}
               onSearchChange={setSvcSearch}
               onRefreshBrowse={refreshBrowse}
             />

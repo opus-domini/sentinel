@@ -20,6 +20,16 @@ const opsBrowseUnitTypeOrder = [
 ]
 
 type HasActiveState = { activeState: string }
+type HasTrackingState = { tracked: boolean }
+
+export type OpsServiceStateFilter =
+  | 'all'
+  | 'active'
+  | 'inactive'
+  | 'failed'
+  | 'changing'
+
+export type OpsServiceTrackFilter = 'all' | 'tracked' | 'untracked'
 
 const systemdHexEscapePattern = /(?:\\x[0-9a-fA-F]{2})+/g
 const systemdHexBytePattern = /\\x([0-9a-fA-F]{2})/g
@@ -44,9 +54,49 @@ function normalizedActiveState(service: HasActiveState): string {
   return service.activeState.trim().toLowerCase()
 }
 
+export function isOpsServiceChanging(service: HasActiveState): boolean {
+  const state = normalizedActiveState(service)
+  return (
+    state === 'activating' ||
+    state === 'deactivating' ||
+    state === 'reloading' ||
+    state === 'restarting' ||
+    state === 'stopping'
+  )
+}
+
 export function isOpsServiceActive(service: HasActiveState): boolean {
   const state = normalizedActiveState(service)
   return state === 'active' || state === 'running'
+}
+
+export function isOpsServiceFailed(service: HasActiveState): boolean {
+  return normalizedActiveState(service) === 'failed'
+}
+
+export function isOpsServiceInactive(service: HasActiveState): boolean {
+  const state = normalizedActiveState(service)
+  return state === 'inactive' || state === 'dead'
+}
+
+export function matchesOpsServiceStateFilter(
+  service: HasActiveState,
+  filter: OpsServiceStateFilter,
+): boolean {
+  if (filter === 'all') return true
+  if (filter === 'active') return isOpsServiceActive(service)
+  if (filter === 'inactive') return isOpsServiceInactive(service)
+  if (filter === 'failed') return isOpsServiceFailed(service)
+  if (filter === 'changing') return isOpsServiceChanging(service)
+  return true
+}
+
+export function matchesOpsServiceTrackFilter(
+  service: HasTrackingState,
+  filter: OpsServiceTrackFilter,
+): boolean {
+  if (filter === 'all') return true
+  return filter === 'tracked' ? service.tracked : !service.tracked
 }
 
 export function canStartOpsService(service: HasActiveState): boolean {

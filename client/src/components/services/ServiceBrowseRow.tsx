@@ -54,9 +54,15 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
   const enableDisabled = rowBusy || !canEnableService(svc)
   const disableDisabled = rowBusy || !canDisableService(svc)
   const unitLabel = formatOpsUnitName(svc.unit)
+  const description =
+    svc.description &&
+    svc.description !== svc.unit &&
+    svc.description !== unitLabel
+      ? svc.description
+      : ''
 
   return (
-    <div className="grid min-w-0 gap-2 rounded border border-border-subtle bg-surface-elevated px-2.5 py-2">
+    <div className="grid min-w-0 gap-1.5 rounded border border-border-subtle bg-surface-elevated px-2 py-1.5">
       <div className="flex min-w-0 items-start gap-2">
         <span
           className={cn(
@@ -65,14 +71,14 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
           )}
         />
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="grid min-w-0 gap-1 sm:flex sm:items-center sm:gap-1.5">
             <p
               className="min-w-0 flex-1 truncate text-[12px] font-medium"
               title={unitLabel === svc.unit ? undefined : svc.unit}
             >
               {unitLabel}
             </p>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-1 sm:shrink-0">
               <TooltipHelper content="Unit type discovered on the host">
                 <span className="cursor-default rounded border border-border-subtle px-1 text-[9px] text-muted-foreground">
                   {svc.unitType}
@@ -114,13 +120,6 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
               </TooltipHelper>
             </div>
           </div>
-          {svc.description &&
-            svc.description !== svc.unit &&
-            svc.description !== unitLabel && (
-              <p className="truncate text-[10px] text-muted-foreground">
-                {svc.description}
-              </p>
-            )}
         </div>
         {pending && (
           <span className="shrink-0 text-[10px] text-muted-foreground">
@@ -128,99 +127,95 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
           </span>
         )}
       </div>
-      <div className="grid gap-1.5 pl-4">
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
+      <div className="grid min-w-0 gap-1 pl-4 sm:flex sm:items-center sm:gap-2">
+        <TooltipHelper content={description || svc.unit}>
+          <p className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+            {description || svc.unit}
+          </p>
+        </TooltipHelper>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
           <TooltipHelper content="Start service">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+              size="icon-lg"
+              className="h-8 w-8 cursor-pointer sm:h-6 sm:w-6"
               onClick={() => onAction(svc, 'start')}
               disabled={startDisabled}
               aria-label="Start service"
             >
-              <Play className="h-3 w-3" />
-              Start
+              <Play className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
           <TooltipHelper content="Stop service">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+              size="icon-lg"
+              className="h-8 w-8 cursor-pointer sm:h-6 sm:w-6"
               onClick={() => onAction(svc, 'stop')}
               disabled={stopDisabled}
               aria-label="Stop service"
             >
-              <Square className="h-3 w-3" />
-              Stop
+              <Square className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
           <TooltipHelper content="Restart service">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+              size="icon-lg"
+              className="h-8 w-8 cursor-pointer sm:h-6 sm:w-6"
               onClick={() => onAction(svc, 'restart')}
               disabled={rowBusy}
               aria-label="Restart service"
             >
-              <RotateCw className="h-3 w-3" />
-              Restart
+              <RotateCw className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
           <TooltipHelper content="Enable service">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+              size="icon-lg"
+              className="h-8 w-8 cursor-pointer sm:h-6 sm:w-6"
               onClick={() => onAction(svc, 'enable')}
               disabled={enableDisabled}
               aria-label="Enable service"
             >
-              <Power className="h-3 w-3" />
-              Enable
+              <Power className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
           <TooltipHelper content="Disable service">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+              size="icon-lg"
+              className="h-8 w-8 cursor-pointer sm:h-6 sm:w-6"
               onClick={() => onAction(svc, 'disable')}
               disabled={disableDisabled}
               aria-label="Disable service"
             >
-              <PowerOff className="h-3 w-3" />
-              Disable
+              <PowerOff className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
           <TooltipHelper content="Inspect status">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+              size="icon-lg"
+              className="h-8 w-8 cursor-pointer sm:h-6 sm:w-6"
               onClick={() => onInspect(svc)}
               disabled={rowBusy}
               aria-label="Inspect service status"
             >
-              <FileText className="h-3 w-3" />
-              Status
+              <FileText className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
           <TooltipHelper content="View logs">
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 cursor-pointer gap-1 px-2 text-[11px]"
+              size="icon-lg"
+              className="h-8 w-8 cursor-pointer sm:h-6 sm:w-6"
               onClick={() => onLogs(svc)}
               disabled={rowBusy}
               aria-label="View service logs"
             >
-              <Clock3 className="h-3 w-3" />
-              Logs
+              <Clock3 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
           <TooltipHelper
@@ -228,9 +223,9 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
           >
             <Button
               variant="outline"
-              size="sm"
+              size="icon-lg"
               className={cn(
-                'h-7 cursor-pointer gap-1 px-2 text-[11px]',
+                'h-8 w-8 cursor-pointer sm:h-6 sm:w-6',
                 svc.tracked ? 'text-primary-text-bright' : '',
               )}
               onClick={() => onToggleTrack(svc)}
@@ -238,11 +233,10 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
               aria-label={svc.tracked ? 'Unpin service' : 'Pin service'}
             >
               {svc.tracked ? (
-                <PinOff className="h-3 w-3" />
+                <PinOff className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
               ) : (
-                <Pin className="h-3 w-3" />
+                <Pin className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
               )}
-              {svc.tracked ? 'Unpin' : 'Pin'}
             </Button>
           </TooltipHelper>
         </div>

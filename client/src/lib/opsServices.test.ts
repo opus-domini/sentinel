@@ -8,7 +8,12 @@ import {
   filterOpsServicesByQuery,
   formatOpsUnitName,
   isOpsServiceActive,
+  isOpsServiceChanging,
+  isOpsServiceFailed,
+  isOpsServiceInactive,
   listOpsBrowseUnitTypes,
+  matchesOpsServiceStateFilter,
+  matchesOpsServiceTrackFilter,
   upsertOpsService,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
@@ -55,6 +60,52 @@ describe('opsServices', () => {
     expect(isOpsServiceActive(buildService({ activeState: 'inactive' }))).toBe(
       false,
     )
+  })
+
+  it('classifies service states for operational filters', () => {
+    expect(isOpsServiceFailed(buildService({ activeState: 'failed' }))).toBe(
+      true,
+    )
+    expect(isOpsServiceInactive(buildService({ activeState: 'dead' }))).toBe(
+      true,
+    )
+    expect(
+      isOpsServiceChanging(buildService({ activeState: 'restarting' })),
+    ).toBe(true)
+
+    expect(
+      matchesOpsServiceStateFilter(
+        buildBrowsedService({ activeState: 'activating' }),
+        'changing',
+      ),
+    ).toBe(true)
+    expect(
+      matchesOpsServiceStateFilter(
+        buildBrowsedService({ activeState: 'active' }),
+        'inactive',
+      ),
+    ).toBe(false)
+  })
+
+  it('matches tracked and untracked browse filters', () => {
+    expect(
+      matchesOpsServiceTrackFilter(
+        buildBrowsedService({ tracked: true }),
+        'tracked',
+      ),
+    ).toBe(true)
+    expect(
+      matchesOpsServiceTrackFilter(
+        buildBrowsedService({ tracked: false }),
+        'untracked',
+      ),
+    ).toBe(true)
+    expect(
+      matchesOpsServiceTrackFilter(
+        buildBrowsedService({ tracked: true }),
+        'untracked',
+      ),
+    ).toBe(false)
   })
 
   it('enables start/stop actions by service state', () => {
