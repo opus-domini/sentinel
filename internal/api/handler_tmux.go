@@ -328,7 +328,9 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.tmuxForSession(session).KillSession(ctx, session); err != nil {
+	if err := h.tmuxForSession(session).KillSession(ctx, session); err != nil &&
+		!tmux.IsKind(err, tmux.ErrKindSessionNotFound) &&
+		!tmux.IsKind(err, tmux.ErrKindServerNotRunning) {
 		writeTmuxError(w, err)
 		return
 	}

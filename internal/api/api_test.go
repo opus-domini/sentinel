@@ -1495,7 +1495,7 @@ func TestCreateSessionHandler(t *testing.T) {
 func TestDeleteSessionHandler(t *testing.T) {
 	t.Parallel()
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success removes pinned preset", func(t *testing.T) {
 		t.Parallel()
 
 		const sessionName = "dev"
@@ -1586,24 +1586,64 @@ func TestDeleteSessionHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("session not found", func(t *testing.T) {
-		t.Parallel()
+	for _, tt := range []struct {
+		name string
+		kind tmux.ErrorKind
+	}{
+		{name: "session not found clears stale state", kind: tmux.ErrKindSessionNotFound},
+		{name: "server not running clears stale state", kind: tmux.ErrKindServerNotRunning},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		tm := &mockTmux{
-			killSessionFn: func(_ context.Context, _ string) error {
-				return &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
-			},
-		}
-		h, _ := newTestHandler(t, tm, nil)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/tmux/sessions/ghost", nil)
-		r.SetPathValue("session", "ghost")
-		h.deleteSession(w, r)
+			const sessionName = "ghost"
+			tm := &mockTmux{
+				killSessionFn: func(_ context.Context, _ string) error {
+					return &tmux.Error{Kind: tt.kind}
+				},
+			}
+			h, st := newTestHandler(t, tm, nil)
+			h.sessionUsers.Store(sessionName, "")
+			if err := st.SetSessionUser(context.Background(), sessionName, "drako"); err != nil {
+				t.Fatalf("SetSessionUser() error = %v", err)
+			}
+			if _, err := st.CreateSessionPreset(context.Background(), store.SessionPresetWrite{
+				Name: sessionName,
+				Cwd:  "/home/drako",
+				Icon: "terminal",
+				User: "drako",
+			}); err != nil {
+				t.Fatalf("CreateSessionPreset() error = %v", err)
+			}
 
-		if w.Code != http.StatusNotFound {
-			t.Errorf("status = %d, want 404", w.Code)
-		}
-	})
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("DELETE", "/api/tmux/sessions/ghost", nil)
+			r.SetPathValue("session", sessionName)
+			h.deleteSession(w, r)
+
+			if w.Code != http.StatusNoContent {
+				t.Errorf("status = %d, want 204", w.Code)
+			}
+			if _, ok := h.sessionUsers.Load(sessionName); ok {
+				t.Fatalf("session user mapping for %q was not cleared from memory", sessionName)
+			}
+			users, err := st.ListSessionUsers(context.Background())
+			if err != nil {
+				t.Fatalf("ListSessionUsers() error = %v", err)
+			}
+			if _, ok := users[sessionName]; ok {
+				t.Fatalf("session user mapping for %q was not cleared", sessionName)
+			}
+			presets, err := st.ListSessionPresets(context.Background())
+			if err != nil {
+				t.Fatalf("ListSessionPresets() error = %v", err)
+			}
+			if len(presets) != 0 {
+				t.Fatalf("presets = %#v, want stale pinned preset deleted", presets)
+			}
+		})
+	}
 }
 
 func TestRenameSessionHandler(t *testing.T) {
