@@ -313,6 +313,85 @@ func newTestHandler(t *testing.T, tm *mockTmux, sys *mockSysTerms) (*Handler, *s
 	}, st
 }
 
+func TestRegisterRoutesThroughMux(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	guard := security.New("secret", []string{"http://allowed.test"}, security.CookieSecureAuto)
+	st := newTestStore(t)
+	h := Register(
+		mux,
+		guard,
+		st,
+		&mockOpsControlPlane{},
+		events.NewHub(),
+		"test-version",
+		"/tmp/sentinel.yaml",
+		"America/Sao_Paulo",
+		"pt-BR",
+		1,
+	)
+	t.Cleanup(func() {
+		h.Shutdown(context.Background())
+	})
+
+	unauthorized := httptest.NewRecorder()
+	mux.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "http://localhost:4040/api/meta", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/meta without token status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
+	}
+
+	badOrigin := httptest.NewRecorder()
+	badOriginReq := httptest.NewRequest(http.MethodPut, "http://localhost:4040/api/auth/token", strings.NewReader(`{"token":"secret"}`))
+	badOriginReq.Header.Set("Origin", "http://evil.test")
+	mux.ServeHTTP(badOrigin, badOriginReq)
+	if badOrigin.Code != http.StatusForbidden {
+		t.Fatalf("PUT /api/auth/token bad origin status = %d, want %d", badOrigin.Code, http.StatusForbidden)
+	}
+
+	login := httptest.NewRecorder()
+	loginReq := httptest.NewRequest(http.MethodPut, "http://localhost:4040/api/auth/token", strings.NewReader(`{"token":"secret"}`))
+	loginReq.Header.Set("Origin", "http://allowed.test")
+	loginReq.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(login, loginReq)
+	if login.Code != http.StatusOK {
+		t.Fatalf("PUT /api/auth/token status = %d, want %d; body=%s", login.Code, http.StatusOK, login.Body.String())
+	}
+
+	var authCookie *http.Cookie
+	for _, cookie := range login.Result().Cookies() {
+		if cookie.Name == security.AuthCookieName {
+			authCookie = cookie
+			break
+		}
+	}
+	if authCookie == nil {
+		t.Fatal("PUT /api/auth/token did not set auth cookie")
+	}
+
+	authorized := httptest.NewRecorder()
+	authorizedReq := httptest.NewRequest(http.MethodGet, "http://localhost:4040/api/meta", nil)
+	authorizedReq.AddCookie(authCookie)
+	mux.ServeHTTP(authorized, authorizedReq)
+	if authorized.Code != http.StatusOK {
+		t.Fatalf("GET /api/meta with token status = %d, want %d; body=%s", authorized.Code, http.StatusOK, authorized.Body.String())
+	}
+
+	var body struct {
+		Data struct {
+			Version  string `json:"version"`
+			Locale   string `json:"locale"`
+			Timezone string `json:"timezone"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(authorized.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode /api/meta response: %v", err)
+	}
+	if body.Data.Version != "test-version" || body.Data.Locale != "pt-BR" || body.Data.Timezone != "America/Sao_Paulo" {
+		t.Fatalf("unexpected /api/meta body: %+v", body.Data)
+	}
+}
+
 // jsonBody is a helper to decode a JSON response body.
 func jsonBody(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	t.Helper()
