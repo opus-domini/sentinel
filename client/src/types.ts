@@ -37,6 +37,29 @@ export type LaunchSessionPresetResponse = {
   created: boolean
 }
 
+export type SessionLauncher = {
+  id: string
+  name: string
+  cwd: string
+  icon: string
+  user?: string
+  sortOrder?: number
+  createdAt: string
+  updatedAt: string
+  lastUsedAt: string
+  useCount: number
+}
+
+export type SessionLaunchersResponse = {
+  launchers: Array<SessionLauncher>
+}
+
+export type LaunchSessionLauncherResponse = {
+  launcherId: string
+  name: string
+  created: boolean
+}
+
 export type LauncherCwdMode = 'session' | 'active-pane' | 'fixed'
 
 export type LauncherUserMode = 'session' | 'fixed'

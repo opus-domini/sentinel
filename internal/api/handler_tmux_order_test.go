@@ -44,9 +44,15 @@ func TestReorderSessionsHandler(t *testing.T) {
 func TestReorderSessionPresetsHandler(t *testing.T) {
 	t.Parallel()
 
+	const (
+		apiPreset  = "api"
+		webPreset  = "web"
+		docsPreset = "docs"
+	)
+
 	h, st := newTestHandler(t, &mockTmux{}, nil)
 	ctx := context.Background()
-	for _, name := range []string{"api", "web", "docs"} {
+	for _, name := range []string{apiPreset, webPreset, docsPreset} {
 		if _, err := st.CreateSessionPreset(ctx, store.SessionPresetWrite{
 			Name: name,
 			Cwd:  "/srv/" + name,
@@ -57,7 +63,7 @@ func TestReorderSessionPresetsHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-presets/order", strings.NewReader(`{"names":["docs","api","web"]}`))
+	r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-presets/order", strings.NewReader(`{"names":["`+docsPreset+`","`+apiPreset+`","`+webPreset+`"]}`))
 	h.reorderSessionPresets(w, r)
 
 	if w.Code != http.StatusNoContent {
@@ -68,7 +74,7 @@ func TestReorderSessionPresetsHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSessionPresets(): %v", err)
 	}
-	if presets[0].Name != "docs" || presets[1].Name != "api" || presets[2].Name != "web" {
+	if presets[0].Name != docsPreset || presets[1].Name != apiPreset || presets[2].Name != webPreset {
 		t.Fatalf("unexpected preset order: %#v", presets)
 	}
 }

@@ -161,6 +161,16 @@ type sessionPresetRepo interface {
 	MarkSessionPresetLaunched(ctx context.Context, name string) error
 }
 
+type sessionLauncherRepo interface {
+	ListSessionLaunchers(ctx context.Context) ([]store.SessionLauncher, error)
+	GetSessionLauncher(ctx context.Context, id string) (store.SessionLauncher, error)
+	CreateSessionLauncher(ctx context.Context, row store.SessionLauncherWrite) (store.SessionLauncher, error)
+	UpdateSessionLauncher(ctx context.Context, id string, row store.SessionLauncherWrite) (store.SessionLauncher, error)
+	DeleteSessionLauncher(ctx context.Context, id string) error
+	ReorderSessionLaunchers(ctx context.Context, ids []string) error
+	MarkSessionLauncherUsed(ctx context.Context, id string) error
+}
+
 type tmuxLauncherReadRepo interface {
 	ListTmuxLaunchers(ctx context.Context) ([]store.TmuxLauncher, error)
 	GetTmuxLauncher(ctx context.Context, id string) (store.TmuxLauncher, error)
@@ -213,6 +223,7 @@ type handlerRepo interface {
 	alertsActivityRepo
 	sessionDirectoryRepo
 	sessionPresetRepo
+	sessionLauncherRepo
 	tmuxLauncherReadRepo
 	tmuxLauncherWriteRepo
 	managedTmuxWindowRepo
@@ -384,6 +395,7 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	data["isRoot"] = osGeteuid() == 0
 	data["canSwitchUser"] = len(h.guard.SystemUsers()) > 0
 	data["allowedUsers"] = h.guard.AllowedUsers()
+	data["userSwitchMethod"] = strings.TrimSpace(h.userSwitchMethod)
 
 	writeData(w, http.StatusOK, data)
 }

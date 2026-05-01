@@ -2,7 +2,7 @@ import SidebarShell from './sidebar/SidebarShell'
 import PinnedSessionsPanel from './sidebar/PinnedSessionsPanel'
 import SessionControls from './sidebar/SessionControls'
 import SessionListPanel from './sidebar/SessionListPanel'
-import type { Session, SessionPreset } from '../types'
+import type { Session, SessionLauncher, SessionPreset } from '../types'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 
 type SessionSidebarProps = {
@@ -16,22 +16,25 @@ type SessionSidebarProps = {
   authenticated: boolean
   defaultCwd: string
   presets: Array<SessionPreset>
+  launchers: Array<SessionLauncher>
   filter: string
   tmuxUnavailable: boolean
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string, user?: string) => void
-  onSavePreset: (input: {
-    previousName: string
+  onSaveLauncher: (input: {
+    id: string
     name: string
     cwd: string
     icon: string
     user: string
-  }) => Promise<boolean>
+  }) => Promise<string>
+  onDeleteLauncher: (id: string) => Promise<boolean>
+  onLaunchLauncher: (id: string) => void
+  onReorderLaunchers: (activeID: string, overID: string) => void
   onPinSession: (session: string) => void
   onUnpinSession: (name: string) => Promise<boolean>
   onLaunchPreset: (name: string) => void
-  onReorderPresets: (activeName: string, overName: string) => void
   onReorderPinned: (activeName: string, overName: string) => void
   onReorderSession: (activeName: string, overName: string) => void
   onAttach: (session: string) => void
@@ -52,16 +55,19 @@ export default function SessionSidebar({
   authenticated,
   defaultCwd,
   presets,
+  launchers,
   filter,
   tmuxUnavailable,
   onFilterChange,
   onTokenChange,
   onCreate,
-  onSavePreset,
+  onSaveLauncher,
+  onDeleteLauncher,
+  onLaunchLauncher,
+  onReorderLaunchers,
   onPinSession,
   onUnpinSession,
   onLaunchPreset,
-  onReorderPresets,
   onReorderPinned,
   onReorderSession,
   onAttach,
@@ -79,16 +85,16 @@ export default function SessionSidebar({
           tokenRequired={tokenRequired}
           authenticated={authenticated}
           defaultCwd={defaultCwd}
-          presets={presets}
+          launchers={launchers}
           filter={filter}
           tmuxUnavailable={tmuxUnavailable}
           onFilterChange={onFilterChange}
           onTokenChange={onTokenChange}
           onCreate={onCreate}
-          onSavePreset={onSavePreset}
-          onLaunchPreset={onLaunchPreset}
-          onDeletePreset={onUnpinSession}
-          onReorderPresets={onReorderPresets}
+          onSaveLauncher={onSaveLauncher}
+          onLaunchLauncher={onLaunchLauncher}
+          onDeleteLauncher={onDeleteLauncher}
+          onReorderLaunchers={onReorderLaunchers}
         />
 
         <PinnedSessionsPanel

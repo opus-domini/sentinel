@@ -1123,12 +1123,17 @@ func TestListSessionsHandler(t *testing.T) {
 	t.Run("orders sessions by persisted sort order", func(t *testing.T) {
 		t.Parallel()
 
+		const (
+			apiSession = "api"
+			webSession = "web"
+		)
+
 		now := time.Now().UTC().Truncate(time.Second)
 		tm := &mockTmux{
 			listSessionsFn: func(_ context.Context) ([]tmux.Session, error) {
 				return []tmux.Session{
-					{Name: "web", Windows: 1, Attached: 0, CreatedAt: now, ActivityAt: now},
-					{Name: "api", Windows: 1, Attached: 0, CreatedAt: now, ActivityAt: now},
+					{Name: webSession, Windows: 1, Attached: 0, CreatedAt: now, ActivityAt: now},
+					{Name: apiSession, Windows: 1, Attached: 0, CreatedAt: now, ActivityAt: now},
 				}, nil
 			},
 			listActivePaneCommandsFn: func(_ context.Context) (map[string]tmux.PaneSnapshot, error) {
@@ -1137,13 +1142,13 @@ func TestListSessionsHandler(t *testing.T) {
 		}
 		h, st := newTestHandler(t, tm, nil)
 
-		if err := st.UpsertSession(context.Background(), "api", "hash-api", "ready"); err != nil {
+		if err := st.UpsertSession(context.Background(), apiSession, "hash-api", "ready"); err != nil {
 			t.Fatalf("UpsertSession(api): %v", err)
 		}
-		if err := st.UpsertSession(context.Background(), "web", "hash-web", "ready"); err != nil {
+		if err := st.UpsertSession(context.Background(), webSession, "hash-web", "ready"); err != nil {
 			t.Fatalf("UpsertSession(web): %v", err)
 		}
-		if err := st.ReorderSessions(context.Background(), []string{"web", "api"}); err != nil {
+		if err := st.ReorderSessions(context.Background(), []string{webSession, apiSession}); err != nil {
 			t.Fatalf("ReorderSessions(): %v", err)
 		}
 
@@ -1161,7 +1166,7 @@ func TestListSessionsHandler(t *testing.T) {
 		if len(sessions) != 2 {
 			t.Fatalf("sessions count = %d, want 2", len(sessions))
 		}
-		if sessions[0].(map[string]any)["name"] != "web" || sessions[1].(map[string]any)["name"] != "api" {
+		if sessions[0].(map[string]any)["name"] != webSession || sessions[1].(map[string]any)["name"] != apiSession {
 			t.Fatalf("unexpected session order: %#v", sessions)
 		}
 	})
@@ -1432,6 +1437,42 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("name collision creates numbered session", func(t *testing.T) {
+		t.Parallel()
+
+		const (
+			baseSession     = "api"
+			numberedSession = "api-1"
+		)
+
+		var attempts []string
+		tm := &mockTmux{
+			createSessionFn: func(_ context.Context, name, _ string) error {
+				attempts = append(attempts, name)
+				if name == baseSession {
+					return &tmux.Error{Kind: tmux.ErrKindSessionExists}
+				}
+				return nil
+			},
+		}
+		h, _ := newTestHandler(t, tm, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"api"}`))
+		h.createSession(w, r)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201", w.Code)
+		}
+		body := jsonBody(t, w)
+		data, _ := body["data"].(map[string]any)
+		if got, _ := data["name"].(string); got != numberedSession {
+			t.Fatalf("name = %q, want %s", got, numberedSession)
+		}
+		if len(attempts) != 2 || attempts[0] != baseSession || attempts[1] != numberedSession {
+			t.Fatalf("create attempts = %#v, want [api api-1]", attempts)
+		}
+	})
+
 	t.Run("session exists error", func(t *testing.T) {
 		t.Parallel()
 
@@ -1457,19 +1498,37 @@ func TestDeleteSessionHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
+		const sessionName = "dev"
+
 		tm := &mockTmux{
 			listPanesFn: func(_ context.Context, _ string) ([]tmux.Pane, error) {
-				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
+				return []tmux.Pane{{Session: sessionName, PaneID: "%5"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, st := newTestHandler(t, tm, nil)
+		ctx := context.Background()
+		if _, err := st.CreateSessionPreset(ctx, store.SessionPresetWrite{
+			Name: sessionName,
+			Cwd:  "/srv/dev",
+			Icon: "server",
+		}); err != nil {
+			t.Fatalf("CreateSessionPreset() error = %v", err)
+		}
+
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
-		r.SetPathValue("session", "dev")
+		r.SetPathValue("session", sessionName)
 		h.deleteSession(w, r)
 
 		if w.Code != http.StatusNoContent {
 			t.Errorf("status = %d, want 204", w.Code)
+		}
+		presets, err := st.ListSessionPresets(ctx)
+		if err != nil {
+			t.Fatalf("ListSessionPresets() error = %v", err)
+		}
+		if len(presets) != 0 {
+			t.Fatalf("presets = %#v, want deleted preset", presets)
 		}
 	})
 

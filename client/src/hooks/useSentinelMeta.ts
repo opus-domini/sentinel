@@ -9,6 +9,7 @@ type MetaResponse = {
   locale?: string
   hostname?: string
   processUser?: string
+  userSwitchMethod?: string
   isRoot?: boolean
   canSwitchUser?: boolean
   allowedUsers?: Array<string>
@@ -32,6 +33,7 @@ export function useSentinelMeta() {
           locale: '',
           hostname: '',
           processUser: '',
+          userSwitchMethod: '',
           isRoot: false,
           canSwitchUser: false,
           allowedUsers: [] as Array<string>,
@@ -51,6 +53,7 @@ export function useSentinelMeta() {
         locale: (payload.data?.locale ?? '').trim(),
         hostname: (payload.data?.hostname ?? '').trim(),
         processUser: (payload.data?.processUser ?? '').trim(),
+        userSwitchMethod: (payload.data?.userSwitchMethod ?? '').trim(),
         isRoot: Boolean(payload.data?.isRoot),
         canSwitchUser: Boolean(payload.data?.canSwitchUser),
         allowedUsers: Array.isArray(payload.data?.allowedUsers)
@@ -75,6 +78,7 @@ export function useSentinelMeta() {
         locale: '',
         hostname: '',
         processUser: '',
+        userSwitchMethod: '',
         isRoot: false,
         canSwitchUser: false,
         allowedUsers: [] as Array<string>,
@@ -91,6 +95,7 @@ export function useSentinelMeta() {
     locale: value.locale,
     hostname: value.hostname,
     processUser: value.processUser,
+    userSwitchMethod: value.userSwitchMethod,
     isRoot: value.isRoot,
     canSwitchUser: value.canSwitchUser,
     allowedUsers: value.allowedUsers,

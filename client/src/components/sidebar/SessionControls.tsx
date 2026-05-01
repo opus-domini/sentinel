@@ -4,7 +4,7 @@ import CreateSessionDialog from './CreateSessionDialog'
 import SessionLaunchersDialog from './SessionLaunchersDialog'
 import SidebarHeader from './SidebarHeader'
 import TokenDialog from './TokenDialog'
-import type { SessionPreset } from '@/types'
+import type { SessionLauncher } from '@/types'
 import TmuxHelpDialog from '@/components/TmuxHelpDialog'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { Button } from '@/components/ui/button'
@@ -24,30 +24,30 @@ type SessionControlsProps = {
   tokenRequired: boolean
   authenticated: boolean
   defaultCwd: string
-  presets: Array<SessionPreset>
+  launchers: Array<SessionLauncher>
   tmuxUnavailable: boolean
   filter: string
   onFilterChange: (value: string) => void
   onTokenChange: (value: string) => void
   onCreate: (name: string, cwd: string, user?: string) => void
-  onLaunchPreset: (name: string) => void
-  onSavePreset: (input: {
-    previousName: string
+  onLaunchLauncher: (id: string) => void
+  onSaveLauncher: (input: {
+    id: string
     name: string
     cwd: string
     icon: string
     user: string
-  }) => Promise<boolean>
-  onDeletePreset: (name: string) => Promise<boolean>
-  onReorderPresets: (activeName: string, overName: string) => void
+  }) => Promise<string>
+  onDeleteLauncher: (id: string) => Promise<boolean>
+  onReorderLaunchers: (activeID: string, overID: string) => void
 }
 
-function describeSessionLauncher(preset: SessionPreset) {
-  const user = preset.user?.trim() ?? ''
+function describeSessionLauncher(launcher: SessionLauncher) {
+  const user = launcher.user?.trim() ?? ''
   if (user === '') {
-    return preset.cwd
+    return launcher.cwd
   }
-  return `${preset.cwd} · ${user}`
+  return `${launcher.cwd} · ${user}`
 }
 
 export default function SessionControls({
@@ -55,16 +55,16 @@ export default function SessionControls({
   tokenRequired,
   authenticated,
   defaultCwd,
-  presets,
+  launchers,
   tmuxUnavailable,
   filter,
   onFilterChange,
   onTokenChange,
   onCreate,
-  onLaunchPreset,
-  onSavePreset,
-  onDeletePreset,
-  onReorderPresets,
+  onLaunchLauncher,
+  onSaveLauncher,
+  onDeleteLauncher,
+  onReorderLaunchers,
 }: SessionControlsProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isLaunchersOpen, setIsLaunchersOpen] = useState(false)
@@ -77,31 +77,29 @@ export default function SessionControls({
     return authenticated ? 'Authenticated' : 'Authentication optional'
   }, [authenticated, tokenRequired])
 
-  const recentPreset = useMemo(() => {
-    const launchedPresets = presets.filter((preset) =>
-      Number.isFinite(Date.parse(preset.lastLaunchedAt)),
+  const recentLauncher = useMemo(() => {
+    const usedLaunchers = launchers.filter((launcher) =>
+      Number.isFinite(Date.parse(launcher.lastUsedAt)),
     )
-    if (launchedPresets.length === 0) {
+    if (usedLaunchers.length === 0) {
       return null
     }
-    return [...launchedPresets].sort((left, right) => {
-      const leftTime = left.lastLaunchedAt ? Date.parse(left.lastLaunchedAt) : 0
-      const rightTime = right.lastLaunchedAt
-        ? Date.parse(right.lastLaunchedAt)
-        : 0
+    return [...usedLaunchers].sort((left, right) => {
+      const leftTime = left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0
+      const rightTime = right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0
       if (leftTime !== rightTime) {
         return rightTime - leftTime
       }
       return (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
     })[0]
-  }, [presets])
+  }, [launchers])
 
-  const secondaryPresets = useMemo(
+  const secondaryLaunchers = useMemo(
     () =>
-      recentPreset === null
-        ? presets
-        : presets.filter((preset) => preset.name !== recentPreset.name),
-    [presets, recentPreset],
+      recentLauncher === null
+        ? launchers
+        : launchers.filter((launcher) => launcher.id !== recentLauncher.id),
+    [launchers, recentLauncher],
   )
 
   const addControl = (
@@ -138,42 +136,42 @@ export default function SessionControls({
             <Plus className="h-3.5 w-3.5" />
             New blank session
           </DropdownMenuItem>
-          {recentPreset !== null && (
+          {recentLauncher !== null && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Last used</DropdownMenuLabel>
               <DropdownMenuItem
-                onSelect={() => onLaunchPreset(recentPreset.name)}
+                onSelect={() => onLaunchLauncher(recentLauncher.id)}
               >
                 {(() => {
-                  const Icon = getTmuxIcon(recentPreset.icon)
+                  const Icon = getTmuxIcon(recentLauncher.icon)
                   return <Icon className="h-3.5 w-3.5" />
                 })()}
                 <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="truncate">{recentPreset.name}</span>
+                  <span className="truncate">{recentLauncher.name}</span>
                   <span className="truncate text-[10px] text-muted-foreground">
-                    {describeSessionLauncher(recentPreset)}
+                    {describeSessionLauncher(recentLauncher)}
                   </span>
                 </span>
               </DropdownMenuItem>
             </>
           )}
-          {secondaryPresets.length > 0 && (
+          {secondaryLaunchers.length > 0 && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Session launchers</DropdownMenuLabel>
-              {secondaryPresets.map((preset) => {
-                const Icon = getTmuxIcon(preset.icon)
+              {secondaryLaunchers.map((launcher) => {
+                const Icon = getTmuxIcon(launcher.icon)
                 return (
                   <DropdownMenuItem
-                    key={preset.name}
-                    onSelect={() => onLaunchPreset(preset.name)}
+                    key={launcher.id}
+                    onSelect={() => onLaunchLauncher(launcher.id)}
                   >
                     <Icon className="h-3.5 w-3.5" />
                     <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="truncate">{preset.name}</span>
+                      <span className="truncate">{launcher.name}</span>
                       <span className="truncate text-[10px] text-muted-foreground">
-                        {describeSessionLauncher(preset)}
+                        {describeSessionLauncher(launcher)}
                       </span>
                     </span>
                   </DropdownMenuItem>
@@ -241,10 +239,10 @@ export default function SessionControls({
         open={isLaunchersOpen}
         onOpenChange={setIsLaunchersOpen}
         defaultCwd={defaultCwd}
-        presets={presets}
-        onSave={onSavePreset}
-        onDelete={onDeletePreset}
-        onReorder={onReorderPresets}
+        launchers={launchers}
+        onSave={onSaveLauncher}
+        onDelete={onDeleteLauncher}
+        onReorder={onReorderLaunchers}
       />
 
       <TokenDialog

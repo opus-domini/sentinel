@@ -58,11 +58,15 @@ When `user` is empty or omitted, the session runs as the Sentinel process user (
 
 ### Auto-suffix on name collision
 
-If the requested session name already exists, the server tries `name-1`, `name-2`, ... up to `name-9`. The response `name` field reflects the final name used. If all variants are taken, the request fails with `ErrKindSessionExists`.
+If the requested session name already exists, the server tries `name-1`, `name-2`, ... up to `name-99`. The response `name` field reflects the final name used. If all variants are taken, the request fails with `ErrKindSessionExists`.
 
-### Launchers
+### Session launchers
 
-Launchers support two user modes via `userMode`:
+Reusable session launchers accept the same optional `user` field as direct session creation. Saving a launcher only records the preset; each launch creates a new session owned by that user and uses the same name-collision suffixing rules as direct session creation.
+
+### Window launchers
+
+Window launchers support two user modes via `userMode`:
 
 - `"session"` (default) -- inherits the user from the session context.
 - `"fixed"` -- always runs as the user specified in `userValue`, regardless of the session owner.
@@ -115,6 +119,8 @@ Pane IDs from multi-user sessions are namespaced as `user:paneID` (e.g., `alice:
   ```
 
   Fixed-user window launchers run the user switch command from inside the owning tmux session, so the session owner also needs the corresponding sudo permission when targeting a different user.
+
+  With `user_switch_method = "systemd-run"`, sudo logs show `systemd-run` and tmux commands because Sentinel starts or inspects tmux through root-mediated user switching. That is expected; the resulting tmux server runs under the target user and inherits the user's systemd environment.
 
 - On Linux, target users need an active systemd user manager. Enable lingering for service-style accounts that are not normally logged in:
 

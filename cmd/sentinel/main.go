@@ -61,6 +61,7 @@ func serve() int {
 	tmux.SystemUsers = cfg.SystemUsers
 	tmux.UserSwitchMethod = cfg.MultiUser.UserSwitchMethod
 	term.UserSwitchMethod = cfg.MultiUser.UserSwitchMethod
+	slog.Info("multi-user switching configured", "method", cfg.MultiUser.UserSwitchMethod)
 	cookiePolicy := security.ParseCookieSecurePolicy(cfg.CookieSecure)
 	guard := security.NewWithMultiUser(cfg.Token, cfg.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
 		AllowedUsers:    cfg.MultiUser.AllowedUsers,

@@ -52,16 +52,18 @@ When creating entities without custom names:
 
 This avoids repeated ambiguous names after tmux index reuse.
 
-When creating a session with a name that already exists, the server auto-suffixes the name with `-1`, `-2`, ... up to `-9` to resolve the collision. The response `name` field may differ from the requested name.
+When creating a session with a name that already exists, the server auto-suffixes the name with `-1`, `-2`, ... up to `-99` to resolve the collision. The response `name` field may differ from the requested name.
 
-## Launchers and Session Presets
+## Pinned Sessions and Launchers
 
 Sentinel uses the same split-button pattern for reusable tmux entrypoints at both workspace levels:
 
 - The window-strip `+` button opens a blank window immediately. Its dropdown exposes the last used launcher, saved window launchers, and `Manage launchers...`.
 - The sessions sidebar `+` button opens a blank session immediately. Its dropdown exposes `New blank session`, `Last used`, saved session launchers, and `Manage session launchers...`.
 
-Session launchers are backed by tmux session presets (`/api/tmux/session-presets`). A preset stores the reusable launch configuration for a session, including icon, working directory, command, optional name seed, and optional target user.
+Pinned sessions are separate from launchers. They are backed by `/api/tmux/session-presets`, render in the `Pinned` panel, and are restored on Sentinel startup so important workspaces come back after an unexpected host restart.
+
+Session launchers are backed by `/api/tmux/session-launchers`. They are reusable session creation presets stored in the session launcher manager. Saving a launcher does not start tmux. Launching one creates a new session from the launcher name seed, working directory, icon, and optional target user. Launching the same preset repeatedly creates numbered sessions (`api`, `api-1`, `api-2`, ...).
 
 ## Multi-User Sessions
 

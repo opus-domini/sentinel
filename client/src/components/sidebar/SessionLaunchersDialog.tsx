@@ -16,7 +16,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { SessionPreset } from '@/types'
+import type { SessionLauncher } from '@/types'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,7 +59,7 @@ import { slugifyTmuxName } from '@/lib/tmuxName'
 import { cn } from '@/lib/utils'
 
 export type SessionLauncherDraft = {
-  previousName: string
+  id: string
   name: string
   cwd: string
   icon: string
@@ -70,15 +70,15 @@ type SessionLaunchersDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultCwd: string
-  presets: Array<SessionPreset>
-  onSave: (draft: SessionLauncherDraft) => Promise<boolean>
-  onDelete: (name: string) => Promise<boolean>
-  onReorder: (activeName: string, overName: string) => void
+  launchers: Array<SessionLauncher>
+  onSave: (draft: SessionLauncherDraft) => Promise<string>
+  onDelete: (id: string) => Promise<boolean>
+  onReorder: (activeID: string, overID: string) => void
 }
 
 function createDefaultDraft(defaultCwd: string): SessionLauncherDraft {
   return {
-    previousName: '',
+    id: '',
     name: '',
     cwd: defaultCwd.trim(),
     icon: DEFAULT_ICON_KEY,
@@ -86,19 +86,21 @@ function createDefaultDraft(defaultCwd: string): SessionLauncherDraft {
   }
 }
 
-function draftFromPreset(preset: SessionPreset): SessionLauncherDraft {
+function draftFromLauncher(launcher: SessionLauncher): SessionLauncherDraft {
   return {
-    previousName: preset.name,
-    name: preset.name,
-    cwd: preset.cwd,
-    icon: preset.icon,
-    user: preset.user ?? '',
+    id: launcher.id,
+    name: launcher.name,
+    cwd: launcher.cwd,
+    icon: launcher.icon,
+    user: launcher.user ?? '',
   }
 }
 
-function describeSessionLauncher(preset: Pick<SessionPreset, 'cwd' | 'user'>) {
-  const cwd = preset.cwd.trim()
-  const user = (preset.user ?? '').trim()
+function describeSessionLauncher(
+  launcher: Pick<SessionLauncher, 'cwd' | 'user'>,
+) {
+  const cwd = launcher.cwd.trim()
+  const user = (launcher.user ?? '').trim()
   if (cwd === '') {
     return user === '' ? '' : user
   }
@@ -109,15 +111,15 @@ function describeSessionLauncher(preset: Pick<SessionPreset, 'cwd' | 'user'>) {
 }
 
 function SortableSessionLauncherItem({
-  preset,
+  launcher,
   selected,
   dragEnabled,
   onSelect,
 }: {
-  preset: SessionPreset
+  launcher: SessionLauncher
   selected: boolean
   dragEnabled: boolean
-  onSelect: (name: string) => void
+  onSelect: (id: string) => void
 }) {
   const {
     attributes,
@@ -126,8 +128,8 @@ function SortableSessionLauncherItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: preset.name })
-  const Icon = getTmuxIcon(preset.icon)
+  } = useSortable({ id: launcher.id })
+  const Icon = getTmuxIcon(launcher.icon)
 
   return (
     <li
@@ -147,7 +149,7 @@ function SortableSessionLauncherItem({
             ? 'border-primary/60 bg-surface-active-primary'
             : 'border-transparent hover:border-border-subtle hover:bg-surface-hover',
         )}
-        onClick={() => onSelect(preset.name)}
+        onClick={() => onSelect(launcher.id)}
         style={{ touchAction: dragEnabled ? undefined : 'pan-y' }}
         {...(dragEnabled ? attributes : {})}
         {...(dragEnabled ? listeners : {})}
@@ -155,13 +157,13 @@ function SortableSessionLauncherItem({
         <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12px] font-semibold">
-            {preset.name}
+            {launcher.name}
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">
-            {describeSessionLauncher(preset)}
+            {describeSessionLauncher(launcher)}
           </span>
         </span>
-        {!preset.lastLaunchedAt && (
+        {!launcher.lastUsedAt && (
           <span className="text-[10px] text-muted-foreground">New</span>
         )}
       </button>
@@ -173,7 +175,7 @@ export default function SessionLaunchersDialog({
   open,
   onOpenChange,
   defaultCwd,
-  presets,
+  launchers,
   onSave,
   onDelete,
   onReorder,
@@ -186,7 +188,7 @@ export default function SessionLaunchersDialog({
     () => createDefaultDraft(normalizedDefaultCwd),
     [normalizedDefaultCwd],
   )
-  const [selectedName, setSelectedName] = useState<string>('new')
+  const [selectedID, setSelectedID] = useState<string>('new')
   const [draft, setDraft] = useState<SessionLauncherDraft>(defaultDraft)
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -201,7 +203,7 @@ export default function SessionLaunchersDialog({
 
   const startNewLauncher = () => {
     setSaveError('')
-    setSelectedName('new')
+    setSelectedID('new')
     setDraft(defaultDraft)
   }
 
@@ -212,14 +214,14 @@ export default function SessionLaunchersDialog({
     setDraft(updater)
   }
 
-  const selectLauncher = (name: string) => {
+  const selectLauncher = (id: string) => {
     setSaveError('')
-    setSelectedName(name)
+    setSelectedID(id)
   }
 
-  const selectedPreset = useMemo(
-    () => presets.find((preset) => preset.name === selectedName) ?? null,
-    [presets, selectedName],
+  const selectedLauncher = useMemo(
+    () => launchers.find((launcher) => launcher.id === selectedID) ?? null,
+    [launchers, selectedID],
   )
   const selectedIconEntry = useMemo(
     () =>
@@ -233,30 +235,30 @@ export default function SessionLaunchersDialog({
     if (!open) {
       setSaveError('')
       setSaving(false)
-      setSelectedName('new')
+      setSelectedID('new')
       setDraft(defaultDraft)
       return
     }
-    if (selectedName === 'new') {
+    if (selectedID === 'new') {
       return
     }
-    if (selectedPreset === null) {
-      setSelectedName(presets[0]?.name ?? 'new')
+    if (selectedLauncher === null) {
+      setSelectedID(launchers[0]?.id ?? 'new')
     }
-  }, [defaultDraft, open, presets, selectedName, selectedPreset])
+  }, [defaultDraft, open, launchers, selectedID, selectedLauncher])
 
   useEffect(() => {
     if (!open) {
       return
     }
-    if (selectedPreset !== null) {
-      setDraft(draftFromPreset(selectedPreset))
+    if (selectedLauncher !== null) {
+      setDraft(draftFromLauncher(selectedLauncher))
       return
     }
-    if (selectedName === 'new') {
+    if (selectedID === 'new') {
       setDraft(defaultDraft)
     }
-  }, [defaultDraft, open, selectedName, selectedPreset])
+  }, [defaultDraft, open, selectedID, selectedLauncher])
 
   const handleSave = async () => {
     const normalizedName = slugifyTmuxName(draft.name).trim()
@@ -274,19 +276,19 @@ export default function SessionLaunchersDialog({
     setSaveError('')
     const nextDraft = {
       ...draft,
-      previousName: draft.previousName.trim(),
+      id: draft.id.trim(),
       name: normalizedName,
       cwd: normalizedCwd,
       user: draft.user.trim(),
     }
 
     try {
-      const saved = await onSave(nextDraft)
-      if (saved) {
-        setSelectedName(nextDraft.name)
+      const savedID = await onSave(nextDraft)
+      if (savedID !== '') {
+        setSelectedID(savedID)
         setDraft({
           ...nextDraft,
-          previousName: nextDraft.name,
+          id: savedID,
         })
         return
       }
@@ -297,22 +299,22 @@ export default function SessionLaunchersDialog({
   }
 
   const handleDelete = async () => {
-    const targetName = draft.previousName.trim()
-    if (targetName === '') {
+    const targetID = draft.id.trim()
+    if (targetID === '') {
       return
     }
 
-    const deleted = await onDelete(targetName)
+    const deleted = await onDelete(targetID)
     if (!deleted) {
       return
     }
 
-    const nextName = presets.find((preset) => preset.name !== targetName)?.name
-    if (nextName) {
-      setSelectedName(nextName)
+    const nextID = launchers.find((launcher) => launcher.id !== targetID)?.id
+    if (nextID) {
+      setSelectedID(nextID)
       return
     }
-    setSelectedName('new')
+    setSelectedID('new')
     setDraft(defaultDraft)
   }
 
@@ -350,7 +352,7 @@ export default function SessionLaunchersDialog({
                 New launcher
               </Button>
 
-              {presets.length === 0 ? (
+              {launchers.length === 0 ? (
                 <EmptyState
                   variant="inline"
                   className="grid gap-2 p-3 text-left text-[12px]"
@@ -370,15 +372,15 @@ export default function SessionLaunchersDialog({
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext
-                    items={presets.map((preset) => preset.name)}
+                    items={launchers.map((launcher) => launcher.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     <ul className="grid min-h-0 content-start list-none gap-1 rounded-lg border border-border-subtle bg-secondary p-2 md:overflow-y-auto">
-                      {presets.map((preset) => (
+                      {launchers.map((launcher) => (
                         <SortableSessionLauncherItem
-                          key={preset.name}
-                          preset={preset}
-                          selected={preset.name === selectedName}
+                          key={launcher.id}
+                          launcher={launcher}
+                          selected={launcher.id === selectedID}
                           dragEnabled={dragEnabled}
                           onSelect={selectLauncher}
                         />
@@ -495,8 +497,8 @@ export default function SessionLaunchersDialog({
               )}
 
               <div className="rounded-md border border-border-subtle bg-surface-overlay px-3 py-2 text-[11px] text-muted-foreground">
-                Session launchers show up in the sidebar `+` menu and also stay
-                available under Pinned while their session is offline.
+                Session launchers stay available from the sidebar `+` menu until
+                you delete them.
               </div>
 
               {saveError !== '' && (
@@ -507,7 +509,7 @@ export default function SessionLaunchersDialog({
 
               <div className="mt-auto flex flex-wrap items-center gap-2">
                 <div className="ml-auto flex items-center gap-2">
-                  {draft.previousName !== '' && (
+                  {draft.id !== '' && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button

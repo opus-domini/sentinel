@@ -8,6 +8,7 @@ type MetaContextValue = {
   locale: string
   hostname: string
   processUser: string
+  userSwitchMethod: string
   isRoot: boolean
   canSwitchUser: boolean
   allowedUsers: Array<string>

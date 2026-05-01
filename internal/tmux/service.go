@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"runtime"
 
 	"github.com/opus-domini/sentinel/internal/userswitch"
 )
@@ -29,7 +30,7 @@ var SystemUsers []string //nolint:gochecknoglobals // set once at startup from m
 
 // UserSwitchMethod controls how multi-user tmux commands are launched.
 // Set from main.go after config.Load().
-var UserSwitchMethod = userswitch.MethodSudo //nolint:gochecknoglobals // set once at startup from config
+var UserSwitchMethod = userswitch.DefaultMethod(runtime.GOOS) //nolint:gochecknoglobals // set once at startup from config
 
 var execCommandContext = exec.CommandContext //nolint:gochecknoglobals // var enables test injection
 

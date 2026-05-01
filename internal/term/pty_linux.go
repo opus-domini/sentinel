@@ -25,7 +25,7 @@ type PTY struct {
 
 // UserSwitchMethod controls how multi-user tmux attach commands are launched.
 // Set from main.go after config.Load().
-var UserSwitchMethod = userswitch.MethodSudo //nolint:gochecknoglobals // set once at startup from config
+var UserSwitchMethod = userswitch.MethodSystemdRun //nolint:gochecknoglobals // set once at startup from config
 
 func StartTmuxAttach(ctx context.Context, session string, cols, rows int) (*PTY, error) {
 	cmd := exec.CommandContext(ctx, "tmux", tmuxAttachArgs(session)...)

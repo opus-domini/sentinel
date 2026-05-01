@@ -29,14 +29,14 @@ describe('SessionLaunchersDialog', () => {
   })
 
   it('saves a new session launcher', async () => {
-    const onSave = vi.fn().mockResolvedValue(true)
+    const onSave = vi.fn().mockResolvedValue('launcher-api')
 
     render(
       <SessionLaunchersDialog
         open
         onOpenChange={vi.fn()}
         defaultCwd="/srv"
-        presets={[]}
+        launchers={[]}
         onSave={onSave}
         onDelete={vi.fn().mockResolvedValue(true)}
         onReorder={vi.fn()}
@@ -58,7 +58,7 @@ describe('SessionLaunchersDialog', () => {
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
-        previousName: '',
+        id: '',
         name: 'api-app',
         cwd: '/srv/api',
         icon: 'server',
@@ -75,19 +75,20 @@ describe('SessionLaunchersDialog', () => {
         open
         onOpenChange={vi.fn()}
         defaultCwd="/srv"
-        presets={[
+        launchers={[
           {
+            id: 'launcher-api',
             name: 'api',
             cwd: '/srv/api',
             icon: 'server',
             user: 'postgres',
             createdAt: '2026-04-23T00:00:00Z',
             updatedAt: '2026-04-23T00:00:00Z',
-            lastLaunchedAt: '',
-            launchCount: 0,
+            lastUsedAt: '',
+            useCount: 0,
           },
         ]}
-        onSave={vi.fn().mockResolvedValue(true)}
+        onSave={vi.fn().mockResolvedValue('launcher-api')}
         onDelete={onDelete}
         onReorder={vi.fn()}
       />,
@@ -100,7 +101,7 @@ describe('SessionLaunchersDialog', () => {
     fireEvent.click(confirmButton)
 
     await waitFor(() => {
-      expect(onDelete).toHaveBeenCalledWith('api')
+      expect(onDelete).toHaveBeenCalledWith('launcher-api')
     })
   })
 })

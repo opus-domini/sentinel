@@ -45,16 +45,16 @@ const baseProps = {
   tokenRequired: false,
   authenticated: true,
   defaultCwd: '/srv',
-  presets: [],
+  launchers: [],
   tmuxUnavailable: false,
   filter: '',
   onFilterChange: vi.fn(),
   onTokenChange: vi.fn(),
   onCreate: vi.fn(),
-  onLaunchPreset: vi.fn(),
-  onSavePreset: vi.fn().mockResolvedValue(true),
-  onDeletePreset: vi.fn().mockResolvedValue(true),
-  onReorderPresets: vi.fn(),
+  onLaunchLauncher: vi.fn(),
+  onSaveLauncher: vi.fn().mockResolvedValue('launcher-id'),
+  onDeleteLauncher: vi.fn().mockResolvedValue(true),
+  onReorderLaunchers: vi.fn(),
 }
 
 describe('SessionControls', () => {
@@ -91,33 +91,35 @@ describe('SessionControls', () => {
     expect(screen.getByText('Create Session Dialog')).toBeTruthy()
   })
 
-  it('launches the recent preset and opens the session launchers dialog from the menu', async () => {
-    const onLaunchPreset = vi.fn()
+  it('launches the recent session launcher and opens the manager from the menu', async () => {
+    const onLaunchLauncher = vi.fn()
 
     render(
       <SessionControls
         {...baseProps}
-        presets={[
+        launchers={[
           {
+            id: 'launcher-api',
             name: 'api',
             cwd: '/srv/api',
             icon: 'server',
             createdAt: '2026-04-23T00:00:00Z',
             updatedAt: '2026-04-23T00:00:00Z',
-            lastLaunchedAt: '2026-04-23T12:00:00Z',
-            launchCount: 2,
+            lastUsedAt: '2026-04-23T12:00:00Z',
+            useCount: 2,
           },
           {
+            id: 'launcher-web',
             name: 'web',
             cwd: '/srv/web',
             icon: 'globe',
             createdAt: '2026-04-23T00:00:00Z',
             updatedAt: '2026-04-23T00:00:00Z',
-            lastLaunchedAt: '',
-            launchCount: 0,
+            lastUsedAt: '',
+            useCount: 0,
           },
         ]}
-        onLaunchPreset={onLaunchPreset}
+        onLaunchLauncher={onLaunchLauncher}
       />,
     )
 
@@ -131,7 +133,7 @@ describe('SessionControls', () => {
     fireEvent.click(screen.getByText('api'))
 
     await waitFor(() => {
-      expect(onLaunchPreset).toHaveBeenCalledWith('api')
+      expect(onLaunchLauncher).toHaveBeenCalledWith('launcher-api')
     })
 
     fireEvent.pointerDown(

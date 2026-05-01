@@ -51,7 +51,7 @@ Origin checks apply to all API routes.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/meta` | Runtime metadata (`tokenRequired`, `defaultCwd`, `version`, `timezone`, `locale`, `hostname`, `processUser`, `isRoot`, `canSwitchUser`, `allowedUsers`) |
+| `GET` | `/api/meta` | Runtime metadata (`tokenRequired`, `defaultCwd`, `version`, `timezone`, `locale`, `hostname`, `processUser`, `isRoot`, `canSwitchUser`, `allowedUsers`, `userSwitchMethod`) |
 | `GET` | `/api/fs/dirs` | Directory suggestions for session creation |
 
 `/api/fs/dirs` query params: `prefix`, `limit`.
@@ -65,7 +65,7 @@ Origin checks apply to all API routes.
 | `PATCH` | `/api/tmux/sessions/{session}` | Rename session |
 | `PATCH` | `/api/tmux/sessions/{session}/icon` | Set session icon |
 | `DELETE` | `/api/tmux/sessions/{session}` | Kill session |
-| `PATCH` | `/api/tmux/sessions/order` | Reorder pinned sessions |
+| `PATCH` | `/api/tmux/sessions/order` | Reorder sessions |
 | `POST` | `/api/tmux/sessions/{session}/seen` | Mark seen scope (`pane/window/session`) |
 
 Create payload:
@@ -74,31 +74,44 @@ Create payload:
 { "name": "dev", "cwd": "/absolute/path", "icon": "rocket", "user": "deploy" }
 ```
 
-`icon` and `user` are optional. On name collision the server tries `name-1` through `name-9`, so the response `name` may differ from the requested name.
+`icon` and `user` are optional. On name collision the server tries `name-1` through `name-99`, so the response `name` may differ from the requested name.
 
-## Tmux Launchers
+## Window Launchers
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/tmux/launchers` | List launchers |
-| `POST` | `/api/tmux/launchers` | Create launcher |
-| `PATCH` | `/api/tmux/launchers/order` | Reorder launchers |
-| `PATCH` | `/api/tmux/launchers/{launcher}` | Update launcher |
-| `DELETE` | `/api/tmux/launchers/{launcher}` | Delete launcher |
+| `GET` | `/api/tmux/launchers` | List window launchers |
+| `POST` | `/api/tmux/launchers` | Create window launcher |
+| `PATCH` | `/api/tmux/launchers/order` | Reorder window launchers |
+| `PATCH` | `/api/tmux/launchers/{launcher}` | Update window launcher |
+| `DELETE` | `/api/tmux/launchers/{launcher}` | Delete window launcher |
 | `POST` | `/api/tmux/sessions/{session}/launchers/{launcher}/launch` | Launch a window from launcher |
 
 ## Session Presets
 
-The tmux sidebar exposes these presets as session launchers from the session `+` split button.
+Session presets back the `Pinned` sessions panel. Pinned sessions are saved and restored on Sentinel startup, and their endpoint keeps the pinned lifecycle separate from reusable session launchers.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/tmux/session-presets` | List session presets |
-| `POST` | `/api/tmux/session-presets` | Create session preset |
-| `PATCH` | `/api/tmux/session-presets/order` | Reorder presets |
-| `PATCH` | `/api/tmux/session-presets/{preset}` | Update preset |
-| `DELETE` | `/api/tmux/session-presets/{preset}` | Delete preset |
-| `POST` | `/api/tmux/session-presets/{preset}/launch` | Launch session from preset |
+| `GET` | `/api/tmux/session-presets` | List pinned session presets |
+| `POST` | `/api/tmux/session-presets` | Pin a session preset |
+| `PATCH` | `/api/tmux/session-presets/order` | Reorder pinned sessions |
+| `PATCH` | `/api/tmux/session-presets/{preset}` | Update pinned session preset |
+| `DELETE` | `/api/tmux/session-presets/{preset}` | Unpin session preset |
+| `POST` | `/api/tmux/session-presets/{preset}/launch` | Start or open pinned session |
+
+## Session Launchers
+
+Session launchers are independent reusable presets shown in the session `+` split-button menu and in `Manage session launchers...`. Creating or updating a launcher only saves the preset; it does not start a tmux session. Launching a session launcher creates a new session from the saved name seed, cwd, icon, and optional target user. If the base name already exists, Sentinel tries `name-1` through `name-99`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/tmux/session-launchers` | List session launchers |
+| `POST` | `/api/tmux/session-launchers` | Create session launcher |
+| `PATCH` | `/api/tmux/session-launchers/order` | Reorder session launchers |
+| `PATCH` | `/api/tmux/session-launchers/{launcher}` | Update session launcher |
+| `DELETE` | `/api/tmux/session-launchers/{launcher}` | Delete session launcher |
+| `POST` | `/api/tmux/session-launchers/{launcher}/launch` | Create session from launcher |
 
 ## Tmux Windows and Panes
 

@@ -135,18 +135,28 @@ func TestSessionPresetHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("launch existing session returns created false", func(t *testing.T) {
+	t.Run("launch existing session opens pinned session", func(t *testing.T) {
 		t.Parallel()
 
+		const (
+			apiSession       = "api"
+			apiSessionLaunch = "/api/tmux/session-presets/api/launch"
+		)
+
+		var attempts []string
 		tm := &mockTmux{
-			createSessionFn: func(_ context.Context, _, _ string) error {
-				return &tmux.Error{Kind: tmux.ErrKindSessionExists}
+			createSessionFn: func(_ context.Context, name, _ string) error {
+				attempts = append(attempts, name)
+				if name == apiSession {
+					return &tmux.Error{Kind: tmux.ErrKindSessionExists}
+				}
+				return nil
 			},
 		}
 		h, st := newTestHandler(t, tm, nil)
 
 		if _, err := st.CreateSessionPreset(context.Background(), store.SessionPresetWrite{
-			Name: "api",
+			Name: apiSession,
 			Cwd:  "/srv/api",
 			Icon: "server",
 		}); err != nil {
@@ -154,8 +164,8 @@ func TestSessionPresetHandlers(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-presets/api/launch", nil)
-		r.SetPathValue("preset", "api")
+		r := httptest.NewRequest(http.MethodPost, apiSessionLaunch, nil)
+		r.SetPathValue("preset", apiSession)
 		h.launchSessionPreset(w, r)
 
 		if w.Code != http.StatusOK {
@@ -163,8 +173,21 @@ func TestSessionPresetHandlers(t *testing.T) {
 		}
 		body := jsonBody(t, w)
 		data, _ := body["data"].(map[string]any)
+		if got, _ := data["name"].(string); got != apiSession {
+			t.Fatalf("name = %q, want api", got)
+		}
 		if created, _ := data["created"].(bool); created {
 			t.Fatal("created = true, want false")
+		}
+		if len(attempts) != 1 || attempts[0] != apiSession {
+			t.Fatalf("create attempts = %#v, want [api]", attempts)
+		}
+		presets, err := st.ListSessionPresets(context.Background())
+		if err != nil {
+			t.Fatalf("ListSessionPresets() error = %v", err)
+		}
+		if len(presets) != 1 || presets[0].Name != apiSession {
+			t.Fatalf("presets = %#v, want api preset unchanged", presets)
 		}
 	})
 

@@ -16,6 +16,8 @@ import (
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
+const maxSessionNameVariants = 99
+
 func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
@@ -66,30 +68,10 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmuxSvc := h.tmuxForUser(req.User)
-
-	// Try the requested name first, then append -1, -2, etc. on collision.
-	finalName := req.Name
-	if err := tmuxSvc.CreateSession(ctx, finalName, req.Cwd); err != nil {
-		if !tmux.IsKind(err, tmux.ErrKindSessionExists) {
-			writeTmuxError(w, err)
-			return
-		}
-		created := false
-		for i := 1; i <= 9; i++ {
-			candidate := fmt.Sprintf("%s-%d", req.Name, i)
-			if err := tmuxSvc.CreateSession(ctx, candidate, req.Cwd); err == nil {
-				finalName = candidate
-				created = true
-				break
-			} else if !tmux.IsKind(err, tmux.ErrKindSessionExists) {
-				writeTmuxError(w, err)
-				return
-			}
-		}
-		if !created {
-			writeTmuxError(w, &tmux.Error{Kind: tmux.ErrKindSessionExists, Msg: "all name variants already exist"})
-			return
-		}
+	finalName, err := createSessionWithAvailableName(ctx, tmuxSvc, req.Name, req.Cwd)
+	if err != nil {
+		writeTmuxError(w, err)
+		return
 	}
 	h.registerSessionUser(finalName, req.User)
 	if req.User != "" {
@@ -113,10 +95,41 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusCreated, map[string]any{"name": finalName})
 }
 
+func createSessionWithAvailableName(ctx context.Context, tmuxSvc tmuxService, seed, cwd string) (string, error) {
+	for i := 0; i <= maxSessionNameVariants; i++ {
+		candidate := sessionNameVariant(seed, i)
+		if !validate.SessionName(candidate) {
+			continue
+		}
+		if err := tmuxSvc.CreateSession(ctx, candidate, cwd); err == nil {
+			return candidate, nil
+		} else if !tmux.IsKind(err, tmux.ErrKindSessionExists) {
+			return "", err
+		}
+	}
+	return "", &tmux.Error{Kind: tmux.ErrKindSessionExists, Msg: "all name variants already exist"}
+}
+
+func sessionNameVariant(seed string, sequence int) string {
+	seed = strings.TrimSpace(seed)
+	if sequence <= 0 {
+		return seed
+	}
+	suffix := fmt.Sprintf("-%d", sequence)
+	if len(seed)+len(suffix) <= 64 {
+		return seed + suffix
+	}
+	maxSeedLen := 64 - len(suffix)
+	if maxSeedLen < 1 {
+		return suffix[1:]
+	}
+	return seed[:maxSeedLen] + suffix
+}
+
 // tmuxForUser returns the tmux service to use for the given user.
 // When user is empty, it returns the handler's default tmux service.
 // When user is set, it returns a new tmux.Service that wraps commands
-// with sudo -n -u <user>.
+// with the configured user switching method.
 func (h *Handler) tmuxForUser(user string) tmuxService {
 	user = strings.TrimSpace(user)
 	if user == "" {
@@ -127,7 +140,7 @@ func (h *Handler) tmuxForUser(user string) tmuxService {
 
 // tmuxForSession returns the tmux service for a session by looking up
 // which OS user owns it. If the session was created as a different user,
-// commands are wrapped with sudo -n -u <user>.
+// commands are wrapped with the configured user switching method.
 // When the session is not in the registry, it probes known multi-user
 // tmux servers as a fallback (the registry can be lost on restart).
 func (h *Handler) tmuxForSession(session string) tmuxService {
@@ -190,7 +203,7 @@ func (h *Handler) knownSessionUsers() []string {
 }
 
 // populateSessionUsersFromPresets loads session user mappings from
-// persistent storage and session presets so that multi-user sessions
+// persistent storage and pinned session presets so that multi-user sessions
 // are known after restart.
 func (h *Handler) populateSessionUsersFromPresets(ctx context.Context) {
 	if h.repo == nil {
@@ -202,10 +215,10 @@ func (h *Handler) populateSessionUsersFromPresets(ctx context.Context) {
 			h.sessionUsers.Store(session, user)
 		}
 	}
-	// Also load from session presets (which may have user overrides).
+	// Also load pinned session presets, which may have user overrides.
 	presets, err := h.repo.ListSessionPresets(ctx)
 	if err != nil {
-		slog.Warn("failed to load session presets for user registry", "err", err)
+		slog.Warn("failed to load pinned session presets for user registry", "err", err)
 		return
 	}
 	for _, preset := range presets {

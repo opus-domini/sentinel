@@ -271,9 +271,11 @@ func TestMarkerPatternGeneratedID(t *testing.T) {
 func TestFrequentDirectories(t *testing.T) {
 	t.Parallel()
 
+	const apiDir = "/srv/api"
+
 	h, st := newTestHandler(t, nil, nil)
 	ctx := context.Background()
-	for _, dir := range []string{"/srv/api", "/srv/web", "/srv/api"} {
+	for _, dir := range []string{apiDir, "/srv/web", apiDir} {
 		if err := st.RecordSessionDirectory(ctx, dir); err != nil {
 			t.Fatalf("RecordSessionDirectory(%s): %v", dir, err)
 		}
@@ -288,7 +290,7 @@ func TestFrequentDirectories(t *testing.T) {
 	body := jsonBody(t, w)
 	data, _ := body["data"].(map[string]any)
 	dirs, _ := data["dirs"].([]any)
-	if len(dirs) != 1 || dirs[0] != "/srv/api" {
+	if len(dirs) != 1 || dirs[0] != apiDir {
 		t.Fatalf("dirs = %#v, want [/srv/api]", dirs)
 	}
 }
