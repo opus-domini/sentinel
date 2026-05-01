@@ -32,11 +32,16 @@ const layoutValue = {
   sidebarCollapsed: false,
   setSidebarCollapsed: () => {},
   sidebarDensity: 'full' as const,
+  sidebarWidth: 340,
+  sidebarMinWidth: 240,
+  sidebarMaxWidth: 440,
   settingsOpen: false,
   setSettingsOpen: () => {},
   shellStyle: {},
   layoutGridClass: '',
   startSidebarResize: () => {},
+  resizeSidebarBy: () => {},
+  resizeSidebarTo: () => {},
 }
 
 describe('SideRail', () => {

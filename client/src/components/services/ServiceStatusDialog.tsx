@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { formatOpsUnitName } from '@/lib/opsServices'
 
 type ServiceStatusDialogProps = {
   open: boolean
@@ -27,7 +28,11 @@ export function ServiceStatusDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-[calc(100vw-1rem)] overflow-hidden sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{data?.service.unit ?? 'Service status'}</DialogTitle>
+          <DialogTitle>
+            {data?.service.unit
+              ? formatOpsUnitName(data.service.unit)
+              : 'Service status'}
+          </DialogTitle>
           <DialogDescription>
             {data?.summary ?? 'Runtime details from service manager'}
           </DialogDescription>
@@ -50,7 +55,7 @@ export function ServiceStatusDialog({
               <div className="grid gap-2 pr-2">
                 <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
                   <p className="text-[11px] font-semibold text-foreground">
-                    {data.service.unit}
+                    {formatOpsUnitName(data.service.unit)}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
                     checked at {data.checkedAt}

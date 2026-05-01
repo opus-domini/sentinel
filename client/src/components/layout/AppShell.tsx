@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import SideRail from '../SideRail'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import SettingsDialog from '@/components/settings/SettingsDialog'
 
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -19,11 +19,16 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
     setSidebarOpen,
     sidebarCollapsed,
     setSidebarCollapsed,
+    sidebarWidth,
+    sidebarMinWidth,
+    sidebarMaxWidth,
     settingsOpen,
     setSettingsOpen,
     shellStyle,
     layoutGridClass,
     startSidebarResize,
+    resizeSidebarBy,
+    resizeSidebarTo,
   } = useLayoutContext()
 
   const hasSidebar = sidebar != null
@@ -37,6 +42,30 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
   const handleSwipeOpen = useCallback(() => {
     setSidebarOpen(true)
   }, [setSidebarOpen])
+
+  const handleSidebarResizeKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return
+      }
+
+      const step = event.shiftKey ? 40 : 16
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        resizeSidebarBy(-step)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        resizeSidebarBy(step)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        resizeSidebarTo(sidebarMinWidth)
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        resizeSidebarTo(sidebarMaxWidth)
+      }
+    },
+    [resizeSidebarBy, resizeSidebarTo, sidebarMaxWidth, sidebarMinWidth],
+  )
 
   useEdgeSwipe({
     enabled: isMobile,
@@ -56,8 +85,16 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
 
         {hasSidebar && !sidebarCollapsed && (
           <div
-            className="hidden cursor-col-resize border-r border-border-subtle hover:bg-primary/20 md:block"
+            role="separator"
+            aria-label="Resize sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={sidebarMinWidth}
+            aria-valuemax={sidebarMaxWidth}
+            aria-valuenow={Math.round(sidebarWidth)}
+            tabIndex={0}
+            className="hidden cursor-col-resize border-r border-border-subtle outline-none hover:bg-primary/20 focus-visible:bg-primary/25 focus-visible:ring-2 focus-visible:ring-ring md:block"
             onMouseDown={startSidebarResize}
+            onKeyDown={handleSidebarResizeKeyDown}
           />
         )}
 

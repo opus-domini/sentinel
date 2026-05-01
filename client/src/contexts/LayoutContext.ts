@@ -11,11 +11,16 @@ type LayoutContextValue = {
     collapsed: boolean | ((prev: boolean) => boolean),
   ) => void
   sidebarDensity: SidebarDensity
+  sidebarWidth: number
+  sidebarMinWidth: number
+  sidebarMaxWidth: number
   settingsOpen: boolean
   setSettingsOpen: (open: boolean | ((prev: boolean) => boolean)) => void
   shellStyle: CSSProperties
   layoutGridClass: string
   startSidebarResize: (event: ReactMouseEvent<HTMLDivElement>) => void
+  resizeSidebarBy: (delta: number) => void
+  resizeSidebarTo: (width: number) => void
 }
 
 export const LayoutContext = createContext<LayoutContextValue | null>(null)

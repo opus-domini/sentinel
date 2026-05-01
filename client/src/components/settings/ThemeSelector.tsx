@@ -34,6 +34,7 @@ function ThemeCard({
     <button
       type="button"
       onClick={onSelect}
+      aria-pressed={isActive}
       className={cn(
         'flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors',
         isActive

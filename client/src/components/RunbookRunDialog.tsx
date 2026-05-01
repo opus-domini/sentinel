@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Play } from 'lucide-react'
 import type { OpsRunbook, RunbookParameter } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -60,16 +60,15 @@ export function RunbookRunDialog({
   onConfirm,
   onCancel,
 }: RunbookRunDialogProps) {
-  const params = runbook?.parameters ?? []
+  const params = useMemo(() => runbook?.parameters ?? [], [runbook])
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    if (open && params.length > 0) {
-      setValues(buildDefaults(params))
-      setErrors({})
-    }
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps -- reset on open
+    if (!open) return
+    setValues(buildDefaults(params))
+    setErrors({})
+  }, [open, params])
 
   const setValue = useCallback((name: string, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }))

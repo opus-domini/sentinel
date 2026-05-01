@@ -6,6 +6,7 @@ import {
   defaultOpsBrowseUnitTypes,
   deriveOpsTrackedServiceName,
   filterOpsServicesByQuery,
+  formatOpsUnitName,
   isOpsServiceActive,
   listOpsBrowseUnitTypes,
   upsertOpsService,
@@ -168,6 +169,16 @@ describe('opsServices', () => {
     expect(deriveOpsTrackedServiceName('multi-user.target')).toBe('multi-user')
     expect(deriveOpsTrackedServiceName('io.opusdomini.sentinel')).toBe(
       'io-opusdomini-sentinel',
+    )
+  })
+
+  it('formats systemd escaped unit names for display', () => {
+    expect(formatOpsUnitName('app-gnome\\x2dkeyring.service')).toBe(
+      'app-gnome-keyring.service',
+    )
+    expect(formatOpsUnitName('plain.service')).toBe('plain.service')
+    expect(formatOpsUnitName('emoji\\xf0\\x9f\\x98\\x8a.service')).toBe(
+      `emoji${String.fromCodePoint(0x1f60a)}.service`,
     )
   })
 })

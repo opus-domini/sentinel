@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import"],
+  "plugins": ["typescript", "import", "react", "jsx-a11y"],
   "categories": {
     "correctness": "off"
   },
@@ -83,6 +83,12 @@
     "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
     "import/first": "error",
     "import/no-commonjs": "error",
-    "import/no-duplicates": "error"
+    "import/no-duplicates": "error",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/aria-props": "error",
+    "jsx-a11y/aria-role": "error",
+    "react/button-has-type": "error",
+    "react/jsx-key": "error",
+    "react/jsx-no-duplicate-props": "error"
   }
 }

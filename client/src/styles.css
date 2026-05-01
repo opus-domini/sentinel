@@ -65,23 +65,12 @@
   --disconnected-text: #cccccc;
   --link: #8ab4ff;
 
-  /* Create button gradient */
-  --create-border: #2b64da;
-  --create-from: #1a3a6e;
-  --create-to: #122a52;
-  --create-hover-from: #1f4580;
-  --create-hover-to: #163460;
-
   /* Terminal controls */
   --border-bright: #3a3a3a;
   --terminal-key-text: #b0b0b0;
   --terminal-key-active: rgba(255, 255, 255, 0.08);
   --surface-terminal-bar: #1c1c1e;
   --border-terminal-row: rgba(255, 255, 255, 0.04);
-
-  /* Brand logo gradient */
-  --brand-from: #1f2f56;
-  --brand-to: #16233e;
 }
 
 @theme inline {
@@ -174,73 +163,6 @@
 
   body {
     @apply m-0 bg-background font-mono text-[13px] text-foreground antialiased;
-  }
-}
-
-@layer components {
-  .landing-body {
-    @apply grid min-h-screen place-items-center;
-    background:
-      radial-gradient(
-        circle at 10% 10%,
-        rgba(37, 99, 235, 0.22),
-        transparent 45%
-      ),
-      radial-gradient(
-        circle at 90% 0%,
-        rgba(30, 64, 175, 0.16),
-        transparent 40%
-      ),
-      var(--background);
-  }
-
-  .landing-card {
-    @apply w-[min(760px,92vw)] rounded-xl border border-border bg-card p-6;
-    background-image: linear-gradient(
-      180deg,
-      rgba(23, 23, 23, 0.95),
-      rgba(14, 14, 14, 0.95)
-    );
-  }
-
-  .landing-card h1 {
-    @apply m-0 text-[28px] font-bold uppercase tracking-[0.08em];
-  }
-
-  .landing-card p {
-    @apply mb-0 mt-2 text-secondary-foreground;
-  }
-
-  .landing-meta {
-    @apply my-4 grid gap-2;
-  }
-
-  .pill {
-    @apply inline-flex h-6 w-fit items-center rounded-full border border-border bg-secondary px-2.5 text-secondary-foreground;
-  }
-
-  .landing-card a {
-    @apply text-link no-underline hover:underline;
-  }
-
-  .btn-create {
-    border-color: var(--create-border);
-    background: linear-gradient(
-      to bottom,
-      var(--create-from),
-      var(--create-to)
-    );
-    &:hover {
-      background: linear-gradient(
-        to bottom,
-        var(--create-hover-from),
-        var(--create-hover-to)
-      );
-    }
-  }
-
-  .brand-logo {
-    background: linear-gradient(to bottom, var(--brand-from), var(--brand-to));
   }
 }
 

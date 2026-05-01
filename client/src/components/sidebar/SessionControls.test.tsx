@@ -17,7 +17,7 @@ vi.mock('@/components/TooltipHelper', () => ({
 
 vi.mock('@/components/TmuxHelpDialog', () => ({
   default: ({ buttonSize }: { buttonSize?: string }) => (
-    <button aria-label="About Terminal" data-size={buttonSize} />
+    <button type="button" aria-label="About Terminal" data-size={buttonSize} />
   ),
 }))
 

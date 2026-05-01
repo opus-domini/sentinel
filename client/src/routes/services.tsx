@@ -54,6 +54,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
   defaultOpsBrowseUnitTypes,
   deriveOpsTrackedServiceName,
+  formatOpsUnitName,
   listOpsBrowseUnitTypes,
   sortOpsBrowseUnitTypes,
   upsertOpsService,
@@ -375,6 +376,7 @@ function ServicesPage() {
       list = list.filter(
         (s) =>
           s.unit.toLowerCase().includes(q) ||
+          formatOpsUnitName(s.unit).toLowerCase().includes(q) ||
           s.description.toLowerCase().includes(q),
       )
     }
@@ -679,7 +681,7 @@ function ServicesPage() {
             method: 'POST',
             body: JSON.stringify({
               name,
-              displayName: svc.description || svc.unit,
+              displayName: svc.description || formatOpsUnitName(svc.unit),
               manager: svc.manager,
               unit: svc.unit,
               scope: svc.scope,
@@ -690,7 +692,7 @@ function ServicesPage() {
           }
           pushToast({
             level: 'success',
-            title: svc.description || svc.unit,
+            title: svc.description || formatOpsUnitName(svc.unit),
             message: 'Service tracked',
           })
           void refreshBrowse()

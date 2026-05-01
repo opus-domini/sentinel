@@ -21,6 +21,9 @@ const opsBrowseUnitTypeOrder = [
 
 type HasActiveState = { activeState: string }
 
+const systemdHexEscapePattern = /(?:\\x[0-9a-fA-F]{2})+/g
+const systemdHexBytePattern = /\\x([0-9a-fA-F]{2})/g
+
 function normalizedBrowseUnitType(raw: string): string {
   const type = raw.trim().toLowerCase()
   return type === '' ? 'unit' : type
@@ -153,6 +156,17 @@ export function defaultOpsBrowseUnitTypes(types: Array<string>): Array<string> {
   if (normalized.length === 0) return []
   if (normalized.includes('service')) return ['service']
   return normalized
+}
+
+export function formatOpsUnitName(unit: string): string {
+  return unit.replace(systemdHexEscapePattern, (sequence) => {
+    const bytes = Array.from(
+      sequence.matchAll(systemdHexBytePattern),
+      (match) => Number.parseInt(match[1], 16),
+    )
+    if (bytes.length === 0) return sequence
+    return new TextDecoder().decode(new Uint8Array(bytes))
+  })
 }
 
 export function deriveOpsTrackedServiceName(unit: string): string {

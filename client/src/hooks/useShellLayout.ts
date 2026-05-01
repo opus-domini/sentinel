@@ -11,6 +11,10 @@ type UseShellLayoutOptions = {
   onResizeEnd?: () => void
 }
 
+function clampSidebarWidth(width: number, minWidth: number, maxWidth: number) {
+  return Math.min(maxWidth, Math.max(minWidth, width))
+}
+
 export function useShellLayout({
   storageKey,
   defaultSidebarWidth,
@@ -39,6 +43,32 @@ export function useShellLayout({
     return defaultSidebarWidth
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  const notifyResizeEnd = useCallback(() => {
+    if (onResizeEnd) {
+      window.requestAnimationFrame(onResizeEnd)
+    }
+  }, [onResizeEnd])
+
+  const resizeSidebarTo = useCallback(
+    (width: number) => {
+      setSidebarWidth(
+        clampSidebarWidth(width, minSidebarWidth, maxSidebarWidth),
+      )
+      notifyResizeEnd()
+    },
+    [maxSidebarWidth, minSidebarWidth, notifyResizeEnd],
+  )
+
+  const resizeSidebarBy = useCallback(
+    (delta: number) => {
+      setSidebarWidth((current) =>
+        clampSidebarWidth(current + delta, minSidebarWidth, maxSidebarWidth),
+      )
+      notifyResizeEnd()
+    },
+    [maxSidebarWidth, minSidebarWidth, notifyResizeEnd],
+  )
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, sidebarCollapsed ? '1' : '0')
@@ -95,9 +125,10 @@ export function useShellLayout({
 
       const onMove = (moveEvent: MouseEvent) => {
         const delta = moveEvent.clientX - startX
-        const nextWidth = Math.min(
+        const nextWidth = clampSidebarWidth(
+          startWidth + delta,
+          minSidebarWidth,
           maxSidebarWidth,
-          Math.max(minSidebarWidth, startWidth + delta),
         )
         setSidebarWidth(nextWidth)
       }
@@ -105,9 +136,7 @@ export function useShellLayout({
       const onUp = () => {
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
-        if (onResizeEnd) {
-          window.requestAnimationFrame(onResizeEnd)
-        }
+        notifyResizeEnd()
       }
 
       window.addEventListener('mousemove', onMove)
@@ -117,7 +146,7 @@ export function useShellLayout({
       isMobile,
       maxSidebarWidth,
       minSidebarWidth,
-      onResizeEnd,
+      notifyResizeEnd,
       sidebarCollapsed,
       sidebarWidth,
     ],
@@ -129,10 +158,15 @@ export function useShellLayout({
     sidebarCollapsed,
     setSidebarCollapsed,
     sidebarDensity,
+    sidebarWidth,
+    sidebarMinWidth: minSidebarWidth,
+    sidebarMaxWidth: maxSidebarWidth,
     settingsOpen,
     setSettingsOpen,
     shellStyle,
     layoutGridClass,
     startSidebarResize,
+    resizeSidebarBy,
+    resizeSidebarTo,
   }
 }

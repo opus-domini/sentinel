@@ -25,10 +25,21 @@ import {
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useLogStream } from '@/hooks/useLogStream'
+import { formatOpsUnitName } from '@/lib/opsServices'
 import { parseLogLines, parseSingleLine } from '@/lib/log-parser'
 import { cn } from '@/lib/utils'
 
 const LOG_BUFFER_MAX = 5_000
+
+type ServiceLogTarget = Pick<
+  OpsBrowsedService,
+  'manager' | 'scope' | 'tracked' | 'trackedName' | 'unit'
+>
+
+type ServiceLogRequest = {
+  target: ServiceLogTarget
+  url: string
+}
 
 type ServiceLogsSheetProps = {
   open: boolean
@@ -39,6 +50,20 @@ type ServiceLogsSheetProps = {
   authenticated: boolean
   tokenRequired: boolean
   api: <T>(url: string, init?: RequestInit) => Promise<T>
+}
+
+function buildServiceLogURL(service: ServiceLogTarget): string {
+  if (service.tracked && service.trackedName) {
+    return `/api/ops/services/${encodeURIComponent(service.trackedName)}/logs?lines=200`
+  }
+
+  const params = new URLSearchParams({
+    unit: service.unit,
+    scope: service.scope,
+    manager: service.manager,
+    lines: '200',
+  })
+  return `/api/ops/services/unit/logs?${params.toString()}`
 }
 
 export function ServiceLogsSheet({
@@ -58,12 +83,35 @@ export function ServiceLogsSheet({
   const [follow, setFollow] = useState(true)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const lineCounterRef = useRef(0)
-  const serviceRef = useRef<OpsBrowsedService | null>(null)
+  const serviceRef = useRef<ServiceLogTarget | null>(null)
+
+  const initialLogRequest = useMemo<ServiceLogRequest | null>(() => {
+    if (!service || !open) return null
+    const target: ServiceLogTarget = {
+      manager: service.manager,
+      scope: service.scope,
+      tracked: service.tracked,
+      trackedName: service.trackedName,
+      unit: service.unit,
+    }
+    return {
+      target,
+      url: buildServiceLogURL(target),
+    }
+  }, [
+    fetchKey,
+    open,
+    service?.manager,
+    service?.scope,
+    service?.tracked,
+    service?.trackedName,
+    service?.unit,
+  ])
 
   // Fetch initial logs when fetchKey changes (i.e. when opened for a service)
   useEffect(() => {
-    if (!service || !open) return
-    serviceRef.current = service
+    if (!initialLogRequest) return
+    serviceRef.current = initialLogRequest.target
     setLoading(true)
     setLogLines([])
     setSearch('')
@@ -74,26 +122,11 @@ export function ServiceLogsSheet({
     let cancelled = false
     const fetchLogs = async () => {
       try {
-        let output = ''
-        if (service.tracked && service.trackedName) {
-          const data = await api<OpsServiceLogsResponse>(
-            `/api/ops/services/${encodeURIComponent(service.trackedName)}/logs?lines=200`,
-          )
-          output = data.output
-        } else {
-          const params = new URLSearchParams({
-            unit: service.unit,
-            scope: service.scope,
-            manager: service.manager,
-            lines: '200',
-          })
-          const data = await api<OpsUnitLogsResponse>(
-            `/api/ops/services/unit/logs?${params.toString()}`,
-          )
-          output = data.output
-        }
+        const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(
+          initialLogRequest.url,
+        )
         if (cancelled) return
-        const parsed = parseLogLines(output)
+        const parsed = parseLogLines(data.output)
         lineCounterRef.current = parsed.length
         setLogLines(parsed)
         setStreamEnabled(true)
@@ -118,10 +151,7 @@ export function ServiceLogsSheet({
     return () => {
       cancelled = true
     }
-    // fetchKey drives re-fetching; service/open are also checked but fetchKey
-    // is what changes each time the user clicks "Logs" on a row.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchKey])
+  }, [api, initialLogRequest])
 
   const handleStreamLine = useCallback((line: string) => {
     lineCounterRef.current += 1
@@ -161,25 +191,10 @@ export function ServiceLogsSheet({
     if (!svc) return
     setStreamEnabled(false)
     try {
-      let output = ''
-      if (svc.tracked && svc.trackedName) {
-        const data = await api<OpsServiceLogsResponse>(
-          `/api/ops/services/${encodeURIComponent(svc.trackedName)}/logs?lines=200`,
-        )
-        output = data.output
-      } else {
-        const params = new URLSearchParams({
-          unit: svc.unit,
-          scope: svc.scope,
-          manager: svc.manager,
-          lines: '200',
-        })
-        const data = await api<OpsUnitLogsResponse>(
-          `/api/ops/services/unit/logs?${params.toString()}`,
-        )
-        output = data.output
-      }
-      const parsed = parseLogLines(output)
+      const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(
+        buildServiceLogURL(svc),
+      )
+      const parsed = parseLogLines(data.output)
       lineCounterRef.current = parsed.length
       setLogLines(parsed)
       setFollow(true)
@@ -204,7 +219,9 @@ export function ServiceLogsSheet({
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className="flex flex-col gap-0 p-0">
         <SheetHeader className="shrink-0 border-b border-border-subtle px-4 py-3">
-          <SheetTitle>{service?.unit || 'Service logs'}</SheetTitle>
+          <SheetTitle>
+            {service ? formatOpsUnitName(service.unit) : 'Service logs'}
+          </SheetTitle>
           <SheetDescription>
             {streamEnabled && streamStatus === 'connected' ? (
               <span className="inline-flex items-center gap-1.5">

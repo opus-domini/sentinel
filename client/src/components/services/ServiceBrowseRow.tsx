@@ -13,7 +13,11 @@ import {
 import type { OpsBrowsedService, OpsServiceAction } from '@/types'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
-import { canStartOpsService, canStopOpsService } from '@/lib/opsServices'
+import {
+  canStartOpsService,
+  canStopOpsService,
+  formatOpsUnitName,
+} from '@/lib/opsServices'
 import { browsedServiceDot } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 
@@ -49,6 +53,7 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
   const stopDisabled = rowBusy || !canStopOpsService(svc)
   const enableDisabled = rowBusy || !canEnableService(svc)
   const disableDisabled = rowBusy || !canDisableService(svc)
+  const unitLabel = formatOpsUnitName(svc.unit)
 
   return (
     <div className="grid min-w-0 gap-2 rounded border border-border-subtle bg-surface-elevated px-2.5 py-2">
@@ -61,8 +66,11 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
         />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            <p className="min-w-0 flex-1 truncate text-[12px] font-medium">
-              {svc.unit}
+            <p
+              className="min-w-0 flex-1 truncate text-[12px] font-medium"
+              title={unitLabel === svc.unit ? undefined : svc.unit}
+            >
+              {unitLabel}
             </p>
             <div className="flex shrink-0 items-center gap-1">
               <TooltipHelper content="Unit type discovered on the host">
@@ -106,11 +114,13 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
               </TooltipHelper>
             </div>
           </div>
-          {svc.description && svc.description !== svc.unit && (
-            <p className="truncate text-[10px] text-muted-foreground">
-              {svc.description}
-            </p>
-          )}
+          {svc.description &&
+            svc.description !== svc.unit &&
+            svc.description !== unitLabel && (
+              <p className="truncate text-[10px] text-muted-foreground">
+                {svc.description}
+              </p>
+            )}
         </div>
         {pending && (
           <span className="shrink-0 text-[10px] text-muted-foreground">

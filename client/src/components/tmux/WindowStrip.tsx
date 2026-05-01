@@ -14,7 +14,13 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { DragEndEvent, Modifier, ClientRect } from '@dnd-kit/core'
+import type {
+  ClientRect,
+  DragEndEvent,
+  DraggableAttributes,
+  DraggableSyntheticListeners,
+  Modifier,
+} from '@dnd-kit/core'
 import type { CSSProperties, WheelEvent as ReactWheelEvent } from 'react'
 import type { Transform } from '@dnd-kit/utilities'
 import { ChevronDown, Plus, User, X } from 'lucide-react'
@@ -129,8 +135,8 @@ type WindowChipProps = {
   onRenameWindow: (windowInfo: WindowInfo) => void
   containerRef?: (node: HTMLDivElement | null) => void
   containerStyle?: CSSProperties
-  dragAttributes?: Record<string, any>
-  dragListeners?: Record<string, any>
+  dragAttributes?: DraggableAttributes
+  dragListeners?: DraggableSyntheticListeners
   isDragging?: boolean
 }
 

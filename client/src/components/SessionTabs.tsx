@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import type { KeyboardEvent } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -75,6 +76,16 @@ function SortableTab({
     touchAction: dragEnabled ? undefined : ('pan-x' as const),
   }
 
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onSelect()
+    } else if (event.key === 'Backspace' || event.key === 'Delete') {
+      event.preventDefault()
+      onClose()
+    }
+  }
+
   const tabContent = (
     <div
       ref={setNodeRef}
@@ -85,11 +96,14 @@ function SortableTab({
           ? 'bg-surface-active text-foreground'
           : 'bg-surface-elevated text-secondary-foreground hover:bg-surface-active',
       )}
-      onClick={onSelect}
       {...(dragEnabled ? attributes : {})}
       {...(dragEnabled ? listeners : {})}
+      onClick={onSelect}
+      onKeyDown={handleKeyDown}
       role="tab"
       aria-selected={isActive}
+      aria-label={tabName}
+      tabIndex={0}
     >
       <span className="min-w-0 truncate pr-2">{tabName}</span>
       <Button
@@ -100,7 +114,7 @@ function SortableTab({
           event.stopPropagation()
           onClose()
         }}
-        aria-label="Close tab"
+        aria-label={`Close ${tabName} tab`}
       >
         <X className="h-2.5 w-2.5" />
       </Button>

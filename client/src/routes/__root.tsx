@@ -167,6 +167,7 @@ function RootComponent() {
       window.dispatchEvent(new Event('resize'))
     },
   })
+  const { setSidebarOpen } = layout
 
   const { offline, retry } = useServerStatus()
   const meta = useSentinelMeta()
@@ -181,9 +182,9 @@ function RootComponent() {
 
   useEffect(() => {
     if (isMobile) {
-      layout.setSidebarOpen(false)
+      setSidebarOpen(false)
     }
-  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isMobile, pathname, setSidebarOpen])
 
   const authenticated = !meta.tokenRequired || !meta.unauthorized
   const needsTokenGate = meta.loaded && meta.tokenRequired && meta.unauthorized
