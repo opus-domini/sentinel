@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.30](https://github.com/opus-domini/sentinel/compare/v0.5.29...v0.5.30) (2026-05-01)
+
+
+### Features
+
+* use systemd-run for multi-user tmux ([1b4e701](https://github.com/opus-domini/sentinel/commit/1b4e7019245c29d205f5333bf9f71e328d1ea687))
+
+
+### Bug Fixes
+
+* harden tmux terminal frontend ([8f4600e](https://github.com/opus-domini/sentinel/commit/8f4600e71e4dfc0eeaddb9930d1ecc138010c635))
+* harden tmux terminal rendering ([b304601](https://github.com/opus-domini/sentinel/commit/b3046016b38cf99c2349289e185e390db7637bc4))
+
+
+### Refactors
+
+* polish frontend accessibility and services ([9074f5c](https://github.com/opus-domini/sentinel/commit/9074f5cccd55b8faa127084d7a8d6168139f6e1f))
+* split tmux handlers and improve coverage ([6927cc8](https://github.com/opus-domini/sentinel/commit/6927cc8a815ba5042c8b63168f0bd96474d00ec3))
+
 ## [0.5.29](https://github.com/opus-domini/sentinel/compare/v0.5.28...v0.5.29) (2026-04-23)
 
 
