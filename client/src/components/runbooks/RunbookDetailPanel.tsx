@@ -1,11 +1,31 @@
 import cronstrue from 'cronstrue'
-import { Clock, Pause, Pencil, Play, Trash2 } from 'lucide-react'
-import type { OpsRunbook, OpsSchedule } from '@/types'
+import {
+  CheckCircle2,
+  Clock,
+  Pause,
+  Pencil,
+  Play,
+  SlidersHorizontal,
+  Timer,
+  Trash2,
+  Webhook,
+  XCircle,
+} from 'lucide-react'
+import type { OpsRunbook, OpsRunbookRun, OpsSchedule } from '@/types'
 import type { ScheduleDraft } from '@/components/RunbookScheduleEditor'
 import { RunbookScheduleEditor } from '@/components/RunbookScheduleEditor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { useDateFormat } from '@/hooks/useDateFormat'
+import { cn } from '@/lib/utils'
+import {
+  formatRunbookDuration,
+  isActiveRunbookJob,
+  runbookJobDurationMs,
+  runbookJobProgress,
+  runbookStatusMeta,
+} from '@/lib/runbookPresentation'
 
 function isBuiltinRunbook(id: string): boolean {
   return id.startsWith('ops.')
@@ -44,6 +64,7 @@ function formatScheduleDate(iso: string, tz?: string): string {
 
 type RunbookDetailPanelProps = {
   runbook: OpsRunbook
+  lastJob: OpsRunbookRun | null
   schedule: OpsSchedule | null
   editingSchedule: {
     runbookId: string
@@ -66,6 +87,7 @@ type RunbookDetailPanelProps = {
 
 export function RunbookDetailPanel({
   runbook,
+  lastJob,
   schedule,
   editingSchedule,
   scheduleSaving,
@@ -79,6 +101,24 @@ export function RunbookDetailPanel({
   onToggleScheduleEnabled,
   onTriggerSchedule,
 }: RunbookDetailPanelProps) {
+  const { formatDateTime } = useDateFormat()
+  const status = runbookStatusMeta(runbook, lastJob ? [lastJob] : [])
+  const activeRun = lastJob != null && isActiveRunbookJob(lastJob)
+  const progress = lastJob ? runbookJobProgress(lastJob) : 0
+  const runDuration = lastJob
+    ? formatRunbookDuration(runbookJobDurationMs(lastJob))
+    : 'n/a'
+  const lastRunLabel = lastJob
+    ? `${lastJob.status} · ${formatDateTime(lastJob.createdAt)}`
+    : 'No runs recorded'
+  const scheduleLabel = schedule
+    ? schedule.enabled
+      ? schedule.nextRunAt
+        ? `Next ${formatScheduleDate(schedule.nextRunAt, schedule.timezone)}`
+        : 'Enabled'
+      : 'Paused'
+    : 'Manual only'
+
   return (
     <div className="grid gap-2 rounded-lg border border-border-subtle bg-surface-elevated p-3">
       <div className="grid gap-2 sm:flex sm:items-center sm:justify-between">
@@ -130,8 +170,76 @@ export function RunbookDetailPanel({
             onClick={() => onRun(runbook.id)}
           >
             <Play className="h-3 w-3" />
-            Run
+            {activeRun ? 'Run again' : 'Run'}
           </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-1 rounded border border-border-subtle bg-surface-overlay px-2.5 py-2">
+          <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Readiness
+          </span>
+          <span
+            className={cn(
+              'inline-flex min-w-0 items-center gap-1.5 text-[12px] font-semibold',
+              status.textClass,
+            )}
+          >
+            <span className={cn('h-2 w-2 rounded-full', status.dotClass)} />
+            {status.label}
+          </span>
+        </div>
+        <div className="grid gap-1 rounded border border-border-subtle bg-surface-overlay px-2.5 py-2">
+          <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Last run
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
+            {lastJob == null ? (
+              <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+            ) : lastJob.status.trim().toLowerCase() === 'failed' ? (
+              <XCircle className="h-3 w-3 shrink-0 text-destructive-foreground" />
+            ) : (
+              <CheckCircle2 className="h-3 w-3 shrink-0 text-ok-foreground" />
+            )}
+            <span className="min-w-0 truncate">{lastRunLabel}</span>
+          </span>
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Timer className="h-2.5 w-2.5" />
+            {runDuration}
+          </span>
+          {activeRun && (
+            <span className="h-1 overflow-hidden rounded-full bg-surface-elevated">
+              <span
+                className="block h-full rounded-full bg-warning"
+                style={{ width: `${progress}%` }}
+              />
+            </span>
+          )}
+        </div>
+        <div className="grid gap-1 rounded border border-border-subtle bg-surface-overlay px-2.5 py-2">
+          <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Schedule
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
+            <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 truncate">{scheduleLabel}</span>
+          </span>
+        </div>
+        <div className="grid gap-1 rounded border border-border-subtle bg-surface-overlay px-2.5 py-2">
+          <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Inputs
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
+            <SlidersHorizontal className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span>{runbook.parameters?.length ?? 0} parameters</span>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+            <Webhook className="h-2.5 w-2.5 shrink-0" />
+            <span className="min-w-0 truncate">
+              {runbook.webhookURL ? 'Webhook enabled' : 'No webhook'}
+            </span>
+          </span>
         </div>
       </div>
 

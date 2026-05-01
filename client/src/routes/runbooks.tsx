@@ -8,6 +8,7 @@ import { RunbookEditor } from '@/components/RunbookEditor'
 import { RunbookRunDialog } from '@/components/RunbookRunDialog'
 import { RunbookDetailPanel } from '@/components/runbooks/RunbookDetailPanel'
 import { RunbookJobHistory } from '@/components/runbooks/RunbookJobHistory'
+import { RunbookOperationsSummary } from '@/components/runbooks/RunbookOperationsSummary'
 import RunbooksSidebar from '@/components/RunbooksSidebar'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
@@ -82,7 +83,7 @@ function RunbooksPage() {
         />
       }
     >
-      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,rgba(147,51,234,.16),transparent_34%),var(--background)]">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-background">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Button
@@ -124,44 +125,58 @@ function RunbooksPage() {
             />
           )}
 
-          {showDetail && (
+          {!showEditor && (
             <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden">
-              <RunbookDetailPanel
-                runbook={selectedRunbook}
-                schedule={selectedSchedule}
-                editingSchedule={editingSchedule}
-                scheduleSaving={scheduleSaving}
-                onEdit={startEdit}
-                onDelete={confirmDelete}
-                onRun={startRun}
-                onEditSchedule={setEditingSchedule}
-                onCancelScheduleEdit={() => setEditingSchedule(null)}
-                onSaveSchedule={(draft) => void saveSchedule(draft)}
-                onDeleteSchedule={(id) => void deleteSchedule(id)}
-                onToggleScheduleEnabled={(s) => void toggleScheduleEnabled(s)}
-                onTriggerSchedule={(id) => void triggerSchedule(id)}
+              <RunbookOperationsSummary
+                runbooks={runbooks}
+                jobs={jobs}
+                schedules={schedules}
               />
-              <RunbookJobHistory jobs={selectedJobs} onDeleteJob={deleteJob} />
-            </div>
-          )}
 
-          {!showEditor && !showDetail && (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <p className="text-[13px] text-muted-foreground">
-                  {runbooks.length > 0
-                    ? 'Select a runbook from the sidebar'
-                    : 'No runbooks yet'}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 h-7 cursor-pointer text-[11px]"
-                  onClick={startCreate}
-                >
-                  Create new runbook
-                </Button>
-              </div>
+              {showDetail ? (
+                <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden">
+                  <RunbookDetailPanel
+                    runbook={selectedRunbook}
+                    lastJob={selectedJobs[0] ?? null}
+                    schedule={selectedSchedule}
+                    editingSchedule={editingSchedule}
+                    scheduleSaving={scheduleSaving}
+                    onEdit={startEdit}
+                    onDelete={confirmDelete}
+                    onRun={startRun}
+                    onEditSchedule={setEditingSchedule}
+                    onCancelScheduleEdit={() => setEditingSchedule(null)}
+                    onSaveSchedule={(draft) => void saveSchedule(draft)}
+                    onDeleteSchedule={(id) => void deleteSchedule(id)}
+                    onToggleScheduleEnabled={(s) =>
+                      void toggleScheduleEnabled(s)
+                    }
+                    onTriggerSchedule={(id) => void triggerSchedule(id)}
+                  />
+                  <RunbookJobHistory
+                    jobs={selectedJobs}
+                    onDeleteJob={deleteJob}
+                  />
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-[13px] text-muted-foreground">
+                      {runbooks.length > 0
+                        ? 'Select a runbook from the sidebar'
+                        : 'No runbooks yet'}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 h-7 cursor-pointer text-[11px]"
+                      onClick={startCreate}
+                    >
+                      Create new runbook
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

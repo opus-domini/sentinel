@@ -283,8 +283,8 @@ export function useRunbooksPage() {
         }
         pushToast({
           level: 'success',
-          title: runbook.name,
-          message: `run completed with status ${job.status}`,
+          title: 'Runbook queued',
+          message: `${runbook.name} started as ${job.id.slice(0, 8)}`,
         })
       } catch (error) {
         pushToast({

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   ChevronDown,
@@ -21,13 +21,19 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useDateFormat } from '@/hooks/useDateFormat'
+import {
+  formatRunbookDuration,
+  isActiveRunbookJob,
+  runbookJobDurationMs,
+  runbookJobProgress,
+} from '@/lib/runbookPresentation'
 import { cn } from '@/lib/utils'
 
 function runbookJobStatusClass(status: string): string {
   const s = status.trim().toLowerCase()
   if (s === 'succeeded') return 'text-ok-foreground'
   if (s === 'failed') return 'text-destructive-foreground'
-  if (s === 'running') return 'text-warning-foreground'
+  if (s === 'running' || s === 'queued') return 'text-warning-foreground'
   return 'text-muted-foreground'
 }
 
@@ -35,6 +41,8 @@ type RunbookJobHistoryProps = {
   jobs: Array<OpsRunbookRun>
   onDeleteJob: (jobId: string) => Promise<void>
 }
+
+type JobFilter = 'all' | 'active' | 'failed' | 'succeeded'
 
 export function RunbookJobHistory({
   jobs,
@@ -44,6 +52,28 @@ export function RunbookJobHistory({
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
   const [expandedStepIndices, setExpandedStepIndices] = useState<Set<number>>(
     new Set(),
+  )
+  const [filter, setFilter] = useState<JobFilter>('all')
+
+  const filteredJobs = useMemo(() => {
+    if (filter === 'all') return jobs
+    return jobs.filter((job) => {
+      const status = job.status.trim().toLowerCase()
+      if (filter === 'active') return isActiveRunbookJob(job)
+      return status === filter
+    })
+  }, [filter, jobs])
+
+  const counts = useMemo(
+    () => ({
+      active: jobs.filter(isActiveRunbookJob).length,
+      failed: jobs.filter((job) => job.status.trim().toLowerCase() === 'failed')
+        .length,
+      succeeded: jobs.filter(
+        (job) => job.status.trim().toLowerCase() === 'succeeded',
+      ).length,
+    }),
+    [jobs],
   )
 
   const toggleJobExpand = useCallback((jobId: string) => {
@@ -72,17 +102,45 @@ export function RunbookJobHistory({
     <div className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
       <ScrollArea className="h-full min-h-0">
         <div className="grid gap-1 p-2">
-          <div className="flex items-center justify-between px-1 pt-1">
-            <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-              Job History
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              {jobs.length} runs
-            </span>
+          <div className="grid gap-1 px-1 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                Job History
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {filteredJobs.length}/{jobs.length} runs
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {[
+                ['all', `All ${jobs.length}`],
+                ['active', `Active ${counts.active}`],
+                ['failed', `Failed ${counts.failed}`],
+                ['succeeded', `Succeeded ${counts.succeeded}`],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={cn(
+                    'h-6 rounded border px-2 text-[10px] transition-colors',
+                    filter === value
+                      ? 'border-primary/40 bg-primary/10 text-primary-text'
+                      : 'border-border-subtle text-muted-foreground hover:bg-surface-overlay',
+                  )}
+                  aria-pressed={filter === value}
+                  onClick={() => setFilter(value as JobFilter)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          {jobs.map((job) => {
+          {filteredJobs.map((job) => {
             const isExpanded = expandedJobId === job.id
             const steps = job.stepResults
+            const isActive = isActiveRunbookJob(job)
+            const progress = runbookJobProgress(job)
+            const duration = formatRunbookDuration(runbookJobDurationMs(job))
             return (
               <div
                 key={job.id}
@@ -125,8 +183,17 @@ export function RunbookJobHistory({
                         {job.completedSteps}/{job.totalSteps} steps
                       </span>
                     </div>
+                    {isActive && (
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-surface-overlay">
+                        <span
+                          className="block h-full rounded-full bg-warning"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    )}
                     <p className="truncate text-[10px] text-muted-foreground">
                       {formatDateTime(job.createdAt)}
+                      {` · ${duration}`}
                       {job.currentStep && ` · ${job.currentStep}`}
                     </p>
                     {job.error && (
@@ -153,7 +220,7 @@ export function RunbookJobHistory({
                         </div>
                       )}
                   </div>
-                  {job.status !== 'running' && (
+                  {!isActive && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <button
@@ -255,9 +322,11 @@ export function RunbookJobHistory({
               </div>
             )
           })}
-          {jobs.length === 0 && (
+          {filteredJobs.length === 0 && (
             <p className="p-2 text-[12px] text-muted-foreground">
-              No runs yet.
+              {jobs.length === 0
+                ? 'No runs yet.'
+                : 'No runs match this filter.'}
             </p>
           )}
         </div>

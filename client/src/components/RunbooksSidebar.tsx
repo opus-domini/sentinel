@@ -10,7 +10,17 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { useDateFormat } from '@/hooks/useDateFormat'
 import { cn } from '@/lib/utils'
+import {
+  formatRunbookDuration,
+  isActiveRunbookJob,
+  latestRunbookJob,
+  runbookJobDurationMs,
+  runbookJobProgress,
+  runbookSearchText,
+  runbookStatusMeta,
+} from '@/lib/runbookPresentation'
 
 type RunbooksSidebarProps = {
   isOpen: boolean
@@ -25,19 +35,6 @@ type RunbooksSidebarProps = {
   onTokenChange: (value: string) => void
   onSelectRunbook: (id: string | null) => void
   onCreateRunbook?: () => void
-}
-
-function runbookStatusDot(
-  runbook: OpsRunbook,
-  jobs: Array<OpsRunbookRun>,
-): string {
-  const lastJob = jobs.find((j) => j.runbookId === runbook.id)
-  if (!lastJob) return 'bg-muted-foreground/50'
-  const status = lastJob.status.trim().toLowerCase()
-  if (status === 'succeeded') return 'bg-ok'
-  if (status === 'failed') return 'bg-destructive'
-  if (status === 'running') return 'bg-warning'
-  return 'bg-muted-foreground/50'
 }
 
 export default function RunbooksSidebar({
@@ -57,6 +54,7 @@ export default function RunbooksSidebar({
   const [isTokenOpen, setIsTokenOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const debouncedFilter = useDebouncedValue(filter)
+  const { formatDateTime } = useDateFormat()
 
   const lockLabel = useMemo(() => {
     if (tokenRequired) {
@@ -68,12 +66,13 @@ export default function RunbooksSidebar({
   const filteredRunbooks = useMemo(() => {
     const q = debouncedFilter.trim().toLowerCase()
     if (q === '') return runbooks
-    return runbooks.filter(
-      (rb) =>
-        rb.name.toLowerCase().includes(q) ||
-        rb.description.toLowerCase().includes(q),
-    )
+    return runbooks.filter((rb) => runbookSearchText(rb).includes(q))
   }, [debouncedFilter, runbooks])
+
+  const scheduledRunbookIds = useMemo(
+    () => new Set(schedules.map((schedule) => schedule.runbookId)),
+    [schedules],
+  )
 
   const hasFilter = filter.trim() !== ''
 
@@ -185,8 +184,11 @@ export default function RunbooksSidebar({
               )}
 
               {filteredRunbooks.map((runbook) => {
-                const lastJob = jobs.find((j) => j.runbookId === runbook.id)
+                const lastJob = latestRunbookJob(runbook.id, jobs)
+                const status = runbookStatusMeta(runbook, jobs)
                 const isSelected = selectedRunbookId === runbook.id
+                const isActive = lastJob != null && isActiveRunbookJob(lastJob)
+                const progress = lastJob ? runbookJobProgress(lastJob) : 0
                 return (
                   <button
                     key={runbook.id}
@@ -205,10 +207,10 @@ export default function RunbooksSidebar({
                       <span
                         className={cn(
                           'h-2 w-2 shrink-0 rounded-full',
-                          runbookStatusDot(runbook, jobs),
+                          status.dotClass,
                         )}
                       />
-                      {schedules.some((s) => s.runbookId === runbook.id) && (
+                      {scheduledRunbookIds.has(runbook.id) && (
                         <Clock className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
                       )}
                       {runbook.webhookURL && (
@@ -217,15 +219,33 @@ export default function RunbooksSidebar({
                       <span className="min-w-0 flex-1 truncate font-semibold">
                         {runbook.name}
                       </span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      <span
+                        className={cn(
+                          'shrink-0 text-[10px] font-medium',
+                          status.textClass,
+                        )}
+                      >
+                        {status.label}
+                      </span>
+                    </div>
+                    {isActive && (
+                      <span className="h-1 overflow-hidden rounded-full bg-surface-overlay">
+                        <span
+                          className="block h-full rounded-full bg-warning"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </span>
+                    )}
+                    <div className="flex min-w-0 items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                      <span className="min-w-0 truncate">
+                        {lastJob
+                          ? `${formatDateTime(lastJob.createdAt)} · ${formatRunbookDuration(runbookJobDurationMs(lastJob))}`
+                          : 'never ran'}
+                      </span>
+                      <span className="shrink-0">
                         {runbook.steps.length} steps
                       </span>
                     </div>
-                    <span className="truncate text-[10px] text-muted-foreground">
-                      {lastJob
-                        ? `last: ${lastJob.status} · ${lastJob.createdAt}`
-                        : 'never ran'}
-                    </span>
                   </button>
                 )
               })}
