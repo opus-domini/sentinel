@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.32](https://github.com/opus-domini/sentinel/compare/v0.5.31...v0.5.32) (2026-05-01)
+
+
+### Features
+
+* improve runbook approval workflow ([5ea7380](https://github.com/opus-domini/sentinel/commit/5ea7380224b569594eb93acd7d7897d20a45e687))
+* improve runbooks operations UX ([3fd05df](https://github.com/opus-domini/sentinel/commit/3fd05dfb5f6cab0b534988aa355f43c4ac41a957))
+* improve services operations ux ([bc64d6f](https://github.com/opus-domini/sentinel/commit/bc64d6f3a7f89bc817dfc900b87f616cc0314c74))
+
+
+### Bug Fixes
+
+* satisfy runbook lint constants ([c4b769f](https://github.com/opus-domini/sentinel/commit/c4b769fef8474e6b0f7a1361f2d2822814c982f1))
+
 ## [0.5.31](https://github.com/opus-domini/sentinel/compare/v0.5.30...v0.5.31) (2026-05-01)
 
 
