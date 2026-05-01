@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.31](https://github.com/opus-domini/sentinel/compare/v0.5.30...v0.5.31) (2026-05-01)
+
+
+### Features
+
+* decouple session launchers from pinned sessions ([4d17ef8](https://github.com/opus-domini/sentinel/commit/4d17ef883b7323d51c3b99f4ce5644cf54558657))
+
+
+### Bug Fixes
+
+* keep systemd-run tmux sessions alive ([9722176](https://github.com/opus-domini/sentinel/commit/9722176b60eb3aedbb326811acaf5f44ef0038da))
+* remove pinned state on session kill ([4cf952b](https://github.com/opus-domini/sentinel/commit/4cf952b97b69e8b686675246b5dfda229e4941cc))
+
 ## [0.5.30](https://github.com/opus-domini/sentinel/compare/v0.5.29...v0.5.30) (2026-05-01)
 
 
