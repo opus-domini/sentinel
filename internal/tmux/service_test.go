@@ -85,6 +85,7 @@ func TestRunAsUserWrapsWithSystemdRun(t *testing.T) {
 		"--quiet",
 		"--service-type=exec",
 		"--expand-environment=no",
+		"--property=KillMode=process",
 		"--wait",
 		"--pipe",
 		"tmux",

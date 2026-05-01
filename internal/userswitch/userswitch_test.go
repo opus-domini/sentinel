@@ -77,6 +77,7 @@ func TestBuildTmuxCommandSystemdRun(t *testing.T) {
 		"--quiet",
 		"--service-type=exec",
 		"--expand-environment=no",
+		"--property=KillMode=process",
 		"--wait",
 		"--pipe",
 		"tmux",
@@ -100,13 +101,15 @@ func TestBuildTmuxCommandInteractiveSystemdRun(t *testing.T) {
 	if name != MethodSudo {
 		t.Fatalf("command name = %q, want %s", name, MethodSudo)
 	}
-	for _, want := range []string{"--pty", "--send-sighup"} {
+	for _, want := range []string{"--wait", "--pipe"} {
 		if !slices.Contains(args, want) {
 			t.Fatalf("interactive args missing %q: %#v", want, args)
 		}
 	}
-	if slices.Contains(args, "--pipe") {
-		t.Fatalf("interactive args should not contain --pipe: %#v", args)
+	for _, notWant := range []string{"--pty", "--send-sighup", "--property=KillMode=process"} {
+		if slices.Contains(args, notWant) {
+			t.Fatalf("interactive args should not contain %q: %#v", notWant, args)
+		}
 	}
 }
 

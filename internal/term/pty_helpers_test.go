@@ -60,8 +60,8 @@ func TestBuildTmuxAttachCommandAsUser(t *testing.T) {
 	for _, want := range []string{
 		"systemd-run",
 		"--machine=deploy@.host",
-		"--pty",
-		"--send-sighup",
+		"--wait",
+		"--pipe",
 		"tmux",
 		"attach",
 		"-t",
@@ -71,8 +71,8 @@ func TestBuildTmuxAttachCommandAsUser(t *testing.T) {
 			t.Fatalf("args missing %q: %#v", want, args)
 		}
 	}
-	if slices.Contains(args, "--pipe") {
-		t.Fatalf("interactive attach args should not contain --pipe: %#v", args)
+	if slices.Contains(args, "--pty") {
+		t.Fatalf("interactive attach args should not contain --pty: %#v", args)
 	}
 }
 

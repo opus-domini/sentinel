@@ -93,9 +93,11 @@ func systemdRunPrefix(user string, interactive bool) []string {
 		"--expand-environment=no",
 	}
 	if interactive {
-		return append(args, "--pty", "--send-sighup")
+		return append(args, "--wait", "--pipe")
 	}
-	return append(args, "--wait", "--pipe")
+	// tmux new-session -d starts a server process after the client exits.
+	// Keep systemd from tearing that child process down with the transient unit.
+	return append(args, "--property=KillMode=process", "--wait", "--pipe")
 }
 
 func shellQuote(value string) string {

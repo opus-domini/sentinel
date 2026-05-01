@@ -330,7 +330,7 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
-		for _, want := range []string{"'systemd-run'", "'--machine=postgres@.host'", "'--pty'", "'--same-dir'", "'/bin/sh'", "'-lc'"} {
+		for _, want := range []string{"'systemd-run'", "'--machine=postgres@.host'", "'--pipe'", "'--same-dir'", "'/bin/sh'", "'-lc'"} {
 			if !strings.Contains(gotKeys, want) {
 				t.Fatalf("wrapped command missing %s: %s", want, gotKeys)
 			}
