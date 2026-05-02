@@ -62,5 +62,6 @@ describe('SidebarShell', () => {
     expect(contentWrapper?.className).toContain('flex')
     expect(contentWrapper?.className).toContain('flex-col')
     expect(contentWrapper?.className).toContain('overflow-hidden')
+    expect(contentWrapper?.className).toContain('outline-none')
   })
 })

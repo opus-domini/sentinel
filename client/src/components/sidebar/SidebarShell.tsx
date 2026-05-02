@@ -107,7 +107,7 @@ export default function SidebarShell({
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       <FocusScope
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden outline-none"
         trapped={isMobile && isOpen}
         loop
       >
