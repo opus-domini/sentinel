@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.33](https://github.com/opus-domini/sentinel/compare/v0.5.32...v0.5.33) (2026-05-13)
+
+
+### Bug Fixes
+
+* refine sentinel pwa icon ([675a16a](https://github.com/opus-domini/sentinel/commit/675a16abf2efa9f5cc2a2efe3323324fb3eeb2c8))
+* remove broad focus rings from scroll containers ([c9d0391](https://github.com/opus-domini/sentinel/commit/c9d03913e2ab931d30f1cf11aedb0172e95cf65b))
+* stabilize terminal rendering and shortcuts ([7c91636](https://github.com/opus-domini/sentinel/commit/7c91636a2ce22b3a09f895259efa940f9f3314d9))
+* standardize pwa icons ([2e469be](https://github.com/opus-domini/sentinel/commit/2e469be72ea2b186018b94d943a0a5bbedff98ec))
+
 ## [0.5.32](https://github.com/opus-domini/sentinel/compare/v0.5.31...v0.5.32) (2026-05-01)
 
 
