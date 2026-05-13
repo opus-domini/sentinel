@@ -473,6 +473,9 @@ export default function WindowStrip({
             variant="outline"
             size="icon-xs"
             className="rounded-r-none border-r-0"
+            onMouseDown={(event) => {
+              event.preventDefault()
+            }}
             onClick={onCreateWindow}
             aria-label="Create blank window"
           >

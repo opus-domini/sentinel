@@ -30,18 +30,7 @@ vi.mock('@xterm/xterm', () => {
       onData = vi.fn(() => ({ dispose: _noop }))
       onResize = vi.fn(() => ({ dispose: _noop }))
       onSelectionChange = vi.fn(() => ({ dispose: _noop }))
-      loadAddon = vi.fn((addon: { __sentinelWebglAddon?: boolean }) => {
-        if (
-          addon.__sentinelWebglAddon === true &&
-          (
-            globalThis as typeof globalThis & {
-              __SENTINEL_FAIL_WEBGL_LOAD?: boolean
-            }
-          ).__SENTINEL_FAIL_WEBGL_LOAD === true
-        ) {
-          throw new Error('webgl load failed')
-        }
-      })
+      loadAddon = vi.fn()
       open = vi.fn((host: HTMLElement) => {
         const element = document.createElement('div')
         element.className = 'xterm'
@@ -62,7 +51,6 @@ vi.mock('@xterm/xterm', () => {
       getSelection = vi.fn(() => '')
       scrollToBottom = vi.fn()
       dispose = vi.fn()
-      clearTextureAtlas = vi.fn()
       attachCustomWheelEventHandler = vi.fn()
 
       constructor(options?: Record<string, unknown>) {
@@ -107,40 +95,6 @@ vi.mock('@xterm/addon-unicode-graphemes', () => ({
     dispose() {}
   },
 }))
-vi.mock('@xterm/addon-webgl', () => {
-  const instancesKey = '__SENTINEL_WEBGL_ADDON_INSTANCES'
-  ;(
-    globalThis as typeof globalThis & {
-      [instancesKey]?: Array<unknown>
-    }
-  )[instancesKey] = []
-  return {
-    WebglAddon: class {
-      __sentinelWebglAddon = true
-      contextLossCallbacks: Array<() => void> = []
-      atlasGrowthCallbacks: Array<(canvas: HTMLCanvasElement) => void> = []
-      onContextLoss = vi.fn((cb: () => void) => {
-        this.contextLossCallbacks.push(cb)
-        return { dispose() {} }
-      })
-      onAddTextureAtlasCanvas = vi.fn(
-        (cb: (canvas: HTMLCanvasElement) => void) => {
-          this.atlasGrowthCallbacks.push(cb)
-          return { dispose() {} }
-        },
-      )
-      dispose = vi.fn()
-
-      constructor() {
-        ;(
-          globalThis as typeof globalThis & {
-            __SENTINEL_WEBGL_ADDON_INSTANCES?: Array<unknown>
-          }
-        ).__SENTINEL_WEBGL_ADDON_INSTANCES?.push(this)
-      }
-    },
-  }
-})
 
 vi.mock('@/contexts/ToastContext', () => ({
   useToastContext: () => ({ pushToast: vi.fn() }),
@@ -233,17 +187,11 @@ function setupEnvironment() {
       __SENTINEL_TERMINAL_INSTANCES?: Array<unknown>
     }
   ).__SENTINEL_TERMINAL_INSTANCES = []
-  resetWebglAddonInstances()
   ;(
     globalThis as typeof globalThis & {
       __SENTINEL_IS_MOBILE_LAYOUT?: boolean
     }
   ).__SENTINEL_IS_MOBILE_LAYOUT = false
-  ;(
-    globalThis as typeof globalThis & {
-      __SENTINEL_FAIL_WEBGL_LOAD?: boolean
-    }
-  ).__SENTINEL_FAIL_WEBGL_LOAD = false
   globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
   document.documentElement.style.setProperty('--surface-inset', '#112233')
   document.documentElement.style.setProperty('--foreground', '#ddeeff')
@@ -277,33 +225,10 @@ function setupEnvironment() {
   })
 }
 
-function latestWebglAddon() {
-  return (
-    (
-      globalThis as typeof globalThis & {
-        __SENTINEL_WEBGL_ADDON_INSTANCES?: Array<{
-          contextLossCallbacks: Array<() => void>
-          atlasGrowthCallbacks: Array<(canvas: HTMLCanvasElement) => void>
-          dispose: ReturnType<typeof vi.fn>
-        }>
-      }
-    ).__SENTINEL_WEBGL_ADDON_INSTANCES?.at(-1) ?? null
-  )
-}
-
-function resetWebglAddonInstances() {
-  ;(
-    globalThis as typeof globalThis & {
-      __SENTINEL_WEBGL_ADDON_INSTANCES?: Array<unknown>
-    }
-  ).__SENTINEL_WEBGL_ADDON_INSTANCES = []
-}
-
 type MockTerminalInstance = {
   options: Record<string, unknown>
   cols: number
   rows: number
-  clearTextureAtlas: ReturnType<typeof vi.fn>
   loadAddon: ReturnType<typeof vi.fn>
   reset: ReturnType<typeof vi.fn>
   write: ReturnType<typeof vi.fn>
@@ -1026,7 +951,7 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
     expect(MockWebSocket.instances.length).toBe(countBefore)
   })
 
-  it('clears the texture atlas when the window regains focus', async () => {
+  it('refreshes the renderer when the window regains focus', async () => {
     const { result } = renderTerminalHook()
     const host = document.createElement('div')
     document.body.appendChild(host)
@@ -1037,7 +962,7 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
     })
 
     const terminal = latestTerminal()
-    terminal?.clearTextureAtlas.mockClear()
+    terminal?.refresh.mockClear()
 
     act(() => {
       Object.defineProperty(document, 'visibilityState', {
@@ -1048,12 +973,12 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
       window.dispatchEvent(new Event('focus'))
     })
 
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
+    expect(terminal?.refresh).toHaveBeenCalledWith(0, 23)
 
     host.remove()
   })
 
-  it('only refreshes the active session atlas when the window regains focus', async () => {
+  it('only refreshes the active session renderer when the window regains focus', async () => {
     const { result } = renderTerminalHook({
       openTabs: ['session-a', 'session-b'],
       activeSession: 'session-a',
@@ -1070,8 +995,8 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
     })
 
     const [activeTerminal, backgroundTerminal] = terminalInstances()
-    activeTerminal?.clearTextureAtlas.mockClear()
-    backgroundTerminal?.clearTextureAtlas.mockClear()
+    activeTerminal?.refresh.mockClear()
+    backgroundTerminal?.refresh.mockClear()
 
     act(() => {
       Object.defineProperty(document, 'visibilityState', {
@@ -1082,14 +1007,14 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
       window.dispatchEvent(new Event('focus'))
     })
 
-    expect(activeTerminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
-    expect(backgroundTerminal?.clearTextureAtlas).not.toHaveBeenCalled()
+    expect(activeTerminal?.refresh).toHaveBeenCalledWith(0, 23)
+    expect(backgroundTerminal?.refresh).not.toHaveBeenCalled()
 
     hostA.remove()
     hostB.remove()
   })
 
-  it('only refreshes the active session atlas on the periodic renderer refresh', async () => {
+  it('only refreshes the active session renderer on the periodic refresh', async () => {
     vi.useFakeTimers()
     try {
       const { result } = renderTerminalHook({
@@ -1108,8 +1033,8 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
       })
 
       const [activeTerminal, backgroundTerminal] = terminalInstances()
-      activeTerminal?.clearTextureAtlas.mockClear()
-      backgroundTerminal?.clearTextureAtlas.mockClear()
+      activeTerminal?.refresh.mockClear()
+      backgroundTerminal?.refresh.mockClear()
 
       act(() => {
         Object.defineProperty(document, 'visibilityState', {
@@ -1120,8 +1045,8 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
         vi.advanceTimersByTime(5 * 60 * 1000)
       })
 
-      expect(activeTerminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
-      expect(backgroundTerminal?.clearTextureAtlas).not.toHaveBeenCalled()
+      expect(activeTerminal?.refresh).toHaveBeenCalledWith(0, 23)
+      expect(backgroundTerminal?.refresh).not.toHaveBeenCalled()
 
       hostA.remove()
       hostB.remove()
@@ -1163,7 +1088,7 @@ describe('useTerminalTmux – terminal chrome', () => {
     const initialBackground = host.style.backgroundColor
 
     await act(async () => {
-      latestTerminal()?.clearTextureAtlas.mockClear()
+      latestTerminal()?.refresh.mockClear()
       window.dispatchEvent(
         new CustomEvent('sentinel-theme-change', { detail: 'dracula' }),
       )
@@ -1172,29 +1097,14 @@ describe('useTerminalTmux – terminal chrome', () => {
 
     expect(host.style.backgroundColor).not.toBe(initialBackground)
     expect(terminalRoot?.style.backgroundColor).toBe(host.style.backgroundColor)
-    expect(latestTerminal()?.clearTextureAtlas).toHaveBeenCalledTimes(1)
+    expect(latestTerminal()?.refresh).toHaveBeenCalledTimes(1)
 
     host.remove()
   })
 
-  it('skips the WebGL addon when WebGL2 is unavailable', () => {
-    const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
-    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
-      value: undefined,
-      writable: true,
-      configurable: true,
-    })
-
-    try {
-      renderTerminalHook()
-      expect(latestTerminal()?.loadAddon).toHaveBeenCalledTimes(6)
-    } finally {
-      Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
-        value: originalWebGL2RenderingContext,
-        writable: true,
-        configurable: true,
-      })
-    }
+  it('does not load a WebGL renderer addon', () => {
+    renderTerminalHook()
+    expect(latestTerminal()?.loadAddon).toHaveBeenCalledTimes(6)
   })
 
   it('assigns a name to the hidden terminal textarea', async () => {
@@ -1264,7 +1174,6 @@ describe('useTerminalTmux – resize traffic', () => {
 
     const terminal = latestTerminal()
     ws.send.mockClear()
-    terminal?.clearTextureAtlas.mockClear()
     terminal?.refresh.mockClear()
     act(() => {
       result.current.fitTerminal()
@@ -1272,7 +1181,6 @@ describe('useTerminalTmux – resize traffic', () => {
     })
 
     expect(ws.send).not.toHaveBeenCalled()
-    expect(terminal?.clearTextureAtlas).not.toHaveBeenCalled()
     expect(terminal?.refresh).not.toHaveBeenCalled()
 
     if (terminal) {
@@ -1286,7 +1194,6 @@ describe('useTerminalTmux – resize traffic', () => {
     expect(ws.send).toHaveBeenCalledWith(
       JSON.stringify({ type: 'resize', cols: 100, rows: 30 }),
     )
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
     expect(terminal?.refresh).toHaveBeenLastCalledWith(0, 29)
 
     host.remove()
@@ -1341,26 +1248,22 @@ describe('useTerminalTmux – incoming terminal writes', () => {
     const ws = connectSession()
     const windowWithMetrics = window as typeof window & {
       __SENTINEL_TERMINAL_METRICS?: {
+        renderer: 'dom'
         writeBatchCount: number
         writeBytes: number
         writeMaxQueueBytes: number
         writeRecoveries: number
-        webglLoadCount: number
-        webglMobileDisposals: number
-        webglLoadFailures: number
       }
     }
     const metrics = windowWithMetrics.__SENTINEL_TERMINAL_METRICS
     terminal?.write.mockClear()
 
     expect(metrics).toMatchObject({
+      renderer: 'dom',
       writeBatchCount: 0,
       writeBytes: 0,
       writeMaxQueueBytes: 0,
       writeRecoveries: 0,
-      webglLoadCount: 0,
-      webglMobileDisposals: 0,
-      webglLoadFailures: 0,
     })
 
     act(() => {
@@ -1375,13 +1278,11 @@ describe('useTerminalTmux – incoming terminal writes', () => {
     })
 
     expect(metrics).toMatchObject({
+      renderer: 'dom',
       writeBatchCount: 1,
       writeBytes: 3,
       writeMaxQueueBytes: 3,
       writeRecoveries: 0,
-      webglLoadCount: 0,
-      webglMobileDisposals: 0,
-      webglLoadFailures: 0,
     })
 
     unmount()
@@ -1672,505 +1573,6 @@ describe('useTerminalTmux – incoming terminal writes', () => {
   })
 })
 
-describe('useTerminalTmux – webgl context loss', () => {
-  let originalWebGL2: unknown
-  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext
-
-  beforeEach(() => {
-    setupEnvironment()
-    originalWebGL2 = (globalThis as { WebGL2RenderingContext?: unknown })
-      .WebGL2RenderingContext
-    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
-      value: function WebGL2RenderingContext() {},
-      writable: true,
-      configurable: true,
-    })
-    originalGetContext = HTMLCanvasElement.prototype.getContext
-    HTMLCanvasElement.prototype.getContext = function stubGetContext(
-      this: HTMLCanvasElement,
-      type: string,
-    ) {
-      if (type === 'webgl2') return {} as RenderingContext
-      return null
-    } as typeof HTMLCanvasElement.prototype.getContext
-  })
-
-  afterEach(() => {
-    globalThis.WebSocket = originalWebSocket
-    HTMLCanvasElement.prototype.getContext = originalGetContext
-    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
-      value: originalWebGL2,
-      writable: true,
-      configurable: true,
-    })
-  })
-
-  it('disposes the WebGL addon on context loss so xterm falls back to DOM', () => {
-    renderTerminalHook()
-    const addon = latestWebglAddon()
-    expect(addon).not.toBeNull()
-    expect(addon?.dispose).not.toHaveBeenCalled()
-
-    act(() => {
-      for (const cb of addon?.contextLossCallbacks ?? []) {
-        cb()
-      }
-    })
-
-    expect(addon?.dispose).toHaveBeenCalledTimes(1)
-  })
-
-  it('guards against a second context-loss firing after dispose', () => {
-    renderTerminalHook()
-    const addon = latestWebglAddon()
-    const cb = addon?.contextLossCallbacks[0]
-    expect(cb).toBeDefined()
-
-    act(() => {
-      cb?.()
-      cb?.()
-    })
-
-    expect(addon?.dispose).toHaveBeenCalledTimes(1)
-  })
-
-  it('falls back when the browser advertises WebGL2 but xterm cannot load the addon', () => {
-    ;(
-      globalThis as typeof globalThis & {
-        __SENTINEL_FAIL_WEBGL_LOAD?: boolean
-      }
-    ).__SENTINEL_FAIL_WEBGL_LOAD = true
-
-    renderTerminalHook()
-
-    const addon = latestWebglAddon()
-    const terminal = latestTerminal()
-    const windowWithMetrics = window as typeof window & {
-      __SENTINEL_TERMINAL_METRICS?: {
-        webglLoadCount: number
-        webglLoadFailures: number
-      }
-    }
-
-    expect(addon).not.toBeNull()
-    expect(terminal?.loadAddon).toHaveBeenCalled()
-    expect(addon?.dispose).toHaveBeenCalledTimes(1)
-    expect(windowWithMetrics.__SENTINEL_TERMINAL_METRICS).toMatchObject({
-      webglLoadCount: 0,
-      webglLoadFailures: 1,
-    })
-  })
-
-  it('does not load WebGL when the terminal starts in mobile layout', () => {
-    ;(
-      globalThis as typeof globalThis & {
-        __SENTINEL_IS_MOBILE_LAYOUT?: boolean
-      }
-    ).__SENTINEL_IS_MOBILE_LAYOUT = true
-
-    renderTerminalHook()
-    const windowWithMetrics = window as typeof window & {
-      __SENTINEL_TERMINAL_METRICS?: {
-        webglLoadCount: number
-        webglMobileDisposals: number
-      }
-    }
-
-    expect(latestWebglAddon()).toBeNull()
-    expect(windowWithMetrics.__SENTINEL_TERMINAL_METRICS).toMatchObject({
-      webglLoadCount: 0,
-      webglMobileDisposals: 0,
-    })
-  })
-
-  it('disposes WebGL on mobile fit so xterm falls back to DOM rendering', async () => {
-    const { result, rerender } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-
-    const addon = latestWebglAddon()
-    expect(addon).not.toBeNull()
-    const windowWithMetrics = window as typeof window & {
-      __SENTINEL_TERMINAL_METRICS?: {
-        webglLoadCount: number
-        webglDisposals: number
-        webglMobileDisposals: number
-      }
-    }
-    expect(windowWithMetrics.__SENTINEL_TERMINAL_METRICS).toMatchObject({
-      webglLoadCount: 1,
-      webglDisposals: 0,
-      webglMobileDisposals: 0,
-    })
-
-    ;(
-      globalThis as typeof globalThis & {
-        __SENTINEL_IS_MOBILE_LAYOUT?: boolean
-      }
-    ).__SENTINEL_IS_MOBILE_LAYOUT = true
-    rerender()
-
-    act(() => {
-      result.current.fitTerminal()
-    })
-
-    expect(addon?.dispose).toHaveBeenCalledTimes(1)
-    expect(windowWithMetrics.__SENTINEL_TERMINAL_METRICS).toMatchObject({
-      webglLoadCount: 1,
-      webglDisposals: 1,
-      webglMobileDisposals: 1,
-    })
-
-    host.remove()
-  })
-
-  it('restores WebGL when returning from mobile to desktop layout', async () => {
-    const { result, rerender } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-
-    const firstAddon = latestWebglAddon()
-    const windowWithMetrics = window as typeof window & {
-      __SENTINEL_TERMINAL_METRICS?: {
-        webglLoadCount: number
-        webglDisposals: number
-        webglMobileDisposals: number
-      }
-    }
-
-    ;(
-      globalThis as typeof globalThis & {
-        __SENTINEL_IS_MOBILE_LAYOUT?: boolean
-      }
-    ).__SENTINEL_IS_MOBILE_LAYOUT = true
-    rerender()
-    act(() => {
-      result.current.fitTerminal()
-    })
-    expect(firstAddon?.dispose).toHaveBeenCalledTimes(1)
-
-    ;(
-      globalThis as typeof globalThis & {
-        __SENTINEL_IS_MOBILE_LAYOUT?: boolean
-      }
-    ).__SENTINEL_IS_MOBILE_LAYOUT = false
-    rerender()
-    act(() => {
-      result.current.fitTerminal()
-    })
-
-    const restoredAddon = latestWebglAddon()
-    expect(restoredAddon).not.toBe(firstAddon)
-    expect(windowWithMetrics.__SENTINEL_TERMINAL_METRICS).toMatchObject({
-      webglLoadCount: 2,
-      webglDisposals: 1,
-      webglMobileDisposals: 1,
-    })
-
-    host.remove()
-  })
-
-  it('does not restore WebGL after context loss', async () => {
-    const { result } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-
-    const addon = latestWebglAddon()
-    act(() => {
-      for (const cb of addon?.contextLossCallbacks ?? []) {
-        cb()
-      }
-    })
-    act(() => {
-      result.current.fitTerminal()
-    })
-
-    expect(latestWebglAddon()).toBe(addon)
-    expect(addon?.dispose).toHaveBeenCalledTimes(1)
-
-    host.remove()
-  })
-})
-
-describe('useTerminalTmux – webgl atlas growth', () => {
-  let originalWebGL2: unknown
-  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext
-
-  beforeEach(() => {
-    vi.useFakeTimers()
-    setupEnvironment()
-    originalWebGL2 = (globalThis as { WebGL2RenderingContext?: unknown })
-      .WebGL2RenderingContext
-    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
-      value: function WebGL2RenderingContext() {},
-      writable: true,
-      configurable: true,
-    })
-    originalGetContext = HTMLCanvasElement.prototype.getContext
-    HTMLCanvasElement.prototype.getContext = function stubGetContext(
-      this: HTMLCanvasElement,
-      type: string,
-    ) {
-      if (type === 'webgl2') return {} as RenderingContext
-      return null
-    } as typeof HTMLCanvasElement.prototype.getContext
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-    globalThis.WebSocket = originalWebSocket
-    HTMLCanvasElement.prototype.getContext = originalGetContext
-    Object.defineProperty(globalThis, 'WebGL2RenderingContext', {
-      value: originalWebGL2,
-      writable: true,
-      configurable: true,
-    })
-  })
-
-  it('does not clear atlas for the first two page additions', async () => {
-    const { result } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-    act(() => {
-      vi.advanceTimersByTime(16)
-    })
-
-    const terminal = latestTerminal()
-    terminal?.clearTextureAtlas.mockClear()
-
-    const addon = latestWebglAddon()
-    const growthCb = addon?.atlasGrowthCallbacks[0]
-    expect(growthCb).toBeDefined()
-
-    const fakeCanvas = document.createElement('canvas')
-    act(() => {
-      growthCb?.(fakeCanvas)
-      growthCb?.(fakeCanvas)
-    })
-
-    act(() => {
-      vi.advanceTimersByTime(1_000)
-    })
-
-    expect(terminal?.clearTextureAtlas).not.toHaveBeenCalled()
-
-    host.remove()
-  })
-
-  it('debounces an atlas clear once the third page is added', async () => {
-    const { result } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-    act(() => {
-      vi.advanceTimersByTime(16)
-    })
-
-    const terminal = latestTerminal()
-    terminal?.clearTextureAtlas.mockClear()
-
-    const addon = latestWebglAddon()
-    const growthCb = addon?.atlasGrowthCallbacks[0]
-    const fakeCanvas = document.createElement('canvas')
-
-    act(() => {
-      growthCb?.(fakeCanvas)
-      growthCb?.(fakeCanvas)
-      growthCb?.(fakeCanvas)
-      growthCb?.(fakeCanvas) // burst — additional events collapse into one clear
-    })
-
-    expect(terminal?.clearTextureAtlas).not.toHaveBeenCalled()
-
-    act(() => {
-      vi.advanceTimersByTime(250)
-    })
-
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
-
-    host.remove()
-  })
-
-  it('resets the page counter after a clear so growth can be detected again', async () => {
-    const { result } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-    act(() => {
-      vi.advanceTimersByTime(16)
-    })
-
-    const terminal = latestTerminal()
-    terminal?.clearTextureAtlas.mockClear()
-
-    const addon = latestWebglAddon()
-    const growthCb = addon?.atlasGrowthCallbacks[0]
-    const fakeCanvas = document.createElement('canvas')
-
-    act(() => {
-      growthCb?.(fakeCanvas)
-      growthCb?.(fakeCanvas)
-      growthCb?.(fakeCanvas)
-    })
-    act(() => {
-      vi.advanceTimersByTime(250)
-    })
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
-
-    // Second wave must not clear until 3 fresh pages were added.
-    act(() => {
-      growthCb?.(fakeCanvas)
-      growthCb?.(fakeCanvas)
-    })
-    act(() => {
-      vi.advanceTimersByTime(1_000)
-    })
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(1)
-
-    act(() => {
-      growthCb?.(fakeCanvas)
-    })
-    act(() => {
-      vi.advanceTimersByTime(250)
-    })
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(2)
-
-    host.remove()
-  })
-
-  it('falls back to DOM rendering after repeated atlas-growth clears', async () => {
-    const { result } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-    act(() => {
-      vi.advanceTimersByTime(16)
-    })
-
-    const terminal = latestTerminal()
-    terminal?.clearTextureAtlas.mockClear()
-
-    const addon = latestWebglAddon()
-    const growthCb = addon?.atlasGrowthCallbacks[0]
-    const fakeCanvas = document.createElement('canvas')
-
-    for (let wave = 0; wave < 3; wave += 1) {
-      act(() => {
-        growthCb?.(fakeCanvas)
-        growthCb?.(fakeCanvas)
-        growthCb?.(fakeCanvas)
-      })
-      act(() => {
-        vi.advanceTimersByTime(250)
-      })
-    }
-
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(3)
-    expect(addon?.dispose).toHaveBeenCalledTimes(1)
-
-    host.remove()
-  })
-
-  it('keeps WebGL when atlas-growth clears are spaced apart', async () => {
-    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
-    const { result } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-    act(() => {
-      vi.advanceTimersByTime(16)
-    })
-
-    const terminal = latestTerminal()
-    terminal?.clearTextureAtlas.mockClear()
-
-    const addon = latestWebglAddon()
-    const growthCb = addon?.atlasGrowthCallbacks[0]
-    const fakeCanvas = document.createElement('canvas')
-
-    for (let wave = 0; wave < 3; wave += 1) {
-      act(() => {
-        growthCb?.(fakeCanvas)
-        growthCb?.(fakeCanvas)
-        growthCb?.(fakeCanvas)
-      })
-      act(() => {
-        vi.advanceTimersByTime(250)
-      })
-      vi.setSystemTime(Date.now() + 30_001)
-    }
-
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(3)
-    expect(addon?.dispose).not.toHaveBeenCalled()
-
-    host.remove()
-  })
-
-  it('does not treat font-size atlas refreshes as WebGL degradation', async () => {
-    const { result } = renderTerminalHook()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    await act(async () => {
-      result.current.getTerminalHostRef('test-session')(host)
-      await Promise.resolve()
-    })
-
-    const terminal = latestTerminal()
-    terminal?.clearTextureAtlas.mockClear()
-
-    const addon = latestWebglAddon()
-
-    act(() => {
-      result.current.zoomIn()
-    })
-    act(() => {
-      result.current.zoomOut()
-    })
-    act(() => {
-      result.current.zoomIn()
-    })
-    act(() => {
-      result.current.zoomOut()
-    })
-
-    expect(terminal?.clearTextureAtlas).toHaveBeenCalledTimes(4)
-    expect(addon?.dispose).not.toHaveBeenCalled()
-
-    host.remove()
-  })
-})
-
 describe('useTerminalTmux – renderer refresh', () => {
   beforeEach(() => {
     setupEnvironment()
@@ -2180,7 +1582,7 @@ describe('useTerminalTmux – renderer refresh', () => {
     globalThis.WebSocket = originalWebSocket
   })
 
-  it('clears the newly active session atlas when switching tabs', async () => {
+  it('refreshes the newly active session renderer when switching tabs', async () => {
     const { result, rerender } = renderTerminalHook({
       openTabs: ['session-a', 'session-b'],
       activeSession: 'session-a',
@@ -2198,7 +1600,7 @@ describe('useTerminalTmux – renderer refresh', () => {
 
     const terminals = terminalInstances()
     const activeNextTerminal = terminals[1]
-    activeNextTerminal?.clearTextureAtlas.mockClear()
+    activeNextTerminal?.refresh.mockClear()
 
     act(() => {
       rerender({
@@ -2208,8 +1610,7 @@ describe('useTerminalTmux – renderer refresh', () => {
       })
     })
 
-    expect(activeNextTerminal?.clearTextureAtlas).toHaveBeenCalled()
-    expect(activeNextTerminal?.refresh).toHaveBeenCalled()
+    expect(activeNextTerminal?.refresh).toHaveBeenCalledWith(0, 23)
 
     hostA.remove()
     hostB.remove()

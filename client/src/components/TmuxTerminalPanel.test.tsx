@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -38,7 +38,11 @@ vi.mock('./tmux/TerminalHost', () => ({
 }))
 
 vi.mock('./tmux/WindowStrip', () => ({
-  default: () => <div data-testid="window-strip">Window Strip</div>,
+  default: ({ onCreateWindow }: { onCreateWindow: () => void }) => (
+    <button type="button" data-testid="window-strip" onClick={onCreateWindow}>
+      Window Strip
+    </button>
+  ),
 }))
 
 const baseProps = {
@@ -149,5 +153,139 @@ describe('TmuxTerminalPanel', () => {
 
     expect(screen.queryByText('Waiting for tmux server')).toBeNull()
     expect(screen.queryByText('Reconnecting to tmux')).toBeNull()
+  })
+
+  it('refocuses the terminal after creating a window', () => {
+    const onCreateWindow = vi.fn()
+    const onFocusTerminal = vi.fn()
+
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        onCreateWindow={onCreateWindow}
+        onFocusTerminal={onFocusTerminal}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('window-strip'))
+
+    expect(onCreateWindow).toHaveBeenCalledTimes(1)
+    expect(onFocusTerminal).toHaveBeenCalled()
+  })
+
+  it('creates a window with Ctrl+T and keeps browser focus in the terminal', () => {
+    const onCreateWindow = vi.fn()
+    const onFocusTerminal = vi.fn()
+
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        onCreateWindow={onCreateWindow}
+        onFocusTerminal={onFocusTerminal}
+      />,
+    )
+
+    expect(fireEvent.keyDown(document, { key: 't', ctrlKey: true })).toBe(false)
+    expect(onCreateWindow).toHaveBeenCalledTimes(1)
+    expect(onFocusTerminal).toHaveBeenCalled()
+  })
+
+  it('closes the active window with Ctrl+W and prevents the browser shortcut', () => {
+    const onCloseWindow = vi.fn()
+    const onFocusTerminal = vi.fn()
+
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        activeWindowIndex={2}
+        onCloseWindow={onCloseWindow}
+        onFocusTerminal={onFocusTerminal}
+      />,
+    )
+
+    expect(fireEvent.keyDown(document, { key: 'w', ctrlKey: true })).toBe(false)
+    expect(onCloseWindow).toHaveBeenCalledWith(2)
+    expect(onFocusTerminal).toHaveBeenCalled()
+  })
+
+  it('selects the adjacent tmux windows with Ctrl+PageUp and Ctrl+PageDown', () => {
+    const onSelectWindow = vi.fn()
+    const onFocusTerminal = vi.fn()
+    const windows = [
+      {
+        session: 'dev',
+        index: 1,
+        name: 'left',
+        displayName: 'left',
+        active: false,
+        panes: 1,
+      },
+      {
+        session: 'dev',
+        index: 5,
+        name: 'current',
+        displayName: 'current',
+        active: true,
+        panes: 1,
+      },
+      {
+        session: 'dev',
+        index: 8,
+        name: 'right',
+        displayName: 'right',
+        active: false,
+        panes: 1,
+      },
+    ]
+
+    const { rerender } = render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        windows={windows}
+        activeWindowIndex={5}
+        onSelectWindow={onSelectWindow}
+        onFocusTerminal={onFocusTerminal}
+      />,
+    )
+
+    expect(fireEvent.keyDown(document, { key: 'PageUp', ctrlKey: true })).toBe(
+      false,
+    )
+    expect(onSelectWindow).toHaveBeenLastCalledWith(1)
+
+    rerender(
+      <TmuxTerminalPanel
+        {...baseProps}
+        windows={windows}
+        activeWindowIndex={5}
+        onSelectWindow={onSelectWindow}
+        onFocusTerminal={onFocusTerminal}
+      />,
+    )
+
+    expect(
+      fireEvent.keyDown(document, { key: 'PageDown', ctrlKey: true }),
+    ).toBe(false)
+    expect(onSelectWindow).toHaveBeenLastCalledWith(8)
+    expect(onFocusTerminal).toHaveBeenCalled()
+  })
+
+  it('does not steal Ctrl+W from inputs outside the terminal panel', () => {
+    const onCloseWindow = vi.fn()
+    const input = document.createElement('input')
+    document.body.append(input)
+
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        activeWindowIndex={2}
+        onCloseWindow={onCloseWindow}
+      />,
+    )
+
+    expect(fireEvent.keyDown(input, { key: 'w', ctrlKey: true })).toBe(true)
+    expect(onCloseWindow).not.toHaveBeenCalled()
+
+    input.remove()
   })
 })

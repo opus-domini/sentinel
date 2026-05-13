@@ -11,6 +11,9 @@ browser_session="sentinel-smoke-${session_name}"
 port=""
 initial_line_count="${SENTINEL_SMOKE_INITIAL_LINES:-1200}"
 live_line_count="${SENTINEL_SMOKE_LIVE_LINES:-3000}"
+desktop_viewport_width="${SENTINEL_SMOKE_DESKTOP_WIDTH:-1920}"
+desktop_viewport_height="${SENTINEL_SMOKE_DESKTOP_HEIGHT:-1200}"
+desktop_device_scale="${SENTINEL_SMOKE_DESKTOP_SCALE:-1}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -65,13 +68,21 @@ wait_for_server() {
   return 1
 }
 
-validate_line_counts() {
+validate_smoke_config() {
   if ! [[ "$initial_line_count" =~ ^[0-9]+$ && "$live_line_count" =~ ^[0-9]+$ ]]; then
     echo "SENTINEL_SMOKE_INITIAL_LINES and SENTINEL_SMOKE_LIVE_LINES must be positive integers" >&2
     exit 2
   fi
   if ((initial_line_count < 1 || live_line_count <= initial_line_count)); then
     echo "SENTINEL_SMOKE_LIVE_LINES must be greater than SENTINEL_SMOKE_INITIAL_LINES" >&2
+    exit 2
+  fi
+  if ! [[ "$desktop_viewport_width" =~ ^[0-9]+$ && "$desktop_viewport_height" =~ ^[0-9]+$ && "$desktop_device_scale" =~ ^[0-9]+$ ]]; then
+    echo "SENTINEL_SMOKE_DESKTOP_WIDTH, SENTINEL_SMOKE_DESKTOP_HEIGHT, and SENTINEL_SMOKE_DESKTOP_SCALE must be positive integers" >&2
+    exit 2
+  fi
+  if ((desktop_viewport_width < 1 || desktop_viewport_height < 1 || desktop_device_scale < 1)); then
+    echo "SENTINEL_SMOKE_DESKTOP_WIDTH, SENTINEL_SMOKE_DESKTOP_HEIGHT, and SENTINEL_SMOKE_DESKTOP_SCALE must be positive integers" >&2
     exit 2
   fi
 }
@@ -107,9 +118,10 @@ send_terminal_output() {
   local prefix="$1"
   local start="$2"
   local end="$3"
+  local emoji_pack="\\U0001f469\\u200d\\U0001f4bb\\U0001f3f3\\ufe0f\\u200d\\U0001f308\\U0001f1e7\\U0001f1f7\\U0001f1fa\\U0001f1f8\\U0001f680\\U0001f525\\U0001f600\\U0001f602\\U0001f60a\\U0001f970\\U0001f60e\\U0001f92f\\u2728\\u26a1\\U0001f308\\U0001f48e\\U0001f9ea\\U0001f6e0\\ufe0f\\u2705\\u274c"
 
   tmux send-keys -t "$session_name" \
-    "python3 -c 'for i in range(${start}, ${end} + 1): print(\"${prefix}_%04d \\u2699 \\u03bb \\ue0b6\\ue0b4 \\u250c\\u2500\\u252c\\u2500\\u2510 \\u2502 \\U0001f60a \\u2502 \\u25e2\\u25e3 \\u2591\\u2592\\u2593 \\u2714 \\u2718 \\u2192 \\u2190\" % i)'" \
+    "python3 -c 'emoji=\"${emoji_pack}\"; [print(\"${prefix}_%04d \\u2699 \\u03bb \\ue0b6\\ue0b4 \\u250c\\u2500\\u252c\\u2500\\u2510 \\u2502 \\U0001f60a \\u2502 \\u25e2\\u25e3 \\u2591\\u2592\\u2593 \\u2714 \\u2718 \\u2192 \\u2190 EMOJI_STRESS %s\" % (i, emoji)) for i in range(${start}, ${end} + 1)]'" \
     C-m
 }
 
@@ -168,6 +180,9 @@ if isinstance(metrics, dict):
 terminal_metrics = data.get("terminalMetrics")
 if isinstance(terminal_metrics, dict):
     terminal_metric_failures = []
+    if terminal_metrics.get("renderer") != "dom":
+        terminal_metric_failures.append(f"renderer={terminal_metrics.get('renderer')!r} != 'dom'")
+
     for key in ("writeRecoveries", "writeBacklogRecoveries", "writeStallRecoveries"):
         value = terminal_metrics.get(key)
         if value != 0:
@@ -198,7 +213,7 @@ capture_output_eval() {
   local marker="$2"
 
   agent-browser --session "$browser_session" eval \
-    "(() => { const body = document.body.innerText; const gear = String.fromCodePoint(0x2699); const powerline = String.fromCodePoint(0xe0b6); const emoji = String.fromCodePoint(0x1f60a); const marker = '${marker}'; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), canvasCount: document.querySelectorAll('canvas').length, hasOutputMarker: body.includes(marker), hasGear: body.includes(gear), hasPowerline: body.includes(powerline), hasEmoji: body.includes(emoji), metrics: window.__SENTINEL_TMUX_METRICS || {}, terminalMetrics: window.__SENTINEL_TERMINAL_METRICS || {}, bodyTail: body.slice(-600) }; })()" \
+    "(() => { const screenText = document.querySelector('.xterm-screen')?.innerText || ''; const gear = String.fromCodePoint(0x2699); const powerline = String.fromCodePoint(0xe0b6); const emoji = String.fromCodePoint(0x1f60a); const rocket = String.fromCodePoint(0x1f680); const fire = String.fromCodePoint(0x1f525); const brazil = String.fromCodePoint(0x1f1e7, 0x1f1f7); const technologist = String.fromCodePoint(0x1f469) + String.fromCodePoint(0x200d) + String.fromCodePoint(0x1f4bb); const marker = '${marker}'; const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), canvasCount: document.querySelectorAll('canvas').length, terminalCanvasCount, usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, hasOutputMarker: screenText.includes(marker), hasGear: screenText.includes(gear), hasPowerline: screenText.includes(powerline), hasEmoji: screenText.includes(emoji), hasEmojiStress: screenText.includes('EMOJI_STRESS') && screenText.includes(rocket) && screenText.includes(fire) && screenText.includes(brazil) && screenText.includes(technologist), metrics: window.__SENTINEL_TMUX_METRICS || {}, terminalMetrics, bodyTail: screenText.slice(-600) }; })()" \
     >"$path"
 }
 
@@ -222,6 +237,7 @@ required = (
     "hasGear",
     "hasPowerline",
     "hasEmoji",
+    "hasEmojiStress",
 )
 raise SystemExit(0 if all(data.get(key) is True for key in required) else 1)
 PY
@@ -236,7 +252,7 @@ PY
 
 wait_for_pixel_probe_eval() {
   local path="$1"
-  local eval_script="(() => { const body = document.body.innerText; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), hasPixelProbeYellow: body.includes('PIXEL_PROBE_YELLOW'), hasPixelProbeGreen: body.includes('PIXEL_PROBE_GREEN'), hasPixelProbePink: body.includes('PIXEL_PROBE_PINK'), hasLowContrastProbe: body.includes('PIXEL_PROBE_LOW_CONTRAST') }; })()"
+  local eval_script="(() => { const body = document.body.innerText; const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, terminalMetrics, terminalCanvasCount, hasPixelProbeYellow: body.includes('PIXEL_PROBE_YELLOW'), hasPixelProbeGreen: body.includes('PIXEL_PROBE_GREEN'), hasPixelProbePink: body.includes('PIXEL_PROBE_PINK'), hasLowContrastProbe: body.includes('PIXEL_PROBE_LOW_CONTRAST') }; })()"
 
   for _ in $(seq 1 40); do
     agent-browser --session "$browser_session" eval "$eval_script" >"$path"
@@ -481,7 +497,7 @@ require_cmd npm
 require_cmd python3
 require_cmd tmux
 
-validate_line_counts
+validate_smoke_config
 mkdir -p "$artifacts_dir"
 port="$(find_free_port)"
 base_url="http://127.0.0.1:${port}"
@@ -509,41 +525,42 @@ send_terminal_output "SOAK" 1 "$initial_line_count"
 
 echo "opening browser"
 agent-browser --session "$browser_session" open "$base_url/tmux" >/dev/null
+agent-browser --session "$browser_session" set viewport "$desktop_viewport_width" "$desktop_viewport_height" "$desktop_device_scale" >/dev/null
 agent-browser --session "$browser_session" wait 1000 >/dev/null
 agent-browser --session "$browser_session" eval "$(browser_storage_script)" >/dev/null
 agent-browser --session "$browser_session" wait .xterm >/dev/null
 
 wait_for_output_eval "$artifacts_dir/initial-eval.json" "$(output_marker SOAK "$initial_line_count")" || true
 validate_eval_json "$artifacts_dir/initial-eval.json" \
-  terminalPresent screenPresent hasOutputMarker hasGear hasPowerline hasEmoji
+  terminalPresent screenPresent usesDomRenderer hasOutputMarker hasGear hasPowerline hasEmoji hasEmojiStress
 
 send_terminal_output "LIVE" "$((initial_line_count + 1))" "$live_line_count"
 wait_for_output_eval "$artifacts_dir/live-eval.json" "$(output_marker LIVE "$live_line_count")" || true
 validate_eval_json "$artifacts_dir/live-eval.json" \
-  terminalPresent screenPresent hasOutputMarker hasGear hasPowerline hasEmoji
+  terminalPresent screenPresent usesDomRenderer hasOutputMarker hasGear hasPowerline hasEmoji hasEmojiStress
 
 send_pixel_probe
 wait_for_pixel_probe_eval "$artifacts_dir/pixel-probe-eval.json" || true
 validate_eval_json "$artifacts_dir/pixel-probe-eval.json" \
-  terminalPresent screenPresent hasPixelProbePink hasLowContrastProbe
+  terminalPresent screenPresent usesDomRenderer hasPixelProbePink hasLowContrastProbe
 capture_terminal_pixels desktop
 
 agent-browser --session "$browser_session" set viewport 390 844 2 >/dev/null
 agent-browser --session "$browser_session" wait 500 >/dev/null
 agent-browser --session "$browser_session" eval \
-  "(() => { const body = document.body.innerText; const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), hasMobileControls: Boolean(document.querySelector('[aria-label=\"Toggle keyboard\"]')), hasFooterSize: body.includes('cols ') && body.includes(' rows '), hasMobileWebglFallback: (terminalMetrics.webglLoadCount || 0) === 0 || (terminalMetrics.webglMobileDisposals || 0) >= 1, terminalMetrics, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }; })()" \
+  "(() => { const body = document.body.innerText; const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, hasMobileControls: Boolean(document.querySelector('[aria-label=\"Toggle keyboard\"]')), hasFooterSize: body.includes('cols ') && body.includes(' rows '), terminalMetrics, terminalCanvasCount, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }; })()" \
   >"$artifacts_dir/mobile-eval.json"
 validate_eval_json "$artifacts_dir/mobile-eval.json" \
-  terminalPresent screenPresent hasMobileControls hasFooterSize hasMobileWebglFallback
+  terminalPresent screenPresent usesDomRenderer hasMobileControls hasFooterSize
 capture_terminal_pixels mobile
 
-agent-browser --session "$browser_session" set viewport 1280 720 1 >/dev/null
+agent-browser --session "$browser_session" set viewport "$desktop_viewport_width" "$desktop_viewport_height" "$desktop_device_scale" >/dev/null
 agent-browser --session "$browser_session" wait 500 >/dev/null
 agent-browser --session "$browser_session" eval \
-  "(() => { const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), hasDesktopWebglRestored: (terminalMetrics.webglLoadCount || 0) === 0 || (terminalMetrics.webglMobileDisposals || 0) === 0 || (terminalMetrics.webglLoadCount || 0) > (terminalMetrics.webglDisposals || 0), terminalMetrics, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }; })()" \
+  "(() => { const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, terminalMetrics, terminalCanvasCount, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }; })()" \
   >"$artifacts_dir/desktop-restored-eval.json"
 validate_eval_json "$artifacts_dir/desktop-restored-eval.json" \
-  terminalPresent screenPresent hasDesktopWebglRestored
+  terminalPresent screenPresent usesDomRenderer
 capture_terminal_pixels desktop-restored
 
 agent-browser --session "$browser_session" errors >"$artifacts_dir/page-errors.txt"

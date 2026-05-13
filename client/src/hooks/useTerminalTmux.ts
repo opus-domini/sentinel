@@ -5,7 +5,6 @@ import { SearchAddon } from '@xterm/addon-search'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
@@ -25,10 +24,6 @@ const MAX_FONT_SIZE = 24
 const FONT_SIZE_KEY = 'sentinel_font_size'
 const TERMINAL_LEFT_GUTTER_PX = 8
 const SOCKET_HANDSHAKE_TIMEOUT_MS = 7_000
-const ATLAS_GROWTH_PAGE_THRESHOLD = 3
-const ATLAS_GROWTH_CLEAR_DEBOUNCE_MS = 250
-const ATLAS_GROWTH_DEGRADE_THRESHOLD = 3
-const ATLAS_GROWTH_DEGRADE_WINDOW_MS = 30_000
 const TERMINAL_MIN_CONTRAST_RATIO = 4.5
 const TERMINAL_WRITE_BATCH_MAX_BYTES = 1_048_576
 const TERMINAL_WRITE_FLUSH_FALLBACK_MS = 50
@@ -45,26 +40,6 @@ const TERMINAL_FONT_FAMILY = [
   'SF Mono',
   'monospace',
 ].join(', ')
-
-function supportsWebgl2(): boolean {
-  if (
-    typeof document === 'undefined' ||
-    typeof globalThis.WebGL2RenderingContext === 'undefined'
-  ) {
-    return false
-  }
-
-  try {
-    const canvas = document.createElement('canvas')
-    return !!canvas.getContext('webgl2', {
-      antialias: false,
-      depth: false,
-      preserveDrawingBuffer: true,
-    })
-  } catch {
-    return false
-  }
-}
 
 function applyTerminalChrome(host: HTMLDivElement, themeID: string) {
   const themeBg = getTerminalTheme(themeID).colors.background ?? ''
@@ -85,18 +60,11 @@ function loadFontSize(): number {
 }
 
 type Disposable = { dispose: () => void }
-type WebglDisabledReason =
-  | 'mobile layout'
-  | 'context lost'
-  | 'load failed'
-  | 'repeated texture atlas growth'
 
 type SessionRuntime = {
   session: string
   terminal: Terminal
   fitAddon: FitAddon
-  webglAddon: WebglAddon | null
-  webglDisabledReason: WebglDisabledReason | null
   encoder: TextEncoder
   socket: WebSocket | null
   generation: number
@@ -113,11 +81,6 @@ type SessionRuntime = {
   onSelectionDispose: Disposable
   contextMenuDispose: Disposable
   touchWheelDispose: Disposable
-  webglContextLossDispose: Disposable
-  webglAtlasGrowthDispose: Disposable
-  atlasPageCount: number
-  atlasClearTimer: number | null
-  atlasGrowthClearTimestamps: Array<number>
   hostResizeObserver: ResizeObserver | null
   hostResizeRafId: number | null
   reconnect: ReconnectState
@@ -165,109 +128,13 @@ type UseTerminalTmuxResult = {
 }
 
 type TerminalRuntimeMetrics = {
+  renderer: 'dom'
   writeBatchCount: number
   writeBytes: number
   writeMaxQueueBytes: number
   writeRecoveries: number
   writeBacklogRecoveries: number
   writeStallRecoveries: number
-  webglLoadCount: number
-  webglDisposals: number
-  webglMobileDisposals: number
-  webglContextLossDisposals: number
-  webglAtlasGrowthDisposals: number
-  webglLoadFailures: number
-}
-
-function disposeRuntimeWebglAddon(
-  runtime: SessionRuntime,
-  reason: WebglDisabledReason,
-  metrics?: TerminalRuntimeMetrics,
-) {
-  const addon = runtime.webglAddon
-  if (!addon) return
-
-  if (metrics) {
-    metrics.webglDisposals += 1
-    if (reason === 'mobile layout') {
-      metrics.webglMobileDisposals += 1
-    } else if (reason === 'context lost') {
-      metrics.webglContextLossDisposals += 1
-    } else if (reason === 'repeated texture atlas growth') {
-      metrics.webglAtlasGrowthDisposals += 1
-    }
-  }
-
-  runtime.webglAddon = null
-  runtime.webglDisabledReason = reason
-  runtime.webglContextLossDispose.dispose()
-  runtime.webglContextLossDispose = { dispose: () => undefined }
-  runtime.webglAtlasGrowthDispose.dispose()
-  runtime.webglAtlasGrowthDispose = { dispose: () => undefined }
-  runtime.atlasPageCount = 0
-  runtime.atlasGrowthClearTimestamps = []
-  if (runtime.atlasClearTimer !== null) {
-    window.clearTimeout(runtime.atlasClearTimer)
-    runtime.atlasClearTimer = null
-  }
-
-  if (process.env.NODE_ENV !== 'production') {
-    console.warn(`sentinel: webgl disabled for ${runtime.session} (${reason})`)
-  }
-  try {
-    addon.dispose()
-  } catch {
-    // addon may already be disposed by xterm/webgl internals
-  }
-}
-
-function enableRuntimeWebglAddon(
-  runtime: SessionRuntime,
-  metrics: TerminalRuntimeMetrics,
-  onAtlasGrowth: (runtime: SessionRuntime) => void,
-): boolean {
-  if (runtime.webglAddon) {
-    return false
-  }
-  if (!supportsWebgl2()) {
-    runtime.webglDisabledReason = null
-    return false
-  }
-
-  const addon = new WebglAddon()
-  runtime.webglAddon = addon
-  runtime.webglDisabledReason = null
-
-  try {
-    runtime.terminal.loadAddon(addon)
-  } catch {
-    runtime.webglAddon = null
-    runtime.webglDisabledReason = 'load failed'
-    metrics.webglLoadFailures += 1
-    try {
-      addon.dispose()
-    } catch {
-      // ignore partial addon initialization failures
-    }
-    return false
-  }
-
-  metrics.webglLoadCount += 1
-
-  runtime.webglContextLossDispose = addon.onContextLoss(() => {
-    disposeRuntimeWebglAddon(runtime, 'context lost', metrics)
-  })
-  runtime.webglAtlasGrowthDispose = addon.onAddTextureAtlasCanvas(() => {
-    if (!runtime.webglAddon) return
-    runtime.atlasPageCount += 1
-    if (runtime.atlasPageCount < ATLAS_GROWTH_PAGE_THRESHOLD) return
-    if (runtime.atlasClearTimer !== null) return
-    runtime.atlasClearTimer = window.setTimeout(() => {
-      onAtlasGrowth(runtime)
-    }, ATLAS_GROWTH_CLEAR_DEBOUNCE_MS)
-  })
-
-  return true
 }
 
 function clearRuntimeWriteQueue(runtime: SessionRuntime) {
@@ -289,16 +156,10 @@ function clearRuntimeWriteQueue(runtime: SessionRuntime) {
   runtime.writeInFlightGeneration = null
 }
 
-function refreshRuntimeTextureAtlas(runtime: SessionRuntime): boolean {
-  runtime.atlasPageCount = 0
-  if (runtime.atlasClearTimer !== null) {
-    window.clearTimeout(runtime.atlasClearTimer)
-    runtime.atlasClearTimer = null
-  }
+function refreshRuntimeRenderer(runtime: SessionRuntime): boolean {
   if (!runtime.terminal.element) {
     return false
   }
-  runtime.terminal.clearTextureAtlas()
   runtime.terminal.refresh(0, Math.max(0, runtime.terminal.rows - 1))
   return true
 }
@@ -385,18 +246,13 @@ export function useTerminalTmux({
     new Map<string, RefCallback<HTMLDivElement>>(),
   )
   const terminalMetricsRef = useRef<TerminalRuntimeMetrics>({
+    renderer: 'dom',
     writeBatchCount: 0,
     writeBytes: 0,
     writeMaxQueueBytes: 0,
     writeRecoveries: 0,
     writeBacklogRecoveries: 0,
     writeStallRecoveries: 0,
-    webglLoadCount: 0,
-    webglDisposals: 0,
-    webglMobileDisposals: 0,
-    webglContextLossDisposals: 0,
-    webglAtlasGrowthDisposals: 0,
-    webglLoadFailures: 0,
   })
 
   const setRuntimeStatus = useCallback(
@@ -486,38 +342,9 @@ export function useTerminalTmux({
     }
   }, [])
 
-  const clearRuntimeTextureAtlas = useCallback((runtime: SessionRuntime) => {
-    return refreshRuntimeTextureAtlas(runtime)
+  const refreshRuntime = useCallback((runtime: SessionRuntime) => {
+    return refreshRuntimeRenderer(runtime)
   }, [])
-
-  const clearRuntimeTextureAtlasAfterGrowth = useCallback(
-    (runtime: SessionRuntime) => {
-      const didClear = clearRuntimeTextureAtlas(runtime)
-      if (!didClear || !runtime.webglAddon) {
-        return
-      }
-
-      const now = Date.now()
-      const firstRelevantClear = now - ATLAS_GROWTH_DEGRADE_WINDOW_MS
-      runtime.atlasGrowthClearTimestamps =
-        runtime.atlasGrowthClearTimestamps.filter(
-          (timestamp) => timestamp >= firstRelevantClear,
-        )
-      runtime.atlasGrowthClearTimestamps.push(now)
-
-      if (
-        runtime.atlasGrowthClearTimestamps.length >=
-        ATLAS_GROWTH_DEGRADE_THRESHOLD
-      ) {
-        disposeRuntimeWebglAddon(
-          runtime,
-          'repeated texture atlas growth',
-          terminalMetricsRef.current,
-        )
-      }
-    },
-    [clearRuntimeTextureAtlas],
-  )
 
   const fitRuntime = useCallback(
     (runtime: SessionRuntime) => {
@@ -532,26 +359,8 @@ export function useTerminalTmux({
       const sizeChanged =
         runtime.cols !== previousCols || runtime.rows !== previousRows
       sendResize(runtime, runtime.cols, runtime.rows)
-      let rendererChanged = false
-      if (isMobileRef.current && runtime.webglAddon) {
-        disposeRuntimeWebglAddon(
-          runtime,
-          'mobile layout',
-          terminalMetricsRef.current,
-        )
-        rendererChanged = true
-      } else if (
-        !isMobileRef.current &&
-        runtime.webglDisabledReason === 'mobile layout'
-      ) {
-        rendererChanged = enableRuntimeWebglAddon(
-          runtime,
-          terminalMetricsRef.current,
-          clearRuntimeTextureAtlasAfterGrowth,
-        )
-      }
-      if (sizeChanged || rendererChanged) {
-        refreshRuntimeTextureAtlas(runtime)
+      if (sizeChanged) {
+        refreshRuntimeRenderer(runtime)
       }
 
       if (
@@ -563,15 +372,15 @@ export function useTerminalTmux({
       setTermCols(runtime.cols)
       setTermRows(runtime.rows)
     },
-    [clearRuntimeTextureAtlasAfterGrowth, sendResize],
+    [sendResize],
   )
 
-  const clearActiveTextureAtlas = useCallback(() => {
+  const refreshActiveRuntime = useCallback(() => {
     const runtime = runtimesRef.current.get(activeSessionRef.current.trim())
     if (runtime) {
-      clearRuntimeTextureAtlas(runtime)
+      refreshRuntime(runtime)
     }
-  }, [clearRuntimeTextureAtlas])
+  }, [refreshRuntime])
 
   const observeHostResize = useCallback(
     (runtime: SessionRuntime, host: HTMLDivElement) => {
@@ -623,7 +432,7 @@ export function useTerminalTmux({
             dispatchTarget: screen ?? runtime.terminal.element,
           })
         }
-        clearRuntimeTextureAtlas(runtime)
+        refreshRuntime(runtime)
         return
       }
 
@@ -713,7 +522,7 @@ export function useTerminalTmux({
           terminalElement.style.backgroundColor =
             getTerminalTheme(themeId).colors.background ?? ''
         }
-        clearRuntimeTextureAtlas(runtime)
+        refreshRuntime(runtime)
 
         fitRuntime(runtime)
       }
@@ -726,7 +535,7 @@ export function useTerminalTmux({
       suppressBrowserContextMenu,
       themeId,
       allowWheelInAlternateBuffer,
-      clearRuntimeTextureAtlas,
+      refreshRuntime,
     ],
   )
 
@@ -1129,8 +938,6 @@ export function useTerminalTmux({
         session,
         terminal,
         fitAddon,
-        webglAddon: null,
-        webglDisabledReason: isMobileRef.current ? 'mobile layout' : null,
         encoder: new TextEncoder(),
         socket: null,
         generation: 0,
@@ -1147,11 +954,6 @@ export function useTerminalTmux({
         onSelectionDispose: { dispose: () => undefined },
         contextMenuDispose: { dispose: () => undefined },
         touchWheelDispose: { dispose: () => undefined },
-        webglContextLossDispose: { dispose: () => undefined },
-        webglAtlasGrowthDispose: { dispose: () => undefined },
-        atlasPageCount: 0,
-        atlasClearTimer: null,
-        atlasGrowthClearTimestamps: [],
         hostResizeObserver: null,
         hostResizeRafId: null,
         reconnect: createReconnect(),
@@ -1164,24 +966,6 @@ export function useTerminalTmux({
         writeFlushTimeoutId: null,
         writeInFlightGeneration: null,
         writeInFlightTimeoutId: null,
-      }
-
-      // VSCode pattern: on WebGL context loss, dispose the addon so xterm
-      // falls back to the DOM renderer. Keeping the addon loaded against a
-      // dead context leaves glyphs as black rectangles until the user
-      // manually reconnects.
-      // The WebGL atlas adds a new page every time it runs out of room
-      // for fresh glyphs — common with emoji, CJK, and long sessions
-      // on HiDPI displays. Some drivers start returning black sprites
-      // once the atlas grows past a few pages. Proactively flush when
-      // the atlas has added multiple pages in a short window, capped
-      // by a debounce so a burst of paste doesn't thrash the GPU.
-      if (!isMobileRef.current) {
-        enableRuntimeWebglAddon(
-          runtime,
-          terminalMetricsRef.current,
-          clearRuntimeTextureAtlasAfterGrowth,
-        )
       }
 
       runtime.onDataDispose = terminal.onData((data) => {
@@ -1231,7 +1015,6 @@ export function useTerminalTmux({
     },
     [
       allowWheelInAlternateBuffer,
-      clearRuntimeTextureAtlasAfterGrowth,
       fontSize,
       openRuntimeInHost,
       sendResize,
@@ -1251,14 +1034,7 @@ export function useTerminalTmux({
       runtime.onSelectionDispose.dispose()
       runtime.contextMenuDispose.dispose()
       runtime.touchWheelDispose.dispose()
-      runtime.webglContextLossDispose.dispose()
-      runtime.webglAtlasGrowthDispose.dispose()
       clearRuntimeWriteQueue(runtime)
-      if (runtime.atlasClearTimer !== null) {
-        window.clearTimeout(runtime.atlasClearTimer)
-        runtime.atlasClearTimer = null
-      }
-      runtime.webglAddon = null
       runtime.terminal.dispose()
       runtimesRef.current.delete(runtime.session)
       hostsRef.current.delete(runtime.session)
@@ -1409,7 +1185,7 @@ export function useTerminalTmux({
       for (const runtime of runtimesRef.current.values()) {
         runtime.terminal.options.fontSize = size
         if (runtime.terminal.element) {
-          clearRuntimeTextureAtlas(runtime)
+          refreshRuntime(runtime)
           runtime.fitAddon.fit()
           runtime.cols = runtime.terminal.cols
           runtime.rows = runtime.terminal.rows
@@ -1425,7 +1201,7 @@ export function useTerminalTmux({
         setTermRows(activeRuntime.rows)
       }
     },
-    [clearRuntimeTextureAtlas, sendResize],
+    [refreshRuntime, sendResize],
   )
 
   const zoomIn = useCallback(() => {
@@ -1457,11 +1233,11 @@ export function useTerminalTmux({
         if (runtime.terminal.element) {
           runtime.terminal.element.style.backgroundColor =
             colors.background ?? ''
-          clearRuntimeTextureAtlas(runtime)
+          refreshRuntime(runtime)
         }
       }
     },
-    [clearRuntimeTextureAtlas],
+    [refreshRuntime],
   )
 
   useEffect(() => {
@@ -1528,7 +1304,7 @@ export function useTerminalTmux({
       connectRuntime(runtime, { resetTerminal: false })
     }
 
-    clearRuntimeTextureAtlas(runtime)
+    refreshRuntime(runtime)
 
     if (!isMobileRef.current) {
       runtime.terminal.focus()
@@ -1536,11 +1312,11 @@ export function useTerminalTmux({
   }, [
     activeEpoch,
     activeSession,
-    clearRuntimeTextureAtlas,
     closeRuntimeSocket,
     connectRuntime,
     fitTerminal,
     publishActiveRuntimeState,
+    refreshRuntime,
   ])
 
   useEffect(() => {
@@ -1630,17 +1406,17 @@ export function useTerminalTmux({
   }, [fitRuntime])
 
   useEffect(() => {
-    const refreshAtlases = () => {
+    const refreshRenderer = () => {
       if (document.visibilityState !== 'visible') return
-      clearActiveTextureAtlas()
+      refreshActiveRuntime()
     }
-    document.addEventListener('visibilitychange', refreshAtlases)
-    window.addEventListener('focus', refreshAtlases)
+    document.addEventListener('visibilitychange', refreshRenderer)
+    window.addEventListener('focus', refreshRenderer)
     return () => {
-      document.removeEventListener('visibilitychange', refreshAtlases)
-      window.removeEventListener('focus', refreshAtlases)
+      document.removeEventListener('visibilitychange', refreshRenderer)
+      window.removeEventListener('focus', refreshRenderer)
     }
-  }, [clearActiveTextureAtlas])
+  }, [refreshActiveRuntime])
 
   // Reconnect dead sockets when the tab resumes from background. Only fires
   // on visibilitychange (not focus) to avoid retriggering on every window
@@ -1663,13 +1439,13 @@ export function useTerminalTmux({
   }, [connectRuntime])
 
   useEffect(() => {
-    const ATLAS_REFRESH_MS = 5 * 60 * 1000
+    const RENDERER_REFRESH_MS = 5 * 60 * 1000
     const id = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
-      clearActiveTextureAtlas()
-    }, ATLAS_REFRESH_MS)
+      refreshActiveRuntime()
+    }, RENDERER_REFRESH_MS)
     return () => window.clearInterval(id)
-  }, [clearActiveTextureAtlas])
+  }, [refreshActiveRuntime])
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {

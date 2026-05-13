@@ -143,6 +143,22 @@ func TestEnsureEnv(t *testing.T) {
 	}
 }
 
+func TestEnsureEnvReplacesUnusableValues(t *testing.T) {
+	t.Parallel()
+
+	result := ensureEnv([]string{"TERM=dumb", "LANG="})
+
+	if !slices.Contains(result, "TERM=xterm-256color") {
+		t.Fatalf("TERM was not normalized: %#v", result)
+	}
+	if !slices.Contains(result, "LANG=C.UTF-8") {
+		t.Fatalf("LANG was not normalized: %#v", result)
+	}
+	if len(result) != 2 {
+		t.Fatalf("result len = %d, want 2: %#v", len(result), result)
+	}
+}
+
 func TestHasEnvKey(t *testing.T) {
 	t.Parallel()
 

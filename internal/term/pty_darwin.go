@@ -237,20 +237,37 @@ func ioctl(fd uintptr, name string, cmd uintptr, ptr uintptr) error {
 	return nil
 }
 
-// ensureEnv adds essential variables when they are missing from the
+// ensureEnv adds essential variables when they are missing or unusable from the
 // environment. This is necessary when Sentinel runs as a service where the
 // inherited environment is intentionally minimal.
 func ensureEnv(env []string) []string {
-	defaults := [][2]string{
-		{"TERM", "xterm-256color"},
-		{"LANG", "C.UTF-8"},
-	}
-	for _, kv := range defaults {
-		if !hasEnvKey(env, kv[0]) {
-			env = append(env, kv[0]+"="+kv[1])
-		}
-	}
+	env = ensureEnvValue(env, "TERM", "xterm-256color", usableTerminalType)
+	env = ensureEnvValue(env, "LANG", "C.UTF-8", nonEmptyEnvValue)
 	return env
+}
+
+func ensureEnvValue(env []string, key, fallback string, usable func(string) bool) []string {
+	prefix := key + "="
+	for index, entry := range env {
+		if !strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		if usable(strings.TrimPrefix(entry, prefix)) {
+			return env
+		}
+		env[index] = prefix + fallback
+		return env
+	}
+	return append(env, prefix+fallback)
+}
+
+func usableTerminalType(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed != "" && !strings.EqualFold(trimmed, "dumb")
+}
+
+func nonEmptyEnvValue(value string) bool {
+	return strings.TrimSpace(value) != ""
 }
 
 func hasEnvKey(env []string, key string) bool {

@@ -19,6 +19,18 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false
+  }
+  if (target.closest('.xterm')) {
+    return false
+  }
+  return (
+    target.closest('input, textarea, select, [contenteditable="true"]') !== null
+  )
+}
+
 type TmuxTerminalPanelProps = {
   hostname?: string
   connectionState: ConnectionState
@@ -115,6 +127,7 @@ export default function TmuxTerminalPanel({
   onResync,
 }: TmuxTerminalPanelProps) {
   const isMobileLayout = useIsMobileLayout()
+  const panelRef = useRef<HTMLElement | null>(null)
   const lockedTouchIDsRef = useRef<Set<number>>(new Set())
   const hasActiveSession = activeSession !== ''
   const showSessionTabs = isMobileLayout || sidebarCollapsed
@@ -145,6 +158,134 @@ export default function TmuxTerminalPanel({
     const tag = el.tagName.toLowerCase()
     return tag === 'textarea' || tag === 'input' || el.isContentEditable
   }, [])
+
+  const refocusTerminalAfterWindowAction = useCallback(() => {
+    if (!onFocusTerminal) return
+
+    onFocusTerminal()
+    const schedule =
+      typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback: FrameRequestCallback) => {
+            window.setTimeout(callback, 0)
+          }
+
+    schedule(() => {
+      onFocusTerminal()
+    })
+  }, [onFocusTerminal])
+
+  const handleCreateWindow = useCallback(() => {
+    onCreateWindow()
+    refocusTerminalAfterWindowAction()
+  }, [onCreateWindow, refocusTerminalAfterWindowAction])
+
+  const handleLaunchLauncher = useCallback(
+    (launcherID: string) => {
+      onLaunchLauncher(launcherID)
+      refocusTerminalAfterWindowAction()
+    },
+    [onLaunchLauncher, refocusTerminalAfterWindowAction],
+  )
+
+  const handleCloseActiveWindow = useCallback(() => {
+    if (activeWindowIndex === null) {
+      return
+    }
+    onCloseWindow(activeWindowIndex)
+    refocusTerminalAfterWindowAction()
+  }, [activeWindowIndex, onCloseWindow, refocusTerminalAfterWindowAction])
+
+  const handleSelectAdjacentWindow = useCallback(
+    (direction: 'left' | 'right') => {
+      if (activeWindowIndex === null || windows.length < 2) {
+        return
+      }
+
+      const sortedWindowIndexes = [...windows]
+        .map((windowInfo) => windowInfo.index)
+        .sort((left, right) => left - right)
+      const activePosition = sortedWindowIndexes.indexOf(activeWindowIndex)
+      if (activePosition === -1) {
+        return
+      }
+
+      const nextPosition =
+        direction === 'left' ? activePosition - 1 : activePosition + 1
+      const nextWindowIndex = sortedWindowIndexes[nextPosition]
+      if (nextWindowIndex === undefined) {
+        return
+      }
+
+      onSelectWindow(nextWindowIndex)
+      refocusTerminalAfterWindowAction()
+    },
+    [
+      activeWindowIndex,
+      onSelectWindow,
+      refocusTerminalAfterWindowAction,
+      windows,
+    ],
+  )
+
+  useEffect(() => {
+    if (!hasActiveSession) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+        return
+      }
+
+      const key = event.key.toLowerCase()
+      if (
+        key !== 't' &&
+        key !== 'w' &&
+        key !== 'pageup' &&
+        key !== 'pagedown'
+      ) {
+        return
+      }
+
+      const panel = panelRef.current
+      const target = event.target
+      if (
+        panel &&
+        target instanceof Element &&
+        !panel.contains(target) &&
+        target !== document.body
+      ) {
+        return
+      }
+      if (isEditableShortcutTarget(target)) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (key === 't') {
+        handleCreateWindow()
+      } else if (key === 'pageup') {
+        handleSelectAdjacentWindow('left')
+      } else if (key === 'pagedown') {
+        handleSelectAdjacentWindow('right')
+      } else {
+        handleCloseActiveWindow()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, { capture: true })
+    }
+  }, [
+    handleCloseActiveWindow,
+    handleCreateWindow,
+    handleSelectAdjacentWindow,
+    hasActiveSession,
+  ])
 
   useEffect(() => {
     if (!isMobileLayout) {
@@ -211,6 +352,7 @@ export default function TmuxTerminalPanel({
 
   return (
     <main
+      ref={panelRef}
       className={cn(
         'grid min-h-0 min-w-0 grid-cols-1 overflow-hidden bg-background',
         showSessionTabs
@@ -308,8 +450,8 @@ export default function TmuxTerminalPanel({
                 }}
                 onCloseWindow={onCloseWindow}
                 onRenameWindow={onRenameWindow}
-                onCreateWindow={onCreateWindow}
-                onLaunchLauncher={onLaunchLauncher}
+                onCreateWindow={handleCreateWindow}
+                onLaunchLauncher={handleLaunchLauncher}
                 onOpenLaunchers={() => onOpenLaunchers?.()}
                 onReorderWindow={onReorderWindow}
               />

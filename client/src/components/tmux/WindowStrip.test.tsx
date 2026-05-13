@@ -66,6 +66,30 @@ describe('WindowStrip', () => {
     ).toContain('size-5')
   })
 
+  it('prevents pointer focus from sticking to the blank window button', () => {
+    renderStrip({
+      hasActiveSession: true,
+      inspectorLoading: false,
+      inspectorError: '',
+      windows: [],
+      activeWindowIndex: null,
+      launchers: [],
+      recentLauncher: null,
+      onSelectWindow: vi.fn(),
+      onCloseWindow: vi.fn(),
+      onRenameWindow: vi.fn(),
+      onCreateWindow: vi.fn(),
+      onLaunchLauncher: vi.fn(),
+      onOpenLaunchers: vi.fn(),
+    })
+
+    expect(
+      fireEvent.mouseDown(
+        screen.getByRole('button', { name: 'Create blank window' }),
+      ),
+    ).toBe(false)
+  })
+
   it('launches configured launchers from the dropdown menu', async () => {
     const onLaunchLauncher = vi.fn()
     const onOpenLaunchers = vi.fn()
