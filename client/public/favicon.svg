@@ -1,9 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sentinel">
-  <rect width="512" height="512" fill="#071014"/>
-  <path d="M256 68 382 119v108c0 88-49 153-126 197-77-44-126-109-126-197V119Z" fill="#0d1720" stroke="#263545" stroke-width="18" stroke-linejoin="round"/>
-  <path d="M256 103 348 140v86c0 64-34 113-92 149-58-36-92-85-92-149v-86Z" fill="#101d28"/>
-  <circle cx="340" cy="154" r="22" fill="#ffd166"/>
-  <path d="M188 221 228 256 188 291" fill="none" stroke="#7cffb2" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M254 307h78" fill="none" stroke="#7cffb2" stroke-width="30" stroke-linecap="round"/>
-  <path d="M165 412c26 18 56 34 91 53 35-19 65-35 91-53" fill="none" stroke="#1b2a36" stroke-width="18" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="sentinel-bg" cx="38%" cy="30%" r="78%">
+      <stop stop-color="#14222a"/>
+      <stop offset=".52" stop-color="#071012"/>
+      <stop offset="1" stop-color="#111723"/>
+    </radialGradient>
+    <linearGradient id="sentinel-mark" x1="138" y1="176" x2="372" y2="336" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f2fff7"/>
+      <stop offset=".42" stop-color="#72f5bb"/>
+      <stop offset="1" stop-color="#24c8f2"/>
+    </linearGradient>
+    <filter id="sentinel-soft-glow" x="80" y="110" width="360" height="300" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="11"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#sentinel-bg)" />
+  <path d="M155 188 244 256 155 324" fill="none" stroke="#21e3a5" stroke-width="64" stroke-linecap="round" stroke-linejoin="round" opacity=".15" filter="url(#sentinel-soft-glow)" />
+  <path d="M288 326h82" fill="none" stroke="#21e3a5" stroke-width="64" stroke-linecap="round" opacity=".15" filter="url(#sentinel-soft-glow)" />
+  <path d="M155 188 244 256 155 324" fill="none" stroke="#19333b" stroke-width="70" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M288 326h82" fill="none" stroke="#19333b" stroke-width="70" stroke-linecap="round" />
+  <path d="M155 188 244 256 155 324" fill="none" stroke="url(#sentinel-mark)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M288 326h82" fill="none" stroke="url(#sentinel-mark)" stroke-width="48" stroke-linecap="round" />
 </svg>
