@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'sentinel-v8'
+const CACHE_VERSION = 'sentinel-v9'
 const CORE_CACHE = `${CACHE_VERSION}-core`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 const APP_SHELL = '/index.html'
@@ -11,9 +11,18 @@ const CORE_URLS = [
   '/assets/app.js',
   '/assets/app.css',
   '/assets/favicon.svg',
+  '/favicon.ico',
+  '/favicon.png',
+  '/favicon.svg',
+  '/apple-touch-icon.png',
   '/manifest.webmanifest',
+  '/icons/favicon-16.png',
+  '/icons/favicon-32.png',
+  '/icons/apple-touch-icon.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/maskable-icon-192.png',
+  '/icons/maskable-icon-512.png',
 ]
 
 self.addEventListener('install', (event) => {
@@ -60,6 +69,10 @@ function isRuntimeAssetPath(pathname) {
   return (
     pathname.startsWith('/assets/') ||
     pathname.startsWith('/icons/') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/favicon.png' ||
+    pathname === '/favicon.svg' ||
+    pathname === '/apple-touch-icon.png' ||
     pathname === '/manifest.webmanifest'
   )
 }
