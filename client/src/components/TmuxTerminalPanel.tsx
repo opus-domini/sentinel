@@ -17,19 +17,8 @@ import type {
 } from '../types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { isEditableHotkeyTarget, useDocumentHotkeys } from '@/hooks/useHotkeys'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
-
-function isEditableShortcutTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) {
-    return false
-  }
-  if (target.closest('.xterm')) {
-    return false
-  }
-  return (
-    target.closest('input, textarea, select, [contenteditable="true"]') !== null
-  )
-}
 
 type TmuxTerminalPanelProps = {
   hostname?: string
@@ -228,64 +217,130 @@ export default function TmuxTerminalPanel({
     ],
   )
 
-  useEffect(() => {
-    if (!hasActiveSession) {
-      return
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
-        return
-      }
-
-      const key = event.key.toLowerCase()
+  const handleMoveActiveWindow = useCallback(
+    (direction: 'left' | 'right') => {
       if (
-        key !== 't' &&
-        key !== 'w' &&
-        key !== 'pageup' &&
-        key !== 'pagedown'
+        !onReorderWindow ||
+        activeWindowIndex === null ||
+        windows.length < 2
       ) {
         return
       }
 
-      const panel = panelRef.current
-      const target = event.target
-      if (
-        panel &&
-        target instanceof Element &&
-        !panel.contains(target) &&
-        target !== document.body
-      ) {
-        return
-      }
-      if (isEditableShortcutTarget(target)) {
+      const sortedWindows = [...windows].sort(
+        (left, right) => left.index - right.index,
+      )
+      const activePosition = sortedWindows.findIndex(
+        (windowInfo) => windowInfo.index === activeWindowIndex,
+      )
+      if (activePosition === -1) {
         return
       }
 
-      event.preventDefault()
-      event.stopPropagation()
-
-      if (key === 't') {
-        handleCreateWindow()
-      } else if (key === 'pageup') {
-        handleSelectAdjacentWindow('left')
-      } else if (key === 'pagedown') {
-        handleSelectAdjacentWindow('right')
-      } else {
-        handleCloseActiveWindow()
+      const targetPosition =
+        direction === 'left' ? activePosition - 1 : activePosition + 1
+      const targetWindow = sortedWindows[targetPosition]
+      if (!targetWindow) {
+        return
       }
-    }
 
-    document.addEventListener('keydown', handleKeyDown, { capture: true })
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, { capture: true })
+      const activeWindowID =
+        sortedWindows[activePosition]?.tmuxWindowId?.trim() ?? ''
+      const targetWindowID = targetWindow.tmuxWindowId?.trim() ?? ''
+      if (!activeWindowID || !targetWindowID) {
+        return
+      }
+
+      onReorderWindow(activeWindowID, targetWindowID)
+      refocusTerminalAfterWindowAction()
+    },
+    [
+      activeWindowIndex,
+      onReorderWindow,
+      refocusTerminalAfterWindowAction,
+      windows,
+    ],
+  )
+
+  const isPanelHotkey = useCallback((event: KeyboardEvent) => {
+    const panel = panelRef.current
+    const target = event.target
+    if (
+      panel &&
+      target instanceof Element &&
+      !panel.contains(target) &&
+      target !== document.body
+    ) {
+      return false
     }
-  }, [
-    handleCloseActiveWindow,
-    handleCreateWindow,
-    handleSelectAdjacentWindow,
-    hasActiveSession,
-  ])
+    return !isEditableHotkeyTarget(target, { allowTerminalTarget: true })
+  }, [])
+
+  useDocumentHotkeys(
+    [
+      {
+        key: 't',
+        ctrl: true,
+        meta: false,
+        alt: false,
+        shift: false,
+        allowTerminalTarget: true,
+        when: isPanelHotkey,
+        handler: handleCreateWindow,
+      },
+      {
+        key: 'w',
+        ctrl: true,
+        meta: false,
+        alt: false,
+        shift: false,
+        allowTerminalTarget: true,
+        when: isPanelHotkey,
+        handler: handleCloseActiveWindow,
+      },
+      {
+        key: 'PageUp',
+        ctrl: true,
+        meta: false,
+        alt: false,
+        shift: false,
+        allowTerminalTarget: true,
+        when: isPanelHotkey,
+        handler: () => handleSelectAdjacentWindow('left'),
+      },
+      {
+        key: 'PageUp',
+        ctrl: true,
+        meta: false,
+        alt: false,
+        shift: true,
+        allowTerminalTarget: true,
+        when: isPanelHotkey,
+        handler: () => handleMoveActiveWindow('left'),
+      },
+      {
+        key: 'PageDown',
+        ctrl: true,
+        meta: false,
+        alt: false,
+        shift: false,
+        allowTerminalTarget: true,
+        when: isPanelHotkey,
+        handler: () => handleSelectAdjacentWindow('right'),
+      },
+      {
+        key: 'PageDown',
+        ctrl: true,
+        meta: false,
+        alt: false,
+        shift: true,
+        allowTerminalTarget: true,
+        when: isPanelHotkey,
+        handler: () => handleMoveActiveWindow('right'),
+      },
+    ],
+    { enabled: hasActiveSession },
+  )
 
   useEffect(() => {
     if (!isMobileLayout) {

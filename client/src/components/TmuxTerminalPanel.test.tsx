@@ -270,6 +270,72 @@ describe('TmuxTerminalPanel', () => {
     expect(onFocusTerminal).toHaveBeenCalled()
   })
 
+  it('moves the active window with Ctrl+Shift+PageUp and Ctrl+Shift+PageDown', () => {
+    const onReorderWindow = vi.fn()
+    const onSelectWindow = vi.fn()
+    const onFocusTerminal = vi.fn()
+    const windows = [
+      {
+        session: 'dev',
+        index: 1,
+        name: 'left',
+        displayName: 'left',
+        active: false,
+        panes: 1,
+        tmuxWindowId: '@1',
+      },
+      {
+        session: 'dev',
+        index: 5,
+        name: 'current',
+        displayName: 'current',
+        active: true,
+        panes: 1,
+        tmuxWindowId: '@5',
+      },
+      {
+        session: 'dev',
+        index: 8,
+        name: 'right',
+        displayName: 'right',
+        active: false,
+        panes: 1,
+        tmuxWindowId: '@8',
+      },
+    ]
+
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        windows={windows}
+        activeWindowIndex={5}
+        onReorderWindow={onReorderWindow}
+        onSelectWindow={onSelectWindow}
+        onFocusTerminal={onFocusTerminal}
+      />,
+    )
+
+    expect(
+      fireEvent.keyDown(document, {
+        key: 'PageUp',
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    ).toBe(false)
+    expect(onReorderWindow).toHaveBeenLastCalledWith('@5', '@1')
+
+    expect(
+      fireEvent.keyDown(document, {
+        key: 'PageDown',
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    ).toBe(false)
+    expect(onReorderWindow).toHaveBeenLastCalledWith('@5', '@8')
+    expect(onSelectWindow).not.toHaveBeenCalled()
+    expect(onFocusTerminal).toHaveBeenCalled()
+  })
+
   it('does not steal Ctrl+W from inputs outside the terminal panel', () => {
     const onCloseWindow = vi.fn()
     const input = document.createElement('input')

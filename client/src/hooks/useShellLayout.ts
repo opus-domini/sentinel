@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useDocumentHotkeys } from '@/hooks/useHotkeys'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
 
 type UseShellLayoutOptions = {
@@ -78,16 +79,29 @@ export function useShellLayout({
     window.localStorage.setItem(widthStorageKey, String(sidebarWidth))
   }, [sidebarWidth, widthStorageKey])
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if ((event.target as Element).closest('[role="dialog"]')) return
-        setSidebarOpen(false)
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [])
+  useDocumentHotkeys([
+    {
+      key: 'Escape',
+      ignoreEditable: false,
+      preventDefault: false,
+      stopPropagation: false,
+      when: (event) =>
+        !(
+          event.target instanceof Element &&
+          event.target.closest('[role="dialog"]')
+        ),
+      handler: () => setSidebarOpen(false),
+    },
+    {
+      key: '\\',
+      ctrl: true,
+      meta: false,
+      alt: false,
+      shift: false,
+      allowTerminalTarget: true,
+      handler: () => setSidebarCollapsed((current) => !current),
+    },
+  ])
 
   const shellStyle = useMemo(
     () =>

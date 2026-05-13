@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react'
+import { act, fireEvent, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useShellLayout } from './useShellLayout'
@@ -55,5 +55,40 @@ describe('useShellLayout', () => {
     })
     expect(result.current.sidebarWidth).toBe(240)
     expect(onResizeEnd).toHaveBeenCalledTimes(2)
+  })
+
+  it('toggles the sidebar collapsed state with Ctrl+\\', () => {
+    const { result } = renderLayout()
+
+    expect(result.current.sidebarCollapsed).toBe(false)
+
+    act(() => {
+      expect(fireEvent.keyDown(document, { key: '\\', ctrlKey: true })).toBe(
+        false,
+      )
+    })
+    expect(result.current.sidebarCollapsed).toBe(true)
+
+    const input = document.createElement('input')
+    document.body.append(input)
+
+    act(() => {
+      expect(fireEvent.keyDown(input, { key: '\\', ctrlKey: true })).toBe(true)
+    })
+    expect(result.current.sidebarCollapsed).toBe(true)
+
+    const terminal = document.createElement('div')
+    terminal.className = 'xterm'
+    document.body.append(terminal)
+
+    act(() => {
+      expect(fireEvent.keyDown(terminal, { key: '\\', ctrlKey: true })).toBe(
+        false,
+      )
+    })
+    expect(result.current.sidebarCollapsed).toBe(false)
+
+    input.remove()
+    terminal.remove()
   })
 })
