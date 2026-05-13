@@ -10,12 +10,33 @@ export type TerminalTheme = {
 
 export const THEME_STORAGE_KEY = 'sentinel_terminal_theme'
 
+function token(name: string, fallback: string): string {
+  return getCSSVar(name) || fallback
+}
+
 function sentinelColors(): ITheme {
   return {
-    background: getCSSVar('--surface-inset'),
-    foreground: getCSSVar('--foreground'),
-    cursor: getCSSVar('--link'),
-    selectionBackground: '#264a86',
+    background: token('--surface-inset', '#0b0b0b'),
+    foreground: token('--foreground', '#e6e6e6'),
+    cursor: token('--link', '#72f5bb'),
+    cursorAccent: token('--brand-ink', '#071012'),
+    selectionBackground: token('--terminal-selection', '#123a44'),
+    black: token('--surface-inset', '#0b0b0b'),
+    red: token('--destructive', '#f87171'),
+    green: token('--ok', '#22c55e'),
+    yellow: token('--warning', '#eab308'),
+    blue: token('--brand-accent', '#24c8f2'),
+    magenta: token('--chart-load', '#8b5cf6'),
+    cyan: token('--brand-glow', '#72f5bb'),
+    white: token('--foreground', '#e6e6e6'),
+    brightBlack: token('--muted-foreground', '#787878'),
+    brightRed: token('--destructive-foreground', '#ffc0c0'),
+    brightGreen: token('--ok-foreground', '#8ef1b2'),
+    brightYellow: token('--warning-foreground', '#f3d36f'),
+    brightBlue: token('--log-info-foreground', '#9ee7ff'),
+    brightMagenta: '#c4a2ff',
+    brightCyan: token('--primary-text-bright', '#d2fff0'),
+    brightWhite: token('--primary-text-lightest', '#f1fff9'),
   }
 }
 

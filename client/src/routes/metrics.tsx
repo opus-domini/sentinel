@@ -34,12 +34,12 @@ import { Sparkline } from '@/lib/Sparkline'
 import { cn } from '@/lib/utils'
 
 const SPARKLINE_COLORS = {
-  cpu: '#10b981',
-  memory: '#3b82f6',
-  disk: '#f59e0b',
-  loadAvg: '#8b5cf6',
-  goroutines: '#06b6d4',
-  goHeap: '#f97316',
+  cpu: 'var(--chart-cpu)',
+  memory: 'var(--chart-memory)',
+  disk: 'var(--chart-disk)',
+  loadAvg: 'var(--chart-load)',
+  goroutines: 'var(--chart-goroutines)',
+  goHeap: 'var(--chart-go-heap)',
 } as const
 
 const round1 = (n: number) => Math.round(n * 10) / 10
@@ -218,7 +218,7 @@ function MetricsPage() {
         />
       }
     >
-      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,rgba(34,197,94,.16),transparent_34%),var(--background)]">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,var(--section-glow-ok),transparent_34%),var(--background)]">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Button

@@ -812,7 +812,7 @@ function ServicesPage() {
         />
       }
     >
-      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,rgba(6,182,212,.16),transparent_34%),var(--background)]">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,var(--section-glow-brand),transparent_34%),var(--background)]">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Button
@@ -851,7 +851,7 @@ function ServicesPage() {
                   className={cn(
                     'h-7 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
                     allBrowseUnitTypesSelected
-                      ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
+                      ? 'border-selection-border/50 bg-selection-surface text-selection-foreground'
                       : 'border-border-subtle text-muted-foreground hover:text-foreground',
                   )}
                   onClick={selectAllTypeFilters}
@@ -868,7 +868,7 @@ function ServicesPage() {
                       className={cn(
                         'h-7 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
                         selected
-                          ? 'border-cyan-500/40 bg-cyan-500/10 text-foreground'
+                          ? 'border-selection-border/50 bg-selection-surface text-selection-foreground'
                           : 'border-border-subtle text-muted-foreground hover:text-foreground',
                       )}
                       onClick={() => toggleTypeFilter(unitType)}

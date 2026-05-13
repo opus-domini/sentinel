@@ -373,7 +373,7 @@ function AlertsPage() {
         />
       }
     >
-      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,rgba(245,158,11,.16),transparent_34%),var(--background)]">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,var(--section-glow-warning),transparent_34%),var(--background)]">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Button
@@ -539,7 +539,7 @@ function AlertsPage() {
                               alert.status === 'open'
                                 ? 'border-warning/40 bg-warning/15 text-warning-foreground'
                                 : alert.status === 'acked'
-                                  ? 'border-blue-500/30 bg-blue-500/10 text-blue-400'
+                                  ? 'border-primary/30 bg-primary/10 text-primary-text'
                                   : 'border-border-subtle bg-surface-overlay text-muted-foreground',
                             )}
                           >

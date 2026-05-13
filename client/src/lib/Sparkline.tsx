@@ -111,7 +111,10 @@ export function Sparkline({
         <>
           <div
             className="absolute top-0 bottom-0 w-px"
-            style={{ left: `${hoverXPct}%`, backgroundColor: `${color}40` }}
+            style={{
+              left: `${hoverXPct}%`,
+              backgroundColor: `color-mix(in srgb, ${color} 25%, transparent)`,
+            }}
           />
           <div
             className="absolute h-[7px] w-[7px] rounded-full"

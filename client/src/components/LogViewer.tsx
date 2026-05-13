@@ -17,9 +17,9 @@ interface LogViewerProps {
 const levelColors: Record<LogLevel, string> = {
   error: 'text-red-400',
   warn: 'text-yellow-400',
-  info: 'text-blue-300',
+  info: 'text-log-info',
   debug: 'text-neutral-500',
-  notice: 'text-cyan-400',
+  notice: 'text-log-notice',
   unknown: 'text-secondary-foreground',
 }
 
@@ -70,7 +70,7 @@ const LogLine = React.memo(function LogLine({
         )}
       >
         {line.timestamp && (
-          <span className="text-blue-400/70">
+          <span className="text-log-timestamp/70">
             {highlightMatch(line.timestamp, searchRegex)}
           </span>
         )}

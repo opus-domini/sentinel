@@ -122,7 +122,7 @@ export default function SessionListItem({
                   ? 'py-1.5'
                   : 'py-2',
               isActive
-                ? 'border-primary/60 bg-surface-active-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,.25)]'
+                ? 'border-primary/60 bg-surface-active-primary shadow-[inset_0_0_0_1px_var(--active-shadow)]'
                 : 'border-border-subtle hover:border-border hover:bg-secondary focus-within:border-border',
             )}
             type="button"

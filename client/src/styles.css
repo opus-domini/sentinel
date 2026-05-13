@@ -12,6 +12,12 @@
   --visual-viewport-height: 100dvh;
   --visual-viewport-width: 100vw;
 
+  /* Brand tokens — sourced from the Sentinel icon */
+  --brand-ink: #071012;
+  --brand-rail: #19333b;
+  --brand-glow: #72f5bb;
+  --brand-accent: #24c8f2;
+
   /* shadcn standard tokens — dark-only theme */
   --background: #0a0a0a;
   --foreground: #e6e6e6;
@@ -19,8 +25,8 @@
   --card-foreground: #e6e6e6;
   --popover: #111111;
   --popover-foreground: #e6e6e6;
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
+  --primary: var(--brand-accent);
+  --primary-foreground: var(--brand-ink);
   --secondary: #171717;
   --secondary-foreground: #a7a7a7;
   --muted: #171717;
@@ -30,13 +36,17 @@
   --destructive: #f87171;
   --border: #2a2a2a;
   --input: #2a2a2a;
-  --ring: #3b82f6;
+  --ring: var(--brand-glow);
   --radius: 0.375rem;
 
   /* Sentinel-specific tokens */
   --border-subtle: #202020;
   --ok: #22c55e;
   --warning: #eab308;
+  --selection-surface: #0d2427;
+  --selection-border: var(--brand-accent);
+  --selection-foreground: #d6fff0;
+  --active-shadow: rgba(36, 200, 242, 0.28);
 
   /* Surfaces (dark grays) */
   --surface-inset: #0b0b0b;
@@ -46,14 +56,14 @@
   --surface-elevated: #121212;
   --surface-hover: #151515;
   --surface-active: #1d1d1d;
-  --surface-active-primary: #161b27;
+  --surface-active-primary: var(--selection-surface);
   --surface-close-hover: #1b1b1b;
 
-  /* Primary text (blue tints) */
-  --primary-text: #bfd8ff;
-  --primary-text-bright: #c9deff;
-  --primary-text-light: #d9e6ff;
-  --primary-text-lightest: #e9f1ff;
+  /* Primary text tints */
+  --primary-text: #bdfce3;
+  --primary-text-bright: #d2fff0;
+  --primary-text-light: #e0fff5;
+  --primary-text-lightest: #f1fff9;
 
   /* Status foreground */
   --ok-foreground: #8ef1b2;
@@ -63,12 +73,29 @@
   /* Misc */
   --inactive-dot: #656565;
   --disconnected-text: #cccccc;
-  --link: #8ab4ff;
+  --link: var(--brand-glow);
+
+  /* Section ambient glows */
+  --section-glow-brand: rgba(36, 200, 242, 0.16);
+  --section-glow-ok: rgba(34, 197, 94, 0.16);
+  --section-glow-warning: rgba(245, 158, 11, 0.16);
+
+  /* Charts and log streams */
+  --chart-cpu: #10b981;
+  --chart-memory: var(--brand-accent);
+  --chart-disk: #f59e0b;
+  --chart-load: #8b5cf6;
+  --chart-goroutines: #06b6d4;
+  --chart-go-heap: #f97316;
+  --log-info-foreground: #9ee7ff;
+  --log-notice-foreground: var(--brand-glow);
+  --log-timestamp-foreground: #8adff6;
 
   /* Terminal controls */
   --border-bright: #3a3a3a;
   --terminal-key-text: #b0b0b0;
   --terminal-key-active: rgba(255, 255, 255, 0.08);
+  --terminal-selection: #123a44;
   --surface-terminal-bar: #1c1c1e;
   --border-terminal-row: rgba(255, 255, 255, 0.04);
 }
@@ -78,6 +105,12 @@
     'JetBrains Mono Variable', 'JetBrains Mono', 'Symbols Nerd Font Mono',
     'Symbols Nerd Font', 'Noto Color Emoji', 'Apple Color Emoji',
     'Segoe UI Emoji', 'SF Mono', monospace;
+
+  /* Brand */
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-rail: var(--brand-rail);
+  --color-brand-glow: var(--brand-glow);
+  --color-brand-accent: var(--brand-accent);
 
   /* shadcn standard */
   --color-background: var(--background);
@@ -107,6 +140,9 @@
   --color-border-subtle: var(--border-subtle);
   --color-ok: var(--ok);
   --color-warning: var(--warning);
+  --color-selection-surface: var(--selection-surface);
+  --color-selection-border: var(--selection-border);
+  --color-selection-foreground: var(--selection-foreground);
 
   /* Surfaces */
   --color-surface-inset: var(--surface-inset);
@@ -134,6 +170,15 @@
   --color-inactive-dot: var(--inactive-dot);
   --color-disconnected-text: var(--disconnected-text);
   --color-link: var(--link);
+  --color-log-info: var(--log-info-foreground);
+  --color-log-notice: var(--log-notice-foreground);
+  --color-log-timestamp: var(--log-timestamp-foreground);
+  --color-chart-cpu: var(--chart-cpu);
+  --color-chart-memory: var(--chart-memory);
+  --color-chart-disk: var(--chart-disk);
+  --color-chart-load: var(--chart-load);
+  --color-chart-goroutines: var(--chart-goroutines);
+  --color-chart-go-heap: var(--chart-go-heap);
 
   /* Terminal controls */
   --color-border-bright: var(--border-bright);
