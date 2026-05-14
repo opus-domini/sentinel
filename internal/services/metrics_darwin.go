@@ -41,30 +41,30 @@ func collectCPUPercent(_ context.Context) float64 {
 	return -1
 }
 
-func collectMemInfo() (used, total int64) {
+func collectMemInfo() memorySample {
 	// Use sysctl to get physical memory size.
 	out, err := exec.Command("sysctl", "-n", "hw.memsize").Output()
 	if err != nil {
-		return 0, 0
+		return memorySample{}
 	}
-	total, err = strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	total, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
 	if err != nil {
-		return 0, 0
+		return memorySample{}
 	}
 
 	// Get page size and VM stats for used memory approximation.
 	pageOut, err := exec.Command("sysctl", "-n", "hw.pagesize").Output()
 	if err != nil {
-		return 0, total
+		return memorySample{totalBytes: total}
 	}
 	pageSize, err := strconv.ParseInt(strings.TrimSpace(string(pageOut)), 10, 64)
 	if err != nil {
-		return 0, total
+		return memorySample{totalBytes: total}
 	}
 
 	vmOut, err := exec.Command("vm_stat").Output()
 	if err != nil {
-		return 0, total
+		return memorySample{totalBytes: total}
 	}
 
 	pageValues := make(map[string]int64)
@@ -86,11 +86,19 @@ func collectMemInfo() (used, total int64) {
 	activePages := pageValues["Pages active"]
 	wiredPages := pageValues["Pages wired down"]
 	compressedPages := pageValues["Pages occupied by compressor"]
-	used = (activePages + wiredPages + compressedPages) * pageSize
+	used := (activePages + wiredPages + compressedPages) * pageSize
 	if used < 0 {
 		used = 0
 	}
-	return used, total
+	available := total - used
+	if available < 0 {
+		available = 0
+	}
+	return memorySample{
+		usedBytes:      used,
+		totalBytes:     total,
+		availableBytes: available,
+	}
 }
 
 func collectLoadAvg() (avg1, avg5, avg15 float64) {
@@ -112,17 +120,45 @@ func collectLoadAvg() (avg1, avg5, avg15 float64) {
 	return avg1, avg5, avg15
 }
 
-func collectDiskUsage(path string) (used, total int64) {
+func collectDiskUsage(path string) diskSample {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(path, &stat); err != nil {
-		return 0, 0
+		return diskSample{}
 	}
 	bsize := uint64(stat.Bsize)
-	total = int64(stat.Blocks * bsize)
+	total := int64(stat.Blocks * bsize)
 	free := int64(stat.Bavail * bsize)
-	used = total - free
+	used := total - free
 	if used < 0 {
 		used = 0
 	}
-	return used, total
+	inodesTotal := int64(stat.Files)
+	inodesFree := int64(stat.Ffree)
+	inodesUsed := inodesTotal - inodesFree
+	if inodesUsed < 0 {
+		inodesUsed = 0
+	}
+	return diskSample{
+		usedBytes:   used,
+		totalBytes:  total,
+		freeBytes:   free,
+		inodesUsed:  inodesUsed,
+		inodesTotal: inodesTotal,
+	}
+}
+
+func collectNetworkIO() networkIOSample {
+	return networkIOSample{}
+}
+
+func collectProcessInfo(_ context.Context) processSample {
+	return processSample{complete: true}
+}
+
+func collectHostUptime() uptimeSample {
+	return uptimeSample{}
+}
+
+func collectPressure() pressureSample {
+	return pressureSample{cpuAvg10: -1, memAvg10: -1, ioAvg10: -1}
 }

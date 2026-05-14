@@ -8,35 +8,34 @@ The Metrics page (`/metrics`) provides real-time system and runtime metrics for 
 
 Host-level resource metrics collected from the OS:
 
-- **CPU** — usage percentage across all cores.
-- **Memory** — used/total bytes and utilization percentage.
-- **Disk** — used/total bytes and utilization percentage.
-- **Load averages** — 1-minute, 5-minute, and 15-minute values.
+- **CPU** — usage percentage across all cores, core count, load averages, and load-per-core.
+- **Memory** — used, available, total, and utilization percentage.
+- **Swap** — used/total bytes and utilization percentage when swap is configured.
+- **Disk** — used/free/total bytes, utilization percentage, and inode utilization for the root filesystem.
+- **Network** — total RX/TX bytes and live RX/TX rates across non-loopback interfaces.
+- **Processes** — process and thread counts.
+- **Host uptime** — uptime and boot time.
+- **Pressure stall information** — CPU, memory, and I/O PSI `avg10` values on Linux.
 
-Visual indicators use colored progress bars with green/amber/red thresholds to highlight resource pressure at a glance.
+Visual indicators use green/amber/red thresholds to highlight resource pressure at a glance.
 
 ## Runtime Metrics
 
 Go runtime statistics for the Sentinel server process:
 
 - **Goroutine count** — number of active goroutines.
-- **Heap memory** — Go heap allocation in MB.
+- **Heap memory** — Go heap allocation and runtime memory in MB.
+- **GC** — garbage collection count and latest GC pause duration.
 - **PID** — process identifier.
 - **Uptime** — time since the Sentinel process started.
-
-## Auto-Refresh
-
-A toggle in the sidebar enables or disables automatic polling:
-
-- When enabled, metrics refresh every **5 seconds**.
-- Can be toggled on or off at any time without page reload.
-- State is local to the current browser session.
 
 ## UI Features
 
 - Dedicated `/metrics` route with full-page metrics dashboard.
-- Two tabs: **System** (host resource gauges) and **Runtime** (Go process stats).
-- Sidebar displays host info (hostname, OS/arch, CPU count, Go version), Sentinel info (PID, uptime, last collected timestamp), and the auto-refresh toggle.
+- Unified command-center dashboard with an always-visible host posture overview.
+- Context tabs for saturation, network, and Sentinel runtime metrics, so dense widgets have enough room for labels, details, and trends.
+- Metrics uses the full available panel width and keeps help, token, refresh, and connection controls in the page header.
+- Metrics are pushed from the server every **2 seconds** over WebSocket.
 - Real-time overview updates via WebSocket (`ops.overview.updated`).
 - Help dialog (triggered via the `?` button) explaining the metrics system.
 
@@ -52,9 +51,9 @@ A toggle in the sidebar enables or disables automatic polling:
 Overview state is kept current via the `/ws/events` WebSocket:
 
 - `ops.overview.updated` — updated overview payload including host and Sentinel process info.
-- `ops.metrics.updated` — updated host resource metrics (CPU, memory, disk, load averages).
+- `ops.metrics.updated` — updated host and runtime metrics.
 
 ## API Endpoints
 
-- `GET /api/ops/metrics` — host resource metrics (CPU, memory, disk, load averages)
+- `GET /api/ops/metrics` — host and Sentinel runtime metrics
 - `GET /api/ops/overview` — host + Sentinel + services summary

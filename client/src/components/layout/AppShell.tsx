@@ -79,6 +79,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
         <SideRail
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
+          showSidebarToggles={hasSidebar}
         />
 
         {hasSidebar && sidebar}
@@ -104,7 +105,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
       <div
         className={cn(
           'fixed inset-0 z-20 bg-black/45 md:hidden',
-          sidebarOpen ? 'block' : 'hidden',
+          hasSidebar && sidebarOpen ? 'block' : 'hidden',
         )}
         onClick={() => setSidebarOpen(false)}
       />

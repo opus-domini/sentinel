@@ -43,6 +43,7 @@
   --border-subtle: #202020;
   --ok: #22c55e;
   --warning: #eab308;
+  --activity: var(--brand-glow);
   --selection-surface: #0d2427;
   --selection-border: var(--brand-accent);
   --selection-foreground: #d6fff0;
@@ -68,6 +69,7 @@
   /* Status foreground */
   --ok-foreground: #8ef1b2;
   --warning-foreground: #f3d36f;
+  --activity-foreground: var(--primary-text);
   --destructive-foreground: #ffc0c0;
 
   /* Misc */
@@ -83,8 +85,14 @@
   /* Charts and log streams */
   --chart-cpu: #10b981;
   --chart-memory: var(--brand-accent);
-  --chart-disk: #f59e0b;
+  --chart-disk: #60a5fa;
   --chart-load: #8b5cf6;
+  --chart-swap: #818cf8;
+  --chart-inodes: #a78bfa;
+  --chart-network-rx: var(--brand-glow);
+  --chart-network-tx: #38bdf8;
+  --chart-pressure: #fb7185;
+  --chart-process: #e879f9;
   --chart-goroutines: #06b6d4;
   --chart-go-heap: #f97316;
   --log-info-foreground: #9ee7ff;
@@ -140,6 +148,7 @@
   --color-border-subtle: var(--border-subtle);
   --color-ok: var(--ok);
   --color-warning: var(--warning);
+  --color-activity: var(--activity);
   --color-selection-surface: var(--selection-surface);
   --color-selection-border: var(--selection-border);
   --color-selection-foreground: var(--selection-foreground);
@@ -164,6 +173,7 @@
   /* Status foreground */
   --color-ok-foreground: var(--ok-foreground);
   --color-warning-foreground: var(--warning-foreground);
+  --color-activity-foreground: var(--activity-foreground);
   --color-destructive-foreground: var(--destructive-foreground);
 
   /* Misc */
@@ -177,6 +187,12 @@
   --color-chart-memory: var(--chart-memory);
   --color-chart-disk: var(--chart-disk);
   --color-chart-load: var(--chart-load);
+  --color-chart-swap: var(--chart-swap);
+  --color-chart-inodes: var(--chart-inodes);
+  --color-chart-network-rx: var(--chart-network-rx);
+  --color-chart-network-tx: var(--chart-network-tx);
+  --color-chart-pressure: var(--chart-pressure);
+  --color-chart-process: var(--chart-process);
   --color-chart-goroutines: var(--chart-goroutines);
   --color-chart-go-heap: var(--chart-go-heap);
 

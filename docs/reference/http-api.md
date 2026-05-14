@@ -187,7 +187,7 @@ Payload:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/ops/overview` | Host + Sentinel + services summary |
-| `GET` | `/api/ops/metrics` | Host resource metrics (CPU, memory, disk) |
+| `GET` | `/api/ops/metrics` | Host and Sentinel runtime metrics |
 | `GET` | `/api/ops/alerts` | List active/recent ops alerts |
 | `POST` | `/api/ops/alerts/bulk-ack` | Bulk-acknowledge alerts (max 100) |
 | `POST` | `/api/ops/alerts/{alert}/ack` | Acknowledge one alert |

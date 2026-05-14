@@ -54,6 +54,12 @@ export default function SideRail({
       Icon: SquareTerminal,
     },
     {
+      to: '/metrics' as const,
+      label: 'Metrics',
+      active: metricsActive,
+      Icon: Activity,
+    },
+    {
       to: '/services' as const,
       label: 'Services',
       active: servicesActive,
@@ -64,12 +70,6 @@ export default function SideRail({
       label: 'Alerts',
       active: alertsActive,
       Icon: Bell,
-    },
-    {
-      to: '/metrics' as const,
-      label: 'Metrics',
-      active: metricsActive,
-      Icon: Activity,
     },
     {
       to: '/runbooks' as const,

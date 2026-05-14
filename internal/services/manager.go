@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/daemon"
@@ -126,6 +127,8 @@ type Manager struct {
 	uidFn          func() int
 	goos           string
 	customServices customServicesRepo
+	metricsMu      sync.Mutex
+	metrics        *metricsCollector
 
 	installAutoUpdate func(opts daemon.InstallUserAutoUpdateOptions) error
 	userServicePathFn func() (string, error)
@@ -145,6 +148,7 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 		uidFn:             os.Getuid,
 		goos:              runtime.GOOS,
 		customServices:    csRepo,
+		metrics:           newMetricsCollector(),
 		installAutoUpdate: daemon.InstallUserAutoUpdate,
 		userServicePathFn: daemon.UserServicePath,
 		autoServicePathFn: daemon.UserAutoUpdateServicePathForScope,
@@ -153,7 +157,19 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 }
 
 func (m *Manager) Metrics(ctx context.Context) HostMetrics {
-	return CollectMetrics(ctx, "/")
+	return m.metricsCollector().Collect(ctx, "/")
+}
+
+func (m *Manager) metricsCollector() *metricsCollector {
+	if m == nil {
+		return newMetricsCollector()
+	}
+	m.metricsMu.Lock()
+	defer m.metricsMu.Unlock()
+	if m.metrics == nil {
+		m.metrics = newMetricsCollector()
+	}
+	return m.metrics
 }
 
 func (m *Manager) Overview(ctx context.Context) (Overview, error) {

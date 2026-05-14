@@ -25,9 +25,9 @@ type SidebarShellProps = {
 
 const mobileNavItems = [
   { to: '/tmux', label: 'Tmux', icon: SquareTerminal },
+  { to: '/metrics', label: 'Metrics', icon: Activity },
   { to: '/services', label: 'Services', icon: Blocks },
   { to: '/alerts', label: 'Alerts', icon: Bell },
-  { to: '/metrics', label: 'Metrics', icon: Activity },
   { to: '/runbooks', label: 'Runbooks', icon: ScrollText },
   { to: '/activities', label: 'Activities', icon: Clock },
 ] as const

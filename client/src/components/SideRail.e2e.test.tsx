@@ -71,4 +71,28 @@ describe('SideRail', () => {
     )
     expect(desktopSettingsButton).not.toBeNull()
   })
+
+  it('keeps metrics immediately after tmux in the desktop rail', () => {
+    const { container } = render(
+      <LayoutContext.Provider value={layoutValue}>
+        <SideRail
+          sidebarCollapsed={false}
+          onToggleSidebarCollapsed={() => {}}
+        />
+      </LayoutContext.Provider>,
+    )
+
+    const links = Array.from(container.querySelectorAll('aside a')).map(
+      (link) => link.getAttribute('aria-label'),
+    )
+
+    expect(links).toEqual([
+      'Tmux',
+      'Metrics',
+      'Services',
+      'Alerts',
+      'Runbooks',
+      'Activities',
+    ])
+  })
 })

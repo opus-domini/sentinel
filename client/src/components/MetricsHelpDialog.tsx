@@ -40,8 +40,9 @@ export default function MetricsHelpDialog() {
                 System Metrics
               </h3>
               <p>
-                CPU usage, memory consumption, disk utilization, and system load
-                averages are collected from the host operating system.
+                CPU, memory, swap, disk, inode, network, process, uptime, load,
+                and pressure signals are collected from the host operating
+                system.
               </p>
             </section>
             <section>
@@ -49,8 +50,9 @@ export default function MetricsHelpDialog() {
                 Runtime Metrics
               </h3>
               <p>
-                Go runtime statistics including goroutine count and heap memory
-                usage provide insight into the Sentinel process itself.
+                Go runtime statistics include goroutine count, heap allocation,
+                runtime memory, GC count, and the latest GC pause for the
+                Sentinel process.
               </p>
             </section>
             <section>

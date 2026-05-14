@@ -68,13 +68,13 @@ func readCPUStat() (idle, total uint64, err error) {
 	return 0, 0, fmt.Errorf("cpu line not found in /proc/stat")
 }
 
-func collectMemInfo() (used, total int64) {
+func collectMemInfo() memorySample {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return 0, 0
+		return memorySample{}
 	}
 
-	var memTotal, memAvailable, memFree, buffers, cached int64
+	var memTotal, memAvailable, memFree, buffers, cached, swapTotal, swapFree int64
 	foundAvailable := false
 
 	for _, line := range strings.Split(string(data), "\n") {
@@ -100,19 +100,37 @@ func collectMemInfo() (used, total int64) {
 			buffers = valBytes
 		case "Cached:":
 			cached = valBytes
+		case "SwapTotal:":
+			swapTotal = valBytes
+		case "SwapFree:":
+			swapFree = valBytes
 		}
 	}
 
-	total = memTotal
+	used := int64(0)
+	available := int64(0)
 	if foundAvailable {
+		memAvailable = maxInt64(memAvailable, 0)
 		used = memTotal - memAvailable
+		available = memAvailable
 	} else {
-		used = memTotal - (memFree + buffers + cached)
+		available = memFree + buffers + cached
+		used = memTotal - available
 	}
 	if used < 0 {
 		used = 0
 	}
-	return used, total
+	swapUsed := swapTotal - swapFree
+	if swapUsed < 0 {
+		swapUsed = 0
+	}
+	return memorySample{
+		usedBytes:      used,
+		totalBytes:     memTotal,
+		availableBytes: available,
+		swapUsedBytes:  swapUsed,
+		swapTotalBytes: swapTotal,
+	}
 }
 
 func collectLoadAvg() (avg1, avg5, avg15 float64) {
@@ -130,18 +148,229 @@ func collectLoadAvg() (avg1, avg5, avg15 float64) {
 	return avg1, avg5, avg15
 }
 
-func collectDiskUsage(path string) (used, total int64) {
+func collectDiskUsage(path string) diskSample {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(path, &stat); err != nil {
-		return 0, 0
+		return diskSample{}
 	}
 	// Total = blocks * block size, Available = free blocks available to unprivileged users.
 	bsize := uint64(stat.Bsize)
-	total = int64(stat.Blocks * bsize)
+	total := int64(stat.Blocks * bsize)
 	free := int64(stat.Bavail * bsize)
-	used = total - free
+	used := total - free
 	if used < 0 {
 		used = 0
 	}
-	return used, total
+	inodesTotal := int64(stat.Files)
+	inodesFree := int64(stat.Ffree)
+	inodesUsed := inodesTotal - inodesFree
+	if inodesUsed < 0 {
+		inodesUsed = 0
+	}
+	return diskSample{
+		usedBytes:   used,
+		totalBytes:  total,
+		freeBytes:   free,
+		inodesUsed:  inodesUsed,
+		inodesTotal: inodesTotal,
+	}
+}
+
+func collectNetworkIO() networkIOSample {
+	data, err := os.ReadFile("/proc/net/dev")
+	if err != nil {
+		return networkIOSample{}
+	}
+
+	var sample networkIOSample
+	for _, line := range strings.Split(string(data), "\n") {
+		namePart, countersPart, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(namePart)
+		if name == "" || name == "lo" {
+			continue
+		}
+		fields := strings.Fields(countersPart)
+		if len(fields) < 16 {
+			continue
+		}
+		rx, rxErr := strconv.ParseInt(fields[0], 10, 64)
+		tx, txErr := strconv.ParseInt(fields[8], 10, 64)
+		if rxErr != nil || txErr != nil {
+			continue
+		}
+		sample.rxBytes += rx
+		sample.txBytes += tx
+		sample.interfaces++
+	}
+	return sample
+}
+
+func collectProcessInfo(ctx context.Context) processSample {
+	procRoot, err := os.OpenRoot("/proc")
+	if err != nil {
+		return processSample{complete: true}
+	}
+	defer func() {
+		_ = procRoot.Close()
+	}()
+
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return processSample{complete: true}
+	}
+
+	sample := processSample{complete: true}
+	for _, entry := range entries {
+		select {
+		case <-ctx.Done():
+			sample.complete = false
+			return sample
+		default:
+		}
+		if !entry.IsDir() || !isNumeric(entry.Name()) {
+			continue
+		}
+		sample.processes++
+		threads := readProcThreads(ctx, procRoot, entry.Name())
+		if ctx.Err() != nil {
+			sample.complete = false
+			return sample
+		}
+		if threads > 0 {
+			sample.threads += threads
+		} else {
+			sample.threads++
+		}
+	}
+	return sample
+}
+
+func readProcThreads(ctx context.Context, procRoot *os.Root, pid string) int {
+	select {
+	case <-ctx.Done():
+		return 0
+	default:
+	}
+	if !isNumeric(pid) {
+		return 0
+	}
+
+	data, err := procRoot.ReadFile(pid + "/status")
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "Threads:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return 0
+		}
+		threads, err := strconv.Atoi(fields[1])
+		if err != nil {
+			return 0
+		}
+		return threads
+	}
+	return 0
+}
+
+func collectHostUptime() uptimeSample {
+	uptime := uptimeSample{}
+	if data, err := os.ReadFile("/proc/uptime"); err == nil {
+		fields := strings.Fields(string(data))
+		if len(fields) > 0 {
+			if seconds, parseErr := strconv.ParseFloat(fields[0], 64); parseErr == nil {
+				uptime.uptimeSec = int64(seconds)
+			}
+		}
+	}
+	if data, err := os.ReadFile("/proc/stat"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) != 2 || fields[0] != "btime" {
+				continue
+			}
+			if seconds, parseErr := strconv.ParseInt(fields[1], 10, 64); parseErr == nil {
+				uptime.bootTime = time.Unix(seconds, 0).UTC().Format(time.RFC3339)
+			}
+			break
+		}
+	}
+	return uptime
+}
+
+func collectPressure() pressureSample {
+	return pressureSample{
+		cpuAvg10: readPressureAvg10(pressureCPU),
+		memAvg10: readPressureAvg10(pressureMemory),
+		ioAvg10:  readPressureAvg10(pressureIO),
+	}
+}
+
+type pressureSource int
+
+const (
+	pressureCPU pressureSource = iota
+	pressureMemory
+	pressureIO
+)
+
+func readPressureAvg10(source pressureSource) float64 {
+	var data []byte
+	var err error
+	switch source {
+	case pressureCPU:
+		data, err = os.ReadFile("/proc/pressure/cpu")
+	case pressureMemory:
+		data, err = os.ReadFile("/proc/pressure/memory")
+	case pressureIO:
+		data, err = os.ReadFile("/proc/pressure/io")
+	default:
+		return -1
+	}
+	if err != nil {
+		return -1
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != "some" {
+			continue
+		}
+		for _, field := range fields[1:] {
+			raw, ok := strings.CutPrefix(field, "avg10=")
+			if !ok {
+				continue
+			}
+			value, parseErr := strconv.ParseFloat(raw, 64)
+			if parseErr != nil {
+				return -1
+			}
+			return value
+		}
+	}
+	return -1
+}
+
+func isNumeric(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func maxInt64(left, right int64) int64 {
+	if left > right {
+		return left
+	}
+	return right
 }

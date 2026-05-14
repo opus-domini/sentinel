@@ -8,9 +8,21 @@ function snap(cpu: number): MetricsSnapshot {
     cpuPercent: cpu,
     memPercent: 50,
     diskPercent: 30,
+    diskInodesPercent: 20,
+    swapPercent: 10,
     loadAvg1: 1.0,
+    loadPerCPU: 0.25,
+    netRxBytes: 1024,
+    netTxBytes: 2048,
+    processCount: 80,
+    threadCount: 240,
+    cpuPressureAvg10: 0.1,
+    memPressureAvg10: 0.2,
+    ioPressureAvg10: 0.3,
     numGoroutines: 10,
     goMemAllocMB: 8,
+    goMemSysMB: 32,
+    goLastGcPauseMs: 0.4,
   }
 }
 

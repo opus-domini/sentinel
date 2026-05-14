@@ -445,17 +445,41 @@ export type OpsServiceLogsResponse = {
 
 export type OpsHostMetrics = {
   cpuPercent: number
-  memUsedBytes: number
-  memTotalBytes: number
-  memPercent: number
-  diskUsedBytes: number
-  diskTotalBytes: number
-  diskPercent: number
+  cpuCount: number
   loadAvg1: number
   loadAvg5: number
   loadAvg15: number
+  loadPerCPU: number
+  memUsedBytes: number
+  memTotalBytes: number
+  memAvailableBytes: number
+  memPercent: number
+  swapUsedBytes: number
+  swapTotalBytes: number
+  swapPercent: number
+  diskUsedBytes: number
+  diskTotalBytes: number
+  diskFreeBytes: number
+  diskPercent: number
+  diskInodesUsed: number
+  diskInodesTotal: number
+  diskInodesPercent: number
+  netRxBytes: number
+  netTxBytes: number
+  netInterfaces: number
+  processCount: number
+  threadCount: number
+  hostUptimeSec: number
+  bootTime: string
+  cpuPressureAvg10: number
+  memPressureAvg10: number
+  ioPressureAvg10: number
   numGoroutines: number
   goMemAllocMB: number
+  goMemSysMB: number
+  goHeapObjects: number
+  goNumGC: number
+  goLastGcPauseMs: number
   collectedAt: string
 }
 
