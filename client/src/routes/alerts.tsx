@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { CheckCheck, Eye, EyeOff, Menu, RefreshCw, Trash2 } from 'lucide-react'
+import { CheckCheck, Eye, EyeOff, Menu, Trash2 } from 'lucide-react'
 import type {
   OpsActivityEvent,
   OpsAlert,
@@ -20,7 +20,7 @@ import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { useDateFormat } from '@/hooks/useDateFormat'
-import { useOpsEvents } from '@/hooks/useOpsEvents'
+import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_ALERTS_QUERY_KEY,
@@ -188,6 +188,11 @@ function AlertsPage() {
     void refreshOverview()
     void refreshAlerts()
   }, [refreshOverview, refreshAlerts])
+  const forceReconnectOpsEvents = useOpsEventsReconnect()
+  const resyncPage = useCallback(() => {
+    forceReconnectOpsEvents()
+    refreshPage()
+  }, [forceReconnectOpsEvents, refreshPage])
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
@@ -439,18 +444,7 @@ function AlertsPage() {
               )}
               <span className="hidden md:inline">Resolved</span>
             </Button>
-            <TooltipHelper content="Refresh">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-6 w-6 cursor-pointer"
-                onClick={refreshPage}
-                aria-label="Refresh alerts"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipHelper>
-            <ConnectionBadge state={connectionState} />
+            <ConnectionBadge state={connectionState} onClick={resyncPage} />
           </div>
         </header>
 

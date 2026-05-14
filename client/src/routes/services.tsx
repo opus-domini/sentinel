@@ -40,7 +40,7 @@ import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
-import { useOpsEvents } from '@/hooks/useOpsEvents'
+import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
@@ -437,6 +437,11 @@ function ServicesPage() {
     void refreshBrowse()
     void refreshOverview()
   }, [refreshServices, refreshBrowse, refreshOverview])
+  const forceReconnectOpsEvents = useOpsEventsReconnect()
+  const resyncPage = useCallback(() => {
+    forceReconnectOpsEvents()
+    refreshPage()
+  }, [forceReconnectOpsEvents, refreshPage])
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
@@ -827,18 +832,7 @@ function ServicesPage() {
             <AppSectionTitle hostname={hostname} section="services" />
           </div>
           <div className="flex items-center gap-1.5">
-            <TooltipHelper content="Refresh">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 cursor-pointer md:h-6 md:w-6"
-                onClick={refreshPage}
-                aria-label="Refresh services"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipHelper>
-            <ConnectionBadge state={connectionState} />
+            <ConnectionBadge state={connectionState} onClick={resyncPage} />
           </div>
         </header>
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Menu, RefreshCw } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import type {
   OpsActivityEvent,
   OpsActivityResponse,
@@ -11,7 +11,6 @@ import { getActivitySourceIcon } from '@/lib/activityIcons'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
-import { TooltipHelper } from '@/components/TooltipHelper'
 import ActivitiesSidebar from '@/components/ActivitiesSidebar'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -21,7 +20,7 @@ import { useMetaContext } from '@/contexts/MetaContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { useDateFormat } from '@/hooks/useDateFormat'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import { useOpsEvents } from '@/hooks/useOpsEvents'
+import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_OVERVIEW_QUERY_KEY,
@@ -150,6 +149,11 @@ function ActivitiesPage() {
     void refreshOverview()
     void refreshActivity()
   }, [refreshOverview, refreshActivity])
+  const forceReconnectOpsEvents = useOpsEventsReconnect()
+  const resyncPage = useCallback(() => {
+    forceReconnectOpsEvents()
+    refreshPage()
+  }, [forceReconnectOpsEvents, refreshPage])
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
@@ -239,18 +243,7 @@ function ActivitiesPage() {
             <AppSectionTitle hostname={hostname} section="activities" />
           </div>
           <div className="flex items-center gap-1.5">
-            <TooltipHelper content="Refresh">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-6 w-6 cursor-pointer"
-                onClick={refreshPage}
-                aria-label="Refresh activities"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipHelper>
-            <ConnectionBadge state={connectionState} />
+            <ConnectionBadge state={connectionState} onClick={resyncPage} />
           </div>
         </header>
 

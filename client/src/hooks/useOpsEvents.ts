@@ -24,3 +24,8 @@ export function useOpsEvents(
 
   return connectionState
 }
+
+export function useOpsEventsReconnect(): () => void {
+  const { forceReconnect } = useOpsEventsContext()
+  return forceReconnect
+}

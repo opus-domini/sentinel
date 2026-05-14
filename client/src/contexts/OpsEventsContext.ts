@@ -6,6 +6,7 @@ type OpsEventsSubscriber = (message: unknown) => void
 type OpsEventsContextValue = {
   connectionState: ConnectionState
   subscribe: (handler: OpsEventsSubscriber) => () => void
+  forceReconnect: () => void
 }
 
 export const OpsEventsContext = createContext<OpsEventsContextValue | null>(

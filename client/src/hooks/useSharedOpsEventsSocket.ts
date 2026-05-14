@@ -134,8 +134,34 @@ export function useSharedOpsEventsSocket(options: {
     [connect, disconnect],
   )
 
+  const forceReconnect = useCallback(() => {
+    clearRetry()
+    reconnectRef.current.reset()
+
+    const sock = socketRef.current
+    socketRef.current = null
+    if (sock != null) {
+      try {
+        sock.close()
+      } catch {
+        // ignore
+      }
+    }
+
+    if (
+      disposedRef.current ||
+      subscribersRef.current.size === 0 ||
+      (tokenRequired && !authenticated)
+    ) {
+      setConnectionState('disconnected')
+      return
+    }
+
+    connect()
+  }, [authenticated, clearRetry, connect, tokenRequired])
+
   return useMemo(
-    () => ({ connectionState, subscribe }),
-    [connectionState, subscribe],
+    () => ({ connectionState, forceReconnect, subscribe }),
+    [connectionState, forceReconnect, subscribe],
   )
 }

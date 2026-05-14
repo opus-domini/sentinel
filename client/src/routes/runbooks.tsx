@@ -1,5 +1,6 @@
+import { useCallback } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Menu, RefreshCw } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
@@ -11,10 +12,10 @@ import { RunbookJobHistory } from '@/components/runbooks/RunbookJobHistory'
 import { RunbookOperationsSummary } from '@/components/runbooks/RunbookOperationsSummary'
 import RunbooksSidebar from '@/components/RunbooksSidebar'
 import { Button } from '@/components/ui/button'
-import { TooltipHelper } from '@/components/TooltipHelper'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useTokenContext } from '@/contexts/TokenContext'
+import { useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useRunbooksPage } from '@/hooks/useRunbooksPage'
 
 function RunbooksPage() {
@@ -62,6 +63,11 @@ function RunbooksPage() {
     triggerSchedule,
     selectRunbook,
   } = useRunbooksPage()
+  const forceReconnectOpsEvents = useOpsEventsReconnect()
+  const resyncPage = useCallback(() => {
+    forceReconnectOpsEvents()
+    void refreshRunbooks()
+  }, [forceReconnectOpsEvents, refreshRunbooks])
 
   const showEditor = editingDraft != null
   const showDetail = !showEditor && selectedRunbook != null
@@ -100,18 +106,7 @@ function RunbooksPage() {
             <AppSectionTitle hostname={hostname} section="runbooks" />
           </div>
           <div className="flex items-center gap-1.5">
-            <TooltipHelper content="Refresh">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-6 w-6 cursor-pointer"
-                onClick={() => void refreshRunbooks()}
-                aria-label="Refresh runbooks"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipHelper>
-            <ConnectionBadge state={connectionState} />
+            <ConnectionBadge state={connectionState} onClick={resyncPage} />
           </div>
         </header>
 

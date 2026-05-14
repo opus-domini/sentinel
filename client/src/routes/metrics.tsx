@@ -11,11 +11,8 @@ import {
   Gauge,
   HardDrive,
   Layers3,
-  Lock,
-  LockOpen,
   MemoryStick,
   Network,
-  RefreshCw,
   ServerCog,
   ShieldAlert,
   Waves,
@@ -32,14 +29,11 @@ import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { TooltipHelper } from '@/components/TooltipHelper'
-import MetricsHelpDialog from '@/components/MetricsHelpDialog'
-import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useMetaContext } from '@/contexts/MetaContext'
-import { useTokenContext } from '@/contexts/TokenContext'
-import { useOpsEvents } from '@/hooks/useOpsEvents'
+import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { MetricsHistory } from '@/lib/MetricsHistory'
 import {
@@ -573,22 +567,13 @@ function MetricsSkeleton() {
 }
 
 function MetricsPage() {
-  const { tokenRequired, hostname } = useMetaContext()
-  const { authenticated, setToken } = useTokenContext()
+  const { hostname } = useMetaContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
 
   const historyRef = useRef(new MetricsHistory())
   const seededRef = useRef(false)
   const [activeTab, setActiveTab] = useState<MetricsTab>('saturation')
-  const [isTokenOpen, setIsTokenOpen] = useState(false)
-
-  const lockLabel = useMemo(() => {
-    if (tokenRequired) {
-      return authenticated ? 'Authenticated (required)' : 'Token required'
-    }
-    return authenticated ? 'Authenticated' : 'Authentication optional'
-  }, [authenticated, tokenRequired])
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -644,6 +629,11 @@ function MetricsPage() {
     void refreshOverview()
     void refreshMetrics()
   }, [refreshOverview, refreshMetrics])
+  const forceReconnectOpsEvents = useOpsEventsReconnect()
+  const resyncPage = useCallback(() => {
+    forceReconnectOpsEvents()
+    refreshPage()
+  }, [forceReconnectOpsEvents, refreshPage])
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
@@ -717,44 +707,9 @@ function MetricsPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <StatusPill severity={risk.severity} label={risk.label} />
-            <MetricsHelpDialog />
-            <TooltipHelper content={lockLabel}>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-6 w-6 cursor-pointer text-secondary-foreground"
-                onClick={() => setIsTokenOpen(true)}
-                aria-label="API token"
-              >
-                {authenticated ? (
-                  <Lock className="h-3.5 w-3.5" />
-                ) : (
-                  <LockOpen className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </TooltipHelper>
-            <TooltipHelper content="Refresh">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-6 w-6 cursor-pointer"
-                onClick={refreshPage}
-                aria-label="Refresh metrics"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipHelper>
-            <ConnectionBadge state={connectionState} />
+            <ConnectionBadge state={connectionState} onClick={resyncPage} />
           </div>
         </header>
-
-        <TokenDialog
-          open={isTokenOpen}
-          onOpenChange={setIsTokenOpen}
-          authenticated={authenticated}
-          onTokenChange={setToken}
-          tokenRequired={tokenRequired}
-        />
 
         <ScrollArea className="h-full min-h-0 overflow-hidden">
           <div className="grid gap-4 p-3">

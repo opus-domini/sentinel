@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import ConnectionBadge from '@/components/ConnectionBadge'
 
@@ -17,5 +17,18 @@ describe('ConnectionBadge', () => {
 
     const dot = badge.querySelector('span')
     expect(dot).not.toBeNull()
+  })
+
+  it('acts as a resync control when a click handler is provided', () => {
+    const onClick = vi.fn()
+    render(<ConnectionBadge state="connected" onClick={onClick} />)
+
+    const badge = screen.getByRole('button', {
+      name: 'Connected; Resync connection',
+    })
+    fireEvent.click(badge)
+    fireEvent.keyDown(badge, { key: 'Enter' })
+
+    expect(onClick).toHaveBeenCalledTimes(2)
   })
 })

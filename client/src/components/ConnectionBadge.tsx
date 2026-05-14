@@ -7,16 +7,18 @@ type ConnectionBadgeProps = {
   state: ConnectionState
   detail?: string
   onClick?: () => void
+  actionLabel?: string
 }
 
 export default function ConnectionBadge({
   state,
   detail,
   onClick,
+  actionLabel = 'Resync connection',
 }: ConnectionBadgeProps) {
   const label = connectionLabel(state)
   const base = detail && state !== 'connected' ? `${label} — ${detail}` : label
-  const tooltip = onClick ? `${base} — click to resync` : base
+  const tooltip = onClick ? `${base} — ${actionLabel}` : base
   return (
     <TooltipHelper content={tooltip}>
       <span
@@ -26,7 +28,7 @@ export default function ConnectionBadge({
         )}
         role={onClick ? 'button' : 'status'}
         tabIndex={onClick ? 0 : undefined}
-        aria-label={label}
+        aria-label={onClick ? `${label}; ${actionLabel}` : label}
         onClick={onClick}
         onKeyDown={
           onClick
