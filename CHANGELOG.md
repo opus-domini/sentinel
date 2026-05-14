@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.34](https://github.com/opus-domini/sentinel/compare/v0.5.33...v0.5.34) (2026-05-14)
+
+
+### Features
+
+* add tmux window hotkeys ([7ff865c](https://github.com/opus-domini/sentinel/commit/7ff865c8bb76284f7f002f31efe14a4cb4eaac80))
+* improve metrics dashboard sampling ([20f2e4b](https://github.com/opus-domini/sentinel/commit/20f2e4b3059141aaf2ea1baafe379b97e3e03f68))
+
+
+### Bug Fixes
+
+* align tmux tab activity states ([2c1ef36](https://github.com/opus-domini/sentinel/commit/2c1ef3648b589729cad56eb1bb3bb86569e6c197))
+
 ## [0.5.33](https://github.com/opus-domini/sentinel/compare/v0.5.32...v0.5.33) (2026-05-13)
 
 
