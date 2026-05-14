@@ -304,11 +304,11 @@ export default function PaneStrip({
             <ContextMenuTrigger asChild>
               <div
                 className={cn(
-                  'inline-flex shrink-0 items-center overflow-hidden rounded border text-[11px]',
+                  'inline-flex shrink-0 items-center overflow-hidden rounded border text-[11px] text-secondary-foreground',
                   isActive
-                    ? 'border-primary/50 text-primary-text'
+                    ? 'border-primary/60'
                     : hasUnread
-                      ? 'border-amber-400/60 text-amber-100'
+                      ? 'border-activity/55'
                       : isPending
                         ? 'border-border-subtle text-muted-foreground'
                         : 'border-border text-secondary-foreground',

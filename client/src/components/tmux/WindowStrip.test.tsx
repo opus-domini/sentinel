@@ -273,6 +273,72 @@ describe('WindowStrip', () => {
     expect(screen.getByText('Claude Code').className).toContain('pt-[3px]')
   })
 
+  it('keeps window labels vertically aligned when no icon is present', () => {
+    renderStrip({
+      hasActiveSession: true,
+      inspectorLoading: false,
+      inspectorError: '',
+      windows: [
+        {
+          session: 'dev',
+          index: 0,
+          name: 'shell',
+          displayName: 'Shell',
+          active: true,
+          panes: 1,
+        },
+      ],
+      activeWindowIndex: 0,
+      launchers: [],
+      recentLauncher: null,
+      onSelectWindow: vi.fn(),
+      onCloseWindow: vi.fn(),
+      onRenameWindow: vi.fn(),
+      onCreateWindow: vi.fn(),
+      onLaunchLauncher: vi.fn(),
+      onOpenLaunchers: vi.fn(),
+    })
+
+    expect(screen.getByText('Shell').className).toContain('pt-[3px]')
+  })
+
+  it('keeps active window text neutral while coloring only the icon', () => {
+    renderStrip({
+      hasActiveSession: true,
+      inspectorLoading: false,
+      inspectorError: '',
+      windows: [
+        {
+          session: 'dev',
+          index: 0,
+          name: 'claude',
+          displayName: 'Claude Code',
+          displayIcon: 'bot',
+          active: true,
+          panes: 1,
+        },
+      ],
+      activeWindowIndex: 0,
+      launchers: [],
+      recentLauncher: null,
+      onSelectWindow: vi.fn(),
+      onCloseWindow: vi.fn(),
+      onRenameWindow: vi.fn(),
+      onCreateWindow: vi.fn(),
+      onLaunchLauncher: vi.fn(),
+      onOpenLaunchers: vi.fn(),
+    })
+
+    const label = screen.getByText('Claude Code')
+    const icon = label.previousSibling as SVGElement | null
+    const chip = label.closest('div')
+
+    expect(chip?.className).toContain('border-primary/60')
+    expect(chip?.className).not.toContain('text-primary-text')
+    expect(label.className).not.toContain('text-primary-text')
+    expect(icon?.className.baseVal ?? '').toContain('text-primary')
+  })
+
   it('clips vertical overflow while keeping horizontal drag scrolling available', () => {
     renderStrip({
       hasActiveSession: true,

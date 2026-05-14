@@ -82,4 +82,41 @@ describe('PaneStrip', () => {
     expect(screen.queryByText('Failed to fetch')).toBeNull()
     expect(screen.queryByText('Loading panes')).toBeNull()
   })
+
+  it('keeps active pane text neutral and marks selection with border only', () => {
+    render(
+      <TooltipProvider>
+        <PaneStrip
+          hasActiveSession={true}
+          inspectorLoading={false}
+          inspectorError=""
+          panes={[
+            {
+              session: 'dev',
+              windowIndex: 0,
+              paneIndex: 0,
+              paneId: '%1',
+              title: 'shell',
+              active: true,
+              tty: '/dev/pts/1',
+            },
+          ]}
+          activeWindowIndex={0}
+          activePaneID="%1"
+          onSelectPane={vi.fn()}
+          onClosePane={vi.fn()}
+          onRenamePane={vi.fn()}
+          onSplitPaneVertical={vi.fn()}
+          onSplitPaneHorizontal={vi.fn()}
+        />
+      </TooltipProvider>,
+    )
+
+    const paneButton = screen.getByRole('button', { name: 'Select pane shell' })
+    const paneChip = paneButton.parentElement
+
+    expect(paneChip?.className).toContain('border-primary/60')
+    expect(paneChip?.className).toContain('text-secondary-foreground')
+    expect(paneChip?.className).not.toContain('text-primary-text')
+  })
 })

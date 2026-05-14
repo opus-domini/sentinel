@@ -139,7 +139,7 @@ export default function SessionListItem({
                     className={cn(
                       'h-3 w-3 shrink-0',
                       isAttached && hasUnreadActivity
-                        ? 'text-amber-400'
+                        ? 'text-activity'
                         : !isAttached && 'text-muted-foreground',
                     )}
                   />
@@ -165,7 +165,7 @@ export default function SessionListItem({
                       className={cn(
                         'h-3.5 w-3.5 shrink-0',
                         isAttached && hasUnreadActivity
-                          ? 'text-amber-400'
+                          ? 'text-activity'
                           : !isAttached && 'text-muted-foreground',
                       )}
                     />

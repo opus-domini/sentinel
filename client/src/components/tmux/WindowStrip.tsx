@@ -171,17 +171,25 @@ function WindowChip({
     asText(windowInfo.displayIcon) !== ''
       ? getTmuxIcon(asText(windowInfo.displayIcon))
       : null
+  const iconClassName = cn(
+    'size-3.5 shrink-0',
+    isActive
+      ? 'text-primary'
+      : hasUnread
+        ? 'text-activity-foreground'
+        : 'text-secondary-foreground',
+  )
 
   const content = (
     <div
       ref={containerRef}
       style={containerStyle}
       className={cn(
-        'inline-flex max-w-[16rem] shrink-0 items-center overflow-hidden rounded border text-[11px]/none',
+        'inline-flex max-w-[16rem] shrink-0 items-center overflow-hidden rounded border text-[11px]/none text-secondary-foreground',
         isActive
-          ? 'border-primary/50 text-primary-text'
+          ? 'border-primary/60'
           : hasUnread
-            ? 'border-amber-400/60 text-amber-100'
+            ? 'border-activity/55'
             : 'border-border text-secondary-foreground',
         isDragging && 'opacity-50',
       )}
@@ -203,19 +211,15 @@ function WindowChip({
           <>
             {windowInfo.user && windowInfo.user !== sessionUser && (
               <TooltipHelper content={`Running as: ${windowInfo.user}`}>
-                <User className="h-2.5 w-2.5 shrink-0 text-primary-text/60" />
+                <User className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
               </TooltipHelper>
             )}
-            {WindowIcon !== null && (
-              <WindowIcon className="size-3.5 shrink-0" />
-            )}
-            <span
-              className={`min-w-0 truncate leading-none${WindowIcon !== null ? ' pt-[3px]' : ''}`}
-            >
+            {WindowIcon !== null && <WindowIcon className={iconClassName} />}
+            <span className="min-w-0 truncate pt-[3px] leading-none">
               {displayName}
             </span>
             {hasUnread && unreadPanes > 1 && (
-              <span className="ml-0.5 text-[9px] text-warning-foreground">
+              <span className="ml-0.5 text-[9px] text-muted-foreground">
                 {unreadPanes}
               </span>
             )}
