@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.35](https://github.com/opus-domini/sentinel/compare/v0.5.34...v0.5.35) (2026-05-14)
+
+
+### Refactors
+
+* consolidate ops resync controls ([2109659](https://github.com/opus-domini/sentinel/commit/2109659e4379107615e20b661aaa4d1939d66753))
+
 ## [0.5.34](https://github.com/opus-domini/sentinel/compare/v0.5.33...v0.5.34) (2026-05-14)
 
 
