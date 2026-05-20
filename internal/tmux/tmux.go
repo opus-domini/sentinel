@@ -268,6 +268,17 @@ const (
 	dirHorizontal = "horizontal"
 )
 
+const (
+	cmdNewWindow   = "new-window"
+	cmdSplitWindow = "split-window"
+	tableRoot      = "root"
+)
+
+const (
+	errWindowOrderMismatch = "tmux window order does not match live windows"
+	errInvalidSplitDir     = "invalid split direction"
+)
+
 func setSessionOption(ctx context.Context, session, option string, enabled bool) error {
 	value := tmuxOff
 	if enabled {
@@ -299,9 +310,9 @@ func EnsureWebMouseBindings(ctx context.Context) error {
 		key   string
 		patch func(string) (string, bool)
 	}{
-		{table: "root", key: "MouseDown3Pane", patch: patchMouseDown3PaneBinding},
-		{table: "root", key: "DoubleClick1Pane", patch: patchDoubleClick1PaneBinding},
-		{table: "root", key: "TripleClick1Pane", patch: patchTripleClick1PaneBinding},
+		{table: tableRoot, key: "MouseDown3Pane", patch: patchMouseDown3PaneBinding},
+		{table: tableRoot, key: "DoubleClick1Pane", patch: patchDoubleClick1PaneBinding},
+		{table: tableRoot, key: "TripleClick1Pane", patch: patchTripleClick1PaneBinding},
 		{table: "copy-mode", key: "MouseDragEnd1Pane", patch: patchCopyModeDragEndBinding},
 		{table: "copy-mode-vi", key: "MouseDragEnd1Pane", patch: patchCopyModeDragEndBinding},
 	}
@@ -452,7 +463,7 @@ func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWi
 			target = fmt.Sprintf("%s:%d", session, nextIndex)
 		}
 	}
-	args := []string{"new-window", "-P", "-F", "#{window_id}\t#{window_index}\t#{pane_id}", "-t", target}
+	args := []string{cmdNewWindow, "-P", "-F", "#{window_id}\t#{window_index}\t#{pane_id}", "-t", target}
 	if strings.TrimSpace(name) != "" {
 		args = append(args, "-n", strings.TrimSpace(name))
 	}
@@ -478,7 +489,7 @@ func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWi
 
 func NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
 	target := fmt.Sprintf("%s:%d", session, index)
-	args := []string{"new-window", "-d", "-t", target}
+	args := []string{cmdNewWindow, "-d", "-t", target}
 	if strings.TrimSpace(name) != "" {
 		args = append(args, "-n", name)
 	}
@@ -523,7 +534,7 @@ func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []stri
 		return err
 	}
 	if len(liveWindows) != len(normalized) {
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order does not match live windows"}
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errWindowOrderMismatch}
 	}
 
 	current := make([]string, 0, len(liveWindows))
@@ -538,7 +549,7 @@ func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []stri
 	}
 	for _, windowID := range normalized {
 		if _, ok := positions[windowID]; !ok {
-			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order does not match live windows"}
+			return &Error{Kind: ErrKindInvalidIdentifier, Msg: errWindowOrderMismatch}
 		}
 	}
 
@@ -564,14 +575,14 @@ func KillPane(ctx context.Context, paneID string) error {
 }
 
 func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
-	args := []string{"split-window", "-t", paneID}
+	args := []string{cmdSplitWindow, "-t", paneID}
 	switch direction {
 	case dirVertical:
 		args = append(args, "-h")
 	case dirHorizontal:
 		args = append(args, "-v")
 	default:
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errInvalidSplitDir}
 	}
 	args = append(args, "-P", "-F", "#{pane_id}")
 	out, err := run(ctx, args...)
@@ -586,14 +597,14 @@ func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 }
 
 func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
-	args := []string{"split-window", "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
+	args := []string{cmdSplitWindow, "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
 	switch direction {
 	case dirVertical:
 		args = append(args, "-h")
 	case dirHorizontal:
 		args = append(args, "-v")
 	default:
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errInvalidSplitDir}
 	}
 	if strings.TrimSpace(cwd) != "" {
 		args = append(args, "-c", cwd)

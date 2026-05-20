@@ -12,8 +12,34 @@ const (
 	SeverityInfo  = "info"
 	SeverityWarn  = "warn"
 	SeverityError = "error"
+)
 
-	DefaultSource = "ops"
+// Sources identify the subsystem that produced an activity event.
+const (
+	DefaultSource   = "ops"
+	SourceService   = "service"
+	SourceAlert     = "alert"
+	SourceRunbook   = "runbook"
+	SourceSchedule  = "schedule"
+	SourceConfig    = "config"
+	SourceGuardrail = "guardrail"
+)
+
+// Event types recorded on the activity timeline.
+const (
+	EventServiceAction       = "service.action"
+	EventServiceRegistered   = "service.registered"
+	EventServiceUnregistered = "service.unregistered"
+	EventAlertCreated        = "alert.created"
+	EventAlertAcked          = "alert.acked"
+	EventAlertResolved       = "alert.resolved"
+	EventAlertDeleted        = "alert.deleted"
+	EventRunbookStarted      = "runbook.started"
+	EventConfigUpdated       = "config.updated"
+	EventGuardrailBlocked    = "guardrail.blocked"
+	EventScheduleCreated     = "schedule.created"
+	EventScheduleTriggered   = "schedule.triggered"
+	EventScheduleDeleted     = "schedule.deleted"
 )
 
 // ErrInvalidFilter is returned when a filter value (e.g. severity) is not recognized.

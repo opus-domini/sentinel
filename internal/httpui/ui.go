@@ -23,6 +23,17 @@ import (
 )
 
 const (
+	subprotocolSentinelV1 = "sentinel.v1"
+	msgSeen               = "seen"
+	keyScope              = "scope"
+)
+
+const (
+	keyMsgType = "type"
+	keySession = "session"
+)
+
+const (
 	defaultTermCols = 120
 	defaultTermRows = 40
 	minTermCols     = 20
@@ -138,7 +149,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := strings.TrimSpace(r.URL.Query().Get("session"))
+	session := strings.TrimSpace(r.URL.Query().Get(keySession))
 	if !validate.SessionName(session) {
 		http.Error(w, "invalid session", http.StatusBadRequest)
 		return
@@ -178,7 +189,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, rows := parseAttachDimensions(r)
 
-	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
+	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{subprotocolSentinelV1})
 	if err != nil {
 		return
 	}
@@ -191,9 +202,9 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 			return h.startTmuxPTY(ctx, session, targetUser, cols, rows)
 		},
 		statusMsg: map[string]any{
-			"type":    "status",
-			"state":   "attached",
-			"session": session,
+			keyMsgType: "status",
+			"state":    "attached",
+			keySession: session,
 		},
 	})
 }
@@ -218,26 +229,26 @@ func (h *Handler) startTmuxPTY(ctx context.Context, session, targetUser string, 
 
 		// Best-effort: apply web mouse bindings for the target user's tmux server.
 		if err := svc.EnsureWebMouseBindings(ctx); err != nil {
-			slog.Warn("tmux web mouse patch failed", "session", session, "user", targetUser, "err", err)
+			slog.Warn("tmux web mouse patch failed", keySession, session, "user", targetUser, "err", err)
 		}
 		if err := svc.SetSessionMouse(ctx, session, true); err != nil {
-			slog.Warn("tmux mouse enable failed", "session", session, "user", targetUser, "err", err)
+			slog.Warn("tmux mouse enable failed", keySession, session, "user", targetUser, "err", err)
 		}
 		if err := svc.SetSessionStatus(ctx, session, false); err != nil {
-			slog.Warn("tmux status hide failed", "session", session, "user", targetUser, "err", err)
+			slog.Warn("tmux status hide failed", keySession, session, "user", targetUser, "err", err)
 		}
 		return startTmuxAttachAsUserFn(ctx, session, targetUser, cols, rows)
 	}
 
 	// Default user: use var-based seams for test injection.
 	if err := tmuxEnsureWebMouse(ctx); err != nil {
-		slog.Warn("tmux web mouse patch failed", "session", session, "err", err)
+		slog.Warn("tmux web mouse patch failed", keySession, session, "err", err)
 	}
 	if err := tmuxSetSessionMouse(ctx, session, true); err != nil {
-		slog.Warn("tmux mouse enable failed", "session", session, "err", err)
+		slog.Warn("tmux mouse enable failed", keySession, session, "err", err)
 	}
 	if err := tmuxSetSessionStatus(ctx, session, false); err != nil {
-		slog.Warn("tmux status hide failed", "session", session, "err", err)
+		slog.Warn("tmux status hide failed", keySession, session, "err", err)
 	}
 	return startTmuxAttachFn(ctx, session, cols, rows)
 }
@@ -247,7 +258,7 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
+	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{subprotocolSentinelV1})
 	if err != nil {
 		return
 	}
@@ -268,7 +279,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 
 	service := strings.TrimSpace(r.URL.Query().Get("service"))
 	unit := strings.TrimSpace(r.URL.Query().Get("unit"))
-	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	scope := strings.TrimSpace(r.URL.Query().Get(keyScope))
 	manager := strings.TrimSpace(r.URL.Query().Get("manager"))
 
 	if service == "" && unit == "" {
@@ -276,7 +287,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{"sentinel.v1"})
+	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{subprotocolSentinelV1})
 	if err != nil {
 		return
 	}
@@ -292,14 +303,14 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 		stream, err = h.ops.StreamLogsByUnit(ctx, unit, scope, manager)
 	}
 	if err != nil {
-		errMsg, _ := json.Marshal(map[string]string{"type": "error", "message": err.Error()})
+		errMsg, _ := json.Marshal(map[string]string{keyMsgType: "error", "message": err.Error()})
 		_ = wsConn.WriteText(errMsg)
 		_ = wsConn.WriteClose(ws.CloseInternal, "stream start failed")
 		return
 	}
 	defer func() { _ = stream.Close() }()
 
-	statusMsg, _ := json.Marshal(map[string]string{"type": "status", "state": "streaming"})
+	statusMsg, _ := json.Marshal(map[string]string{keyMsgType: "status", "state": "streaming"})
 	_ = wsConn.WriteText(statusMsg)
 
 	errCh, sendErr := newAttachErrChannel()
@@ -309,7 +320,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 		scanner.Buffer(make([]byte, 64*1024), 64*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
-			msg, _ := json.Marshal(map[string]string{"type": "log", "line": line})
+			msg, _ := json.Marshal(map[string]string{keyMsgType: "log", "line": line})
 			if writeErr := wsConn.WriteText(msg); writeErr != nil {
 				sendErr(writeErr)
 				return
@@ -435,7 +446,7 @@ func (h *Handler) handleEventsClientMessage(payload []byte) []byte {
 	case "presence":
 		h.handleEventsPresenceClientMessage(payload)
 		return nil
-	case "seen":
+	case msgSeen:
 		return h.handleEventsSeenClientMessage(payload)
 	default:
 		return nil
@@ -515,7 +526,7 @@ func (h *Handler) handleEventsSeenClientMessage(payload []byte) []byte {
 	acked, err := h.markEventsSeen(ctx, msg)
 	if err != nil {
 		ack["error"] = "failed to mark seen"
-		slog.Warn("events ws seen write failed", "session", msg.Session, "scope", msg.Scope, "err", err)
+		slog.Warn("events ws seen write failed", keySession, msg.Session, keyScope, msg.Scope, "err", err)
 		return marshalEventsWSMessage(ack)
 	}
 
@@ -559,10 +570,10 @@ func decodeEventsSeenMessage(payload []byte) (eventsSeenMessage, error) {
 
 func newEventsSeenAck(msg eventsSeenMessage) map[string]any {
 	ack := map[string]any{
-		"type":      "tmux.seen.ack",
+		keyMsgType:  "tmux.seen.ack",
 		"requestId": msg.RequestID,
-		"session":   msg.Session,
-		"scope":     msg.Scope,
+		keySession:  msg.Session,
+		keyScope:    msg.Scope,
 		"acked":     false,
 		"globalRev": int64(0),
 	}
@@ -588,7 +599,7 @@ func validateEventsSeenMessage(msg eventsSeenMessage) error {
 		if msg.WindowIdx < 0 {
 			return errors.New("windowIndex must be >= 0")
 		}
-	case "session":
+	case keySession:
 	default:
 		return errors.New("scope must be pane, window, or session")
 	}
@@ -620,14 +631,14 @@ func collectSeenPatches(ctx context.Context, st httpuiSeenRepo, sessionName stri
 
 func publishEventsSeenAck(hub *events.Hub, sessionName, scope string, globalRev int64, sessionPatches, inspectorPatches []map[string]any) {
 	hub.Publish(events.NewEvent(events.TypeTmuxInspector, map[string]any{
-		"session": sessionName,
-		"action":  "seen",
-		"scope":   scope,
+		keySession: sessionName,
+		"action":   msgSeen,
+		keyScope:   scope,
 	}))
 	sessionsPayload := map[string]any{
-		"session":   sessionName,
-		"action":    "seen",
-		"scope":     scope,
+		keySession:  sessionName,
+		"action":    msgSeen,
+		keyScope:    scope,
 		"globalRev": globalRev,
 	}
 	if len(sessionPatches) > 0 {

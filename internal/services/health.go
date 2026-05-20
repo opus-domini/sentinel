@@ -17,7 +17,15 @@ import (
 	"github.com/opus-domini/sentinel/internal/notify"
 )
 
+const (
+	resourceHost = "host"
+	keyAlert     = "alert"
+)
+
 const defaultHealthInterval = 30 * time.Second
+
+// alertSourceHealth tags alerts raised by the service health checker.
+const alertSourceHealth = "health"
 
 // AlertThresholds configures the metric thresholds that trigger alerts.
 type AlertThresholds struct {
@@ -157,7 +165,7 @@ func (hc *HealthChecker) checkServices(ctx context.Context) {
 		case "failed":
 			hc.raiseAlert(ctx, alerts.AlertWrite{
 				DedupeKey: dedupeKey,
-				Source:    "health",
+				Source:    alertSourceHealth,
 				Resource:  svc.Name,
 				Title:     fmt.Sprintf("Service %s failed", svc.DisplayName),
 				Message:   fmt.Sprintf("Service %s is in failed state (unit=%s)", svc.DisplayName, svc.Unit),
@@ -181,8 +189,8 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	if metrics.CPUPercent > hc.thresholds.CPUPercent && metrics.CPUPercent >= 0 {
 		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:cpu:high",
-			Source:    "health",
-			Resource:  "host",
+			Source:    alertSourceHealth,
+			Resource:  resourceHost,
 			Title:     "High CPU usage",
 			Message:   fmt.Sprintf("CPU usage is %.1f%% (threshold: %.0f%%)", metrics.CPUPercent, hc.thresholds.CPUPercent),
 			Severity:  "warn",
@@ -196,8 +204,8 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	if metrics.MemPercent > hc.thresholds.MemPercent {
 		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:memory:high",
-			Source:    "health",
-			Resource:  "host",
+			Source:    alertSourceHealth,
+			Resource:  resourceHost,
 			Title:     "High memory usage",
 			Message:   fmt.Sprintf("Memory usage is %.1f%% (threshold: %.0f%%)", metrics.MemPercent, hc.thresholds.MemPercent),
 			Severity:  "warn",
@@ -211,8 +219,8 @@ func (hc *HealthChecker) checkMetrics(ctx context.Context) {
 	if metrics.DiskPercent > hc.thresholds.DiskPercent {
 		hc.raiseAlert(ctx, alerts.AlertWrite{
 			DedupeKey: "health:host:disk:high",
-			Source:    "health",
-			Resource:  "host",
+			Source:    alertSourceHealth,
+			Resource:  resourceHost,
 			Title:     "High disk usage",
 			Message:   fmt.Sprintf("Disk usage is %.1f%% (threshold: %.0f%%)", metrics.DiskPercent, hc.thresholds.DiskPercent),
 			Severity:  "error",
@@ -235,13 +243,13 @@ func (hc *HealthChecker) raiseAlert(ctx context.Context, write alerts.AlertWrite
 	}
 	if hc.activity != nil {
 		if _, teErr := hc.activity.InsertActivityEvent(ctx, activity.EventWrite{
-			Source:    "alert",
+			Source:    activity.SourceAlert,
 			EventType: "alert.created",
 			Severity:  activity.NormalizeSeverity(alert.Severity),
 			Resource:  alert.Resource,
 			Message:   fmt.Sprintf("Alert created: %s", alert.Title),
 			Details:   alert.Message,
-			Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey, "source": "health"}),
+			Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey, "source": alertSourceHealth}),
 			CreatedAt: write.CreatedAt,
 		}); teErr != nil {
 			slog.Warn("health check: record alert.created event failed", "error", teErr)
@@ -256,7 +264,7 @@ func (hc *HealthChecker) raiseAlert(ctx context.Context, write alerts.AlertWrite
 	if hc.publish != nil {
 		hc.publish("ops.alerts.updated", map[string]any{
 			"globalRev": time.Now().UTC().UnixMilli(),
-			"alert":     alert,
+			keyAlert:    alert,
 		})
 	}
 }
@@ -274,13 +282,13 @@ func (hc *HealthChecker) resolveAlert(ctx context.Context, dedupeKey string, at 
 	}
 	if hc.activity != nil {
 		if _, teErr := hc.activity.InsertActivityEvent(ctx, activity.EventWrite{
-			Source:    "alert",
+			Source:    activity.SourceAlert,
 			EventType: "alert.resolved",
 			Severity:  "info",
 			Resource:  alert.Resource,
 			Message:   fmt.Sprintf("Alert resolved: %s", alert.Title),
 			Details:   alert.Message,
-			Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey, "source": "health"}),
+			Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey, "source": alertSourceHealth}),
 			CreatedAt: at,
 		}); teErr != nil {
 			slog.Warn("health check: record alert.resolved event failed", "error", teErr)
@@ -295,7 +303,7 @@ func (hc *HealthChecker) resolveAlert(ctx context.Context, dedupeKey string, at 
 	if hc.publish != nil {
 		hc.publish("ops.alerts.updated", map[string]any{
 			"globalRev": time.Now().UTC().UnixMilli(),
-			"alert":     alert,
+			keyAlert:    alert,
 		})
 	}
 }

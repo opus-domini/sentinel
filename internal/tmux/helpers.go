@@ -94,7 +94,7 @@ func newWindowWithOptionsVia(ctx context.Context, runFn runnerFunc, session, nam
 			target = fmt.Sprintf("%s:%d", session, nextIndex)
 		}
 	}
-	args := []string{"new-window", "-P", "-F", "#{window_id}\t#{window_index}\t#{pane_id}", "-t", target}
+	args := []string{cmdNewWindow, "-P", "-F", "#{window_id}\t#{window_index}\t#{pane_id}", "-t", target}
 	if strings.TrimSpace(name) != "" {
 		args = append(args, "-n", strings.TrimSpace(name))
 	}
@@ -116,7 +116,7 @@ func newWindowWithOptionsVia(ctx context.Context, runFn runnerFunc, session, nam
 
 func newWindowAtVia(ctx context.Context, runFn runnerFunc, session string, index int, name, cwd string) error {
 	target := fmt.Sprintf("%s:%d", session, index)
-	args := []string{"new-window", "-d", "-t", target}
+	args := []string{cmdNewWindow, "-d", "-t", target}
 	if strings.TrimSpace(name) != "" {
 		args = append(args, "-n", name)
 	}
@@ -161,7 +161,7 @@ func reorderWindowsVia(ctx context.Context, runFn runnerFunc, session string, or
 		return err
 	}
 	if len(liveWindows) != len(normalized) {
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order does not match live windows"}
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errWindowOrderMismatch}
 	}
 
 	current := make([]string, 0, len(liveWindows))
@@ -176,7 +176,7 @@ func reorderWindowsVia(ctx context.Context, runFn runnerFunc, session string, or
 	}
 	for _, windowID := range normalized {
 		if _, ok := positions[windowID]; !ok {
-			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order does not match live windows"}
+			return &Error{Kind: ErrKindInvalidIdentifier, Msg: errWindowOrderMismatch}
 		}
 	}
 
@@ -197,14 +197,14 @@ func reorderWindowsVia(ctx context.Context, runFn runnerFunc, session string, or
 }
 
 func splitPaneVia(ctx context.Context, runFn runnerFunc, paneID, direction string) (string, error) {
-	args := []string{"split-window", "-t", paneID}
+	args := []string{cmdSplitWindow, "-t", paneID}
 	switch direction {
 	case dirVertical:
 		args = append(args, "-h")
 	case dirHorizontal:
 		args = append(args, "-v")
 	default:
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errInvalidSplitDir}
 	}
 	args = append(args, "-P", "-F", "#{pane_id}")
 	out, err := runFn(ctx, args...)
@@ -215,14 +215,14 @@ func splitPaneVia(ctx context.Context, runFn runnerFunc, paneID, direction strin
 }
 
 func splitPaneInVia(ctx context.Context, runFn runnerFunc, paneID, direction, cwd string) (string, error) {
-	args := []string{"split-window", "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
+	args := []string{cmdSplitWindow, "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
 	switch direction {
 	case dirVertical:
 		args = append(args, "-h")
 	case dirHorizontal:
 		args = append(args, "-v")
 	default:
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid split direction"}
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errInvalidSplitDir}
 	}
 	if strings.TrimSpace(cwd) != "" {
 		args = append(args, "-c", cwd)

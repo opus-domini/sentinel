@@ -48,7 +48,7 @@ func (h *Handler) reorderSessionPresets(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -101,8 +101,8 @@ func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
 	restoreActiveWindowBestEffort(ctx, svc, session, activeWindowID, liveWindows)
 
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "reorder-windows",
+		keySession: session,
+		keyAction:  "reorder-windows",
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -207,7 +207,7 @@ func restoreActiveWindowBestEffort(
 			return
 		}
 		if err := service.SelectWindow(ctx, session, window.Index); err != nil {
-			slog.Warn("failed to restore active tmux window after reorder", "session", session, "windowId", activeWindowID, "index", window.Index, "err", err)
+			slog.Warn("failed to restore active tmux window after reorder", keySession, session, "windowId", activeWindowID, keyIndex, window.Index, "err", err)
 		}
 		return
 	}

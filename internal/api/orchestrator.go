@@ -33,22 +33,22 @@ func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus
 	}
 	normalizedAction := strings.ToLower(strings.TrimSpace(action))
 	state := strings.ToLower(strings.TrimSpace(serviceStatus.ActiveState))
-	severity := "info"
+	severity := activity.SeverityInfo
 	switch {
 	case state == stateFailed:
-		severity = "error"
+		severity = activity.SeverityError
 	case normalizedAction == opsplane.ActionStop:
 		severity = activity.SeverityWarn
 	}
 
 	event, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "service",
-		EventType: "service.action",
+		Source:    activity.SourceService,
+		EventType: activity.EventServiceAction,
 		Severity:  severity,
 		Resource:  serviceStatus.Name,
 		Message:   fmt.Sprintf("%s %s", serviceStatus.DisplayName, normalizedAction),
 		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s state=%s", serviceStatus.Unit, serviceStatus.Manager, serviceStatus.Scope, serviceStatus.ActiveState),
-		Metadata:  marshalMetadata(map[string]string{"action": normalizedAction, "service": serviceStatus.Name, "manager": serviceStatus.Manager, "scope": serviceStatus.Scope, "state": serviceStatus.ActiveState}),
+		Metadata:  marshalMetadata(map[string]string{keyAction: normalizedAction, keyService: serviceStatus.Name, "manager": serviceStatus.Manager, keyScope: serviceStatus.Scope, "state": serviceStatus.ActiveState}),
 		CreatedAt: at,
 	})
 	if err != nil {
@@ -59,12 +59,12 @@ func (o *opsOrchestrator) RecordServiceAction(ctx context.Context, serviceStatus
 	if state == stateFailed {
 		alert, alertErr := o.repo.UpsertAlert(ctx, alerts.AlertWrite{
 			DedupeKey: fmt.Sprintf("service:%s:failed", serviceStatus.Name),
-			Source:    "service",
+			Source:    activity.SourceService,
 			Resource:  serviceStatus.Name,
 			Title:     fmt.Sprintf("%s entered failed state", serviceStatus.DisplayName),
 			Message:   fmt.Sprintf("%s is failed after %s", serviceStatus.DisplayName, normalizedAction),
-			Severity:  "error",
-			Metadata:  marshalMetadata(map[string]string{"action": normalizedAction, "service": serviceStatus.Name, "unit": serviceStatus.Unit}),
+			Severity:  activity.SeverityError,
+			Metadata:  marshalMetadata(map[string]string{keyAction: normalizedAction, keyService: serviceStatus.Name, "unit": serviceStatus.Unit}),
 			CreatedAt: at,
 		})
 		if alertErr != nil {
@@ -87,13 +87,13 @@ func (o *opsOrchestrator) AckAlert(ctx context.Context, alertID int64, at time.T
 		return alerts.Alert{}, activity.Event{}, false, err
 	}
 	event, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "alert",
-		EventType: "alert.acked",
-		Severity:  "info",
+		Source:    activity.SourceAlert,
+		EventType: activity.EventAlertAcked,
+		Severity:  activity.SeverityInfo,
 		Resource:  alert.Resource,
 		Message:   fmt.Sprintf("Alert acknowledged: %s", alert.Title),
 		Details:   alert.Message,
-		Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey}),
+		Metadata:  marshalMetadata(map[string]any{keyAlertID: alert.ID, keyDedupeKey: alert.DedupeKey}),
 		CreatedAt: at,
 	})
 	if err != nil {
@@ -111,9 +111,9 @@ func (o *opsOrchestrator) RegisterService(ctx context.Context, svc store.CustomS
 		return activity.Event{}, err
 	}
 	te, _ := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "service",
-		EventType: "service.registered",
-		Severity:  "info",
+		Source:    activity.SourceService,
+		EventType: activity.EventServiceRegistered,
+		Severity:  activity.SeverityInfo,
 		Resource:  svc.Name,
 		Message:   fmt.Sprintf("Custom service registered: %s", svc.DisplayName),
 		Details:   fmt.Sprintf("unit=%s manager=%s scope=%s", svc.Unit, svc.Manager, svc.Scope),
@@ -131,9 +131,9 @@ func (o *opsOrchestrator) UnregisterService(ctx context.Context, name string, at
 		return activity.Event{}, err
 	}
 	te, _ := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "service",
-		EventType: "service.unregistered",
-		Severity:  "info",
+		Source:    activity.SourceService,
+		EventType: activity.EventServiceUnregistered,
+		Severity:  activity.SeverityInfo,
 		Resource:  name,
 		Message:   fmt.Sprintf("Custom service removed: %s", name),
 		CreatedAt: at,
@@ -147,13 +147,13 @@ func (o *opsOrchestrator) RecordRunbookStarted(ctx context.Context, job store.Op
 		return activity.Event{}, nil
 	}
 	return o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "runbook",
-		EventType: "runbook.started",
-		Severity:  "info",
+		Source:    activity.SourceRunbook,
+		EventType: activity.EventRunbookStarted,
+		Severity:  activity.SeverityInfo,
 		Resource:  job.RunbookID,
 		Message:   fmt.Sprintf("Runbook started: %s", job.RunbookName),
 		Details:   fmt.Sprintf("job=%s steps=%d", job.ID, job.TotalSteps),
-		Metadata:  marshalMetadata(map[string]string{"jobId": job.ID, "runbookId": job.RunbookID, "status": job.Status}),
+		Metadata:  marshalMetadata(map[string]string{keyJobID: job.ID, keyRunbookID: job.RunbookID, keyStatus: job.Status}),
 		CreatedAt: at,
 	})
 }
@@ -164,9 +164,9 @@ func (o *opsOrchestrator) RecordConfigUpdated(ctx context.Context, at time.Time)
 		return activity.Event{}, nil
 	}
 	return o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "config",
-		EventType: "config.updated",
-		Severity:  "info",
+		Source:    activity.SourceConfig,
+		EventType: activity.EventConfigUpdated,
+		Severity:  activity.SeverityInfo,
 		Resource:  "config.toml",
 		Message:   "Configuration file updated via API",
 		CreatedAt: at,
@@ -180,17 +180,17 @@ func (o *opsOrchestrator) RecordAlertCreated(ctx context.Context, alert alerts.A
 		return
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "alert",
-		EventType: "alert.created",
+		Source:    activity.SourceAlert,
+		EventType: activity.EventAlertCreated,
 		Severity:  activity.NormalizeSeverity(alert.Severity),
 		Resource:  alert.Resource,
 		Message:   fmt.Sprintf("Alert created: %s", alert.Title),
 		Details:   alert.Message,
-		Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey}),
+		Metadata:  marshalMetadata(map[string]any{keyAlertID: alert.ID, keyDedupeKey: alert.DedupeKey}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record alert.created event", "alertId", alert.ID, "err", err)
+		slog.Warn("failed to record alert.created event", keyAlertID, alert.ID, "err", err)
 	}
 }
 
@@ -201,17 +201,17 @@ func (o *opsOrchestrator) RecordAlertAcked(ctx context.Context, alert alerts.Ale
 		return
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "alert",
-		EventType: "alert.acked",
-		Severity:  "info",
+		Source:    activity.SourceAlert,
+		EventType: activity.EventAlertAcked,
+		Severity:  activity.SeverityInfo,
 		Resource:  alert.Resource,
 		Message:   fmt.Sprintf("Alert acknowledged: %s", alert.Title),
 		Details:   alert.Message,
-		Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey}),
+		Metadata:  marshalMetadata(map[string]any{keyAlertID: alert.ID, keyDedupeKey: alert.DedupeKey}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record alert.acked event", "alertId", alert.ID, "err", err)
+		slog.Warn("failed to record alert.acked event", keyAlertID, alert.ID, "err", err)
 	}
 }
 
@@ -222,17 +222,17 @@ func (o *opsOrchestrator) RecordAlertResolved(ctx context.Context, alert alerts.
 		return
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "alert",
-		EventType: "alert.resolved",
-		Severity:  "info",
+		Source:    activity.SourceAlert,
+		EventType: activity.EventAlertResolved,
+		Severity:  activity.SeverityInfo,
 		Resource:  alert.Resource,
 		Message:   fmt.Sprintf("Alert resolved: %s", alert.Title),
 		Details:   alert.Message,
-		Metadata:  marshalMetadata(map[string]any{"alertId": alert.ID, "dedupeKey": alert.DedupeKey}),
+		Metadata:  marshalMetadata(map[string]any{keyAlertID: alert.ID, keyDedupeKey: alert.DedupeKey}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record alert.resolved event", "alertId", alert.ID, "err", err)
+		slog.Warn("failed to record alert.resolved event", keyAlertID, alert.ID, "err", err)
 	}
 }
 
@@ -243,16 +243,16 @@ func (o *opsOrchestrator) RecordAlertDeleted(ctx context.Context, alertID int64,
 		return
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "alert",
-		EventType: "alert.deleted",
-		Severity:  "info",
+		Source:    activity.SourceAlert,
+		EventType: activity.EventAlertDeleted,
+		Severity:  activity.SeverityInfo,
 		Resource:  fmt.Sprintf("alert:%d", alertID),
 		Message:   fmt.Sprintf("Alert deleted: %d", alertID),
-		Metadata:  marshalMetadata(map[string]any{"alertId": alertID}),
+		Metadata:  marshalMetadata(map[string]any{keyAlertID: alertID}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record alert.deleted event", "alertId", alertID, "err", err)
+		slog.Warn("failed to record alert.deleted event", keyAlertID, alertID, "err", err)
 	}
 }
 
@@ -267,17 +267,17 @@ func (o *opsOrchestrator) RecordGuardrailBlocked(ctx context.Context, action, se
 		resource = strings.TrimSpace(paneID)
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "guardrail",
-		EventType: "guardrail.blocked",
+		Source:    activity.SourceGuardrail,
+		EventType: activity.EventGuardrailBlocked,
 		Severity:  activity.SeverityWarn,
 		Resource:  resource,
 		Message:   fmt.Sprintf("Guardrail blocked: %s", strings.TrimSpace(action)),
 		Details:   strings.TrimSpace(message),
-		Metadata:  marshalMetadata(map[string]string{"action": strings.TrimSpace(action), "session": strings.TrimSpace(session), "paneId": strings.TrimSpace(paneID)}),
+		Metadata:  marshalMetadata(map[string]string{keyAction: strings.TrimSpace(action), keySession: strings.TrimSpace(session), keyPaneID: strings.TrimSpace(paneID)}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record guardrail.blocked event", "action", action, "err", err)
+		slog.Warn("failed to record guardrail.blocked event", keyAction, action, "err", err)
 	}
 }
 
@@ -288,17 +288,17 @@ func (o *opsOrchestrator) RecordScheduleCreated(ctx context.Context, schedule st
 		return
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "schedule",
-		EventType: "schedule.created",
-		Severity:  "info",
+		Source:    activity.SourceSchedule,
+		EventType: activity.EventScheduleCreated,
+		Severity:  activity.SeverityInfo,
 		Resource:  schedule.RunbookID,
 		Message:   fmt.Sprintf("Schedule created: %s", schedule.Name),
 		Details:   fmt.Sprintf("type=%s runbook=%s", schedule.ScheduleType, schedule.RunbookID),
-		Metadata:  marshalMetadata(map[string]string{"scheduleId": schedule.ID, "runbookId": schedule.RunbookID, "type": schedule.ScheduleType}),
+		Metadata:  marshalMetadata(map[string]string{keyScheduleID: schedule.ID, keyRunbookID: schedule.RunbookID, keyType: schedule.ScheduleType}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record schedule.created event", "scheduleId", schedule.ID, "err", err)
+		slog.Warn("failed to record schedule.created event", keyScheduleID, schedule.ID, "err", err)
 	}
 }
 
@@ -309,17 +309,17 @@ func (o *opsOrchestrator) RecordScheduleTriggered(ctx context.Context, scheduleI
 		return
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "schedule",
-		EventType: "schedule.triggered",
-		Severity:  "info",
+		Source:    activity.SourceSchedule,
+		EventType: activity.EventScheduleTriggered,
+		Severity:  activity.SeverityInfo,
 		Resource:  runbookID,
 		Message:   fmt.Sprintf("Schedule triggered: %s", scheduleID),
 		Details:   fmt.Sprintf("schedule=%s job=%s", scheduleID, jobID),
-		Metadata:  marshalMetadata(map[string]string{"scheduleId": scheduleID, "runbookId": runbookID, "jobId": jobID}),
+		Metadata:  marshalMetadata(map[string]string{keyScheduleID: scheduleID, keyRunbookID: runbookID, keyJobID: jobID}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record schedule.triggered event", "scheduleId", scheduleID, "err", err)
+		slog.Warn("failed to record schedule.triggered event", keyScheduleID, scheduleID, "err", err)
 	}
 }
 
@@ -330,15 +330,15 @@ func (o *opsOrchestrator) RecordScheduleDeleted(ctx context.Context, scheduleID 
 		return
 	}
 	_, err := o.repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "schedule",
-		EventType: "schedule.deleted",
-		Severity:  "info",
+		Source:    activity.SourceSchedule,
+		EventType: activity.EventScheduleDeleted,
+		Severity:  activity.SeverityInfo,
 		Resource:  scheduleID,
 		Message:   fmt.Sprintf("Schedule deleted: %s", scheduleID),
-		Metadata:  marshalMetadata(map[string]string{"scheduleId": scheduleID}),
+		Metadata:  marshalMetadata(map[string]string{keyScheduleID: scheduleID}),
 		CreatedAt: at,
 	})
 	if err != nil {
-		slog.Warn("failed to record schedule.deleted event", "scheduleId", scheduleID, "err", err)
+		slog.Warn("failed to record schedule.deleted event", keyScheduleID, scheduleID, "err", err)
 	}
 }

@@ -17,6 +17,8 @@ import (
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
+const keyJobID = "jobId"
+
 const (
 	defaultTickInterval  = 5 * time.Second
 	defaultMaxConcurrent = 5
@@ -203,7 +205,7 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 	s.publish(events.TypeScheduleUpdated, map[string]any{
 		"action":   "triggered",
 		"schedule": sched.ID,
-		"jobId":    job.ID,
+		keyJobID:   job.ID,
 	})
 
 	s.wg.Add(1)
@@ -237,7 +239,7 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 			s.publish(events.TypeScheduleUpdated, map[string]any{
 				"action":   "run_completed",
 				"schedule": scheduleID,
-				"jobId":    job.ID,
+				keyJobID:   job.ID,
 				"status":   status,
 			})
 		},
@@ -326,7 +328,7 @@ func (s *Service) publish(eventType string, payload map[string]any) {
 
 func marshalStartedMetadata(jobID, runbookID, scheduleID string) string {
 	b, err := json.Marshal(map[string]string{
-		"jobId":      jobID,
+		keyJobID:     jobID,
 		"runbookId":  runbookID,
 		"scheduleId": scheduleID,
 		"status":     "queued",

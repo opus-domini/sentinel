@@ -132,7 +132,7 @@ func (h *Handler) launchSessionPreset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "session.create",
+		Action:      actionSessionCreate,
 		SessionName: preset.Name,
 		WindowIndex: -1,
 	}); !ok {
@@ -153,9 +153,9 @@ func (h *Handler) launchSessionPreset(w http.ResponseWriter, r *http.Request) {
 	}
 	if preset.User != "" {
 		slog.Warn("multi-user session created",
-			"action", "session.preset.launch",
+			keyAction, "session.preset.launch",
 			"target_user", preset.User,
-			"session", preset.Name,
+			keySession, preset.Name,
 			"source_ip", r.RemoteAddr,
 		)
 	}
@@ -165,12 +165,12 @@ func (h *Handler) launchSessionPreset(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("failed to mark session preset launched", "preset", preset.Name, "err", err)
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{
-		"session": preset.Name,
-		"action":  "launch",
+		keySession: preset.Name,
+		keyAction:  "launch",
 	})
 	writeData(w, http.StatusOK, map[string]any{
-		"name":    preset.Name,
-		"created": created,
+		keyName:    preset.Name,
+		keyCreated: created,
 	})
 }
 
@@ -221,7 +221,7 @@ func (h *Handler) persistSessionLaunchMetadataBestEffort(ctx context.Context, se
 	}
 	if icon != "" {
 		if err := h.repo.SetIcon(ctx, sessionName, icon); err != nil {
-			slog.Warn("failed to persist session icon", "session", sessionName, "icon", icon, "err", err)
+			slog.Warn("failed to persist session icon", keySession, sessionName, "icon", icon, "err", err)
 		}
 	}
 }

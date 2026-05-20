@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -62,14 +63,14 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 	te, _ := h.orch.RecordConfigUpdated(r.Context(), now)
 	if te.ID > 0 {
 		h.emit(events.TypeOpsActivity, map[string]any{
-			"globalRev": now.UnixMilli(),
-			"event":     te,
+			keyGlobalRev: now.UnixMilli(),
+			keyEvent:     te,
 		})
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"path":    h.configPath,
-		"message": "config updated (restart required for changes to take effect)",
+		"path":     h.configPath,
+		keyMessage: "config updated (restart required for changes to take effect)",
 	})
 }
 
@@ -192,7 +193,7 @@ func (h *Handler) patchLocale(w http.ResponseWriter, r *http.Request) {
 // Webhook notification settings
 // ---------------------------------------------------------------------------
 
-var validWebhookEvents = []string{"alert.created", "alert.resolved", "alert.acked"}
+var validWebhookEvents = []string{activity.EventAlertCreated, activity.EventAlertResolved, activity.EventAlertAcked}
 
 func (h *Handler) getWebhookSettings(w http.ResponseWriter, _ *http.Request) {
 	h.mu.Lock()
@@ -204,8 +205,8 @@ func (h *Handler) getWebhookSettings(w http.ResponseWriter, _ *http.Request) {
 	sort.Strings(evts)
 
 	writeData(w, http.StatusOK, map[string]any{
-		"url":    webhookURL,
-		"events": evts,
+		"url":     webhookURL,
+		keyEvents: evts,
 	})
 }
 
@@ -265,11 +266,11 @@ func (h *Handler) patchWebhookSettings(w http.ResponseWriter, r *http.Request) {
 	h.notifier = newNotifier
 	h.mu.Unlock()
 
-	slog.Info("webhook settings updated", "url", webhookURL, "events", cleanEvents)
+	slog.Info("webhook settings updated", "url", webhookURL, keyEvents, cleanEvents)
 
 	writeData(w, http.StatusOK, map[string]any{
-		"url":    webhookURL,
-		"events": cleanEvents,
+		"url":     webhookURL,
+		keyEvents: cleanEvents,
 	})
 }
 
@@ -307,8 +308,8 @@ func (h *Handler) testWebhook(w http.ResponseWriter, r *http.Request) {
 	payload := notify.AlertWebhookPayload{
 		Event: "alert.test",
 		Alert: map[string]any{
-			"title":   "Sentinel webhook test",
-			"message": "If you see this, your webhook is working correctly.",
+			"title":    "Sentinel webhook test",
+			keyMessage: "If you see this, your webhook is working correctly.",
 		},
 		Host:      hostname,
 		Timestamp: time.Now().UTC(),
@@ -321,8 +322,8 @@ func (h *Handler) testWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "test payload delivered successfully",
+		"success":  true,
+		keyMessage: "test payload delivered successfully",
 	})
 }
 

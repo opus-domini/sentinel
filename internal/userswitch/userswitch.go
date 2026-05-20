@@ -10,6 +10,12 @@ const (
 	MethodSystemdRun = "systemd-run"
 )
 
+// execSudo and execTmux are the binaries used to launch commands as another user.
+const (
+	execSudo = "sudo"
+	execTmux = "tmux"
+)
+
 func DefaultMethod(goos string) string {
 	if goos == "linux" {
 		return MethodSystemdRun
@@ -35,14 +41,14 @@ func BuildTmuxCommand(method, user string, tmuxArgs []string, interactive bool) 
 	user = strings.TrimSpace(user)
 	args := append([]string{}, tmuxArgs...)
 	if user == "" {
-		return "tmux", args, nil
+		return execTmux, args, nil
 	}
 
 	switch NormalizeMethod(method, MethodSudo) {
 	case MethodSudo:
-		return "sudo", append([]string{"-n", "-u", user, "tmux"}, args...), nil
+		return execSudo, append([]string{"-n", "-u", user, execTmux}, args...), nil
 	case MethodSystemdRun:
-		return "sudo", append(systemdRunPrefix(user, interactive), append([]string{"tmux"}, args...)...), nil
+		return execSudo, append(systemdRunPrefix(user, interactive), append([]string{execTmux}, args...)...), nil
 	default:
 		return "", nil, errors.New("invalid user switch method")
 	}
@@ -58,12 +64,12 @@ func BuildShellCommand(method, user, command string) (string, error) {
 	switch NormalizeMethod(method, MethodSudo) {
 	case MethodSudo:
 		if strings.TrimSpace(command) == "" {
-			args = []string{"sudo", "-n", "-i", "-u", user}
+			args = []string{execSudo, "-n", "-i", "-u", user}
 		} else {
-			args = []string{"sudo", "-n", "-u", user, "/bin/sh", "-lc", command}
+			args = []string{execSudo, "-n", "-u", user, "/bin/sh", "-lc", command}
 		}
 	case MethodSystemdRun:
-		args = append([]string{"sudo"}, systemdRunPrefix(user, true)...)
+		args = append([]string{execSudo}, systemdRunPrefix(user, true)...)
 		args = append(args, "--same-dir")
 		if strings.TrimSpace(command) == "" {
 			args = append(args, "--shell")

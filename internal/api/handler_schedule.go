@@ -97,12 +97,12 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 	h.orch.RecordScheduleCreated(ctx, schedule, time.Now().UTC())
 
 	h.emit(events.TypeScheduleUpdated, map[string]any{
-		"action":   "created",
-		"schedule": schedule,
+		keyAction:   keyCreated,
+		keySchedule: schedule,
 	})
 
 	writeData(w, http.StatusCreated, map[string]any{
-		"schedule": schedule,
+		keySchedule: schedule,
 	})
 }
 
@@ -111,7 +111,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	scheduleID := strings.TrimSpace(r.PathValue("schedule"))
+	scheduleID := strings.TrimSpace(r.PathValue(keySchedule))
 	if scheduleID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "schedule id is required", nil)
 		return
@@ -177,12 +177,12 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.emit(events.TypeScheduleUpdated, map[string]any{
-		"action":   "updated",
-		"schedule": schedule,
+		keyAction:   "updated",
+		keySchedule: schedule,
 	})
 
 	writeData(w, http.StatusOK, map[string]any{
-		"schedule": schedule,
+		keySchedule: schedule,
 	})
 }
 
@@ -191,7 +191,7 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	scheduleID := strings.TrimSpace(r.PathValue("schedule"))
+	scheduleID := strings.TrimSpace(r.PathValue(keySchedule))
 	if scheduleID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "schedule id is required", nil)
 		return
@@ -212,12 +212,12 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 	h.orch.RecordScheduleDeleted(ctx, scheduleID, time.Now().UTC())
 
 	h.emit(events.TypeScheduleUpdated, map[string]any{
-		"action":  "deleted",
-		"removed": scheduleID,
+		keyAction:  keyDeleted,
+		keyRemoved: scheduleID,
 	})
 
 	writeData(w, http.StatusOK, map[string]any{
-		"removed": scheduleID,
+		keyRemoved: scheduleID,
 	})
 }
 
@@ -226,7 +226,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	scheduleID := strings.TrimSpace(r.PathValue("schedule"))
+	scheduleID := strings.TrimSpace(r.PathValue(keySchedule))
 	if scheduleID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "schedule id is required", nil)
 		return
@@ -279,7 +279,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 		cronSched, cronErr := validate.ParseCron(sched.CronExpr)
 		if cronErr != nil {
-			slog.Warn("trigger schedule: invalid cron, disabling", "schedule", scheduleID, "err", cronErr)
+			slog.Warn("trigger schedule: invalid cron, disabling", keySchedule, scheduleID, "err", cronErr)
 			finalNextRunAt = ""
 			finalEnabled = false
 		} else {
@@ -289,7 +289,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, now.Format(time.RFC3339), stateRunning, finalNextRunAt, finalEnabled); err != nil {
-		slog.Warn("trigger schedule: update after run failed", "schedule", scheduleID, "err", err)
+		slog.Warn("trigger schedule: update after run failed", keySchedule, scheduleID, "err", err)
 	}
 
 	h.orch.RecordScheduleTriggered(ctx, scheduleID, sched.RunbookID, job.ID, now)
@@ -299,20 +299,20 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		defer h.wg.Done()
 		runbook.Run(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
 			Job:           job,
-			Source:        "schedule",
+			Source:        keySchedule,
 			StepTimeout:   30 * time.Second,
-			ExtraMetadata: map[string]string{"scheduleId": scheduleID},
+			ExtraMetadata: map[string]string{keyScheduleID: scheduleID},
 			AlertRepo:     h.repo,
 			OnFinish: func(ctx context.Context, status string) {
 				finished := time.Now().UTC()
 				if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, finalNextRunAt, finalEnabled); err != nil {
-					slog.Warn("trigger schedule: update after completion", "schedule", scheduleID, "err", err)
+					slog.Warn("trigger schedule: update after completion", keySchedule, scheduleID, "err", err)
 				}
 				h.emit(events.TypeScheduleUpdated, map[string]any{
-					"action":   "run_completed",
-					"schedule": scheduleID,
-					"jobId":    job.ID,
-					"status":   status,
+					keyAction:   "run_completed",
+					keySchedule: scheduleID,
+					keyJobID:    job.ID,
+					keyStatus:   status,
 				})
 			},
 		})
@@ -320,17 +320,17 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsJob, map[string]any{
-		"globalRev": globalRev,
-		"job":       job,
+		keyGlobalRev: globalRev,
+		keyJob:       job,
 	})
 	h.emit(events.TypeScheduleUpdated, map[string]any{
-		"action":   "triggered",
-		"schedule": scheduleID,
-		"jobId":    job.ID,
+		keyAction:   "triggered",
+		keySchedule: scheduleID,
+		keyJobID:    job.ID,
 	})
 
 	writeData(w, http.StatusAccepted, map[string]any{
-		"job": job,
+		keyJob: job,
 	})
 }
 

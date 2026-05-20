@@ -18,7 +18,7 @@ import (
 )
 
 func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -33,7 +33,7 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 		if ok {
 			managedRows, managedErr := h.listManagedTmuxWindows(ctx, session)
 			if managedErr != nil {
-				slog.Warn("store.ListManagedTmuxWindowsBySession failed", "session", session, "err", managedErr)
+				slog.Warn("store.ListManagedTmuxWindowsBySession failed", keySession, session, "err", managedErr)
 			}
 			writeData(w, http.StatusOK, map[string]any{
 				"windows": projectedWindowsToEnriched(projectedWindows, projectedPanes, managedWindowsByRuntime(managedRows)),
@@ -46,7 +46,7 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 
 	managedRows, managedErr := h.reconcileManagedTmuxWindows(ctx, session, windows)
 	if managedErr != nil {
-		slog.Warn("failed to reconcile managed tmux windows", "session", session, "err", managedErr)
+		slog.Warn("failed to reconcile managed tmux windows", keySession, session, "err", managedErr)
 		managedRows = nil
 	}
 	managedByRuntime := managedWindowsByRuntime(managedRows)
@@ -97,7 +97,7 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -164,7 +164,7 @@ func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -230,7 +230,7 @@ func validateMarkSeenRequest(req markSeenRequest) error {
 		if req.WindowIndex < 0 {
 			return errors.New("windowIndex must be >= 0")
 		}
-	case "session":
+	case keySession:
 	default:
 		return errors.New("scope must be pane, window, or session")
 	}
@@ -281,15 +281,15 @@ func (h *Handler) collectSeenPatches(ctx context.Context, session string) ([]map
 
 func (h *Handler) emitMarkSeenEvents(session, scope string, globalRev int64, sessionPatches, inspectorPatches []map[string]any) {
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "seen",
-		"scope":   scope,
+		keySession: session,
+		keyAction:  "seen",
+		keyScope:   scope,
 	})
 	payload := map[string]any{
-		"session":   session,
-		"action":    "seen",
-		"scope":     scope,
-		"globalRev": globalRev,
+		keySession:   session,
+		keyAction:    "seen",
+		keyScope:     scope,
+		keyGlobalRev: globalRev,
 	}
 	if len(sessionPatches) > 0 {
 		payload["sessionPatches"] = sessionPatches
@@ -302,10 +302,10 @@ func (h *Handler) emitMarkSeenEvents(session, scope string, globalRev int64, ses
 
 func buildSeenResponsePayload(session, scope string, acked bool, globalRev int64, sessionPatches, inspectorPatches []map[string]any) map[string]any {
 	response := map[string]any{
-		"session":   session,
-		"scope":     scope,
-		"acked":     acked,
-		"globalRev": globalRev,
+		keySession:   session,
+		keyScope:     scope,
+		"acked":      acked,
+		keyGlobalRev: globalRev,
 	}
 	if len(sessionPatches) > 0 {
 		response["sessionPatches"] = sessionPatches
@@ -317,7 +317,7 @@ func buildSeenResponsePayload(session, scope string, acked bool, globalRev int64
 }
 
 func (h *Handler) selectWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -343,15 +343,15 @@ func (h *Handler) selectWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "select-window",
-		"index":   req.Index,
+		keySession: session,
+		keyAction:  "select-window",
+		keyIndex:   req.Index,
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) selectPane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -386,15 +386,15 @@ func (h *Handler) selectPane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "select-pane",
-		"paneId":  req.PaneID,
+		keySession: session,
+		keyAction:  "select-pane",
+		keyPaneID:  req.PaneID,
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) renameWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -426,23 +426,23 @@ func (h *Handler) renameWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if managedWindow, ok, err := h.managedTmuxWindowForIndex(ctx, session, req.Index); err != nil {
-		slog.Warn("failed to load managed tmux window after rename", "session", session, "index", req.Index, "err", err)
+		slog.Warn("failed to load managed tmux window after rename", keySession, session, keyIndex, req.Index, "err", err)
 	} else if ok {
 		if err := h.repo.UpdateManagedTmuxWindowName(ctx, managedWindow.ID, req.Name); err != nil {
-			slog.Warn("failed to persist managed tmux window name", "session", session, "index", req.Index, "managedWindowId", managedWindow.ID, "err", err)
+			slog.Warn("failed to persist managed tmux window name", keySession, session, keyIndex, req.Index, "managedWindowId", managedWindow.ID, "err", err)
 		}
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "rename-window",
-		"index":   req.Index,
+		keySession: session,
+		keyAction:  "rename-window",
+		keyIndex:   req.Index,
 	})
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "window-meta"})
+	h.emit(events.TypeTmuxSessions, map[string]any{keySession: session, keyAction: "window-meta"})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -483,9 +483,9 @@ func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "rename-pane",
-		"paneId":  req.PaneID,
+		keySession: session,
+		keyAction:  "rename-pane",
+		keyPaneID:  req.PaneID,
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -536,7 +536,7 @@ func defaultPaneTitle(paneID string) string {
 }
 
 func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -574,39 +574,39 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 		windowNameSequence = 1
 	}
 	if windows, listErr := svc.ListWindows(ctx, session); listErr != nil {
-		slog.Warn("failed to resolve window count for default name", "session", session, "index", createdWindow.Index, "err", listErr)
+		slog.Warn("failed to resolve window count for default name", keySession, session, keyIndex, createdWindow.Index, "err", listErr)
 	} else if next := nextWindowNameSequence(windows); next > windowNameSequence {
 		windowNameSequence = next
 	}
 	if h.repo != nil {
 		allocatedSequence, allocErr := h.repo.AllocateNextWindowSequence(ctx, session, windowNameSequence)
 		if allocErr != nil {
-			slog.Warn("failed to allocate default window sequence", "session", session, "min", windowNameSequence, "err", allocErr)
+			slog.Warn("failed to allocate default window sequence", keySession, session, "min", windowNameSequence, "err", allocErr)
 		} else {
 			windowNameSequence = allocatedSequence
 		}
 	}
 	windowName := defaultWindowName(windowNameSequence)
 	if err := svc.RenameWindow(ctx, session, createdWindow.Index, windowName); err != nil {
-		slog.Warn("failed to apply default window name", "session", session, "index", createdWindow.Index, "name", windowName, "err", err)
+		slog.Warn("failed to apply default window name", keySession, session, keyIndex, createdWindow.Index, keyName, windowName, "err", err)
 	}
 	if createdWindow.PaneID != "" {
 		paneTitle := defaultPaneTitle(createdWindow.PaneID)
 		if err := svc.RenamePane(ctx, createdWindow.PaneID, paneTitle); err != nil {
-			slog.Warn("failed to apply default pane title", "session", session, "paneId", createdWindow.PaneID, "title", paneTitle, "err", err)
+			slog.Warn("failed to apply default pane title", keySession, session, keyPaneID, createdWindow.PaneID, "title", paneTitle, "err", err)
 		}
 	}
 	inspectorPayload := map[string]any{
-		"session": session,
-		"action":  "new-window",
-		"index":   createdWindow.Index,
-		"paneId":  createdWindow.PaneID,
+		keySession: session,
+		keyAction:  "new-window",
+		keyIndex:   createdWindow.Index,
+		keyPaneID:  createdWindow.PaneID,
 	}
 	setOperationID(inspectorPayload, req.OperationID)
 	h.emit(events.TypeTmuxInspector, inspectorPayload)
 	sessionsPayload := map[string]any{
-		"session": session,
-		"action":  "window-count",
+		keySession: session,
+		keyAction:  actionWindowCount,
 	}
 	setOperationID(sessionsPayload, req.OperationID)
 	h.emit(events.TypeTmuxSessions, sessionsPayload)
@@ -614,7 +614,7 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -637,7 +637,7 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 
 	managedWindow, hasManagedWindow, managedErr := h.managedTmuxWindowForIndex(ctx, session, req.Index)
 	if managedErr != nil {
-		slog.Warn("failed to resolve managed tmux window before delete", "session", session, "index", req.Index, "err", managedErr)
+		slog.Warn("failed to resolve managed tmux window before delete", keySession, session, keyIndex, req.Index, "err", managedErr)
 	}
 
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
@@ -654,20 +654,20 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 	}
 	if hasManagedWindow {
 		if err := h.repo.DeleteManagedTmuxWindow(ctx, managedWindow.ID); err != nil {
-			slog.Warn("failed to delete managed tmux window", "session", session, "index", req.Index, "managedWindowId", managedWindow.ID, "err", err)
+			slog.Warn("failed to delete managed tmux window", keySession, session, keyIndex, req.Index, "managedWindowId", managedWindow.ID, "err", err)
 		}
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "kill-window",
-		"index":   req.Index,
+		keySession: session,
+		keyAction:  "kill-window",
+		keyIndex:   req.Index,
 	})
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "window-count"})
+	h.emit(events.TypeTmuxSessions, map[string]any{keySession: session, keyAction: actionWindowCount})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -711,16 +711,16 @@ func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "kill-pane",
-		"paneId":  req.PaneID,
+		keySession: session,
+		keyAction:  "kill-pane",
+		keyPaneID:  req.PaneID,
 	})
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "pane-count"})
+	h.emit(events.TypeTmuxSessions, map[string]any{keySession: session, keyAction: "pane-count"})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -776,21 +776,21 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 	if createdPaneID != "" {
 		paneTitle := defaultPaneTitle(createdPaneID)
 		if err := svc.RenamePane(ctx, createdPaneID, paneTitle); err != nil {
-			slog.Warn("failed to apply default pane title", "session", session, "paneId", createdPaneID, "title", paneTitle, "err", err)
+			slog.Warn("failed to apply default pane title", keySession, session, keyPaneID, createdPaneID, "title", paneTitle, "err", err)
 		}
 	}
 	inspectorPayload := map[string]any{
-		"session":   session,
-		"action":    "split-pane",
-		"paneId":    req.PaneID,
+		keySession:  session,
+		keyAction:   "split-pane",
+		keyPaneID:   req.PaneID,
 		"createdId": createdPaneID,
 		"direction": req.Direction,
 	}
 	setOperationID(inspectorPayload, req.OperationID)
 	h.emit(events.TypeTmuxInspector, inspectorPayload)
 	sessionsPayload := map[string]any{
-		"session": session,
-		"action":  "pane-count",
+		keySession: session,
+		keyAction:  "pane-count",
 	}
 	setOperationID(sessionsPayload, req.OperationID)
 	h.emit(events.TypeTmuxSessions, sessionsPayload)

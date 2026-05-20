@@ -39,7 +39,7 @@ func (h *Handler) opsOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"overview": overview,
+		keyOverview: overview,
 	})
 }
 
@@ -57,7 +57,7 @@ func (h *Handler) opsServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"services": services,
+		keyServices: services,
 	})
 }
 
@@ -67,7 +67,7 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceName := strings.TrimSpace(r.PathValue("service"))
+	serviceName := strings.TrimSpace(r.PathValue(keyService))
 	if serviceName == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service is required", nil)
 		return
@@ -104,7 +104,7 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, opsplane.ErrInvalidAction):
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid action", nil)
 		default:
-			slog.Warn("ops service action failed", "service", serviceName, "action", req.Action, "err", err)
+			slog.Warn("ops service action failed", keyService, serviceName, keyAction, req.Action, "err", err)
 			writeError(w, http.StatusInternalServerError, "OPS_ACTION_FAILED", "service action failed", nil)
 		}
 		return
@@ -130,34 +130,34 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
-		"globalRev": globalRev,
-		"service":   serviceStatus.Name,
-		"action":    req.Action,
-		"services":  services,
+		keyGlobalRev: globalRev,
+		keyService:   serviceStatus.Name,
+		keyAction:    req.Action,
+		keyServices:  services,
 	})
 	h.emit(events.TypeOpsOverview, map[string]any{
-		"globalRev": globalRev,
-		"overview":  overview,
+		keyGlobalRev: globalRev,
+		keyOverview:  overview,
 	})
 	if timelineRecorded {
 		h.emit(events.TypeOpsActivity, map[string]any{
-			"globalRev": globalRev,
-			"event":     timelineEvent,
+			keyGlobalRev: globalRev,
+			keyEvent:     timelineEvent,
 		})
 	}
 	if len(firedAlerts) > 0 {
 		h.emit(events.TypeOpsAlerts, map[string]any{
-			"globalRev": globalRev,
-			"alerts":    firedAlerts,
+			keyGlobalRev: globalRev,
+			keyAlerts:    firedAlerts,
 		})
 	}
 
 	response := map[string]any{
-		"service":   serviceStatus,
-		"services":  services,
-		"overview":  overview,
-		"alerts":    firedAlerts,
-		"globalRev": globalRev,
+		keyService:   serviceStatus,
+		keyServices:  services,
+		keyOverview:  overview,
+		keyAlerts:    firedAlerts,
+		keyGlobalRev: globalRev,
 	}
 	if timelineRecorded {
 		response["timelineEvent"] = timelineEvent
@@ -171,7 +171,7 @@ func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceName := strings.TrimSpace(r.PathValue("service"))
+	serviceName := strings.TrimSpace(r.PathValue(keyService))
 	if serviceName == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service is required", nil)
 		return
@@ -186,13 +186,13 @@ func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
 			return
 		}
-		slog.Warn("ops service inspect failed", "service", serviceName, "err", err)
+		slog.Warn("ops service inspect failed", keyService, serviceName, "err", err)
 		writeError(w, http.StatusInternalServerError, "OPS_ACTION_FAILED", "failed to inspect service", nil)
 		return
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"status": status,
+		keyStatus: status,
 	})
 }
 
@@ -206,7 +206,7 @@ func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	status := strings.TrimSpace(r.URL.Query().Get(keyStatus))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -221,12 +221,12 @@ func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"alerts": alertsList,
+		keyAlerts: alertsList,
 	})
 }
 
 func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
-	alertRaw := strings.TrimSpace(r.PathValue("alert"))
+	alertRaw := strings.TrimSpace(r.PathValue(keyAlert))
 	alertID, err := strconv.ParseInt(alertRaw, 10, 64)
 	if err != nil || alertID <= 0 {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "alert must be a positive integer", nil)
@@ -249,29 +249,29 @@ func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsAlerts, map[string]any{
-		"globalRev": globalRev,
-		"alert":     alert,
-		"action":    "ack",
+		keyGlobalRev: globalRev,
+		keyAlert:     alert,
+		keyAction:    "ack",
 	})
 	if timelineRecorded {
 		h.emit(events.TypeOpsActivity, map[string]any{
-			"globalRev": globalRev,
-			"event":     timelineEvent,
+			keyGlobalRev: globalRev,
+			keyEvent:     timelineEvent,
 		})
 	}
 
 	host, _ := os.Hostname()
 	h.notifier.SendAsync(notify.AlertWebhookPayload{
-		Event:     "alert.acked",
+		Event:     activity.EventAlertAcked,
 		Alert:     alert,
 		Host:      host,
 		Timestamp: now,
 	})
 
 	writeData(w, http.StatusOK, map[string]any{
-		"alert":         alert,
+		keyAlert:        alert,
 		"timelineEvent": timelineEvent,
-		"globalRev":     globalRev,
+		keyGlobalRev:    globalRev,
 	})
 }
 
@@ -308,15 +308,15 @@ func (h *Handler) bulkAckOpsAlerts(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsAlerts, map[string]any{
-		"globalRev": globalRev,
-		"alerts":    acked,
-		"action":    "bulk-ack",
+		keyGlobalRev: globalRev,
+		keyAlerts:    acked,
+		keyAction:    "bulk-ack",
 	})
 
 	host, _ := os.Hostname()
 	for _, alert := range acked {
 		h.notifier.SendAsync(notify.AlertWebhookPayload{
-			Event:     "alert.acked",
+			Event:     activity.EventAlertAcked,
 			Alert:     alert,
 			Host:      host,
 			Timestamp: now,
@@ -324,13 +324,13 @@ func (h *Handler) bulkAckOpsAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"acked":     acked,
-		"globalRev": globalRev,
+		"acked":      acked,
+		keyGlobalRev: globalRev,
 	})
 }
 
 func (h *Handler) deleteOpsAlert(w http.ResponseWriter, r *http.Request) {
-	alertRaw := strings.TrimSpace(r.PathValue("alert"))
+	alertRaw := strings.TrimSpace(r.PathValue(keyAlert))
 	alertID, err := strconv.ParseInt(alertRaw, 10, 64)
 	if err != nil || alertID <= 0 {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "alert must be a positive integer", nil)
@@ -354,14 +354,14 @@ func (h *Handler) deleteOpsAlert(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsAlerts, map[string]any{
-		"globalRev": globalRev,
-		"alertId":   alertID,
-		"action":    "deleted",
+		keyGlobalRev: globalRev,
+		keyAlertID:   alertID,
+		keyAction:    keyDeleted,
 	})
 
 	writeData(w, http.StatusOK, map[string]any{
-		"deleted":   alertID,
-		"globalRev": globalRev,
+		keyDeleted:   alertID,
+		keyGlobalRev: globalRev,
 	})
 }
 
@@ -395,7 +395,7 @@ func (h *Handler) opsActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"events":  result.Events,
+		keyEvents: result.Events,
 		"hasMore": result.HasMore,
 	})
 }
@@ -436,7 +436,7 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			writeError(w, http.StatusConflict, "OPS_SERVICE_EXISTS", "service already registered", nil)
 		} else {
-			slog.Warn("register ops service failed", "name", req.Name, "err", err)
+			slog.Warn("register ops service failed", keyName, req.Name, "err", err)
 			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to register service", nil)
 		}
 		return
@@ -454,24 +454,24 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	globalRev := now.UnixMilli()
 	if te.ID > 0 {
 		h.emit(events.TypeOpsActivity, map[string]any{
-			"globalRev": globalRev,
-			"event":     te,
+			keyGlobalRev: globalRev,
+			keyEvent:     te,
 		})
 	}
 	h.emit(events.TypeOpsServices, map[string]any{
-		"globalRev": globalRev,
-		"action":    "registered",
-		"service":   req.Name,
+		keyGlobalRev: globalRev,
+		keyAction:    "registered",
+		keyService:   req.Name,
 	})
 
 	writeData(w, http.StatusCreated, map[string]any{
-		"services":  services,
-		"globalRev": globalRev,
+		keyServices:  services,
+		keyGlobalRev: globalRev,
 	})
 }
 
 func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
-	serviceName := strings.TrimSpace(r.PathValue("service"))
+	serviceName := strings.TrimSpace(r.PathValue(keyService))
 	if serviceName == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service name is required", nil)
 		return
@@ -494,19 +494,19 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	globalRev := now.UnixMilli()
 	if te.ID > 0 {
 		h.emit(events.TypeOpsActivity, map[string]any{
-			"globalRev": globalRev,
-			"event":     te,
+			keyGlobalRev: globalRev,
+			keyEvent:     te,
 		})
 	}
 	h.emit(events.TypeOpsServices, map[string]any{
-		"globalRev": globalRev,
-		"action":    "unregistered",
-		"service":   serviceName,
+		keyGlobalRev: globalRev,
+		keyAction:    "unregistered",
+		keyService:   serviceName,
 	})
 
 	writeData(w, http.StatusOK, map[string]any{
-		"removed":   serviceName,
-		"globalRev": globalRev,
+		keyRemoved:   serviceName,
+		keyGlobalRev: globalRev,
 	})
 }
 
@@ -515,7 +515,7 @@ func (h *Handler) opsServiceLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
 		return
 	}
-	serviceName := strings.TrimSpace(r.PathValue("service"))
+	serviceName := strings.TrimSpace(r.PathValue(keyService))
 	if serviceName == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service name is required", nil)
 		return
@@ -537,15 +537,15 @@ func (h *Handler) opsServiceLogs(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
 			return
 		}
-		slog.Warn("ops service logs failed", "service", serviceName, "err", err)
+		slog.Warn("ops service logs failed", keyService, serviceName, "err", err)
 		writeError(w, http.StatusInternalServerError, "OPS_LOGS_FAILED", "failed to fetch service logs", nil)
 		return
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"service": serviceName,
-		"lines":   lines,
-		"output":  output,
+		keyService: serviceName,
+		"lines":    lines,
+		"output":   output,
 	})
 }
 
@@ -567,7 +567,7 @@ func (h *Handler) discoverOpsServices(w http.ResponseWriter, r *http.Request) {
 		available = []opsplane.AvailableService{}
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"services": available,
+		keyServices: available,
 	})
 }
 
@@ -589,7 +589,7 @@ func (h *Handler) browseOpsServices(w http.ResponseWriter, r *http.Request) {
 		services = []opsplane.BrowsedService{}
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"services": services,
+		keyServices: services,
 	})
 }
 
@@ -639,7 +639,7 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, opsplane.ErrInvalidAction) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid action", nil)
 		} else {
-			slog.Warn("ops unit action failed", "unit", req.Unit, "action", req.Action, "err", err)
+			slog.Warn("ops unit action failed", "unit", req.Unit, keyAction, req.Action, "err", err)
 			writeError(w, http.StatusInternalServerError, "OPS_ACTION_FAILED", "unit action failed", nil)
 		}
 		return
@@ -668,25 +668,25 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
-		"globalRev": globalRev,
-		"service":   req.Unit,
-		"action":    req.Action,
+		keyGlobalRev: globalRev,
+		keyService:   req.Unit,
+		keyAction:    req.Action,
 	})
 	h.emit(events.TypeOpsOverview, map[string]any{
-		"globalRev": globalRev,
-		"overview":  overview,
+		keyGlobalRev: globalRev,
+		keyOverview:  overview,
 	})
 	if timelineRecorded {
 		h.emit(events.TypeOpsActivity, map[string]any{
-			"globalRev": globalRev,
-			"event":     timelineEvent,
+			keyGlobalRev: globalRev,
+			keyEvent:     timelineEvent,
 		})
 	}
 
 	response := map[string]any{
-		"overview":  overview,
-		"alerts":    firedAlerts,
-		"globalRev": globalRev,
+		keyOverview:  overview,
+		keyAlerts:    firedAlerts,
+		keyGlobalRev: globalRev,
 	}
 	if timelineRecorded {
 		response["timelineEvent"] = timelineEvent
@@ -701,7 +701,7 @@ func (h *Handler) opsUnitStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	unit := strings.TrimSpace(r.URL.Query().Get("unit"))
-	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	scope := strings.TrimSpace(r.URL.Query().Get(keyScope))
 	manager := strings.TrimSpace(r.URL.Query().Get("manager"))
 
 	if unit == "" {
@@ -728,7 +728,7 @@ func (h *Handler) opsUnitStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"status": status,
+		keyStatus: status,
 	})
 }
 
@@ -739,7 +739,7 @@ func (h *Handler) opsUnitLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	unit := strings.TrimSpace(r.URL.Query().Get("unit"))
-	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	scope := strings.TrimSpace(r.URL.Query().Get(keyScope))
 	manager := strings.TrimSpace(r.URL.Query().Get("manager"))
 
 	if unit == "" {

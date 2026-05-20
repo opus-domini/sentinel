@@ -22,6 +22,11 @@ import (
 )
 
 const (
+	cmdSystemctl = "systemctl"
+	cmdRestart   = "restart"
+)
+
+const (
 	defaultRepo         = "opus-domini/sentinel"
 	defaultAPIBase      = "https://api.github.com"
 	defaultServiceUnit  = "sentinel"
@@ -390,19 +395,19 @@ func (o ApplyOptions) buildRestartCommand() []string {
 		if updaterRuntimeGOOS == hostOSDarwin {
 			return buildLaunchdRestartCommand(restartScopeSystem, unit)
 		}
-		return []string{"systemctl", "restart", unit}
+		return []string{cmdSystemctl, cmdRestart, unit}
 	case restartScopeUser:
 		if updaterRuntimeGOOS == hostOSDarwin {
 			return buildLaunchdRestartCommand(restartScopeUser, unit)
 		}
-		return []string{"systemctl", "--user", "restart", unit}
+		return []string{cmdSystemctl, "--user", cmdRestart, unit}
 	case restartScopeLaunchd:
 		if updaterGeteuid() == 0 {
 			return buildLaunchdRestartCommand(restartScopeSystem, unit)
 		}
 		return buildLaunchdRestartCommand(restartScopeUser, unit)
 	default:
-		return []string{"systemctl", "--user", "restart", unit}
+		return []string{cmdSystemctl, "--user", cmdRestart, unit}
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 
 const (
 	cmdListWindows    = "list-windows"
-	cmdNewWindow      = "new-window"
 	cmdDisplayMessage = "display-message"
 )
 

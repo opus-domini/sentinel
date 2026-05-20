@@ -35,7 +35,7 @@ func BuildWatchtowerWindowPatchesWithManaged(
 			displayName = managedName
 		}
 		patches = append(patches, map[string]any{
-			"session":         row.SessionName,
+			wtKeySession:      row.SessionName,
 			"tmuxWindowId":    strings.TrimSpace(row.TmuxWindowID),
 			"index":           row.WindowIndex,
 			"name":            row.Name,
@@ -45,7 +45,7 @@ func BuildWatchtowerWindowPatchesWithManaged(
 			"managedWindowId": strings.TrimSpace(managed.ID),
 			"launcherId":      strings.TrimSpace(managed.LauncherID),
 			"active":          row.Active,
-			"panes":           paneCounts[row.WindowIndex],
+			wtKeyPanes:        paneCounts[row.WindowIndex],
 			"layout":          row.Layout,
 			"unreadPanes":     row.UnreadPanes,
 			"hasUnread":       row.HasUnread,

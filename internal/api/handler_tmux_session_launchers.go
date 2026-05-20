@@ -51,11 +51,11 @@ func (h *Handler) createSessionLauncher(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create session launcher", nil)
 		return
 	}
-	writeData(w, http.StatusCreated, map[string]any{"launcher": launcher})
+	writeData(w, http.StatusCreated, map[string]any{keyLauncher: launcher})
 }
 
 func (h *Handler) updateSessionLauncher(w http.ResponseWriter, r *http.Request) {
-	launcherID := strings.TrimSpace(r.PathValue("launcher"))
+	launcherID := strings.TrimSpace(r.PathValue(keyLauncher))
 	if launcherID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "session launcher id is required", nil)
 		return
@@ -86,11 +86,11 @@ func (h *Handler) updateSessionLauncher(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"launcher": launcher})
+	writeData(w, http.StatusOK, map[string]any{keyLauncher: launcher})
 }
 
 func (h *Handler) deleteSessionLauncher(w http.ResponseWriter, r *http.Request) {
-	launcherID := strings.TrimSpace(r.PathValue("launcher"))
+	launcherID := strings.TrimSpace(r.PathValue(keyLauncher))
 	if launcherID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "session launcher id is required", nil)
 		return
@@ -135,7 +135,7 @@ func (h *Handler) reorderSessionLaunchers(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) launchSessionLauncher(w http.ResponseWriter, r *http.Request) {
-	launcherID := strings.TrimSpace(r.PathValue("launcher"))
+	launcherID := strings.TrimSpace(r.PathValue(keyLauncher))
 	if launcherID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "session launcher id is required", nil)
 		return
@@ -159,7 +159,7 @@ func (h *Handler) launchSessionLauncher(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "session.create",
+		Action:      actionSessionCreate,
 		SessionName: launcher.Name,
 		WindowIndex: -1,
 	}); !ok {
@@ -175,10 +175,10 @@ func (h *Handler) launchSessionLauncher(w http.ResponseWriter, r *http.Request) 
 	h.registerSessionUser(sessionName, launcher.User)
 	if launcher.User != "" {
 		slog.Warn("multi-user session created",
-			"action", "session.launcher.launch",
+			keyAction, "session.launcher.launch",
 			"target_user", launcher.User,
-			"session", sessionName,
-			"launcher", launcher.ID,
+			keySession, sessionName,
+			keyLauncher, launcher.ID,
 			"source_ip", r.RemoteAddr,
 		)
 	}
@@ -189,17 +189,17 @@ func (h *Handler) launchSessionLauncher(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.repo.MoveSessionToFront(ctx, sessionName); err != nil {
-		slog.Warn("failed to move session to front", "session", sessionName, "err", err)
+		slog.Warn("failed to move session to front", keySession, sessionName, "err", err)
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{
-		"session":  sessionName,
-		"launcher": launcher.ID,
-		"action":   "create",
+		keySession:  sessionName,
+		keyLauncher: launcher.ID,
+		keyAction:   "create",
 	})
 	writeData(w, http.StatusOK, map[string]any{
 		"launcherId": launcher.ID,
-		"name":       sessionName,
-		"created":    true,
+		keyName:      sessionName,
+		keyCreated:   true,
 	})
 }
 

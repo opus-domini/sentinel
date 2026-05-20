@@ -125,12 +125,12 @@ func (h *Handler) listProjectedWindows(ctx context.Context, session string) ([]s
 
 	windows, err := h.repo.ListWatchtowerWindows(ctx, session)
 	if err != nil {
-		slog.Warn("store.ListWatchtowerWindows failed", "session", session, "err", err)
+		slog.Warn("store.ListWatchtowerWindows failed", keySession, session, "err", err)
 		return nil, nil, false
 	}
 	panes, err := h.repo.ListWatchtowerPanes(ctx, session)
 	if err != nil {
-		slog.Warn("store.ListWatchtowerPanes failed", "session", session, "err", err)
+		slog.Warn("store.ListWatchtowerPanes failed", keySession, session, "err", err)
 		return nil, nil, false
 	}
 	if len(windows) == 0 {
@@ -146,7 +146,7 @@ func (h *Handler) listProjectedPanes(ctx context.Context, session string) ([]sto
 
 	panes, err := h.repo.ListWatchtowerPanes(ctx, session)
 	if err != nil {
-		slog.Warn("store.ListWatchtowerPanes failed", "session", session, "err", err)
+		slog.Warn("store.ListWatchtowerPanes failed", keySession, session, "err", err)
 		return nil, false
 	}
 	if len(panes) == 0 {
@@ -424,7 +424,7 @@ func (h *Handler) upsertSessionMetaBestEffort(ctx context.Context, sessionName, 
 		return
 	}
 	if err := h.repo.UpsertSession(ctx, sessionName, hash, lastContent); err != nil {
-		slog.Warn("store.UpsertSession failed", "session", sessionName, "err", err)
+		slog.Warn("store.UpsertSession failed", keySession, sessionName, "err", err)
 	}
 }
 

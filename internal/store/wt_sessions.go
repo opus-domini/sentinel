@@ -19,7 +19,7 @@ func BuildWatchtowerSessionActivityPatch(row WatchtowerSession) map[string]any {
 		"name":          row.SessionName,
 		"attached":      row.Attached,
 		"windows":       row.Windows,
-		"panes":         row.Panes,
+		wtKeyPanes:      row.Panes,
 		"activityAt":    activityAt,
 		"lastContent":   row.LastPreview,
 		"unreadWindows": row.UnreadWindows,
@@ -49,9 +49,9 @@ func BuildWatchtowerInspectorPatchWithManaged(
 		}
 	}
 	return map[string]any{
-		"session": sessionName,
-		"windows": BuildWatchtowerWindowPatchesWithManaged(windows, panes, managedByRuntime),
-		"panes":   BuildWatchtowerPanePatches(panes),
+		wtKeySession: sessionName,
+		"windows":    BuildWatchtowerWindowPatchesWithManaged(windows, panes, managedByRuntime),
+		wtKeyPanes:   BuildWatchtowerPanePatches(panes),
 	}
 }
 
@@ -231,9 +231,9 @@ func (s *Store) PurgeWatchtowerSessions(ctx context.Context, activeSessions []st
 		table  string
 		column string
 	}{
-		{table: "wt_panes", column: "session_name"},
-		{table: "wt_windows", column: "session_name"},
-		{table: "wt_sessions", column: "session_name"},
+		{table: "wt_panes", column: wtColSessionName},
+		{table: "wt_windows", column: wtColSessionName},
+		{table: "wt_sessions", column: wtColSessionName},
 	} {
 		query := "DELETE FROM " + item.table + " WHERE " + item.column + " NOT IN (" + placeholders + ")" //nolint:gosec // table/column values are fixed literals
 		if _, err := tx.ExecContext(ctx, query, args...); err != nil {

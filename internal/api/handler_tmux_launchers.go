@@ -56,11 +56,11 @@ func (h *Handler) createTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create tmux launcher", nil)
 		return
 	}
-	writeData(w, http.StatusCreated, map[string]any{"launcher": launcher})
+	writeData(w, http.StatusCreated, map[string]any{keyLauncher: launcher})
 }
 
 func (h *Handler) updateTmuxLauncher(w http.ResponseWriter, r *http.Request) {
-	launcherID := strings.TrimSpace(r.PathValue("launcher"))
+	launcherID := strings.TrimSpace(r.PathValue(keyLauncher))
 	if launcherID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "tmux launcher id is required", nil)
 		return
@@ -93,11 +93,11 @@ func (h *Handler) updateTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"launcher": launcher})
+	writeData(w, http.StatusOK, map[string]any{keyLauncher: launcher})
 }
 
 func (h *Handler) deleteTmuxLauncher(w http.ResponseWriter, r *http.Request) {
-	launcherID := strings.TrimSpace(r.PathValue("launcher"))
+	launcherID := strings.TrimSpace(r.PathValue(keyLauncher))
 	if launcherID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "tmux launcher id is required", nil)
 		return
@@ -142,12 +142,12 @@ func (h *Handler) reorderTmuxLaunchers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
 	}
-	launcherID := strings.TrimSpace(r.PathValue("launcher"))
+	launcherID := strings.TrimSpace(r.PathValue(keyLauncher))
 	if launcherID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "tmux launcher id is required", nil)
 		return
@@ -225,17 +225,17 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.emit(events.TypeTmuxInspector, map[string]any{
-		"session": session,
-		"action":  "launcher-window",
-		"index":   createdWindow.Index,
-		"paneId":  createdWindow.PaneID,
-		"name":    windowName,
+		keySession: session,
+		keyAction:  "launcher-window",
+		keyIndex:   createdWindow.Index,
+		keyPaneID:  createdWindow.PaneID,
+		keyName:    windowName,
 	})
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "window-count"})
+	h.emit(events.TypeTmuxSessions, map[string]any{keySession: session, keyAction: actionWindowCount})
 	writeData(w, http.StatusOK, map[string]any{
 		"launcherId":      launcher.ID,
 		"windowIndex":     createdWindow.Index,
-		"paneId":          createdWindow.PaneID,
+		keyPaneID:         createdWindow.PaneID,
 		"windowName":      windowName,
 		"managedWindowId": managedWindow.ID,
 	})

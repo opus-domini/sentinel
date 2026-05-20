@@ -64,6 +64,11 @@ type RunParams struct {
 }
 
 const (
+	keyGlobalRev = "globalRev"
+	keyJob       = "job"
+)
+
+const (
 	runnerStatusRunning         = "running"
 	runnerStatusSucceeded       = "succeeded"
 	runnerStatusFailed          = "failed"
@@ -102,8 +107,8 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 		slog.Warn("runbook runner: failed to mark run as running", "err", err)
 	}
 	emit("ops.job.updated", map[string]any{
-		"globalRev": now.UnixMilli(),
-		"job":       runningJob,
+		keyGlobalRev: now.UnixMilli(),
+		keyJob:       runningJob,
 	})
 
 	// Fetch runbook steps.
@@ -161,8 +166,8 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 			slog.Warn("runbook runner: failed to update run before step", "err", updateErr)
 		}
 		emit("ops.job.updated", map[string]any{
-			"globalRev": time.Now().UTC().UnixMilli(),
-			"job":       updated,
+			keyGlobalRev: time.Now().UTC().UnixMilli(),
+			keyJob:       updated,
 		})
 	}
 
@@ -193,8 +198,8 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 			slog.Warn("runbook runner: failed to update run progress", "err", updateErr)
 		}
 		emit("ops.job.updated", map[string]any{
-			"globalRev": time.Now().UTC().UnixMilli(),
-			"job":       updated,
+			keyGlobalRev: time.Now().UTC().UnixMilli(),
+			keyJob:       updated,
 		})
 	}
 
@@ -226,8 +231,8 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 			slog.Warn("runbook runner: failed to get run after approval pause", "err", getErr)
 		}
 		emit("ops.job.updated", map[string]any{
-			"globalRev": time.Now().UTC().UnixMilli(),
-			"job":       updatedJob,
+			keyGlobalRev: time.Now().UTC().UnixMilli(),
+			keyJob:       updatedJob,
 		})
 		return
 	}
@@ -279,8 +284,8 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		slog.Warn("runbook runner: failed to get finished run", "err", getErr)
 	}
 	emit("ops.job.updated", map[string]any{
-		"globalRev": globalRev,
-		"job":       updatedJob,
+		keyGlobalRev: globalRev,
+		keyJob:       updatedJob,
 	})
 
 	severity := "info"
@@ -314,8 +319,8 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 	}
 	if te.ID > 0 {
 		emit("ops.activity.updated", map[string]any{
-			"globalRev": globalRev,
-			"event":     te,
+			keyGlobalRev: globalRev,
+			"event":      te,
 		})
 	}
 
@@ -472,8 +477,8 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		slog.Warn("runbook runner: failed to mark resumed run as running", "err", err)
 	}
 	emit("ops.job.updated", map[string]any{
-		"globalRev": now.UnixMilli(),
-		"job":       runningJob,
+		keyGlobalRev: now.UnixMilli(),
+		keyJob:       runningJob,
 	})
 
 	// Fetch runbook steps.
@@ -535,8 +540,8 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 			slog.Warn("runbook runner: failed to update run before step", "err", updateErr)
 		}
 		emit("ops.job.updated", map[string]any{
-			"globalRev": time.Now().UTC().UnixMilli(),
-			"job":       updated,
+			keyGlobalRev: time.Now().UTC().UnixMilli(),
+			keyJob:       updated,
 		})
 	}
 
@@ -568,8 +573,8 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 			slog.Warn("runbook runner: failed to update run progress", "err", updateErr)
 		}
 		emit("ops.job.updated", map[string]any{
-			"globalRev": time.Now().UTC().UnixMilli(),
-			"job":       updated,
+			keyGlobalRev: time.Now().UTC().UnixMilli(),
+			keyJob:       updated,
 		})
 	}
 
@@ -602,8 +607,8 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 			slog.Warn("runbook runner: failed to get run after approval pause", "err", getErr)
 		}
 		emit("ops.job.updated", map[string]any{
-			"globalRev": time.Now().UTC().UnixMilli(),
-			"job":       updatedJob,
+			keyGlobalRev: time.Now().UTC().UnixMilli(),
+			keyJob:       updatedJob,
 		})
 		return
 	}

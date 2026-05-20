@@ -409,7 +409,7 @@ type setAuthTokenRequest struct {
 
 func (h *Handler) setAuthToken(w http.ResponseWriter, r *http.Request) {
 	if !h.guard.TokenRequired() {
-		writeData(w, http.StatusOK, map[string]any{"authenticated": true})
+		writeData(w, http.StatusOK, map[string]any{keyAuthenticated: true})
 		return
 	}
 
@@ -429,12 +429,12 @@ func (h *Handler) setAuthToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.guard.SetAuthCookie(w, r)
-	writeData(w, http.StatusOK, map[string]any{"authenticated": true})
+	writeData(w, http.StatusOK, map[string]any{keyAuthenticated: true})
 }
 
 func (h *Handler) clearAuthToken(w http.ResponseWriter, r *http.Request) {
 	h.guard.ClearAuthCookie(w, r)
-	writeData(w, http.StatusOK, map[string]any{"authenticated": false})
+	writeData(w, http.StatusOK, map[string]any{keyAuthenticated: false})
 }
 
 func (h *Handler) listDirectories(w http.ResponseWriter, r *http.Request) {
@@ -455,7 +455,7 @@ func (h *Handler) listDirectories(w http.ResponseWriter, r *http.Request) {
 	prefix := strings.TrimSpace(r.URL.Query().Get("prefix"))
 	dirs := listDirectorySuggestions(prefix, defaultSessionCWD(), limit)
 	writeData(w, http.StatusOK, map[string]any{
-		"dirs": dirs,
+		keyDirs: dirs,
 	})
 }
 
@@ -706,8 +706,8 @@ func writeData(w http.ResponseWriter, status int, data any) {
 
 func writeError(w http.ResponseWriter, status int, code, message string, details any) {
 	errObj := map[string]any{
-		"code":    code,
-		"message": message,
+		"code":     code,
+		keyMessage: message,
 	}
 	if details != nil {
 		errObj["details"] = details

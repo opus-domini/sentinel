@@ -14,6 +14,8 @@ import (
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
 
+const keySessions = "sessions"
+
 const (
 	defaultTickInterval   = time.Second
 	defaultCaptureLines   = 80
@@ -422,14 +424,14 @@ func (s *Service) publishCollectEvents(ctx context.Context, summary collectSumma
 		inspectorPatches := s.buildInspectorActivityPatches(ctx, summary.changedSessions)
 		s.options.Publish(events.TypeTmuxSessions, map[string]any{
 			"action":           "activity",
-			"sessions":         summary.changedSessions,
+			keySessions:        summary.changedSessions,
 			"globalRev":        globalRev,
 			"sessionPatches":   sessionPatches,
 			"inspectorPatches": inspectorPatches,
 		})
 		s.options.Publish(events.TypeTmuxActivity, map[string]any{
 			"globalRev":        globalRev,
-			"sessions":         summary.changedSessions,
+			keySessions:        summary.changedSessions,
 			"sessionPatches":   sessionPatches,
 			"inspectorPatches": inspectorPatches,
 		})
@@ -449,7 +451,7 @@ func (s *Service) publishCollectEvents(ctx context.Context, summary collectSumma
 		return
 	}
 	s.options.Publish(events.TypeTmuxTimeline, map[string]any{
-		"sessions": sessionsPayload,
+		keySessions: sessionsPayload,
 	})
 }
 

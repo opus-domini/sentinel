@@ -60,7 +60,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "session.create",
+		Action:      actionSessionCreate,
 		SessionName: req.Name,
 		WindowIndex: -1,
 	}); !ok {
@@ -76,23 +76,23 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	h.registerSessionUser(finalName, req.User)
 	if req.User != "" {
 		slog.Warn("multi-user session created",
-			"action", "session.create",
+			keyAction, actionSessionCreate,
 			"target_user", req.User,
-			"session", finalName,
+			keySession, finalName,
 			"source_ip", r.RemoteAddr,
 		)
 	}
 	h.persistSessionLaunchMetadataBestEffort(ctx, finalName, req.Cwd, req.Icon)
 	if err := h.repo.MoveSessionToFront(ctx, finalName); err != nil {
-		slog.Warn("failed to move session to front", "session", finalName, "err", err)
+		slog.Warn("failed to move session to front", keySession, finalName, "err", err)
 	}
 	payload := map[string]any{
-		"session": finalName,
-		"action":  "create",
+		keySession: finalName,
+		keyAction:  "create",
 	}
 	setOperationID(payload, req.OperationID)
 	h.emit(events.TypeTmuxSessions, payload)
-	writeData(w, http.StatusCreated, map[string]any{"name": finalName})
+	writeData(w, http.StatusCreated, map[string]any{keyName: finalName})
 }
 
 func createSessionWithAvailableName(ctx context.Context, tmuxSvc tmuxService, seed, cwd string) (string, error) {
@@ -229,7 +229,7 @@ func (h *Handler) populateSessionUsersFromPresets(ctx context.Context) {
 }
 
 func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid source session name", nil)
 		return
@@ -269,15 +269,15 @@ func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
 	}
 	h.renameSessionPresetBestEffort(ctx, session, req.NewName)
 	h.emit(events.TypeTmuxSessions, map[string]any{
-		"session": session,
-		"newName": req.NewName,
-		"action":  "rename",
+		keySession: session,
+		"newName":  req.NewName,
+		keyAction:  "rename",
 	})
-	writeData(w, http.StatusOK, map[string]any{"name": req.NewName})
+	writeData(w, http.StatusOK, map[string]any{keyName: req.NewName})
 }
 
 func (h *Handler) setSessionIcon(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -304,14 +304,14 @@ func (h *Handler) setSessionIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{
-		"session": session,
-		"action":  "icon",
+		keySession: session,
+		keyAction:  "icon",
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue("session"))
+	session := strings.TrimSpace(r.PathValue(keySession))
 	if !validate.SessionName(session) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
 		return
@@ -339,7 +339,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 		_ = h.repo.DeleteSessionUser(context.Background(), session)
 		_ = h.repo.DeleteSessionPreset(context.Background(), session)
 	}
-	h.emit(events.TypeTmuxSessions, map[string]any{"session": session, "action": "delete"})
+	h.emit(events.TypeTmuxSessions, map[string]any{keySession: session, keyAction: "delete"})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -360,8 +360,8 @@ func (h *Handler) frequentDirectories(w http.ResponseWriter, r *http.Request) {
 	dirs, err := h.repo.ListFrequentDirectories(ctx, limit)
 	if err != nil {
 		slog.Warn("failed to list frequent directories", "err", err)
-		writeData(w, http.StatusOK, map[string]any{"dirs": []string{}})
+		writeData(w, http.StatusOK, map[string]any{keyDirs: []string{}})
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"dirs": dirs})
+	writeData(w, http.StatusOK, map[string]any{keyDirs: dirs})
 }

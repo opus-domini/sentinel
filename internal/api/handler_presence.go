@@ -109,11 +109,11 @@ func (h *Handler) activityDelta(w http.ResponseWriter, r *http.Request) {
 	sessionNames := extractChangedSessionNames(changes)
 	sessionPatches, inspectorPatches := h.collectSessionsPatches(ctx, sessionNames)
 	response := map[string]any{
-		"since":     since,
-		"limit":     limit,
-		"globalRev": globalRev,
-		"overflow":  overflow,
-		"changes":   changes,
+		"since":      since,
+		"limit":      limit,
+		keyGlobalRev: globalRev,
+		"overflow":   overflow,
+		"changes":    changes,
 	}
 	if len(sessionPatches) > 0 {
 		response["sessionPatches"] = sessionPatches
@@ -221,7 +221,7 @@ func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"globalRev":             parseInt("global_rev"),
+		keyGlobalRev:            parseInt("global_rev"),
 		"collectTotal":          parseInt("collect_total"),
 		"collectErrorsTotal":    parseInt("collect_errors_total"),
 		"lastCollectAt":         runtime["last_collect_at"],
@@ -254,15 +254,15 @@ func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"events":  result.Events,
+		keyEvents: result.Events,
 		"hasMore": result.HasMore,
 	})
 }
 
 func parseTimelineSearchQuery(r *http.Request) (store.WatchtowerTimelineQuery, error) {
 	query := store.WatchtowerTimelineQuery{
-		Session:   strings.TrimSpace(r.URL.Query().Get("session")),
-		PaneID:    strings.TrimSpace(r.URL.Query().Get("paneId")),
+		Session:   strings.TrimSpace(r.URL.Query().Get(keySession)),
+		PaneID:    strings.TrimSpace(r.URL.Query().Get(keyPaneID)),
 		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
 		Severity:  strings.TrimSpace(r.URL.Query().Get("severity")),
 		EventType: strings.TrimSpace(r.URL.Query().Get("eventType")),

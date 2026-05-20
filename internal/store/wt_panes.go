@@ -18,7 +18,7 @@ func BuildWatchtowerPanePatches(panes []WatchtowerPane) []map[string]any {
 			changedAt = row.ChangedAt.UTC().Format(time.RFC3339)
 		}
 		patches = append(patches, map[string]any{
-			"session":        row.SessionName,
+			wtKeySession:     row.SessionName,
 			"windowIndex":    row.WindowIndex,
 			"paneIndex":      row.PaneIndex,
 			"paneId":         row.PaneID,

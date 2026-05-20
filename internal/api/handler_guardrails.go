@@ -20,7 +20,7 @@ import (
 
 func (h *Handler) listGuardrailRules(w http.ResponseWriter, r *http.Request) {
 	if h.guardrails == nil {
-		writeData(w, http.StatusOK, map[string]any{"rules": []store.GuardrailRule{}})
+		writeData(w, http.StatusOK, map[string]any{keyRules: []store.GuardrailRule{}})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -31,7 +31,7 @@ func (h *Handler) listGuardrailRules(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list guardrail rules", nil)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"rules": rules})
+	writeData(w, http.StatusOK, map[string]any{keyRules: rules})
 }
 
 func (h *Handler) updateGuardrailRule(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +90,7 @@ func (h *Handler) updateGuardrailRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list guardrail rules", nil)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"rules": rules})
+	writeData(w, http.StatusOK, map[string]any{keyRules: rules})
 }
 
 func (h *Handler) createGuardrailRule(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +155,7 @@ func (h *Handler) createGuardrailRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list guardrail rules", nil)
 		return
 	}
-	writeData(w, http.StatusCreated, map[string]any{"rules": rules})
+	writeData(w, http.StatusCreated, map[string]any{keyRules: rules})
 }
 
 func (h *Handler) deleteGuardrailRule(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +180,7 @@ func (h *Handler) deleteGuardrailRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete guardrail rule", nil)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"removed": ruleID})
+	writeData(w, http.StatusOK, map[string]any{keyRemoved: ruleID})
 }
 
 func (h *Handler) listGuardrailAudit(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +251,7 @@ func (h *Handler) evaluateGuardrail(w http.ResponseWriter, r *http.Request) {
 	if err := h.guardrails.RecordAudit(ctx, input, decision, false, "manual evaluate"); err != nil {
 		slog.Warn("guardrail evaluate audit write failed", "err", err)
 	}
-	writeData(w, http.StatusOK, map[string]any{"decision": decision})
+	writeData(w, http.StatusOK, map[string]any{keyDecision: decision})
 }
 
 func (h *Handler) enforceGuardrail(
@@ -267,7 +267,7 @@ func (h *Handler) enforceGuardrail(
 
 	decision, err := h.guardrails.Evaluate(ctx, input)
 	if err != nil {
-		slog.Warn("guardrail evaluate failed, blocking request", "action", input.Action, "err", err)
+		slog.Warn("guardrail evaluate failed, blocking request", keyAction, input.Action, "err", err)
 		writeError(w, http.StatusServiceUnavailable, "GUARDRAIL_UNAVAILABLE", "guardrail policy could not be evaluated; action blocked for safety", nil)
 		return false
 	}
@@ -279,10 +279,10 @@ func (h *Handler) enforceGuardrail(
 	case store.GuardrailModeBlock:
 		if h.events != nil {
 			h.events.Publish(events.NewEvent(events.TypeTmuxGuardrail, map[string]any{
-				"action":   strings.TrimSpace(input.Action),
-				"session":  strings.TrimSpace(input.SessionName),
-				"paneId":   strings.TrimSpace(input.PaneID),
-				"decision": decision,
+				keyAction:   strings.TrimSpace(input.Action),
+				keySession:  strings.TrimSpace(input.SessionName),
+				keyPaneID:   strings.TrimSpace(input.PaneID),
+				keyDecision: decision,
 			}))
 		}
 		if err := h.guardrails.RecordAudit(ctx, input, decision, false, "blocked"); err != nil {
@@ -290,7 +290,7 @@ func (h *Handler) enforceGuardrail(
 		}
 		h.orch.RecordGuardrailBlocked(ctx, input.Action, input.SessionName, input.PaneID, decision.Message, time.Now().UTC())
 		writeError(w, http.StatusConflict, "GUARDRAIL_BLOCKED", decision.Message, map[string]any{
-			"decision": decision,
+			keyDecision: decision,
 		})
 		return false
 	case store.GuardrailModeConfirm:
@@ -299,7 +299,7 @@ func (h *Handler) enforceGuardrail(
 				slog.Warn("guardrail audit write failed", "err", err)
 			}
 			writeError(w, http.StatusPreconditionRequired, "GUARDRAIL_CONFIRM_REQUIRED", decision.Message, map[string]any{
-				"decision": decision,
+				keyDecision: decision,
 			})
 			return false
 		}

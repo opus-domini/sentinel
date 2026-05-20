@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -22,10 +23,10 @@ func (h *Handler) suggestRunbooksForMarker(w http.ResponseWriter, r *http.Reques
 	}
 
 	marker := strings.TrimSpace(r.URL.Query().Get("marker"))
-	session := strings.TrimSpace(r.URL.Query().Get("session"))
+	session := strings.TrimSpace(r.URL.Query().Get(keySession))
 	if marker == "" && session == "" {
 		writeData(w, http.StatusOK, map[string]any{
-			"runbooks": []store.OpsRunbook{},
+			keyRunbooks: []store.OpsRunbook{},
 		})
 		return
 	}
@@ -39,7 +40,7 @@ func (h *Handler) suggestRunbooksForMarker(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"runbooks": runbooks,
+		keyRunbooks: runbooks,
 	})
 }
 
@@ -67,7 +68,7 @@ func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"runbooks":  runbooks,
+		keyRunbooks: runbooks,
 		"jobs":      jobs,
 		"schedules": schedules,
 	})
@@ -82,7 +83,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	runbookID := strings.TrimSpace(r.PathValue("runbook"))
+	runbookID := strings.TrimSpace(r.PathValue(keyRunbook))
 	if runbookID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook is required", nil)
 		return
@@ -161,28 +162,28 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsJob, map[string]any{
-		"globalRev": globalRev,
-		"job":       job,
+		keyGlobalRev: globalRev,
+		keyJob:       job,
 	})
 	h.emit(events.TypeOpsActivity, map[string]any{
-		"globalRev": globalRev,
-		"event":     timelineEvent,
+		keyGlobalRev: globalRev,
+		keyEvent:     timelineEvent,
 	})
 
 	writeData(w, http.StatusAccepted, map[string]any{
-		"job":           job,
+		keyJob:          job,
 		"timelineEvent": timelineEvent,
-		"globalRev":     globalRev,
+		keyGlobalRev:    globalRev,
 	})
 }
 
 func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookRun, params map[string]string) {
 	runbook.Run(ctx, h.repo, h.emitEvent, runbook.RunParams{
 		Job:           job,
-		Source:        "runbook",
+		Source:        activity.SourceRunbook,
 		StepTimeout:   30 * time.Second,
 		Parameters:    params,
-		ExtraMetadata: map[string]string{"runbookId": job.RunbookID},
+		ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
 		AlertRepo:     h.repo,
 	})
 }
@@ -196,7 +197,7 @@ func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	jobID := strings.TrimSpace(r.PathValue("job"))
+	jobID := strings.TrimSpace(r.PathValue(keyJob))
 	if jobID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "job id is required", nil)
 		return
@@ -214,7 +215,7 @@ func (h *Handler) opsJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{
-		"job": job,
+		keyJob: job,
 	})
 }
 
@@ -223,7 +224,7 @@ func (h *Handler) deleteOpsJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	jobID := strings.TrimSpace(r.PathValue("job"))
+	jobID := strings.TrimSpace(r.PathValue(keyJob))
 	if jobID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "job id is required", nil)
 		return
@@ -239,7 +240,7 @@ func (h *Handler) deleteOpsJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete job", nil)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"deleted": true})
+	writeData(w, http.StatusOK, map[string]any{keyDeleted: true})
 }
 
 func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
@@ -275,7 +276,7 @@ func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := map[string]any{
-		"runbook": rb,
+		keyRunbook: rb,
 	}
 	if warnings := validateShellSyntax(req.Steps); len(warnings) > 0 {
 		result["shellWarnings"] = warnings
@@ -288,7 +289,7 @@ func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	runbookID := strings.TrimSpace(r.PathValue("runbook"))
+	runbookID := strings.TrimSpace(r.PathValue(keyRunbook))
 	if runbookID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook id is required", nil)
 		return
@@ -322,7 +323,7 @@ func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := map[string]any{
-		"runbook": rb,
+		keyRunbook: rb,
 	}
 	if warnings := validateShellSyntax(req.Steps); len(warnings) > 0 {
 		result["shellWarnings"] = warnings
@@ -335,7 +336,7 @@ func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
 		return
 	}
-	runbookID := strings.TrimSpace(r.PathValue("runbook"))
+	runbookID := strings.TrimSpace(r.PathValue(keyRunbook))
 	if runbookID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "runbook id is required", nil)
 		return
@@ -361,13 +362,13 @@ func (h *Handler) deleteOpsRunbook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
-		"removed": runbookID,
+		keyRemoved: runbookID,
 	})
 }
 
 var validStepTypes = map[string]bool{
-	"run":            true,
-	"script":         true,
+	keyRun:           true,
+	keyScript:        true,
 	stepTypeApproval: true,
 }
 
@@ -389,13 +390,13 @@ func validateShellSyntax(steps []store.OpsRunbookStep) []runbook.ShellWarning {
 	var inputs []runbook.ShellCheckInput
 	for i, s := range steps {
 		switch s.Type {
-		case "run":
+		case keyRun:
 			if s.Command != "" {
-				inputs = append(inputs, runbook.ShellCheckInput{Step: i, Type: "run", Source: s.Command})
+				inputs = append(inputs, runbook.ShellCheckInput{Step: i, Type: keyRun, Source: s.Command})
 			}
-		case "script":
+		case keyScript:
 			if s.Script != "" {
-				inputs = append(inputs, runbook.ShellCheckInput{Step: i, Type: "script", Source: s.Script})
+				inputs = append(inputs, runbook.ShellCheckInput{Step: i, Type: keyScript, Source: s.Script})
 			}
 		}
 	}
@@ -484,8 +485,8 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 	}
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsJob, map[string]any{
-		"globalRev": globalRev,
-		"job":       runningJob,
+		keyGlobalRev: globalRev,
+		keyJob:       runningJob,
 	})
 
 	// Resolve parameters from the run record.
@@ -498,17 +499,17 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		defer func() { <-h.runSem }()
 		runbook.ResumeRun(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
 			Job:           runningJob,
-			Source:        "runbook",
+			Source:        activity.SourceRunbook,
 			StepTimeout:   30 * time.Second,
 			Parameters:    resolved,
-			ExtraMetadata: map[string]string{"runbookId": job.RunbookID},
+			ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
 			AlertRepo:     h.repo,
 		}, approvalStepIndex)
 	}()
 
 	writeData(w, http.StatusAccepted, map[string]any{
-		"job":       runningJob,
-		"globalRev": globalRev,
+		keyJob:       runningJob,
+		keyGlobalRev: globalRev,
 	})
 }
 
@@ -557,12 +558,12 @@ func (h *Handler) rejectOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsJob, map[string]any{
-		"globalRev": globalRev,
-		"job":       updated,
+		keyGlobalRev: globalRev,
+		keyJob:       updated,
 	})
 
 	writeData(w, http.StatusOK, map[string]any{
-		"job":       updated,
-		"globalRev": globalRev,
+		keyJob:       updated,
+		keyGlobalRev: globalRev,
 	})
 }

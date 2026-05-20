@@ -15,7 +15,7 @@ import (
 
 func (h *Handler) listMarkerPatterns(w http.ResponseWriter, r *http.Request) {
 	if h.repo == nil {
-		writeData(w, http.StatusOK, map[string]any{"patterns": []store.MarkerPattern{}})
+		writeData(w, http.StatusOK, map[string]any{keyPatterns: []store.MarkerPattern{}})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -26,7 +26,7 @@ func (h *Handler) listMarkerPatterns(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list marker patterns", nil)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"patterns": patterns})
+	writeData(w, http.StatusOK, map[string]any{keyPatterns: patterns})
 }
 
 func (h *Handler) upsertMarkerPattern(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ func (h *Handler) upsertMarkerPattern(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to list marker patterns", nil)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"patterns": patterns})
+	writeData(w, http.StatusOK, map[string]any{keyPatterns: patterns})
 }
 
 func (h *Handler) deleteMarkerPattern(w http.ResponseWriter, r *http.Request) {
@@ -112,5 +112,5 @@ func (h *Handler) deleteMarkerPattern(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete marker pattern", nil)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"removed": patternID})
+	writeData(w, http.StatusOK, map[string]any{keyRemoved: patternID})
 }
