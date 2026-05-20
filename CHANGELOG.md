@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.36](https://github.com/opus-domini/sentinel/compare/v0.5.35...v0.5.36) (2026-05-20)
+
+
+### Features
+
+* add `sentinel service logs` command ([67c6ec2](https://github.com/opus-domini/sentinel/commit/67c6ec2fb5e1e48ec3db40685ce16f7e60455341))
+
+
+### Bug Fixes
+
+* kill session when its last tmux window closes ([db44474](https://github.com/opus-domini/sentinel/commit/db444743f3714ebbdf6f3c8d8dc416a05191f18f))
+
+
+### Refactors
+
+* extract repeated string literals into named constants ([2cb610f](https://github.com/opus-domini/sentinel/commit/2cb610fdad6540f20f17258742e6e449fbe090ef))
+
+
+### Build
+
+* **client:** update frontend dependencies ([d0da693](https://github.com/opus-domini/sentinel/commit/d0da693e6b00470d2a69f4481f3a0724d4780f15))
+* delegate Makefile install to `sentinel service` ([205a17c](https://github.com/opus-domini/sentinel/commit/205a17c1f1d74cc31534c1cb0399ef7abf2ea400))
+
+
+### CI
+
+* adopt GoReleaser for release packaging ([ed27f68](https://github.com/opus-domini/sentinel/commit/ed27f684c347872cf03b2e1adfcd67515803ed46))
+* upgrade golangci-lint to v2.12.2 ([9cab643](https://github.com/opus-domini/sentinel/commit/9cab643524456f86054e48478b62a74e270e2ff2))
+
 ## [0.5.35](https://github.com/opus-domini/sentinel/compare/v0.5.34...v0.5.35) (2026-05-14)
 
 
