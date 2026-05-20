@@ -27,6 +27,10 @@ linters:
         linters:
           - noctx
   settings:
+    goconst:
+      # Test files legitimately repeat literals across table-driven cases;
+      # extracting constants there hurts readability more than it helps.
+      ignore-tests: true
     gosec:
       excludes:
         # PTY implementation requires unsafe.Pointer for ioctl syscalls
@@ -38,6 +42,9 @@ linters:
         # crypto/sha1 is mandated by RFC 6455 (WebSocket handshake)
         - G401
         - G505
+        # Auth cookies set HttpOnly, SameSite and a policy-driven Secure flag;
+        # gosec's literal heuristic cannot see the dynamic Secure value.
+        - G124
         # Taint-analysis rules produce false positives on structured logging,
         # internal file paths, and httptest clients.
         - G703
