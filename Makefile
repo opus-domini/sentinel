@@ -155,12 +155,22 @@ uninstall: ## Remove managed service and binary
 	rm -f $(BINDIR)/sentinel
 	@echo "Sentinel uninstalled."
 
+# ─── Release ──────────────────────────────────────────────────
+
+.PHONY: release-check
+release-check: check-goreleaser ## Validate the GoReleaser config
+	goreleaser check
+
+.PHONY: release-snapshot
+release-snapshot: check-goreleaser ## Build a local snapshot release (no publish)
+	goreleaser release --snapshot --clean
+
 # ─── Maintenance ──────────────────────────────────────────────
 
 .PHONY: clean
 clean: ## Remove build artifacts
 	$(GOCMD) clean
-	rm -rf build coverage.txt
+	rm -rf build dist coverage.txt
 
 .PHONY: help
 help: ## Show available targets
@@ -177,7 +187,7 @@ help: ## Show available targets
 
 # Dependency checks (internal)
 
-.PHONY: check-go check-npm check-lint
+.PHONY: check-go check-npm check-lint check-goreleaser
 
 check-go:
 	@command -v $(GOCMD) >/dev/null 2>&1 || { echo "error: go is not installed — https://golang.org/doc/install"; exit 1; }
@@ -187,3 +197,6 @@ check-npm:
 
 check-lint:
 	@command -v $(LINT) >/dev/null 2>&1 || { echo "error: $(LINT) is not installed — go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; exit 1; }
+
+check-goreleaser:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "error: goreleaser is not installed — https://goreleaser.com/install"; exit 1; }

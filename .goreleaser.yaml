@@ -1,0 +1,66 @@
+# GoReleaser configuration — https://goreleaser.com
+# Versioning, the git tag, the GitHub release and the changelog are owned
+# by release-please; GoReleaser only cross-compiles, packages and uploads
+# the artifacts onto the release release-please already created.
+version: 2
+
+project_name: sentinel
+
+before:
+  hooks:
+    # The React SPA is embedded via go:embed; build it before the Go build.
+    - npm ci --prefix client
+    - npm --prefix client run build
+
+builds:
+  - id: sentinel
+    main: ./cmd/sentinel
+    binary: sentinel
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.buildVersion={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: sentinel
+    ids:
+      - sentinel
+    formats:
+      - tar.gz
+    # install.sh downloads sentinel-<version>-<os>-<arch>.tar.gz and reads the
+    # sentinel binary from the archive root; LICENSE/README/CHANGELOG ride
+    # along (GoReleaser default) and are harmless to the installer.
+    name_template: "sentinel-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: "sentinel-{{ .Version }}-checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  # release-please owns CHANGELOG.md and the GitHub release notes.
+  disable: true
+
+release:
+  # release-please already created the GitHub release; append artifacts
+  # to it without touching the release notes.
+  mode: append
+  replace_existing_artifacts: true

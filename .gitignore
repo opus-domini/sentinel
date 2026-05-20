@@ -25,10 +25,10 @@
 
 !/Makefile
 !/.golangci.yml
+!/.goreleaser.yaml
 
 !/install.sh
 !/uninstall.sh
-!/contrib/**/*
 !/scripts/**/*
 
 # ...even if they are in subdirectories
