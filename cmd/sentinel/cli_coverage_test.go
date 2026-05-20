@@ -33,6 +33,7 @@ func TestHelpFunctions(t *testing.T) {
 		{"printServiceInstallHelp", printServiceInstallHelp},
 		{"printServiceUninstallHelp", printServiceUninstallHelp},
 		{"printServiceStatusHelp", printServiceStatusHelp},
+		{"printServiceLogsHelp", printServiceLogsHelp},
 		{"printServiceAutoUpdateHelp", printServiceAutoUpdateHelp},
 		{"printServiceAutoUpdateInstallHelp", printServiceAutoUpdateInstallHelp},
 		{"printServiceAutoUpdateUninstallHelp", printServiceAutoUpdateUninstallHelp},
@@ -275,6 +276,112 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 
 		var out, errOut bytes.Buffer
 		code := runCLI([]string{"service", "uninstall", "--bogus"}, &out, &errOut)
+		if code != 2 {
+			t.Fatalf("exit code = %d, want 2", code)
+		}
+	})
+}
+
+// TestRunServiceLogsCommand covers success, failure, help, and arg-parsing paths.
+func TestRunServiceLogsCommand(t *testing.T) {
+	t.Run("success forwards parsed flags", func(t *testing.T) {
+		origLogs := userLogsFn
+		t.Cleanup(func() { userLogsFn = origLogs })
+
+		var got daemon.LogsOptions
+		userLogsFn = func(opts daemon.LogsOptions) error {
+			got = opts
+			return nil
+		}
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "logs", "-f", "-n", "120"}, &out, &errOut)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+		}
+		if !got.Follow {
+			t.Fatal("Follow = false, want true")
+		}
+		if got.Lines != 120 {
+			t.Fatalf("Lines = %d, want 120", got.Lines)
+		}
+		if got.Stdout != &out || got.Stderr != &errOut {
+			t.Fatal("LogsOptions writers not wired to command context")
+		}
+	})
+
+	t.Run("default flags", func(t *testing.T) {
+		origLogs := userLogsFn
+		t.Cleanup(func() { userLogsFn = origLogs })
+
+		var got daemon.LogsOptions
+		userLogsFn = func(opts daemon.LogsOptions) error {
+			got = opts
+			return nil
+		}
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "logs"}, &out, &errOut)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0", code)
+		}
+		if got.Follow {
+			t.Fatal("Follow = true, want false")
+		}
+		if got.Lines != 50 {
+			t.Fatalf("Lines = %d, want 50", got.Lines)
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		origLogs := userLogsFn
+		t.Cleanup(func() { userLogsFn = origLogs })
+
+		userLogsFn = func(_ daemon.LogsOptions) error {
+			return errors.New("journalctl was not found in PATH")
+		}
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "logs"}, &out, &errOut)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if !strings.Contains(errOut.String(), "service logs failed") {
+			t.Fatalf("stderr missing error: %s", errOut.String())
+		}
+	})
+
+	t.Run("help flag", func(t *testing.T) {
+		t.Parallel()
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "logs", "--help"}, &out, &errOut)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0", code)
+		}
+		if !strings.Contains(out.String(), "sentinel service logs") {
+			t.Fatalf("stdout missing help text: %s", out.String())
+		}
+	})
+
+	t.Run("unexpected args", func(t *testing.T) {
+		t.Parallel()
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "logs", "extra"}, &out, &errOut)
+		if code != 2 {
+			t.Fatalf("exit code = %d, want 2", code)
+		}
+		if !strings.Contains(errOut.String(), "unexpected argument") {
+			t.Fatalf("stderr missing error: %s", errOut.String())
+		}
+	})
+
+	t.Run("invalid flag", func(t *testing.T) {
+		t.Parallel()
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "logs", "--bogus"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}

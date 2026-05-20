@@ -4,7 +4,7 @@
 
 ```bash
 sentinel [serve]
-sentinel service <install|uninstall|status|autoupdate>
+sentinel service <install|uninstall|status|logs|autoupdate>
 sentinel doctor
 sentinel recovery <list|restore>
 sentinel update <check|apply|status>
@@ -53,6 +53,19 @@ sentinel service status
 ```
 
 Prints service file path, existence, manager availability, enabled and active state.
+
+### Logs
+
+```bash
+sentinel service logs --follow --lines 50
+```
+
+Flags:
+
+- `--follow`, `-f`: stream new log lines as they arrive.
+- `--lines`, `-n`: number of past log lines to show (default 50).
+
+Streams the managed service log: `journalctl` for the systemd unit on Linux, the launchd plist log files on macOS.
 
 ## `sentinel service autoupdate`
 

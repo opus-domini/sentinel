@@ -22,6 +22,7 @@ var (
 	installUserSvcFn          = daemon.InstallUser
 	uninstallUserSvcFn        = daemon.UninstallUser
 	userStatusFn              = daemon.UserStatus
+	userLogsFn                = daemon.UserLogs
 	installUserAutoUpdateFn   = daemon.InstallUserAutoUpdate
 	uninstallUserAutoUpdateFn = daemon.UninstallUserAutoUpdate
 	userAutoUpdateStatusFn    = daemon.UserAutoUpdateStatusForScope
@@ -119,6 +120,8 @@ func runServiceCommand(ctx commandContext, args []string) int {
 		return runServiceUninstallCommand(ctx, args[1:])
 	case cmdStatus:
 		return runServiceStatusCommand(ctx, args[1:])
+	case "logs":
+		return runServiceLogsCommand(ctx, args[1:])
 	case "autoupdate":
 		return runServiceAutoUpdateCommand(ctx, args[1:])
 	case cmdHelp, flagHelpShort, flagHelpLong:
@@ -247,6 +250,41 @@ func runServiceStatusCommand(ctx commandContext, args []string) int {
 		)
 	}
 	printRows(ctx.stdout, rows)
+	return 0
+}
+
+func runServiceLogsCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("service logs", flag.ContinueOnError)
+	fs.SetOutput(ctx.stderr)
+	var follow bool
+	fs.BoolVar(&follow, "follow", false, "stream new log lines as they arrive")
+	fs.BoolVar(&follow, "f", false, "shorthand for --follow")
+	var lines int
+	fs.IntVar(&lines, "lines", 50, "number of past log lines to show")
+	fs.IntVar(&lines, "n", 50, "shorthand for --lines")
+	help := fs.Bool("help", false, "show help")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *help {
+		printServiceLogsHelp(ctx.stdout)
+		return 0
+	}
+	if fs.NArg() > 0 {
+		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
+		printServiceLogsHelp(ctx.stderr)
+		return 2
+	}
+
+	if err := userLogsFn(daemon.LogsOptions{
+		Follow: follow,
+		Lines:  lines,
+		Stdout: ctx.stdout,
+		Stderr: ctx.stderr,
+	}); err != nil {
+		writef(ctx.stderr, "service logs failed: %v\n", err)
+		return 1
+	}
 	return 0
 }
 
@@ -703,7 +741,7 @@ func printRootHelp(w io.Writer) {
 	writeln(w, "")
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel [serve]")
-	writeln(w, "  sentinel service <install|uninstall|status|autoupdate>")
+	writeln(w, "  sentinel service <install|uninstall|status|logs|autoupdate>")
 	writeln(w, "  sentinel doctor")
 	writeln(w, "  sentinel update <check|apply|status>")
 	writeln(w, "")
@@ -726,6 +764,7 @@ func printServiceHelp(w io.Writer) {
 	writeln(w, "  sentinel service install [--exec PATH] [--enable=true] [--start=true]")
 	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true]")
 	writeln(w, "  sentinel service status")
+	writeln(w, "  sentinel service logs [--follow|-f] [--lines|-n 50]")
 	writeln(w, "  sentinel service autoupdate <install|uninstall|status>")
 }
 
@@ -742,6 +781,13 @@ func printServiceUninstallHelp(w io.Writer) {
 func printServiceStatusHelp(w io.Writer) {
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel service status")
+}
+
+func printServiceLogsHelp(w io.Writer) {
+	writeln(w, "Usage:")
+	writeln(w, "  sentinel service logs [--follow|-f] [--lines|-n 50]")
+	writeln(w, "")
+	writeln(w, "Streams the managed service log (journalctl on Linux, plist logs on macOS).")
 }
 
 func printServiceAutoUpdateHelp(w io.Writer) {

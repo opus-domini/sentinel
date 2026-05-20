@@ -347,7 +347,7 @@ func userAutoUpdatePathLaunchdForScope(scopeRaw string) (string, error) {
 	return filepath.Join(home, "Library", "LaunchAgents", launchdUpdaterPlistName), nil
 }
 
-func launchdLogPathsForScope(baseName, scopeRaw string) (string, string, error) {
+func launchdLogFilePaths(baseName, scopeRaw string) (string, string, error) {
 	scope, err := normalizeLaunchdScope(scopeRaw)
 	if err != nil {
 		return "", "", err
@@ -363,10 +363,56 @@ func launchdLogPathsForScope(baseName, scopeRaw string) (string, string, error) 
 		}
 		logDir = filepath.Join(home, ".sentinel", "logs")
 	}
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
+	return filepath.Join(logDir, baseName+".out.log"), filepath.Join(logDir, baseName+".err.log"), nil
+}
+
+func launchdLogPathsForScope(baseName, scopeRaw string) (string, string, error) {
+	stdoutPath, stderrPath, err := launchdLogFilePaths(baseName, scopeRaw)
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(stdoutPath), 0o700); err != nil {
 		return "", "", fmt.Errorf("create sentinel log directory: %w", err)
 	}
-	return filepath.Join(logDir, baseName+".out.log"), filepath.Join(logDir, baseName+".err.log"), nil
+	return stdoutPath, stderrPath, nil
+}
+
+func userLogsLaunchd(opts LogsOptions) error {
+	if err := ensureLaunchdSupported(); err != nil {
+		return err
+	}
+	if _, err := exec.LookPath("tail"); err != nil {
+		return errors.New("tail was not found in PATH")
+	}
+
+	scope, err := normalizeLaunchdScope(managerScopeAuto)
+	if err != nil {
+		return err
+	}
+	stdoutPath, stderrPath, err := launchdLogFilePaths("sentinel", scope)
+	if err != nil {
+		return err
+	}
+
+	args := tailLogArgs(opts.Follow, opts.Lines, stdoutPath, stderrPath)
+	cmd := exec.CommandContext(context.Background(), "tail", args...)
+	cmd.Stdout = opts.Stdout
+	cmd.Stderr = opts.Stderr
+	return runLogCommand(cmd)
+}
+
+// tailLogArgs builds the tail arguments for the launchd plist log files. A
+// non-zero or negative line count falls back to the default.
+func tailLogArgs(follow bool, lines int, paths ...string) []string {
+	if lines <= 0 {
+		lines = defaultLogLines
+	}
+	args := make([]string, 0, 3+len(paths))
+	args = append(args, "-n", strconv.Itoa(lines))
+	if follow {
+		args = append(args, "-f")
+	}
+	return append(args, paths...)
 }
 
 func ensureLaunchdSupported() error {

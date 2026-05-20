@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,6 +43,16 @@ type UninstallUserOptions struct {
 	Stop       bool
 	RemoveUnit bool
 }
+
+// LogsOptions controls how the managed service log stream is rendered.
+type LogsOptions struct {
+	Follow bool
+	Lines  int
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+const defaultLogLines = 50
 
 type InstallUserAutoUpdateOptions struct {
 	ExecPath        string
@@ -379,6 +391,61 @@ func UserStatus() (UserServiceStatus, error) {
 	st.EnabledState = readSystemctlState("is-enabled", "sentinel")
 	st.ActiveState = readSystemctlState("is-active", "sentinel")
 	return st, nil
+}
+
+// UserLogs streams the managed service log to opts.Stdout/opts.Stderr. On Linux
+// it shells out to journalctl for the sentinel unit; on macOS it tails the
+// launchd plist log files.
+func UserLogs(opts LogsOptions) error {
+	if runtime.GOOS == launchdSupportedOS {
+		return userLogsLaunchd(opts)
+	}
+	if runtime.GOOS != systemdSupportedOS {
+		return errors.New("service log commands are supported on Linux and macOS only")
+	}
+	if _, err := exec.LookPath("journalctl"); err != nil {
+		return errors.New("journalctl was not found in PATH")
+	}
+
+	args := journalctlLogArgs(os.Geteuid() == 0, opts.Follow, opts.Lines)
+	cmd := exec.CommandContext(context.Background(), "journalctl", args...)
+	cmd.Stdout = opts.Stdout
+	cmd.Stderr = opts.Stderr
+	return runLogCommand(cmd)
+}
+
+// journalctlLogArgs builds the journalctl arguments for the sentinel unit. A
+// non-zero or negative line count falls back to the default. The output is
+// paged off (--no-pager) unless following, which streams live lines instead.
+func journalctlLogArgs(system, follow bool, lines int) []string {
+	if lines <= 0 {
+		lines = defaultLogLines
+	}
+	args := make([]string, 0, 7)
+	if !system {
+		args = append(args, "--user")
+	}
+	args = append(args, "-u", userUnitName, "-n", strconv.Itoa(lines))
+	if follow {
+		args = append(args, "-f")
+	} else {
+		args = append(args, "--no-pager")
+	}
+	return args
+}
+
+// runLogCommand runs a log-streaming command. A non-zero exit (an empty unit,
+// or SIGINT while following) is not a failure — the stream itself is the
+// result, and genuine errors already reached the connected stderr.
+func runLogCommand(cmd *exec.Cmd) error {
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil
+		}
+		return fmt.Errorf("run %s: %w", filepath.Base(cmd.Path), err)
+	}
+	return nil
 }
 
 func UserAutoUpdateStatus() (UserAutoUpdateServiceStatus, error) {
