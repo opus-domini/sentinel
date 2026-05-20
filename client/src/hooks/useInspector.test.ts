@@ -121,6 +121,9 @@ function createMockOptions(overrides: MockOptions = {}) {
     pushErrorToast: vi.fn(),
     pushSuccessToast: vi.fn(),
     setConnection: vi.fn(),
+    dispatchTabs: vi.fn(),
+    closeCurrentSocket: vi.fn(),
+    resetTerminal: vi.fn(),
     requestGuardrailConfirm: vi.fn(),
   }
 }
@@ -1212,5 +1215,76 @@ describe('useInspector – applyInspectorProjectionPatches', () => {
 
     // Override should be kept — the window still exists
     expect(result.current.activeWindowIndexOverride).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tests — closeWindow (session cleanup when last window dies)
+// ---------------------------------------------------------------------------
+
+describe('useInspector – closeWindow', () => {
+  it('moves focus off the session when its last window is closed', async () => {
+    const opts = createMockOptions({
+      windows: [makeWindow({ index: 0, active: true })],
+      panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+    })
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(1)
+    })
+
+    act(() => {
+      result.current.closeWindow(0)
+    })
+
+    expect(result.current.windows).toEqual([])
+    expect(result.current.panes).toEqual([])
+    expect(result.current.activeWindowIndexOverride).toBeNull()
+    expect(result.current.activePaneIDOverride).toBeNull()
+    expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(true)
+    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last window closed')
+    expect(opts.resetTerminal).toHaveBeenCalled()
+    expect(opts.dispatchTabs).toHaveBeenCalledWith({
+      type: 'close',
+      session: 'dev',
+    })
+    expect(opts.setConnection).toHaveBeenCalledWith(
+      'disconnected',
+      'last window closed',
+    )
+  })
+
+  it('keeps focus on the session when a non-final window is closed', async () => {
+    const opts = createMockOptions({
+      windows: [
+        makeWindow({ index: 0, active: true }),
+        makeWindow({ index: 1, name: 'alt', active: false }),
+      ],
+      panes: [
+        makePane({ windowIndex: 0, paneId: '%1', active: true }),
+        makePane({ windowIndex: 1, paneId: '%2', active: false }),
+      ],
+    })
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(2)
+    })
+
+    act(() => {
+      result.current.closeWindow(0)
+    })
+
+    expect(result.current.windows.length).toBe(1)
+    expect(result.current.activeWindowIndexOverride).toBe(1)
+    expect(opts.closeCurrentSocket).not.toHaveBeenCalled()
+    expect(opts.resetTerminal).not.toHaveBeenCalled()
+    expect(opts.dispatchTabs).not.toHaveBeenCalled()
+    expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(false)
   })
 })

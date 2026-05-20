@@ -24,6 +24,7 @@ import type {
 import { classifySessionPatches } from '@/lib/tmuxSessionEvents'
 import type {
   ApiFunction,
+  DispatchTabs,
   InspectorSessionPatch,
   RuntimeMetrics,
   TmuxInspectorUpdatedPayload,
@@ -306,6 +307,9 @@ type UseInspectorOptions = {
   pushErrorToast: (title: string, message: string) => void
   pushSuccessToast: (title: string, message: string) => void
   setConnection: (state: ConnectionState, detail: string) => void
+  dispatchTabs: DispatchTabs
+  closeCurrentSocket: (reason: string) => void
+  resetTerminal: () => void
   requestGuardrailConfirm: (
     ruleName: string,
     message: string,
@@ -346,12 +350,16 @@ export function useInspector(options: UseInspectorOptions) {
     pushErrorToast,
     pushSuccessToast,
     setConnection,
+    dispatchTabs,
+    closeCurrentSocket,
+    resetTerminal,
     requestGuardrailConfirm,
   } = options
 
   const queryClient = useQueryClient()
   const inspectorGenerationRef = useRef(0)
   const pendingCreateSessionsRef = useRef(new Map<string, string>())
+  const pendingKillSessionsRef = useRef(new Set<string>())
   const pendingCreateWindowsRef = useRef(new Map<string, Set<number>>())
   const pendingCloseWindowsRef = useRef(new Map<string, Set<number>>())
   const pendingClosePanesRef = useRef(new Map<string, Set<string>>())
@@ -1504,46 +1512,66 @@ export function useInspector(options: UseInspectorOptions) {
       const rem = windows.filter((w) => w.index !== windowIndex)
       const remP = panes.filter((p) => p.windowIndex !== windowIndex)
       const ord = [...rem].sort((a, b) => a.index - b.index)
+      const isLastWindow = rem.length === 0
 
-      const currentActiveWindowIndex =
-        activeWindowOverrideRef.current ??
-        windows.find((w) => w.active)?.index ??
-        null
-
-      let nextWI: number | null = null
-      if (
-        currentActiveWindowIndex !== null &&
-        ord.some((w) => w.index === currentActiveWindowIndex)
-      )
-        nextWI = currentActiveWindowIndex
-      if (nextWI === null) {
-        const h = ord.find((w) => w.index > windowIndex)
-        nextWI = h ? h.index : (ord.at(-1)?.index ?? null)
-      }
-      let nextPI: string | null = null
-      if (nextWI !== null) {
-        const ap = remP.find((p) => p.windowIndex === nextWI && p.active)
-        nextPI = ap
-          ? ap.paneId
-          : (remP.find((p) => p.windowIndex === nextWI)?.paneId ?? null)
-      }
       setInspectorError('')
-      setSessions((prev) =>
-        prev.map((item) =>
-          item.name === active
-            ? {
-                ...item,
-                windows: Math.max(0, item.windows - 1),
-                panes: Math.max(0, item.panes - Math.max(1, removedPaneCount)),
-                activityAt: changedAt,
-              }
-            : item,
-        ),
-      )
-      setWindows(rem.map((w) => ({ ...w, active: w.index === nextWI })))
-      setPanes(remP.map((p) => ({ ...p, active: p.paneId === nextPI })))
-      setActiveWindowIndexOverride(nextWI)
-      setActivePaneIDOverride(nextPI)
+      if (isLastWindow) {
+        // tmux destroys the session when its final window is killed. Apply
+        // the session-kill cleanup now so focus moves off the dying session
+        // immediately instead of lingering on an empty inspector.
+        pendingKillSessionsRef.current.add(active)
+        setSessions((prev) => prev.filter((item) => item.name !== active))
+        setWindows([])
+        setPanes([])
+        setActiveWindowIndexOverride(null)
+        setActivePaneIDOverride(null)
+        closeCurrentSocket('last window closed')
+        resetTerminal()
+        dispatchTabs({ type: 'close', session: active })
+        setConnection('disconnected', 'last window closed')
+      } else {
+        const currentActiveWindowIndex =
+          activeWindowOverrideRef.current ??
+          windows.find((w) => w.active)?.index ??
+          null
+
+        let nextWI: number | null = null
+        if (
+          currentActiveWindowIndex !== null &&
+          ord.some((w) => w.index === currentActiveWindowIndex)
+        )
+          nextWI = currentActiveWindowIndex
+        if (nextWI === null) {
+          const h = ord.find((w) => w.index > windowIndex)
+          nextWI = h ? h.index : (ord.at(-1)?.index ?? null)
+        }
+        let nextPI: string | null = null
+        if (nextWI !== null) {
+          const ap = remP.find((p) => p.windowIndex === nextWI && p.active)
+          nextPI = ap
+            ? ap.paneId
+            : (remP.find((p) => p.windowIndex === nextWI)?.paneId ?? null)
+        }
+        setSessions((prev) =>
+          prev.map((item) =>
+            item.name === active
+              ? {
+                  ...item,
+                  windows: Math.max(0, item.windows - 1),
+                  panes: Math.max(
+                    0,
+                    item.panes - Math.max(1, removedPaneCount),
+                  ),
+                  activityAt: changedAt,
+                }
+              : item,
+          ),
+        )
+        setWindows(rem.map((w) => ({ ...w, active: w.index === nextWI })))
+        setPanes(remP.map((p) => ({ ...p, active: p.paneId === nextPI })))
+        setActiveWindowIndexOverride(nextWI)
+        setActivePaneIDOverride(nextPI)
+      }
       void api<void>(
         `/api/tmux/sessions/${encodeURIComponent(active)}/kill-window`,
         {
@@ -1614,11 +1642,15 @@ export function useInspector(options: UseInspectorOptions) {
     },
     [
       api,
+      closeCurrentSocket,
+      dispatchTabs,
       panes,
       pushErrorToast,
       refreshInspector,
       refreshSessions,
       requestGuardrailConfirm,
+      resetTerminal,
+      setConnection,
       setSessions,
       tabsStateRef,
       windows,
@@ -2165,6 +2197,7 @@ export function useInspector(options: UseInspectorOptions) {
     renamePaneValue,
     // Refs (needed by other hooks)
     pendingCreateSessionsRef,
+    pendingKillSessionsRef,
     // Actions
     refreshInspector,
     reorderWindows,

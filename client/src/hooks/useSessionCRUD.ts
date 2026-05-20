@@ -36,6 +36,7 @@ type UseSessionCRUDOptions = {
   pushErrorToast: (title: string, message: string) => void
   pushSuccessToast: (title: string, message: string) => void
   pendingCreateSessionsRef: React.MutableRefObject<Map<string, string>>
+  pendingKillSessionsRef: React.MutableRefObject<Set<string>>
   requestGuardrailConfirm: (
     ruleName: string,
     message: string,
@@ -74,12 +75,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     pushErrorToast,
     pushSuccessToast,
     pendingCreateSessionsRef,
+    pendingKillSessionsRef,
     requestGuardrailConfirm,
     refreshSessionPresets,
   } = options
 
   const refreshGenerationRef = useRef(0)
-  const pendingKillSessionsRef = useRef(new Set<string>())
   const pendingRenameSessionsRef = useRef(new Map<string, string>())
   const pendingSessionCreateOpsRef = useRef(
     new Map<string, PendingSessionCreateOperation>(),
@@ -923,7 +924,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     renameValue,
     // Refs
     lastSessionsRefreshAtRef,
-    pendingKillSessionsRef,
     pendingRenameSessionsRef,
     // Actions
     refreshSessions,

@@ -381,6 +381,9 @@ function TmuxPage() {
     pushErrorToast,
     pushSuccessToast,
     setConnection,
+    dispatchTabs,
+    closeCurrentSocket,
+    resetTerminal,
     requestGuardrailConfirm,
   })
 
@@ -403,6 +406,7 @@ function TmuxPage() {
     pushErrorToast,
     pushSuccessToast,
     pendingCreateSessionsRef: inspector.pendingCreateSessionsRef,
+    pendingKillSessionsRef: inspector.pendingKillSessionsRef,
     requestGuardrailConfirm,
     refreshSessionPresets,
   })

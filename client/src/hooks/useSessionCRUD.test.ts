@@ -110,6 +110,7 @@ function createMockOptions(overrides: MockOptions = {}) {
     },
   }
   const pendingCreateSessionsRef = { current: new Map<string, string>() }
+  const pendingKillSessionsRef = { current: new Set<string>() }
 
   return {
     api,
@@ -128,6 +129,7 @@ function createMockOptions(overrides: MockOptions = {}) {
     pushErrorToast,
     pushSuccessToast,
     pendingCreateSessionsRef,
+    pendingKillSessionsRef,
     requestGuardrailConfirm,
     refreshSessionPresets,
   }
