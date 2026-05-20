@@ -140,37 +140,19 @@ ci: ci-full ## Run full CI pipeline
 
 # ─── Install ─────────────────────────────────────────────────
 
-PREFIX     ?= $(HOME)/.local
-BINDIR      = $(PREFIX)/bin
-SERVICEDIR  = $(HOME)/.config/systemd/user
+PREFIX ?= $(HOME)/.local
+BINDIR  = $(PREFIX)/bin
 
 .PHONY: install
-install: build ## Install binary and systemd user service
+install: build ## Install binary and managed service
 	install -Dm755 $(BINARY) $(BINDIR)/sentinel
 	@echo "Installed sentinel to $(BINDIR)/sentinel"
-	@if [ "$$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then \
-		mkdir -p $(SERVICEDIR); \
-		sed 's|ExecStart=.*|ExecStart=$(BINDIR)/sentinel|' contrib/sentinel.service \
-			> $(SERVICEDIR)/sentinel.service; \
-		if systemctl --user daemon-reload; then \
-			echo "systemd user service installed."; \
-			echo "  Start:   systemctl --user start sentinel"; \
-			echo "  Enable:  systemctl --user enable sentinel"; \
-			echo "  Logs:    journalctl --user -u sentinel -f"; \
-		else \
-			echo "warning: failed to run 'systemctl --user daemon-reload' (no active user bus?)"; \
-			echo "service file written to $(SERVICEDIR)/sentinel.service"; \
-		fi; \
-	fi
+	$(BINDIR)/sentinel service install --exec $(BINDIR)/sentinel
 
 .PHONY: uninstall
-uninstall: ## Remove binary and systemd user service
-	-systemctl --user disable --now sentinel 2>/dev/null
+uninstall: ## Remove managed service and binary
+	-$(BINDIR)/sentinel service uninstall
 	rm -f $(BINDIR)/sentinel
-	rm -f $(SERVICEDIR)/sentinel.service
-	@if command -v systemctl >/dev/null 2>&1; then \
-		systemctl --user daemon-reload 2>/dev/null; \
-	fi
 	@echo "Sentinel uninstalled."
 
 # ─── Maintenance ──────────────────────────────────────────────
