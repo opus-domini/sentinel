@@ -79,6 +79,15 @@ elif command -v systemctl >/dev/null 2>&1; then
     ok "Service units cleaned up"
 fi
 
+# --- Remove bash completion ---
+for completion in \
+    "${HOME}/.local/share/bash-completion/completions/sentinel" \
+    "/usr/share/bash-completion/completions/sentinel"; do
+    if [ -f "$completion" ]; then
+        rm -f "$completion" 2>/dev/null && ok "Removed ${completion}" || true
+    fi
+done
+
 # --- Remove binary ---
 if [ -f "$SENTINEL" ]; then
     rm -f "$SENTINEL"

@@ -8,6 +8,7 @@ sentinel service <install|uninstall|status|logs|autoupdate>
 sentinel doctor
 sentinel recovery <list|restore>
 sentinel update <check|apply|status>
+sentinel completion <bash|zsh|fish>
 sentinel --help
 sentinel --version | -v | version
 ```
@@ -157,6 +158,30 @@ sentinel update apply \
 ```bash
 sentinel update status
 ```
+
+## `sentinel completion`
+
+Print a shell completion script to stdout.
+
+```bash
+sentinel completion <bash|zsh|fish>
+```
+
+`make install` and `install.sh` install the bash completion automatically.
+To install it manually:
+
+```bash
+# bash
+sentinel completion bash > ~/.local/share/bash-completion/completions/sentinel
+
+# zsh (ensure the directory is on $fpath)
+sentinel completion zsh > "${fpath[1]}/_sentinel"
+
+# fish
+sentinel completion fish > ~/.config/fish/completions/sentinel.fish
+```
+
+Open a new shell after installing for completion to take effect.
 
 ## Exit Codes
 

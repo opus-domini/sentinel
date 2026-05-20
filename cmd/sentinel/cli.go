@@ -74,6 +74,8 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return runDoctorCommand(ctx, args[1:])
 	case "update":
 		return runUpdateCommand(ctx, args[1:])
+	case "completion":
+		return runCompletionCommand(ctx, args[1:])
 	case cmdHelp, flagHelpShort, flagHelpLong:
 		printRootHelp(stdout)
 		return 0
@@ -739,17 +741,23 @@ func defaultAutoUpdateScopeFlag() string {
 func printRootHelp(w io.Writer) {
 	writeln(w, "Sentinel command-line interface")
 	writeln(w, "")
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel [serve]")
-	writeln(w, "  sentinel service <install|uninstall|status|logs|autoupdate>")
-	writeln(w, "  sentinel doctor")
-	writeln(w, "  sentinel update <check|apply|status>")
+	writeln(w, "USAGE")
+	writeln(w, "  sentinel <command> [flags]")
 	writeln(w, "")
-	writeln(w, "Commands:")
-	writeln(w, "  serve      Start Sentinel HTTP server (default)")
-	writeln(w, "  service    Manage local service and autoupdate timer (systemd/launchd)")
-	writeln(w, "  doctor     Check local environment and runtime config")
-	writeln(w, "  update     Check/apply binary updates from GitHub releases")
+	writeln(w, "CORE COMMANDS")
+	writeln(w, "  serve       Start the HTTP server (default)")
+	writeln(w, "  service     Manage the local service and autoupdate timer")
+	writeln(w, "  update      Check and apply binary updates")
+	writeln(w, "")
+	writeln(w, "ADDITIONAL COMMANDS")
+	writeln(w, "  doctor      Check the local environment and runtime config")
+	writeln(w, "  completion  Generate a shell completion script (bash/zsh/fish)")
+	writeln(w, "")
+	writeln(w, "FLAGS")
+	writeln(w, "  -h, --help     Show help")
+	writeln(w, "  -v, --version  Print the version")
+	writeln(w, "")
+	writeln(w, `Run "sentinel <command> --help" for details on a command.`)
 }
 
 func printServeHelp(w io.Writer) {

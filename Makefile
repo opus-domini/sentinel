@@ -140,19 +140,24 @@ ci: ci-full ## Run full CI pipeline
 
 # ─── Install ─────────────────────────────────────────────────
 
-PREFIX ?= $(HOME)/.local
-BINDIR  = $(PREFIX)/bin
+PREFIX        ?= $(HOME)/.local
+BINDIR         = $(PREFIX)/bin
+COMPLETIONDIR  = $(HOME)/.local/share/bash-completion/completions
 
 .PHONY: install
-install: build ## Install binary and managed service
+install: build ## Install binary, managed service and bash completion
 	install -Dm755 $(BINARY) $(BINDIR)/sentinel
 	@echo "Installed sentinel to $(BINDIR)/sentinel"
 	$(BINDIR)/sentinel service install --exec $(BINDIR)/sentinel
+	@install -d $(COMPLETIONDIR) \
+		&& $(BINDIR)/sentinel completion bash > $(COMPLETIONDIR)/sentinel \
+		&& echo "Bash completion installed (open a new shell to use it)" || true
 
 .PHONY: uninstall
-uninstall: ## Remove managed service and binary
+uninstall: ## Remove managed service, binary and bash completion
 	-$(BINDIR)/sentinel service uninstall
 	rm -f $(BINDIR)/sentinel
+	rm -f $(COMPLETIONDIR)/sentinel
 	@echo "Sentinel uninstalled."
 
 # ─── Release ──────────────────────────────────────────────────

@@ -146,6 +146,17 @@ mkdir -p "$INSTALL_DIR"
 install -m755 "${TMP}/sentinel" "${INSTALL_DIR}/sentinel"
 ok "Installed sentinel to ${INSTALL_DIR}/sentinel"
 
+# --- Install bash completion (best-effort) ---
+if [ "$IS_ROOT" -eq 1 ]; then
+    COMPLETION_DIR="/usr/share/bash-completion/completions"
+else
+    COMPLETION_DIR="${HOME}/.local/share/bash-completion/completions"
+fi
+if mkdir -p "$COMPLETION_DIR" 2>/dev/null &&
+    "${INSTALL_DIR}/sentinel" completion bash > "${COMPLETION_DIR}/sentinel" 2>/dev/null; then
+    ok "Bash completion installed to ${COMPLETION_DIR}/sentinel"
+fi
+
 # --- Install systemd service (Linux only) ---
 if [ "$OS" = "linux" ]; then
     EXEC_START="${INSTALL_DIR}/sentinel"

@@ -15,6 +15,7 @@
 !/go.mod
 
 !/internal/store/migrations/**/*
+!/cmd/sentinel/completions/**/*
 
 !/README.md
 !/CONTRIBUTING.md

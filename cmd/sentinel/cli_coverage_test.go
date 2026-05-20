@@ -39,6 +39,7 @@ func TestHelpFunctions(t *testing.T) {
 		{"printServiceAutoUpdateUninstallHelp", printServiceAutoUpdateUninstallHelp},
 		{"printServiceAutoUpdateStatusHelp", printServiceAutoUpdateStatusHelp},
 		{"printDoctorHelp", printDoctorHelp},
+		{"printCompletionHelp", printCompletionHelp},
 		{"printUpdateHelp", printUpdateHelp},
 		{"printUpdateCheckHelp", printUpdateCheckHelp},
 		{"printUpdateApplyHelp", printUpdateApplyHelp},
@@ -54,8 +55,8 @@ func TestHelpFunctions(t *testing.T) {
 			if buf.Len() == 0 {
 				t.Fatalf("%s wrote no output", tc.name)
 			}
-			if !strings.Contains(buf.String(), "Usage:") {
-				t.Fatalf("%s output missing 'Usage:': %s", tc.name, buf.String())
+			if !strings.Contains(strings.ToLower(buf.String()), "usage") {
+				t.Fatalf("%s output missing a usage section: %s", tc.name, buf.String())
 			}
 		})
 	}
