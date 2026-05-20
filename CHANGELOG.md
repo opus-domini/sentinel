@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.37](https://github.com/opus-domini/sentinel/compare/v0.5.36...v0.5.37) (2026-05-20)
+
+
+### Features
+
+* add shell completion and group root help by section ([c59a63c](https://github.com/opus-domini/sentinel/commit/c59a63cb3ab21c8a8ee4527674443f9f7747b3ba))
+
+
+### Refactors
+
+* import CreateSessionDialog statically in tmux route ([bef7dc8](https://github.com/opus-domini/sentinel/commit/bef7dc86797e85af88b0c9fce16bb0267119e097))
+
+
+### CI
+
+* keep client lockfile version in sync via release-please ([04e7486](https://github.com/opus-domini/sentinel/commit/04e74860872e25eb463385bc755151bcaa310a56))
+
 ## [0.5.36](https://github.com/opus-domini/sentinel/compare/v0.5.35...v0.5.36) (2026-05-20)
 
 
