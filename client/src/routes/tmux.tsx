@@ -30,6 +30,7 @@ import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
 import GuardrailConfirmDialog from '@/components/GuardrailConfirmDialog'
 import RenameDialog from '@/components/tmux/RenameDialog'
+import CreateSessionDialog from '@/components/sidebar/CreateSessionDialog'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
@@ -56,9 +57,6 @@ import {
 } from '@/lib/tmuxName'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
-const CreateSessionDialog = lazy(
-  () => import('@/components/sidebar/CreateSessionDialog'),
-)
 const GuardrailsDialog = lazy(
   () => import('@/components/tmux/GuardrailsDialog'),
 )
