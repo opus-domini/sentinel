@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.0](https://github.com/opus-domini/sentinel/compare/v0.5.38...v0.6.0) (2026-05-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* `sentinel serve` is removed — use `sentinel daemon`. Service units installed by an earlier version run `sentinel` with no arguments, which no longer starts the server; regenerate them with `sentinel service install` after upgrading.
+
+### Features
+
+* add service lifecycle commands ([58e7e8f](https://github.com/opus-domini/sentinel/commit/58e7e8f31d623b5c58d6766b81ef4b3aeafceafa))
+* replace serve with explicit daemon command ([95725f6](https://github.com/opus-domini/sentinel/commit/95725f67bf79682c78e67634226e93ba866dc7d1))
+* unify CLI help output across all subcommands ([3f6dee4](https://github.com/opus-domini/sentinel/commit/3f6dee475bfc82c4130629cbecf2cd5d9e4dffbb))
+
+
+### Refactors
+
+* extract reusable tick loop in internal/server ([070fab6](https://github.com/opus-domini/sentinel/commit/070fab6d8020db5267e7599243842a017a29f5d7))
+* rebuild the CLI on spf13/cobra ([53e0f59](https://github.com/opus-domini/sentinel/commit/53e0f59fb6d803992e7ac12e52bb50dd24b17c90))
+* split cmd/sentinel into internal/cli and internal/server ([7b29a4c](https://github.com/opus-domini/sentinel/commit/7b29a4c0085c859c051ecbbad76004f04990a6a4))
+
 ## [0.5.38](https://github.com/opus-domini/sentinel/compare/v0.5.37...v0.5.38) (2026-05-21)
 
 
