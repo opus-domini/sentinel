@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.38](https://github.com/opus-domini/sentinel/compare/v0.5.37...v0.5.38) (2026-05-21)
+
+
+### Bug Fixes
+
+* harden the autoupdate service ([bfac050](https://github.com/opus-domini/sentinel/commit/bfac050cd6bf1d7fdb1ddc8f91acc108dcb55fe2))
+
+
+### Refactors
+
+* rename client/ directory to frontend/ ([aa9f18c](https://github.com/opus-domini/sentinel/commit/aa9f18c60f171205de6540aff891db8a90eb910e))
+* replace uninstall.sh with `sentinel service uninstall --purge` ([682db87](https://github.com/opus-domini/sentinel/commit/682db875e74ec13c21fa329fe708e5f77551dd0e))
+
+
+### Build
+
+* **deps:** bump frontend dependencies ([7280c52](https://github.com/opus-domini/sentinel/commit/7280c5296e170ef47fdcbc05c021cbc5c0b3f9fa))
+
+
+### CI
+
+* sign release artifacts with keyless cosign ([df3e032](https://github.com/opus-domini/sentinel/commit/df3e032af4b282b7b3bcd1f0c7b581db43cb85a2))
+
 ## [0.5.37](https://github.com/opus-domini/sentinel/compare/v0.5.36...v0.5.37) (2026-05-20)
 
 
