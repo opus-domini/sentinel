@@ -28,6 +28,7 @@ var (
 	daemonFn                  = runDaemon
 	installUserSvcFn          = daemon.InstallUser
 	uninstallUserSvcFn        = daemon.UninstallUser
+	controlServiceFn          = daemon.ControlUser
 	userStatusFn              = daemon.UserStatus
 	userLogsFn                = daemon.UserLogs
 	installUserAutoUpdateFn   = daemon.InstallUserAutoUpdate

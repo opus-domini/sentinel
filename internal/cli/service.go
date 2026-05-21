@@ -27,9 +27,31 @@ func newServiceCmd(app *App) *cobra.Command {
 		newServiceUninstallCmd(app),
 		newServiceStatusCmd(app),
 		newServiceLogsCmd(app),
+		newServiceLifecycleCmd(app, "start", "Start the service", "service started"),
+		newServiceLifecycleCmd(app, "stop", "Stop the service", "service stopped"),
+		newServiceLifecycleCmd(app, "restart", "Restart the service", "service restarted"),
+		newServiceLifecycleCmd(app, "enable", "Enable the service at startup", "service enabled"),
+		newServiceLifecycleCmd(app, "disable", "Disable the service from startup", "service disabled"),
 		newServiceAutoUpdateCmd(app),
 	)
 	return cmd
+}
+
+// newServiceLifecycleCmd builds a leaf command that runs a single systemd/
+// launchd lifecycle action (start, stop, restart, enable, disable).
+func newServiceLifecycleCmd(app *App, action, short, doneMsg string) *cobra.Command {
+	return &cobra.Command{
+		Use:   action,
+		Short: short,
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := controlServiceFn(action); err != nil {
+				return failf(1, "service %s failed: %w", action, err)
+			}
+			writeln(app.Stdout, doneMsg)
+			return nil
+		},
+	}
 }
 
 func newServiceInstallCmd(app *App) *cobra.Command {

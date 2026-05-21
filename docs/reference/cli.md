@@ -75,6 +75,20 @@ Flags:
 
 Streams the managed service log: `journalctl` for the systemd unit on Linux, the launchd plist log files on macOS.
 
+### Lifecycle
+
+```bash
+sentinel service start
+sentinel service stop
+sentinel service restart
+sentinel service enable
+sentinel service disable
+```
+
+Drive the managed unit directly: `start`, `stop` and `restart` control the
+running service; `enable` and `disable` control whether it launches on
+boot/login. These map to `systemctl` on Linux and `launchctl` on macOS.
+
 ## `sentinel service autoupdate`
 
 ### Install timer/agent

@@ -784,9 +784,9 @@ func applySystemdUnitState(
 		return nil
 	}
 
-	action := "start"
+	action := actionStart
 	if isActiveFn != nil && isActiveFn(unit) {
-		action = "restart"
+		action = actionRestart
 	}
 	return runFn(action, unit)
 }
