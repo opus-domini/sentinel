@@ -72,17 +72,20 @@ func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
 }
 
 func TestRunCLIServiceStatus(t *testing.T) {
-	origStatus := userStatusFn
-	t.Cleanup(func() { userStatusFn = origStatus })
+	origStatus := serviceStatusFn
+	t.Cleanup(func() { serviceStatusFn = origStatus })
 
-	userStatusFn = func() (daemon.UserServiceStatus, error) {
-		return daemon.UserServiceStatus{
-			ServicePath:        "/tmp/sentinel.service",
-			UnitFileExists:     true,
-			SystemctlAvailable: true,
-			EnabledState:       "enabled",
-			ActiveState:        "active",
-		}, nil
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return []daemon.ScopedServiceStatus{{
+			Scope: "user",
+			UserServiceStatus: daemon.UserServiceStatus{
+				ServicePath:        "/tmp/sentinel.service",
+				UnitFileExists:     true,
+				SystemctlAvailable: true,
+				EnabledState:       "enabled",
+				ActiveState:        "active",
+			},
+		}}, nil
 	}
 
 	var out bytes.Buffer
@@ -107,17 +110,20 @@ func TestRunCLIServiceStatus(t *testing.T) {
 }
 
 func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
-	origStatus := userStatusFn
-	t.Cleanup(func() { userStatusFn = origStatus })
+	origStatus := serviceStatusFn
+	t.Cleanup(func() { serviceStatusFn = origStatus })
 
-	userStatusFn = func() (daemon.UserServiceStatus, error) {
-		return daemon.UserServiceStatus{
-			ServicePath:        "/etc/systemd/system/sentinel.service",
-			UnitFileExists:     false,
-			SystemctlAvailable: true,
-			EnabledState:       "not-found",
-			ActiveState:        "inactive",
-		}, nil
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return []daemon.ScopedServiceStatus{{
+			Scope: "system",
+			UserServiceStatus: daemon.UserServiceStatus{
+				ServicePath:        "/etc/systemd/system/sentinel.service",
+				UnitFileExists:     false,
+				SystemctlAvailable: true,
+				EnabledState:       "not-found",
+				ActiveState:        "inactive",
+			},
+		}}, nil
 	}
 
 	var out bytes.Buffer
@@ -143,10 +149,10 @@ func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
 
 func TestRunCLIDoctor(t *testing.T) {
 	origLoad := loadConfigFn
-	origStatus := userStatusFn
+	origStatus := serviceStatusFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
-		userStatusFn = origStatus
+		serviceStatusFn = origStatus
 	})
 
 	loadConfigFn = func() config.Config {
@@ -156,14 +162,17 @@ func TestRunCLIDoctor(t *testing.T) {
 			Token:      "token",
 		}
 	}
-	userStatusFn = func() (daemon.UserServiceStatus, error) {
-		return daemon.UserServiceStatus{
-			ServicePath:        "/tmp/sentinel.service",
-			UnitFileExists:     true,
-			EnabledState:       "enabled",
-			ActiveState:        "active",
-			SystemctlAvailable: true,
-		}, nil
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return []daemon.ScopedServiceStatus{{
+			Scope: "user",
+			UserServiceStatus: daemon.UserServiceStatus{
+				ServicePath:        "/tmp/sentinel.service",
+				UnitFileExists:     true,
+				EnabledState:       "enabled",
+				ActiveState:        "active",
+				SystemctlAvailable: true,
+			},
+		}}, nil
 	}
 
 	var out bytes.Buffer
@@ -188,10 +197,10 @@ func TestRunCLIDoctor(t *testing.T) {
 
 func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 	origLoad := loadConfigFn
-	origStatus := userStatusFn
+	origStatus := serviceStatusFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
-		userStatusFn = origStatus
+		serviceStatusFn = origStatus
 	})
 
 	loadConfigFn = func() config.Config {
@@ -201,14 +210,17 @@ func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 			Token:      "",
 		}
 	}
-	userStatusFn = func() (daemon.UserServiceStatus, error) {
-		return daemon.UserServiceStatus{
-			ServicePath:        "/etc/systemd/system/sentinel.service",
-			UnitFileExists:     false,
-			EnabledState:       "not-found",
-			ActiveState:        "inactive",
-			SystemctlAvailable: true,
-		}, nil
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return []daemon.ScopedServiceStatus{{
+			Scope: "system",
+			UserServiceStatus: daemon.UserServiceStatus{
+				ServicePath:        "/etc/systemd/system/sentinel.service",
+				UnitFileExists:     false,
+				EnabledState:       "not-found",
+				ActiveState:        "inactive",
+				SystemctlAvailable: true,
+			},
+		}}, nil
 	}
 
 	var out bytes.Buffer

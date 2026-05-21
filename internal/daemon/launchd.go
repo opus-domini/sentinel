@@ -179,11 +179,11 @@ func uninstallUserLaunchd(opts UninstallUserOptions) error {
 		return err
 	}
 
-	scope, err := normalizeLaunchdScope(managerScopeAuto)
+	scope, err := resolveServiceScope()
 	if err != nil {
 		return err
 	}
-	if err := ensureLaunchdScopePrivileges(scope); err != nil {
+	if err := requireScopePrivilege(scope); err != nil {
 		return err
 	}
 
@@ -230,10 +230,6 @@ func uninstallUserAutoUpdateLaunchd(opts UninstallUserAutoUpdateOptions) error {
 		}
 	}
 	return nil
-}
-
-func userStatusLaunchd() (UserServiceStatus, error) {
-	return userStatusLaunchdForScope("")
 }
 
 func userStatusLaunchdForScope(scopeRaw string) (UserServiceStatus, error) {
@@ -385,7 +381,7 @@ func userLogsLaunchd(opts LogsOptions) error {
 		return errors.New("tail was not found in PATH")
 	}
 
-	scope, err := normalizeLaunchdScope(managerScopeAuto)
+	scope, err := resolveServiceScope()
 	if err != nil {
 		return err
 	}

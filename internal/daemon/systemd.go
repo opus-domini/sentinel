@@ -258,18 +258,25 @@ func UninstallUser(opts UninstallUserOptions) error {
 	if err := ensureServicePlatformSupported(); err != nil {
 		return err
 	}
-	if runtime.GOOS == systemdSupportedOS && os.Geteuid() == 0 {
-		return uninstallSystemServiceLinux(opts)
-	}
-	if err := ensureSystemdUserSupported(); err != nil {
-		return err
-	}
 
-	servicePath, err := UserServicePath()
+	scope, err := resolveServiceScope()
 	if err != nil {
 		return err
 	}
+	if err := requireScopePrivilege(scope); err != nil {
+		return err
+	}
+	if scope == managerScopeSystem {
+		return uninstallSystemServiceLinux(opts)
+	}
 
+	if err := ensureSystemdUserSupported(); err != nil {
+		return err
+	}
+	servicePath, err := userScopeUnitPath()
+	if err != nil {
+		return err
+	}
 	return uninstallUserSystemd(opts, servicePath, runSystemctlUser)
 }
 
@@ -358,30 +365,16 @@ func removeUserAutoUpdateUnits() error {
 	return nil
 }
 
-func UserStatus() (UserServiceStatus, error) {
-	if runtime.GOOS == launchdSupportedOS {
-		return userStatusLaunchd()
-	}
-	if err := ensureServicePlatformSupported(); err != nil {
-		return UserServiceStatus{}, err
-	}
-	if runtime.GOOS == systemdSupportedOS && os.Geteuid() == 0 {
-		return userStatusSystemLinux()
-	}
-	servicePath, err := UserServicePath()
+// userStatusUserLinux reads the status of the user-scope systemd unit.
+func userStatusUserLinux() (UserServiceStatus, error) {
+	servicePath, err := userScopeUnitPath()
 	if err != nil {
 		return UserServiceStatus{}, err
 	}
 
-	st := UserServiceStatus{
-		ServicePath: servicePath,
-	}
-	if info, statErr := os.Stat(servicePath); statErr == nil && !info.IsDir() {
+	st := UserServiceStatus{ServicePath: servicePath}
+	if fileExists(servicePath) {
 		st.UnitFileExists = true
-	}
-
-	if runtime.GOOS != systemdSupportedOS {
-		return st, nil
 	}
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return st, nil
@@ -407,7 +400,11 @@ func UserLogs(opts LogsOptions) error {
 		return errors.New("journalctl was not found in PATH")
 	}
 
-	args := journalctlLogArgs(os.Geteuid() == 0, opts.Follow, opts.Lines)
+	scope, err := resolveServiceScope()
+	if err != nil {
+		return err
+	}
+	args := journalctlLogArgs(scope == managerScopeSystem, opts.Follow, opts.Lines)
 	cmd := exec.CommandContext(context.Background(), "journalctl", args...)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr

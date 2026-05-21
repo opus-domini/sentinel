@@ -26,7 +26,7 @@ func runDoctor(app *App) {
 	tmuxPath, tmuxErr := exec.LookPath("tmux")
 	managerLabel := runtimeServiceManagerLabel()
 	managerPath, managerErr := exec.LookPath(managerLabel)
-	status, statusErr := userStatusFn()
+	report, statusErr := serviceStatusFn()
 
 	printHeading(app.Stdout, "Sentinel doctor report")
 	if !shouldUsePrettyOutput(app.Stdout) {
@@ -49,20 +49,24 @@ func runDoctor(app *App) {
 	} else {
 		rows = append(rows, outputRow{Key: managerLabel, Value: "not found"})
 	}
-	if statusErr == nil {
-		unitScope := unitScopeLabel(status.ServicePath)
-		rows = append(rows,
-			outputRow{Key: fmt.Sprintf("%s unit file", unitScope), Value: status.ServicePath},
-			outputRow{Key: fmt.Sprintf("%s unit exists", unitScope), Value: fmt.Sprintf("%t", status.UnitFileExists)},
-		)
-		if status.SystemctlAvailable {
-			rows = append(rows,
-				outputRow{Key: fmt.Sprintf("%s unit enabled", unitScope), Value: status.EnabledState},
-				outputRow{Key: fmt.Sprintf("%s unit active", unitScope), Value: status.ActiveState},
-			)
-		}
-	} else {
+	switch {
+	case statusErr != nil:
 		rows = append(rows, outputRow{Key: "service status", Value: fmt.Sprintf("unavailable (%v)", statusErr)})
+	case len(report) == 0:
+		rows = append(rows, outputRow{Key: "service", Value: "not installed"})
+	default:
+		for _, s := range report {
+			rows = append(rows,
+				outputRow{Key: fmt.Sprintf("%s unit file", s.Scope), Value: s.ServicePath},
+				outputRow{Key: fmt.Sprintf("%s unit exists", s.Scope), Value: fmt.Sprintf("%t", s.UnitFileExists)},
+			)
+			if s.SystemctlAvailable {
+				rows = append(rows,
+					outputRow{Key: fmt.Sprintf("%s unit enabled", s.Scope), Value: s.EnabledState},
+					outputRow{Key: fmt.Sprintf("%s unit active", s.Scope), Value: s.ActiveState},
+				)
+			}
+		}
 	}
 	printRows(app.Stdout, rows)
 }

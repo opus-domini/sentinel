@@ -817,13 +817,13 @@ func TestUserStatusOnLinux(t *testing.T) {
 		t.Skip("test requires Linux")
 	}
 
-	st, err := UserStatus()
+	st, err := userStatusUserLinux()
 	if err != nil {
 		// ensureSystemdUserSupported may fail in containers without systemctl
 		if strings.Contains(err.Error(), "systemctl") {
 			t.Skip("systemctl not available")
 		}
-		t.Fatalf("UserStatus() error: %v", err)
+		t.Fatalf("userStatusUserLinux() error: %v", err)
 	}
 
 	if st.ServicePath == "" {
@@ -1438,12 +1438,12 @@ func TestUserStatusOnLinuxUnitFileDetection(t *testing.T) {
 		t.Skip("test requires non-root")
 	}
 
-	st, err := UserStatus()
+	st, err := userStatusUserLinux()
 	if err != nil {
 		if strings.Contains(err.Error(), "systemctl") {
 			t.Skip("systemctl not available")
 		}
-		t.Fatalf("UserStatus() error: %v", err)
+		t.Fatalf("userStatusUserLinux() error: %v", err)
 	}
 
 	// Verify the service path points to the expected location

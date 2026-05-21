@@ -202,24 +202,32 @@ func newServiceStatusCmd(app *App) *cobra.Command {
 }
 
 func runServiceStatus(app *App) error {
-	status, err := userStatusFn()
+	report, err := serviceStatusFn()
 	if err != nil {
 		return failf(1, "service status failed: %w", err)
 	}
-	unitScope := unitScopeLabel(status.ServicePath)
+	if len(report) == 0 {
+		writeln(app.Stdout, "no Sentinel service is installed (checked user and system scopes)")
+		return nil
+	}
 	managerLabel := runtimeServiceManagerLabel()
-	rows := []outputRow{
-		{Key: fmt.Sprintf("%s unit file", unitScope), Value: status.ServicePath},
-		{Key: fmt.Sprintf("%s unit exists", unitScope), Value: fmt.Sprintf("%t", status.UnitFileExists)},
-		{Key: fmt.Sprintf("%s available", managerLabel), Value: fmt.Sprintf("%t", status.SystemctlAvailable)},
+	for i, s := range report {
+		if i > 0 {
+			writeln(app.Stdout, "")
+		}
+		rows := []outputRow{
+			{Key: fmt.Sprintf("%s unit file", s.Scope), Value: s.ServicePath},
+			{Key: fmt.Sprintf("%s unit exists", s.Scope), Value: fmt.Sprintf("%t", s.UnitFileExists)},
+			{Key: fmt.Sprintf("%s available", managerLabel), Value: fmt.Sprintf("%t", s.SystemctlAvailable)},
+		}
+		if s.SystemctlAvailable {
+			rows = append(rows,
+				outputRow{Key: fmt.Sprintf("%s unit enabled", s.Scope), Value: s.EnabledState},
+				outputRow{Key: fmt.Sprintf("%s unit active", s.Scope), Value: s.ActiveState},
+			)
+		}
+		printRows(app.Stdout, rows)
 	}
-	if status.SystemctlAvailable {
-		rows = append(rows,
-			outputRow{Key: fmt.Sprintf("%s unit enabled", unitScope), Value: status.EnabledState},
-			outputRow{Key: fmt.Sprintf("%s unit active", unitScope), Value: status.ActiveState},
-		)
-	}
-	printRows(app.Stdout, rows)
 	return nil
 }
 
@@ -248,21 +256,6 @@ func newServiceLogsCmd(app *App) *cobra.Command {
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "stream new log lines as they arrive")
 	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "number of past log lines to show")
 	return cmd
-}
-
-// unitScopeLabel reports whether a unit path is a system- or user-scoped unit.
-func unitScopeLabel(servicePath string) string {
-	path := strings.TrimSpace(servicePath)
-	if path == "" {
-		return "user"
-	}
-
-	normalized := filepath.Clean(path)
-	if strings.HasPrefix(normalized, "/etc/systemd/system/") ||
-		strings.HasPrefix(normalized, "/Library/LaunchDaemons/") {
-		return "system"
-	}
-	return "user"
 }
 
 // runtimeServiceManagerLabel names the service manager for the current OS.

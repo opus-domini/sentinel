@@ -508,35 +508,6 @@ func TestResolveRestartScopeFlag(t *testing.T) {
 	}
 }
 
-// TestUnitScopeLabel covers all unit scope label detection paths.
-func TestUnitScopeLabel(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		path string
-		want string
-	}{
-		{name: "empty path", path: "", want: "user"},
-		{name: "whitespace only", path: "   ", want: "user"},
-		{name: "user systemd path", path: "/home/user/.config/systemd/user/sentinel.service", want: "user"},
-		{name: "system systemd path", path: "/etc/systemd/system/sentinel.service", want: "system"},
-		{name: "system launchd path", path: "/Library/LaunchDaemons/com.sentinel.plist", want: "system"},
-		{name: "user launchd path", path: "/Users/user/Library/LaunchAgents/com.sentinel.plist", want: "user"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := unitScopeLabel(tc.path)
-			if got != tc.want {
-				t.Fatalf("unitScopeLabel(%q) = %q, want %q", tc.path, got, tc.want)
-			}
-		})
-	}
-}
-
 // TestVersionCommandAliases tests all three version flag variants (-v, --version, version).
 func TestVersionCommandAliases(t *testing.T) {
 	origVersion := currentVersionFn
@@ -568,11 +539,11 @@ func TestVersionCommandAliases(t *testing.T) {
 
 // TestServiceStatusFailure covers the error path for service status.
 func TestServiceStatusFailure(t *testing.T) {
-	origStatus := userStatusFn
-	t.Cleanup(func() { userStatusFn = origStatus })
+	origStatus := serviceStatusFn
+	t.Cleanup(func() { serviceStatusFn = origStatus })
 
-	userStatusFn = func() (daemon.UserServiceStatus, error) {
-		return daemon.UserServiceStatus{}, errors.New("status unavailable")
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return nil, errors.New("status unavailable")
 	}
 
 	var out, errOut bytes.Buffer
@@ -987,10 +958,10 @@ func TestDoctorHelpAndArgs(t *testing.T) {
 // TestDoctorStatusError covers the doctor command when service status fails.
 func TestDoctorStatusError(t *testing.T) {
 	origLoad := loadConfigFn
-	origStatus := userStatusFn
+	origStatus := serviceStatusFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
-		userStatusFn = origStatus
+		serviceStatusFn = origStatus
 	})
 
 	loadConfigFn = func() config.Config {
@@ -999,8 +970,8 @@ func TestDoctorStatusError(t *testing.T) {
 			DataDir:    "/tmp/.sentinel",
 		}
 	}
-	userStatusFn = func() (daemon.UserServiceStatus, error) {
-		return daemon.UserServiceStatus{}, errors.New("service not available")
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return nil, errors.New("service not available")
 	}
 
 	var out, errOut bytes.Buffer

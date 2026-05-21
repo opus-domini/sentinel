@@ -60,7 +60,15 @@ Flags:
 sentinel service status
 ```
 
-Prints service file path, existence, manager availability, enabled and active state.
+Reports the managed service in **every scope where it is installed** — user and
+system — regardless of the euid the command runs under. A system service
+installed with `sudo` is still reported when `status` is run as a normal user.
+Prints the unit path, existence, manager availability, and enabled/active state
+per scope.
+
+`uninstall`, `logs` and the lifecycle commands (`start`/`stop`/`restart`/
+`enable`/`disable`) likewise act on the scope the service is actually installed
+in; modifying a system-scope service still requires `sudo`.
 
 ### Logs
 

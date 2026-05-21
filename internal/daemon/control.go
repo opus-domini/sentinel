@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"slices"
 )
@@ -33,7 +32,14 @@ func ControlUser(action string) error {
 	if err := ensureServicePlatformSupported(); err != nil {
 		return err
 	}
-	if runtime.GOOS == systemdSupportedOS && os.Geteuid() == 0 {
+	scope, err := resolveServiceScope()
+	if err != nil {
+		return err
+	}
+	if err := requireScopePrivilege(scope); err != nil {
+		return err
+	}
+	if scope == managerScopeSystem {
 		return runSystemctlSystem(action, "sentinel")
 	}
 	if err := ensureSystemdUserSupported(); err != nil {
@@ -53,8 +59,11 @@ func controlUserLaunchd(action string) error {
 	if err := ensureLaunchdSupported(); err != nil {
 		return err
 	}
-	scope, err := normalizeLaunchdScope(managerScopeAuto)
+	scope, err := resolveServiceScope()
 	if err != nil {
+		return err
+	}
+	if err := requireScopePrivilege(scope); err != nil {
 		return err
 	}
 	switch action {

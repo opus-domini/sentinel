@@ -758,7 +758,7 @@ func TestLaunchdKickstartNoLaunchctl(t *testing.T) {
 func TestUserStatusLaunchdDirect(t *testing.T) {
 	t.Parallel()
 
-	st, err := userStatusLaunchd()
+	st, err := userStatusLaunchdForScope("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
