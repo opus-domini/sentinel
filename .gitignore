@@ -17,7 +17,6 @@
 !/go.mod
 !/go.sum
 !/install.sh
-!/uninstall.sh
 
 # Source trees
 !/cmd

@@ -39,6 +39,7 @@ Flags:
 
 ```bash
 sentinel service uninstall --disable=true --stop=true --remove-unit=true
+sentinel service uninstall --purge
 ```
 
 Flags:
@@ -46,6 +47,10 @@ Flags:
 - `--disable`: disable auto-start.
 - `--stop`: stop service.
 - `--remove-unit`: remove managed unit/plist.
+- `--purge`: also remove the autoupdate timer, the bash completion and the
+  sentinel binary. User data in `~/.sentinel` is left intact.
+
+`--purge` is the full teardown — it is what `make uninstall` runs.
 
 ### Status
 

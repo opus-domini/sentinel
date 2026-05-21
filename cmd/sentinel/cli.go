@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -26,6 +27,8 @@ var (
 	installUserAutoUpdateFn   = daemon.InstallUserAutoUpdate
 	uninstallUserAutoUpdateFn = daemon.UninstallUserAutoUpdate
 	userAutoUpdateStatusFn    = daemon.UserAutoUpdateStatusForScope
+	removeBashCompletionFn    = removeBashCompletion
+	removeSentinelBinaryFn    = removeSentinelBinary
 	loadConfigFn              = config.Load
 	currentVersionFn          = currentVersion
 	updateCheckFn             = updater.Check
@@ -189,6 +192,7 @@ func runServiceUninstallCommand(ctx commandContext, args []string) int {
 	disable := fs.Bool("disable", true, "disable service from auto-start")
 	stop := fs.Bool("stop", true, "stop running service")
 	removeUnit := fs.Bool("remove-unit", true, "remove managed unit file")
+	purge := fs.Bool("purge", false, "also remove the autoupdate timer, shell completion and the sentinel binary")
 	help := fs.Bool("help", false, "show help")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -203,6 +207,18 @@ func runServiceUninstallCommand(ctx commandContext, args []string) int {
 		return 2
 	}
 
+	if *purge {
+		if err := uninstallUserAutoUpdateFn(daemon.UninstallUserAutoUpdateOptions{
+			Disable:    true,
+			Stop:       true,
+			RemoveUnit: true,
+		}); err != nil {
+			writef(ctx.stderr, "autoupdate timer not removed: %v\n", err)
+		} else {
+			writeln(ctx.stdout, "autoupdate timer removed")
+		}
+	}
+
 	err := uninstallUserSvcFn(daemon.UninstallUserOptions{
 		Disable:    *disable,
 		Stop:       *stop,
@@ -213,7 +229,49 @@ func runServiceUninstallCommand(ctx commandContext, args []string) int {
 		return 1
 	}
 	writeln(ctx.stdout, "service uninstalled")
+
+	if *purge {
+		for _, path := range removeBashCompletionFn() {
+			writef(ctx.stdout, "removed %s\n", path)
+		}
+		if path, err := removeSentinelBinaryFn(); err != nil {
+			writef(ctx.stderr, "binary not removed: %v\n", err)
+		} else {
+			writef(ctx.stdout, "removed %s\n", path)
+		}
+	}
 	return 0
+}
+
+// removeBashCompletion deletes the installed bash completion script from the
+// user and system completion directories. It returns the paths it removed.
+func removeBashCompletion() []string {
+	paths := []string{}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".local", "share", "bash-completion", "completions", "sentinel"))
+	}
+	paths = append(paths, "/usr/share/bash-completion/completions/sentinel")
+
+	removed := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if err := os.Remove(path); err == nil {
+			removed = append(removed, path)
+		}
+	}
+	return removed
+}
+
+// removeSentinelBinary deletes the running sentinel executable. On Linux and
+// macOS a process can unlink its own binary; the inode survives until exit.
+func removeSentinelBinary() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(exe); err != nil {
+		return exe, err
+	}
+	return exe, nil
 }
 
 func runServiceStatusCommand(ctx commandContext, args []string) int {
@@ -770,7 +828,7 @@ func printServeHelp(w io.Writer) {
 func printServiceHelp(w io.Writer) {
 	writeln(w, "Usage:")
 	writeln(w, "  sentinel service install [--exec PATH] [--enable=true] [--start=true]")
-	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true]")
+	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--purge]")
 	writeln(w, "  sentinel service status")
 	writeln(w, "  sentinel service logs [--follow|-f] [--lines|-n 50]")
 	writeln(w, "  sentinel service autoupdate <install|uninstall|status>")
@@ -783,7 +841,10 @@ func printServiceInstallHelp(w io.Writer) {
 
 func printServiceUninstallHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true]")
+	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--purge]")
+	writeln(w, "")
+	writeln(w, "--purge also removes the autoupdate timer, the bash completion and the")
+	writeln(w, "sentinel binary. User data in ~/.sentinel is left intact.")
 }
 
 func printServiceStatusHelp(w io.Writer) {

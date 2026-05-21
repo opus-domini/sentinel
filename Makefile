@@ -154,10 +154,8 @@ install: build ## Install binary, managed service and bash completion
 		&& echo "Bash completion installed (open a new shell to use it)" || true
 
 .PHONY: uninstall
-uninstall: ## Remove managed service, binary and bash completion
-	-$(BINDIR)/sentinel service uninstall
-	rm -f $(BINDIR)/sentinel
-	rm -f $(COMPLETIONDIR)/sentinel
+uninstall: ## Remove the managed service, binary and bash completion
+	-$(BINDIR)/sentinel service uninstall --purge
 	@echo "Sentinel uninstalled."
 
 # ─── Release ──────────────────────────────────────────────────

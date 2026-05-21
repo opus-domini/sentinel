@@ -281,6 +281,74 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
 	})
+
+	t.Run("purge removes autoupdate, completion and binary", func(t *testing.T) {
+		origUninstall := uninstallUserSvcFn
+		origAutoUpdate := uninstallUserAutoUpdateFn
+		origCompletion := removeBashCompletionFn
+		origBinary := removeSentinelBinaryFn
+		t.Cleanup(func() {
+			uninstallUserSvcFn = origUninstall
+			uninstallUserAutoUpdateFn = origAutoUpdate
+			removeBashCompletionFn = origCompletion
+			removeSentinelBinaryFn = origBinary
+		})
+
+		var autoUpdateCalled, completionCalled, binaryCalled bool
+		uninstallUserSvcFn = func(daemon.UninstallUserOptions) error { return nil }
+		uninstallUserAutoUpdateFn = func(daemon.UninstallUserAutoUpdateOptions) error {
+			autoUpdateCalled = true
+			return nil
+		}
+		removeBashCompletionFn = func() []string {
+			completionCalled = true
+			return []string{"/tmp/bash-completion/sentinel"}
+		}
+		removeSentinelBinaryFn = func() (string, error) {
+			binaryCalled = true
+			return "/tmp/bin/sentinel", nil
+		}
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "uninstall", "--purge"}, &out, &errOut)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+		}
+		if !autoUpdateCalled || !completionCalled || !binaryCalled {
+			t.Fatalf("purge skipped a step: autoupdate=%t completion=%t binary=%t",
+				autoUpdateCalled, completionCalled, binaryCalled)
+		}
+		stdout := out.String()
+		if !strings.Contains(stdout, "autoupdate timer removed") ||
+			!strings.Contains(stdout, "/tmp/bin/sentinel") {
+			t.Fatalf("stdout missing purge output: %s", stdout)
+		}
+	})
+
+	t.Run("default run does not purge", func(t *testing.T) {
+		origUninstall := uninstallUserSvcFn
+		origBinary := removeSentinelBinaryFn
+		t.Cleanup(func() {
+			uninstallUserSvcFn = origUninstall
+			removeSentinelBinaryFn = origBinary
+		})
+
+		uninstallUserSvcFn = func(daemon.UninstallUserOptions) error { return nil }
+		binaryCalled := false
+		removeSentinelBinaryFn = func() (string, error) {
+			binaryCalled = true
+			return "", nil
+		}
+
+		var out, errOut bytes.Buffer
+		code := runCLI([]string{"service", "uninstall"}, &out, &errOut)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0", code)
+		}
+		if binaryCalled {
+			t.Fatal("plain uninstall removed the binary; --purge must be required")
+		}
+	})
 }
 
 // TestRunServiceLogsCommand covers success, failure, help, and arg-parsing paths.
