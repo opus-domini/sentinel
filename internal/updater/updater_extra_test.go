@@ -6,9 +6,93 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestBuildHealthCheckCommand(t *testing.T) {
+	origGOOS := updaterRuntimeGOOS
+	t.Cleanup(func() { updaterRuntimeGOOS = origGOOS })
+
+	cases := []struct {
+		name string
+		goos string
+		opts ApplyOptions
+		want []string
+	}{
+		{"restart disabled", "linux", ApplyOptions{Restart: false, SystemdScope: "user"}, nil},
+		{"scope none", "linux", ApplyOptions{Restart: true, SystemdScope: "none"}, nil},
+		{"scope launchd", "linux", ApplyOptions{Restart: true, SystemdScope: "launchd"}, nil},
+		{"darwin skips check", "darwin", ApplyOptions{Restart: true, SystemdScope: "system", ServiceUnit: "sentinel"}, nil},
+		{"linux system", "linux", ApplyOptions{Restart: true, SystemdScope: "system", ServiceUnit: "sentinel"}, []string{"systemctl", "is-active", "--quiet", "sentinel"}},
+		{"linux user", "linux", ApplyOptions{Restart: true, SystemdScope: "user", ServiceUnit: "sentinel"}, []string{"systemctl", "--user", "is-active", "--quiet", "sentinel"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			updaterRuntimeGOOS = tc.goos
+			got := tc.opts.buildHealthCheckCommand()
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("buildHealthCheckCommand() = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRestartAfterApplyRollsBackOnFailedHealthCheck(t *testing.T) {
+	origGOOS := updaterRuntimeGOOS
+	origExec := execCommandContext
+	origSleep := sleepFn
+	t.Cleanup(func() {
+		updaterRuntimeGOOS = origGOOS
+		execCommandContext = origExec
+		sleepFn = origSleep
+	})
+	updaterRuntimeGOOS = "linux"
+	sleepFn = func(time.Duration) {}
+
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "sentinel")
+	backupPath := filepath.Join(dir, "sentinel.bak")
+	if err := os.WriteFile(execPath, []byte("new-binary"), 0o755); err != nil { //nolint:gosec // test fixture
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(backupPath, []byte("old-binary"), 0o755); err != nil { //nolint:gosec // test fixture
+		t.Fatal(err)
+	}
+
+	var healthChecked bool
+	execCommandContext = func(_ context.Context, _ string, args ...string) command {
+		if slices.Contains(args, "is-active") {
+			healthChecked = true
+			return &fakeCommand{out: []byte("inactive"), err: errors.New("exit 3")}
+		}
+		return &fakeCommand{out: nil, err: nil}
+	}
+
+	cfg := ApplyOptions{Restart: true, SystemdScope: "user", ServiceUnit: "sentinel"}
+	err := restartAfterApply(context.Background(), cfg, execPath, backupPath)
+	if err == nil {
+		t.Fatal("restartAfterApply = nil, want a health-check failure error")
+	}
+	if !healthChecked {
+		t.Fatal("health check command was never run")
+	}
+	if !strings.Contains(err.Error(), "health check") {
+		t.Fatalf("error = %v, want it to mention the health check", err)
+	}
+	got, readErr := os.ReadFile(execPath) //nolint:gosec // test fixture
+	if readErr != nil {
+		t.Fatalf("read execPath after rollback: %v", readErr)
+	}
+	if string(got) != "old-binary" {
+		t.Fatalf("execPath content = %q, want the rolled-back %q", got, "old-binary")
+	}
+	if _, statErr := os.Stat(backupPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("backup still present after rollback: %v", statErr)
+	}
+}
 
 func TestRollbackBinary(t *testing.T) {
 	t.Parallel()

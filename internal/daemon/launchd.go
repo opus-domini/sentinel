@@ -636,7 +636,7 @@ func renderLaunchdUserAutoUpdatePlist(
 		<string>apply</string>
 		<string>-restart=true</string>
 		<string>-service=%s</string>
-		<string>-systemd-scope=%s</string>
+		<string>-scope=%s</string>
 	</array>
 	<key>StartInterval</key>
 	<integer>%d</integer>

@@ -882,7 +882,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%s update apply -restart=true -service=%s -systemd-scope=%s
+ExecStart=%s update apply -restart=true -service=%s -scope=%s
 Environment=SENTINEL_LOG_LEVEL=info
 
 [Install]
@@ -896,13 +896,13 @@ Description=Run Sentinel updater daily
 
 [Timer]
 OnCalendar=%s
-RandomizedDelaySec=%s
+RandomizedDelaySec=%d
 Persistent=true
 Unit=sentinel-updater.service
 
 [Install]
 WantedBy=timers.target
-`, onCalendar, randomizedDelay.String())
+`, onCalendar, int64(randomizedDelay.Seconds()))
 }
 
 func escapeSystemdExec(path string) string {

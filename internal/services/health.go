@@ -15,14 +15,20 @@ import (
 	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/notify"
+	"github.com/opus-domini/sentinel/internal/updater"
 )
 
 const (
-	resourceHost = "host"
-	keyAlert     = "alert"
+	resourceHost    = "host"
+	resourceUpdater = "updater"
+	keyAlert        = "alert"
 )
 
 const defaultHealthInterval = 30 * time.Second
+
+// updaterStaleThreshold bounds how old an autoupdate failure may be before it
+// is treated as stale (e.g. autoupdate disabled) and no longer alerted on.
+const updaterStaleThreshold = 48 * time.Hour
 
 // alertSourceHealth tags alerts raised by the service health checker.
 const alertSourceHealth = "health"
@@ -59,6 +65,8 @@ type HealthChecker struct {
 	publish    HealthPublisher
 	interval   time.Duration
 	thresholds AlertThresholds
+
+	updaterStateDir string
 
 	startOnce sync.Once
 	stopOnce  sync.Once
@@ -103,6 +111,13 @@ func (hc *HealthChecker) SetNotifier(n *notify.Notifier) {
 	hc.notifier = n
 }
 
+// SetUpdaterStateDir enables autoupdate health monitoring. dir is the Sentinel
+// data directory; the updater state is read from <dir>/updater/state.json.
+// Must be called before Start.
+func (hc *HealthChecker) SetUpdaterStateDir(dir string) {
+	hc.updaterStateDir = strings.TrimSpace(dir)
+}
+
 // Start begins the periodic health check loop.
 func (hc *HealthChecker) Start(ctx context.Context) {
 	hc.startOnce.Do(func() {
@@ -145,6 +160,44 @@ func (hc *HealthChecker) loop(ctx context.Context) {
 func (hc *HealthChecker) check(ctx context.Context) {
 	hc.checkServices(ctx)
 	hc.checkMetrics(ctx)
+	hc.checkUpdater(ctx)
+}
+
+// checkUpdater raises an alert when the most recent automatic update failed,
+// and resolves it once a later run succeeds. Stale failures (older than
+// updaterStaleThreshold) are ignored so a disabled updater stops nagging.
+func (hc *HealthChecker) checkUpdater(ctx context.Context) {
+	if hc.updaterStateDir == "" {
+		return
+	}
+	state, err := updater.Status(hc.updaterStateDir)
+	if err != nil {
+		slog.Warn("health check: read updater state failed", "error", err)
+		return
+	}
+
+	now := time.Now().UTC()
+	const dedupeKey = "health:updater:failed"
+	lastError := strings.TrimSpace(state.LastError)
+	if lastError == "" || state.LastCheckedAt.IsZero() ||
+		now.Sub(state.LastCheckedAt.UTC()) > updaterStaleThreshold {
+		hc.resolveAlert(ctx, dedupeKey, now)
+		return
+	}
+
+	hc.raiseAlert(ctx, alerts.AlertWrite{
+		DedupeKey: dedupeKey,
+		Source:    alertSourceHealth,
+		Resource:  resourceUpdater,
+		Title:     "Automatic update failed",
+		Message:   fmt.Sprintf("The last automatic update attempt failed: %s", lastError),
+		Severity:  activity.SeverityWarn,
+		Metadata: marshalMetadata(map[string]string{
+			"currentVersion": state.CurrentVersion,
+			"latestVersion":  state.LatestVersion,
+		}),
+		CreatedAt: now,
+	})
 }
 
 func (hc *HealthChecker) checkServices(ctx context.Context) {

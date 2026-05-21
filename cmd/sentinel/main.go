@@ -158,6 +158,7 @@ func serve() int {
 	})
 	healthChecker.SetActivityRepo(st)
 	healthChecker.SetNotifier(alertNotifier)
+	healthChecker.SetUpdaterStateDir(cfg.DataDir)
 	healthChecker.Start(context.Background())
 
 	schedulerService := scheduler.New(st, st, scheduler.Options{

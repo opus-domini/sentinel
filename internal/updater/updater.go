@@ -24,6 +24,7 @@ import (
 const (
 	cmdSystemctl = "systemctl"
 	cmdRestart   = "restart"
+	flagUser     = "--user"
 )
 
 const (
@@ -40,7 +41,16 @@ const (
 	restartScopeNone    = "none"
 	binaryName          = "sentinel"
 	maxExtractedBinSize = int64(128 * 1024 * 1024) // 128 MiB hard limit for extracted binary.
+	maxArchiveSize      = int64(128 * 1024 * 1024) // 128 MiB cap on the downloaded release archive.
+	maxChecksumSize     = int64(1 * 1024 * 1024)   // 1 MiB cap on the downloaded checksums file.
 )
+
+// healthCheckDelay is how long to wait after restarting the service before
+// confirming the updated binary stayed healthy.
+const healthCheckDelay = 5 * time.Second
+
+// sleepFn is overridable in tests to avoid real delays.
+var sleepFn = time.Sleep
 
 type CheckOptions struct {
 	CurrentVersion string
@@ -312,6 +322,22 @@ func restartAfterApply(ctx context.Context, cfg ApplyOptions, execPath, backupPa
 		_ = rollbackBinary(execPath, backupPath)
 		return fmt.Errorf("restart service failed: %w", err)
 	}
+
+	// A successful restart only means the unit started. Give the new binary a
+	// moment, then confirm it stayed up — a delayed crash would otherwise
+	// leave a broken version installed with no rollback.
+	healthCmd := cfg.buildHealthCheckCommand()
+	if len(healthCmd) == 0 {
+		return nil
+	}
+	sleepFn(healthCheckDelay)
+	if err := runCommand(ctx, healthCmd[0], healthCmd[1:]...); err != nil {
+		_ = rollbackBinary(execPath, backupPath)
+		// Bring the previous, known-good binary back up. Best-effort: the
+		// rollback itself is what matters for the returned error.
+		_ = runCommand(ctx, restartCmd[0], restartCmd[1:]...)
+		return fmt.Errorf("updated service failed its health check; rolled back to the previous binary: %w", err)
+	}
 	return nil
 }
 
@@ -400,14 +426,43 @@ func (o ApplyOptions) buildRestartCommand() []string {
 		if updaterRuntimeGOOS == hostOSDarwin {
 			return buildLaunchdRestartCommand(restartScopeUser, unit)
 		}
-		return []string{cmdSystemctl, "--user", cmdRestart, unit}
+		return []string{cmdSystemctl, flagUser, cmdRestart, unit}
 	case restartScopeLaunchd:
 		if updaterGeteuid() == 0 {
 			return buildLaunchdRestartCommand(restartScopeSystem, unit)
 		}
 		return buildLaunchdRestartCommand(restartScopeUser, unit)
 	default:
-		return []string{cmdSystemctl, "--user", cmdRestart, unit}
+		return []string{cmdSystemctl, flagUser, cmdRestart, unit}
+	}
+}
+
+// buildHealthCheckCommand returns the command that confirms the service is
+// active after a restart. It returns nil when no reliable check is available
+// (launchd, or scope=none), in which case the restart result is trusted.
+func (o ApplyOptions) buildHealthCheckCommand() []string {
+	if !o.Restart {
+		return nil
+	}
+	unit := strings.TrimSpace(o.ServiceUnit)
+	if unit == "" {
+		unit = defaultServiceUnit
+	}
+	scope := strings.ToLower(strings.TrimSpace(o.SystemdScope))
+	if scope == "" || scope == restartScopeAuto {
+		scope = defaultRestartScope()
+	}
+	if updaterRuntimeGOOS == hostOSDarwin {
+		return nil
+	}
+
+	switch scope {
+	case restartScopeNone, restartScopeLaunchd:
+		return nil
+	case restartScopeSystem:
+		return []string{cmdSystemctl, "is-active", "--quiet", unit}
+	default:
+		return []string{cmdSystemctl, flagUser, "is-active", "--quiet", unit}
 	}
 }
 
@@ -582,7 +637,7 @@ func downloadToString(ctx context.Context, client *http.Client, url string) (str
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return "", fmt.Errorf("unexpected response %d from %s: %s", resp.StatusCode, url, strings.TrimSpace(string(body)))
 	}
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumSize))
 	if err != nil {
 		return "", err
 	}
@@ -612,7 +667,7 @@ func downloadToFile(ctx context.Context, client *http.Client, url, path string) 
 	}
 	defer func() { _ = file.Close() }()
 
-	if _, err := io.Copy(file, resp.Body); err != nil {
+	if _, err := io.Copy(file, io.LimitReader(resp.Body, maxArchiveSize)); err != nil {
 		return err
 	}
 	return nil

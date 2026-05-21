@@ -47,7 +47,7 @@ func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
 	if !strings.Contains(unit, "-service=sentinel") {
 		t.Fatalf("rendered updater unit missing service target: %s", unit)
 	}
-	if !strings.Contains(unit, "-systemd-scope=user") {
+	if !strings.Contains(unit, "-scope=user") {
 		t.Fatalf("rendered updater unit missing scope: %s", unit)
 	}
 }
@@ -59,7 +59,7 @@ func TestRenderUserAutoUpdateTimerIncludesSchedule(t *testing.T) {
 	if !strings.Contains(timer, "OnCalendar=daily") {
 		t.Fatalf("rendered updater timer missing OnCalendar: %s", timer)
 	}
-	if !strings.Contains(timer, "RandomizedDelaySec=1h0m0s") {
+	if !strings.Contains(timer, "RandomizedDelaySec=3600") {
 		t.Fatalf("rendered updater timer missing RandomizedDelaySec: %s", timer)
 	}
 	if !strings.Contains(timer, "Unit=sentinel-updater.service") {
@@ -776,7 +776,7 @@ func TestRenderUserAutoUpdateUnitSystemScope(t *testing.T) {
 	if !strings.Contains(unit, "-service=myservice") {
 		t.Fatalf("unit missing custom service name: %s", unit)
 	}
-	if !strings.Contains(unit, "-systemd-scope=system") {
+	if !strings.Contains(unit, "-scope=system") {
 		t.Fatalf("unit missing system scope: %s", unit)
 	}
 }
@@ -788,7 +788,7 @@ func TestRenderUserAutoUpdateTimerCustomValues(t *testing.T) {
 	if !strings.Contains(timer, "OnCalendar=*-*-* 03:00:00") {
 		t.Fatalf("timer missing custom OnCalendar: %s", timer)
 	}
-	if !strings.Contains(timer, "RandomizedDelaySec=30m0s") {
+	if !strings.Contains(timer, "RandomizedDelaySec=1800") {
 		t.Fatalf("timer missing custom delay: %s", timer)
 	}
 }

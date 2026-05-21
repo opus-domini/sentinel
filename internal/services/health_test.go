@@ -3,8 +3,12 @@ package services
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -429,4 +433,96 @@ func TestCheckMetricsHighThresholds(t *testing.T) {
 	if len(repo.upserted) == 0 {
 		t.Fatal("expected at least one metric alert with very low thresholds")
 	}
+}
+
+func writeUpdaterState(t *testing.T, dir string, state map[string]any) {
+	t.Helper()
+	updaterDir := filepath.Join(dir, "updater")
+	if err := os.MkdirAll(updaterDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(updaterDir, "state.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCheckUpdater(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+
+	t.Run("recent failure raises an alert", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeUpdaterState(t, dir, map[string]any{
+			"lastCheckedAt": now.Add(-1 * time.Hour),
+			"lastError":     "checksum mismatch",
+		})
+		repo := &stubAlertsRepo{}
+		hc := NewHealthChecker(nil, repo, nil, 0, AlertThresholds{})
+		hc.SetUpdaterStateDir(dir)
+
+		hc.checkUpdater(context.Background())
+
+		if len(repo.upserted) != 1 {
+			t.Fatalf("upserted = %d, want 1", len(repo.upserted))
+		}
+		if repo.upserted[0].DedupeKey != "health:updater:failed" {
+			t.Fatalf("dedupe key = %q", repo.upserted[0].DedupeKey)
+		}
+		if !strings.Contains(repo.upserted[0].Message, "checksum mismatch") {
+			t.Fatalf("message = %q, want it to include the updater error", repo.upserted[0].Message)
+		}
+	})
+
+	t.Run("a successful run resolves the alert", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeUpdaterState(t, dir, map[string]any{"lastCheckedAt": now, "upToDate": true})
+		repo := &stubAlertsRepo{}
+		hc := NewHealthChecker(nil, repo, nil, 0, AlertThresholds{})
+		hc.SetUpdaterStateDir(dir)
+
+		hc.checkUpdater(context.Background())
+
+		if len(repo.upserted) != 0 {
+			t.Fatalf("upserted = %d, want 0", len(repo.upserted))
+		}
+		if len(repo.resolved) != 1 {
+			t.Fatalf("resolved = %d, want 1", len(repo.resolved))
+		}
+	})
+
+	t.Run("a stale failure is ignored", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeUpdaterState(t, dir, map[string]any{
+			"lastCheckedAt": now.Add(-72 * time.Hour),
+			"lastError":     "old failure",
+		})
+		repo := &stubAlertsRepo{}
+		hc := NewHealthChecker(nil, repo, nil, 0, AlertThresholds{})
+		hc.SetUpdaterStateDir(dir)
+
+		hc.checkUpdater(context.Background())
+
+		if len(repo.upserted) != 0 {
+			t.Fatalf("stale failure raised an alert: %d", len(repo.upserted))
+		}
+	})
+
+	t.Run("no state dir is a no-op", func(t *testing.T) {
+		t.Parallel()
+		repo := &stubAlertsRepo{}
+		hc := NewHealthChecker(nil, repo, nil, 0, AlertThresholds{})
+
+		hc.checkUpdater(context.Background())
+
+		if len(repo.upserted) != 0 || len(repo.resolved) != 0 {
+			t.Fatal("checkUpdater touched alerts without a configured state dir")
+		}
+	})
 }
