@@ -52,6 +52,22 @@ checksum:
   name_template: "sentinel-{{ .Version }}-checksums.txt"
   algorithm: sha256
 
+# Keyless cosign signature over the checksums file. The checksums file
+# already covers every archive by SHA-256, so one signature anchors the
+# whole release. The .bundle (signature + certificate + Rekor proof) is
+# uploaded alongside the checksums and verified by the updater.
+signs:
+  - id: checksums
+    cmd: cosign
+    artifacts: checksum
+    output: true
+    signature: "${artifact}.bundle"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"
 
