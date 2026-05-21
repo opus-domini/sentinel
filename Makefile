@@ -152,6 +152,16 @@ install: build ## Install binary, managed service and bash completion
 	@install -d $(COMPLETIONDIR) \
 		&& $(BINDIR)/sentinel completion bash > $(COMPLETIONDIR)/sentinel \
 		&& echo "Bash completion installed (open a new shell to use it)" || true
+	@echo
+	@echo "Sentinel installed:"
+	@echo "  binary:      $(BINDIR)/sentinel"
+	@echo "  service:     sentinel.service"
+	@echo "  completion:  $(COMPLETIONDIR)/sentinel"
+	@echo
+	@echo "Next steps:"
+	@echo "  1. Run  sentinel service status    to verify the managed service."
+	@echo "  2. Run  sentinel doctor            to check the host environment."
+	@echo "  3. Open http://127.0.0.1:4040      to open the web UI."
 
 .PHONY: uninstall
 uninstall: ## Remove the managed service, binary and bash completion
