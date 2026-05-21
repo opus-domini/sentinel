@@ -27,13 +27,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci --prefix client
-      - run: npm --prefix client run lint
-      - run: npm --prefix client run typecheck
-      - run: npm --prefix client run test:unit
-      - run: npm --prefix client run build
+      - run: npm ci --prefix frontend
+      - run: npm --prefix frontend run lint
+      - run: npm --prefix frontend run typecheck
+      - run: npm --prefix frontend run test:unit
+      - run: npm --prefix frontend run build
 
       - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
@@ -70,11 +70,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci --prefix client
-      - run: npm --prefix client run test:e2e
-      - run: npm --prefix client run build
+      - run: npm ci --prefix frontend
+      - run: npm --prefix frontend run test:e2e
+      - run: npm --prefix frontend run build
       - run: go test -tags=integration -run '^TestIntegration' -v ./...
       - run: go test -race ./...
       - run: go test -run=^$ -bench=. -benchmem ./...

@@ -24,7 +24,7 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/config`: TOML configuration loading with environment variable overrides (`SENTINEL_*`).
 - `internal/security`: bearer token authentication and CORS origin validation.
 - `internal/daemon`: systemd/launchd service install and lifecycle management.
-- `client`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/ops`, `/runbooks`, `/alerts`, `/activities`, `/metrics`.
+- `frontend`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/ops`, `/runbooks`, `/alerts`, `/activities`, `/metrics`.
 
 ## Runtime Flow
 

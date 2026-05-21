@@ -3,7 +3,7 @@ NPM        ?= npm
 LINT        = golangci-lint
 BINARY      = build/sentinel
 ENTRY       = ./cmd/sentinel
-CLIENT      = client
+FRONTEND    = frontend
 DOCS_CHECK  = ./scripts/docs-check.sh
 LINT_GOCACHE ?= /tmp/go-cache
 LINT_CACHE   ?= /tmp/golangci-lint-cache
@@ -13,21 +13,21 @@ LINT_CACHE   ?= /tmp/golangci-lint-cache
 # ─── Development ──────────────────────────────────────────────
 
 .PHONY: run
-run: check-go build-client ## Run Sentinel server (go run)
+run: check-go build-frontend ## Run Sentinel server (go run)
 	$(GOCMD) run $(ENTRY)
 
 .PHONY: dev
 dev: check-go check-npm ## Run Go server + Vite dev server concurrently
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
 	@$(GOCMD) run $(ENTRY) & GO_PID=$$!; \
-	$(NPM) --prefix $(CLIENT) run dev & NPM_PID=$$!; \
+	$(NPM) --prefix $(FRONTEND) run dev & NPM_PID=$$!; \
 	trap 'kill $$GO_PID $$NPM_PID 2>/dev/null; wait' INT TERM; \
 	wait
 
-.PHONY: dev-client
-dev-client: check-npm ## Run Vite dev server only (proxy to :4040)
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	$(NPM) --prefix $(CLIENT) run dev
+.PHONY: dev-frontend
+dev-frontend: check-npm ## Run Vite dev server only (proxy to :4040)
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) run dev
 
 # ─── Build ────────────────────────────────────────────────────
 
@@ -35,18 +35,18 @@ dev-client: check-npm ## Run Vite dev server only (proxy to :4040)
 build: build-server ## Build frontend + Go binary
 
 .PHONY: build-server
-build-server: check-go build-client ## Compile Go binary to build/sentinel
+build-server: check-go build-frontend ## Compile Go binary to build/sentinel
 	@mkdir -p build
 	$(GOCMD) build -o $(BINARY) $(ENTRY)
 
-.PHONY: build-client
-build-client: check-npm ## Build frontend to client/dist/assets
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	$(NPM) --prefix $(CLIENT) run build
+.PHONY: build-frontend
+build-frontend: check-npm ## Build frontend to frontend/dist/assets
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) run build
 
-.PHONY: client-install
-client-install: check-npm ## Install frontend dependencies
-	$(NPM) --prefix $(CLIENT) install
+.PHONY: frontend-install
+frontend-install: check-npm ## Install frontend dependencies
+	$(NPM) --prefix $(FRONTEND) install
 
 # ─── Quality ──────────────────────────────────────────────────
 
@@ -55,10 +55,10 @@ test: check-go ## Run Go tests
 	$(GOCMD) test ./...
 
 .PHONY: test-unit
-test-unit: check-go check-npm ## Run fast unit test layer (Go + client)
+test-unit: check-go check-npm ## Run fast unit test layer (Go + frontend)
 	$(GOCMD) test ./...
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	$(NPM) --prefix $(CLIENT) run test:unit
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) run test:unit
 
 .PHONY: test-contract
 test-contract: check-go ## Run API contract tests
@@ -68,25 +68,25 @@ test-contract: check-go ## Run API contract tests
 test-integration: check-go ## Run integration test layer
 	$(GOCMD) test -tags=integration -run '^TestIntegration' ./...
 
-.PHONY: test-client
-test-client: check-npm ## Run frontend tests
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	$(NPM) --prefix $(CLIENT) test
+.PHONY: test-frontend
+test-frontend: check-npm ## Run frontend tests
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) test
 
 .PHONY: test-e2e
 test-e2e: check-npm ## Run frontend end-to-end component flows
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	$(NPM) --prefix $(CLIENT) run test:e2e
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) run test:e2e
 
-.PHONY: smoke-client-terminal
-smoke-client-terminal: check-go check-npm ## Run browser smoke for tmux terminal rendering
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	./scripts/client-terminal-smoke.sh
+.PHONY: smoke-frontend-terminal
+smoke-frontend-terminal: check-go check-npm ## Run browser smoke for tmux terminal rendering
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	./scripts/frontend-terminal-smoke.sh
 
-.PHONY: smoke-client-terminal-soak
-smoke-client-terminal-soak: check-go check-npm ## Run heavier browser soak for tmux terminal rendering
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	SENTINEL_SMOKE_INITIAL_LINES=4000 SENTINEL_SMOKE_LIVE_LINES=12000 ./scripts/client-terminal-smoke.sh
+.PHONY: smoke-frontend-terminal-soak
+smoke-frontend-terminal-soak: check-go check-npm ## Run heavier browser soak for tmux terminal rendering
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	SENTINEL_SMOKE_INITIAL_LINES=4000 SENTINEL_SMOKE_LIVE_LINES=12000 ./scripts/frontend-terminal-smoke.sh
 
 .PHONY: test-coverage
 test-coverage: check-go ## Run tests with race detection and coverage
@@ -107,15 +107,15 @@ fmt: check-go check-lint ## Format Go code
 lint: check-go check-lint ## Lint Go code
 	GOCACHE=$(LINT_GOCACHE) GOLANGCI_LINT_CACHE=$(LINT_CACHE) $(LINT) run
 
-.PHONY: lint-client
-lint-client: check-npm ## Lint frontend code
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	$(NPM) --prefix $(CLIENT) run lint
+.PHONY: lint-frontend
+lint-frontend: check-npm ## Lint frontend code
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) run lint
 
-.PHONY: typecheck-client
-typecheck-client: check-npm ## Typecheck frontend code
-	@test -d $(CLIENT)/node_modules || $(NPM) --prefix $(CLIENT) install
-	$(NPM) --prefix $(CLIENT) run typecheck
+.PHONY: typecheck-frontend
+typecheck-frontend: check-npm ## Typecheck frontend code
+	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
+	$(NPM) --prefix $(FRONTEND) run typecheck
 
 .PHONY: tidy
 tidy: check-go ## Tidy go.mod and go.sum
@@ -130,7 +130,7 @@ check-docs: ## Validate docs navigation and file references
 	$(DOCS_CHECK)
 
 .PHONY: ci-fast
-ci-fast: fmt lint lint-client typecheck-client test-unit test-contract build-server check-docs ## Fast PR gate
+ci-fast: fmt lint lint-frontend typecheck-frontend test-unit test-contract build-server check-docs ## Fast PR gate
 
 .PHONY: ci-full
 ci-full: ci-fast test-integration test-e2e test-coverage test-perf ## Full mainline gate

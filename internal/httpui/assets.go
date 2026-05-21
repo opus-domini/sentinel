@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	clientassets "github.com/opus-domini/sentinel/client"
+	"github.com/opus-domini/sentinel/frontend"
 )
 
 var (
@@ -26,14 +26,14 @@ const manifestAppName = "Sentinel"
 
 func ensureDistFS() error {
 	distFSInit.Do(func() {
-		distFS, distFSErr = fs.Sub(clientassets.DistFS, "dist")
+		distFS, distFSErr = fs.Sub(frontend.DistFS, "dist")
 	})
 	return distFSErr
 }
 
 func ensurePublicFS() error {
 	publicFSInit.Do(func() {
-		publicFS, publicFSErr = fs.Sub(clientassets.PublicFS, "public")
+		publicFS, publicFSErr = fs.Sub(frontend.PublicFS, "public")
 	})
 	return publicFSErr
 }

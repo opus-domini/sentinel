@@ -9,8 +9,8 @@ project_name: sentinel
 before:
   hooks:
     # The React SPA is embedded via go:embed; build it before the Go build.
-    - npm ci --prefix client
-    - npm --prefix client run build
+    - npm ci --prefix frontend
+    - npm --prefix frontend run build
 
 builds:
   - id: sentinel

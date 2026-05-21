@@ -25,8 +25,8 @@
 !/internal
 !/internal/**/*
 
-# Frontend (client/ carries its own .gitignore)
-!/client
+# Frontend (frontend/ carries its own .gitignore)
+!/frontend
 
 # Docs, scripts and CI
 !/docs

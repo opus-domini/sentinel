@@ -502,8 +502,8 @@ mkdir -p "$artifacts_dir"
 port="$(find_free_port)"
 base_url="http://127.0.0.1:${port}"
 
-echo "building client assets"
-npm --prefix "$root_dir/client" run build
+echo "building frontend assets"
+npm --prefix "$root_dir/frontend" run build
 
 echo "starting sentinel at $base_url"
 (
