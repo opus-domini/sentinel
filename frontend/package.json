@@ -23,7 +23,7 @@
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query": "^5.100.11",
-    "@tanstack/react-router": "^1.170.5",
+    "@tanstack/react-router": "^1.170.6",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
@@ -43,7 +43,7 @@
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
-    "@tanstack/router-plugin": "^1.168.7",
+    "@tanstack/router-plugin": "^1.168.9",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.1",
@@ -54,7 +54,7 @@
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13",
+    "vite": "^8.0.14",
     "vitest": "^4.1.7",
     "web-vitals": "^5.2.0"
   }
