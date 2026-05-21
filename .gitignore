@@ -1,36 +1,37 @@
-# Allowlisting gitignore template for GO projects prevents us
-# from adding various unwanted local files, such as generated
-# files, developer configurations or IDE-specific files etc.
-#
-# Recommended: Go.AllowList.gitignore
+# Allowlist gitignore for the Sentinel repo. Anything not explicitly
+# allowed below is ignored, so new top-level files and directories do not
+# get committed by accident.
 
 # Ignore everything
 *
 
-# But not these files...
+# Top-level files
 !/.gitignore
-
-!*.go
-!/go.sum
-!/go.mod
-
-!/internal/store/migrations/**/*
-!/cmd/sentinel/completions/**/*
-
 !/README.md
 !/CONTRIBUTING.md
+!/CHANGELOG.md
 !/LICENSE
-
-!/.github/**/*
-!/docs/**/*
-
 !/Makefile
 !/.golangci.yml
 !/.goreleaser.yaml
-
+!/go.mod
+!/go.sum
 !/install.sh
 !/uninstall.sh
-!/scripts/**/*
 
-# ...even if they are in subdirectories
-!*/
+# Source trees
+!/cmd
+!/cmd/**/*
+!/internal
+!/internal/**/*
+
+# Frontend (client/ carries its own .gitignore)
+!/client
+
+# Docs, scripts and CI
+!/docs
+!/docs/**/*
+!/scripts
+!/scripts/**/*
+!/.github
+!/.github/**/*
