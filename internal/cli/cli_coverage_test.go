@@ -63,8 +63,8 @@ func TestHelpFunctions(t *testing.T) {
 }
 
 // TestSubcommandHelpRouting tests that every subcommand group (service, update,
-// service autoupdate) returns exit 0 for help variants and exit 2
-// for unknown subcommands.
+// service autoupdate) returns exit 0 for help variants and for no arguments,
+// and exit 2 for unknown subcommands.
 func TestSubcommandHelpRouting(t *testing.T) {
 	t.Parallel()
 
@@ -80,21 +80,21 @@ func TestSubcommandHelpRouting(t *testing.T) {
 		{name: "root --help", args: []string{"--help"}, wantCode: 0, wantOut: "Sentinel command-line interface"},
 
 		// Service subcommand routing.
-		{name: "service no args", args: []string{"service"}, wantCode: 2},
+		{name: "service no args", args: []string{"service"}, wantCode: 0, wantOut: "sentinel service <command>"},
 		{name: "service help", args: []string{"service", "help"}, wantCode: 0, wantOut: "sentinel service"},
 		{name: "service -h", args: []string{"service", "-h"}, wantCode: 0, wantOut: "sentinel service"},
 		{name: "service --help", args: []string{"service", "--help"}, wantCode: 0, wantOut: "sentinel service"},
 		{name: "service unknown", args: []string{"service", "bogus"}, wantCode: 2, wantErr: "unknown service command: bogus"},
 
 		// Service autoupdate routing.
-		{name: "autoupdate no args", args: []string{"service", "autoupdate"}, wantCode: 2},
+		{name: "autoupdate no args", args: []string{"service", "autoupdate"}, wantCode: 0, wantOut: "sentinel service autoupdate <command>"},
 		{name: "autoupdate help", args: []string{"service", "autoupdate", "help"}, wantCode: 0, wantOut: "sentinel service autoupdate"},
 		{name: "autoupdate -h", args: []string{"service", "autoupdate", "-h"}, wantCode: 0, wantOut: "sentinel service autoupdate"},
 		{name: "autoupdate --help", args: []string{"service", "autoupdate", "--help"}, wantCode: 0, wantOut: "sentinel service autoupdate"},
 		{name: "autoupdate unknown", args: []string{"service", "autoupdate", "bogus"}, wantCode: 2, wantErr: "unknown autoupdate command: bogus"},
 
 		// Update subcommand routing.
-		{name: "update no args", args: []string{"update"}, wantCode: 2},
+		{name: "update no args", args: []string{"update"}, wantCode: 0, wantOut: "sentinel update <command>"},
 		{name: "update help", args: []string{"update", "help"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update -h", args: []string{"update", "-h"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update --help", args: []string{"update", "--help"}, wantCode: 0, wantOut: "sentinel update"},

@@ -47,6 +47,8 @@ const (
 const (
 	cmdHelp       = "help"
 	cmdStatus     = "status"
+	cmdInstall    = "install"
+	cmdUninstall  = "uninstall"
 	flagHelpShort = "-h"
 	flagHelpLong  = "--help"
 )
@@ -127,14 +129,14 @@ func runDaemonCommand(ctx commandContext, args []string) int {
 
 func runServiceCommand(ctx commandContext, args []string) int {
 	if len(args) == 0 {
-		printServiceHelp(ctx.stderr)
-		return 2
+		printServiceHelp(ctx.stdout)
+		return 0
 	}
 
 	switch args[0] {
-	case "install":
+	case cmdInstall:
 		return runServiceInstallCommand(ctx, args[1:])
-	case "uninstall":
+	case cmdUninstall:
 		return runServiceUninstallCommand(ctx, args[1:])
 	case cmdStatus:
 		return runServiceStatusCommand(ctx, args[1:])
@@ -363,14 +365,14 @@ func runServiceLogsCommand(ctx commandContext, args []string) int {
 
 func runServiceAutoUpdateCommand(ctx commandContext, args []string) int {
 	if len(args) == 0 {
-		printServiceAutoUpdateHelp(ctx.stderr)
-		return 2
+		printServiceAutoUpdateHelp(ctx.stdout)
+		return 0
 	}
 
 	switch args[0] {
-	case "install":
+	case cmdInstall:
 		return runServiceAutoUpdateInstallCommand(ctx, args[1:])
-	case "uninstall":
+	case cmdUninstall:
 		return runServiceAutoUpdateUninstallCommand(ctx, args[1:])
 	case cmdStatus:
 		return runServiceAutoUpdateStatusCommand(ctx, args[1:])
@@ -517,8 +519,8 @@ func runServiceAutoUpdateStatusCommand(ctx commandContext, args []string) int {
 
 func runUpdateCommand(ctx commandContext, args []string) int {
 	if len(args) == 0 {
-		printUpdateHelp(ctx.stderr)
-		return 2
+		printUpdateHelp(ctx.stdout)
+		return 0
 	}
 
 	switch args[0] {
@@ -807,118 +809,6 @@ func valueOrDash(raw string) string {
 
 func defaultAutoUpdateScopeFlag() string {
 	return "auto"
-}
-
-func printRootHelp(w io.Writer) {
-	writeln(w, "Sentinel command-line interface")
-	writeln(w, "")
-	writeln(w, "USAGE")
-	writeln(w, "  sentinel <command> [flags]")
-	writeln(w, "")
-	writeln(w, "CORE COMMANDS")
-	writeln(w, "  daemon      Start the Sentinel server")
-	writeln(w, "  service     Manage the local service and autoupdate timer")
-	writeln(w, "  update      Check and apply binary updates")
-	writeln(w, "")
-	writeln(w, "ADDITIONAL COMMANDS")
-	writeln(w, "  doctor      Check the local environment and runtime config")
-	writeln(w, "  completion  Generate a shell completion script (bash/zsh/fish)")
-	writeln(w, "")
-	writeln(w, "FLAGS")
-	writeln(w, "  -h, --help     Show help")
-	writeln(w, "  -v, --version  Print the version")
-	writeln(w, "")
-	writeln(w, `Run "sentinel <command> --help" for details on a command.`)
-}
-
-func printDaemonHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel daemon")
-	writeln(w, "")
-	writeln(w, "Starts the Sentinel server using config file/env defaults.")
-}
-
-func printServiceHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service install [--exec PATH] [--enable=true] [--start=true]")
-	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--purge]")
-	writeln(w, "  sentinel service status")
-	writeln(w, "  sentinel service logs [--follow|-f] [--lines|-n 50]")
-	writeln(w, "  sentinel service autoupdate <install|uninstall|status>")
-}
-
-func printServiceInstallHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service install [--exec PATH] [--enable=true] [--start=true]")
-}
-
-func printServiceUninstallHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--purge]")
-	writeln(w, "")
-	writeln(w, "--purge also removes the autoupdate timer, the bash completion and the")
-	writeln(w, "sentinel binary. User data in ~/.sentinel is left intact.")
-}
-
-func printServiceStatusHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service status")
-}
-
-func printServiceLogsHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service logs [--follow|-f] [--lines|-n 50]")
-	writeln(w, "")
-	writeln(w, "Streams the managed service log (journalctl on Linux, plist logs on macOS).")
-}
-
-func printServiceAutoUpdateHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate install [--exec PATH] [--enable=true] [--start=true] [--service sentinel] [--scope auto|user|system|launchd] [--on-calendar daily] [--randomized-delay 1h]")
-	writeln(w, "  sentinel service autoupdate uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--scope auto|user|system|launchd]")
-	writeln(w, "  sentinel service autoupdate status [--scope auto|user|system|launchd]")
-}
-
-func printServiceAutoUpdateInstallHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate install [--exec PATH] [--enable=true] [--start=true] [--service sentinel] [--scope auto|user|system|launchd] [--on-calendar daily] [--randomized-delay 1h]")
-}
-
-func printServiceAutoUpdateUninstallHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate uninstall [--disable=true] [--stop=true] [--remove-unit=true] [--scope auto|user|system|launchd]")
-}
-
-func printServiceAutoUpdateStatusHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel service autoupdate status [--scope auto|user|system|launchd]")
-}
-
-func printDoctorHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel doctor")
-}
-
-func printUpdateHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel update check [--repo owner/name] [--api URL] [--os linux] [--arch amd64]")
-	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--scope auto|user|system|launchd|none]")
-	writeln(w, "  sentinel update status")
-}
-
-func printUpdateCheckHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel update check [--repo owner/name] [--api URL] [--os linux] [--arch amd64]")
-}
-
-func printUpdateApplyHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel update apply [--repo owner/name] [--api URL] [--exec PATH] [--allow-downgrade=false] [--allow-unverified=false] [--restart=false] [--service sentinel] [--scope auto|user|system|launchd|none]")
-}
-
-func printUpdateStatusHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel update status")
 }
 
 func currentVersion() string {

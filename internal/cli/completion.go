@@ -55,12 +55,14 @@ func runCompletionCommand(ctx commandContext, args []string) int {
 }
 
 func printCompletionHelp(w io.Writer) {
-	writeln(w, "Usage:")
-	writeln(w, "  sentinel completion <bash|zsh|fish>")
-	writeln(w, "")
-	writeln(w, "Print a shell completion script to stdout. To install it:")
-	writeln(w, "")
-	writeln(w, "  bash:  sentinel completion bash > ~/.local/share/bash-completion/completions/sentinel")
-	writeln(w, "  zsh:   sentinel completion zsh  > \"${fpath[1]}/_sentinel\"")
-	writeln(w, "  fish:  sentinel completion fish > ~/.config/fish/completions/sentinel.fish")
+	printHelp(w, helpDoc{
+		summary: "Print a shell completion script to stdout.",
+		usage:   []string{"sentinel completion <bash|zsh|fish>"},
+		notes: []string{
+			"To install it:\n" +
+				"  bash:  sentinel completion bash > ~/.local/share/bash-completion/completions/sentinel\n" +
+				"  zsh:   sentinel completion zsh  > \"${fpath[1]}/_sentinel\"\n" +
+				"  fish:  sentinel completion fish > ~/.config/fish/completions/sentinel.fish",
+		},
+	})
 }
