@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -15,11 +15,12 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
+	"github.com/opus-domini/sentinel/internal/server"
 	"github.com/opus-domini/sentinel/internal/updater"
 )
 
 var (
-	serveFn                   = serve
+	serveFn                   = runServe
 	installUserSvcFn          = daemon.InstallUser
 	uninstallUserSvcFn        = daemon.UninstallUser
 	userStatusFn              = daemon.UserStatus
@@ -50,6 +51,18 @@ const (
 	flagHelpLong  = "--help"
 )
 
+// commandContext carries the output streams a CLI command writes to.
+type commandContext struct {
+	stdout io.Writer
+	stderr io.Writer
+}
+
+// runServe is the default serveFn: it boots the HTTP server with the
+// resolved binary version.
+func runServe() int {
+	return server.Serve(currentVersionFn())
+}
+
 func writef(w io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(w, format, args...)
 }
@@ -58,7 +71,9 @@ func writeln(w io.Writer, args ...any) {
 	_, _ = fmt.Fprintln(w, args...)
 }
 
-func runCLI(args []string, stdout, stderr io.Writer) int {
+// Run parses args and dispatches to a Sentinel CLI command, returning the
+// process exit code. With no args it starts the HTTP server.
+func Run(args []string, stdout, stderr io.Writer) int {
 	ctx := commandContext{stdout: stdout, stderr: stderr}
 
 	if len(args) == 0 {

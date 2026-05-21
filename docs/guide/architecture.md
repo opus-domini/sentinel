@@ -4,7 +4,9 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 
 ## High-Level Components
 
-- `cmd/sentinel`: CLI, server bootstrap, service/update/recovery commands.
+- `cmd/sentinel`: thin entrypoint — wires args and the process exit code.
+- `internal/cli`: command parsing, help, completion, and formatted output.
+- `internal/server`: HTTP server bootstrap, background tickers, pinned-session restore.
 - `internal/httpui`: SPA delivery and WebSocket endpoints.
 - `internal/api`: authenticated HTTP API for tmux, recovery, operations, and metadata.
 - `internal/tmux`: tmux command adapter and behavior patches.

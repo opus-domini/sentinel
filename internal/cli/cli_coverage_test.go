@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -106,7 +106,7 @@ func TestSubcommandHelpRouting(t *testing.T) {
 			t.Parallel()
 
 			var out, errOut bytes.Buffer
-			code := runCLI(tc.args, &out, &errOut)
+			code := Run(tc.args, &out, &errOut)
 			if code != tc.wantCode {
 				t.Fatalf("exit code = %d, want %d (stdout=%q stderr=%q)", code, tc.wantCode, out.String(), errOut.String())
 			}
@@ -127,7 +127,7 @@ func TestRunServeCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"serve", "--help"}, &out, &errOut)
+		code := Run([]string{"serve", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -140,7 +140,7 @@ func TestRunServeCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"serve", "extra"}, &out, &errOut)
+		code := Run([]string{"serve", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -153,7 +153,7 @@ func TestRunServeCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"serve", "--bogus"}, &out, &errOut)
+		code := Run([]string{"serve", "--bogus"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -170,7 +170,7 @@ func TestRunServeCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"serve"}, &out, &errOut)
+		code := Run([]string{"serve"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -191,7 +191,7 @@ func TestRunCLIRootFlagFallback(t *testing.T) {
 	var out, errOut bytes.Buffer
 	// An unknown flag like --unknown will be parsed by runServeCommand's FlagSet
 	// and cause exit 2 (ContinueOnError).
-	code := runCLI([]string{"--unknown-flag"}, &out, &errOut)
+	code := Run([]string{"--unknown-flag"}, &out, &errOut)
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
 	}
@@ -210,7 +210,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "uninstall", "--disable=false", "--stop=false", "--remove-unit=false"}, &out, &errOut)
+		code := Run([]string{"service", "uninstall", "--disable=false", "--stop=false", "--remove-unit=false"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 		}
@@ -237,7 +237,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "uninstall"}, &out, &errOut)
+		code := Run([]string{"service", "uninstall"}, &out, &errOut)
 		if code != 1 {
 			t.Fatalf("exit code = %d, want 1", code)
 		}
@@ -250,7 +250,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "uninstall", "--help"}, &out, &errOut)
+		code := Run([]string{"service", "uninstall", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -263,7 +263,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "uninstall", "extra"}, &out, &errOut)
+		code := Run([]string{"service", "uninstall", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -276,7 +276,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "uninstall", "--bogus"}, &out, &errOut)
+		code := Run([]string{"service", "uninstall", "--bogus"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -310,7 +310,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "uninstall", "--purge"}, &out, &errOut)
+		code := Run([]string{"service", "uninstall", "--purge"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 		}
@@ -341,7 +341,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "uninstall"}, &out, &errOut)
+		code := Run([]string{"service", "uninstall"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -364,7 +364,7 @@ func TestRunServiceLogsCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "logs", "-f", "-n", "120"}, &out, &errOut)
+		code := Run([]string{"service", "logs", "-f", "-n", "120"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 		}
@@ -390,7 +390,7 @@ func TestRunServiceLogsCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "logs"}, &out, &errOut)
+		code := Run([]string{"service", "logs"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -411,7 +411,7 @@ func TestRunServiceLogsCommand(t *testing.T) {
 		}
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "logs"}, &out, &errOut)
+		code := Run([]string{"service", "logs"}, &out, &errOut)
 		if code != 1 {
 			t.Fatalf("exit code = %d, want 1", code)
 		}
@@ -424,7 +424,7 @@ func TestRunServiceLogsCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "logs", "--help"}, &out, &errOut)
+		code := Run([]string{"service", "logs", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -437,7 +437,7 @@ func TestRunServiceLogsCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "logs", "extra"}, &out, &errOut)
+		code := Run([]string{"service", "logs", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -450,7 +450,7 @@ func TestRunServiceLogsCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "logs", "--bogus"}, &out, &errOut)
+		code := Run([]string{"service", "logs", "--bogus"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -597,7 +597,7 @@ func TestVersionCommandAliases(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			code := runCLI([]string{tc.arg}, &out, &errOut)
+			code := Run([]string{tc.arg}, &out, &errOut)
 			if code != 0 {
 				t.Fatalf("exit code = %d, want 0", code)
 			}
@@ -618,7 +618,7 @@ func TestServiceStatusFailure(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"service", "status"}, &out, &errOut)
+	code := Run([]string{"service", "status"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -633,7 +633,7 @@ func TestServiceStatusHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "status", "--help"}, &out, &errOut)
+		code := Run([]string{"service", "status", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -646,7 +646,7 @@ func TestServiceStatusHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "status", "extra"}, &out, &errOut)
+		code := Run([]string{"service", "status", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -659,7 +659,7 @@ func TestServiceInstallHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "install", "--help"}, &out, &errOut)
+		code := Run([]string{"service", "install", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -672,7 +672,7 @@ func TestServiceInstallHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "install", "extra"}, &out, &errOut)
+		code := Run([]string{"service", "install", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -689,7 +689,7 @@ func TestServiceAutoUpdateInstallFailure(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"service", "autoupdate", "install"}, &out, &errOut)
+	code := Run([]string{"service", "autoupdate", "install"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -704,7 +704,7 @@ func TestServiceAutoUpdateInstallHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "autoupdate", "install", "--help"}, &out, &errOut)
+		code := Run([]string{"service", "autoupdate", "install", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -717,7 +717,7 @@ func TestServiceAutoUpdateInstallHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "autoupdate", "install", "extra"}, &out, &errOut)
+		code := Run([]string{"service", "autoupdate", "install", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -734,7 +734,7 @@ func TestServiceAutoUpdateUninstallFailure(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"service", "autoupdate", "uninstall"}, &out, &errOut)
+	code := Run([]string{"service", "autoupdate", "uninstall"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -749,7 +749,7 @@ func TestServiceAutoUpdateUninstallHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "autoupdate", "uninstall", "--help"}, &out, &errOut)
+		code := Run([]string{"service", "autoupdate", "uninstall", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -762,7 +762,7 @@ func TestServiceAutoUpdateUninstallHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "autoupdate", "uninstall", "extra"}, &out, &errOut)
+		code := Run([]string{"service", "autoupdate", "uninstall", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -779,7 +779,7 @@ func TestServiceAutoUpdateStatusFailure(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"service", "autoupdate", "status"}, &out, &errOut)
+	code := Run([]string{"service", "autoupdate", "status"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -794,7 +794,7 @@ func TestServiceAutoUpdateStatusHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "autoupdate", "status", "--help"}, &out, &errOut)
+		code := Run([]string{"service", "autoupdate", "status", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -807,7 +807,7 @@ func TestServiceAutoUpdateStatusHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"service", "autoupdate", "status", "extra"}, &out, &errOut)
+		code := Run([]string{"service", "autoupdate", "status", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -832,7 +832,7 @@ func TestUpdateCheckFailure(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"update", "check"}, &out, &errOut)
+	code := Run([]string{"update", "check"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -847,7 +847,7 @@ func TestUpdateCheckHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"update", "check", "--help"}, &out, &errOut)
+		code := Run([]string{"update", "check", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -860,7 +860,7 @@ func TestUpdateCheckHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"update", "check", "extra"}, &out, &errOut)
+		code := Run([]string{"update", "check", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -885,7 +885,7 @@ func TestUpdateApplyFailure(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"update", "apply"}, &out, &errOut)
+	code := Run([]string{"update", "apply"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -915,7 +915,7 @@ func TestUpdateApplyAlreadyUpToDate(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"update", "apply"}, &out, &errOut)
+	code := Run([]string{"update", "apply"}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
@@ -930,7 +930,7 @@ func TestUpdateApplyHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"update", "apply", "--help"}, &out, &errOut)
+		code := Run([]string{"update", "apply", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -943,7 +943,7 @@ func TestUpdateApplyHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"update", "apply", "extra"}, &out, &errOut)
+		code := Run([]string{"update", "apply", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -965,7 +965,7 @@ func TestUpdateStatusFailure(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"update", "status"}, &out, &errOut)
+	code := Run([]string{"update", "status"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -980,7 +980,7 @@ func TestUpdateStatusHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"update", "status", "--help"}, &out, &errOut)
+		code := Run([]string{"update", "status", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -993,7 +993,7 @@ func TestUpdateStatusHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"update", "status", "extra"}, &out, &errOut)
+		code := Run([]string{"update", "status", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -1006,7 +1006,7 @@ func TestDoctorHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"doctor", "--help"}, &out, &errOut)
+		code := Run([]string{"doctor", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
@@ -1019,7 +1019,7 @@ func TestDoctorHelpAndArgs(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := runCLI([]string{"doctor", "extra"}, &out, &errOut)
+		code := Run([]string{"doctor", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -1046,7 +1046,7 @@ func TestDoctorStatusError(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	code := runCLI([]string{"doctor"}, &out, &errOut)
+	code := Run([]string{"doctor"}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
@@ -1119,7 +1119,7 @@ func TestServiceInstallEnableStartCombinations(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			code := runCLI(tc.args, &out, &errOut)
+			code := Run(tc.args, &out, &errOut)
 			if code != 0 {
 				t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 			}
@@ -1167,7 +1167,7 @@ func TestServiceAutoUpdateInstallEnableStartCombinations(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			code := runCLI(tc.args, &out, &errOut)
+			code := Run(tc.args, &out, &errOut)
 			if code != 0 {
 				t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 			}

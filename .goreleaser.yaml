@@ -34,7 +34,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X main.buildVersion={{ .Version }}
+      - -X github.com/opus-domini/sentinel/internal/cli.buildVersion={{ .Version }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:

@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -77,7 +77,7 @@ func TestRunCompletionCommand(t *testing.T) {
 			t.Parallel()
 
 			var out, errOut bytes.Buffer
-			code := runCLI(tc.args, &out, &errOut)
+			code := Run(tc.args, &out, &errOut)
 			if code != tc.wantCode {
 				t.Fatalf("exit code = %d, want %d (stderr: %s)", code, tc.wantCode, errOut.String())
 			}
