@@ -1,10 +1,19 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
 )
+
+func writef(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+func writeln(w io.Writer, args ...any) {
+	_, _ = fmt.Fprintln(w, args...)
+}
 
 const (
 	ansiReset  = "\033[0m"

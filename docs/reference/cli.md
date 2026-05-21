@@ -6,7 +6,6 @@
 sentinel daemon
 sentinel service <install|uninstall|status|logs|autoupdate>
 sentinel doctor
-sentinel recovery <list|restore>
 sentinel update <check|apply|status>
 sentinel completion <bash|zsh|fish>
 sentinel --help
@@ -112,30 +111,6 @@ sentinel doctor
 ```
 
 Outputs host/runtime diagnosis: OS/arch, listen addr, data dir, tmux path, service manager status, and managed unit states.
-
-## `sentinel recovery`
-
-### List
-
-```bash
-sentinel recovery list --state killed,restored --limit 100
-```
-
-Allowed states: `running`, `killed`, `restoring`, `restored`, `archived`.
-
-### Restore
-
-```bash
-sentinel recovery restore \
-  --snapshot 42 \
-  --mode confirm \
-  --conflict rename \
-  --target my-session \
-  --wait=true
-```
-
-- `--mode`: `safe|confirm|full`
-- `--conflict`: `rename|replace|skip`
 
 ## `sentinel update`
 

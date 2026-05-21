@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 	"time"
@@ -15,52 +14,6 @@ import (
 )
 
 const testBuildVersionDev = "dev"
-
-// TestHelpFunctions exercises every print*Help function to ensure they write
-// non-empty output containing "Usage:" and do not panic.
-func TestHelpFunctions(t *testing.T) {
-	t.Parallel()
-
-	type helpFunc struct {
-		name string
-		fn   func(io.Writer)
-	}
-
-	cases := []helpFunc{
-		{"printRootHelp", printRootHelp},
-		{"printDaemonHelp", printDaemonHelp},
-		{"printServiceHelp", printServiceHelp},
-		{"printServiceInstallHelp", printServiceInstallHelp},
-		{"printServiceUninstallHelp", printServiceUninstallHelp},
-		{"printServiceStatusHelp", printServiceStatusHelp},
-		{"printServiceLogsHelp", printServiceLogsHelp},
-		{"printServiceAutoUpdateHelp", printServiceAutoUpdateHelp},
-		{"printServiceAutoUpdateInstallHelp", printServiceAutoUpdateInstallHelp},
-		{"printServiceAutoUpdateUninstallHelp", printServiceAutoUpdateUninstallHelp},
-		{"printServiceAutoUpdateStatusHelp", printServiceAutoUpdateStatusHelp},
-		{"printDoctorHelp", printDoctorHelp},
-		{"printCompletionHelp", printCompletionHelp},
-		{"printUpdateHelp", printUpdateHelp},
-		{"printUpdateCheckHelp", printUpdateCheckHelp},
-		{"printUpdateApplyHelp", printUpdateApplyHelp},
-		{"printUpdateStatusHelp", printUpdateStatusHelp},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var buf bytes.Buffer
-			tc.fn(&buf)
-			if buf.Len() == 0 {
-				t.Fatalf("%s wrote no output", tc.name)
-			}
-			if !strings.Contains(strings.ToLower(buf.String()), "usage") {
-				t.Fatalf("%s output missing a usage section: %s", tc.name, buf.String())
-			}
-		})
-	}
-}
 
 // TestSubcommandHelpRouting tests that every subcommand group (service, update,
 // service autoupdate) returns exit 0 for help variants and for no arguments,
@@ -76,29 +29,26 @@ func TestSubcommandHelpRouting(t *testing.T) {
 		wantErr  string // fragment expected in stderr
 	}{
 		// Root help variants.
-		{name: "root help", args: []string{"help"}, wantCode: 0, wantOut: "Sentinel command-line interface"},
-		{name: "root --help", args: []string{"--help"}, wantCode: 0, wantOut: "Sentinel command-line interface"},
+		{name: "root help", args: []string{"help"}, wantCode: 0, wantOut: "CORE COMMANDS"},
+		{name: "root --help", args: []string{"--help"}, wantCode: 0, wantOut: "CORE COMMANDS"},
 
 		// Service subcommand routing.
-		{name: "service no args", args: []string{"service"}, wantCode: 0, wantOut: "sentinel service <command>"},
-		{name: "service help", args: []string{"service", "help"}, wantCode: 0, wantOut: "sentinel service"},
+		{name: "service no args", args: []string{"service"}, wantCode: 0, wantOut: "sentinel service"},
 		{name: "service -h", args: []string{"service", "-h"}, wantCode: 0, wantOut: "sentinel service"},
 		{name: "service --help", args: []string{"service", "--help"}, wantCode: 0, wantOut: "sentinel service"},
-		{name: "service unknown", args: []string{"service", "bogus"}, wantCode: 2, wantErr: "unknown service command: bogus"},
+		{name: "service unknown", args: []string{"service", "bogus"}, wantCode: 2, wantErr: "unknown command"},
 
 		// Service autoupdate routing.
-		{name: "autoupdate no args", args: []string{"service", "autoupdate"}, wantCode: 0, wantOut: "sentinel service autoupdate <command>"},
-		{name: "autoupdate help", args: []string{"service", "autoupdate", "help"}, wantCode: 0, wantOut: "sentinel service autoupdate"},
+		{name: "autoupdate no args", args: []string{"service", "autoupdate"}, wantCode: 0, wantOut: "sentinel service autoupdate"},
 		{name: "autoupdate -h", args: []string{"service", "autoupdate", "-h"}, wantCode: 0, wantOut: "sentinel service autoupdate"},
 		{name: "autoupdate --help", args: []string{"service", "autoupdate", "--help"}, wantCode: 0, wantOut: "sentinel service autoupdate"},
-		{name: "autoupdate unknown", args: []string{"service", "autoupdate", "bogus"}, wantCode: 2, wantErr: "unknown autoupdate command: bogus"},
+		{name: "autoupdate unknown", args: []string{"service", "autoupdate", "bogus"}, wantCode: 2, wantErr: "unknown command"},
 
 		// Update subcommand routing.
-		{name: "update no args", args: []string{"update"}, wantCode: 0, wantOut: "sentinel update <command>"},
-		{name: "update help", args: []string{"update", "help"}, wantCode: 0, wantOut: "sentinel update"},
+		{name: "update no args", args: []string{"update"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update -h", args: []string{"update", "-h"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update --help", args: []string{"update", "--help"}, wantCode: 0, wantOut: "sentinel update"},
-		{name: "update unknown", args: []string{"update", "bogus"}, wantCode: 2, wantErr: "unknown update command: bogus"},
+		{name: "update unknown", args: []string{"update", "bogus"}, wantCode: 2, wantErr: "unknown command"},
 	}
 
 	for _, tc := range cases {
@@ -144,7 +94,7 @@ func TestRunDaemonCommand(t *testing.T) {
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
-		if !strings.Contains(errOut.String(), "unexpected argument") {
+		if !strings.Contains(errOut.String(), "unknown command") {
 			t.Fatalf("stderr missing error: %s", errOut.String())
 		}
 	})
@@ -200,8 +150,8 @@ func TestRunRejectsUnknownRootFlag(t *testing.T) {
 	if called {
 		t.Fatal("daemonFn must not run for an unknown root flag")
 	}
-	if !strings.Contains(errOut.String(), "unknown command") {
-		t.Fatalf("stderr missing unknown-command error: %s", errOut.String())
+	if !strings.Contains(errOut.String(), "unknown flag") {
+		t.Fatalf("stderr missing unknown-flag error: %s", errOut.String())
 	}
 }
 
@@ -275,7 +225,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
-		if !strings.Contains(errOut.String(), "unexpected argument") {
+		if !strings.Contains(errOut.String(), "unknown command") {
 			t.Fatalf("stderr missing error: %s", errOut.String())
 		}
 	})
@@ -449,7 +399,7 @@ func TestRunServiceLogsCommand(t *testing.T) {
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
-		if !strings.Contains(errOut.String(), "unexpected argument") {
+		if !strings.Contains(errOut.String(), "unknown command") {
 			t.Fatalf("stderr missing error: %s", errOut.String())
 		}
 	})

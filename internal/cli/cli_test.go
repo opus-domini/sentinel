@@ -237,7 +237,7 @@ func TestRunCLIUnknownCommand(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
 	}
-	if !strings.Contains(errOut.String(), "unknown command: unknown") {
+	if !strings.Contains(errOut.String(), "unknown command") {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }
@@ -268,7 +268,7 @@ func TestRunCLIHelpFlag(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	if !strings.Contains(out.String(), "Sentinel command-line interface") {
+	if !strings.Contains(out.String(), "USAGE") {
 		t.Fatalf("unexpected help output: %s", out.String())
 	}
 }
@@ -627,13 +627,5 @@ func TestCurrentVersionPrefersBuildVersion(t *testing.T) {
 	buildVersion = "1.9.0"
 	if got := currentVersion(); got != "1.9.0" {
 		t.Fatalf("currentVersion() = %q, want 1.9.0", got)
-	}
-}
-
-func TestDefaultAutoUpdateScopeFlag(t *testing.T) {
-	t.Parallel()
-
-	if got := defaultAutoUpdateScopeFlag(); got != "auto" {
-		t.Fatalf("defaultAutoUpdateScopeFlag() = %q, want auto", got)
 	}
 }
