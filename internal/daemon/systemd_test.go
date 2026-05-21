@@ -26,7 +26,7 @@ func TestRenderUserUnitIncludesExecStart(t *testing.T) {
 	t.Parallel()
 
 	unit := renderUserUnit("/usr/local/bin/sentinel")
-	if !strings.Contains(unit, "ExecStart=/usr/local/bin/sentinel") {
+	if !strings.Contains(unit, "ExecStart=/usr/local/bin/sentinel daemon") {
 		t.Fatalf("rendered unit missing ExecStart: %s", unit)
 	}
 	if !strings.Contains(unit, "Description=Sentinel - terminal workspace") {
@@ -764,7 +764,7 @@ func TestRenderUserUnitEscapesSpacesInPath(t *testing.T) {
 	t.Parallel()
 
 	unit := renderUserUnit("/opt/my app/sentinel")
-	if !strings.Contains(unit, `ExecStart=/opt/my\x20app/sentinel`) {
+	if !strings.Contains(unit, `ExecStart=/opt/my\x20app/sentinel daemon`) {
 		t.Fatalf("rendered unit should escape spaces in ExecStart: %s", unit)
 	}
 }

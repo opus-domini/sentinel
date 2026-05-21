@@ -19,8 +19,8 @@ _sentinel() {
     local subsub="${path_words[3]}"
 
     case "$cmd" in
-        '') opts=(serve service doctor update completion version help) ;;
-        serve | doctor) opts=(--help) ;;
+        '') opts=(daemon service doctor update completion version help) ;;
+        daemon | doctor) opts=(--help) ;;
         completion) opts=(bash zsh fish) ;;
         service)
             case "$sub" in

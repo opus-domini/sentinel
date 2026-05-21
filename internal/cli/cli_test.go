@@ -20,12 +20,12 @@ const (
 	testScopeSystem     = "system"
 )
 
-func TestRunCLIDefaultServe(t *testing.T) {
-	origServe := serveFn
-	t.Cleanup(func() { serveFn = origServe })
+func TestRunWithoutArgsPrintsHelp(t *testing.T) {
+	origDaemon := daemonFn
+	t.Cleanup(func() { daemonFn = origDaemon })
 
 	called := false
-	serveFn = func() int {
+	daemonFn = func() int {
 		called = true
 		return 0
 	}
@@ -36,8 +36,11 @@ func TestRunCLIDefaultServe(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	if !called {
-		t.Fatal("serveFn was not called")
+	if called {
+		t.Fatal("daemonFn must not run when sentinel is invoked without args")
+	}
+	if !strings.Contains(out.String(), "USAGE") {
+		t.Fatalf("stdout missing root help: %s", out.String())
 	}
 }
 

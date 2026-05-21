@@ -593,7 +593,7 @@ func renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath string) stri
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
-		<string>serve</string>
+		<string>daemon</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

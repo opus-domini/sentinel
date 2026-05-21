@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	serveFn                   = runServe
+	daemonFn                  = runDaemon
 	installUserSvcFn          = daemon.InstallUser
 	uninstallUserSvcFn        = daemon.UninstallUser
 	userStatusFn              = daemon.UserStatus
@@ -57,9 +57,9 @@ type commandContext struct {
 	stderr io.Writer
 }
 
-// runServe is the default serveFn: it boots the HTTP server with the
+// runDaemon is the default daemonFn: it boots the HTTP server with the
 // resolved binary version.
-func runServe() int {
+func runDaemon() int {
 	return server.Serve(currentVersionFn())
 }
 
@@ -72,20 +72,22 @@ func writeln(w io.Writer, args ...any) {
 }
 
 // Run parses args and dispatches to a Sentinel CLI command, returning the
-// process exit code. With no args it starts the HTTP server.
+// process exit code. With no args it prints the root help — starting the
+// server requires the explicit "daemon" command.
 func Run(args []string, stdout, stderr io.Writer) int {
 	ctx := commandContext{stdout: stdout, stderr: stderr}
 
 	if len(args) == 0 {
-		return serveFn()
+		printRootHelp(stdout)
+		return 0
 	}
 
 	switch args[0] {
 	case "-v", "--version", "version":
 		writef(stdout, "sentinel version %s\n", currentVersionFn())
 		return 0
-	case "serve":
-		return runServeCommand(ctx, args[1:])
+	case "daemon":
+		return runDaemonCommand(ctx, args[1:])
 	case "service":
 		return runServiceCommand(ctx, args[1:])
 	case "doctor":
@@ -98,33 +100,29 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		printRootHelp(stdout)
 		return 0
 	default:
-		// Preserve backward compatibility for future root flags.
-		if strings.HasPrefix(args[0], "-") {
-			return runServeCommand(ctx, args)
-		}
 		writef(stderr, "unknown command: %s\n\n", args[0])
 		printRootHelp(stderr)
 		return 2
 	}
 }
 
-func runServeCommand(ctx commandContext, args []string) int {
-	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+func runDaemonCommand(ctx commandContext, args []string) int {
+	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
 	fs.SetOutput(ctx.stderr)
 	help := fs.Bool("help", false, "show help")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *help {
-		printServeHelp(ctx.stdout)
+		printDaemonHelp(ctx.stdout)
 		return 0
 	}
 	if fs.NArg() > 0 {
 		writef(ctx.stderr, "unexpected argument(s): %s\n", strings.Join(fs.Args(), " "))
-		printServeHelp(ctx.stderr)
+		printDaemonHelp(ctx.stderr)
 		return 2
 	}
-	return serveFn()
+	return daemonFn()
 }
 
 func runServiceCommand(ctx commandContext, args []string) int {
@@ -818,7 +816,7 @@ func printRootHelp(w io.Writer) {
 	writeln(w, "  sentinel <command> [flags]")
 	writeln(w, "")
 	writeln(w, "CORE COMMANDS")
-	writeln(w, "  serve       Start the HTTP server (default)")
+	writeln(w, "  daemon      Start the Sentinel server")
 	writeln(w, "  service     Manage the local service and autoupdate timer")
 	writeln(w, "  update      Check and apply binary updates")
 	writeln(w, "")
@@ -833,9 +831,9 @@ func printRootHelp(w io.Writer) {
 	writeln(w, `Run "sentinel <command> --help" for details on a command.`)
 }
 
-func printServeHelp(w io.Writer) {
+func printDaemonHelp(w io.Writer) {
 	writeln(w, "Usage:")
-	writeln(w, "  sentinel serve")
+	writeln(w, "  sentinel daemon")
 	writeln(w, "")
 	writeln(w, "Starts the Sentinel server using config file/env defaults.")
 }

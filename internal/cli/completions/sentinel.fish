@@ -4,7 +4,7 @@
 complete -c sentinel -f
 
 # ── Top-level commands ───────────────────────────────────────────────
-complete -c sentinel -n __fish_use_subcommand -a serve -d 'Start the HTTP server'
+complete -c sentinel -n __fish_use_subcommand -a daemon -d 'Start the Sentinel server'
 complete -c sentinel -n __fish_use_subcommand -a service -d 'Manage the local service'
 complete -c sentinel -n __fish_use_subcommand -a doctor -d 'Check the local environment'
 complete -c sentinel -n __fish_use_subcommand -a update -d 'Check or apply binary updates'

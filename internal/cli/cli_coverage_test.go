@@ -28,7 +28,7 @@ func TestHelpFunctions(t *testing.T) {
 
 	cases := []helpFunc{
 		{"printRootHelp", printRootHelp},
-		{"printServeHelp", printServeHelp},
+		{"printDaemonHelp", printDaemonHelp},
 		{"printServiceHelp", printServiceHelp},
 		{"printServiceInstallHelp", printServiceInstallHelp},
 		{"printServiceUninstallHelp", printServiceUninstallHelp},
@@ -120,18 +120,18 @@ func TestSubcommandHelpRouting(t *testing.T) {
 	}
 }
 
-// TestRunServeCommand covers the serve subcommand: help flag, unexpected args,
-// invalid flags, and successful dispatch to serveFn.
-func TestRunServeCommand(t *testing.T) {
+// TestRunDaemonCommand covers the daemon subcommand: help flag, unexpected
+// args, invalid flags, and successful dispatch to daemonFn.
+func TestRunDaemonCommand(t *testing.T) {
 	t.Run("help flag", func(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := Run([]string{"serve", "--help"}, &out, &errOut)
+		code := Run([]string{"daemon", "--help"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
-		if !strings.Contains(out.String(), "sentinel serve") {
+		if !strings.Contains(out.String(), "sentinel daemon") {
 			t.Fatalf("stdout missing help text: %s", out.String())
 		}
 	})
@@ -140,7 +140,7 @@ func TestRunServeCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := Run([]string{"serve", "extra"}, &out, &errOut)
+		code := Run([]string{"daemon", "extra"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -153,47 +153,55 @@ func TestRunServeCommand(t *testing.T) {
 		t.Parallel()
 
 		var out, errOut bytes.Buffer
-		code := Run([]string{"serve", "--bogus"}, &out, &errOut)
+		code := Run([]string{"daemon", "--bogus"}, &out, &errOut)
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
 	})
 
-	t.Run("calls serveFn", func(t *testing.T) {
-		origServe := serveFn
-		t.Cleanup(func() { serveFn = origServe })
+	t.Run("calls daemonFn", func(t *testing.T) {
+		origDaemon := daemonFn
+		t.Cleanup(func() { daemonFn = origDaemon })
 
 		called := false
-		serveFn = func() int {
+		daemonFn = func() int {
 			called = true
 			return 0
 		}
 
 		var out, errOut bytes.Buffer
-		code := Run([]string{"serve"}, &out, &errOut)
+		code := Run([]string{"daemon"}, &out, &errOut)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0", code)
 		}
 		if !called {
-			t.Fatal("serveFn was not called")
+			t.Fatal("daemonFn was not called")
 		}
 	})
 }
 
-// TestRunCLIRootFlagFallback verifies that unknown root flags starting with "-"
-// are forwarded to the serve subcommand.
-func TestRunCLIRootFlagFallback(t *testing.T) {
-	origServe := serveFn
-	t.Cleanup(func() { serveFn = origServe })
+// TestRunRejectsUnknownRootFlag verifies that an unknown root flag is treated
+// as an unknown command and never starts the daemon.
+func TestRunRejectsUnknownRootFlag(t *testing.T) {
+	origDaemon := daemonFn
+	t.Cleanup(func() { daemonFn = origDaemon })
 
-	serveFn = func() int { return 0 }
+	called := false
+	daemonFn = func() int {
+		called = true
+		return 0
+	}
 
 	var out, errOut bytes.Buffer
-	// An unknown flag like --unknown will be parsed by runServeCommand's FlagSet
-	// and cause exit 2 (ContinueOnError).
 	code := Run([]string{"--unknown-flag"}, &out, &errOut)
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if called {
+		t.Fatal("daemonFn must not run for an unknown root flag")
+	}
+	if !strings.Contains(errOut.String(), "unknown command") {
+		t.Fatalf("stderr missing unknown-command error: %s", errOut.String())
 	}
 }
 

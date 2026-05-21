@@ -510,7 +510,7 @@ echo "starting sentinel at $base_url"
   cd "$root_dir"
   SENTINEL_LISTEN="127.0.0.1:${port}" \
     SENTINEL_DATA_DIR="$data_dir" \
-    go run ./cmd/sentinel serve
+    go run ./cmd/sentinel daemon
 ) >"$artifacts_dir/server.log" 2>&1 &
 server_pid=$!
 wait_for_server "$base_url"

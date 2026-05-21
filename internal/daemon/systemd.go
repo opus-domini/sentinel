@@ -857,7 +857,7 @@ StartLimitBurst=4
 
 [Service]
 Type=simple
-ExecStart=%s
+ExecStart=%s daemon
 Restart=on-failure
 RestartSec=2
 KillMode=process

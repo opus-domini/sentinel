@@ -39,9 +39,9 @@ _sentinel() {
     opts=""
     case "$cmd" in
         "")
-            opts="serve service doctor update completion version help --version --help"
+            opts="daemon service doctor update completion version help --version --help"
             ;;
-        serve | doctor)
+        daemon | doctor)
             opts="--help"
             ;;
         completion)

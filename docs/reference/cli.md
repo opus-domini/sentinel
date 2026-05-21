@@ -3,7 +3,7 @@
 ## Root Commands
 
 ```bash
-sentinel [serve]
+sentinel daemon
 sentinel service <install|uninstall|status|logs|autoupdate>
 sentinel doctor
 sentinel recovery <list|restore>
@@ -13,12 +13,15 @@ sentinel --help
 sentinel --version | -v | version
 ```
 
-## `sentinel serve`
+Running `sentinel` with no arguments prints this help; the server starts only
+via the explicit `daemon` command.
+
+## `sentinel daemon`
 
 Start HTTP server using config/env values.
 
 ```bash
-sentinel serve
+sentinel daemon
 ```
 
 ## `sentinel service`

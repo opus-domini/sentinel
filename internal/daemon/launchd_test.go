@@ -16,8 +16,8 @@ func TestRenderLaunchdUserServicePlistIncludesExecStart(t *testing.T) {
 	if !strings.Contains(plist, "<string>/usr/local/bin/sentinel</string>") {
 		t.Fatalf("plist missing executable path: %s", plist)
 	}
-	if !strings.Contains(plist, "<string>serve</string>") {
-		t.Fatalf("plist missing serve argument: %s", plist)
+	if !strings.Contains(plist, "<string>daemon</string>") {
+		t.Fatalf("plist missing daemon argument: %s", plist)
 	}
 	if !strings.Contains(plist, "<string>"+launchdServiceLabel+"</string>") {
 		t.Fatalf("plist missing launchd label: %s", plist)
