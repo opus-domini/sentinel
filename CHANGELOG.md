@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.2](https://github.com/opus-domini/sentinel/compare/v0.6.1...v0.6.2) (2026-05-22)
+
+
+### Bug Fixes
+
+* **frontend:** load bundled font assets correctly ([69c2a74](https://github.com/opus-domini/sentinel/commit/69c2a74aa8c0df7fb459a5a14a4687c89a7ad75c))
+
+
+### Refactors
+
+* move embedded ui into internal ui package ([77eafca](https://github.com/opus-domini/sentinel/commit/77eafca4de90c500c7d0e7b70459a57cf33bd830))
+
 ## [0.6.1](https://github.com/opus-domini/sentinel/compare/v0.6.0...v0.6.1) (2026-05-21)
 
 
