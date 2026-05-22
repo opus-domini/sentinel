@@ -24,6 +24,12 @@
 !/internal
 !/internal/**/*
 
+# Embedded web UI build output. The frontend build regenerates these files
+# before Go builds in Makefile, CI and GoReleaser; only the placeholder stays
+# tracked so go:embed compiles on a fresh clone.
+/internal/ui/dist/*
+!/internal/ui/dist/.gitkeep
+
 # Frontend (frontend/ carries its own .gitignore)
 !/frontend
 

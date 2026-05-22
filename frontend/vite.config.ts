@@ -29,15 +29,15 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist/assets',
+    outDir: '../internal/ui/dist',
     emptyOutDir: true,
     sourcemap: false,
     cssCodeSplit: false,
     rollupOptions: {
       input: 'src/main.tsx',
       output: {
-        entryFileNames: 'app.js',
-        chunkFileNames: 'chunks/[name]-[hash].js',
+        entryFileNames: 'assets/app.js',
+        chunkFileNames: 'assets/chunks/[name]-[hash].js',
         manualChunks(id) {
           if (id.includes('/node_modules/@xterm/xterm/')) {
             return 'vendor-xterm-core'
@@ -54,9 +54,9 @@ export default defineConfig({
         },
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
-            return 'app.css'
+            return 'assets/app.css'
           }
-          return '[name][extname]'
+          return 'assets/[name][extname]'
         },
       },
     },

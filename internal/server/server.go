@@ -17,7 +17,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/api"
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/httpui"
 	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/report"
 	"github.com/opus-domini/sentinel/internal/scheduler"
@@ -26,6 +25,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/term"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/ui"
 	"github.com/opus-domini/sentinel/internal/watchtower"
 )
 
@@ -103,7 +103,7 @@ func Serve(version string) int {
 	configPath := filepath.Join(cfg.DataDir, "config.toml")
 	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configPath, cfg.Timezone, cfg.Locale, cfg.RunbookMaxConcurrent)
 
-	if err := httpui.Register(mux, guard, st, eventHub, opsManager, apiHandler.SessionUser); err != nil {
+	if err := ui.Register(mux, guard, st, eventHub, opsManager, apiHandler.SessionUser); err != nil {
 		slog.Error("frontend init failed", "err", err)
 		return 1
 	}

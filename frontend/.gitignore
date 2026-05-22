@@ -5,7 +5,6 @@
 !.gitignore
 
 # Project files used by Go embed/runtime and frontend tooling.
-!assets.go
 !package.json
 !package-lock.json
 !tsconfig.json
@@ -24,9 +23,3 @@
 !src/**
 !public/
 !public/**
-
-# Keep the dist scaffold for go:embed, but ignore generated assets.
-!dist/
-dist/*
-!dist/.gitkeep
-!dist/index.placeholder.html

@@ -1,4 +1,4 @@
-package httpui
+package ui
 
 import (
 	"bufio"

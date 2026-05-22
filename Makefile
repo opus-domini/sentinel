@@ -40,7 +40,7 @@ build-server: check-go build-frontend ## Compile Go binary to build/sentinel
 	$(GOCMD) build -o $(BINARY) $(ENTRY)
 
 .PHONY: build-frontend
-build-frontend: check-npm ## Build frontend to frontend/dist/assets
+build-frontend: check-npm ## Build embedded frontend to internal/ui/dist
 	@test -d $(FRONTEND)/node_modules || $(NPM) --prefix $(FRONTEND) install
 	$(NPM) --prefix $(FRONTEND) run build
 
@@ -183,7 +183,8 @@ release-snapshot: check-goreleaser ## Build a local snapshot release (no publish
 .PHONY: clean
 clean: ## Remove build artifacts
 	$(GOCMD) clean
-	rm -rf build dist coverage.txt
+	rm -rf build dist coverage.txt $(FRONTEND)/dist
+	find internal/ui/dist -mindepth 1 -maxdepth 1 ! -name .gitkeep -exec rm -rf {} +
 
 .PHONY: help
 help: ## Show available targets

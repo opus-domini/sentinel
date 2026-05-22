@@ -1,4 +1,4 @@
-package httpui
+package ui
 
 import (
 	"context"
@@ -987,8 +987,13 @@ func TestServeDistPath(t *testing.T) {
 		{"dot_path", ".", false},
 		{"slash_only", "/", false},
 		{"nonexistent_file", "does-not-exist-xyz.html", false},
-		// index.placeholder.html is committed to git (index.html is build-generated).
-		{"placeholder_html", "index.placeholder.html", true},
+	}
+	if embeddedDistFileExists("index.html") {
+		tests = append(tests, struct {
+			name     string
+			path     string
+			wantServ bool
+		}{"built_index_html", "index.html", true})
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1009,6 +1014,7 @@ func TestServeDistPath(t *testing.T) {
 
 func TestRegisterSetsUpRoutes(t *testing.T) {
 	t.Parallel()
+	skipIfEmbeddedDistFileMissing(t, "index.html")
 
 	st := newHTTPUIStore(t)
 	guard := security.New("", nil, security.CookieSecureNever)
@@ -1019,7 +1025,7 @@ func TestRegisterSetsUpRoutes(t *testing.T) {
 		t.Fatalf("Register() error = %v", err)
 	}
 
-	// A GET to / should serve the SPA (index.html or placeholder).
+	// A GET to / should serve the built SPA.
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/", nil)
 	mux.ServeHTTP(rec, req)
@@ -1062,27 +1068,23 @@ func TestFormatManifestAppBrand(t *testing.T) {
 	}
 }
 
-func TestReadManifestFileFallsBackToPublic(t *testing.T) {
+func TestReadManifestFile(t *testing.T) {
 	t.Parallel()
 
-	rawManifest, err := readManifestFile(
-		fstest.MapFS{
-			"index.placeholder.html": &fstest.MapFile{Data: []byte("placeholder")},
-		},
-		fstest.MapFS{
-			"manifest.webmanifest": &fstest.MapFile{Data: []byte(`{"name":"Sentinel"}`)},
-		},
-	)
+	rawManifest, err := readManifestFile(fstest.MapFS{
+		"manifest.webmanifest": &fstest.MapFile{Data: []byte(`{"name":"Sentinel"}`)},
+	})
 	if err != nil {
 		t.Fatalf("readManifestFile() error = %v", err)
 	}
 	if got := string(rawManifest); got != `{"name":"Sentinel"}` {
-		t.Fatalf("readManifestFile() = %q, want public manifest", got)
+		t.Fatalf("readManifestFile() = %q, want manifest", got)
 	}
 }
 
 func TestRegisterServesBrandedManifest(t *testing.T) {
 	t.Parallel()
+	skipIfEmbeddedDistFileMissing(t, "manifest.webmanifest")
 
 	st := newHTTPUIStore(t)
 	guard := security.New("", nil, security.CookieSecureNever)
@@ -1135,6 +1137,7 @@ func TestRegisterServesBrandedManifest(t *testing.T) {
 
 func TestSpaPageServesIndexForUnknownPaths(t *testing.T) {
 	t.Parallel()
+	skipIfEmbeddedDistFileMissing(t, "index.html")
 
 	guard := security.New("", nil, security.CookieSecureNever)
 
@@ -1152,6 +1155,25 @@ func TestSpaPageServesIndexForUnknownPaths(t *testing.T) {
 	h.spaPage(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("spaPage(/some/client/route) status = %d, want 200", rec.Code)
+	}
+}
+
+func embeddedDistFileExists(name string) bool {
+	if ensureDistFS() != nil {
+		return false
+	}
+	file, err := distFS.Open(name)
+	if err != nil {
+		return false
+	}
+	_ = file.Close()
+	return true
+}
+
+func skipIfEmbeddedDistFileMissing(t *testing.T, name string) {
+	t.Helper()
+	if !embeddedDistFileExists(name) {
+		t.Skipf("embedded UI %s missing; run npm --prefix frontend run build", name)
 	}
 }
 

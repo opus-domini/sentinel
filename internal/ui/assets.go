@@ -1,4 +1,4 @@
-package httpui
+package ui
 
 import (
 	"encoding/json"
@@ -9,33 +9,21 @@ import (
 	"path"
 	"strings"
 	"sync"
-
-	"github.com/opus-domini/sentinel/frontend"
 )
 
 var (
-	distFS       fs.FS
-	distFSInit   sync.Once
-	distFSErr    error
-	publicFS     fs.FS
-	publicFSInit sync.Once
-	publicFSErr  error
+	distFS     fs.FS
+	distFSInit sync.Once
+	distFSErr  error
 )
 
 const manifestAppName = "Sentinel"
 
 func ensureDistFS() error {
 	distFSInit.Do(func() {
-		distFS, distFSErr = fs.Sub(frontend.DistFS, "dist")
+		distFS, distFSErr = fs.Sub(DistFS, "dist")
 	})
 	return distFSErr
-}
-
-func ensurePublicFS() error {
-	publicFSInit.Do(func() {
-		publicFS, publicFSErr = fs.Sub(frontend.PublicFS, "public")
-	})
-	return publicFSErr
 }
 
 func registerAssetRoutes(mux *http.ServeMux) error {
@@ -86,17 +74,11 @@ func formatManifestAppShortName(hostname string) string {
 	return trimmedHostname
 }
 
-func readManifestFile(dist, public fs.FS) ([]byte, error) {
-	if dist != nil {
-		rawManifest, err := fs.ReadFile(dist, "manifest.webmanifest")
-		if err == nil {
-			return rawManifest, nil
-		}
-	}
-	if public == nil {
+func readManifestFile(dist fs.FS) ([]byte, error) {
+	if dist == nil {
 		return nil, fs.ErrNotExist
 	}
-	return fs.ReadFile(public, "manifest.webmanifest")
+	return fs.ReadFile(dist, "manifest.webmanifest")
 }
 
 func (h *Handler) serveManifest(w http.ResponseWriter, r *http.Request) {
@@ -110,17 +92,12 @@ func (h *Handler) serveManifest(w http.ResponseWriter, r *http.Request) {
 		manifestDistFS = distFS
 	}
 
-	var manifestPublicFS fs.FS
-	if ensurePublicFS() == nil {
-		manifestPublicFS = publicFS
-	}
-
-	if manifestDistFS == nil && manifestPublicFS == nil {
+	if manifestDistFS == nil {
 		http.Error(w, "frontend bundle missing", http.StatusInternalServerError)
 		return
 	}
 
-	rawManifest, err := readManifestFile(manifestDistFS, manifestPublicFS)
+	rawManifest, err := readManifestFile(manifestDistFS)
 	if err != nil {
 		http.NotFound(w, r)
 		return

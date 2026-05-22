@@ -1,4 +1,4 @@
-package httpui
+package ui
 
 import (
 	"bufio"
@@ -57,29 +57,29 @@ type OpsLogStreamer interface {
 	StreamLogsByUnit(ctx context.Context, unit, scope, manager string) (io.ReadCloser, error)
 }
 
-// httpuiPresenceRepo covers watchtower presence and global-revision queries.
-type httpuiPresenceRepo interface {
+// presenceRepo covers watchtower presence and global-revision queries.
+type presenceRepo interface {
 	UpsertWatchtowerPresence(ctx context.Context, row store.WatchtowerPresenceWrite) error
 	WatchtowerGlobalRevision(ctx context.Context) (int64, error)
 	MarkWatchtowerPaneSeen(ctx context.Context, sessionName, paneID string) (bool, error)
 	MarkWatchtowerWindowSeen(ctx context.Context, sessionName string, windowIndex int) (bool, error)
 }
 
-// httpuiSeenRepo covers session-level seen marks and activity patches.
-type httpuiSeenRepo interface {
+// seenRepo covers session-level seen marks and activity patches.
+type seenRepo interface {
 	MarkWatchtowerSessionSeen(ctx context.Context, sessionName string) (bool, error)
 	GetWatchtowerSessionActivityPatch(ctx context.Context, sessionName string) (map[string]any, error)
 	GetWatchtowerInspectorPatch(ctx context.Context, sessionName string) (map[string]any, error)
 }
 
-// httpuiStore is the subset of store.Store used by the httpui package.
-type httpuiStore interface {
-	httpuiPresenceRepo
-	httpuiSeenRepo
+// uiStore is the subset of store.Store used by the ui package.
+type uiStore interface {
+	presenceRepo
+	seenRepo
 }
 
-// Compile-time check: *store.Store satisfies httpuiStore.
-var _ httpuiStore = (*store.Store)(nil)
+// Compile-time check: *store.Store satisfies uiStore.
+var _ uiStore = (*store.Store)(nil)
 
 // SessionUserLookup resolves the OS user that owns a tmux session.
 // Returns empty string when the session runs as the default user.
@@ -88,7 +88,7 @@ type SessionUserLookup func(session string) string
 type Handler struct {
 	guard             *security.Guard
 	events            *events.Hub
-	store             httpuiStore
+	store             uiStore
 	ops               OpsLogStreamer
 	sessionUserLookup SessionUserLookup
 }
@@ -124,9 +124,7 @@ func (h *Handler) spaPage(w http.ResponseWriter, r *http.Request) {
 	if serveDistPath(w, r, "index.html") {
 		return
 	}
-	if !serveDistPath(w, r, "index.placeholder.html") {
-		http.Error(w, "frontend bundle missing", http.StatusInternalServerError)
-	}
+	http.Error(w, "frontend bundle missing", http.StatusInternalServerError)
 }
 
 // requireWSAuth checks origin and authentication for WebSocket upgrade
@@ -617,7 +615,7 @@ func (h *Handler) markEventsSeen(ctx context.Context, msg eventsSeenMessage) (bo
 	}
 }
 
-func collectSeenPatches(ctx context.Context, st httpuiSeenRepo, sessionName string) ([]map[string]any, []map[string]any) {
+func collectSeenPatches(ctx context.Context, st seenRepo, sessionName string) ([]map[string]any, []map[string]any) {
 	sessionPatches := make([]map[string]any, 0, 1)
 	inspectorPatches := make([]map[string]any, 0, 1)
 	if patch, err := st.GetWatchtowerSessionActivityPatch(ctx, sessionName); err == nil {
