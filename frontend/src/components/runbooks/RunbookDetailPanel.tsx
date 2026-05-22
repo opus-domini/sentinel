@@ -378,7 +378,7 @@ export function RunbookDetailPanel({
                 onClick={() =>
                   onEditSchedule({
                     runbookId: runbook.id,
-                    schedule: schedule,
+                    schedule,
                   })
                 }
               >

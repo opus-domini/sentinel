@@ -50,6 +50,7 @@
     "no-useless-escape": "error",
     "no-var": "error",
     "no-with": "error",
+    "object-shorthand": "error",
     "prefer-const": "error",
     "require-yield": "error",
     "use-isnan": "error",
@@ -88,6 +89,7 @@
     "react/button-has-type": "error",
     "react/jsx-key": "error",
     "react/jsx-no-duplicate-props": "error",
+    "react/jsx-no-useless-fragment": "error",
     "react/no-unstable-nested-components": "error",
     "react/react-in-jsx-scope": "off"
   }

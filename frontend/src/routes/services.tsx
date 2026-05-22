@@ -833,16 +833,14 @@ function ServicesPage() {
               </div>
             )}
             {browseLoading ? (
-              <>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {Array.from({ length: 5 }).map((_, idx) => (
-                    <div
-                      key={`svc-metric-skeleton-${idx}`}
-                      className="h-10 motion-safe:animate-pulse rounded-md border border-border-subtle bg-surface-elevated sm:h-12"
-                    />
-                  ))}
-                </div>
-              </>
+              <div className="grid grid-cols-5 gap-1.5">
+                {Array.from({ length: 5 }).map((_, idx) => (
+                  <div
+                    key={`svc-metric-skeleton-${idx}`}
+                    className="h-10 motion-safe:animate-pulse rounded-md border border-border-subtle bg-surface-elevated sm:h-12"
+                  />
+                ))}
+              </div>
             ) : (
               <ServicesOperationsSummary
                 services={trackFilteredBrowseServices}
