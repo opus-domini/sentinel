@@ -1,15 +1,14 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import", "react", "jsx-a11y"],
+  "plugins": ["typescript", "import", "react", "jsx-a11y", "promise"],
   "categories": {
     "correctness": "error"
   },
   "env": {
-    "builtin": true,
-    "es2020": true,
+    "es2024": true,
     "browser": true
   },
-  "ignorePatterns": ["dist/**", "public/sw.js"],
+  "ignorePatterns": ["dist/**", "public/sw.js", "src/routeTree.gen.ts"],
   "rules": {
     "for-direction": "error",
     "no-async-promise-executor": "error",
@@ -31,6 +30,7 @@
     "no-extra-boolean-cast": "error",
     "no-fallthrough": "error",
     "no-global-assign": "error",
+    "no-alert": "error",
     "no-invalid-regexp": "error",
     "no-irregular-whitespace": "error",
     "no-loss-of-precision": "error",
@@ -61,6 +61,7 @@
     ],
     "@typescript-eslint/consistent-type-imports": ["error", { "prefer": "type-imports" }],
     "@typescript-eslint/no-duplicate-enum-values": "error",
+    "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/no-extra-non-null-assertion": "error",
     "@typescript-eslint/no-inferrable-types": ["error", { "ignoreParameters": true }],
     "@typescript-eslint/no-misused-new": "error",
@@ -80,8 +81,14 @@
     "jsx-a11y/aria-role": "error",
     "jsx-a11y/no-autofocus": "off",
     "jsx-a11y/prefer-tag-over-role": "off",
+    "promise/no-multiple-resolved": "error",
+    "promise/no-new-statics": "error",
+    "promise/no-return-in-finally": "error",
+    "promise/valid-params": "error",
     "react/button-has-type": "error",
     "react/jsx-key": "error",
-    "react/jsx-no-duplicate-props": "error"
+    "react/jsx-no-duplicate-props": "error",
+    "react/no-unstable-nested-components": "error",
+    "react/react-in-jsx-scope": "off"
   }
 }
