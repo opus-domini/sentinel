@@ -4,7 +4,6 @@ import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  base: '/assets/',
   plugins: [
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     tailwindcss(),
