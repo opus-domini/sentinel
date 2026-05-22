@@ -637,7 +637,7 @@ func TestDecodeJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			r := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
 			var dst struct {
 				Name string `json:"name"`
 			}
@@ -717,7 +717,7 @@ func TestWrapMiddleware(t *testing.T) {
 			if host == "" {
 				host = "localhost:4040"
 			}
-			r := httptest.NewRequest("GET", "http://"+host+"/", nil)
+			r := httptest.NewRequest(http.MethodGet, "http://"+host+"/", nil)
 			r.Host = host
 			if tt.origin != "" {
 				r.Header.Set("Origin", tt.origin)
@@ -772,7 +772,7 @@ func TestMetaHandler(t *testing.T) {
 			h := &Handler{guard: guard, version: tt.version}
 
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("GET", "/api/meta", nil)
+			r := httptest.NewRequest(http.MethodGet, "/api/meta", nil)
 			h.meta(w, r)
 
 			var body struct {
@@ -979,7 +979,7 @@ func TestListDirectoriesHandler(t *testing.T) {
 	}
 
 	h, _ := newTestHandler(t, &mockTmux{}, nil)
-	req := httptest.NewRequest("GET", "/api/fs/dirs?prefix="+url.QueryEscape(filepath.Join(base, "alp"))+"&limit=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/fs/dirs?prefix="+url.QueryEscape(filepath.Join(base, "alp"))+"&limit=10", nil)
 	w := httptest.NewRecorder()
 
 	h.listDirectories(w, req)
@@ -1040,7 +1040,7 @@ func TestListSessionsHandler(t *testing.T) {
 		h, _ := newTestHandler(t, tm, nil)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 		h.listSessions(w, r)
 
 		if w.Code != http.StatusOK {
@@ -1101,7 +1101,7 @@ func TestListSessionsHandler(t *testing.T) {
 		h, _ := newTestHandler(t, tm, nil)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 		h.listSessions(w, r)
 
 		if w.Code != http.StatusOK {
@@ -1153,7 +1153,7 @@ func TestListSessionsHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 		h.listSessions(w, r)
 
 		if w.Code != http.StatusOK {
@@ -1182,7 +1182,7 @@ func TestListSessionsHandler(t *testing.T) {
 		h, _ := newTestHandler(t, tm, nil)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 		h.listSessions(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -1207,7 +1207,7 @@ func TestListSessionsHandler(t *testing.T) {
 		h, _ := newTestHandler(t, tm, nil)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 		h.listSessions(w, r)
 
 		if w.Code != http.StatusOK {
@@ -1253,7 +1253,7 @@ func TestListSessionsHandlerProjectedFromWatchtower(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/sessions", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 	h.listSessions(w, r)
 
 	if w.Code != http.StatusOK {
@@ -1302,7 +1302,7 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"test-session"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"test-session"}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusCreated {
@@ -1326,7 +1326,7 @@ func TestCreateSessionHandler(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(
-			"POST",
+			http.MethodPost,
 			"/api/tmux/sessions",
 			strings.NewReader(`{"name":"test-session","operationId":"op-session-1"}`),
 		)
@@ -1364,7 +1364,7 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":"/tmp"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":"/tmp"}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusCreated {
@@ -1387,7 +1387,7 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":""}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":""}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusCreated {
@@ -1403,7 +1403,7 @@ func TestCreateSessionHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"bad name!"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"bad name!"}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -1416,7 +1416,7 @@ func TestCreateSessionHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":"relative/path"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":"relative/path"}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -1429,7 +1429,7 @@ func TestCreateSessionHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{bad}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{bad}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -1457,7 +1457,7 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"api"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"api"}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusCreated {
@@ -1483,7 +1483,7 @@ func TestCreateSessionHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions", strings.NewReader(`{"name":"existing"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"existing"}`))
 		h.createSession(w, r)
 
 		if w.Code != http.StatusConflict {
@@ -1516,7 +1516,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/dev", nil)
 		r.SetPathValue("session", sessionName)
 		h.deleteSession(w, r)
 
@@ -1543,7 +1543,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(
-			"POST",
+			http.MethodPost,
 			"/api/tmux/sessions/dev/new-window",
 			strings.NewReader(`{"operationId":"op-window-1"}`),
 		)
@@ -1577,7 +1577,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/tmux/sessions/bad%20name", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/bad%20name", nil)
 		r.SetPathValue("session", "bad name")
 		h.deleteSession(w, r)
 
@@ -1593,7 +1593,6 @@ func TestDeleteSessionHandler(t *testing.T) {
 		{name: "session not found clears stale state", kind: tmux.ErrKindSessionNotFound},
 		{name: "server not running clears stale state", kind: tmux.ErrKindServerNotRunning},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1618,7 +1617,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 			}
 
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("DELETE", "/api/tmux/sessions/ghost", nil)
+			r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/ghost", nil)
 			r.SetPathValue("session", sessionName)
 			h.deleteSession(w, r)
 
@@ -1659,7 +1658,7 @@ func TestRenameSessionHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "old")
 		h.renameSession(w, r)
 
@@ -1687,7 +1686,7 @@ func TestRenameSessionHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "old")
 		h.renameSession(w, r)
 
@@ -1712,7 +1711,7 @@ func TestRenameSessionHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/bad%20name", strings.NewReader(`{"newName":"new"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/bad%20name", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "bad name")
 		h.renameSession(w, r)
 
@@ -1726,7 +1725,7 @@ func TestRenameSessionHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/old", strings.NewReader(`{"newName":"bad name!"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{"newName":"bad name!"}`))
 		r.SetPathValue("session", "old")
 		h.renameSession(w, r)
 
@@ -1740,7 +1739,7 @@ func TestRenameSessionHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/old", strings.NewReader(`{bad}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "old")
 		h.renameSession(w, r)
 
@@ -1759,7 +1758,7 @@ func TestRenameSessionHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "old")
 		h.renameSession(w, r)
 
@@ -1777,7 +1776,7 @@ func TestRenameWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":1,"name":"editor"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":1,"name":"editor"}`))
 		r.SetPathValue("session", "dev")
 		h.renameWindow(w, r)
 
@@ -1791,7 +1790,7 @@ func TestRenameWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/rename-window", strings.NewReader(`{"index":0,"name":"main"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/rename-window", strings.NewReader(`{"index":0,"name":"main"}`))
 		r.SetPathValue("session", "bad name")
 		h.renameWindow(w, r)
 
@@ -1805,7 +1804,7 @@ func TestRenameWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":-1,"name":"main"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":-1,"name":"main"}`))
 		r.SetPathValue("session", "dev")
 		h.renameWindow(w, r)
 
@@ -1819,7 +1818,7 @@ func TestRenameWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":0,"name":"  "}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":0,"name":"  "}`))
 		r.SetPathValue("session", "dev")
 		h.renameWindow(w, r)
 
@@ -1833,7 +1832,7 @@ func TestRenameWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{bad}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
 		h.renameWindow(w, r)
 
@@ -1852,7 +1851,7 @@ func TestRenameWindowHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":0,"name":"main"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":0,"name":"main"}`))
 		r.SetPathValue("session", "dev")
 		h.renameWindow(w, r)
 
@@ -1875,7 +1874,7 @@ func TestRenamePaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%5","title":"logs"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%5","title":"logs"}`))
 		r.SetPathValue("session", "dev")
 		h.renamePane(w, r)
 
@@ -1889,7 +1888,7 @@ func TestRenamePaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/rename-pane", strings.NewReader(`{"paneId":"%0","title":"main"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/rename-pane", strings.NewReader(`{"paneId":"%0","title":"main"}`))
 		r.SetPathValue("session", "bad name")
 		h.renamePane(w, r)
 
@@ -1903,7 +1902,7 @@ func TestRenamePaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"5","title":"main"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"5","title":"main"}`))
 		r.SetPathValue("session", "dev")
 		h.renamePane(w, r)
 
@@ -1917,7 +1916,7 @@ func TestRenamePaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%0","title":"  "}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%0","title":"  "}`))
 		r.SetPathValue("session", "dev")
 		h.renamePane(w, r)
 
@@ -1931,7 +1930,7 @@ func TestRenamePaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{bad}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
 		h.renamePane(w, r)
 
@@ -1953,7 +1952,7 @@ func TestRenamePaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%0","title":"main"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%0","title":"main"}`))
 		r.SetPathValue("session", "dev")
 		h.renamePane(w, r)
 
@@ -1977,7 +1976,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 			t.Fatalf("UpsertSession error = %v", err)
 		}
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":"`+botIconKey+`"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":"`+botIconKey+`"}`))
 		r.SetPathValue("session", "dev")
 		h.setSessionIcon(w, r)
 
@@ -2000,7 +1999,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/bad%20name/icon", strings.NewReader(`{"icon":"`+botIconKey+`"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/bad%20name/icon", strings.NewReader(`{"icon":"`+botIconKey+`"}`))
 		r.SetPathValue("session", "bad name")
 		h.setSessionIcon(w, r)
 
@@ -2014,7 +2013,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":"Bad Icon!"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":"Bad Icon!"}`))
 		r.SetPathValue("session", "dev")
 		h.setSessionIcon(w, r)
 
@@ -2028,7 +2027,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":""}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":""}`))
 		r.SetPathValue("session", "dev")
 		h.setSessionIcon(w, r)
 
@@ -2042,7 +2041,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/tmux/sessions/dev/icon", strings.NewReader(`{bad}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/icon", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
 		h.setSessionIcon(w, r)
 
@@ -2068,7 +2067,7 @@ func TestListWindowsHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/windows", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/windows", nil)
 		r.SetPathValue("session", "dev")
 		h.listWindows(w, r)
 
@@ -2088,7 +2087,7 @@ func TestListWindowsHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions/bad%20name/windows", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/bad%20name/windows", nil)
 		r.SetPathValue("session", "bad name")
 		h.listWindows(w, r)
 
@@ -2107,7 +2106,7 @@ func TestListWindowsHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions/ghost/windows", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/ghost/windows", nil)
 		r.SetPathValue("session", "ghost")
 		h.listWindows(w, r)
 
@@ -2194,7 +2193,7 @@ func TestListWindowsHandlerProjectedFromWatchtower(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/windows", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/windows", nil)
 	r.SetPathValue("session", "dev")
 	h.listWindows(w, r)
 
@@ -2293,7 +2292,7 @@ func TestListWindowsHandlerProjectedFromWatchtowerUsesManagedRuntimeIdentity(t *
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/windows", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/windows", nil)
 	r.SetPathValue("session", "dev")
 	h.listWindows(w, r)
 
@@ -2356,7 +2355,7 @@ func TestListWindowsHandlerPrefersLiveTmuxOverStaleProjection(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/windows", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/windows", nil)
 	r.SetPathValue("session", "dev")
 	h.listWindows(w, r)
 
@@ -2390,7 +2389,7 @@ func TestListPanesHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/panes", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/panes", nil)
 		r.SetPathValue("session", "dev")
 		h.listPanes(w, r)
 
@@ -2404,7 +2403,7 @@ func TestListPanesHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions/bad%20name/panes", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/bad%20name/panes", nil)
 		r.SetPathValue("session", "bad name")
 		h.listPanes(w, r)
 
@@ -2423,7 +2422,7 @@ func TestListPanesHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/panes", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/panes", nil)
 		r.SetPathValue("session", "dev")
 		h.listPanes(w, r)
 
@@ -2474,7 +2473,7 @@ func TestListPanesHandlerProjectedFromWatchtower(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/panes", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/panes", nil)
 	r.SetPathValue("session", "dev")
 	h.listPanes(w, r)
 
@@ -2554,7 +2553,7 @@ func TestListPanesHandlerPrefersLiveTmuxOverStaleProjection(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/sessions/dev/panes", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/panes", nil)
 	r.SetPathValue("session", "dev")
 	h.listPanes(w, r)
 
@@ -2584,7 +2583,7 @@ func TestSelectWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-window", strings.NewReader(`{"index":2}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-window", strings.NewReader(`{"index":2}`))
 		r.SetPathValue("session", "dev")
 		h.selectWindow(w, r)
 
@@ -2598,7 +2597,7 @@ func TestSelectWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/select-window", strings.NewReader(`{"index":0}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/select-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "bad name")
 		h.selectWindow(w, r)
 
@@ -2612,7 +2611,7 @@ func TestSelectWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-window", strings.NewReader(`{"index":-1}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-window", strings.NewReader(`{"index":-1}`))
 		r.SetPathValue("session", "dev")
 		h.selectWindow(w, r)
 
@@ -2626,7 +2625,7 @@ func TestSelectWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-window", strings.NewReader(`{bad}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-window", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
 		h.selectWindow(w, r)
 
@@ -2645,7 +2644,7 @@ func TestSelectWindowHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/ghost/select-window", strings.NewReader(`{"index":0}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/ghost/select-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "ghost")
 		h.selectWindow(w, r)
 
@@ -2668,7 +2667,7 @@ func TestSelectPaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%5"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%5"}`))
 		r.SetPathValue("session", "dev")
 		h.selectPane(w, r)
 
@@ -2682,7 +2681,7 @@ func TestSelectPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/select-pane", strings.NewReader(`{"paneId":"%0"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/select-pane", strings.NewReader(`{"paneId":"%0"}`))
 		r.SetPathValue("session", "bad name")
 		h.selectPane(w, r)
 
@@ -2696,7 +2695,7 @@ func TestSelectPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"5"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"5"}`))
 		r.SetPathValue("session", "dev")
 		h.selectPane(w, r)
 
@@ -2722,7 +2721,7 @@ func TestSelectPaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%99"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%99"}`))
 		r.SetPathValue("session", "dev")
 		h.selectPane(w, r)
 
@@ -2740,7 +2739,7 @@ func TestNewWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/new-window", nil)
 		r.SetPathValue("session", "dev")
 		h.newWindow(w, r)
 
@@ -2777,7 +2776,7 @@ func TestNewWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/new-window", nil)
 		r.SetPathValue("session", "dev")
 		h.newWindow(w, r)
 
@@ -2815,7 +2814,7 @@ func TestNewWindowHandler(t *testing.T) {
 
 		for i := range 2 {
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
+			r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/new-window", nil)
 			r.SetPathValue("session", "dev")
 			h.newWindow(w, r)
 			if w.Code != http.StatusNoContent {
@@ -2839,7 +2838,7 @@ func TestNewWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/new-window", nil)
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/new-window", nil)
 		r.SetPathValue("session", "bad name")
 		h.newWindow(w, r)
 
@@ -2858,7 +2857,7 @@ func TestNewWindowHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/new-window", nil)
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/new-window", nil)
 		r.SetPathValue("session", "dev")
 		h.newWindow(w, r)
 
@@ -2876,7 +2875,7 @@ func TestKillWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{"index":1}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{"index":1}`))
 		r.SetPathValue("session", "dev")
 		h.killWindow(w, r)
 
@@ -2890,7 +2889,7 @@ func TestKillWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/kill-window", strings.NewReader(`{"index":0}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/kill-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "bad name")
 		h.killWindow(w, r)
 
@@ -2904,7 +2903,7 @@ func TestKillWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{"index":-1}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{"index":-1}`))
 		r.SetPathValue("session", "dev")
 		h.killWindow(w, r)
 
@@ -2918,7 +2917,7 @@ func TestKillWindowHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{bad}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
 		h.killWindow(w, r)
 
@@ -2937,7 +2936,7 @@ func TestKillWindowHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/ghost/kill-window", strings.NewReader(`{"index":0}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/ghost/kill-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "ghost")
 		h.killWindow(w, r)
 
@@ -2960,7 +2959,7 @@ func TestKillPaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%3"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%3"}`))
 		r.SetPathValue("session", "dev")
 		h.killPane(w, r)
 
@@ -2974,7 +2973,7 @@ func TestKillPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/kill-pane", strings.NewReader(`{"paneId":"%0"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/kill-pane", strings.NewReader(`{"paneId":"%0"}`))
 		r.SetPathValue("session", "bad name")
 		h.killPane(w, r)
 
@@ -2988,7 +2987,7 @@ func TestKillPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"3"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"3"}`))
 		r.SetPathValue("session", "dev")
 		h.killPane(w, r)
 
@@ -3010,7 +3009,7 @@ func TestKillPaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%99"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%99"}`))
 		r.SetPathValue("session", "dev")
 		h.killPane(w, r)
 
@@ -3033,7 +3032,7 @@ func TestSplitPaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
 		h.splitPane(w, r)
 
@@ -3058,7 +3057,7 @@ func TestSplitPaneHandler(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(
-			"POST",
+			http.MethodPost,
 			"/api/tmux/sessions/dev/split-pane",
 			strings.NewReader(`{"paneId":"%0","direction":"vertical","operationId":"op-pane-1"}`),
 		)
@@ -3097,7 +3096,7 @@ func TestSplitPaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"horizontal"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"horizontal"}`))
 		r.SetPathValue("session", "dev")
 		h.splitPane(w, r)
 
@@ -3125,7 +3124,7 @@ func TestSplitPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
 		h.splitPane(w, r)
 
@@ -3142,7 +3141,7 @@ func TestSplitPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/bad%20name/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "bad name")
 		h.splitPane(w, r)
 
@@ -3156,7 +3155,7 @@ func TestSplitPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"0","direction":"vertical"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
 		h.splitPane(w, r)
 
@@ -3170,7 +3169,7 @@ func TestSplitPaneHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, &mockTmux{}, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"diagonal"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"diagonal"}`))
 		r.SetPathValue("session", "dev")
 		h.splitPane(w, r)
 
@@ -3192,7 +3191,7 @@ func TestSplitPaneHandler(t *testing.T) {
 		}
 		h, _ := newTestHandler(t, tm, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
 		h.splitPane(w, r)
 
@@ -3213,7 +3212,7 @@ func TestPaneScopedHandlersRejectPaneOutsideSession(t *testing.T) {
 			name: "select-pane",
 			run: func(h *Handler) *httptest.ResponseRecorder {
 				w := httptest.NewRecorder()
-				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%9"}`))
+				r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%9"}`))
 				r.SetPathValue("session", "dev")
 				h.selectPane(w, r)
 				return w
@@ -3223,7 +3222,7 @@ func TestPaneScopedHandlersRejectPaneOutsideSession(t *testing.T) {
 			name: "rename-pane",
 			run: func(h *Handler) *httptest.ResponseRecorder {
 				w := httptest.NewRecorder()
-				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%9","title":"logs"}`))
+				r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%9","title":"logs"}`))
 				r.SetPathValue("session", "dev")
 				h.renamePane(w, r)
 				return w
@@ -3233,7 +3232,7 @@ func TestPaneScopedHandlersRejectPaneOutsideSession(t *testing.T) {
 			name: "kill-pane",
 			run: func(h *Handler) *httptest.ResponseRecorder {
 				w := httptest.NewRecorder()
-				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%9"}`))
+				r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%9"}`))
 				r.SetPathValue("session", "dev")
 				h.killPane(w, r)
 				return w
@@ -3243,7 +3242,7 @@ func TestPaneScopedHandlersRejectPaneOutsideSession(t *testing.T) {
 			name: "split-pane",
 			run: func(h *Handler) *httptest.ResponseRecorder {
 				w := httptest.NewRecorder()
-				r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%9","direction":"vertical"}`))
+				r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%9","direction":"vertical"}`))
 				r.SetPathValue("session", "dev")
 				h.splitPane(w, r)
 				return w
@@ -3279,7 +3278,7 @@ func TestActivityDeltaHandlerOverflow(t *testing.T) {
 	h, _ := seededActivityDeltaHandler(t)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=0&limit=2", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/activity/delta?since=0&limit=2", nil)
 	h.activityDelta(w, r)
 
 	if w.Code != http.StatusOK {
@@ -3304,7 +3303,7 @@ func TestActivityDeltaHandlerWithoutOverflow(t *testing.T) {
 	h, _ := seededActivityDeltaHandler(t)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=2&limit=5", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/activity/delta?since=2&limit=5", nil)
 	h.activityDelta(w, r)
 
 	if w.Code != http.StatusOK {
@@ -3330,7 +3329,7 @@ func TestActivityDeltaHandlerInvalidSince(t *testing.T) {
 	h, _ := seededActivityDeltaHandler(t)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/activity/delta?since=-1", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/activity/delta?since=-1", nil)
 	h.activityDelta(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -3454,7 +3453,7 @@ func TestActivityStatsHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/tmux/activity/stats", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/activity/stats", nil)
 	h.activityStats(w, r)
 
 	if w.Code != http.StatusOK {
@@ -3537,7 +3536,7 @@ func TestTimelineSearchHandler(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(
-			"GET",
+			http.MethodGet,
 			"/api/tmux/timeline?session=dev&q=panic&severity=error&limit=5",
 			nil,
 		)
@@ -3565,7 +3564,7 @@ func TestTimelineSearchHandler(t *testing.T) {
 		t.Parallel()
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/timeline?limit=1", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/timeline?limit=1", nil)
 		h.timelineSearch(w, r)
 
 		if w.Code != http.StatusOK {
@@ -3582,7 +3581,7 @@ func TestTimelineSearchHandler(t *testing.T) {
 		t.Parallel()
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/timeline?session=bad%20name", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/timeline?session=bad%20name", nil)
 		h.timelineSearch(w, r)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
@@ -3596,7 +3595,7 @@ func TestTimelineSearchHandler(t *testing.T) {
 		t.Parallel()
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/tmux/timeline?since=not-time", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/tmux/timeline?since=not-time", nil)
 		h.timelineSearch(w, r)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
@@ -3639,7 +3638,7 @@ func TestOpsOverviewAndServicesHandlers(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/overview", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/overview", nil)
 	h.opsOverview(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("opsOverview status = %d, want 200", w.Code)
@@ -3653,7 +3652,7 @@ func TestOpsOverviewAndServicesHandlers(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("GET", "/api/ops/services", nil)
+	r = httptest.NewRequest(http.MethodGet, "/api/ops/services", nil)
 	h.opsServices(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("opsServices status = %d, want 200", w.Code)
@@ -3719,7 +3718,7 @@ func TestOpsServiceActionHandler(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(
-		"POST",
+		http.MethodPost,
 		"/api/ops/services/sentinel/action",
 		strings.NewReader(`{"action":"restart"}`),
 	)
@@ -3783,7 +3782,7 @@ func TestOpsServiceStatusHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/sentinel-updater/status", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/sentinel-updater/status", nil)
 	r.SetPathValue("service", "sentinel-updater")
 	h.opsServiceStatus(w, r)
 	if w.Code != http.StatusOK {
@@ -3813,7 +3812,7 @@ func TestOpsServiceStatusHandlerNotFound(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/missing/status", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/missing/status", nil)
 	r.SetPathValue("service", "missing")
 	h.opsServiceStatus(w, r)
 	if w.Code != http.StatusNotFound {
@@ -3833,7 +3832,7 @@ func TestOpsServiceActionHandlerInvalidInput(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(
-		"POST",
+		http.MethodPost,
 		"/api/ops/services/sentinel/action",
 		strings.NewReader(`{"action":"invalid"}`),
 	)
@@ -3859,7 +3858,7 @@ func TestOpsServiceActionHandlerNotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(
-		"POST",
+		http.MethodPost,
 		"/api/ops/services/missing/action",
 		strings.NewReader(`{"action":"restart"}`),
 	)
@@ -3910,7 +3909,7 @@ func TestOpsAlertsAndActivityHandlers(t *testing.T) {
 
 	t.Run("list alerts", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/alerts?status=open&limit=5", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?status=open&limit=5", nil)
 		h.opsAlerts(w, r)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
@@ -3925,7 +3924,7 @@ func TestOpsAlertsAndActivityHandlers(t *testing.T) {
 
 	t.Run("list activity", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/activity?q=restarted&severity=warn&source=service", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/activity?q=restarted&severity=warn&source=service", nil)
 		h.opsActivity(w, r)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
@@ -3944,7 +3943,7 @@ func TestOpsAlertsAndActivityHandlers(t *testing.T) {
 
 	t.Run("list activity invalid severity", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/activity?severity=invalid", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/activity?severity=invalid", nil)
 		h.opsActivity(w, r)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
@@ -3961,7 +3960,7 @@ func TestOpsAlertsAndActivityHandlers(t *testing.T) {
 		h.events = hub
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", fmt.Sprintf("/api/ops/alerts/%d/ack", alert.ID), nil)
+		r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/ops/alerts/%d/ack", alert.ID), nil)
 		r.SetPathValue("alert", fmt.Sprintf("%d", alert.ID))
 		h.ackOpsAlert(w, r)
 		if w.Code != http.StatusOK {
@@ -3998,7 +3997,7 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 	ctx := context.Background()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/runbooks", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/runbooks", nil)
 	h.opsRunbooks(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("opsRunbooks status = %d, want 200", w.Code)
@@ -4021,7 +4020,7 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 	h.events = eventHub
 
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("POST", "/api/ops/runbooks/"+runbookID+"/run", nil)
+	r = httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+runbookID+"/run", nil)
 	r.SetPathValue("runbook", runbookID)
 	h.runOpsRunbook(w, r)
 	if w.Code != http.StatusAccepted {
@@ -4036,7 +4035,7 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("GET", "/api/ops/jobs/"+jobID, nil)
+	r = httptest.NewRequest(http.MethodGet, "/api/ops/jobs/"+jobID, nil)
 	r.SetPathValue("job", jobID)
 	h.opsJob(w, r)
 	if w.Code != http.StatusOK {
@@ -4077,7 +4076,7 @@ func TestStorageStatsAndFlushHandlers(t *testing.T) {
 	getResources := func(t *testing.T) map[string]map[string]any {
 		t.Helper()
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/storage/stats", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/storage/stats", nil)
 		h.storageStats(w, r)
 		if w.Code != http.StatusOK {
 			t.Fatalf("storageStats status = %d, want 200", w.Code)
@@ -4112,7 +4111,7 @@ func TestStorageStatsAndFlushHandlers(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(
-		"POST",
+		http.MethodPost,
 		"/api/ops/storage/flush",
 		strings.NewReader(`{"resource":"timeline"}`),
 	)
@@ -4193,7 +4192,7 @@ func TestFlushStorageRejectsInvalidResource(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(
-		"POST",
+		http.MethodPost,
 		"/api/ops/storage/flush",
 		strings.NewReader(`{"resource":"unknown"}`),
 	)
@@ -4229,7 +4228,7 @@ func TestDeleteSessionGuardrailConfirmRequired(t *testing.T) {
 	h.events = hub
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
+	r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/dev", nil)
 	r.SetPathValue("session", "dev")
 	h.deleteSession(w, r)
 	if w.Code != http.StatusPreconditionRequired {
@@ -4248,7 +4247,7 @@ func TestDeleteSessionGuardrailConfirmRequired(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
+	r = httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/dev", nil)
 	r.SetPathValue("session", "dev")
 	r.Header.Set("X-Sentinel-Guardrail-Confirm", "true")
 	h.deleteSession(w, r)
@@ -4270,7 +4269,7 @@ func TestGuardrailEndpoints(t *testing.T) {
 		t.Parallel()
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/guardrails/rules", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/rules", nil)
 		h.listGuardrailRules(w, r)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
@@ -4287,7 +4286,7 @@ func TestGuardrailEndpoints(t *testing.T) {
 		t.Parallel()
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(`{
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/evaluate", strings.NewReader(`{
 			"action":"pane.kill",
 			"sessionName":"dev",
 			"paneId":"%1",
@@ -4309,7 +4308,7 @@ func TestGuardrailEndpoints(t *testing.T) {
 		t.Parallel()
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PATCH", "/api/ops/guardrails/rules/action.session.kill.confirm", strings.NewReader(`{
+		r := httptest.NewRequest(http.MethodPatch, "/api/ops/guardrails/rules/action.session.kill.confirm", strings.NewReader(`{
 			"name":"Confirm session kill",
 			"scope":"action",
 			"pattern":"^session\\.kill$",
@@ -4335,7 +4334,7 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(
-		"POST",
+		http.MethodPost,
 		fmt.Sprintf("/api/tmux/sessions/%s/seen", sessionName),
 		strings.NewReader(`{"scope":"pane","paneId":"%1"}`),
 	)
@@ -4502,7 +4501,7 @@ func TestMarkSessionSeenHandlerInvalidScope(t *testing.T) {
 
 	h, _ := newTestHandler(t, nil, nil)
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/tmux/sessions/dev/seen", strings.NewReader(`{"scope":"bad"}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/seen", strings.NewReader(`{"scope":"bad"}`))
 	r.SetPathValue("session", "dev")
 	h.markSessionSeen(w, r)
 
@@ -4522,7 +4521,7 @@ func TestSetTmuxPresenceHandler(t *testing.T) {
 
 		h, st := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/tmux/presence", strings.NewReader(`{
+		r := httptest.NewRequest(http.MethodPut, "/api/tmux/presence", strings.NewReader(`{
 		  "terminalId":"term-1",
 		  "session":"dev",
 		  "windowIndex":1,
@@ -4559,7 +4558,7 @@ func TestSetTmuxPresenceHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/tmux/presence", strings.NewReader(`{
+		r := httptest.NewRequest(http.MethodPut, "/api/tmux/presence", strings.NewReader(`{
 		  "terminalId":"term-1",
 		  "session":"dev",
 		  "windowIndex":1,
@@ -4589,7 +4588,7 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 
 	// Register a custom service.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{
 		"name":"myapp",
 		"displayName":"My App",
 		"manager":"systemd",
@@ -4616,7 +4615,7 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 
 	// Duplicate registration should conflict.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+	r = httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{
 		"name":"myapp",
 		"displayName":"My App",
 		"manager":"systemd",
@@ -4630,7 +4629,7 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 
 	// Unregister the service.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("DELETE", "/api/ops/services/myapp", nil)
+	r = httptest.NewRequest(http.MethodDelete, "/api/ops/services/myapp", nil)
 	r.SetPathValue("service", "myapp")
 	h.unregisterOpsService(w, r)
 	if w.Code != http.StatusOK {
@@ -4644,7 +4643,7 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 
 	// Unregister again should 404.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("DELETE", "/api/ops/services/myapp", nil)
+	r = httptest.NewRequest(http.MethodDelete, "/api/ops/services/myapp", nil)
 	r.SetPathValue("service", "myapp")
 	h.unregisterOpsService(w, r)
 	if w.Code != http.StatusNotFound {
@@ -4659,7 +4658,7 @@ func TestRegisterOpsServiceValidation(t *testing.T) {
 
 	// Missing name.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{
 		"unit":"myapp.service"
 	}`))
 	h.registerOpsService(w, r)
@@ -4669,7 +4668,7 @@ func TestRegisterOpsServiceValidation(t *testing.T) {
 
 	// Missing unit.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("POST", "/api/ops/services", strings.NewReader(`{
+	r = httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{
 		"name":"myapp"
 	}`))
 	h.registerOpsService(w, r)
@@ -4699,7 +4698,7 @@ func TestOpsServiceLogsHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/sentinel/logs?lines=50", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/sentinel/logs?lines=50", nil)
 	r.SetPathValue("service", "sentinel")
 	h.opsServiceLogs(w, r)
 	if w.Code != http.StatusOK {
@@ -4723,7 +4722,7 @@ func TestOpsServiceLogsNotFound(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/missing/logs", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/missing/logs", nil)
 	r.SetPathValue("service", "missing")
 	h.opsServiceLogs(w, r)
 	if w.Code != http.StatusNotFound {
@@ -4752,7 +4751,7 @@ func TestOpsMetricsHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/metrics", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/metrics", nil)
 	h.opsMetrics(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
@@ -4785,7 +4784,7 @@ func TestBrowseOpsServicesHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/browse", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/browse", nil)
 	h.browseOpsServices(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
@@ -4832,7 +4831,7 @@ func TestOpsUnitActionHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/services/unit/action",
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/services/unit/action",
 		strings.NewReader(`{"unit":"`+testNginxUnit+`","scope":"system","manager":"systemd","action":"restart"}`))
 	r.Header.Set("Content-Type", "application/json")
 	h.opsUnitAction(w, r)
@@ -4848,7 +4847,7 @@ func TestOpsUnitActionHandlerMissingUnit(t *testing.T) {
 	h.ops = &mockOpsControlPlane{}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/services/unit/action",
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/services/unit/action",
 		strings.NewReader(`{"scope":"system","manager":"systemd","action":"restart"}`))
 	r.Header.Set("Content-Type", "application/json")
 	h.opsUnitAction(w, r)
@@ -4874,7 +4873,7 @@ func TestOpsUnitStatusHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/unit/status?unit="+testNginxUnit+"&scope=system&manager=systemd", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/unit/status?unit="+testNginxUnit+"&scope=system&manager=systemd", nil)
 	h.opsUnitStatus(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
@@ -4904,7 +4903,7 @@ func TestOpsUnitLogsHandler(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/unit/logs?unit="+testNginxUnit+"&scope=system&manager=systemd&lines=50", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/unit/logs?unit="+testNginxUnit+"&scope=system&manager=systemd&lines=50", nil)
 	h.opsUnitLogs(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
@@ -4932,7 +4931,7 @@ func TestOpsConfigHandler(t *testing.T) {
 
 	// GET config.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/config", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
 	h.opsConfig(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET config status = %d, want 200", w.Code)
@@ -4945,7 +4944,7 @@ func TestOpsConfigHandler(t *testing.T) {
 
 	// PATCH config.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("PATCH", "/api/ops/config", strings.NewReader(`{"content":"[server]\nport = 5050\n"}`))
+	r = httptest.NewRequest(http.MethodPatch, "/api/ops/config", strings.NewReader(`{"content":"[server]\nport = 5050\n"}`))
 	h.patchOpsConfig(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH config status = %d, want 200; body = %s", w.Code, w.Body.String())
@@ -4968,7 +4967,7 @@ func TestOpsConfigNoPath(t *testing.T) {
 	// configPath is empty by default.
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/config", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
 	h.opsConfig(w, r)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", w.Code)
@@ -4983,7 +4982,7 @@ func TestOpsPatchConfigValidation(t *testing.T) {
 
 	// Empty content should fail.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("PATCH", "/api/ops/config", strings.NewReader(`{"content":""}`))
+	r := httptest.NewRequest(http.MethodPatch, "/api/ops/config", strings.NewReader(`{"content":""}`))
 	h.patchOpsConfig(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
@@ -5003,7 +5002,7 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 
 	// Create runbook.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(`{
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(`{
 		"name":"deploy",
 		"description":"Deploy the app",
 		"steps":[{"type":"run","title":"Build","command":"make build"}],
@@ -5026,7 +5025,7 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 
 	// Update runbook.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("PUT", "/api/ops/runbooks/"+rbID, strings.NewReader(`{
+	r = httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/"+rbID, strings.NewReader(`{
 		"name":"deploy-v2",
 		"description":"Deploy v2",
 		"steps":[{"type":"run","title":"Build","command":"make build-all"}],
@@ -5046,7 +5045,7 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 
 	// Delete runbook.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("DELETE", "/api/ops/runbooks/"+rbID, nil)
+	r = httptest.NewRequest(http.MethodDelete, "/api/ops/runbooks/"+rbID, nil)
 	r.SetPathValue("runbook", rbID)
 	h.deleteOpsRunbook(w, r)
 	if w.Code != http.StatusOK {
@@ -5055,7 +5054,7 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 
 	// Delete again should 404.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("DELETE", "/api/ops/runbooks/"+rbID, nil)
+	r = httptest.NewRequest(http.MethodDelete, "/api/ops/runbooks/"+rbID, nil)
 	r.SetPathValue("runbook", rbID)
 	h.deleteOpsRunbook(w, r)
 	if w.Code != http.StatusNotFound {
@@ -5070,7 +5069,7 @@ func TestCreateOpsRunbookValidation(t *testing.T) {
 
 	// Missing name.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(`{
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(`{
 		"description":"no name"
 	}`))
 	h.createOpsRunbook(w, r)
@@ -5085,7 +5084,7 @@ func TestUpdateOpsRunbookNotFound(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("PUT", "/api/ops/runbooks/nonexistent", strings.NewReader(`{
+	r := httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/nonexistent", strings.NewReader(`{
 		"name":"test"
 	}`))
 	r.SetPathValue("runbook", "nonexistent")
@@ -5130,7 +5129,7 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 
 	// Trigger the schedule.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules/"+sched.ID+"/trigger", nil)
 	r.SetPathValue("schedule", sched.ID)
 	h.triggerSchedule(w, r)
 	if w.Code != http.StatusAccepted {
@@ -5210,7 +5209,7 @@ func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules/"+sched.ID+"/trigger", nil)
 	r.SetPathValue("schedule", sched.ID)
 	h.triggerSchedule(w, r)
 	if w.Code != http.StatusAccepted {
@@ -5274,7 +5273,7 @@ func TestDeleteRunbookCascadesSchedules(t *testing.T) {
 
 	// Delete the runbook.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("DELETE", "/api/ops/runbooks/"+rb.ID, nil)
+	r := httptest.NewRequest(http.MethodDelete, "/api/ops/runbooks/"+rb.ID, nil)
 	r.SetPathValue("runbook", rb.ID)
 	h.deleteOpsRunbook(w, r)
 	if w.Code != http.StatusOK {
@@ -5309,7 +5308,7 @@ func TestCreateRunbookRejectsInvalidStepType(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(tc.body))
+			r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(tc.body))
 			h.createOpsRunbook(w, r)
 			if w.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
@@ -5356,7 +5355,7 @@ func TestCreateRunbookRejectsInvalidWebhookURL(t *testing.T) {
 
 	body := `{"name":"bad-hook","webhookURL":"ftp://not-http","steps":[{"type":"run","title":"Build","command":"make"}]}`
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(body))
 	h.createOpsRunbook(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
@@ -5395,7 +5394,7 @@ func TestTriggerCronScheduleRecomputesNextRunAt(t *testing.T) {
 
 	// Trigger manually.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules/"+sched.ID+"/trigger", nil)
 	r.SetPathValue("schedule", sched.ID)
 	h.triggerSchedule(w, r)
 	if w.Code != http.StatusAccepted {
@@ -5445,7 +5444,7 @@ func TestGuardrailFailClosedOnEvaluateError(t *testing.T) {
 	_ = st.Close()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("DELETE", "/api/tmux/sessions/dev", nil)
+	r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/dev", nil)
 	r.SetPathValue("session", "dev")
 
 	allowed := h.enforceGuardrail(w, r, guardrails.Input{
@@ -5468,7 +5467,7 @@ func TestCreateGuardrailRule(t *testing.T) {
 
 	// Create a rule with explicit ID.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(`{
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/rules", strings.NewReader(`{
 		"id": "test.create.rule",
 		"name": "Test Rule",
 		"scope": "action",
@@ -5517,7 +5516,7 @@ func TestCreateGuardrailRuleAutoID(t *testing.T) {
 
 	// Create a rule without ID — should auto-generate.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(`{
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/rules", strings.NewReader(`{
 		"pattern": "^pane\\.split$",
 		"enabled": true
 	}`))
@@ -5546,7 +5545,7 @@ func TestCreateGuardrailRuleValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/api/ops/guardrails/rules", strings.NewReader(tt.body))
+			r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/rules", strings.NewReader(tt.body))
 			r.Header.Set("Content-Type", "application/json")
 			h.createGuardrailRule(w, r)
 			if w.Code != http.StatusBadRequest {
@@ -5577,7 +5576,7 @@ func TestDeleteGuardrailRule(t *testing.T) {
 
 	// Delete it.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("DELETE", "/api/ops/guardrails/rules/test.delete.rule", nil)
+	r := httptest.NewRequest(http.MethodDelete, "/api/ops/guardrails/rules/test.delete.rule", nil)
 	r.SetPathValue("rule", "test.delete.rule")
 	h.deleteGuardrailRule(w, r)
 
@@ -5612,7 +5611,7 @@ func TestDeleteGuardrailRuleNotFound(t *testing.T) {
 	h.guardrails = guardrails.New(st)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("DELETE", "/api/ops/guardrails/rules/nonexistent", nil)
+	r := httptest.NewRequest(http.MethodDelete, "/api/ops/guardrails/rules/nonexistent", nil)
 	r.SetPathValue("rule", "nonexistent")
 	h.deleteGuardrailRule(w, r)
 
@@ -5633,7 +5632,7 @@ func TestListSchedulesHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/schedules", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/schedules", nil)
 		h.listSchedules(w, r)
 
 		if w.Code != http.StatusOK {
@@ -5668,7 +5667,7 @@ func TestListSchedulesHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/schedules", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/schedules", nil)
 		h.listSchedules(w, r)
 
 		if w.Code != http.StatusOK {
@@ -5688,7 +5687,7 @@ func TestListSchedulesHandler(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/schedules", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/schedules", nil)
 		h.listSchedules(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -5716,7 +5715,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 
 		body := fmt.Sprintf(`{"runbookId":"%s","name":"my-cron","scheduleType":"cron","cronExpr":"0 * * * *","timezone":"UTC","enabled":true}`, rb.ID)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(body))
 		h.createSchedule(w, r)
 
 		if w.Code != http.StatusCreated {
@@ -5747,7 +5746,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 		future := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
 		body := fmt.Sprintf(`{"runbookId":"%s","name":"my-once","scheduleType":"once","runAt":"%s","enabled":true}`, rb.ID, future)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(body))
 		h.createSchedule(w, r)
 
 		if w.Code != http.StatusCreated {
@@ -5773,7 +5772,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 				t.Parallel()
 
 				w := httptest.NewRecorder()
-				r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(tt.body))
+				r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(tt.body))
 				h.createSchedule(w, r)
 
 				if w.Code != http.StatusBadRequest {
@@ -5789,7 +5788,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
 		h.createSchedule(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -5825,7 +5824,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 
 		body := fmt.Sprintf(`{"runbookId":"%s","name":"updated","scheduleType":"cron","cronExpr":"30 * * * *","timezone":"UTC","enabled":true}`, rb.ID)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/schedules/"+sched.ID, strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/"+sched.ID, strings.NewReader(body))
 		r.SetPathValue("schedule", sched.ID)
 		h.updateSchedule(w, r)
 
@@ -5851,7 +5850,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 		})
 		body := fmt.Sprintf(`{"runbookId":"%s","name":"x","scheduleType":"cron","cronExpr":"0 * * * *","timezone":"UTC","enabled":true}`, rb.ID)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/schedules/nonexistent", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/nonexistent", strings.NewReader(body))
 		r.SetPathValue("schedule", "nonexistent")
 		h.updateSchedule(w, r)
 
@@ -5865,7 +5864,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/schedules/", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
 		r.SetPathValue("schedule", "")
 		h.updateSchedule(w, r)
 
@@ -5880,7 +5879,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/schedules/abc", strings.NewReader(`{}`))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/abc", strings.NewReader(`{}`))
 		r.SetPathValue("schedule", "abc")
 		h.updateSchedule(w, r)
 
@@ -5910,7 +5909,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 		})
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/schedules/"+sched.ID, nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/"+sched.ID, nil)
 		r.SetPathValue("schedule", sched.ID)
 		h.deleteSchedule(w, r)
 
@@ -5929,7 +5928,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/schedules/nonexistent", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/nonexistent", nil)
 		r.SetPathValue("schedule", "nonexistent")
 		h.deleteSchedule(w, r)
 
@@ -5943,7 +5942,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/schedules/", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/", nil)
 		r.SetPathValue("schedule", "")
 		h.deleteSchedule(w, r)
 
@@ -5958,7 +5957,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/schedules/abc", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/abc", nil)
 		r.SetPathValue("schedule", "abc")
 		h.deleteSchedule(w, r)
 
@@ -6108,7 +6107,7 @@ func TestDeleteOpsAlertHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", fmt.Sprintf("/api/ops/alerts/%d", alert.ID), nil)
+		r := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/ops/alerts/%d", alert.ID), nil)
 		r.SetPathValue("alert", fmt.Sprintf("%d", alert.ID))
 		h.deleteOpsAlert(w, r)
 
@@ -6140,7 +6139,7 @@ func TestDeleteOpsAlertHandler(t *testing.T) {
 				t.Parallel()
 
 				w := httptest.NewRecorder()
-				r := httptest.NewRequest("DELETE", "/api/ops/alerts/"+tt.id, nil)
+				r := httptest.NewRequest(http.MethodDelete, "/api/ops/alerts/"+tt.id, nil)
 				r.SetPathValue("alert", tt.id)
 				h.deleteOpsAlert(w, r)
 
@@ -6156,7 +6155,7 @@ func TestDeleteOpsAlertHandler(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/alerts/99999", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/alerts/99999", nil)
 		r.SetPathValue("alert", "99999")
 		h.deleteOpsAlert(w, r)
 
@@ -6180,7 +6179,7 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/services/discover", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/services/discover", nil)
 		h.discoverOpsServices(w, r)
 
 		if w.Code != http.StatusOK {
@@ -6209,7 +6208,7 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/services/discover", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/services/discover", nil)
 		h.discoverOpsServices(w, r)
 
 		if w.Code != http.StatusInternalServerError {
@@ -6224,7 +6223,7 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 		h.ops = nil
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/services/discover", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/services/discover", nil)
 		h.discoverOpsServices(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -6256,7 +6255,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/jobs/"+job.ID, nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/"+job.ID, nil)
 		r.SetPathValue("job", job.ID)
 		h.deleteOpsJob(w, r)
 
@@ -6276,7 +6275,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/jobs/nonexistent", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/nonexistent", nil)
 		r.SetPathValue("job", "nonexistent")
 		h.deleteOpsJob(w, r)
 
@@ -6291,7 +6290,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/jobs/", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/", nil)
 		r.SetPathValue("job", "")
 		h.deleteOpsJob(w, r)
 
@@ -6307,7 +6306,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 		h.repo = nil
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/jobs/abc", nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/abc", nil)
 		r.SetPathValue("job", "abc")
 		h.deleteOpsJob(w, r)
 
@@ -6323,7 +6322,7 @@ func TestOpsJobHandlerNotFound(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/jobs/nonexistent", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/jobs/nonexistent", nil)
 	r.SetPathValue("job", "nonexistent")
 	h.opsJob(w, r)
 
@@ -6338,7 +6337,7 @@ func TestOpsJobHandlerEmptyID(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/jobs/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/jobs/", nil)
 	r.SetPathValue("job", "")
 	h.opsJob(w, r)
 
@@ -6354,7 +6353,7 @@ func TestOpsJobHandlerNilRepo(t *testing.T) {
 	h.repo = nil
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/jobs/abc", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/jobs/abc", nil)
 	r.SetPathValue("job", "abc")
 	h.opsJob(w, r)
 
@@ -6377,7 +6376,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/audit", nil)
 		h.listGuardrailAudit(w, r)
 
 		if w.Code != http.StatusOK {
@@ -6398,7 +6397,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit?limit=10", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/audit?limit=10", nil)
 		h.listGuardrailAudit(w, r)
 
 		if w.Code != http.StatusOK {
@@ -6413,7 +6412,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit?limit=bad", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/audit?limit=bad", nil)
 		h.listGuardrailAudit(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6428,7 +6427,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit?limit=0", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/audit?limit=0", nil)
 		h.listGuardrailAudit(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6443,7 +6442,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 		h.guardrails = nil
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/guardrails/audit", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/audit", nil)
 		h.listGuardrailAudit(w, r)
 
 		if w.Code != http.StatusOK {
@@ -6472,7 +6471,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 
 		body := `{"name":"updated","pattern":"rm -rf /","mode":"warn","severity":"warn","enabled":true,"priority":5}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-upd", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rules/rule-upd", strings.NewReader(body))
 		r.SetPathValue("rule", "rule-upd")
 		h.updateGuardrailRule(w, r)
 
@@ -6489,7 +6488,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 
 		body := `{"name":"x","pattern":"","mode":"block","severity":"error","enabled":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
 		r.SetPathValue("rule", "rule-1")
 		h.updateGuardrailRule(w, r)
 
@@ -6506,7 +6505,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 
 		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error"}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
 		r.SetPathValue("rule", "rule-1")
 		h.updateGuardrailRule(w, r)
 
@@ -6523,7 +6522,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 
 		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error","enabled":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rules/", strings.NewReader(body))
 		r.SetPathValue("rule", "")
 		h.updateGuardrailRule(w, r)
 
@@ -6540,7 +6539,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 
 		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error","enabled":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rules/rule-1", strings.NewReader(body))
 		r.SetPathValue("rule", "rule-1")
 		h.updateGuardrailRule(w, r)
 
@@ -6562,7 +6561,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/alerts?limit=bad", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?limit=bad", nil)
 		h.opsAlerts(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6576,7 +6575,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/alerts", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts", nil)
 		h.opsAlerts(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -6589,7 +6588,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/alerts?status=open", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?status=open", nil)
 		h.opsAlerts(w, r)
 
 		if w.Code != http.StatusOK {
@@ -6602,7 +6601,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/alerts?status=bogus", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?status=bogus", nil)
 		h.opsAlerts(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6619,7 +6618,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/status?manager=systemd", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?manager=systemd", nil)
 		h.opsUnitStatus(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6632,7 +6631,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/status?unit=test.service&manager=bad", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?unit=test.service&manager=bad", nil)
 		h.opsUnitStatus(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6645,7 +6644,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/status?unit=test.service&manager=systemd&scope=bad", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?unit=test.service&manager=systemd&scope=bad", nil)
 		h.opsUnitStatus(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6659,7 +6658,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/status?unit=test.service&manager=systemd", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?unit=test.service&manager=systemd", nil)
 		h.opsUnitStatus(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -6676,7 +6675,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/logs?manager=systemd", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?manager=systemd", nil)
 		h.opsUnitLogs(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6689,7 +6688,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=bad", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=bad", nil)
 		h.opsUnitLogs(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6702,7 +6701,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 
 		h, _ := newTestHandler(t, nil, nil)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd&scope=bad", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=systemd&scope=bad", nil)
 		h.opsUnitLogs(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6721,7 +6720,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd&scope=user&lines=50", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=systemd&scope=user&lines=50", nil)
 		h.opsUnitLogs(w, r)
 
 		if w.Code != http.StatusOK {
@@ -6740,7 +6739,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd&scope=user", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=systemd&scope=user", nil)
 		h.opsUnitLogs(w, r)
 
 		if w.Code != http.StatusInternalServerError {
@@ -6754,7 +6753,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/units/logs?unit=test.service&manager=systemd", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=systemd", nil)
 		h.opsUnitLogs(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -6776,7 +6775,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		body := `{"session":"dev","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
 		h.setTmuxPresence(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6790,7 +6789,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		body := `{"terminalId":"t1","session":"inv@lid","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
 		h.setTmuxPresence(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6804,7 +6803,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		body := `{"terminalId":"t1","session":"dev","windowIndex":-2,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
 		h.setTmuxPresence(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6818,7 +6817,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		body := `{"terminalId":"t1","session":"dev","windowIndex":0,"paneId":"nopercent","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
 		h.setTmuxPresence(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6833,7 +6832,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 		h.repo = nil
 		body := `{"terminalId":"t1","session":"dev","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/tmux/presence", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
 		h.setTmuxPresence(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -6855,7 +6854,7 @@ func TestOpsOverviewHandlerErrors(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/overview", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/overview", nil)
 		h.opsOverview(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -6873,7 +6872,7 @@ func TestOpsOverviewHandlerErrors(t *testing.T) {
 			},
 		}
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/overview", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/overview", nil)
 		h.opsOverview(w, r)
 
 		if w.Code != http.StatusInternalServerError {
@@ -6891,7 +6890,7 @@ func TestOpsServicesHandlerErrors(t *testing.T) {
 		h, _ := newTestHandler(t, nil, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/services", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/services", nil)
 		h.opsServices(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -6909,7 +6908,7 @@ func TestOpsServicesHandlerErrors(t *testing.T) {
 			},
 		}
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/api/ops/services", nil)
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/services", nil)
 		h.opsServices(w, r)
 
 		if w.Code != http.StatusInternalServerError {
@@ -6928,7 +6927,7 @@ func TestOpsMetricsNilOps(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 	h.ops = nil
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/metrics", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/metrics", nil)
 	h.opsMetrics(w, r)
 
 	if w.Code != http.StatusServiceUnavailable {
@@ -6951,7 +6950,7 @@ func TestEvaluateGuardrailHandler(t *testing.T) {
 
 		body := `{"action":"rm -rf /","sessionName":"dev","windowIndex":0,"paneId":"%1"}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/evaluate", strings.NewReader(body))
 		h.evaluateGuardrail(w, r)
 
 		if w.Code != http.StatusOK {
@@ -6967,7 +6966,7 @@ func TestEvaluateGuardrailHandler(t *testing.T) {
 
 		body := `{"action":"test","paneId":"nopercent"}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/evaluate", strings.NewReader(body))
 		h.evaluateGuardrail(w, r)
 
 		if w.Code != http.StatusBadRequest {
@@ -6983,7 +6982,7 @@ func TestEvaluateGuardrailHandler(t *testing.T) {
 
 		body := `{"action":"test"}`
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/guardrails/evaluate", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/evaluate", strings.NewReader(body))
 		h.evaluateGuardrail(w, r)
 
 		if w.Code != http.StatusServiceUnavailable {
@@ -7008,7 +7007,7 @@ func TestOpsServiceActionHandlerInvalidActionFromService(t *testing.T) {
 
 	body := `{"action":"restart"}`
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/services/test-svc/action", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/services/test-svc/action", strings.NewReader(body))
 	r.SetPathValue("service", "test-svc")
 	h.opsServiceAction(w, r)
 
@@ -7034,7 +7033,7 @@ func TestOpsServiceLogsCustomLines(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/test-svc/logs?lines=50", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/test-svc/logs?lines=50", nil)
 	r.SetPathValue("service", "test-svc")
 	h.opsServiceLogs(w, r)
 
@@ -7055,7 +7054,7 @@ func TestAckOpsAlertNotFound(t *testing.T) {
 
 	h, _ := newTestHandler(t, nil, nil)
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/alerts/99999/ack", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/alerts/99999/ack", nil)
 	r.SetPathValue("alert", "99999")
 	h.ackOpsAlert(w, r)
 
@@ -7079,7 +7078,7 @@ func TestBrowseOpsServicesNilResult(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/services/browse", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/browse", nil)
 	h.browseOpsServices(w, r)
 
 	if w.Code != http.StatusOK {
@@ -7116,7 +7115,7 @@ func TestOpsUnitActionHandlerValidation(t *testing.T) {
 
 			h, _ := newTestHandler(t, nil, nil)
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/api/ops/units/action", strings.NewReader(tt.body))
+			r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(tt.body))
 			h.opsUnitAction(w, r)
 
 			if w.Code != http.StatusBadRequest {
@@ -7141,7 +7140,7 @@ func TestOpsUnitActionHandlerInvalidActionFromService(t *testing.T) {
 
 	body := `{"unit":"test.service","manager":"systemd","action":"start"}`
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/units/action", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(body))
 	h.opsUnitAction(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -7160,7 +7159,7 @@ func TestOpsConfigHandlerReadError(t *testing.T) {
 	h.configPath = "/nonexistent/path/config.toml"
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/config", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
 	h.opsConfig(w, r)
 
 	if w.Code != http.StatusInternalServerError {
@@ -7179,7 +7178,7 @@ func TestPatchOpsConfigHandlerEmptyContent(t *testing.T) {
 
 	body := `{"content":""}`
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("PATCH", "/api/ops/config", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPatch, "/api/ops/config", strings.NewReader(body))
 	h.patchOpsConfig(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -7198,7 +7197,7 @@ func TestStorageStatsNilRepo(t *testing.T) {
 	h.repo = nil
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/storage/stats", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/storage/stats", nil)
 	h.storageStats(w, r)
 
 	if w.Code != http.StatusServiceUnavailable {
@@ -7213,7 +7212,7 @@ func TestFlushStorageNilRepo(t *testing.T) {
 	h.repo = nil
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/storage/flush", strings.NewReader(`{"resource":"timeline"}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/storage/flush", strings.NewReader(`{"resource":"timeline"}`))
 	h.flushStorage(w, r)
 
 	if w.Code != http.StatusServiceUnavailable {
@@ -7231,7 +7230,7 @@ func TestDecodeOptionalJSON(t *testing.T) {
 	t.Run("empty body", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest("POST", "/", strings.NewReader(""))
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(""))
 		var dst struct{ Name string }
 		err := decodeOptionalJSON(r, &dst)
 		if err != nil {
@@ -7242,7 +7241,7 @@ func TestDecodeOptionalJSON(t *testing.T) {
 	t.Run("whitespace body", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest("POST", "/", strings.NewReader("   "))
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("   "))
 		var dst struct{ Name string }
 		err := decodeOptionalJSON(r, &dst)
 		if err != nil {
@@ -7253,7 +7252,7 @@ func TestDecodeOptionalJSON(t *testing.T) {
 	t.Run("valid json", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"test"}`))
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"test"}`))
 		var dst struct {
 			Name string `json:"name"`
 		}
@@ -7269,7 +7268,7 @@ func TestDecodeOptionalJSON(t *testing.T) {
 	t.Run("multiple json values", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"a"}{"name":"b"}`))
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"a"}{"name":"b"}`))
 		var dst struct {
 			Name string `json:"name"`
 		}
@@ -7282,7 +7281,7 @@ func TestDecodeOptionalJSON(t *testing.T) {
 	t.Run("unknown fields", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"a","extra":true}`))
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"a","extra":true}`))
 		var dst struct {
 			Name string `json:"name"`
 		}
@@ -7346,7 +7345,7 @@ func TestOpsActivityNilRepo(t *testing.T) {
 	h.repo = nil
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/activity", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/activity", nil)
 	h.opsActivity(w, r)
 
 	if w.Code != http.StatusServiceUnavailable {
@@ -7360,7 +7359,7 @@ func TestOpsActivityInvalidLimit(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/activity?limit=bad", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/activity?limit=bad", nil)
 	h.opsActivity(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -7379,7 +7378,7 @@ func TestOpsRunbooksNilRepo(t *testing.T) {
 	h.repo = nil
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/runbooks", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/runbooks", nil)
 	h.opsRunbooks(w, r)
 
 	if w.Code != http.StatusServiceUnavailable {
@@ -7398,7 +7397,7 @@ func TestRunOpsRunbookNilRepo(t *testing.T) {
 	h.repo = nil
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks/abc/run", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/abc/run", nil)
 	r.SetPathValue("runbook", "abc")
 	h.runOpsRunbook(w, r)
 
@@ -7413,7 +7412,7 @@ func TestRunOpsRunbookEmptyID(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks//run", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks//run", nil)
 	r.SetPathValue("runbook", "")
 	h.runOpsRunbook(w, r)
 
@@ -7428,7 +7427,7 @@ func TestRunOpsRunbookNotFound(t *testing.T) {
 	h, _ := newTestHandler(t, nil, nil)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks/nonexistent/run", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/nonexistent/run", nil)
 	r.SetPathValue("runbook", "nonexistent")
 	h.runOpsRunbook(w, r)
 
@@ -7453,7 +7452,7 @@ func TestRunOpsRunbookSemaphoreAccepted(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks/"+rb.ID+"/run", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+rb.ID+"/run", nil)
 	r.SetPathValue("runbook", rb.ID)
 	h.runOpsRunbook(w, r)
 
@@ -7484,7 +7483,7 @@ func TestRunOpsRunbookSemaphoreFull(t *testing.T) {
 
 	// First request: should succeed (acquires the single semaphore slot).
 	w1 := httptest.NewRecorder()
-	r1 := httptest.NewRequest("POST", "/api/ops/runbooks/"+rb.ID+"/run", nil)
+	r1 := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+rb.ID+"/run", nil)
 	r1.SetPathValue("runbook", rb.ID)
 	h.runOpsRunbook(w1, r1)
 
@@ -7494,7 +7493,7 @@ func TestRunOpsRunbookSemaphoreFull(t *testing.T) {
 
 	// Second request: should be rejected with 429 (semaphore is full).
 	w2 := httptest.NewRecorder()
-	r2 := httptest.NewRequest("POST", "/api/ops/runbooks/"+rb.ID+"/run", nil)
+	r2 := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+rb.ID+"/run", nil)
 	r2.SetPathValue("runbook", rb.ID)
 	h.runOpsRunbook(w2, r2)
 
@@ -7534,7 +7533,7 @@ func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
 
 	// First request occupies the single slot.
 	w1 := httptest.NewRecorder()
-	r1 := httptest.NewRequest("POST", "/api/ops/runbooks/"+rb.ID+"/run", nil)
+	r1 := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+rb.ID+"/run", nil)
 	r1.SetPathValue("runbook", rb.ID)
 	h.runOpsRunbook(w1, r1)
 	if w1.Code != http.StatusAccepted {
@@ -7546,7 +7545,7 @@ func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
 
 	// Second request should now succeed because the slot was released.
 	w2 := httptest.NewRecorder()
-	r2 := httptest.NewRequest("POST", "/api/ops/runbooks/"+rb.ID+"/run", nil)
+	r2 := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+rb.ID+"/run", nil)
 	r2.SetPathValue("runbook", rb.ID)
 	h.runOpsRunbook(w2, r2)
 
@@ -7565,7 +7564,7 @@ func TestRunOpsRunbookSemaphoreReleasedOnNotFound(t *testing.T) {
 
 	// Request with a non-existent runbook ID — should acquire then release.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/ops/runbooks/nonexistent/run", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/nonexistent/run", nil)
 	r.SetPathValue("runbook", "nonexistent")
 	h.runOpsRunbook(w, r)
 
@@ -7650,7 +7649,7 @@ func TestSuggestRunbooksForMarker(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("GET", "/api/ops/runbooks/suggest"+tc.query, nil)
+			r := httptest.NewRequest(http.MethodGet, "/api/ops/runbooks/suggest"+tc.query, nil)
 			h.suggestRunbooksForMarker(w, r)
 
 			if w.Code != tc.wantStatus {
@@ -7694,7 +7693,7 @@ func TestSuggestRunbooksForMarkerNilRepo(t *testing.T) {
 	h.repo = nil
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/ops/runbooks/suggest?marker=error", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/runbooks/suggest?marker=error", nil)
 	h.suggestRunbooksForMarker(w, r)
 
 	if w.Code != http.StatusServiceUnavailable {

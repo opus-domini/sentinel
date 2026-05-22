@@ -78,6 +78,52 @@ func TestInsertOpsActivityEventDefaults(t *testing.T) {
 func TestSearchOpsActivityEventsFilters(t *testing.T) {
 	t.Parallel()
 
+	s, ctx := newActivitySearchTestStore(t)
+
+	t.Run("filter by severity only", func(t *testing.T) {
+		assertActivityFilterBySeverityOnly(t, s, ctx)
+	})
+
+	t.Run("filter by source only", func(t *testing.T) {
+		assertActivityFilterBySourceOnly(t, s, ctx)
+	})
+
+	t.Run("filter by query text", func(t *testing.T) {
+		assertActivityFilterByQueryText(t, s, ctx)
+	})
+
+	t.Run("empty query returns all", func(t *testing.T) {
+		assertActivityEmptyQueryReturnsAll(t, s, ctx)
+	})
+
+	t.Run("severity 'all' returns all", func(t *testing.T) {
+		assertActivitySeverityAllReturnsAll(t, s, ctx)
+	})
+
+	t.Run("invalid severity returns error", func(t *testing.T) {
+		assertActivityInvalidSeverityReturnsError(t, s, ctx)
+	})
+
+	t.Run("HasMore when limit exceeded", func(t *testing.T) {
+		assertActivityHasMoreWhenLimitExceeded(t, s, ctx)
+	})
+
+	t.Run("negative limit defaults to 100", func(t *testing.T) {
+		assertActivityNegativeLimitDefaultsTo100(t, s, ctx)
+	})
+
+	t.Run("severity aliases normalized", func(t *testing.T) {
+		assertActivitySeverityAliasesNormalized(t, s, ctx)
+	})
+
+	t.Run("results ordered by created_at DESC", func(t *testing.T) {
+		assertActivityResultsOrderedByCreatedAtDesc(t, s, ctx)
+	})
+}
+
+func newActivitySearchTestStore(t *testing.T) (*Store, context.Context) {
+	t.Helper()
+
 	s := newTestStore(t)
 	ctx := context.Background()
 	base := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
@@ -94,123 +140,145 @@ func TestSearchOpsActivityEventsFilters(t *testing.T) {
 		}
 	}
 
-	t.Run("filter by severity only", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "error"})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if len(result.Events) != 1 || result.Events[0].Resource != "app" {
-			t.Fatalf("expected 1 error event (app), got %d: %+v", len(result.Events), result.Events)
-		}
-	})
+	return s, ctx
+}
 
-	t.Run("filter by source only", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{Source: "service"})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if len(result.Events) != 2 {
-			t.Fatalf("expected 2 service events, got %d", len(result.Events))
-		}
-	})
+func assertActivityFilterBySeverityOnly(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
 
-	t.Run("filter by query text", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{Query: "redis"})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if len(result.Events) != 1 || result.Events[0].Resource != "redis" {
-			t.Fatalf("expected 1 redis event, got %d", len(result.Events))
-		}
-	})
+	result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "error"})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if len(result.Events) != 1 || result.Events[0].Resource != "app" {
+		t.Fatalf("expected 1 error event (app), got %d: %+v", len(result.Events), result.Events)
+	}
+}
 
-	t.Run("empty query returns all", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if len(result.Events) != 3 {
-			t.Fatalf("expected 3 events, got %d", len(result.Events))
-		}
-	})
+func assertActivityFilterBySourceOnly(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
 
-	t.Run("severity 'all' returns all", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "all"})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if len(result.Events) != 3 {
-			t.Fatalf("expected 3 events, got %d", len(result.Events))
-		}
-	})
+	result, err := s.SearchActivityEvents(ctx, activity.Query{Source: "service"})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("expected 2 service events, got %d", len(result.Events))
+	}
+}
 
-	t.Run("invalid severity returns error", func(t *testing.T) {
-		_, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "critical"})
-		if err == nil {
-			t.Fatalf("expected error for invalid severity")
-		}
-		if !errors.Is(err, activity.ErrInvalidFilter) {
-			t.Fatalf("error = %v, want activity.ErrInvalidFilter", err)
-		}
-	})
+func assertActivityFilterByQueryText(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
 
-	t.Run("HasMore when limit exceeded", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{Limit: 2})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if !result.HasMore {
-			t.Fatalf("hasMore = false, want true")
-		}
-		if len(result.Events) != 2 {
-			t.Fatalf("len(events) = %d, want 2 (limited)", len(result.Events))
-		}
-	})
+	result, err := s.SearchActivityEvents(ctx, activity.Query{Query: "redis"})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if len(result.Events) != 1 || result.Events[0].Resource != "redis" {
+		t.Fatalf("expected 1 redis event, got %d", len(result.Events))
+	}
+}
 
-	t.Run("negative limit defaults to 100", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{Limit: -5})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		// Should return all 3 events (well under default 100 limit).
-		if len(result.Events) != 3 {
-			t.Fatalf("len(events) = %d, want 3", len(result.Events))
-		}
-	})
+func assertActivityEmptyQueryReturnsAll(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
 
-	t.Run("severity aliases normalized", func(t *testing.T) {
-		// "warning" should be treated as "warn".
-		result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "warning"})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if len(result.Events) != 1 || result.Events[0].Severity != activity.SeverityWarn {
-			t.Fatalf("expected 1 warn event, got %d", len(result.Events))
-		}
+	result, err := s.SearchActivityEvents(ctx, activity.Query{})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if len(result.Events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(result.Events))
+	}
+}
 
-		// "err" should be treated as "error".
-		result, err = s.SearchActivityEvents(ctx, activity.Query{Severity: "err"})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents(err): %v", err)
-		}
-		if len(result.Events) != 1 || result.Events[0].Severity != activity.SeverityError {
-			t.Fatalf("expected 1 error event, got %d", len(result.Events))
-		}
-	})
+func assertActivitySeverityAllReturnsAll(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
 
-	t.Run("results ordered by created_at DESC", func(t *testing.T) {
-		result, err := s.SearchActivityEvents(ctx, activity.Query{})
-		if err != nil {
-			t.Fatalf("SearchActivityEvents: %v", err)
-		}
-		if len(result.Events) < 2 {
-			t.Fatalf("need at least 2 events for ordering check")
-		}
-		// First event should be the most recent.
-		if result.Events[0].Resource != "app" {
-			t.Fatalf("first event = %q, want app (most recent)", result.Events[0].Resource)
-		}
-	})
+	result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "all"})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if len(result.Events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(result.Events))
+	}
+}
+
+func assertActivityInvalidSeverityReturnsError(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
+
+	_, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "critical"})
+	if err == nil {
+		t.Fatalf("expected error for invalid severity")
+	}
+	if !errors.Is(err, activity.ErrInvalidFilter) {
+		t.Fatalf("error = %v, want activity.ErrInvalidFilter", err)
+	}
+}
+
+func assertActivityHasMoreWhenLimitExceeded(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
+
+	result, err := s.SearchActivityEvents(ctx, activity.Query{Limit: 2})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if !result.HasMore {
+		t.Fatalf("hasMore = false, want true")
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("len(events) = %d, want 2 (limited)", len(result.Events))
+	}
+}
+
+func assertActivityNegativeLimitDefaultsTo100(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
+
+	result, err := s.SearchActivityEvents(ctx, activity.Query{Limit: -5})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	// Should return all 3 events (well under default 100 limit).
+	if len(result.Events) != 3 {
+		t.Fatalf("len(events) = %d, want 3", len(result.Events))
+	}
+}
+
+func assertActivitySeverityAliasesNormalized(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
+
+	// "warning" should be treated as "warn".
+	result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "warning"})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if len(result.Events) != 1 || result.Events[0].Severity != activity.SeverityWarn {
+		t.Fatalf("expected 1 warn event, got %d", len(result.Events))
+	}
+
+	// "err" should be treated as "error".
+	result, err = s.SearchActivityEvents(ctx, activity.Query{Severity: "err"})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents(err): %v", err)
+	}
+	if len(result.Events) != 1 || result.Events[0].Severity != activity.SeverityError {
+		t.Fatalf("expected 1 error event, got %d", len(result.Events))
+	}
+}
+
+func assertActivityResultsOrderedByCreatedAtDesc(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
+
+	result, err := s.SearchActivityEvents(ctx, activity.Query{})
+	if err != nil {
+		t.Fatalf("SearchActivityEvents: %v", err)
+	}
+	if len(result.Events) < 2 {
+		t.Fatalf("need at least 2 events for ordering check")
+	}
+	// First event should be the most recent.
+	if result.Events[0].Resource != "app" {
+		t.Fatalf("first event = %q, want app (most recent)", result.Events[0].Resource)
+	}
 }
 
 func TestPruneOpsActivityRows(t *testing.T) {

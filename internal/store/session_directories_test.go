@@ -37,7 +37,7 @@ func TestRecordSessionDirectory(t *testing.T) {
 		defer func() { _ = s.Close() }()
 
 		path := "/home/user/work"
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			if err := s.RecordSessionDirectory(ctx, path); err != nil {
 				t.Fatalf("RecordSessionDirectory() iteration %d error = %v", i, err)
 			}
@@ -113,12 +113,12 @@ func TestListFrequentDirectories(t *testing.T) {
 		if err := s.RecordSessionDirectory(ctx, "/rare"); err != nil {
 			t.Fatalf("RecordSessionDirectory(/rare) error = %v", err)
 		}
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			if err := s.RecordSessionDirectory(ctx, "/common"); err != nil {
 				t.Fatalf("RecordSessionDirectory(/common) error = %v", err)
 			}
 		}
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			if err := s.RecordSessionDirectory(ctx, "/medium"); err != nil {
 				t.Fatalf("RecordSessionDirectory(/medium) error = %v", err)
 			}

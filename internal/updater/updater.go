@@ -945,7 +945,7 @@ func comparePrerelease(left, right string) int {
 	if len(rb) > limit {
 		limit = len(rb)
 	}
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		if i >= len(la) {
 			return -1
 		}

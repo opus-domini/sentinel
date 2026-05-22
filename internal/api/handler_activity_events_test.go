@@ -106,7 +106,7 @@ func TestAlertLifecycleTimelineEvents(t *testing.T) {
 
 	// 4. Delete the alert via the handler — should record alert.deleted.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("DELETE", fmt.Sprintf("/api/ops/alerts/%d", resolvedAlert.ID), nil)
+	r := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/ops/alerts/%d", resolvedAlert.ID), nil)
 	r.SetPathValue("alert", fmt.Sprintf("%d", resolvedAlert.ID))
 	h.deleteOpsAlert(w, r)
 	if w.Code != http.StatusOK {
@@ -238,7 +238,7 @@ func TestAlertLifecycleTableDriven(t *testing.T) {
 			action: func(t *testing.T, h *Handler, _ *store.Store, _ context.Context, alertID int64) {
 				t.Helper()
 				w := httptest.NewRecorder()
-				r := httptest.NewRequest("DELETE", fmt.Sprintf("/api/ops/alerts/%d", alertID), nil)
+				r := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/ops/alerts/%d", alertID), nil)
 				r.SetPathValue("alert", fmt.Sprintf("%d", alertID))
 				h.deleteOpsAlert(w, r)
 				if w.Code != http.StatusOK {
@@ -308,7 +308,7 @@ func TestGuardrailBlockedTimelineEvent(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/test", nil)
+	r := httptest.NewRequest(http.MethodPost, "/test", nil)
 	allowed := h.enforceGuardrail(w, r, guardrails.Input{
 		Action:      "session.kill",
 		SessionName: sessionName,
@@ -366,7 +366,7 @@ func TestScheduleLifecycleTimelineEvents(t *testing.T) {
 		body := fmt.Sprintf(`{"runbookId":%q,"name":"test-schedule","scheduleType":"once","runAt":%q,"enabled":true}`, runbookID, futureAt)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/schedules", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(body))
 		h.createSchedule(w, r)
 		if w.Code != http.StatusCreated {
 			t.Fatalf("createSchedule status = %d, want 201, body=%s", w.Code, w.Body.String())
@@ -403,7 +403,7 @@ func TestScheduleLifecycleTimelineEvents(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules/"+sched.ID+"/trigger", nil)
 		r.SetPathValue("schedule", sched.ID)
 		h.triggerSchedule(w, r)
 		if w.Code != http.StatusAccepted {
@@ -448,7 +448,7 @@ func TestScheduleLifecycleTimelineEvents(t *testing.T) {
 		}
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("DELETE", "/api/ops/schedules/"+sched.ID, nil)
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/"+sched.ID, nil)
 		r.SetPathValue("schedule", sched.ID)
 		h.deleteSchedule(w, r)
 		if w.Code != http.StatusOK {

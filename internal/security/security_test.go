@@ -99,7 +99,7 @@ func TestCheckOrigin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			g := New("", tt.allowedOrigins, CookieSecureAuto)
-			r := httptest.NewRequest("GET", "http://"+tt.host+"/", nil)
+			r := httptest.NewRequest(http.MethodGet, "http://"+tt.host+"/", nil)
 			r.Host = tt.host
 			if tt.origin != "" {
 				r.Header.Set("Origin", tt.origin)
@@ -172,7 +172,7 @@ func TestRequireAuth(t *testing.T) {
 			t.Parallel()
 
 			g := New(tt.token, nil, CookieSecureAuto)
-			r := httptest.NewRequest("GET", "http://localhost/", nil)
+			r := httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
 			if tt.forwarded != "" {
 				r.Header.Set("X-Forwarded-Proto", tt.forwarded)
 			}
@@ -211,7 +211,7 @@ func TestAuthCookieLifecycle(t *testing.T) {
 	t.Run("set cookie over http", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest("GET", "http://localhost/", nil)
+		req := httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
 		rec := httptest.NewRecorder()
 		g.SetAuthCookie(rec, req)
 
@@ -250,7 +250,7 @@ func TestAuthCookieLifecycle(t *testing.T) {
 	t.Run("set cookie over forwarded https", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest("GET", "http://localhost/", nil)
+		req := httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
 		req.Header.Set("X-Forwarded-Proto", "https")
 		rec := httptest.NewRecorder()
 		g.SetAuthCookie(rec, req)
@@ -270,7 +270,7 @@ func TestAuthCookieLifecycle(t *testing.T) {
 	t.Run("clear cookie", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest("GET", "https://localhost/", nil)
+		req := httptest.NewRequest(http.MethodGet, "https://localhost/", nil)
 		req.TLS = &tls.ConnectionState{}
 		rec := httptest.NewRecorder()
 		g.ClearAuthCookie(rec, req)
@@ -329,7 +329,7 @@ func TestCookieSecurePolicy(t *testing.T) {
 			t.Parallel()
 			g := New("secret", nil, tt.policy)
 
-			req := httptest.NewRequest("GET", "http://localhost/", nil)
+			req := httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
 			if tt.tls {
 				req.TLS = &tls.ConnectionState{}
 			}

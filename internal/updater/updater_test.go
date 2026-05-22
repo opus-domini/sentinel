@@ -38,7 +38,6 @@ func TestCompareVersions(t *testing.T) {
 		{left: "1.2.3-alpha.1", right: "1.2.3-alpha.2", want: -1},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(fmt.Sprintf("%s_vs_%s", tc.left, tc.right), func(t *testing.T) {
 			t.Parallel()
 			got := compareVersions(tc.left, tc.right)
@@ -71,7 +70,6 @@ func TestIsCurrentUpToDate(t *testing.T) {
 		{name: "non-semver equal", current: "custom-build", latest: "custom-build", want: true},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := isCurrentUpToDate(tc.current, tc.latest)

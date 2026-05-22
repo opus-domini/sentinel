@@ -714,7 +714,70 @@ func TestFailOrphanedRuns(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 2, 15, 14, 0, 0, 0, time.UTC)
 
-	// Seed a 2-step runbook.
+	runs := seedFailOrphanedRunsFixture(t, s, ctx, now)
+
+	// Reconcile orphaned runs.
+	n, err := s.FailOrphanedRuns(ctx)
+	if err != nil {
+		t.Fatalf("FailOrphanedRuns: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("affected = %d, want 2", n)
+	}
+
+	assertQueuedOrphanedRunFailed(t, s, ctx, runs.queuedID)
+	assertRunningOrphanedRunFailed(t, s, ctx, runs.runningID)
+	assertWaitingApprovalRunPreserved(t, s, ctx, runs.waitingID)
+	assertSucceededRunUntouched(t, s, ctx, runs.succeededID)
+
+	// Calling again should affect 0 rows.
+	n2, err := s.FailOrphanedRuns(ctx)
+	if err != nil {
+		t.Fatalf("FailOrphanedRuns (second call): %v", err)
+	}
+	if n2 != 0 {
+		t.Fatalf("second call affected = %d, want 0", n2)
+	}
+}
+
+type failOrphanedRunsFixture struct {
+	queuedID    string
+	runningID   string
+	waitingID   string
+	succeededID string
+}
+
+func seedFailOrphanedRunsFixture(
+	t *testing.T,
+	s *Store,
+	ctx context.Context,
+	now time.Time,
+) failOrphanedRunsFixture {
+	t.Helper()
+
+	seedOrphanRunbook(t, s, ctx)
+
+	queuedRun := createOrphanRun(t, s, ctx, now, "queued")
+	runningRun := createOrphanRun(t, s, ctx, now, "running")
+	updateRunningOrphanRun(t, s, ctx, now, runningRun.ID)
+
+	waitingRun := createOrphanRun(t, s, ctx, now, "waiting")
+	updateWaitingApprovalRun(t, s, ctx, now, waitingRun.ID)
+
+	succeededRun := createOrphanRun(t, s, ctx, now, "succeeded")
+	updateSucceededRun(t, s, ctx, now, succeededRun.ID)
+
+	return failOrphanedRunsFixture{
+		queuedID:    queuedRun.ID,
+		runningID:   runningRun.ID,
+		waitingID:   waitingRun.ID,
+		succeededID: succeededRun.ID,
+	}
+}
+
+func seedOrphanRunbook(t *testing.T, s *Store, ctx context.Context) {
+	t.Helper()
+
 	if _, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
 		ID:   "orphan.test",
 		Name: "Orphan Test",
@@ -726,60 +789,63 @@ func TestFailOrphanedRuns(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
+}
 
-	// Create four runs: one stays queued, one advanced to running (step 2),
-	// one waits for approval, and one succeeded.
-	queuedRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
+func createOrphanRun(t *testing.T, s *Store, ctx context.Context, now time.Time, label string) OpsRunbookRun {
+	t.Helper()
+
+	run, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
 	if err != nil {
-		t.Fatalf("CreateOpsRunbookRun(queued): %v", err)
+		t.Fatalf("CreateOpsRunbookRun(%s): %v", label, err)
 	}
+	return run
+}
+
+func updateRunningOrphanRun(t *testing.T, s *Store, ctx context.Context, now time.Time, runID string) {
+	t.Helper()
 
 	// Simulate: step 1 completed, step 2 was pre-populated by beforeStep
 	// but the server died before it finished executing.
-	runningRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
-	if err != nil {
-		t.Fatalf("CreateOpsRunbookRun(running): %v", err)
-	}
-	stepResults, _ := json.Marshal([]OpsRunbookStepResult{
+	stepResults := marshalRunbookStepResults(t, []OpsRunbookStepResult{
 		{StepIndex: 0, Title: "Check status", Type: "run", Output: "ok", DurationMs: 120},
 		{StepIndex: 1, Title: "Restart service", Type: "run"},
 	})
 	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
-		RunID:          runningRun.ID,
+		RunID:          runID,
 		Status:         opsRunbookStatusRunning,
 		CompletedSteps: 1,
 		CurrentStep:    "Restart service",
 		StartedAt:      now.Format(time.RFC3339),
-		StepResults:    string(stepResults),
+		StepResults:    stepResults,
 	}); err != nil {
 		t.Fatalf("UpdateOpsRunbookRun(running): %v", err)
 	}
+}
 
-	waitingRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
-	if err != nil {
-		t.Fatalf("CreateOpsRunbookRun(waiting): %v", err)
-	}
-	waitingStepResults, _ := json.Marshal([]OpsRunbookStepResult{
+func updateWaitingApprovalRun(t *testing.T, s *Store, ctx context.Context, now time.Time, runID string) {
+	t.Helper()
+
+	waitingStepResults := marshalRunbookStepResults(t, []OpsRunbookStepResult{
 		{StepIndex: 0, Title: "Check status", Type: "run", Output: "ok", DurationMs: 120},
 		{StepIndex: 1, Title: "Approve restart", Type: "approval", Output: "review output"},
 	})
 	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
-		RunID:          waitingRun.ID,
+		RunID:          runID,
 		Status:         OpsRunbookStatusWaitingApproval,
 		CompletedSteps: 2,
 		CurrentStep:    "Approve restart",
 		StartedAt:      now.Format(time.RFC3339),
-		StepResults:    string(waitingStepResults),
+		StepResults:    waitingStepResults,
 	}); err != nil {
 		t.Fatalf("UpdateOpsRunbookRun(waiting): %v", err)
 	}
+}
 
-	succeededRun, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
-	if err != nil {
-		t.Fatalf("CreateOpsRunbookRun(succeeded): %v", err)
-	}
+func updateSucceededRun(t *testing.T, s *Store, ctx context.Context, now time.Time, runID string) {
+	t.Helper()
+
 	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
-		RunID:          succeededRun.ID,
+		RunID:          runID,
 		Status:         opsRunbookStatusSucceeded,
 		CompletedSteps: 2,
 		CurrentStep:    "Restart service",
@@ -789,18 +855,22 @@ func TestFailOrphanedRuns(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpdateOpsRunbookRun(succeeded): %v", err)
 	}
+}
 
-	// Reconcile orphaned runs.
-	n, err := s.FailOrphanedRuns(ctx)
+func marshalRunbookStepResults(t *testing.T, results []OpsRunbookStepResult) string {
+	t.Helper()
+
+	raw, err := json.Marshal(results)
 	if err != nil {
-		t.Fatalf("FailOrphanedRuns: %v", err)
+		t.Fatalf("json.Marshal(step results): %v", err)
 	}
-	if n != 2 {
-		t.Fatalf("affected = %d, want 2", n)
-	}
+	return string(raw)
+}
 
-	// Verify queued run is failed, no step results added.
-	q, err := s.GetOpsRunbookRun(ctx, queuedRun.ID)
+func assertQueuedOrphanedRunFailed(t *testing.T, s *Store, ctx context.Context, runID string) {
+	t.Helper()
+
+	q, err := s.GetOpsRunbookRun(ctx, runID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun(queued): %v", err)
 	}
@@ -816,9 +886,12 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if len(q.StepResults) != 0 {
 		t.Fatalf("queued run stepResults = %d, want 0 (never started)", len(q.StepResults))
 	}
+}
 
-	// Verify running run is failed; step results preserved as-is.
-	r, err := s.GetOpsRunbookRun(ctx, runningRun.ID)
+func assertRunningOrphanedRunFailed(t *testing.T, s *Store, ctx context.Context, runID string) {
+	t.Helper()
+
+	r, err := s.GetOpsRunbookRun(ctx, runID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun(running): %v", err)
 	}
@@ -831,28 +904,33 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if len(r.StepResults) != 2 {
 		t.Fatalf("running run stepResults = %d, want 2 (step 1 ok + step 2 pre-populated)", len(r.StepResults))
 	}
-	// Step 1 should be the original successful result.
 	if r.StepResults[0].Title != "Check status" || r.StepResults[0].Output != "ok" {
 		t.Fatalf("step 0 = %+v, want Check status/ok", r.StepResults[0])
 	}
-	// Step 2 should be the pre-populated entry (correct title, empty output/error).
-	prePopulated := r.StepResults[1]
-	if prePopulated.StepIndex != 1 {
-		t.Fatalf("pre-populated stepIndex = %d, want 1", prePopulated.StepIndex)
-	}
-	if prePopulated.Title != "Restart service" {
-		t.Fatalf("pre-populated title = %q, want 'Restart service'", prePopulated.Title)
-	}
-	if prePopulated.Type != "run" {
-		t.Fatalf("pre-populated type = %q, want 'command'", prePopulated.Type)
-	}
-	if prePopulated.Output != "" || prePopulated.Error != "" {
-		t.Fatalf("pre-populated should have empty output/error, got output=%q error=%q", prePopulated.Output, prePopulated.Error)
-	}
+	assertPrePopulatedRestartStep(t, r.StepResults[1])
+}
 
-	// Verify waiting approval run is intentionally preserved. It is not an
-	// orphaned process; it is a persisted decision point.
-	w, err := s.GetOpsRunbookRun(ctx, waitingRun.ID)
+func assertPrePopulatedRestartStep(t *testing.T, step OpsRunbookStepResult) {
+	t.Helper()
+
+	if step.StepIndex != 1 {
+		t.Fatalf("pre-populated stepIndex = %d, want 1", step.StepIndex)
+	}
+	if step.Title != "Restart service" {
+		t.Fatalf("pre-populated title = %q, want 'Restart service'", step.Title)
+	}
+	if step.Type != "run" {
+		t.Fatalf("pre-populated type = %q, want 'command'", step.Type)
+	}
+	if step.Output != "" || step.Error != "" {
+		t.Fatalf("pre-populated should have empty output/error, got output=%q error=%q", step.Output, step.Error)
+	}
+}
+
+func assertWaitingApprovalRunPreserved(t *testing.T, s *Store, ctx context.Context, runID string) {
+	t.Helper()
+
+	w, err := s.GetOpsRunbookRun(ctx, runID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun(waiting): %v", err)
 	}
@@ -865,9 +943,12 @@ func TestFailOrphanedRuns(t *testing.T) {
 	if len(w.StepResults) != 2 {
 		t.Fatalf("waiting run stepResults = %d, want 2", len(w.StepResults))
 	}
+}
 
-	// Verify succeeded run is untouched.
-	su, err := s.GetOpsRunbookRun(ctx, succeededRun.ID)
+func assertSucceededRunUntouched(t *testing.T, s *Store, ctx context.Context, runID string) {
+	t.Helper()
+
+	su, err := s.GetOpsRunbookRun(ctx, runID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbookRun(succeeded): %v", err)
 	}
@@ -876,14 +957,5 @@ func TestFailOrphanedRuns(t *testing.T) {
 	}
 	if su.Error != "" {
 		t.Fatalf("succeeded run error = %q, want empty", su.Error)
-	}
-
-	// Calling again should affect 0 rows.
-	n2, err := s.FailOrphanedRuns(ctx)
-	if err != nil {
-		t.Fatalf("FailOrphanedRuns (second call): %v", err)
-	}
-	if n2 != 0 {
-		t.Fatalf("second call affected = %d, want 0", n2)
 	}
 }

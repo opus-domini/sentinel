@@ -131,7 +131,7 @@ func TestWatchtowerTimelinePruneRows(t *testing.T) {
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
 
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		if _, err := s.InsertWatchtowerTimelineEvent(ctx, WatchtowerTimelineEventWrite{
 			Session:   "dev",
 			WindowIdx: 0,

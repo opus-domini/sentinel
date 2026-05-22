@@ -23,7 +23,7 @@ func BenchmarkCollectFiftyPanes(b *testing.B) {
 	windows := make([]tmux.Window, 0, 5)
 	panes := make([]tmux.Pane, 0, 50)
 	paneCounter := 0
-	for windowIdx := 0; windowIdx < 5; windowIdx++ {
+	for windowIdx := range 5 {
 		windows = append(windows, tmux.Window{
 			Session: "bench",
 			Index:   windowIdx,
@@ -32,7 +32,7 @@ func BenchmarkCollectFiftyPanes(b *testing.B) {
 			Panes:   10,
 			Layout:  "layout",
 		})
-		for paneIdx := 0; paneIdx < 10; paneIdx++ {
+		for paneIdx := range 10 {
 			paneCounter++
 			panes = append(panes, tmux.Pane{
 				Session:        "bench",
@@ -82,7 +82,7 @@ func BenchmarkCollectFiftyPanes(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		if err := svc.collect(context.Background()); err != nil {
 			b.Fatalf("collect #%d: %v", i, err)
 		}

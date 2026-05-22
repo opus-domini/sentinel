@@ -69,7 +69,6 @@ func TestIsShellLikeCommand(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(strings.TrimSpace(tt.command), func(t *testing.T) {
 			t.Parallel()
 

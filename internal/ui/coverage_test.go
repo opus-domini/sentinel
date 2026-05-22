@@ -368,7 +368,7 @@ func TestRequireWSAuthRejectsUnauthorized(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/ws/tmux", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws/tmux", nil)
 
 	ok := h.requireWSAuth(rec, req)
 	if ok {
@@ -390,7 +390,7 @@ func TestRequireWSAuthRejectsBadOrigin(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/ws/tmux", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws/tmux", nil)
 	req.Header.Set("Origin", "https://evil.com")
 
 	ok := h.requireWSAuth(rec, req)
@@ -413,7 +413,7 @@ func TestAuthorizeEventsWSNilHub(t *testing.T) {
 	h := &Handler{guard: guard, events: nil}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/ws/events", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws/events", nil)
 
 	ok := h.authorizeEventsWS(rec, req)
 	if ok {
@@ -435,7 +435,7 @@ func TestAttachWSInvalidSession(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/ws/tmux?session=", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws/tmux?session=", nil)
 
 	h.attachWS(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -459,7 +459,7 @@ func TestAttachWSSessionNotFound(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/ws/tmux?session=dev", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws/tmux?session=dev", nil)
 
 	h.attachWS(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -483,7 +483,7 @@ func TestAttachWSTmuxError(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/ws/tmux?session=dev", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws/tmux?session=dev", nil)
 
 	h.attachWS(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
@@ -502,7 +502,7 @@ func TestAttachLogsWSMissingParams(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/ws/logs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws/logs", nil)
 
 	h.attachLogsWS(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -525,7 +525,7 @@ func TestSpaPageRejectsReservedPaths(t *testing.T) {
 		t.Run(p, func(t *testing.T) {
 			t.Parallel()
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", p, nil)
+			req := httptest.NewRequest(http.MethodGet, p, nil)
 			h.spaPage(rec, req)
 			if rec.Code != http.StatusNotFound {
 				t.Fatalf("spaPage(%s) status = %d, want 404", p, rec.Code)
@@ -545,7 +545,7 @@ func TestSpaPageRejectsBadOrigin(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Origin", "https://evil.com")
 
 	h.spaPage(rec, req)
@@ -999,7 +999,7 @@ func TestServeDistPath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/"+tc.path, nil)
+			req := httptest.NewRequest(http.MethodGet, "/"+tc.path, nil)
 			got := serveDistPath(rec, req, tc.path)
 			if got != tc.wantServ {
 				t.Fatalf("serveDistPath(%q) = %v, want %v", tc.path, got, tc.wantServ)
@@ -1027,7 +1027,7 @@ func TestRegisterSetsUpRoutes(t *testing.T) {
 
 	// A GET to / should serve the built SPA.
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET / status = %d, want 200", rec.Code)
@@ -1035,7 +1035,7 @@ func TestRegisterSetsUpRoutes(t *testing.T) {
 
 	// A GET to /tmux should also serve the SPA (client-side route).
 	rec2 := httptest.NewRecorder()
-	req2 := httptest.NewRequest("GET", "/tmux", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/tmux", nil)
 	mux.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("GET /tmux status = %d, want 200", rec2.Code)
@@ -1043,7 +1043,7 @@ func TestRegisterSetsUpRoutes(t *testing.T) {
 
 	// A GET to /api/... should 404 (reserved, no API handler registered).
 	rec3 := httptest.NewRecorder()
-	req3 := httptest.NewRequest("GET", "/api/sessions", nil)
+	req3 := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
 	mux.ServeHTTP(rec3, req3)
 	if rec3.Code != http.StatusNotFound {
 		t.Fatalf("GET /api/sessions status = %d, want 404", rec3.Code)
@@ -1096,7 +1096,7 @@ func TestRegisterServesBrandedManifest(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/manifest.webmanifest", nil)
+	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /manifest.webmanifest status = %d, want 200", rec.Code)
@@ -1151,7 +1151,7 @@ func TestSpaPageServesIndexForUnknownPaths(t *testing.T) {
 	h := &Handler{guard: guard}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/some/client/route", nil)
+	req := httptest.NewRequest(http.MethodGet, "/some/client/route", nil)
 	h.spaPage(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("spaPage(/some/client/route) status = %d, want 200", rec.Code)

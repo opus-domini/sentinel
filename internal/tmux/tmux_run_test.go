@@ -1068,165 +1068,196 @@ func TestNewWindow(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("happy_path_with_next_index", func(t *testing.T) {
-		calls := 0
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			calls++
-			switch args[0] {
-			case cmdListWindows:
-				return "0\n1\n2\n", nil
-			case cmdDisplayMessage:
-				return "/home/dev/project\n", nil
-			case cmdNewWindow:
-				// Should target session:3 (next after max=2)
-				for i, a := range args {
-					if a == "-t" && i+1 < len(args) && args[i+1] != "dev:3" {
-						t.Errorf("expected target dev:3, got %s", args[i+1])
-					}
-					if a == "-c" && i+1 < len(args) && args[i+1] != "/home/dev/project" {
-						t.Errorf("expected -c /home/dev/project, got %s", args[i+1])
-					}
-				}
-				return "@3\t3\t%15\n", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %s", args[0])
-			}
-		})
-
-		result, err := NewWindow(ctx, "dev")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.ID != "@3" || result.Index != 3 || result.PaneID != "%15" {
-			t.Errorf("result = %+v, want ID=@3 Index=3 PaneID=%%15", result)
-		}
+		testNewWindowHappyPathWithNextIndex(t, ctx)
 	})
-
 	t.Run("list_windows_fails_falls_back", func(t *testing.T) {
-		calls := 0
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			calls++
-			switch args[0] {
-			case cmdListWindows:
-				return "", errCommandFailed("session gone")
-			case cmdDisplayMessage:
-				return "/home/dev/project\n", nil
-			case cmdNewWindow:
-				// Should use fallback target "dev:"
-				for i, a := range args {
-					if a == "-t" && i+1 < len(args) && args[i+1] != "dev:" {
-						t.Errorf("expected fallback target dev:, got %s", args[i+1])
-					}
-				}
-				return "@20\t0\t%20\n", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %s", args[0])
-			}
-		})
-
-		result, err := NewWindow(ctx, "dev")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.ID != "@20" || result.Index != 0 || result.PaneID != "%20" {
-			t.Errorf("result = %+v", result)
-		}
+		testNewWindowListWindowsFailsFallsBack(t, ctx)
 	})
-
 	t.Run("new_window_error", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			switch args[0] {
-			case cmdListWindows:
-				return "0\n", nil
-			case cmdDisplayMessage:
-				return "/tmp\n", nil
-			case cmdNewWindow:
-				return "", errCommandFailed("server dead")
-			default:
-				return "", nil
-			}
-		})
-
-		_, err := NewWindow(ctx, "dev")
-		if err == nil {
-			t.Fatal("expected error")
-		}
+		testNewWindowError(t, ctx)
 	})
-
 	t.Run("new_window_parse_error", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			switch args[0] {
-			case cmdListWindows:
-				return "0\n", nil
-			case cmdDisplayMessage:
-				return "/tmp\n", nil
-			case cmdNewWindow:
-				return "garbage", nil
-			default:
-				return "", nil
-			}
-		})
-
-		_, err := NewWindow(ctx, "dev")
-		if err == nil {
-			t.Fatal("expected error")
-		}
+		testNewWindowParseError(t, ctx)
 	})
-
 	t.Run("display_message_fails_omits_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			switch args[0] {
-			case cmdListWindows:
-				return "0\n", nil
-			case cmdDisplayMessage:
-				return "", errCommandFailed("no session")
-			case cmdNewWindow:
-				for _, a := range args {
-					if a == "-c" {
-						t.Error("should not pass -c when display-message fails")
-					}
-				}
-				return "@10\t1\t%10\n", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %s", args[0])
-			}
-		})
-
-		result, err := NewWindow(ctx, "dev")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.ID != "@10" || result.Index != 1 || result.PaneID != "%10" {
-			t.Errorf("result = %+v, want ID=@10 Index=1 PaneID=%%10", result)
-		}
+		testNewWindowDisplayMessageFailsOmitsCWD(t, ctx)
 	})
-
 	t.Run("with_name_and_explicit_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			switch args[0] {
-			case cmdListWindows:
-				return "0\n1\n", nil
-			case cmdNewWindow:
-				joined := strings.Join(args, " ")
-				if !strings.Contains(joined, "-n codex") {
-					t.Errorf("expected -n codex, got: %v", args)
-				}
-				if !strings.Contains(joined, "-c /srv/api") {
-					t.Errorf("expected -c /srv/api, got: %v", args)
-				}
-				return "@22\t2\t%22\n", nil
-			default:
-				return "", fmt.Errorf("unexpected command: %s", args[0])
-			}
-		})
+		testNewWindowWithNameAndExplicitCWD(t, ctx)
+	})
+}
 
-		result, err := NewWindowWithOptions(ctx, "dev", "codex", "/srv/api")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.ID != "@22" || result.Index != 2 || result.PaneID != "%22" {
-			t.Errorf("result = %+v, want ID=@22 Index=2 PaneID=%%22", result)
+func testNewWindowHappyPathWithNextIndex(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	setRun(t, func(_ context.Context, args ...string) (string, error) {
+		switch args[0] {
+		case cmdListWindows:
+			return "0\n1\n2\n", nil
+		case cmdDisplayMessage:
+			return "/home/dev/project\n", nil
+		case cmdNewWindow:
+			assertNewWindowArg(t, args, "-t", "dev:3")
+			assertNewWindowArg(t, args, "-c", "/home/dev/project")
+			return "@3\t3\t%15\n", nil
+		default:
+			return "", fmt.Errorf("unexpected command: %s", args[0])
 		}
 	})
+
+	result, err := NewWindow(ctx, "dev")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "@3" || result.Index != 3 || result.PaneID != "%15" {
+		t.Errorf("result = %+v, want ID=@3 Index=3 PaneID=%%15", result)
+	}
+}
+
+func testNewWindowListWindowsFailsFallsBack(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	setRun(t, func(_ context.Context, args ...string) (string, error) {
+		switch args[0] {
+		case cmdListWindows:
+			return "", errCommandFailed("session gone")
+		case cmdDisplayMessage:
+			return "/home/dev/project\n", nil
+		case cmdNewWindow:
+			assertNewWindowArg(t, args, "-t", "dev:")
+			return "@20\t0\t%20\n", nil
+		default:
+			return "", fmt.Errorf("unexpected command: %s", args[0])
+		}
+	})
+
+	result, err := NewWindow(ctx, "dev")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "@20" || result.Index != 0 || result.PaneID != "%20" {
+		t.Errorf("result = %+v", result)
+	}
+}
+
+func testNewWindowError(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	setRun(t, func(_ context.Context, args ...string) (string, error) {
+		switch args[0] {
+		case cmdListWindows:
+			return "0\n", nil
+		case cmdDisplayMessage:
+			return "/tmp\n", nil
+		case cmdNewWindow:
+			return "", errCommandFailed("server dead")
+		default:
+			return "", nil
+		}
+	})
+
+	_, err := NewWindow(ctx, "dev")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func testNewWindowParseError(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	setRun(t, func(_ context.Context, args ...string) (string, error) {
+		switch args[0] {
+		case cmdListWindows:
+			return "0\n", nil
+		case cmdDisplayMessage:
+			return "/tmp\n", nil
+		case cmdNewWindow:
+			return "garbage", nil
+		default:
+			return "", nil
+		}
+	})
+
+	_, err := NewWindow(ctx, "dev")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func testNewWindowDisplayMessageFailsOmitsCWD(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	setRun(t, func(_ context.Context, args ...string) (string, error) {
+		switch args[0] {
+		case cmdListWindows:
+			return "0\n", nil
+		case cmdDisplayMessage:
+			return "", errCommandFailed("no session")
+		case cmdNewWindow:
+			assertNewWindowArgMissing(t, args, "-c")
+			return "@10\t1\t%10\n", nil
+		default:
+			return "", fmt.Errorf("unexpected command: %s", args[0])
+		}
+	})
+
+	result, err := NewWindow(ctx, "dev")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "@10" || result.Index != 1 || result.PaneID != "%10" {
+		t.Errorf("result = %+v, want ID=@10 Index=1 PaneID=%%10", result)
+	}
+}
+
+func testNewWindowWithNameAndExplicitCWD(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	setRun(t, func(_ context.Context, args ...string) (string, error) {
+		switch args[0] {
+		case cmdListWindows:
+			return "0\n1\n", nil
+		case cmdNewWindow:
+			joined := strings.Join(args, " ")
+			if !strings.Contains(joined, "-n codex") {
+				t.Errorf("expected -n codex, got: %v", args)
+			}
+			if !strings.Contains(joined, "-c /srv/api") {
+				t.Errorf("expected -c /srv/api, got: %v", args)
+			}
+			return "@22\t2\t%22\n", nil
+		default:
+			return "", fmt.Errorf("unexpected command: %s", args[0])
+		}
+	})
+
+	result, err := NewWindowWithOptions(ctx, "dev", "codex", "/srv/api")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "@22" || result.Index != 2 || result.PaneID != "%22" {
+		t.Errorf("result = %+v, want ID=@22 Index=2 PaneID=%%22", result)
+	}
+}
+
+func assertNewWindowArg(t *testing.T, args []string, flag string, want string) {
+	t.Helper()
+
+	for i, arg := range args {
+		if arg == flag && i+1 < len(args) && args[i+1] != want {
+			t.Errorf("expected %s %s, got %s", flag, want, args[i+1])
+		}
+	}
+}
+
+func assertNewWindowArgMissing(t *testing.T, args []string, flag string) {
+	t.Helper()
+
+	for _, arg := range args {
+		if arg == flag {
+			t.Errorf("should not pass %s", flag)
+		}
+	}
 }
 
 // --- NewWindowAt ---
