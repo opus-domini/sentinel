@@ -220,7 +220,6 @@ export default function CreateSessionDialog({
               placeholder="session name"
               value={name}
               onChange={(e) => setName(slugifyTmuxName(e.target.value))}
-              autoFocus
             />
             <div className="relative">
               <Input

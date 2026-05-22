@@ -125,7 +125,6 @@ function TokenGateDialog({
             placeholder="token"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            autoFocus
             aria-label="Authentication token"
             disabled={submitting}
           />

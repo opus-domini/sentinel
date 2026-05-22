@@ -54,7 +54,7 @@ export default function RenameDialog(props: RenameDialogProps) {
             }
           }}
         >
-          <Input value={value} onChange={(e) => onValueChange(e.target.value)} autoFocus />
+          <Input value={value} onChange={(e) => onValueChange(e.target.value)} />
           <DialogFooter className="mt-4">
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>

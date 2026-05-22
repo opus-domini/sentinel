@@ -63,7 +63,6 @@ export default function TokenDialog({
               placeholder={tokenRequired ? 'token (required)' : 'token'}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              autoFocus
             />
           )}
           <DialogFooter className="mt-4">
