@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/opus-domini/sentinel/compare/v0.6.0...v0.6.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* detect the installed service scope instead of assuming it ([e2c29c4](https://github.com/opus-domini/sentinel/commit/e2c29c421e2435e4962a3b8994f70099ac7031e7))
+
 ## [0.6.0](https://github.com/opus-domini/sentinel/compare/v0.5.38...v0.6.0) (2026-05-21)
 
 
