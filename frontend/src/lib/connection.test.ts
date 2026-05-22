@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { connectionBadgeClass, connectionDotClass, connectionLabel } from './connection'
-import type { ConnectionState } from '../types'
+import type { ConnectionState } from '@/types'
 
 const states: Array<ConnectionState> = ['connected', 'connecting', 'disconnected', 'error']
 

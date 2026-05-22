@@ -69,6 +69,21 @@ import { cn } from '@/lib/utils'
 
 const EMPTY_SERVICES: Array<OpsServiceStatus> = []
 const EMPTY_BROWSE_SERVICES: Array<OpsBrowsedService> = []
+const SERVICE_ROW_SKELETON_KEYS = [
+  'service-row-system',
+  'service-row-user',
+  'service-row-timer',
+  'service-row-socket',
+  'service-row-path',
+  'service-row-target',
+] as const
+const SERVICE_METRIC_SKELETON_KEYS = [
+  'service-metric-total',
+  'service-metric-running',
+  'service-metric-failed',
+  'service-metric-tracked',
+  'service-metric-actions',
+] as const
 
 function browseServiceKey(service: Pick<OpsBrowsedService, 'manager' | 'scope' | 'unit'>): string {
   return `${service.manager}:${service.scope}:${service.unit}`
@@ -105,9 +120,9 @@ const ServicesBrowseList = memo(function ServicesBrowseList({
     <ScrollArea className="h-full min-h-0">
       <div className="grid gap-1 p-2">
         {browseLoading &&
-          Array.from({ length: 6 }).map((_, idx) => (
+          SERVICE_ROW_SKELETON_KEYS.map((key) => (
             <div
-              key={`svc-row-skeleton-${idx}`}
+              key={key}
               className="h-24 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
             />
           ))}
@@ -834,9 +849,9 @@ function ServicesPage() {
             )}
             {browseLoading ? (
               <div className="grid grid-cols-5 gap-1.5">
-                {Array.from({ length: 5 }).map((_, idx) => (
+                {SERVICE_METRIC_SKELETON_KEYS.map((key) => (
                   <div
-                    key={`svc-metric-skeleton-${idx}`}
+                    key={key}
                     className="h-10 motion-safe:animate-pulse rounded-md border border-border-subtle bg-surface-elevated sm:h-12"
                   />
                 ))}

@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import type { ToastMessage } from '../../hooks/useToasts'
+import type { ToastMessage } from '@/hooks/useToasts'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 

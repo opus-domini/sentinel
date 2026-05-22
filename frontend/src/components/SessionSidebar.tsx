@@ -2,7 +2,7 @@ import SidebarShell from './sidebar/SidebarShell'
 import PinnedSessionsPanel from './sidebar/PinnedSessionsPanel'
 import SessionControls from './sidebar/SessionControls'
 import SessionListPanel from './sidebar/SessionListPanel'
-import type { Session, SessionLauncher, SessionPreset } from '../types'
+import type { Session, SessionLauncher, SessionPreset } from '@/types'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 
 type SessionSidebarProps = {

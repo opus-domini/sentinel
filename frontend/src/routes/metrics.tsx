@@ -61,6 +61,23 @@ const SPARKLINE_COLORS = {
   goHeap: 'var(--chart-go-heap)',
 } as const
 
+const METRICS_HERO_SKELETON_KEYS = [
+  'metrics-hero-cpu',
+  'metrics-hero-memory',
+  'metrics-hero-disk',
+  'metrics-hero-load',
+] as const
+const METRICS_MINI_SKELETON_KEYS = [
+  'metrics-mini-swap',
+  'metrics-mini-inodes',
+  'metrics-mini-processes',
+  'metrics-mini-threads',
+  'metrics-mini-pressure',
+  'metrics-mini-network',
+  'metrics-mini-runtime',
+  'metrics-mini-gc',
+] as const
+
 type MetricsTab = 'saturation' | 'network' | 'runtime'
 
 const METRICS_TABS: Array<{
@@ -498,17 +515,17 @@ function MetricsSkeleton() {
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
+        {METRICS_HERO_SKELETON_KEYS.map((key) => (
           <div
-            key={`metrics-hero-skeleton-${index}`}
+            key={key}
             className="h-[146px] rounded-lg border border-border-subtle bg-surface-elevated motion-safe:animate-pulse"
           />
         ))}
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, index) => (
+        {METRICS_MINI_SKELETON_KEYS.map((key) => (
           <div
-            key={`metrics-mini-skeleton-${index}`}
+            key={key}
             className="h-[86px] rounded-lg border border-border-subtle bg-surface-elevated motion-safe:animate-pulse"
           />
         ))}

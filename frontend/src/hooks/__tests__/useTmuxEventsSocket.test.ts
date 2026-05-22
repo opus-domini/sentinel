@@ -6,14 +6,14 @@ import type {
   InspectorSessionPatch,
   PresenceSocketRef,
   RuntimeMetrics,
-} from '../tmuxTypes'
+} from '@/hooks/tmuxTypes'
 import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import { act, renderHook } from '@testing-library/react'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import { shouldRefreshTimelineFromEvent } from '@/lib/tmuxTimeline'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useTmuxEventsSocket } from '../useTmuxEventsSocket'
+import { useTmuxEventsSocket } from '@/hooks/useTmuxEventsSocket'
 
 // ---------------------------------------------------------------------------
 // Mock external modules (vi.mock is hoisted by vitest)

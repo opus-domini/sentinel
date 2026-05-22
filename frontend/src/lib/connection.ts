@@ -1,4 +1,4 @@
-import type { ConnectionState } from '../types'
+import type { ConnectionState } from '@/types'
 
 export function connectionBadgeClass(state: ConnectionState): string {
   switch (state) {

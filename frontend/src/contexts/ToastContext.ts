@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { ToastMessage } from '../hooks/useToasts'
+import type { ToastMessage } from '@/hooks/useToasts'
 
 type ToastContextValue = {
   toasts: Array<ToastMessage>

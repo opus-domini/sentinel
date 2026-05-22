@@ -38,6 +38,13 @@ type AlertsFooterSummaryParams = {
 }
 
 const EMPTY_ALERTS: Array<OpsAlert> = []
+const ALERT_SKELETON_KEYS = [
+  'alert-skeleton-critical',
+  'alert-skeleton-warning',
+  'alert-skeleton-service',
+  'alert-skeleton-runtime',
+  'alert-skeleton-disk',
+] as const
 
 function buildAlertsFooterSummary({
   overviewError,
@@ -440,9 +447,9 @@ function AlertsPage() {
               <ScrollArea className="h-full min-h-0">
                 <div className="grid gap-1.5 p-2">
                   {alertsLoading &&
-                    Array.from({ length: 5 }).map((_, idx) => (
+                    ALERT_SKELETON_KEYS.map((key) => (
                       <div
-                        key={`alerts-skeleton-${idx}`}
+                        key={key}
                         className="h-24 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                       />
                     ))}

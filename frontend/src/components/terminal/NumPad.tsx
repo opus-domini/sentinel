@@ -17,7 +17,12 @@ const GAP = 6
 const PAD = 8
 
 // Grid layout: 7 8 9 / 4 5 6 / 1 2 3 / (0)
-const GRID: Array<Array<string>> = [['7', '8', '9'], ['4', '5', '6'], ['1', '2', '3'], ['0']]
+const GRID = [
+  { key: 'top', cells: ['7', '8', '9'] },
+  { key: 'middle', cells: ['4', '5', '6'] },
+  { key: 'bottom', cells: ['1', '2', '3'] },
+  { key: 'zero', cells: ['0'] },
+] as const
 
 const GRID_COLS = 3
 const GRID_ROWS = GRID.length
@@ -33,7 +38,7 @@ function getNumAtPoint(px: number, py: number, originX: number, originY: number)
   const row = Math.floor(ly / (CELL_H + GAP))
 
   if (row < 0 || row >= GRID_ROWS) return null
-  const rowCells = GRID[row]
+  const rowCells = GRID[row]?.cells
   if (col < 0 || col >= rowCells.length) return null
 
   const cellLeft = col * (CELL_W + GAP)
@@ -176,9 +181,13 @@ export default function NumPad({
               padding: PAD,
             }}
           >
-            {GRID.map((row, ri) => (
-              <div key={ri} className="flex" style={{ gap: GAP, marginTop: ri > 0 ? GAP : 0 }}>
-                {row.map((num) => (
+            {GRID.map((row) => (
+              <div
+                key={row.key}
+                className="flex"
+                style={{ gap: GAP, marginTop: row.key === 'top' ? 0 : GAP }}
+              >
+                {row.cells.map((num) => (
                   <div
                     key={num}
                     className={`flex items-center justify-center rounded-md text-sm font-medium ${
@@ -187,7 +196,7 @@ export default function NumPad({
                         : 'bg-surface-active text-foreground'
                     }`}
                     style={{
-                      width: row.length === 1 ? GRID_W - PAD * 2 : CELL_W,
+                      width: row.cells.length === 1 ? GRID_W - PAD * 2 : CELL_W,
                       height: CELL_H,
                     }}
                   >

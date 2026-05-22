@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import SideRail from '../SideRail'
+import SideRail from '@/components/SideRail'
 import type { KeyboardEvent, ReactNode } from 'react'
 import SettingsDialog from '@/components/settings/SettingsDialog'
 

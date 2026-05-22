@@ -79,7 +79,7 @@ function buildCsi(def: CsiDef, modifiers: ActiveModifiers): string {
 function applySequenceModifiers(sequence: string, modifiers: ActiveModifiers): string {
   if (sequence === '\t' && modifiers.shift) {
     const reverseTab = '\x1b[Z'
-    return modifiers.alt ? '\x1b' + reverseTab : reverseTab
+    return modifiers.alt ? `\x1b${reverseTab}` : reverseTab
   }
 
   if (sequence.length !== 1) {
@@ -95,7 +95,7 @@ function applySequenceModifiers(sequence: string, modifiers: ActiveModifiers): s
     if (mapped) next = mapped
   }
   if (modifiers.alt) {
-    next = '\x1b' + next
+    next = `\x1b${next}`
   }
 
   return next

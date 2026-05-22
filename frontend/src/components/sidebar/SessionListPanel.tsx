@@ -16,7 +16,7 @@ import {
 import SessionListItem from './SessionListItem'
 import { isSessionAttached } from './sessionAttachment'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
-import type { Session, SessionPreset } from '../../types'
+import type { Session, SessionPreset } from '@/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { hapticFeedback } from '@/lib/device'

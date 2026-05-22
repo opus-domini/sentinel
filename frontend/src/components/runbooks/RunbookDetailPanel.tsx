@@ -11,7 +11,7 @@ import {
   Webhook,
   XCircle,
 } from 'lucide-react'
-import type { OpsRunbook, OpsRunbookRun, OpsSchedule } from '@/types'
+import type { OpsRunbook, OpsRunbookRun, OpsRunbookStep, OpsSchedule } from '@/types'
 import type { ScheduleDraft } from '@/components/RunbookScheduleEditor'
 import { RunbookScheduleEditor } from '@/components/RunbookScheduleEditor'
 import { Badge } from '@/components/ui/badge'
@@ -44,6 +44,36 @@ function scheduleDescription(schedule: OpsSchedule): string {
     return `Once at ${new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: schedule.timezone || undefined }).format(new Date(schedule.runAt))}`
   }
   return schedule.name
+}
+
+function runbookStepKey(step: OpsRunbookStep): string {
+  return [
+    step.type,
+    step.title,
+    step.command ?? '',
+    step.script ?? '',
+    step.description ?? '',
+    step.continueOnError ? 'continue' : 'stop',
+    step.timeout ?? '',
+    step.retries ?? '',
+    step.retryDelay ?? '',
+  ].join(':')
+}
+
+function runbookStepItems(steps: Array<OpsRunbookStep>) {
+  const seen = new Map<string, number>()
+
+  return steps.map((step, position) => {
+    const baseKey = runbookStepKey(step)
+    const occurrence = seen.get(baseKey) ?? 0
+    seen.set(baseKey, occurrence + 1)
+
+    return {
+      key: occurrence === 0 ? baseKey : `${baseKey}:${occurrence + 1}`,
+      position,
+      step,
+    }
+  })
 }
 
 function formatScheduleDate(iso: string, tz?: string): string {
@@ -240,13 +270,13 @@ export function RunbookDetailPanel({
         <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           Steps ({runbook.steps.length})
         </p>
-        {runbook.steps.map((step, i) => (
+        {runbookStepItems(runbook.steps).map(({ key, position, step }) => (
           <div
-            key={i}
+            key={key}
             className="flex items-start gap-2 rounded border border-border-subtle bg-surface-overlay px-2 py-1.5 text-[11px]"
           >
             <span className="mt-0.5 shrink-0 rounded bg-surface-elevated px-1 text-[10px] text-muted-foreground">
-              {i + 1}
+              {position + 1}
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">

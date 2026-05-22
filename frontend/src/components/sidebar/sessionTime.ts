@@ -64,14 +64,13 @@ export function formatTimestamp(value: string, timezone?: string, locale?: strin
         minute: '2-digit',
         timeZone: timezone,
       }).format(date)
-      return datePart + ' ' + timePart
+      return `${datePart} ${timePart}`
     } catch {
       // fall through to default
     }
   }
-  return (
-    date.toLocaleDateString() +
-    ' ' +
-    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  )
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
 }

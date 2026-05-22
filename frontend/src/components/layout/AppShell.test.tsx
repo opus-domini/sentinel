@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import AppShell from './AppShell'
 import { LayoutContext } from '@/contexts/LayoutContext'
 
-vi.mock('../SideRail', () => ({
+vi.mock('@/components/SideRail', () => ({
   default: () => <nav aria-label="side rail" />,
 }))
 

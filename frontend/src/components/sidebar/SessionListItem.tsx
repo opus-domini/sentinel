@@ -4,7 +4,7 @@ import { Check, LayoutGrid, Rows3, User } from 'lucide-react'
 import { effectiveAttachedClients, isSessionAttachedWithLocalTab } from './sessionAttachment'
 import { formatRelativeTime } from './sessionTime'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
-import type { Session } from '../../types'
+import type { Session } from '@/types'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useDateFormat } from '@/hooks/useDateFormat'
@@ -83,7 +83,7 @@ export default function SessionListItem({
 
   const shortHash =
     session.hash.length > 7
-      ? session.hash.slice(0, 3) + '\u2026' + session.hash.slice(-3)
+      ? `${session.hash.slice(0, 3)}\u2026${session.hash.slice(-3)}`
       : session.hash
 
   const handleOpen = () => {

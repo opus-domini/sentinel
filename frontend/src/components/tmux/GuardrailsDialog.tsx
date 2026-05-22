@@ -103,6 +103,18 @@ const defaultNewRule: RuleDraft = {
 }
 
 const labelClass = 'text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground'
+const RULE_SKELETON_KEYS = [
+  'guardrail-rule-skeleton-create',
+  'guardrail-rule-skeleton-warning',
+  'guardrail-rule-skeleton-block',
+] as const
+const AUDIT_SKELETON_KEYS = [
+  'guardrail-audit-skeleton-created',
+  'guardrail-audit-skeleton-confirmed',
+  'guardrail-audit-skeleton-blocked',
+  'guardrail-audit-skeleton-denied',
+  'guardrail-audit-skeleton-expired',
+] as const
 
 const modeOptions = [
   { value: 'warn', label: 'Warn' },
@@ -634,9 +646,9 @@ export default function GuardrailsDialog({ open, onOpenChange }: GuardrailsDialo
                 )}
 
                 {rulesLoading &&
-                  Array.from({ length: 3 }).map((_, idx) => (
+                  RULE_SKELETON_KEYS.map((key) => (
                     <div
-                      key={`rule-skeleton-${idx}`}
+                      key={key}
                       className="h-20 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}
@@ -804,9 +816,9 @@ export default function GuardrailsDialog({ open, onOpenChange }: GuardrailsDialo
                 aria-labelledby="guardrails-tab-audit"
               >
                 {auditLoading &&
-                  Array.from({ length: 5 }).map((_, idx) => (
+                  AUDIT_SKELETON_KEYS.map((key) => (
                     <div
-                      key={`audit-skeleton-${idx}`}
+                      key={key}
                       className="h-16 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}

@@ -35,6 +35,13 @@ type ActivitiesFooterSummaryParams = {
 }
 
 const EMPTY_ACTIVITY_EVENTS: Array<OpsActivityEvent> = []
+const ACTIVITY_SKELETON_KEYS = [
+  'activity-skeleton-alert',
+  'activity-skeleton-service',
+  'activity-skeleton-runbook',
+  'activity-skeleton-metric',
+  'activity-skeleton-system',
+] as const
 
 function buildActivitiesFooterSummary({
   overviewError,
@@ -233,9 +240,9 @@ function ActivitiesPage() {
             <ScrollArea className="h-full min-h-0">
               <div className="grid gap-1.5 p-2">
                 {activityLoading &&
-                  Array.from({ length: 5 }).map((_, idx) => (
+                  ACTIVITY_SKELETON_KEYS.map((key) => (
                     <div
-                      key={`activity-skeleton-${idx}`}
+                      key={key}
                       className="h-20 motion-safe:animate-pulse rounded border border-border-subtle bg-surface-elevated"
                     />
                   ))}

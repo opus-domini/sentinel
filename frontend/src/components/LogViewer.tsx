@@ -31,15 +31,19 @@ function highlightMatch(text: string, regex: RegExp | null): React.ReactNode {
   if (!regex) return text
   const parts = text.split(regex)
   if (parts.length === 1) return text
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <mark key={i} className="rounded-sm bg-yellow-500/30 text-yellow-200">
+  let offset = 0
+  return parts.map((part, i) => {
+    const start = offset
+    offset += part.length
+
+    return i % 2 === 1 ? (
+      <mark key={`${start}:${part}`} className="rounded-sm bg-yellow-500/30 text-yellow-200">
         {part}
       </mark>
     ) : (
       part
-    ),
-  )
+    )
+  })
 }
 
 const LogLine = React.memo(function LogLine({

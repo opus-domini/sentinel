@@ -9,6 +9,14 @@
     "browser": true
   },
   "ignorePatterns": ["dist/**", "public/sw.js", "src/routeTree.gen.ts"],
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "react/jsx-no-constructed-context-values": "off"
+      }
+    }
+  ],
   "rules": {
     "for-direction": "error",
     "no-async-promise-executor": "error",
@@ -31,6 +39,7 @@
     "no-fallthrough": "error",
     "no-global-assign": "error",
     "no-alert": "error",
+    "no-console": ["error", { "allow": ["warn", "error"] }],
     "no-invalid-regexp": "error",
     "no-irregular-whitespace": "error",
     "no-loss-of-precision": "error",
@@ -52,6 +61,7 @@
     "no-with": "error",
     "object-shorthand": "error",
     "prefer-const": "error",
+    "prefer-template": "error",
     "require-yield": "error",
     "use-isnan": "error",
     "valid-typeof": "error",
@@ -77,6 +87,7 @@
     "import/first": "error",
     "import/no-commonjs": "error",
     "import/no-duplicates": "error",
+    "import/no-relative-parent-imports": "error",
     "jsx-a11y/alt-text": "error",
     "jsx-a11y/aria-props": "error",
     "jsx-a11y/aria-role": "error",
@@ -88,8 +99,10 @@
     "promise/valid-params": "error",
     "react/button-has-type": "error",
     "react/jsx-key": "error",
+    "react/jsx-no-constructed-context-values": "error",
     "react/jsx-no-duplicate-props": "error",
     "react/jsx-no-useless-fragment": "error",
+    "react/no-array-index-key": "error",
     "react/no-unstable-nested-components": "error",
     "react/react-in-jsx-scope": "off"
   }

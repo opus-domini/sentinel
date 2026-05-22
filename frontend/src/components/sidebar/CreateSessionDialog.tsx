@@ -166,8 +166,8 @@ export default function CreateSessionDialog({
   }, [frequentDirs, normalizedDefaultCwd])
 
   function shortenPath(path: string): string {
-    if (normalizedDefaultCwd && path.startsWith(normalizedDefaultCwd + '/')) {
-      return '~/' + path.slice(normalizedDefaultCwd.length + 1)
+    if (normalizedDefaultCwd && path.startsWith(`${normalizedDefaultCwd}/`)) {
+      return `~/${path.slice(normalizedDefaultCwd.length + 1)}`
     }
     return path
   }

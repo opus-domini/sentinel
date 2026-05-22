@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
@@ -204,10 +204,16 @@ function RootComponent() {
     [queryClient],
   )
 
+  const tokenContextValue = useMemo(() => ({ authenticated, setToken }), [authenticated, setToken])
+  const toastContextValue = useMemo(
+    () => ({ toasts, pushToast, dismissToast }),
+    [dismissToast, pushToast, toasts],
+  )
+
   return (
     <MetaContext.Provider value={meta}>
-      <TokenContext.Provider value={{ authenticated, setToken }}>
-        <ToastContext.Provider value={{ toasts, pushToast, dismissToast }}>
+      <TokenContext.Provider value={tokenContextValue}>
+        <ToastContext.Provider value={toastContextValue}>
           <OpsEventsContext.Provider value={opsEvents}>
             <LayoutContext.Provider value={layout}>
               <TooltipProvider delayDuration={300}>
