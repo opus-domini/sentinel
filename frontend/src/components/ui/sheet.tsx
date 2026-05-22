@@ -6,27 +6,19 @@ import { XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-function Sheet({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+function Sheet({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="sheet" {...props} />
 }
 
-function SheetTrigger({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+function SheetTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
   return <DialogPrimitive.Trigger data-slot="sheet-trigger" {...props} />
 }
 
-function SheetPortal({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+function SheetPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal data-slot="sheet-portal" {...props} />
 }
 
-function SheetClose({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Close>) {
+function SheetClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
   return <DialogPrimitive.Close data-slot="sheet-close" {...props} />
 }
 
@@ -68,11 +60,7 @@ function SheetContent({
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close data-slot="sheet-close" asChild>
-            <Button
-              variant="ghost"
-              className="absolute top-2 right-2"
-              size="icon-sm"
-            >
+            <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
               <XIcon />
               <span className="sr-only">Close</span>
             </Button>
@@ -85,18 +73,11 @@ function SheetContent({
 
 function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="sheet-header"
-      className={cn('gap-1 flex flex-col', className)}
-      {...props}
-    />
+    <div data-slot="sheet-header" className={cn('gap-1 flex flex-col', className)} {...props} />
   )
 }
 
-function SheetTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Title>) {
+function SheetTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
       data-slot="sheet-title"
@@ -122,12 +103,4 @@ function SheetDescription({
   )
 }
 
-export {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-}
+export { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger }

@@ -147,9 +147,7 @@ function RunbooksPage() {
                     onCancelScheduleEdit={() => setEditingSchedule(null)}
                     onSaveSchedule={(draft) => void saveSchedule(draft)}
                     onDeleteSchedule={(id) => void deleteSchedule(id)}
-                    onToggleScheduleEnabled={(s) =>
-                      void toggleScheduleEnabled(s)
-                    }
+                    onToggleScheduleEnabled={(s) => void toggleScheduleEnabled(s)}
                     onTriggerSchedule={(id) => void triggerSchedule(id)}
                   />
                   <RunbookJobHistory
@@ -183,9 +181,7 @@ function RunbooksPage() {
         </div>
 
         <footer className="flex items-center justify-between gap-2 overflow-hidden border-t border-border bg-card px-2.5 text-[12px] text-secondary-foreground">
-          <span className="min-w-0 flex-1 truncate">
-            {runbooks.length} runbooks
-          </span>
+          <span className="min-w-0 flex-1 truncate">{runbooks.length} runbooks</span>
         </footer>
       </main>
 

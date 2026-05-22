@@ -72,31 +72,26 @@ export default function TmuxHelpDialog({
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>About Terminal</DialogTitle>
-            <DialogDescription>
-              How the Sentinel terminal interface works.
-            </DialogDescription>
+            <DialogDescription>How the Sentinel terminal interface works.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <section>
               <h3 className="mb-1 font-medium text-foreground">Sessions</h3>
               <p>
-                Each tab maps to a tmux session running on the host. Sessions
-                persist across disconnects — closing a tab detaches without
-                killing the session. Use the sidebar to create, attach, or kill
-                sessions.
+                Each tab maps to a tmux session running on the host. Sessions persist across
+                disconnects — closing a tab detaches without killing the session. Use the sidebar to
+                create, attach, or kill sessions.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Terminal</h3>
               <p>
-                The terminal is rendered with xterm.js and connected to the host
-                via a WebSocket PTY. Input and output are streamed in real time.
+                The terminal is rendered with xterm.js and connected to the host via a WebSocket
+                PTY. Input and output are streamed in real time.
               </p>
             </section>
             <section>
-              <h3 className="mb-1 font-medium text-foreground">
-                Keyboard Shortcuts — tmux
-              </h3>
+              <h3 className="mb-1 font-medium text-foreground">Keyboard Shortcuts — tmux</h3>
               <div className="space-y-1.5">
                 {tmuxShortcuts.map(({ keys, desc }) => (
                   <div key={keys} className="flex items-start gap-2 text-xs">
@@ -107,9 +102,7 @@ export default function TmuxHelpDialog({
               </div>
             </section>
             <section>
-              <h3 className="mb-1 font-medium text-foreground">
-                Keyboard Shortcuts — Shell
-              </h3>
+              <h3 className="mb-1 font-medium text-foreground">Keyboard Shortcuts — Shell</h3>
               <div className="space-y-1.5">
                 {shellShortcuts.map(({ keys, desc }) => (
                   <div key={keys} className="flex items-start gap-2 text-xs">

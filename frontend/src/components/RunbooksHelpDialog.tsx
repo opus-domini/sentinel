@@ -30,46 +30,39 @@ export default function RunbooksHelpDialog() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>About Runbooks</DialogTitle>
-            <DialogDescription>
-              How the Sentinel runbook system works.
-            </DialogDescription>
+            <DialogDescription>How the Sentinel runbook system works.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <section>
-              <h3 className="mb-1 font-medium text-foreground">
-                What are Runbooks
-              </h3>
+              <h3 className="mb-1 font-medium text-foreground">What are Runbooks</h3>
               <p>
-                Runbooks are automated sequences of steps that execute commands
-                on the host. They codify routine operational procedures into
-                repeatable workflows.
+                Runbooks are automated sequences of steps that execute commands on the host. They
+                codify routine operational procedures into repeatable workflows.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Step Types</h3>
               <p>
-                <strong className="text-foreground">command</strong> — runs a
-                shell command and captures its output.
+                <strong className="text-foreground">command</strong> — runs a shell command and
+                captures its output.
               </p>
               <p className="mt-1">
-                <strong className="text-foreground">check</strong> — runs a
-                validation command and fails the runbook if it exits non-zero.
+                <strong className="text-foreground">check</strong> — runs a validation command and
+                fails the runbook if it exits non-zero.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Execution</h3>
               <p>
-                Steps run sequentially. Each step&apos;s output is captured and
-                displayed in real time. A failing step halts the remaining
-                sequence.
+                Steps run sequentially. Each step&apos;s output is captured and displayed in real
+                time. A failing step halts the remaining sequence.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Job History</h3>
               <p>
-                Every run is recorded as a job with its status (succeeded,
-                failed, running) and timestamps. Past results are available in
-                the runbook detail view.
+                Every run is recorded as a job with its status (succeeded, failed, running) and
+                timestamps. Past results are available in the runbook detail view.
               </p>
             </section>
           </div>

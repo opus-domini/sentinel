@@ -33,11 +33,7 @@ export function useShellLayout({
     const stored = window.localStorage.getItem(widthStorageKey)
     if (stored !== null) {
       const parsed = Number.parseFloat(stored)
-      if (
-        Number.isFinite(parsed) &&
-        parsed >= minSidebarWidth &&
-        parsed <= maxSidebarWidth
-      ) {
+      if (Number.isFinite(parsed) && parsed >= minSidebarWidth && parsed <= maxSidebarWidth) {
         return parsed
       }
     }
@@ -53,9 +49,7 @@ export function useShellLayout({
 
   const resizeSidebarTo = useCallback(
     (width: number) => {
-      setSidebarWidth(
-        clampSidebarWidth(width, minSidebarWidth, maxSidebarWidth),
-      )
+      setSidebarWidth(clampSidebarWidth(width, minSidebarWidth, maxSidebarWidth))
       notifyResizeEnd()
     },
     [maxSidebarWidth, minSidebarWidth, notifyResizeEnd],
@@ -86,10 +80,7 @@ export function useShellLayout({
       preventDefault: false,
       stopPropagation: false,
       when: (event) =>
-        !(
-          event.target instanceof Element &&
-          event.target.closest('[role="dialog"]')
-        ),
+        !(event.target instanceof Element && event.target.closest('[role="dialog"]')),
       handler: () => setSidebarOpen(false),
     },
     {
@@ -128,7 +119,7 @@ export function useShellLayout({
   )
 
   const startSidebarResize = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
+    (event: ReactMouseEvent<HTMLElement>) => {
       if (isMobile || sidebarCollapsed) {
         return
       }
@@ -139,11 +130,7 @@ export function useShellLayout({
 
       const onMove = (moveEvent: MouseEvent) => {
         const delta = moveEvent.clientX - startX
-        const nextWidth = clampSidebarWidth(
-          startWidth + delta,
-          minSidebarWidth,
-          maxSidebarWidth,
-        )
+        const nextWidth = clampSidebarWidth(startWidth + delta, minSidebarWidth, maxSidebarWidth)
         setSidebarWidth(nextWidth)
       }
 
@@ -156,14 +143,7 @@ export function useShellLayout({
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     },
-    [
-      isMobile,
-      maxSidebarWidth,
-      minSidebarWidth,
-      notifyResizeEnd,
-      sidebarCollapsed,
-      sidebarWidth,
-    ],
+    [isMobile, maxSidebarWidth, minSidebarWidth, notifyResizeEnd, sidebarCollapsed, sidebarWidth],
   )
 
   return {

@@ -41,12 +41,7 @@ function repeatInterval(dx: number, dy: number): number {
   return REPEAT_MAX_MS - ratio * (REPEAT_MAX_MS - REPEAT_MIN_MS)
 }
 
-export default function DPad({
-  onSendKey,
-  disabled,
-  onRefocus,
-  isKeyboardVisible,
-}: DPadProps) {
+export default function DPad({ onSendKey, disabled, onRefocus, isKeyboardVisible }: DPadProps) {
   const [active, setActive] = useState(false)
   const [center, setCenter] = useState({ x: 0, y: 0 })
   const [knob, setKnob] = useState({ x: 0, y: 0 })

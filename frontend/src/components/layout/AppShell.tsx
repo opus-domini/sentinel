@@ -44,7 +44,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
   }, [setSidebarOpen])
 
   const handleSidebarResizeKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
+    (event: KeyboardEvent<HTMLButtonElement>) => {
       if (event.altKey || event.ctrlKey || event.metaKey) {
         return
       }
@@ -85,7 +85,8 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
         {hasSidebar && sidebar}
 
         {hasSidebar && !sidebarCollapsed && (
-          <div
+          <button
+            type="button"
             role="separator"
             aria-label="Resize sidebar"
             aria-orientation="vertical"
@@ -102,7 +103,9 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
         {children}
       </div>
 
-      <div
+      <button
+        type="button"
+        aria-label="Close sidebar"
         className={cn(
           'fixed inset-0 z-20 bg-black/45 md:hidden',
           hasSidebar && sidebarOpen ? 'block' : 'hidden',

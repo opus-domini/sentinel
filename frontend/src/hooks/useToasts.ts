@@ -69,11 +69,12 @@ export function useToasts() {
   )
 
   useEffect(() => {
+    const timers = timersRef.current
     return () => {
-      for (const timerId of timersRef.current.values()) {
+      for (const timerId of timers.values()) {
         window.clearTimeout(timerId)
       }
-      timersRef.current.clear()
+      timers.clear()
     }
   }, [])
 

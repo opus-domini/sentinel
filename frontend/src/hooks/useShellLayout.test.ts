@@ -63,9 +63,7 @@ describe('useShellLayout', () => {
     expect(result.current.sidebarCollapsed).toBe(false)
 
     act(() => {
-      expect(fireEvent.keyDown(document, { key: '\\', ctrlKey: true })).toBe(
-        false,
-      )
+      expect(fireEvent.keyDown(document, { key: '\\', ctrlKey: true })).toBe(false)
     })
     expect(result.current.sidebarCollapsed).toBe(true)
 
@@ -82,9 +80,7 @@ describe('useShellLayout', () => {
     document.body.append(terminal)
 
     act(() => {
-      expect(fireEvent.keyDown(terminal, { key: '\\', ctrlKey: true })).toBe(
-        false,
-      )
+      expect(fireEvent.keyDown(terminal, { key: '\\', ctrlKey: true })).toBe(false)
     })
     expect(result.current.sidebarCollapsed).toBe(false)
 

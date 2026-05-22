@@ -1,10 +1,4 @@
-export type LogLevel =
-  | 'error'
-  | 'warn'
-  | 'info'
-  | 'debug'
-  | 'notice'
-  | 'unknown'
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'notice' | 'unknown'
 
 export type ParsedLogLine = {
   lineNumber: number
@@ -57,10 +51,7 @@ export function detectLevel(message: string): LogLevel {
   return 'unknown'
 }
 
-export function parseSingleLine(
-  line: string,
-  lineNumber: number,
-): ParsedLogLine {
+export function parseSingleLine(line: string, lineNumber: number): ParsedLogLine {
   const journalctlMatch = line.match(journalctlRegex)
   if (journalctlMatch) {
     const message = journalctlMatch[4]

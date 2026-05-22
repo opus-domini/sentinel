@@ -85,22 +85,16 @@ describe('useTmuxTimeline', () => {
     })
 
     await waitFor(() => {
-      expect(
-        apiMock.mock.calls.some((call) =>
-          String(call[0]).includes('session=alpha'),
-        ),
-      ).toBe(true)
+      expect(apiMock.mock.calls.some((call) => String(call[0]).includes('session=alpha'))).toBe(
+        true,
+      )
     })
 
     activeSession = 'beta'
     rerender()
 
     await waitFor(() => {
-      expect(
-        apiMock.mock.calls.some((call) =>
-          String(call[0]).includes('session=beta'),
-        ),
-      ).toBe(true)
+      expect(apiMock.mock.calls.some((call) => String(call[0]).includes('session=beta'))).toBe(true)
     })
   })
 

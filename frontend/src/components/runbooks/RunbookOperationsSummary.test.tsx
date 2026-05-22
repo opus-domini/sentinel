@@ -120,12 +120,8 @@ describe('RunbookOperationsSummary', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: /Active runs: 1/i }))
-    fireEvent.click(
-      screen.getByRole('button', { name: /Pending approvals: 1/i }),
-    )
-    fireEvent.click(
-      screen.getByRole('button', { name: /Failed last runs: 1/i }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: /Pending approvals: 1/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Failed last runs: 1/i }))
     fireEvent.click(screen.getByRole('button', { name: /Scheduled: 1/i }))
 
     expect(onSelectRunbook).toHaveBeenNthCalledWith(1, 'rb-active')

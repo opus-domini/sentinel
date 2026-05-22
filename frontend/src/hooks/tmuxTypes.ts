@@ -1,10 +1,7 @@
 import type { MutableRefObject } from 'react'
 import type { PaneInfo, Session, TimelineEvent, WindowInfo } from '@/types'
 import type { MergePendingInspectorResult } from '@/lib/tmuxInspectorOptimistic'
-import type {
-  SessionActivityPatch,
-  SessionPatchApplyResult,
-} from '@/lib/tmuxSessionEvents'
+import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import type { TabsAction, TabsState } from '@/tabsReducer'
 
 // ---------------------------------------------------------------------------
@@ -208,22 +205,16 @@ export type InspectorActions = {
   renameWindowValue: string
   setRenameWindowValue: (value: string) => void
   setRenameWindowDialogOpen: (open: boolean) => void
-  setRenameWindowTarget: (
-    target: { session: string; index: number } | null,
-  ) => void
+  setRenameWindowTarget: (target: { session: string; index: number } | null) => void
   renamePaneDialogOpen: boolean
   renamePaneValue: string
   setRenamePaneValue: (value: string) => void
   setRenamePaneDialogOpen: (open: boolean) => void
-  setRenamePaneTarget: (
-    target: { session: string; paneID: string } | null,
-  ) => void
+  setRenamePaneTarget: (target: { session: string; paneID: string } | null) => void
   applySessionActivityPatches: (
     rawPatches: Array<SessionActivityPatch> | undefined,
   ) => SessionPatchApplyResult
-  applyInspectorProjectionPatches: (
-    rawPatches: Array<InspectorSessionPatch> | undefined,
-  ) => boolean
+  applyInspectorProjectionPatches: (rawPatches: Array<InspectorSessionPatch> | undefined) => boolean
   setWindows: React.Dispatch<React.SetStateAction<Array<WindowInfo>>>
   setPanes: React.Dispatch<React.SetStateAction<Array<PaneInfo>>>
   setActiveWindowIndexOverride: (index: number | null) => void
@@ -242,19 +233,13 @@ export type InspectorActions = {
 // Helpers hoisted to module level
 // ---------------------------------------------------------------------------
 
-export function asNonNegativeInt(
-  value: number | undefined,
-  fallback: number,
-): number {
+export function asNonNegativeInt(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.trunc(value)
     : fallback
 }
 
-export function asNonNegativeInt64(
-  value: number | undefined,
-  fallback: number,
-): number {
+export function asNonNegativeInt64(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.trunc(value)
     : fallback
@@ -265,10 +250,7 @@ export function isTmuxBinaryMissingMessage(message: string): boolean {
   return normalized.includes('tmux binary not found')
 }
 
-export function sameWindowProjection(
-  left: Array<WindowInfo>,
-  right: Array<WindowInfo>,
-): boolean {
+export function sameWindowProjection(left: Array<WindowInfo>, right: Array<WindowInfo>): boolean {
   if (left.length !== right.length) return false
   for (let i = 0; i < left.length; i += 1) {
     const a = left[i]
@@ -296,10 +278,7 @@ export function sameWindowProjection(
   return true
 }
 
-export function samePaneProjection(
-  left: Array<PaneInfo>,
-  right: Array<PaneInfo>,
-): boolean {
+export function samePaneProjection(left: Array<PaneInfo>, right: Array<PaneInfo>): boolean {
   if (left.length !== right.length) return false
   for (let i = 0; i < left.length; i += 1) {
     const a = left[i]

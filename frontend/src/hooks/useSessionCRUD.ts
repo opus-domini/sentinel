@@ -37,11 +37,7 @@ type UseSessionCRUDOptions = {
   pushSuccessToast: (title: string, message: string) => void
   pendingCreateSessionsRef: React.MutableRefObject<Map<string, string>>
   pendingKillSessionsRef: React.MutableRefObject<Set<string>>
-  requestGuardrailConfirm: (
-    ruleName: string,
-    message: string,
-    onConfirm: () => void,
-  ) => void
+  requestGuardrailConfirm: (ruleName: string, message: string, onConfirm: () => void) => void
   refreshSessionPresets: () => Promise<void> | void
 }
 
@@ -82,16 +78,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
 
   const refreshGenerationRef = useRef(0)
   const pendingRenameSessionsRef = useRef(new Map<string, string>())
-  const pendingSessionCreateOpsRef = useRef(
-    new Map<string, PendingSessionCreateOperation>(),
-  )
+  const pendingSessionCreateOpsRef = useRef(new Map<string, PendingSessionCreateOperation>())
   const lastSessionsRefreshAtRef = useRef(0)
   const refreshSessionsFnRef = useRef<() => Promise<void>>(async () => {})
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
-  const [renameSessionTarget, setRenameSessionTarget] = useState<string | null>(
-    null,
-  )
+  const [renameSessionTarget, setRenameSessionTarget] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
   const clearPendingSessionRenamesForName = useCallback((session: string) => {
@@ -140,9 +132,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
 
       const optimisticSessionName = op.optimisticSessionName?.trim() ?? ''
       if (optimisticSessionName !== '') {
-        setSessions((prev) =>
-          prev.filter((item) => item.name !== optimisticSessionName),
-        )
+        setSessions((prev) => prev.filter((item) => item.name !== optimisticSessionName))
         dispatchTabs({ type: 'close', session: optimisticSessionName })
         const currentActiveSession = tabsStateRef.current.activeSession
         if (
@@ -217,8 +207,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           if (currentOp.sessionName.trim() !== '') {
             await refreshInspector(currentOp.sessionName, { force: true })
           }
-          const refreshedOp =
-            pendingSessionCreateOpsRef.current.get(operationId)
+          const refreshedOp = pendingSessionCreateOpsRef.current.get(operationId)
           if (!refreshedOp) {
             return
           }
@@ -233,19 +222,16 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         })()
       }, sessionCreateConvergenceTimeoutMs)
     },
-    [
-      refreshInspector,
-      rollbackPendingSessionCreate,
-      settlePendingSessionCreateSuccess,
-    ],
+    [refreshInspector, rollbackPendingSessionCreate, settlePendingSessionCreateSuccess],
   )
 
   useEffect(() => {
+    const pendingSessionCreateOps = pendingSessionCreateOpsRef.current
     return () => {
-      for (const operationId of pendingSessionCreateOpsRef.current.keys()) {
+      for (const operationId of pendingSessionCreateOps.keys()) {
         clearSessionCreateTimeout(operationId)
       }
-      pendingSessionCreateOpsRef.current.clear()
+      pendingSessionCreateOps.clear()
     }
   }, [clearSessionCreateTimeout])
 
@@ -279,9 +265,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       const activeSessionRecord =
         currentActiveSession === ''
           ? null
-          : (sessionsRef.current.find(
-              (item) => item.name === currentActiveSession,
-            ) ?? null)
+          : (sessionsRef.current.find((item) => item.name === currentActiveSession) ?? null)
       const shouldPreserveConnectingActiveSession =
         currentActiveSession !== '' &&
         activeSessionRecord !== null &&
@@ -300,9 +284,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       const sessionNames = shouldPreserveConnectingActiveSession
         ? [
             currentActiveSession,
-            ...merged.sessionNamesForSync.filter(
-              (name) => name !== currentActiveSession,
-            ),
+            ...merged.sessionNamesForSync.filter((name) => name !== currentActiveSession),
           ]
         : merged.sessionNamesForSync
 
@@ -311,10 +293,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         clearPendingSessionRenamesForName(name)
         clearPendingInspectorSessionState(name)
       }
-      if (
-        currentActiveSession !== '' &&
-        !sessionNames.includes(currentActiveSession)
-      ) {
+      if (currentActiveSession !== '' && !sessionNames.includes(currentActiveSession)) {
         closeCurrentSocket('active session removed')
         resetTerminal()
         setConnection('disconnected', 'active session removed')
@@ -327,8 +306,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         dispatchTabs({ type: 'activate', session: currentActiveSession })
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'failed to refresh sessions'
+      const message = error instanceof Error ? error.message : 'failed to refresh sessions'
       const unavailable = isTmuxBinaryMissingMessage(message)
       setTmuxUnavailable(unavailable)
       setConnection('error', message)
@@ -346,8 +324,11 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     connectionState,
     dispatchTabs,
     pendingCreateSessionsRef,
+    pendingKillSessionsRef,
+    pendingRenameSessionsRef,
     resetTerminal,
     runtimeMetricsRef,
+    sessionsRef,
     setConnection,
     setSessions,
     setTmuxUnavailable,
@@ -358,22 +339,14 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const activateSession = useCallback(
     (session: string, icon = '') => {
       const optimisticAt = new Date().toISOString()
-      setSessions((prev) =>
-        upsertOptimisticAttachedSession(prev, session, optimisticAt, icon),
-      )
+      setSessions((prev) => upsertOptimisticAttachedSession(prev, session, optimisticAt, icon))
       dispatchTabs({ type: 'activate', session })
     },
     [dispatchTabs, setSessions],
   )
 
   const createSessionWithConfirm = useCallback(
-    async (
-      name: string,
-      cwd: string,
-      icon: string,
-      guardrailConfirmed: boolean,
-      user?: string,
-    ) => {
+    async (name: string, cwd: string, icon: string, guardrailConfirmed: boolean, user?: string) => {
       const sessionName = name.trim()
       if (!sessionName) {
         setConnection('error', 'session name required')
@@ -386,9 +359,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       clearPendingSessionRenamesForName(sessionName)
 
       const previousActiveSession = tabsStateRef.current.activeSession
-      const sessionAlreadyExists = sessionsRef.current.some(
-        (item) => item.name === sessionName,
-      )
+      const sessionAlreadyExists = sessionsRef.current.some((item) => item.name === sessionName)
       const operationId = createTmuxOperationId('session-create')
       const operation: PendingSessionCreateOperation = {
         operationId,
@@ -405,13 +376,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         pendingCreateSessionsRef.current.set(sessionName, optimisticAt)
         operation.optimisticSessionName = sessionName
         setSessions((prev) =>
-          upsertOptimisticAttachedSession(
-            prev,
-            sessionName,
-            optimisticAt,
-            icon,
-            user,
-          ),
+          upsertOptimisticAttachedSession(prev, sessionName, optimisticAt, icon, user),
         )
         dispatchTabs({ type: 'activate', session: sessionName })
         setConnection('connecting', `creating ${sessionName}`)
@@ -441,10 +406,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         if (createdName !== sessionName) {
           operation.sessionName = createdName
           pendingCreateSessionsRef.current.delete(sessionName)
-          pendingCreateSessionsRef.current.set(
-            createdName,
-            new Date().toISOString(),
-          )
+          pendingCreateSessionsRef.current.set(createdName, new Date().toISOString())
           if (!sessionAlreadyExists) {
             setSessions((prev) => {
               const without = prev.filter((s) => s.name !== sessionName)
@@ -487,9 +449,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           if (operation.optimisticSessionName !== null) {
             pendingCreateSessionsRef.current.delete(operation.sessionName)
             setSessions((prev) =>
-              prev.filter(
-                (item) => item.name !== operation.optimisticSessionName,
-              ),
+              prev.filter((item) => item.name !== operation.optimisticSessionName),
             )
             dispatchTabs({
               type: 'close',
@@ -511,14 +471,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           requestGuardrailConfirm(
             rules[0]?.name ?? '',
             error.decision.message,
-            () =>
-              void createSessionWithConfirm(sessionName, cwd, icon, true, user),
+            () => void createSessionWithConfirm(sessionName, cwd, icon, true, user),
           )
           return
         }
 
-        const msg =
-          error instanceof Error ? error.message : 'failed to create session'
+        const msg = error instanceof Error ? error.message : 'failed to create session'
         rollbackPendingSessionCreate(operationId, msg)
       }
     },
@@ -530,6 +488,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       clearPendingSessionRenamesForName,
       dispatchTabs,
       pendingCreateSessionsRef,
+      pendingKillSessionsRef,
       rollbackPendingSessionCreate,
       settlePendingSessionCreateIfReady,
       pushErrorToast,
@@ -564,24 +523,13 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       if (eventSessionName !== '') {
         if (eventSessionName !== op.sessionName) {
           const pendingCreatedAt =
-            pendingCreateSessionsRef.current.get(op.sessionName) ??
-            new Date().toISOString()
+            pendingCreateSessionsRef.current.get(op.sessionName) ?? new Date().toISOString()
           pendingCreateSessionsRef.current.delete(op.sessionName)
-          pendingCreateSessionsRef.current.set(
-            eventSessionName,
-            pendingCreatedAt,
-          )
-          if (
-            op.optimisticSessionName !== null &&
-            op.optimisticSessionName !== eventSessionName
-          ) {
+          pendingCreateSessionsRef.current.set(eventSessionName, pendingCreatedAt)
+          if (op.optimisticSessionName !== null && op.optimisticSessionName !== eventSessionName) {
             setSessions((prev) => {
-              const previousOptimistic = prev.find(
-                (item) => item.name === op.optimisticSessionName,
-              )
-              const withoutPrevious = prev.filter(
-                (item) => item.name !== op.optimisticSessionName,
-              )
+              const previousOptimistic = prev.find((item) => item.name === op.optimisticSessionName)
+              const withoutPrevious = prev.filter((item) => item.name !== op.optimisticSessionName)
               return upsertOptimisticAttachedSession(
                 withoutPrevious,
                 eventSessionName,
@@ -618,9 +566,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const applyKillOptimisticUI = useCallback(
     (sessionName: string) => {
       const wasActive = tabsStateRef.current.activeSession === sessionName
-      const hadSession = sessionsRef.current.some(
-        (item) => item.name === sessionName,
-      )
+      const hadSession = sessionsRef.current.some((item) => item.name === sessionName)
 
       pendingKillSessionsRef.current.add(sessionName)
       if (hadSession) {
@@ -642,6 +588,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       closeCurrentSocket,
       dispatchTabs,
       pendingCreateSessionsRef,
+      pendingKillSessionsRef,
       resetTerminal,
       sessionsRef,
       setConnection,
@@ -658,9 +605,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       }
 
       const activeBeforeKill = tabsStateRef.current.activeSession
-      const hadSession = sessionsRef.current.some(
-        (item) => item.name === sessionName,
-      )
+      const hadSession = sessionsRef.current.some((item) => item.name === sessionName)
 
       // Apply optimistic UI only when confirmed (or when guardrails
       // won't intervene). On the initial attempt we wait for the API
@@ -708,8 +653,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           }
         }
 
-        const msg =
-          error instanceof Error ? error.message : 'failed to kill session'
+        const msg = error instanceof Error ? error.message : 'failed to kill session'
         setConnection('error', msg)
         pushErrorToast('Kill Session', msg)
       }
@@ -723,6 +667,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       refreshSessionPresets,
       refreshSessions,
       requestGuardrailConfirm,
+      pendingKillSessionsRef,
       sessionsRef,
       setConnection,
       tabsStateRef,
@@ -745,11 +690,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       }
       const sanitized = slugifyTmuxName(newName).trim()
       if (!sanitized || sanitized === active) return
-      if (
-        sessionsRef.current.some(
-          (item) => item.name === sanitized && item.name !== active,
-        )
-      ) {
+      if (sessionsRef.current.some((item) => item.name === sanitized && item.name !== active)) {
         const msg = `session "${sanitized}" already exists`
         setConnection('error', msg)
         pushErrorToast('Rename Session', msg)
@@ -761,20 +702,15 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       pendingRenameSessionsRef.current.set(active, sanitized)
       setSessions((prev) =>
         prev.map((item) =>
-          item.name === active
-            ? { ...item, name: sanitized, activityAt: changedAt }
-            : item,
+          item.name === active ? { ...item, name: sanitized, activityAt: changedAt } : item,
         ),
       )
       dispatchTabs({ type: 'rename', oldName: active, newName: sanitized })
       try {
-        await api<{ name: string }>(
-          `/api/tmux/sessions/${encodeURIComponent(active)}`,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({ newName: sanitized }),
-          },
-        )
+        await api<{ name: string }>(`/api/tmux/sessions/${encodeURIComponent(active)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ newName: sanitized }),
+        })
         void refreshSessions()
         setConnection(
           connectionState === 'connected' ? 'connected' : 'disconnected',
@@ -784,14 +720,11 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       } catch (error) {
         pendingRenameSessionsRef.current.delete(active)
         setSessions((prev) =>
-          prev.map((item) =>
-            item.name === sanitized ? { ...item, name: active } : item,
-          ),
+          prev.map((item) => (item.name === sanitized ? { ...item, name: active } : item)),
         )
         dispatchTabs({ type: 'rename', oldName: sanitized, newName: active })
         void refreshSessions()
-        const msg =
-          error instanceof Error ? error.message : 'failed to rename session'
+        const msg = error instanceof Error ? error.message : 'failed to rename session'
         setConnection('error', msg)
         pushErrorToast('Rename Session', msg)
       }
@@ -814,28 +747,20 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     async (session: string, icon: string) => {
       const target = session.trim()
       if (target === '') return
-      const previousIcon =
-        sessionsRef.current.find((item) => item.name === target)?.icon ?? ''
+      const previousIcon = sessionsRef.current.find((item) => item.name === target)?.icon ?? ''
       setSessions((prev) =>
         prev.map((item) =>
-          item.name === target
-            ? { ...item, icon, activityAt: new Date().toISOString() }
-            : item,
+          item.name === target ? { ...item, icon, activityAt: new Date().toISOString() } : item,
         ),
       )
       try {
-        await api<void>(
-          `/api/tmux/sessions/${encodeURIComponent(target)}/icon`,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({ icon }),
-          },
-        )
+        await api<void>(`/api/tmux/sessions/${encodeURIComponent(target)}/icon`, {
+          method: 'PATCH',
+          body: JSON.stringify({ icon }),
+        })
       } catch {
         setSessions((prev) =>
-          prev.map((item) =>
-            item.name === target ? { ...item, icon: previousIcon } : item,
-          ),
+          prev.map((item) => (item.name === target ? { ...item, icon: previousIcon } : item)),
         )
         pushErrorToast('Change Icon', 'failed to change session icon')
       }
@@ -868,14 +793,10 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const closeTab = useCallback(
     (name: string) => {
       const wasActive = tabsStateRef.current.activeSession === name
-      const nextCount = tabsStateRef.current.openTabs.filter(
-        (t) => t !== name,
-      ).length
+      const nextCount = tabsStateRef.current.openTabs.filter((t) => t !== name).length
       setSessions((prev) =>
         prev.map((item) =>
-          item.name === name
-            ? { ...item, attached: Math.max(0, item.attached - 1) }
-            : item,
+          item.name === name ? { ...item, attached: Math.max(0, item.attached - 1) } : item,
         ),
       )
       if (wasActive) {
@@ -883,17 +804,9 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         resetTerminal()
       }
       dispatchTabs({ type: 'close', session: name })
-      if (wasActive && nextCount === 0)
-        setConnection('disconnected', 'detached')
+      if (wasActive && nextCount === 0) setConnection('disconnected', 'detached')
     },
-    [
-      closeCurrentSocket,
-      dispatchTabs,
-      resetTerminal,
-      setConnection,
-      setSessions,
-      tabsStateRef,
-    ],
+    [closeCurrentSocket, dispatchTabs, resetTerminal, setConnection, setSessions, tabsStateRef],
   )
 
   const detachSession = useCallback(

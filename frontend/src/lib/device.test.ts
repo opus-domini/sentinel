@@ -32,25 +32,17 @@ describe('isIOSDevice', () => {
   })
 
   it('returns true for iPadOS (Macintosh UA with touch)', () => {
-    mockNavigator(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
-      5,
-    )
+    mockNavigator('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 5)
     expect(isIOSDevice()).toBe(true)
   })
 
   it('returns false for Mac desktop', () => {
-    mockNavigator(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
-      0,
-    )
+    mockNavigator('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 0)
     expect(isIOSDevice()).toBe(false)
   })
 
   it('returns false for Android', () => {
-    mockNavigator(
-      'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120',
-    )
+    mockNavigator('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120')
     expect(isIOSDevice()).toBe(false)
   })
 

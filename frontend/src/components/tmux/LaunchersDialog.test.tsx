@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import LaunchersDialog from './LaunchersDialog'
@@ -43,10 +37,10 @@ describe('LaunchersDialog', () => {
       />,
     )
 
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'Open launcher presets' }),
-      { button: 0, ctrlKey: false },
-    )
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Open launcher presets' }), {
+      button: 0,
+      ctrlKey: false,
+    })
     fireEvent.click(await screen.findByText('Codex'))
 
     expect(screen.getByDisplayValue('Codex')).not.toBeNull()
@@ -82,9 +76,7 @@ describe('LaunchersDialog', () => {
 
     expect(screen.getByText('No launchers configured yet.')).not.toBeNull()
     expect(
-      screen.getByText(
-        'Start from a blank launcher or pick a preset from the split button above.',
-      ),
+      screen.getByText('Start from a blank launcher or pick a preset from the split button above.'),
     ).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Codex' })).toBeNull()
   })
@@ -169,10 +161,7 @@ describe('LaunchersDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByText('name is invalid')).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
-      'disabled',
-      false,
-    )
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', false)
   })
 
   it('shows user mode field when canSwitchUser is true', () => {

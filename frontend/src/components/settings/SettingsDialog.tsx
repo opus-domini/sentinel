@@ -59,10 +59,7 @@ const WEBHOOK_EVENTS = [
   { key: 'alert.acked', label: 'Alert Acknowledged' },
 ] as const
 
-export default function SettingsDialog({
-  open,
-  onOpenChange,
-}: SettingsDialogProps) {
+export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { version, timezone, locale } = useMetaContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
@@ -74,11 +71,8 @@ export default function SettingsDialog({
   const [storageError, setStorageError] = useState('')
   const [storageNotice, setStorageNotice] = useState('')
   const [storageFlushingResource, setStorageFlushingResource] = useState('')
-  const [flushConfirmResource, setFlushConfirmResource] = useState<
-    string | null
-  >(null)
-  const [activeSection, setActiveSection] =
-    useState<SettingsSection>('appearance')
+  const [flushConfirmResource, setFlushConfirmResource] = useState<string | null>(null)
+  const [activeSection, setActiveSection] = useState<SettingsSection>('appearance')
   const [webhookUrl, setWebhookUrl] = useState('')
   const [webhookEvents, setWebhookEvents] = useState<Array<string>>([])
   const [webhookLoaded, setWebhookLoaded] = useState(false)
@@ -123,9 +117,7 @@ export default function SettingsDialog({
   const selectTheme = (id: string) => {
     setThemeId(id)
     localStorage.setItem(THEME_STORAGE_KEY, id)
-    window.dispatchEvent(
-      new CustomEvent('sentinel-theme-change', { detail: id }),
-    )
+    window.dispatchEvent(new CustomEvent('sentinel-theme-change', { detail: id }))
   }
 
   const changeTimezone = useCallback(
@@ -203,10 +195,7 @@ export default function SettingsDialog({
       setWebhookEvents(data.events ?? [])
       setWebhookNotice('Webhook settings saved.')
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'failed to save webhook settings'
+      const message = error instanceof Error ? error.message : 'failed to save webhook settings'
       setWebhookError(message)
     } finally {
       setWebhookSaving(false)
@@ -224,8 +213,7 @@ export default function SettingsDialog({
       })
       setWebhookNotice(data.message || 'Test payload delivered.')
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'webhook test failed'
+      const message = error instanceof Error ? error.message : 'webhook test failed'
       setWebhookError(message)
     } finally {
       setWebhookTesting(false)
@@ -278,8 +266,7 @@ export default function SettingsDialog({
           exact: true,
         })
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to flush storage'
+        const message = error instanceof Error ? error.message : 'failed to flush storage'
         setStorageError(message)
       } finally {
         setStorageFlushingResource('')
@@ -306,13 +293,11 @@ export default function SettingsDialog({
       <DialogContent className="inset-0 flex h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col overflow-x-hidden rounded-none sm:inset-auto sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:min-h-[680px]">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>
-            Configure your Sentinel experience.
-          </DialogDescription>
+          <DialogDescription>Configure your Sentinel experience.</DialogDescription>
         </DialogHeader>
 
         <div className="mt-1 grid min-h-0 min-w-0 flex-1 grid-rows-[auto_1fr] gap-3">
-          <nav
+          <div
             className="flex flex-wrap gap-1 rounded-md border border-border-subtle bg-secondary p-1"
             role="tablist"
           >
@@ -371,7 +356,7 @@ export default function SettingsDialog({
             >
               About
             </button>
-          </nav>
+          </div>
 
           {activeSection === 'appearance' && (
             <section
@@ -409,8 +394,7 @@ export default function SettingsDialog({
                 </Badge>
               </div>
               <p className="mb-3 text-xs text-muted-foreground">
-                Install Sentinel as an app for faster launch and better mobile
-                UX.
+                Install Sentinel as an app for faster launch and better mobile UX.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -442,11 +426,7 @@ export default function SettingsDialog({
                       : 'Check the server for a new version and reload.'
                   }
                 >
-                  {updating
-                    ? 'Updating...'
-                    : updateAvailable
-                      ? 'Apply Update'
-                      : 'Check for Update'}
+                  {updating ? 'Updating...' : updateAvailable ? 'Apply Update' : 'Check for Update'}
                 </Button>
                 {!supportsPwa && (
                   <span className="text-[11px] text-warning-foreground">
@@ -485,9 +465,7 @@ export default function SettingsDialog({
                 </p>
                 <Select
                   value={locale || 'auto'}
-                  onValueChange={(v) =>
-                    void changeLocale(v === 'auto' ? '' : v)
-                  }
+                  onValueChange={(v) => void changeLocale(v === 'auto' ? '' : v)}
                   disabled={savingLocale}
                 >
                   <SelectTrigger className="w-full max-w-xs bg-surface-overlay text-[12px]">
@@ -546,11 +524,9 @@ export default function SettingsDialog({
                 <legend className="mb-2 text-xs font-medium">Events</legend>
                 <div className="flex flex-col gap-2">
                   {WEBHOOK_EVENTS.map((evt) => (
-                    <label
-                      key={evt.key}
-                      className="flex items-center gap-2 text-xs"
-                    >
+                    <label key={evt.key} className="flex items-center gap-2 text-xs">
                       <input
+                        aria-label={evt.label}
                         type="checkbox"
                         checked={webhookEvents.includes(evt.key)}
                         onChange={() => toggleWebhookEvent(evt.key)}
@@ -611,20 +587,15 @@ export default function SettingsDialog({
                     variant="outline"
                     onClick={() => setFlushConfirmResource('all')}
                     disabled={
-                      storageLoading ||
-                      storageFlushingResource !== '' ||
-                      storageStats == null
+                      storageLoading || storageFlushingResource !== '' || storageStats == null
                     }
                   >
-                    {storageFlushingResource === 'all'
-                      ? 'Flushing...'
-                      : 'Flush All'}
+                    {storageFlushingResource === 'all' ? 'Flushing...' : 'Flush All'}
                   </Button>
                 </div>
               </div>
               <p className="mb-2 text-xs text-muted-foreground">
-                Monitor persisted data growth and flush historical resources
-                when needed.
+                Monitor persisted data growth and flush historical resources when needed.
               </p>
 
               {storageErrorMessage.trim() !== '' && (
@@ -646,9 +617,7 @@ export default function SettingsDialog({
                   </p>
                 </div>
                 <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                  <p className="text-[11px] text-muted-foreground">
-                    SQLite files
-                  </p>
+                  <p className="text-[11px] text-muted-foreground">SQLite files</p>
                   <p className="font-mono text-[12px] text-secondary-foreground">
                     db {formatBytes(storageStats?.databaseBytes ?? 0)} · wal{' '}
                     {formatBytes(storageStats?.walBytes ?? 0)} · shm{' '}
@@ -664,9 +633,7 @@ export default function SettingsDialog({
                     className="grid min-w-0 gap-2 rounded-md border border-border-subtle bg-surface-overlay p-2 md:grid-cols-[minmax(0,1fr)_7rem_7.5rem_auto] md:items-center"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-[12px] font-medium">
-                        {resource.label}
-                      </p>
+                      <p className="truncate text-[12px] font-medium">{resource.label}</p>
                       <p className="truncate font-mono text-[10px] text-muted-foreground">
                         {resource.resource}
                       </p>
@@ -683,23 +650,18 @@ export default function SettingsDialog({
                       variant="outline"
                       onClick={() => setFlushConfirmResource(resource.resource)}
                       disabled={
-                        storageFlushingResource !== '' ||
-                        storageLoading ||
-                        resource.rows <= 0
+                        storageFlushingResource !== '' || storageLoading || resource.rows <= 0
                       }
                     >
-                      {storageFlushingResource === resource.resource
-                        ? 'Flushing...'
-                        : 'Flush'}
+                      {storageFlushingResource === resource.resource ? 'Flushing...' : 'Flush'}
                     </Button>
                   </div>
                 ))}
-                {storageStats != null &&
-                  storageStats.resources.length === 0 && (
-                    <p className="text-[12px] text-muted-foreground">
-                      No storage resources available.
-                    </p>
-                  )}
+                {storageStats != null && storageStats.resources.length === 0 && (
+                  <p className="text-[12px] text-muted-foreground">
+                    No storage resources available.
+                  </p>
+                )}
               </div>
             </section>
           )}

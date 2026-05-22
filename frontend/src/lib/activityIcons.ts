@@ -1,13 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import {
-  Activity,
-  Bell,
-  BookOpen,
-  Clock,
-  Server,
-  Settings,
-  Shield,
-} from 'lucide-react'
+import { Activity, Bell, BookOpen, Clock, Server, Settings, Shield } from 'lucide-react'
 
 const SOURCE_ICON_MAP: Record<string, LucideIcon> = {
   runbook: BookOpen,

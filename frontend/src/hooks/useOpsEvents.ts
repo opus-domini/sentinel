@@ -8,9 +8,7 @@ import { useOpsEventsContext } from '@/contexts/OpsEventsContext'
  * The shared connection activates on the first subscriber and
  * deactivates when all subscribers are gone.
  */
-export function useOpsEvents(
-  onMessage: (message: unknown) => void,
-): ConnectionState {
+export function useOpsEvents(onMessage: (message: unknown) => void): ConnectionState {
   const { connectionState, subscribe } = useOpsEventsContext()
   const handlerRef = useRef(onMessage)
   handlerRef.current = onMessage

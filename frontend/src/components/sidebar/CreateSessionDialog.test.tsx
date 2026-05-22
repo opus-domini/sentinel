@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CreateSessionDialog from './CreateSessionDialog'
@@ -35,14 +29,7 @@ describe('CreateSessionDialog', () => {
   })
 
   it('shows advanced options toggle when canSwitchUser is true', () => {
-    render(
-      <CreateSessionDialog
-        open
-        onOpenChange={vi.fn()}
-        defaultCwd=""
-        onCreate={vi.fn()}
-      />,
-    )
+    render(<CreateSessionDialog open onOpenChange={vi.fn()} defaultCwd="" onCreate={vi.fn()} />)
 
     expect(screen.getByText('Advanced options')).toBeTruthy()
   })
@@ -52,12 +39,7 @@ describe('CreateSessionDialog', () => {
     const onCreate = vi.fn()
 
     render(
-      <CreateSessionDialog
-        open
-        onOpenChange={onOpenChange}
-        defaultCwd=""
-        onCreate={onCreate}
-      />,
+      <CreateSessionDialog open onOpenChange={onOpenChange} defaultCwd="" onCreate={onCreate} />,
     )
 
     fireEvent.change(screen.getByPlaceholderText('session name'), {

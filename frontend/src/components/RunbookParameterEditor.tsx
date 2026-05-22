@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { X } from 'lucide-react'
 import type { RunbookParameterType } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,14 @@ export function RunbookParameterEditor({
   onChange,
   onRemove,
 }: RunbookParameterEditorProps) {
+  const id = useId()
+  const nameId = `${id}-name`
+  const labelId = `${id}-label`
+  const typeId = `${id}-type`
+  const defaultId = `${id}-default`
+  const requiredId = `${id}-required`
+  const optionsId = `${id}-options`
+
   return (
     <div className="grid gap-2 rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
       <div className="flex items-center justify-between">
@@ -46,10 +55,11 @@ export function RunbookParameterEditor({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label htmlFor={nameId} className="text-[10px] font-medium text-muted-foreground">
             Name
           </label>
           <Input
+            id={nameId}
             className={cn(
               'mt-0.5 h-7 bg-surface-overlay font-mono text-[11px]',
               errors.name && 'border-destructive',
@@ -59,16 +69,15 @@ export function RunbookParameterEditor({
             onChange={(e) => onChange({ ...param, name: e.target.value })}
           />
           {errors.name && (
-            <p className="mt-0.5 text-[10px] text-destructive-foreground">
-              {errors.name}
-            </p>
+            <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.name}</p>
           )}
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label htmlFor={labelId} className="text-[10px] font-medium text-muted-foreground">
             Label
           </label>
           <Input
+            id={labelId}
             className="mt-0.5 h-7 bg-surface-overlay text-[12px]"
             placeholder="Environment"
             value={param.label}
@@ -79,10 +88,11 @@ export function RunbookParameterEditor({
 
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label htmlFor={typeId} className="text-[10px] font-medium text-muted-foreground">
             Type
           </label>
           <select
+            id={typeId}
             value={param.type}
             onChange={(e) =>
               onChange({
@@ -99,10 +109,11 @@ export function RunbookParameterEditor({
           </select>
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label htmlFor={defaultId} className="text-[10px] font-medium text-muted-foreground">
             Default
           </label>
           <Input
+            id={defaultId}
             className="mt-0.5 h-7 bg-surface-overlay text-[12px]"
             placeholder={param.type === 'boolean' ? 'false' : ''}
             value={param.default}
@@ -112,11 +123,11 @@ export function RunbookParameterEditor({
         <div className="flex items-end pb-1">
           <label className="flex cursor-pointer items-center gap-1.5 text-[11px] select-none">
             <input
+              id={requiredId}
               type="checkbox"
+              aria-label="Required"
               checked={param.required}
-              onChange={(e) =>
-                onChange({ ...param, required: e.target.checked })
-              }
+              onChange={(e) => onChange({ ...param, required: e.target.checked })}
               className="h-3.5 w-3.5 rounded border-border accent-primary"
             />
             <span className="text-muted-foreground">Required</span>
@@ -126,10 +137,11 @@ export function RunbookParameterEditor({
 
       {param.type === 'select' && (
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label htmlFor={optionsId} className="text-[10px] font-medium text-muted-foreground">
             Options (comma-separated)
           </label>
           <Input
+            id={optionsId}
             className={cn(
               'mt-0.5 h-7 bg-surface-overlay text-[12px]',
               errors.options && 'border-destructive',
@@ -139,9 +151,7 @@ export function RunbookParameterEditor({
             onChange={(e) => onChange({ ...param, options: e.target.value })}
           />
           {errors.options && (
-            <p className="mt-0.5 text-[10px] text-destructive-foreground">
-              {errors.options}
-            </p>
+            <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.options}</p>
           )}
         </div>
       )}

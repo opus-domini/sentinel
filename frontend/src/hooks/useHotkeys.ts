@@ -57,9 +57,7 @@ export function isEditableHotkeyTarget(
     return false
   }
 
-  return (
-    target.closest('input, textarea, select, [contenteditable="true"]') !== null
-  )
+  return target.closest('input, textarea, select, [contenteditable="true"]') !== null
 }
 
 export function useDocumentHotkeys(

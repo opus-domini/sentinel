@@ -13,16 +13,12 @@ type UseSeenTrackingOptions = {
   activeSession: string
   activeWindowIndex: number | null
   activePaneID: string | null
-  applySessionActivityPatches: (
-    rawPatches: Array<SessionActivityPatch> | undefined,
-  ) => {
+  applySessionActivityPatches: (rawPatches: Array<SessionActivityPatch> | undefined) => {
     hasInputPatches: boolean
     applied: boolean
     hasUnknownSession: boolean
   }
-  applyInspectorProjectionPatches: (
-    rawPatches: Array<InspectorSessionPatch> | undefined,
-  ) => boolean
+  applyInspectorProjectionPatches: (rawPatches: Array<InspectorSessionPatch> | undefined) => boolean
 }
 
 export function useSeenTracking(options: UseSeenTrackingOptions) {
@@ -139,12 +135,7 @@ export function useSeenTracking(options: UseSeenTrackingOptions) {
         // Seen HTTP fallback is best-effort.
       }
     },
-    [
-      api,
-      applyInspectorProjectionPatches,
-      applySessionActivityPatches,
-      sendSeenOverWS,
-    ],
+    [api, applyInspectorProjectionPatches, applySessionActivityPatches, sendSeenOverWS],
   )
 
   // Auto-mark seen when active selection changes

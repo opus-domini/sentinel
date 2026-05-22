@@ -13,14 +13,8 @@ type UsePresenceOptions = {
 }
 
 export function usePresence(options: UsePresenceOptions) {
-  const {
-    api,
-    presenceSocketRef,
-    tabsStateRef,
-    activeWindowIndex,
-    activePaneID,
-    activeSession,
-  } = options
+  const { api, presenceSocketRef, tabsStateRef, activeWindowIndex, activePaneID, activeSession } =
+    options
 
   const presenceTerminalIDRef = useRef('')
   const presenceLastSignatureRef = useRef('')
@@ -88,12 +82,7 @@ export function usePresence(options: UsePresenceOptions) {
         return false
       }
     },
-    [
-      buildPresencePayload,
-      canEmitPresence,
-      markPresenceSent,
-      presenceSocketRef,
-    ],
+    [buildPresencePayload, canEmitPresence, markPresenceSent, presenceSocketRef],
   )
 
   const sendPresenceOverHTTP = useCallback(
@@ -156,13 +145,7 @@ export function usePresence(options: UsePresenceOptions) {
   useEffect(() => {
     if (sendPresenceOverWS(true)) return
     void sendPresenceOverHTTP(true)
-  }, [
-    activePaneID,
-    activeWindowIndex,
-    sendPresenceOverHTTP,
-    sendPresenceOverWS,
-    activeSession,
-  ])
+  }, [activePaneID, activeWindowIndex, sendPresenceOverHTTP, sendPresenceOverWS, activeSession])
 
   return { sendPresenceOverWS }
 }

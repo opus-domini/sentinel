@@ -17,8 +17,7 @@ export function useSharedOpsEventsSocket(options: {
   tokenRequired: boolean
 }) {
   const { authenticated, tokenRequired } = options
-  const [connectionState, setConnectionState] =
-    useState<ConnectionState>('disconnected')
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const subscribersRef = useRef(new Set<Subscriber>())
   const socketRef = useRef<WebSocket | null>(null)
   const retryTimerRef = useRef<number | null>(null)
@@ -94,10 +93,7 @@ export function useSharedOpsEventsSocket(options: {
       setConnectionState('disconnected')
       if (disposedRef.current || subscribersRef.current.size === 0) return
       clearRetry()
-      retryTimerRef.current = window.setTimeout(
-        connect,
-        reconnectRef.current.next(),
-      )
+      retryTimerRef.current = window.setTimeout(connect, reconnectRef.current.next())
     }
   }, [authenticated, clearRetry, tokenRequired])
 

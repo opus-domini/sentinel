@@ -67,9 +67,7 @@ describe('ServiceBrowseRow', () => {
     const startButton = screen.getByRole('button', { name: 'Start service' })
 
     fireEvent.click(startButton)
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Inspect service status' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect service status' }))
     fireEvent.click(screen.getByRole('button', { name: 'View service logs' }))
 
     expect(onAction).toHaveBeenCalledWith(expect.any(Object), 'start')

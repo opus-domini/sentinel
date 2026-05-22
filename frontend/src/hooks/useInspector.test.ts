@@ -201,10 +201,7 @@ describe('useInspector – selectWindow', () => {
     })
 
     expect(result.current.activeWindowIndexOverride).toBeNull()
-    expect(opts.pushErrorToast).toHaveBeenCalledWith(
-      'Switch Window',
-      'tmux select-window failed',
-    )
+    expect(opts.pushErrorToast).toHaveBeenCalledWith('Switch Window', 'tmux select-window failed')
   })
 })
 
@@ -533,9 +530,7 @@ describe('useInspector – window presentation stability', () => {
   })
 
   it('keeps the last valid snapshot during a transient refresh failure', async () => {
-    let resolveSecondWindows:
-      | ((value: { windows: Array<WindowInfo> }) => void)
-      | null = null
+    let resolveSecondWindows: ((value: { windows: Array<WindowInfo> }) => void) | null = null
     let rejectSecondWindows: ((reason?: unknown) => void) | null = null
     let windowsFetchCount = 0
 
@@ -547,12 +542,10 @@ describe('useInspector – window presentation stability', () => {
             windows: [makeWindow({ index: 0, active: true })],
           })
         }
-        return new Promise<{ windows: Array<WindowInfo> }>(
-          (resolve, reject) => {
-            resolveSecondWindows = resolve
-            rejectSecondWindows = reject
-          },
-        )
+        return new Promise<{ windows: Array<WindowInfo> }>((resolve, reject) => {
+          resolveSecondWindows = resolve
+          rejectSecondWindows = reject
+        })
       }
       if (typeof url === 'string' && url.includes('/panes')) {
         return Promise.resolve({
@@ -850,9 +843,7 @@ describe('useInspector – optimistic createWindow', () => {
     expect(
       result.current.panes.some(
         (paneInfo) =>
-          paneInfo.paneId === pendingPaneID &&
-          paneInfo.windowIndex === 2 &&
-          paneInfo.active,
+          paneInfo.paneId === pendingPaneID && paneInfo.windowIndex === 2 && paneInfo.active,
       ),
     ).toBe(true)
   })
@@ -877,8 +868,7 @@ describe('useInspector – optimistic createWindow', () => {
       }
       if (typeof url === 'string' && url.includes('/new-window')) {
         expect(init?.method).toBe('POST')
-        const body =
-          typeof init?.body === 'string' ? JSON.parse(init.body) : null
+        const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
         expect(body).toMatchObject({
           operationId: expect.stringMatching(/^window-create-/),
         })
@@ -905,8 +895,7 @@ describe('useInspector – optimistic createWindow', () => {
     const request = apiMock.mock.calls.find(
       ([url]) => typeof url === 'string' && url.includes('/new-window'),
     )?.[1]
-    const body =
-      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+    const body = typeof request?.body === 'string' ? JSON.parse(request.body) : null
 
     act(() => {
       const handled = result.current.handleTmuxInspectorEvent?.({
@@ -943,8 +932,7 @@ describe('useInspector – splitPane', () => {
       }
       if (typeof url === 'string' && url.includes('/split-pane')) {
         expect(init?.method).toBe('POST')
-        const body =
-          typeof init?.body === 'string' ? JSON.parse(init.body) : null
+        const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
         expect(body).toMatchObject({
           paneId: '%1',
           direction: 'vertical',
@@ -973,8 +961,7 @@ describe('useInspector – splitPane', () => {
     const request = apiMock.mock.calls.find(
       ([url]) => typeof url === 'string' && url.includes('/split-pane'),
     )?.[1]
-    const body =
-      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+    const body = typeof request?.body === 'string' ? JSON.parse(request.body) : null
 
     act(() => {
       const handled = result.current.handleTmuxInspectorEvent?.({
@@ -1251,10 +1238,7 @@ describe('useInspector – closeWindow', () => {
       type: 'close',
       session: 'dev',
     })
-    expect(opts.setConnection).toHaveBeenCalledWith(
-      'disconnected',
-      'last window closed',
-    )
+    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last window closed')
   })
 
   it('keeps focus on the session when a non-final window is closed', async () => {

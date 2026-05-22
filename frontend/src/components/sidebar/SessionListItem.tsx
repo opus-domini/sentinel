@@ -1,10 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Check, LayoutGrid, Rows3, User } from 'lucide-react'
-import {
-  effectiveAttachedClients,
-  isSessionAttachedWithLocalTab,
-} from './sessionAttachment'
+import { effectiveAttachedClients, isSessionAttachedWithLocalTab } from './sessionAttachment'
 import { formatRelativeTime } from './sessionTime'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
 import type { Session } from '../../types'
@@ -55,14 +52,7 @@ export default function SessionListItem({
   onUnpinSession,
   canDetach,
 }: SessionListItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: session.name,
   })
   const { processUser } = useMetaContext()
@@ -116,11 +106,7 @@ export default function SessionListItem({
           <button
             className={cn(
               'group w-full max-w-full cursor-pointer overflow-hidden rounded-lg border bg-surface-elevated px-2.5 text-left outline-none transition-colors',
-              density === 'minimal'
-                ? 'py-1'
-                : density === 'compact'
-                  ? 'py-1.5'
-                  : 'py-2',
+              density === 'minimal' ? 'py-1' : density === 'compact' ? 'py-1.5' : 'py-2',
               isActive
                 ? 'border-primary/60 bg-surface-active-primary shadow-[inset_0_0_0_1px_var(--active-shadow)]'
                 : 'border-border-subtle hover:border-border hover:bg-secondary focus-within:border-border',
@@ -181,11 +167,7 @@ export default function SessionListItem({
                   <TooltipHelper content="Windows">
                     <span
                       className="inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full border border-border-subtle bg-surface-overlay px-1 text-[10px] text-secondary-foreground"
-                      aria-label={
-                        session.windows === 1
-                          ? '1 window'
-                          : `${session.windows} windows`
-                      }
+                      aria-label={session.windows === 1 ? '1 window' : `${session.windows} windows`}
                     >
                       <LayoutGrid className="h-2.5 w-2.5" />
                       {session.windows}
@@ -194,11 +176,7 @@ export default function SessionListItem({
                   <TooltipHelper content="Panes">
                     <span
                       className="inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full border border-border-subtle bg-surface-overlay px-1 text-[10px] text-secondary-foreground"
-                      aria-label={
-                        session.panes === 1
-                          ? '1 pane'
-                          : `${session.panes} panes`
-                      }
+                      aria-label={session.panes === 1 ? '1 pane' : `${session.panes} panes`}
                     >
                       <Rows3 className="h-2.5 w-2.5" />
                       {session.panes}
@@ -236,12 +214,7 @@ export default function SessionListItem({
                 )}
 
                 {/* Line 3: hash + user + time */}
-                <div
-                  className={cn(
-                    'flex items-center gap-1.5',
-                    density === 'full' && 'mt-1',
-                  )}
-                >
+                <div className={cn('flex items-center gap-1.5', density === 'full' && 'mt-1')}>
                   {session.hash && (
                     <TooltipHelper content={`Hash: ${session.hash}`}>
                       <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
@@ -249,26 +222,22 @@ export default function SessionListItem({
                       </span>
                     </TooltipHelper>
                   )}
-                  {session.user &&
-                    session.user !== processUser &&
-                    density === 'compact' && (
-                      <TooltipHelper content={`Running as: ${session.user}`}>
-                        <span className="inline-flex shrink items-center gap-0.5 truncate font-mono text-[10px] text-muted-foreground">
-                          <User className="h-2.5 w-2.5 shrink-0" />
-                          <span className="truncate">{session.user}</span>
-                        </span>
-                      </TooltipHelper>
-                    )}
-                  {session.user &&
-                    session.user !== processUser &&
-                    density === 'full' && (
-                      <TooltipHelper content={`Running as: ${session.user}`}>
-                        <span className="inline-flex shrink items-center gap-0.5 truncate rounded-sm bg-primary/10 px-1 py-px font-mono text-[10px] text-primary-text">
-                          <User className="h-2.5 w-2.5 shrink-0" />
-                          <span className="truncate">{session.user}</span>
-                        </span>
-                      </TooltipHelper>
-                    )}
+                  {session.user && session.user !== processUser && density === 'compact' && (
+                    <TooltipHelper content={`Running as: ${session.user}`}>
+                      <span className="inline-flex shrink items-center gap-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                        <User className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{session.user}</span>
+                      </span>
+                    </TooltipHelper>
+                  )}
+                  {session.user && session.user !== processUser && density === 'full' && (
+                    <TooltipHelper content={`Running as: ${session.user}`}>
+                      <span className="inline-flex shrink items-center gap-0.5 truncate rounded-sm bg-primary/10 px-1 py-px font-mono text-[10px] text-primary-text">
+                        <User className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{session.user}</span>
+                      </span>
+                    </TooltipHelper>
+                  )}
                   <span className="flex-1" />
                   <TooltipHelper content={`Last activity: ${activityAbsolute}`}>
                     <time
@@ -284,17 +253,14 @@ export default function SessionListItem({
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-44">
-          <ContextMenuItem onSelect={() => onRename(session.name)}>
-            Rename Session
-          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onRename(session.name)}>Rename Session</ContextMenuItem>
           <ContextMenuSub>
             <ContextMenuSubTrigger>Change Icon</ContextMenuSubTrigger>
             <ContextMenuSubContent className="w-36">
               {TMUX_ICONS.map((entry) => {
                 const Icon = entry.icon
                 const isCurrent =
-                  session.icon === entry.key ||
-                  (!session.icon && entry.key === 'terminal')
+                  session.icon === entry.key || (!session.icon && entry.key === 'terminal')
                 return (
                   <ContextMenuItem
                     key={entry.key}
@@ -321,10 +287,7 @@ export default function SessionListItem({
             </ContextMenuItem>
           )}
           <ContextMenuSeparator />
-          <ContextMenuItem
-            disabled={!canDetach}
-            onSelect={() => onDetach(session.name)}
-          >
+          <ContextMenuItem disabled={!canDetach} onSelect={() => onDetach(session.name)}>
             Detach Session
           </ContextMenuItem>
           <ContextMenuItem

@@ -10,10 +10,7 @@ import type {
   TmuxSessionsUpdatedPayload,
   TabsStateRef,
 } from './tmuxTypes'
-import type {
-  SessionActivityPatch,
-  SessionPatchApplyResult,
-} from '@/lib/tmuxSessionEvents'
+import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import { shouldRefreshTimelineFromEvent } from '@/lib/tmuxTimeline'
 import { buildWSProtocols } from '@/lib/wsAuth'
@@ -38,22 +35,14 @@ type UseTmuxEventsSocketOptions = {
   applySessionActivityPatches: (
     rawPatches: Array<SessionActivityPatch> | undefined,
   ) => SessionPatchApplyResult
-  applyInspectorProjectionPatches: (
-    rawPatches: Array<InspectorSessionPatch> | undefined,
-  ) => boolean
+  applyInspectorProjectionPatches: (rawPatches: Array<InspectorSessionPatch> | undefined) => boolean
   settlePendingSeenAcks: (ok: boolean) => void
   seenAckWaitersRef: React.MutableRefObject<Map<string, (ok: boolean) => void>>
   timelineOpenRef: React.MutableRefObject<boolean>
   timelineSessionFilterRef: React.MutableRefObject<string>
-  loadTimelineRef: React.MutableRefObject<
-    (options?: { quiet?: boolean }) => void
-  >
-  handleTmuxSessionsEvent?: (
-    payload: TmuxSessionsUpdatedPayload | undefined,
-  ) => boolean
-  handleTmuxInspectorEvent?: (
-    payload: TmuxInspectorUpdatedPayload | undefined,
-  ) => boolean
+  loadTimelineRef: React.MutableRefObject<(options?: { quiet?: boolean }) => void>
+  handleTmuxSessionsEvent?: (payload: TmuxSessionsUpdatedPayload | undefined) => boolean
+  handleTmuxInspectorEvent?: (payload: TmuxInspectorUpdatedPayload | undefined) => boolean
 }
 
 export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
@@ -159,6 +148,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       applySessionActivityPatches,
       refreshInspector,
       refreshSessions,
+      eventsSocketConnectedRef,
       runtimeMetricsRef,
       tabsStateRef,
       authenticated,
@@ -175,13 +165,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     if (active !== '') {
       void refreshInspector(active)
     }
-  }, [
-    refreshInspector,
-    refreshSessions,
-    tabsStateRef,
-    authenticated,
-    tokenRequired,
-  ])
+  }, [refreshInspector, refreshSessions, tabsStateRef, authenticated, tokenRequired])
 
   // Initial sessions sync on page load. The inspector hook owns active-session
   // details, so doing both here would duplicate /windows and /panes requests on
@@ -243,23 +227,15 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     return () => {
       window.clearInterval(id)
     }
-  }, [
-    eventsSocketConnected,
-    refreshAllState,
-    runtimeMetricsRef,
-    authenticated,
-    tokenRequired,
-  ])
+  }, [eventsSocketConnected, refreshAllState, runtimeMetricsRef, authenticated, tokenRequired])
 
   // Expose runtime metrics on window
   useEffect(() => {
-    ;(
-      window as typeof window & { __SENTINEL_TMUX_METRICS?: unknown }
-    ).__SENTINEL_TMUX_METRICS = runtimeMetricsRef.current
+    ;(window as typeof window & { __SENTINEL_TMUX_METRICS?: unknown }).__SENTINEL_TMUX_METRICS =
+      runtimeMetricsRef.current
     return () => {
-      ;(
-        window as typeof window & { __SENTINEL_TMUX_METRICS?: unknown }
-      ).__SENTINEL_TMUX_METRICS = undefined
+      ;(window as typeof window & { __SENTINEL_TMUX_METRICS?: unknown }).__SENTINEL_TMUX_METRICS =
+        undefined
     }
   }, [runtimeMetricsRef])
 
@@ -320,10 +296,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
 
     const connect = () => {
       const wsURL = new URL('/ws/events', window.location.origin)
-      const socket = new WebSocket(
-        wsURL.toString().replace(/^http/, 'ws'),
-        buildWSProtocols(),
-      )
+      const socket = new WebSocket(wsURL.toString().replace(/^http/, 'ws'), buildWSProtocols())
       socketRef.current = socket
 
       socket.onopen = () => {
@@ -361,8 +334,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
           if (messageEventID > lastEventIDRef.current) {
             lastEventIDRef.current = messageEventID
           }
-          const hasEventGap =
-            previousEventID > 0 && messageEventID > previousEventID + 1
+          const hasEventGap = previousEventID > 0 && messageEventID > previousEventID + 1
 
           const messageGlobalRev = Math.max(
             parseGlobalRev(msg.globalRev),
@@ -409,8 +381,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
             }
             case 'tmux.sessions.updated': {
               applyInspectorProjectionPatches(msg.payload?.inspectorPatches)
-              const handledTmuxSessionsEvent =
-                handleTmuxSessionsEvent?.(msg.payload) === true
+              const handledTmuxSessionsEvent = handleTmuxSessionsEvent?.(msg.payload) === true
               const decision = shouldRefreshSessionsFromEvent(
                 msg.payload?.action,
                 applySessionActivityPatches(msg.payload?.sessionPatches),
@@ -435,14 +406,11 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
               if (action === '') {
                 break
               }
-              const handledTmuxInspectorEvent =
-                handleTmuxInspectorEvent?.(msg.payload) === true
+              const handledTmuxInspectorEvent = handleTmuxInspectorEvent?.(msg.payload) === true
               const target = msg.payload?.session?.trim() ?? ''
               const active = tabsStateRef.current.activeSession
               const skipInspectorRefresh =
-                action === 'seen' ||
-                action === 'select-window' ||
-                action === 'select-pane'
+                action === 'seen' || action === 'select-window' || action === 'select-pane'
               if (
                 !handledTmuxInspectorEvent &&
                 !skipInspectorRefresh &&
@@ -473,20 +441,14 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
               } else {
                 trackedSession = rawScope
               }
-              if (
-                shouldRefreshTimelineFromEvent(
-                  msg.payload?.sessions,
-                  trackedSession,
-                )
-              ) {
+              if (shouldRefreshTimelineFromEvent(msg.payload?.sessions, trackedSession)) {
                 schedule('timeline')
               }
               break
             }
             case 'tmux.guardrail.blocked': {
               const message =
-                msg.payload?.decision?.message ??
-                'Operation blocked by guardrail policy'
+                msg.payload?.decision?.message ?? 'Operation blocked by guardrail policy'
               pushErrorToast('Guardrail', message)
               break
             }
@@ -532,6 +494,8 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       }
     }
 
+    const refreshTimers = refreshTimerRef.current
+
     connect()
 
     return () => {
@@ -544,10 +508,10 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
         retryTimerRef.current = 0
       }
       for (const key of ['sessions', 'inspector', 'timeline'] as const) {
-        const id = refreshTimerRef.current[key]
+        const id = refreshTimers[key]
         if (id !== null) {
           window.clearTimeout(id)
-          refreshTimerRef.current[key] = null
+          refreshTimers[key] = null
         }
       }
       const sock = socketRef.current

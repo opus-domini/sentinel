@@ -1,18 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  connectionBadgeClass,
-  connectionDotClass,
-  connectionLabel,
-} from './connection'
+import { connectionBadgeClass, connectionDotClass, connectionLabel } from './connection'
 import type { ConnectionState } from '../types'
 
-const states: Array<ConnectionState> = [
-  'connected',
-  'connecting',
-  'disconnected',
-  'error',
-]
+const states: Array<ConnectionState> = ['connected', 'connecting', 'disconnected', 'error']
 
 describe('connectionBadgeClass', () => {
   it.each(states)('returns a non-empty class string for "%s"', (state) => {
@@ -68,10 +59,7 @@ describe('connectionLabel', () => {
     ['connecting', 'Connecting'],
     ['disconnected', 'Disconnected'],
     ['error', 'Error'],
-  ] as Array<[ConnectionState, string]>)(
-    'returns "%s" → "%s"',
-    (state, expected) => {
-      expect(connectionLabel(state)).toBe(expected)
-    },
-  )
+  ] as Array<[ConnectionState, string]>)('returns "%s" → "%s"', (state, expected) => {
+    expect(connectionLabel(state)).toBe(expected)
+  })
 })

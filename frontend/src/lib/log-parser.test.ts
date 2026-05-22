@@ -3,8 +3,7 @@ import { detectLevel, parseLogLines, parseSingleLine } from '@/lib/log-parser'
 
 describe('parseSingleLine', () => {
   it('parses journalctl short-iso format', () => {
-    const line =
-      '2024-01-15T14:32:01+0000 myhost sentinel.service[1234]: Starting service'
+    const line = '2024-01-15T14:32:01+0000 myhost sentinel.service[1234]: Starting service'
     const result = parseSingleLine(line, 1)
     expect(result).toEqual({
       lineNumber: 1,
@@ -18,8 +17,7 @@ describe('parseSingleLine', () => {
   })
 
   it('parses journalctl with ERROR level in message', () => {
-    const line =
-      '2024-01-15T14:32:01+0000 myhost app[99]: ERROR connection failed'
+    const line = '2024-01-15T14:32:01+0000 myhost app[99]: ERROR connection failed'
     const result = parseSingleLine(line, 5)
     expect(result.level).toBe('error')
     expect(result.message).toBe('ERROR connection failed')
@@ -27,24 +25,21 @@ describe('parseSingleLine', () => {
   })
 
   it('parses journalctl with WARNING level in message', () => {
-    const line =
-      '2024-01-15T14:32:01+0000 myhost app[99]: WARNING disk usage high'
+    const line = '2024-01-15T14:32:01+0000 myhost app[99]: WARNING disk usage high'
     const result = parseSingleLine(line, 3)
     expect(result.level).toBe('warn')
     expect(result.message).toBe('WARNING disk usage high')
   })
 
   it('parses journalctl unit without PID', () => {
-    const line =
-      '2024-01-15T14:32:01+0000 myhost sshd: Accepted publickey for user'
+    const line = '2024-01-15T14:32:01+0000 myhost sshd: Accepted publickey for user'
     const result = parseSingleLine(line, 1)
     expect(result.unit).toBe('sshd')
     expect(result.message).toBe('Accepted publickey for user')
   })
 
   it('parses launchd compact format', () => {
-    const line =
-      '2024-01-15 14:32:01.123456-0700  localhost sentinel: message here'
+    const line = '2024-01-15 14:32:01.123456-0700  localhost sentinel: message here'
     const result = parseSingleLine(line, 2)
     expect(result).toEqual({
       lineNumber: 2,
@@ -78,8 +73,7 @@ describe('parseSingleLine', () => {
   })
 
   it('parses lines with level= key-value pattern', () => {
-    const line =
-      '2024-01-15T14:32:01+0000 myhost app[1]: msg level=error something bad'
+    const line = '2024-01-15T14:32:01+0000 myhost app[1]: msg level=error something bad'
     const result = parseSingleLine(line, 1)
     expect(result.level).toBe('error')
   })

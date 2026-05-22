@@ -32,9 +32,7 @@ describe('appBrand', () => {
 
     expect(document.title).toBe('drako - Sentinel')
     expect(
-      document.head
-        .querySelector('meta[name="application-name"]')
-        ?.getAttribute('content'),
+      document.head.querySelector('meta[name="application-name"]')?.getAttribute('content'),
     ).toBe('drako - Sentinel')
     expect(
       document.head

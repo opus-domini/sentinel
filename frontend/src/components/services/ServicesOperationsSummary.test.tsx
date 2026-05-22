@@ -20,9 +20,7 @@ function service(partial: Partial<OpsBrowsedService> = {}): OpsBrowsedService {
   }
 }
 
-function renderSummary(
-  props: Partial<Parameters<typeof ServicesOperationsSummary>[0]> = {},
-) {
+function renderSummary(props: Partial<Parameters<typeof ServicesOperationsSummary>[0]> = {}) {
   const onStateFilterChange = vi.fn()
   const onTrackFilterChange = vi.fn()
   render(

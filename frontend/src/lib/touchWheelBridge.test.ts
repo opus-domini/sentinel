@@ -73,9 +73,7 @@ describe('attachTouchWheelBridge', () => {
 
     const bridge = attachTouchWheelBridge({ host, dispatchTarget: target })
 
-    target.dispatchEvent(
-      touchEvent('touchstart', [touch(1, 10, 100), touch(2, 12, 98)]),
-    )
+    target.dispatchEvent(touchEvent('touchstart', [touch(1, 10, 100), touch(2, 12, 98)]))
     target.dispatchEvent(touchEvent('touchmove', [touch(1, 10, 80)]))
 
     expect(wheelSpy).not.toHaveBeenCalled()
@@ -230,9 +228,7 @@ describe('attachTouchWheelBridge', () => {
 
     // wheelDeltaY must be overridden for xterm 6.x's StandardWheelEvent
     // legacy branch (wheelDeltaY / 120).
-    expect((event as unknown as Record<string, unknown>).wheelDeltaY).toBe(
-      -20 * 3,
-    )
+    expect((event as unknown as Record<string, unknown>).wheelDeltaY).toBe(-20 * 3)
 
     bridge.dispose()
     document.body.removeChild(host)

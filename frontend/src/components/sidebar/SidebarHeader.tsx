@@ -36,9 +36,7 @@ export default function SidebarHeader({
       <div className="ml-auto flex items-center gap-1">
         {helpDialog}
         {addControl ?? (
-          <TooltipHelper
-            content={canCreate ? 'New session' : 'tmux not available'}
-          >
+          <TooltipHelper content={canCreate ? 'New session' : 'tmux not available'}>
             <Button
               variant="outline"
               size="icon-xs"
@@ -59,11 +57,7 @@ export default function SidebarHeader({
             onClick={onToggleLock}
             aria-label="API token"
           >
-            {hasToken ? (
-              <Lock className="h-3 w-3" />
-            ) : (
-              <LockOpen className="h-3 w-3" />
-            )}
+            {hasToken ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
           </Button>
         </TooltipHelper>
       </div>

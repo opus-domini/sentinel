@@ -86,23 +86,21 @@ export default function SideRail({
   ]
 
   return (
-    <aside
-      role="navigation"
-      aria-label="Main navigation"
-      className="hidden w-12 flex-col gap-1 border-r border-border-subtle bg-surface-raised px-1 py-2 md:flex"
-    >
-      {navItems.map(({ to, label, active, Icon }) => (
-        <TooltipHelper key={to} content={label} side="right">
-          <Link
-            className={navItemClass(active)}
-            to={to}
-            aria-label={label}
-            aria-current={active ? 'page' : undefined}
-          >
-            <Icon className="size-4" />
-          </Link>
-        </TooltipHelper>
-      ))}
+    <aside className="hidden w-12 flex-col gap-1 border-r border-border-subtle bg-surface-raised px-1 py-2 md:flex">
+      <nav aria-label="Main navigation" className="flex flex-col gap-1">
+        {navItems.map(({ to, label, active, Icon }) => (
+          <TooltipHelper key={to} content={label} side="right">
+            <Link
+              className={navItemClass(active)}
+              to={to}
+              aria-label={label}
+              aria-current={active ? 'page' : undefined}
+            >
+              <Icon className="size-4" />
+            </Link>
+          </TooltipHelper>
+        ))}
+      </nav>
       <div className="flex-1" />
       <hr className="w-full border-t border-border-subtle" />
       <TooltipHelper content="Settings" side="right">
@@ -127,9 +125,7 @@ export default function SideRail({
             className="hidden w-full text-secondary-foreground hover:text-foreground md:flex"
             onClick={onToggleSidebarCollapsed}
             aria-expanded={!sidebarCollapsed}
-            aria-label={
-              sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
-            }
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {sidebarCollapsed ? (
               <ChevronsRight className="size-4" />

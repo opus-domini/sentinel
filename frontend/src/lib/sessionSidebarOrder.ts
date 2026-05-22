@@ -3,18 +3,11 @@ type NamedWithSortOrder = {
   sortOrder?: number
 }
 
-export function sortBySidebarOrder<T extends NamedWithSortOrder>(
-  items: Array<T>,
-): Array<T> {
+export function sortBySidebarOrder<T extends NamedWithSortOrder>(items: Array<T>): Array<T> {
   return [...items].sort((left, right) => {
-    const leftOrder =
-      typeof left.sortOrder === 'number'
-        ? left.sortOrder
-        : Number.MAX_SAFE_INTEGER
+    const leftOrder = typeof left.sortOrder === 'number' ? left.sortOrder : Number.MAX_SAFE_INTEGER
     const rightOrder =
-      typeof right.sortOrder === 'number'
-        ? right.sortOrder
-        : Number.MAX_SAFE_INTEGER
+      typeof right.sortOrder === 'number' ? right.sortOrder : Number.MAX_SAFE_INTEGER
 
     if (leftOrder !== rightOrder) {
       return leftOrder - rightOrder
@@ -47,9 +40,7 @@ export function applySidebarOrder<T extends NamedWithSortOrder>(
   items: Array<T>,
   orderedNames: Array<string>,
 ): Array<T> {
-  const orderByName = new Map(
-    orderedNames.map((name, index) => [name, index + 1]),
-  )
+  const orderByName = new Map(orderedNames.map((name, index) => [name, index + 1]))
   return items.map((item) => {
     const sortOrder = orderByName.get(item.name)
     if (sortOrder === undefined || item.sortOrder === sortOrder) {
@@ -62,9 +53,7 @@ export function applySidebarOrder<T extends NamedWithSortOrder>(
   })
 }
 
-export function nextFrontSortOrder<T extends NamedWithSortOrder>(
-  items: Array<T>,
-): number {
+export function nextFrontSortOrder<T extends NamedWithSortOrder>(items: Array<T>): number {
   let minOrder = Number.POSITIVE_INFINITY
   for (const item of items) {
     if (typeof item.sortOrder === 'number') {

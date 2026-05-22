@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -32,11 +26,8 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
-  useRouterState: ({
-    select,
-  }: {
-    select: (state: { location: { pathname: string } }) => string
-  }) => select({ location: { pathname: '/tmux' } }),
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) =>
+    select({ location: { pathname: '/tmux' } }),
 }))
 
 vi.mock('@/hooks/useEdgeSwipe', () => ({
@@ -87,18 +78,14 @@ describe('AppShell integrated shell flow', () => {
     await waitFor(() => {
       expect(sidebarSeparator().getAttribute('aria-valuenow')).toBe('440')
     })
-    expect(window.localStorage.getItem('sentinel_e2e_sidebar_width')).toBe(
-      '440',
-    )
+    expect(window.localStorage.getItem('sentinel_e2e_sidebar_width')).toBe('440')
 
     fireEvent.keyDown(sidebarSeparator(), { key: 'ArrowLeft', shiftKey: true })
 
     await waitFor(() => {
       expect(sidebarSeparator().getAttribute('aria-valuenow')).toBe('400')
     })
-    expect(window.localStorage.getItem('sentinel_e2e_sidebar_width')).toBe(
-      '400',
-    )
+    expect(window.localStorage.getItem('sentinel_e2e_sidebar_width')).toBe('400')
   })
 
   it('opens settings from the side rail and removes the resizer when collapsed', () => {
@@ -109,13 +96,9 @@ describe('AppShell integrated shell flow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
 
+    expect(screen.queryByRole('separator', { name: 'Resize sidebar' })).toBeNull()
     expect(
-      screen.queryByRole('separator', { name: 'Resize sidebar' }),
-    ).toBeNull()
-    expect(
-      screen
-        .getByRole('button', { name: 'Expand sidebar' })
-        .getAttribute('aria-expanded'),
+      screen.getByRole('button', { name: 'Expand sidebar' }).getAttribute('aria-expanded'),
     ).toBe('false')
   })
 })

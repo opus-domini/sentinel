@@ -184,8 +184,6 @@ describe('PinnedSessionsPanel', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /api/i }).style.touchAction).toBe(
-      'pan-y',
-    )
+    expect(screen.getByRole('button', { name: /api/i }).style.touchAction).toBe('pan-y')
   })
 })

@@ -97,18 +97,11 @@ export default function PaneStrip({
           return leftPending ? 1 : -1
         }
         if (leftPending && rightPending) {
-          return (
-            parsePendingSplitSlot(left.paneId) -
-            parsePendingSplitSlot(right.paneId)
-          )
+          return parsePendingSplitSlot(left.paneId) - parsePendingSplitSlot(right.paneId)
         }
         const leftIDOrder = parsePaneIDOrder(left.paneId)
         const rightIDOrder = parsePaneIDOrder(right.paneId)
-        if (
-          leftIDOrder !== null &&
-          rightIDOrder !== null &&
-          leftIDOrder !== rightIDOrder
-        ) {
+        if (leftIDOrder !== null && rightIDOrder !== null && leftIDOrder !== rightIDOrder) {
           return leftIDOrder - rightIDOrder
         }
         return left.paneIndex - right.paneIndex
@@ -118,9 +111,7 @@ export default function PaneStrip({
   const visiblePanes =
     activeWindowIndex === null
       ? []
-      : sortedPanes.filter(
-          (paneInfo) => paneInfo.windowIndex === activeWindowIndex,
-        )
+      : sortedPanes.filter((paneInfo) => paneInfo.windowIndex === activeWindowIndex)
   const stripClass =
     'no-scrollbar flex min-h-[24px] items-center gap-1.5 overflow-x-auto overflow-y-hidden'
   const hasRenderablePanes = visiblePanes.length > 0
@@ -214,9 +205,7 @@ export default function PaneStrip({
   if (!hasActiveSession) {
     return (
       <div className={stripClass}>
-        <span className="truncate">
-          Select and attach a session to inspect panes.
-        </span>
+        <span className="truncate">Select and attach a session to inspect panes.</span>
       </div>
     )
   }
@@ -234,9 +223,7 @@ export default function PaneStrip({
   if (inspectorError && !hasRenderablePanes) {
     return (
       <div className={stripClass}>
-        <span className="truncate text-destructive-foreground">
-          {inspectorError}
-        </span>
+        <span className="truncate text-destructive-foreground">{inspectorError}</span>
       </div>
     )
   }
@@ -286,9 +273,7 @@ export default function PaneStrip({
         const paneID = asText(paneInfo.paneId)
         const paneTitle = asText(paneInfo.title)
         const paneKey =
-          paneID.trim() !== ''
-            ? paneID
-            : `${paneInfo.windowIndex}:${paneInfo.paneIndex}`
+          paneID.trim() !== '' ? paneID : `${paneInfo.windowIndex}:${paneInfo.paneIndex}`
         const isActive = activePaneID === paneID
         const hasUnread = paneInfo.hasUnread ?? false
         const isPending = paneID.trim() !== '' && isPendingSplitPaneID(paneID)

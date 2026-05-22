@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Play } from 'lucide-react'
-import type {
-  OpsRunbook,
-  SuggestedRunbooksResponse,
-  TimelineEvent,
-} from '@/types'
+import type { OpsRunbook, SuggestedRunbooksResponse, TimelineEvent } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/useDateFormat'
@@ -83,13 +79,10 @@ function SuggestedRunbooks({ marker, session, onRun }: SuggestedRunbooksProps) {
       if (marker) params.set('marker', marker)
       if (session) params.set('session', session)
 
-      const response = await fetch(
-        `/api/ops/runbooks/suggest?${params.toString()}`,
-        {
-          credentials: 'same-origin',
-          signal: controller.signal,
-        },
-      )
+      const response = await fetch(`/api/ops/runbooks/suggest?${params.toString()}`, {
+        credentials: 'same-origin',
+        signal: controller.signal,
+      })
       if (!response.ok) {
         setRunbooks([])
         return
@@ -119,11 +112,7 @@ function SuggestedRunbooks({ marker, session, onRun }: SuggestedRunbooksProps) {
   }, [fetchSuggestions])
 
   if (loading) {
-    return (
-      <p className="mt-1.5 text-[10px] text-muted-foreground">
-        Loading suggested runbooks...
-      </p>
-    )
+    return <p className="mt-1.5 text-[10px] text-muted-foreground">Loading suggested runbooks...</p>
   }
 
   if (runbooks.length === 0) {
@@ -213,9 +202,7 @@ export default function TimelineDialog({
               <SelectContent>
                 <SelectItem value="all">all event types</SelectItem>
                 <SelectItem value="command.started">command.started</SelectItem>
-                <SelectItem value="command.finished">
-                  command.finished
-                </SelectItem>
+                <SelectItem value="command.finished">command.finished</SelectItem>
                 <SelectItem value="output.marker">output.marker</SelectItem>
               </SelectContent>
             </Select>
@@ -233,18 +220,12 @@ export default function TimelineDialog({
                 ))}
               </SelectContent>
             </Select>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onRefresh}
-              disabled={loading}
-            >
+            <Button type="button" variant="outline" onClick={onRefresh} disabled={loading}>
               {loading ? 'Loading...' : 'Refresh'}
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Tip: <span className="font-mono">Ctrl/Cmd + K</span> opens this
-            panel.
+            Tip: <span className="font-mono">Ctrl/Cmd + K</span> opens this panel.
           </p>
         </section>
 
@@ -256,9 +237,7 @@ export default function TimelineDialog({
           )}
           {events.length === 0 ? (
             <p className="py-10 text-center text-[12px] text-muted-foreground">
-              {loading
-                ? 'Loading timeline events...'
-                : 'No events for this filter.'}
+              {loading ? 'Loading timeline events...' : 'No events for this filter.'}
             </p>
           ) : (
             <ul className="grid gap-2">
@@ -270,10 +249,7 @@ export default function TimelineDialog({
                     className="min-w-0 rounded-md border border-border-subtle bg-secondary p-2"
                   >
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge
-                        variant="outline"
-                        className={severityClass(event.severity)}
-                      >
+                      <Badge variant="outline" className={severityClass(event.severity)}>
                         {event.severity || 'info'}
                       </Badge>
                       <Badge variant="outline">{event.eventType}</Badge>
@@ -293,9 +269,7 @@ export default function TimelineDialog({
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-[12px] font-medium">
-                      {event.summary}
-                    </p>
+                    <p className="mt-1 text-[12px] font-medium">{event.summary}</p>
                     {(event.command || event.cwd || event.marker) && (
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         {event.command && <span>cmd: {event.command}</span>}

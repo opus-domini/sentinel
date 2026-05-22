@@ -6,12 +6,7 @@ import { GuardrailConfirmError } from './useTmuxApi'
 import { useSessionCRUD } from './useSessionCRUD'
 import type { Session } from '@/types'
 import type { Dispatch, SetStateAction } from 'react'
-import type {
-  ApiFunction,
-  DispatchTabs,
-  RuntimeMetrics,
-  TabsStateRef,
-} from './tmuxTypes'
+import type { ApiFunction, DispatchTabs, RuntimeMetrics, TabsStateRef } from './tmuxTypes'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -176,9 +171,7 @@ describe('useSessionCRUD – killSession', () => {
     opts.dispatchTabs.mockImplementation((action: { type: string }) => {
       callOrder.push(`dispatchTabs:${action.type}`)
     })
-    opts.closeCurrentSocket.mockImplementation(() =>
-      callOrder.push('closeCurrentSocket'),
-    )
+    opts.closeCurrentSocket.mockImplementation(() => callOrder.push('closeCurrentSocket'))
     opts.setConnection.mockImplementation(() => callOrder.push('setConnection'))
 
     // Simulate the guardrail confirm callback
@@ -199,8 +192,7 @@ describe('useSessionCRUD – killSession', () => {
     })
 
     // Now retrieve the onConfirm callback
-    const confirmCallback = opts.requestGuardrailConfirm.mock
-      .calls[0][2] as () => void
+    const confirmCallback = opts.requestGuardrailConfirm.mock.calls[0][2] as () => void
 
     // Second call (confirmed): API resolves
     api.mockResolvedValueOnce(undefined)
@@ -220,10 +212,7 @@ describe('useSessionCRUD – killSession', () => {
       expect.objectContaining({ type: 'close', session: 'prod' }),
     )
     expect(opts.closeCurrentSocket).toHaveBeenCalledWith('session killed')
-    expect(opts.setConnection).toHaveBeenCalledWith(
-      'disconnected',
-      'session killed',
-    )
+    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'session killed')
 
     // Optimistic UI was applied before the API call
     const apiCallIndex = callOrder.indexOf('setSessions')
@@ -249,10 +238,7 @@ describe('useSessionCRUD – killSession', () => {
       expect.objectContaining({ type: 'close', session: 'prod' }),
     )
     expect(opts.closeCurrentSocket).toHaveBeenCalledWith('session killed')
-    expect(opts.pushSuccessToast).toHaveBeenCalledWith(
-      'Kill Session',
-      'session "prod" killed',
-    )
+    expect(opts.pushSuccessToast).toHaveBeenCalledWith('Kill Session', 'session "prod" killed')
   })
 
   it('API error after confirmed kill rolls back', async () => {
@@ -266,8 +252,7 @@ describe('useSessionCRUD – killSession', () => {
       await result.current.killSession('prod')
     })
 
-    const confirmCallback = opts.requestGuardrailConfirm.mock
-      .calls[0][2] as () => void
+    const confirmCallback = opts.requestGuardrailConfirm.mock.calls[0][2] as () => void
 
     // Second call (confirmed): API fails with a generic error
     api.mockRejectedValueOnce(new Error('tmux server crashed'))
@@ -285,14 +270,8 @@ describe('useSessionCRUD – killSession', () => {
     )
 
     // Error state was set
-    expect(opts.setConnection).toHaveBeenCalledWith(
-      'error',
-      'tmux server crashed',
-    )
-    expect(opts.pushErrorToast).toHaveBeenCalledWith(
-      'Kill Session',
-      'tmux server crashed',
-    )
+    expect(opts.setConnection).toHaveBeenCalledWith('error', 'tmux server crashed')
+    expect(opts.pushErrorToast).toHaveBeenCalledWith('Kill Session', 'tmux server crashed')
   })
 })
 
@@ -318,8 +297,7 @@ describe('useSessionCRUD – createSession', () => {
       body: expect.any(String),
     })
     const request = api.mock.calls[0]?.[1]
-    const body =
-      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+    const body = typeof request?.body === 'string' ? JSON.parse(request.body) : null
     expect(body).toMatchObject({
       name: 'dev',
       cwd: '/tmp',
@@ -355,8 +333,7 @@ describe('useSessionCRUD – createSession', () => {
     expect(opts.pendingCreateSessionsRef.current.has('dev')).toBe(true)
 
     const request = api.mock.calls[0]?.[1]
-    const body =
-      typeof request?.body === 'string' ? JSON.parse(request.body) : null
+    const body = typeof request?.body === 'string' ? JSON.parse(request.body) : null
 
     act(() => {
       result.current.handleTmuxSessionsEvent({
@@ -413,10 +390,7 @@ describe('useSessionCRUD – refreshSessions', () => {
 
     expect(opts.closeCurrentSocket).not.toHaveBeenCalled()
     expect(opts.resetTerminal).not.toHaveBeenCalled()
-    expect(opts.setConnection).not.toHaveBeenCalledWith(
-      'disconnected',
-      'active session removed',
-    )
+    expect(opts.setConnection).not.toHaveBeenCalledWith('disconnected', 'active session removed')
     expect(opts.dispatchTabs).toHaveBeenCalledWith({
       type: 'sync',
       sessions: ['Hugo', 'Home'],
@@ -476,14 +450,9 @@ describe('useSessionCRUD – refreshSessions', () => {
       await result.current.refreshSessions()
     })
 
-    expect(opts.closeCurrentSocket).toHaveBeenCalledWith(
-      'active session removed',
-    )
+    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('active session removed')
     expect(opts.resetTerminal).toHaveBeenCalled()
-    expect(opts.setConnection).toHaveBeenCalledWith(
-      'disconnected',
-      'active session removed',
-    )
+    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'active session removed')
     expect(opts.dispatchTabs).toHaveBeenCalledWith({
       type: 'sync',
       sessions: ['Home'],

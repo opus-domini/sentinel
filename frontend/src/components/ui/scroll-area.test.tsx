@@ -16,9 +16,7 @@ describe('ScrollArea', () => {
       </ScrollArea>,
     )
 
-    const viewport = container.querySelector(
-      '[data-slot="scroll-area-viewport"]',
-    )
+    const viewport = container.querySelector('[data-slot="scroll-area-viewport"]')
 
     expect(viewport?.className).toContain('outline-none')
     expect(viewport?.className).not.toContain('focus-visible:ring')

@@ -10,10 +10,7 @@ import type { RefCallback } from 'react'
 import type { ConnectionState } from '../types'
 import type { ReconnectState } from '@/lib/wsReconnect'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
-import {
-  createWebClipboardProvider,
-  writeClipboardText,
-} from '@/lib/clipboardProvider'
+import { createWebClipboardProvider, writeClipboardText } from '@/lib/clipboardProvider'
 import { attachTouchWheelBridge } from '@/lib/touchWheelBridge'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
 import { buildWSProtocols } from '@/lib/wsAuth'
@@ -164,10 +161,7 @@ function refreshRuntimeRenderer(runtime: SessionRuntime): boolean {
   return true
 }
 
-function takeRuntimeWriteBatch(
-  runtime: SessionRuntime,
-  maxBytes: number,
-): Uint8Array | null {
+function takeRuntimeWriteBatch(runtime: SessionRuntime, maxBytes: number): Uint8Array | null {
   if (runtime.writeQueueBytes <= 0 || runtime.writeQueue.length === 0) {
     return null
   }
@@ -205,10 +199,7 @@ function isSocketOpenOrConnecting(socket: WebSocket | null): boolean {
   if (socket === null) {
     return false
   }
-  return (
-    socket.readyState === WebSocket.OPEN ||
-    socket.readyState === WebSocket.CONNECTING
-  )
+  return socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING
 }
 
 export function useTerminalTmux({
@@ -224,8 +215,7 @@ export function useTerminalTmux({
   allowWheelInAlternateBuffer = false,
   suppressBrowserContextMenu = false,
 }: UseTerminalTmuxArgs): UseTerminalTmuxResult {
-  const [connectionState, setConnectionState] =
-    useState<ConnectionState>('disconnected')
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [statusDetail, setStatusDetail] = useState('ready')
   const [termCols, setTermCols] = useState(0)
   const [termRows, setTermRows] = useState(0)
@@ -242,9 +232,7 @@ export function useTerminalTmux({
   const activeSessionRef = useRef(activeSession)
   const runtimesRef = useRef(new Map<string, SessionRuntime>())
   const hostsRef = useRef(new Map<string, HTMLDivElement>())
-  const hostCallbacksRef = useRef(
-    new Map<string, RefCallback<HTMLDivElement>>(),
-  )
+  const hostCallbacksRef = useRef(new Map<string, RefCallback<HTMLDivElement>>())
   const terminalMetricsRef = useRef<TerminalRuntimeMetrics>({
     renderer: 'dom',
     writeBatchCount: 0,
@@ -259,10 +247,7 @@ export function useTerminalTmux({
     (runtime: SessionRuntime, next: ConnectionState, detail: string) => {
       runtime.connectionState = next
       runtime.statusDetail = detail
-      if (
-        !isMountedRef.current ||
-        activeSessionRef.current !== runtime.session
-      ) {
+      if (!isMountedRef.current || activeSessionRef.current !== runtime.session) {
         return
       }
       setConnectionState(next)
@@ -314,24 +299,21 @@ export function useTerminalTmux({
     setTermRows(runtime.rows)
   }, [])
 
-  const sendResize = useCallback(
-    (runtime: SessionRuntime, cols: number, rows: number) => {
-      if (cols <= 0 || rows <= 0) {
-        return
-      }
-      const socket = runtime.socket
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        return
-      }
-      if (cols === runtime.lastSentCols && rows === runtime.lastSentRows) {
-        return
-      }
-      socket.send(JSON.stringify({ type: 'resize', cols, rows }))
-      runtime.lastSentCols = cols
-      runtime.lastSentRows = rows
-    },
-    [],
-  )
+  const sendResize = useCallback((runtime: SessionRuntime, cols: number, rows: number) => {
+    if (cols <= 0 || rows <= 0) {
+      return
+    }
+    const socket = runtime.socket
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return
+    }
+    if (cols === runtime.lastSentCols && rows === runtime.lastSentRows) {
+      return
+    }
+    socket.send(JSON.stringify({ type: 'resize', cols, rows }))
+    runtime.lastSentCols = cols
+    runtime.lastSentRows = rows
+  }, [])
 
   const cleanupHostResizeObserver = useCallback((runtime: SessionRuntime) => {
     runtime.hostResizeObserver?.disconnect()
@@ -356,17 +338,13 @@ export function useTerminalTmux({
       runtime.fitAddon.fit()
       runtime.cols = runtime.terminal.cols
       runtime.rows = runtime.terminal.rows
-      const sizeChanged =
-        runtime.cols !== previousCols || runtime.rows !== previousRows
+      const sizeChanged = runtime.cols !== previousCols || runtime.rows !== previousRows
       sendResize(runtime, runtime.cols, runtime.rows)
       if (sizeChanged) {
         refreshRuntimeRenderer(runtime)
       }
 
-      if (
-        !isMountedRef.current ||
-        activeSessionRef.current !== runtime.session
-      ) {
+      if (!isMountedRef.current || activeSessionRef.current !== runtime.session) {
         return
       }
       setTermCols(runtime.cols)
@@ -425,8 +403,7 @@ export function useTerminalTmux({
         runtime.touchWheelDispose.dispose()
         runtime.touchWheelDispose = { dispose: () => undefined }
         if (isMobileRef.current && allowWheelInAlternateBuffer) {
-          const screen =
-            runtime.terminal.element.querySelector<HTMLElement>('.xterm-screen')
+          const screen = runtime.terminal.element.querySelector<HTMLElement>('.xterm-screen')
           runtime.touchWheelDispose = attachTouchWheelBridge({
             host,
             dispatchTarget: screen ?? runtime.terminal.element,
@@ -504,8 +481,7 @@ export function useTerminalTmux({
         runtime.touchWheelDispose.dispose()
         runtime.touchWheelDispose = { dispose: () => undefined }
         if (isMobileRef.current && allowWheelInAlternateBuffer) {
-          const dispatchTarget =
-            host.querySelector<HTMLElement>('.xterm-screen')
+          const dispatchTarget = host.querySelector<HTMLElement>('.xterm-screen')
           runtime.touchWheelDispose = attachTouchWheelBridge({
             host,
             dispatchTarget: dispatchTarget ?? host,
@@ -515,12 +491,9 @@ export function useTerminalTmux({
         // FitAddon floors column/row counts, so a residual strip can appear.
         // Keep the xterm root in sync with theme background to hide it.
         applyTerminalChrome(host, themeId)
-        const terminalElement = runtime.terminal.element as
-          | HTMLElement
-          | undefined
+        const terminalElement = runtime.terminal.element as HTMLElement | undefined
         if (terminalElement) {
-          terminalElement.style.backgroundColor =
-            getTerminalTheme(themeId).colors.background ?? ''
+          terminalElement.style.backgroundColor = getTerminalTheme(themeId).colors.background ?? ''
         }
         refreshRuntime(runtime)
 
@@ -540,11 +513,7 @@ export function useTerminalTmux({
   )
 
   const isSocketCurrent = useCallback(
-    (
-      runtime: SessionRuntime,
-      generation: number,
-      socket: WebSocket,
-    ): boolean => {
+    (runtime: SessionRuntime, generation: number, socket: WebSocket): boolean => {
       return (
         runtimesRef.current.get(runtime.session) === runtime &&
         runtime.generation === generation &&
@@ -554,15 +523,9 @@ export function useTerminalTmux({
     [],
   )
 
-  const isRuntimeCurrent = useCallback(
-    (runtime: SessionRuntime, generation: number): boolean => {
-      return (
-        runtimesRef.current.get(runtime.session) === runtime &&
-        runtime.generation === generation
-      )
-    },
-    [],
-  )
+  const isRuntimeCurrent = useCallback((runtime: SessionRuntime, generation: number): boolean => {
+    return runtimesRef.current.get(runtime.session) === runtime && runtime.generation === generation
+  }, [])
 
   const recoverRuntimeWritePipeline = useCallback(
     (runtime: SessionRuntime, detail: string, reason: 'backlog' | 'stall') => {
@@ -596,11 +559,7 @@ export function useTerminalTmux({
         runtime.writeQueueBytes,
       )
       if (runtime.writeQueueBytes > TERMINAL_WRITE_QUEUE_MAX_BYTES) {
-        recoverRuntimeWritePipeline(
-          runtime,
-          'terminal output backlog; reconnecting',
-          'backlog',
-        )
+        recoverRuntimeWritePipeline(runtime, 'terminal output backlog; reconnecting', 'backlog')
         return
       }
       if (
@@ -612,10 +571,7 @@ export function useTerminalTmux({
       }
 
       const flush = (flushToken: number) => {
-        if (
-          runtime.writeFlushToken !== flushToken ||
-          !isRuntimeCurrent(runtime, generation)
-        ) {
+        if (runtime.writeFlushToken !== flushToken || !isRuntimeCurrent(runtime, generation)) {
           return
         }
         runtime.writeFlushToken += 1
@@ -628,10 +584,7 @@ export function useTerminalTmux({
           runtime.writeFlushTimeoutId = null
         }
 
-        const payload = takeRuntimeWriteBatch(
-          runtime,
-          TERMINAL_WRITE_BATCH_MAX_BYTES,
-        )
+        const payload = takeRuntimeWriteBatch(runtime, TERMINAL_WRITE_BATCH_MAX_BYTES)
         if (payload !== null) {
           runtime.writeInFlightGeneration = generation
           terminalMetricsRef.current.writeBatchCount += 1
@@ -643,11 +596,7 @@ export function useTerminalTmux({
             ) {
               return
             }
-            recoverRuntimeWritePipeline(
-              runtime,
-              'terminal renderer stalled; reconnecting',
-              'stall',
-            )
+            recoverRuntimeWritePipeline(runtime, 'terminal renderer stalled; reconnecting', 'stall')
           }, TERMINAL_WRITE_IN_FLIGHT_TIMEOUT_MS)
           runtime.terminal.write(payload, () => {
             if (runtime.writeInFlightGeneration !== generation) {
@@ -685,10 +634,7 @@ export function useTerminalTmux({
   )
 
   const connectRuntime = useCallback(
-    (
-      runtime: SessionRuntime,
-      options?: { resetTerminal?: boolean; force?: boolean },
-    ) => {
+    (runtime: SessionRuntime, options?: { resetTerminal?: boolean; force?: boolean }) => {
       if (!options?.force && isSocketOpenOrConnecting(runtime.socket)) {
         return
       }
@@ -711,11 +657,7 @@ export function useTerminalTmux({
       if (options?.resetTerminal !== false) {
         runtime.terminal.reset()
       }
-      setRuntimeStatus(
-        runtime,
-        'connecting',
-        `${connectingVerb} ${runtime.session}`,
-      )
+      setRuntimeStatus(runtime, 'connecting', `${connectingVerb} ${runtime.session}`)
 
       const wsURL = new URL(wsPath, window.location.origin)
       wsURL.searchParams.set(wsQueryKey, runtime.session)
@@ -723,10 +665,7 @@ export function useTerminalTmux({
         wsURL.searchParams.set('cols', String(runtime.cols))
         wsURL.searchParams.set('rows', String(runtime.rows))
       }
-      const socket = new WebSocket(
-        wsURL.toString().replace(/^http/, 'ws'),
-        buildWSProtocols(),
-      )
+      const socket = new WebSocket(wsURL.toString().replace(/^http/, 'ws'), buildWSProtocols())
       socket.binaryType = 'arraybuffer'
       runtime.socket = socket
       runtime.lastSentCols = 0
@@ -749,11 +688,7 @@ export function useTerminalTmux({
         }
         runtime.manualCloseReason = null
         runtime.reconnect.reset()
-        setRuntimeStatus(
-          runtime,
-          'connected',
-          `${connectedVerb} ${runtime.session}`,
-        )
+        setRuntimeStatus(runtime, 'connected', `${connectedVerb} ${runtime.session}`)
         fitRuntime(runtime)
 
         if (activeSessionRef.current !== runtime.session) {
@@ -778,11 +713,7 @@ export function useTerminalTmux({
               message?: string
             }
             if (message.type === 'error') {
-              setRuntimeStatus(
-                runtime,
-                'error',
-                message.message ?? 'terminal error',
-              )
+              setRuntimeStatus(runtime, 'error', message.message ?? 'terminal error')
             }
           } catch {
             // ignore invalid control frame
@@ -848,7 +779,6 @@ export function useTerminalTmux({
       connectingVerb,
       enqueueRuntimeWrite,
       fitRuntime,
-      isSocketOpenOrConnecting,
       isRuntimeCurrent,
       isSocketCurrent,
       onAttachedMobile,
@@ -910,10 +840,7 @@ export function useTerminalTmux({
       }
 
       const fitAddon = new FitAddon()
-      const clipboardAddon = new ClipboardAddon(
-        undefined,
-        createWebClipboardProvider(),
-      )
+      const clipboardAddon = new ClipboardAddon(undefined, createWebClipboardProvider())
       const searchAddon = new SearchAddon({ highlightLimit: 2_000 })
       const serializeAddon = new SerializeAddon()
       const webLinksAddon = new WebLinksAddon((event, uri) => {
@@ -981,10 +908,7 @@ export function useTerminalTmux({
         runtime.rows = rows
         sendResize(runtime, cols, rows)
 
-        if (
-          !isMountedRef.current ||
-          activeSessionRef.current !== runtime.session
-        ) {
+        if (!isMountedRef.current || activeSessionRef.current !== runtime.session) {
           return
         }
         setTermCols(cols)
@@ -1013,13 +937,7 @@ export function useTerminalTmux({
       // per-origin socket pool (max 6 for HTTP/1.1).
       return runtime
     },
-    [
-      allowWheelInAlternateBuffer,
-      fontSize,
-      openRuntimeInHost,
-      sendResize,
-      themeId,
-    ],
+    [allowWheelInAlternateBuffer, fontSize, openRuntimeInHost, sendResize, themeId],
   )
 
   const disposeRuntime = useCallback(
@@ -1040,12 +958,7 @@ export function useTerminalTmux({
       hostsRef.current.delete(runtime.session)
       hostCallbacksRef.current.delete(runtime.session)
     },
-    [
-      clearHandshakeTimer,
-      clearReconnectTimer,
-      cleanupHostResizeObserver,
-      closeRuntimeSocket,
-    ],
+    [clearHandshakeTimer, clearReconnectTimer, cleanupHostResizeObserver, closeRuntimeSocket],
   )
 
   const getTerminalHostRef = useCallback(
@@ -1193,9 +1106,7 @@ export function useTerminalTmux({
         }
       }
 
-      const activeRuntime = runtimesRef.current.get(
-        activeSessionRef.current.trim(),
-      )
+      const activeRuntime = runtimesRef.current.get(activeSessionRef.current.trim())
       if (activeRuntime && isMountedRef.current) {
         setTermCols(activeRuntime.cols)
         setTermRows(activeRuntime.rows)
@@ -1231,8 +1142,7 @@ export function useTerminalTmux({
           applyTerminalChrome(host, id)
         }
         if (runtime.terminal.element) {
-          runtime.terminal.element.style.backgroundColor =
-            colors.background ?? ''
+          runtime.terminal.element.style.backgroundColor = colors.background ?? ''
           refreshRuntime(runtime)
         }
       }
@@ -1320,9 +1230,7 @@ export function useTerminalTmux({
   ])
 
   useEffect(() => {
-    const allowedSessions = new Set(
-      openTabs.filter((session) => session.trim() !== ''),
-    )
+    const allowedSessions = new Set(openTabs.filter((session) => session.trim() !== ''))
 
     const activeName = activeSessionRef.current.trim()
     for (const session of allowedSessions) {
@@ -1344,13 +1252,7 @@ export function useTerminalTmux({
     }
 
     publishActiveRuntimeState()
-  }, [
-    connectRuntime,
-    createRuntime,
-    disposeRuntime,
-    openTabs,
-    publishActiveRuntimeState,
-  ])
+  }, [connectRuntime, createRuntime, disposeRuntime, openTabs, publishActiveRuntimeState])
 
   useEffect(() => {
     for (const runtime of runtimesRef.current.values()) {
@@ -1457,14 +1359,17 @@ export function useTerminalTmux({
   }, [fitTerminal, sidebarCollapsed, activeSession])
 
   useEffect(() => {
+    const runtimes = runtimesRef.current
+    const hosts = hostsRef.current
+    const hostCallbacks = hostCallbacksRef.current
     return () => {
       isMountedRef.current = false
-      for (const runtime of [...runtimesRef.current.values()]) {
+      for (const runtime of [...runtimes.values()]) {
         disposeRuntime(runtime, 'detached')
       }
-      runtimesRef.current.clear()
-      hostsRef.current.clear()
-      hostCallbacksRef.current.clear()
+      runtimes.clear()
+      hosts.clear()
+      hostCallbacks.clear()
     }
   }, [disposeRuntime])
 
@@ -1481,7 +1386,7 @@ export function useTerminalTmux({
         resetTerminal: false,
       })
     },
-    [connectRuntime, isSocketOpenOrConnecting],
+    [connectRuntime],
   )
 
   return {

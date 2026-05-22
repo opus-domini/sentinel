@@ -69,21 +69,14 @@ function ctrlCode(ch: string): string | null {
 }
 
 function buildCsi(def: CsiDef, modifiers: ActiveModifiers): string {
-  const mod =
-    1 +
-    (modifiers.shift ? 1 : 0) +
-    (modifiers.alt ? 2 : 0) +
-    (modifiers.ctrl ? 4 : 0)
+  const mod = 1 + (modifiers.shift ? 1 : 0) + (modifiers.alt ? 2 : 0) + (modifiers.ctrl ? 4 : 0)
   if (def.type === 'letter') {
     return mod === 1 ? `\x1b[${def.letter}` : `\x1b[1;${mod}${def.letter}`
   }
   return mod === 1 ? `\x1b[${def.n}~` : `\x1b[${def.n};${mod}~`
 }
 
-function applySequenceModifiers(
-  sequence: string,
-  modifiers: ActiveModifiers,
-): string {
+function applySequenceModifiers(sequence: string, modifiers: ActiveModifiers): string {
   if (sequence === '\t' && modifiers.shift) {
     const reverseTab = '\x1b[Z'
     return modifiers.alt ? '\x1b' + reverseTab : reverseTab
@@ -169,16 +162,7 @@ function ExtraKey({
       onSend(seq)
       onConsume()
     }
-  }, [
-    csi,
-    sequence,
-    ctrlRef,
-    altRef,
-    shiftRef,
-    onSend,
-    onFlushComposition,
-    onConsume,
-  ])
+  }, [csi, sequence, ctrlRef, altRef, shiftRef, onSend, onFlushComposition, onConsume])
 
   const clearTimers = useCallback(() => {
     if (longTimer.current !== null) {
@@ -200,7 +184,7 @@ function ExtraKey({
         repTimer.current = setInterval(fire, REPEAT_INTERVAL)
       }, LONG_PRESS_DELAY)
     }
-  }, [fire, repeat, clearTimers])
+  }, [fire, repeat])
 
   const handleTouchEnd = useCallback(() => {
     clearTimers()
@@ -360,10 +344,7 @@ export default function TerminalControls({
     [setCtrl],
   )
   const ctrlLock = useCallback(() => setCtrl('locked'), [setCtrl])
-  const altTap = useCallback(
-    () => setAlt(altRef.current === 'off' ? 'sticky' : 'off'),
-    [setAlt],
-  )
+  const altTap = useCallback(() => setAlt(altRef.current === 'off' ? 'sticky' : 'off'), [setAlt])
   const altLock = useCallback(() => setAlt('locked'), [setAlt])
   const shiftTap = useCallback(
     () => setShift(shiftRef.current === 'off' ? 'sticky' : 'off'),
@@ -440,12 +421,7 @@ export default function TerminalControls({
   const lastToggleTouch = useRef(0)
   const toggleKb = useCallback(() => {
     const el = document.activeElement as HTMLElement | null
-    if (
-      el &&
-      (el.tagName === 'TEXTAREA' ||
-        el.tagName === 'INPUT' ||
-        el.isContentEditable)
-    ) {
+    if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) {
       el.blur()
     } else {
       onRefocus()
@@ -465,10 +441,7 @@ export default function TerminalControls({
   } as const
 
   return (
-    <div
-      ref={controlsRef}
-      className="flex flex-col border-y border-border bg-surface-terminal-bar"
-    >
+    <div ref={controlsRef} className="flex flex-col border-y border-border bg-surface-terminal-bar">
       {/* Row 1: modifiers + navigation */}
       <div className="flex">
         <ExtraKey label="ESC" ariaLabel="Escape" sequence={'\x1b'} {...k} />
@@ -500,28 +473,10 @@ export default function TerminalControls({
           onLongPress={altLock}
           onRefocus={onRefocus}
         />
-        <ExtraKey
-          label="←"
-          ariaLabel="Arrow left"
-          csi={CSI_LEFT}
-          repeat
-          {...k}
-        />
-        <ExtraKey
-          label="↓"
-          ariaLabel="Arrow down"
-          csi={CSI_DOWN}
-          repeat
-          {...k}
-        />
+        <ExtraKey label="←" ariaLabel="Arrow left" csi={CSI_LEFT} repeat {...k} />
+        <ExtraKey label="↓" ariaLabel="Arrow down" csi={CSI_DOWN} repeat {...k} />
         <ExtraKey label="↑" ariaLabel="Arrow up" csi={CSI_UP} repeat {...k} />
-        <ExtraKey
-          label="→"
-          ariaLabel="Arrow right"
-          csi={CSI_RIGHT}
-          repeat
-          {...k}
-        />
+        <ExtraKey label="→" ariaLabel="Arrow right" csi={CSI_RIGHT} repeat {...k} />
       </div>
 
       {/* Row 2: symbols + extended navigation */}

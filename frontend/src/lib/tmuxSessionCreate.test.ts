@@ -102,11 +102,7 @@ describe('mergePendingCreateSessions', () => {
 
     const merged = mergePendingCreateSessions(backend, pending, new Set())
 
-    expect(merged.sessions.map((item) => item.name)).toEqual([
-      'new-b',
-      'new-a',
-      'stable',
-    ])
+    expect(merged.sessions.map((item) => item.name)).toEqual(['new-b', 'new-a', 'stable'])
     expect(merged.sessionNamesForSync).toEqual(['new-b', 'new-a', 'stable'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual([])
@@ -125,11 +121,7 @@ describe('mergePendingCreateSessions', () => {
 
     const merged = mergePendingCreateSessions(backend, pending, new Set())
 
-    expect(merged.sessions.map((item) => item.name)).toEqual([
-      'new-b',
-      'stable',
-      'new-a',
-    ])
+    expect(merged.sessions.map((item) => item.name)).toEqual(['new-b', 'stable', 'new-a'])
     expect(merged.confirmedPendingNames).toEqual(['new-a'])
     expect(merged.confirmedKilledNames).toEqual([])
     expect(merged.confirmedRenamedNames).toEqual([])
@@ -150,10 +142,7 @@ describe('mergePendingCreateSessions', () => {
       new Set(['killed']),
     )
 
-    expect(merged.sessions.map((item) => item.name)).toEqual([
-      'new-a',
-      'stable',
-    ])
+    expect(merged.sessions.map((item) => item.name)).toEqual(['new-a', 'stable'])
     expect(merged.sessionNamesForSync).toEqual(['new-a', 'stable'])
     expect(merged.confirmedPendingNames).toEqual([])
     expect(merged.confirmedKilledNames).toEqual([])

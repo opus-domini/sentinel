@@ -1,11 +1,4 @@
-import {
-  AlertTriangle,
-  CalendarClock,
-  CheckCircle2,
-  ChevronRight,
-  Pause,
-  Play,
-} from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Pause, Play } from 'lucide-react'
 import type { OpsRunbook, OpsRunbookRun, OpsSchedule } from '@/types'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import {
@@ -69,10 +62,7 @@ export function RunbookOperationsSummary({
   onSelectRunbook,
 }: RunbookOperationsSummaryProps) {
   const activeJobs = jobs.filter(isExecutingRunbookJob).slice().sort(newestJob)
-  const approvalJobs = jobs
-    .filter(isWaitingApprovalRunbookJob)
-    .slice()
-    .sort(newestJob)
+  const approvalJobs = jobs.filter(isWaitingApprovalRunbookJob).slice().sort(newestJob)
   const failedRunbooks = runbooks.filter(
     (runbook) => runbookStatusMeta(runbook, jobs).tone === 'danger',
   )
@@ -89,31 +79,20 @@ export function RunbookOperationsSummary({
       label: 'Active runs',
       shortLabel: 'Active',
       value: activeJobs.length,
-      detail:
-        activeJobs[0]?.currentStep ||
-        activeJobs[0]?.runbookName ||
-        'Execution queue is idle',
+      detail: activeJobs[0]?.currentStep || activeJobs[0]?.runbookName || 'Execution queue is idle',
       targetRunbookId: activeJobs[0]?.runbookId ?? null,
       icon: Play,
-      className:
-        activeJobs.length > 0
-          ? 'text-warning-foreground'
-          : 'text-muted-foreground',
+      className: activeJobs.length > 0 ? 'text-warning-foreground' : 'text-muted-foreground',
     },
     {
       label: 'Pending approvals',
       shortLabel: 'Approvals',
       value: approvalJobs.length,
       detail:
-        approvalJobs[0]?.currentStep ||
-        approvalJobs[0]?.runbookName ||
-        'No approval gates waiting',
+        approvalJobs[0]?.currentStep || approvalJobs[0]?.runbookName || 'No approval gates waiting',
       targetRunbookId: approvalJobs[0]?.runbookId ?? null,
       icon: Pause,
-      className:
-        approvalJobs.length > 0
-          ? 'text-warning-foreground'
-          : 'text-muted-foreground',
+      className: approvalJobs.length > 0 ? 'text-warning-foreground' : 'text-muted-foreground',
     },
     {
       label: 'Failed last runs',
@@ -123,9 +102,7 @@ export function RunbookOperationsSummary({
       targetRunbookId: failedRunbooks[0]?.id ?? null,
       icon: AlertTriangle,
       className:
-        failedRunbooks.length > 0
-          ? 'text-destructive-foreground'
-          : 'text-muted-foreground',
+        failedRunbooks.length > 0 ? 'text-destructive-foreground' : 'text-muted-foreground',
     },
     {
       label: 'Scheduled',
@@ -143,28 +120,18 @@ export function RunbookOperationsSummary({
       detail: healthyRunbooks[0]?.name ?? 'No healthy runbooks',
       targetRunbookId: healthyRunbooks[0]?.id ?? null,
       icon: CheckCircle2,
-      className:
-        healthyRunbooks.length > 0
-          ? 'text-ok-foreground'
-          : 'text-muted-foreground',
+      className: healthyRunbooks.length > 0 ? 'text-ok-foreground' : 'text-muted-foreground',
     },
   ]
 
   return (
-    <section
-      className="grid min-w-0 grid-cols-5 gap-1.5"
-      aria-label="Runbook operations summary"
-    >
+    <section className="grid min-w-0 grid-cols-5 gap-1.5" aria-label="Runbook operations summary">
       {items.map((item) => {
         const Icon = item.icon
         const isActionable = item.targetRunbookId != null
         const isSelected = item.targetRunbookId === selectedRunbookId
         return (
-          <TooltipHelper
-            key={item.label}
-            side="bottom"
-            content={`${item.label}\n${item.detail}`}
-          >
+          <TooltipHelper key={item.label} side="bottom" content={`${item.label}\n${item.detail}`}>
             <button
               type="button"
               aria-disabled={!isActionable}
@@ -188,12 +155,7 @@ export function RunbookOperationsSummary({
                 <span className="min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
                   {item.shortLabel}
                 </span>
-                <span
-                  className={cn(
-                    'shrink-0 text-[13px] font-semibold',
-                    item.className,
-                  )}
-                >
+                <span className={cn('shrink-0 text-[13px] font-semibold', item.className)}>
                   {item.value}
                 </span>
               </div>

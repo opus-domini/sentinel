@@ -2,8 +2,7 @@ import { cn } from '@/lib/utils'
 
 export function ProgressBar({ percent }: { percent: number }) {
   const clamped = Math.min(percent, 100)
-  const color =
-    percent > 90 ? 'bg-destructive' : percent > 80 ? 'bg-warning' : 'bg-ok'
+  const color = percent > 90 ? 'bg-destructive' : percent > 80 ? 'bg-warning' : 'bg-ok'
 
   return (
     <div
@@ -13,10 +12,7 @@ export function ProgressBar({ percent }: { percent: number }) {
       aria-valuemin={0}
       aria-valuemax={100}
     >
-      <div
-        className={cn('h-1.5 rounded-full', color)}
-        style={{ width: `${clamped}%` }}
-      />
+      <div className={cn('h-1.5 rounded-full', color)} style={{ width: `${clamped}%` }} />
     </div>
   )
 }

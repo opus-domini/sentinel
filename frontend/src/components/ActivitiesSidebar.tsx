@@ -59,9 +59,7 @@ export default function ActivitiesSidebar({
 
   const health = useMemo(() => {
     if (overview == null) return '-'
-    return overview.services.failed > 0
-      ? `${overview.services.failed} failed`
-      : 'healthy'
+    return overview.services.failed > 0 ? `${overview.services.failed} failed` : 'healthy'
   }, [overview])
 
   return (
@@ -85,11 +83,7 @@ export default function ActivitiesSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {authenticated ? (
-                    <Lock className="h-3 w-3" />
-                  ) : (
-                    <LockOpen className="h-3 w-3" />
-                  )}
+                  {authenticated ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
                 </Button>
               </TooltipHelper>
             </div>
@@ -120,9 +114,7 @@ export default function ActivitiesSidebar({
             <div className="rounded-md border border-border-subtle bg-surface-elevated p-2">
               <p className="text-[10px] text-muted-foreground">Uptime</p>
               <p className="mt-0.5 text-[11px] font-medium">
-                {overview != null
-                  ? formatUptime(overview.sentinel.uptimeSec)
-                  : '-'}
+                {overview != null ? formatUptime(overview.sentinel.uptimeSec) : '-'}
               </p>
             </div>
             <div className="rounded-md border border-border-subtle bg-surface-elevated p-2">
@@ -147,10 +139,7 @@ export default function ActivitiesSidebar({
             placeholder="search activities"
             className="h-7 bg-surface-overlay text-[12px] md:h-8"
           />
-          <Select
-            value={activitySeverity}
-            onValueChange={onActivitySeverityChange}
-          >
+          <Select value={activitySeverity} onValueChange={onActivitySeverityChange}>
             <SelectTrigger className="h-7 w-full cursor-pointer bg-surface-overlay text-[12px] md:h-8">
               <SelectValue />
             </SelectTrigger>
@@ -178,11 +167,7 @@ export default function ActivitiesSidebar({
                 all sources
               </SelectItem>
               {ACTIVITY_SOURCES.map((source) => (
-                <SelectItem
-                  key={source}
-                  value={source}
-                  className="cursor-pointer"
-                >
+                <SelectItem key={source} value={source} className="cursor-pointer">
                   {source}
                 </SelectItem>
               ))}

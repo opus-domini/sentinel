@@ -45,21 +45,11 @@ import { useSessionCRUD } from '@/hooks/useSessionCRUD'
 import { useTmuxEventsSocket } from '@/hooks/useTmuxEventsSocket'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { TMUX_SESSIONS_QUERY_KEY } from '@/lib/tmuxQueryCache'
-import {
-  applySidebarOrder,
-  moveSidebarItem,
-  sortBySidebarOrder,
-} from '@/lib/sessionSidebarOrder'
-import {
-  sanitizeTmuxPaneTitle,
-  sanitizeTmuxWindowName,
-  slugifyTmuxName,
-} from '@/lib/tmuxName'
+import { applySidebarOrder, moveSidebarItem, sortBySidebarOrder } from '@/lib/sessionSidebarOrder'
+import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName, slugifyTmuxName } from '@/lib/tmuxName'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
-const GuardrailsDialog = lazy(
-  () => import('@/components/tmux/GuardrailsDialog'),
-)
+const GuardrailsDialog = lazy(() => import('@/components/tmux/GuardrailsDialog'))
 const LaunchersDialog = lazy(() => import('@/components/tmux/LaunchersDialog'))
 const TimelineDialog = lazy(() => import('@/components/tmux/TimelineDialog'))
 
@@ -87,16 +77,14 @@ function normalizeSessionLauncher(
     icon: asText(rawLauncher.icon),
     user: asText(rawLauncher.user),
     sortOrder:
-      typeof rawLauncher.sortOrder === 'number' &&
-      Number.isFinite(rawLauncher.sortOrder)
+      typeof rawLauncher.sortOrder === 'number' && Number.isFinite(rawLauncher.sortOrder)
         ? Math.trunc(rawLauncher.sortOrder)
         : undefined,
     createdAt: asTimestampText(rawLauncher.createdAt),
     updatedAt: asTimestampText(rawLauncher.updatedAt),
     lastUsedAt: asTimestampText(rawLauncher.lastUsedAt),
     useCount:
-      typeof rawLauncher.useCount === 'number' &&
-      Number.isFinite(rawLauncher.useCount)
+      typeof rawLauncher.useCount === 'number' && Number.isFinite(rawLauncher.useCount)
         ? Math.max(0, Math.trunc(rawLauncher.useCount))
         : 0,
   }
@@ -112,13 +100,10 @@ function normalizeTmuxLauncher(
 
   const cwdMode = rawLauncher.cwdMode
   const normalizedCwdMode =
-    cwdMode === 'session' || cwdMode === 'active-pane' || cwdMode === 'fixed'
-      ? cwdMode
-      : 'session'
+    cwdMode === 'session' || cwdMode === 'active-pane' || cwdMode === 'fixed' ? cwdMode : 'session'
 
   const userMode = rawLauncher.userMode
-  const normalizedUserMode =
-    userMode === 'session' || userMode === 'fixed' ? userMode : 'session'
+  const normalizedUserMode = userMode === 'session' || userMode === 'fixed' ? userMode : 'session'
 
   return {
     id,
@@ -131,8 +116,7 @@ function normalizeTmuxLauncher(
     userMode: normalizedUserMode,
     userValue: asText(rawLauncher.userValue),
     sortOrder:
-      typeof rawLauncher.sortOrder === 'number' &&
-      Number.isFinite(rawLauncher.sortOrder)
+      typeof rawLauncher.sortOrder === 'number' && Number.isFinite(rawLauncher.sortOrder)
         ? Math.trunc(rawLauncher.sortOrder)
         : undefined,
     createdAt: asTimestampText(rawLauncher.createdAt),
@@ -153,9 +137,7 @@ function TmuxPage() {
   const [launchersOpen, setLaunchersOpen] = useState(false)
   const [createSessionOpen, setCreateSessionOpen] = useState(false)
   const [launchers, setLaunchers] = useState<Array<TmuxLauncher>>([])
-  const [sessionLaunchers, setSessionLaunchers] = useState<
-    Array<SessionLauncher>
-  >([])
+  const [sessionLaunchers, setSessionLaunchers] = useState<Array<SessionLauncher>>([])
   const [sessionPresets, setSessionPresets] = useState<Array<SessionPreset>>([])
 
   // ---- Guardrail confirm state (shared across session CRUD + inspector) ----
@@ -173,11 +155,7 @@ function TmuxPage() {
   )
 
   // ---- Tabs state ----
-  const [tabsState, dispatchTabs] = useReducer(
-    tabsReducer,
-    undefined,
-    loadPersistedTabs,
-  )
+  const [tabsState, dispatchTabs] = useReducer(tabsReducer, undefined, loadPersistedTabs)
   useEffect(() => {
     persistTabs(tabsState)
   }, [tabsState])
@@ -188,12 +166,11 @@ function TmuxPage() {
     if (tabsState.activeSession !== '') {
       dispatchTabs({ type: 'activate', session: tabsState.activeSession })
     }
-  }, [])
+  }, [tabsState.activeSession])
 
   // ---- Sessions state ----
   const [sessions, setSessions] = useState<Array<Session>>(
-    () =>
-      queryClient.getQueryData<Array<Session>>(TMUX_SESSIONS_QUERY_KEY) ?? [],
+    () => queryClient.getQueryData<Array<Session>>(TMUX_SESSIONS_QUERY_KEY) ?? [],
   )
   const [filter, setFilter] = useState('')
   const debouncedFilter = useDebouncedValue(filter)
@@ -246,16 +223,12 @@ function TmuxPage() {
   const refreshSessionPresets = useCallback(
     async (options?: { quiet?: boolean }) => {
       try {
-        const data = await api<SessionPresetsResponse>(
-          '/api/tmux/session-presets',
-        )
+        const data = await api<SessionPresetsResponse>('/api/tmux/session-presets')
         setSessionPresets(data.presets)
       } catch (error) {
         if (!options?.quiet) {
           const message =
-            error instanceof Error
-              ? error.message
-              : 'failed to refresh pinned sessions'
+            error instanceof Error ? error.message : 'failed to refresh pinned sessions'
           pushErrorToast('Pinned Sessions', message)
         }
       }
@@ -278,10 +251,7 @@ function TmuxPage() {
         setLaunchers(nextLaunchers)
       } catch (error) {
         if (!options?.quiet) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : 'failed to refresh launchers'
+          const message = error instanceof Error ? error.message : 'failed to refresh launchers'
           pushErrorToast('Launchers', message)
         }
       }
@@ -292,14 +262,11 @@ function TmuxPage() {
   const refreshSessionLaunchers = useCallback(
     async (options?: { quiet?: boolean }) => {
       try {
-        const data = await api<SessionLaunchersResponse>(
-          '/api/tmux/session-launchers',
-        )
+        const data = await api<SessionLaunchersResponse>('/api/tmux/session-launchers')
         const nextLaunchers = Array.isArray(data.launchers)
           ? data.launchers.flatMap((rawLauncher) => {
               const normalized = normalizeSessionLauncher(
-                rawLauncher as Partial<SessionLauncher> &
-                  Record<string, unknown>,
+                rawLauncher as Partial<SessionLauncher> & Record<string, unknown>,
               )
               return normalized === null ? [] : [normalized]
             })
@@ -308,9 +275,7 @@ function TmuxPage() {
       } catch (error) {
         if (!options?.quiet) {
           const message =
-            error instanceof Error
-              ? error.message
-              : 'failed to refresh session launchers'
+            error instanceof Error ? error.message : 'failed to refresh session launchers'
           pushErrorToast('Session Launchers', message)
         }
       }
@@ -399,8 +364,7 @@ function TmuxPage() {
     setConnection,
     connectionState,
     refreshInspector: inspector.refreshInspector,
-    clearPendingInspectorSessionState:
-      inspector.clearPendingInspectorSessionState,
+    clearPendingInspectorSessionState: inspector.clearPendingInspectorSessionState,
     pushErrorToast,
     pushSuccessToast,
     pendingCreateSessionsRef: inspector.pendingCreateSessionsRef,
@@ -422,9 +386,7 @@ function TmuxPage() {
       icon: string
       user: string
     }) => {
-      const existingByName = sessionPresets.find(
-        (preset) => preset.name === input.name,
-      )
+      const existingByName = sessionPresets.find((preset) => preset.name === input.name)
       const targetName = input.previousName || existingByName?.name || ''
       const isUpdate = targetName !== ''
       const path = isUpdate
@@ -444,42 +406,29 @@ function TmuxPage() {
         await refreshSessionPresets()
         pushSuccessToast(
           'Pinned Sessions',
-          isUpdate
-            ? `pinned session "${input.name}" updated`
-            : `session "${input.name}" pinned`,
+          isUpdate ? `pinned session "${input.name}" updated` : `session "${input.name}" pinned`,
         )
         return true
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to pin session'
+        const message = error instanceof Error ? error.message : 'failed to pin session'
         pushErrorToast('Pinned Sessions', message)
         return false
       }
     },
-    [
-      api,
-      pushErrorToast,
-      pushSuccessToast,
-      refreshSessionPresets,
-      sessionPresets,
-    ],
+    [api, pushErrorToast, pushSuccessToast, refreshSessionPresets, sessionPresets],
   )
 
   const deleteSessionPreset = useCallback(
     async (name: string) => {
       try {
-        await api<void>(
-          `/api/tmux/session-presets/${encodeURIComponent(name)}`,
-          {
-            method: 'DELETE',
-          },
-        )
+        await api<void>(`/api/tmux/session-presets/${encodeURIComponent(name)}`, {
+          method: 'DELETE',
+        })
         await refreshSessionPresets()
         pushSuccessToast('Pinned Sessions', `session "${name}" unpinned`)
         return true
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to unpin session'
+        const message = error instanceof Error ? error.message : 'failed to unpin session'
         pushErrorToast('Pinned Sessions', message)
         return false
       }
@@ -500,14 +449,11 @@ function TmuxPage() {
           `/api/tmux/sessions/${encodeURIComponent(sessionName)}/panes`,
         )
         const cwd =
-          data.panes.find((pane) => pane.active && pane.currentPath)
-            ?.currentPath ??
+          data.panes.find((pane) => pane.active && pane.currentPath)?.currentPath ??
           data.panes.find((pane) => pane.currentPath)?.currentPath ??
           defaultCwd
 
-        const existing = sessionPresets.some(
-          (preset) => preset.name === sessionName,
-        )
+        const existing = sessionPresets.some((preset) => preset.name === sessionName)
         await saveSessionPreset({
           previousName: existing ? sessionName : '',
           name: sessionName,
@@ -516,19 +462,11 @@ function TmuxPage() {
           user: session.user ?? '',
         })
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to pin session'
+        const message = error instanceof Error ? error.message : 'failed to pin session'
         pushErrorToast('Pinned Sessions', message)
       }
     },
-    [
-      api,
-      defaultCwd,
-      pushErrorToast,
-      saveSessionPreset,
-      sessionPresets,
-      sessions,
-    ],
+    [api, defaultCwd, pushErrorToast, saveSessionPreset, sessionPresets, sessions],
   )
 
   const launchSessionPreset = useCallback(
@@ -553,15 +491,10 @@ function TmuxPage() {
         void refreshSessionPresets({ quiet: true })
         pushSuccessToast(
           'Pinned Sessions',
-          data.created
-            ? `session "${data.name}" created`
-            : `session "${data.name}" opened`,
+          data.created ? `session "${data.name}" created` : `session "${data.name}" opened`,
         )
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'failed to launch pinned session'
+        const message = error instanceof Error ? error.message : 'failed to launch pinned session'
         pushErrorToast('Pinned Sessions', message)
       }
     },
@@ -578,13 +511,7 @@ function TmuxPage() {
   )
 
   const saveSessionLauncher = useCallback(
-    async (input: {
-      id: string
-      name: string
-      cwd: string
-      icon: string
-      user: string
-    }) => {
+    async (input: { id: string; name: string; cwd: string; icon: string; user: string }) => {
       const isUpdate = input.id.trim() !== ''
       const path = isUpdate
         ? `/api/tmux/session-launchers/${encodeURIComponent(input.id)}`
@@ -609,10 +536,7 @@ function TmuxPage() {
         )
         return data.launcher.id
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'failed to save session launcher'
+        const message = error instanceof Error ? error.message : 'failed to save session launcher'
         pushErrorToast('Session Launchers', message)
         return ''
       }
@@ -624,36 +548,22 @@ function TmuxPage() {
     async (id: string) => {
       const existing = sessionLaunchers.find((launcher) => launcher.id === id)
       try {
-        await api<void>(
-          `/api/tmux/session-launchers/${encodeURIComponent(id)}`,
-          {
-            method: 'DELETE',
-          },
-        )
+        await api<void>(`/api/tmux/session-launchers/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        })
         await refreshSessionLaunchers()
         pushSuccessToast(
           'Session Launchers',
-          existing
-            ? `session launcher "${existing.name}" deleted`
-            : 'session launcher deleted',
+          existing ? `session launcher "${existing.name}" deleted` : 'session launcher deleted',
         )
         return true
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'failed to delete session launcher'
+        const message = error instanceof Error ? error.message : 'failed to delete session launcher'
         pushErrorToast('Session Launchers', message)
         return false
       }
     },
-    [
-      api,
-      pushErrorToast,
-      pushSuccessToast,
-      refreshSessionLaunchers,
-      sessionLaunchers,
-    ],
+    [api, pushErrorToast, pushSuccessToast, refreshSessionLaunchers, sessionLaunchers],
   )
 
   const launchSessionLauncher = useCallback(
@@ -678,10 +588,7 @@ function TmuxPage() {
         void refreshSessionLaunchers({ quiet: true })
         pushSuccessToast('Session Launchers', `session "${data.name}" created`)
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'failed to launch session launcher'
+        const message = error instanceof Error ? error.message : 'failed to launch session launcher'
         pushErrorToast('Session Launchers', message)
       }
     },
@@ -728,8 +635,7 @@ function TmuxPage() {
         )
         return data.launcher.id
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to save launcher'
+        const message = error instanceof Error ? error.message : 'failed to save launcher'
         pushErrorToast('Launchers', message)
         throw error instanceof Error ? error : new Error(message)
       }
@@ -741,12 +647,9 @@ function TmuxPage() {
     async (launcherID: string) => {
       const existing = launchers.find((launcher) => launcher.id === launcherID)
       try {
-        await api<void>(
-          `/api/tmux/launchers/${encodeURIComponent(launcherID)}`,
-          {
-            method: 'DELETE',
-          },
-        )
+        await api<void>(`/api/tmux/launchers/${encodeURIComponent(launcherID)}`, {
+          method: 'DELETE',
+        })
         await refreshLaunchers()
         pushSuccessToast(
           'Launchers',
@@ -754,8 +657,7 @@ function TmuxPage() {
         )
         return true
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to delete launcher'
+        const message = error instanceof Error ? error.message : 'failed to delete launcher'
         pushErrorToast('Launchers', message)
         return false
       }
@@ -769,9 +671,7 @@ function TmuxPage() {
       const next = moveSidebarItem(current, activeID, overID)
       if (next === current) return
 
-      const launchersByID = new Map(
-        launchers.map((launcher) => [launcher.id, launcher]),
-      )
+      const launchersByID = new Map(launchers.map((launcher) => [launcher.id, launcher]))
       setLaunchers(
         next.flatMap((id, index) => {
           const launcher = launchersByID.get(id)
@@ -793,8 +693,7 @@ function TmuxPage() {
           body: JSON.stringify({ ids: next }),
         })
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to reorder launchers'
+        const message = error instanceof Error ? error.message : 'failed to reorder launchers'
         pushErrorToast('Launchers', message)
         void refreshLaunchers({ quiet: true })
       }
@@ -826,13 +725,9 @@ function TmuxPage() {
         void inspector.refreshInspector(activeSession, { background: true })
         void sessionCRUD.refreshSessions()
         void refreshLaunchers({ quiet: true })
-        pushSuccessToast(
-          'Launchers',
-          `launcher "${launcher.name}" opened as "${data.windowName}"`,
-        )
+        pushSuccessToast('Launchers', `launcher "${launcher.name}" opened as "${data.windowName}"`)
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to launch window'
+        const message = error instanceof Error ? error.message : 'failed to launch window'
         pushErrorToast('Launchers', message)
         void inspector.refreshInspector(activeSession, { background: true })
         void sessionCRUD.refreshSessions()
@@ -858,21 +753,15 @@ function TmuxPage() {
 
   // ---- Derived active window/pane ----
   const activeWindowIndex = useMemo(() => {
-    if (inspector.activeWindowIndexOverride !== null)
-      return inspector.activeWindowIndexOverride
+    if (inspector.activeWindowIndexOverride !== null) return inspector.activeWindowIndexOverride
     return inspector.windows.find((w) => w.active)?.index ?? null
   }, [inspector.activeWindowIndexOverride, inspector.windows])
 
   const activePaneID = useMemo(() => {
-    if (inspector.activePaneIDOverride !== null)
-      return inspector.activePaneIDOverride
+    if (inspector.activePaneIDOverride !== null) return inspector.activePaneIDOverride
     if (activeWindowIndex === null) return null
-    const inWindow = inspector.panes.filter(
-      (p) => p.windowIndex === activeWindowIndex,
-    )
-    return (
-      inWindow.find((p) => p.active)?.paneId ?? inWindow.at(0)?.paneId ?? null
-    )
+    const inWindow = inspector.panes.filter((p) => p.windowIndex === activeWindowIndex)
+    return inWindow.find((p) => p.active)?.paneId ?? inWindow.at(0)?.paneId ?? null
   }, [inspector.activePaneIDOverride, activeWindowIndex, inspector.panes])
 
   // ---- Seen tracking hook ----
@@ -897,32 +786,30 @@ function TmuxPage() {
   })
 
   // ---- Events socket hook ----
-  const { syncActivityDelta, forceReconnect: forceReconnectEvents } =
-    useTmuxEventsSocket({
-      api,
-      authenticated,
-      tokenRequired,
-      setToken,
-      presenceSocketRef,
-      tabsStateRef,
-      eventsSocketConnectedRef,
-      runtimeMetricsRef,
-      lastSessionsRefreshAtRef: sessionCRUD.lastSessionsRefreshAtRef,
-      sendPresenceOverWS: presence.sendPresenceOverWS,
-      refreshSessions: sessionCRUD.refreshSessions,
-      refreshInspector: inspector.refreshInspector,
-      pushErrorToast,
-      applySessionActivityPatches: inspector.applySessionActivityPatches,
-      applyInspectorProjectionPatches:
-        inspector.applyInspectorProjectionPatches,
-      settlePendingSeenAcks: seen.settlePendingSeenAcks,
-      seenAckWaitersRef: seen.seenAckWaitersRef,
-      timelineOpenRef: timeline.timelineOpenRef,
-      timelineSessionFilterRef: timeline.timelineSessionFilterRef,
-      loadTimelineRef: timeline.loadTimelineRef,
-      handleTmuxSessionsEvent: sessionCRUD.handleTmuxSessionsEvent,
-      handleTmuxInspectorEvent: inspector.handleTmuxInspectorEvent,
-    })
+  const { syncActivityDelta, forceReconnect: forceReconnectEvents } = useTmuxEventsSocket({
+    api,
+    authenticated,
+    tokenRequired,
+    setToken,
+    presenceSocketRef,
+    tabsStateRef,
+    eventsSocketConnectedRef,
+    runtimeMetricsRef,
+    lastSessionsRefreshAtRef: sessionCRUD.lastSessionsRefreshAtRef,
+    sendPresenceOverWS: presence.sendPresenceOverWS,
+    refreshSessions: sessionCRUD.refreshSessions,
+    refreshInspector: inspector.refreshInspector,
+    pushErrorToast,
+    applySessionActivityPatches: inspector.applySessionActivityPatches,
+    applyInspectorProjectionPatches: inspector.applyInspectorProjectionPatches,
+    settlePendingSeenAcks: seen.settlePendingSeenAcks,
+    seenAckWaitersRef: seen.seenAckWaitersRef,
+    timelineOpenRef: timeline.timelineOpenRef,
+    timelineSessionFilterRef: timeline.timelineSessionFilterRef,
+    loadTimelineRef: timeline.loadTimelineRef,
+    handleTmuxSessionsEvent: sessionCRUD.handleTmuxSessionsEvent,
+    handleTmuxInspectorEvent: inspector.handleTmuxInspectorEvent,
+  })
 
   // ---- Resync handler ----
   const handleResync = useCallback(() => {
@@ -953,10 +840,7 @@ function TmuxPage() {
           await api(`/api/ops/runbooks/${encodeURIComponent(runbookId)}/run`, {
             method: 'POST',
           })
-          pushSuccessToast(
-            'Runbook started',
-            'Runbook execution has been queued.',
-          )
+          pushSuccessToast('Runbook started', 'Runbook execution has been queued.')
         } catch (error) {
           pushErrorToast(
             'Runbook failed',
@@ -1020,10 +904,7 @@ function TmuxPage() {
           body: JSON.stringify({ names: next }),
         })
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'failed to reorder pinned sessions'
+        const message = error instanceof Error ? error.message : 'failed to reorder pinned sessions'
         pushErrorToast('Pinned Sessions', message)
         void refreshSessionPresets({ quiet: true })
       }
@@ -1058,9 +939,7 @@ function TmuxPage() {
         })
       } catch (error) {
         const message =
-          error instanceof Error
-            ? error.message
-            : 'failed to reorder session launchers'
+          error instanceof Error ? error.message : 'failed to reorder session launchers'
         pushErrorToast('Session Launchers', message)
         void refreshSessionLaunchers({ quiet: true })
       }
@@ -1086,8 +965,7 @@ function TmuxPage() {
           body: JSON.stringify({ names: next }),
         })
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'failed to reorder sessions'
+        const message = error instanceof Error ? error.message : 'failed to reorder sessions'
         pushErrorToast('Sessions', message)
         void sessionCRUD.refreshSessions()
       }
@@ -1205,10 +1083,7 @@ function TmuxPage() {
 
       <Suspense fallback={null}>
         {guardrailsOpen && (
-          <GuardrailsDialog
-            open={guardrailsOpen}
-            onOpenChange={setGuardrailsOpen}
-          />
+          <GuardrailsDialog open={guardrailsOpen} onOpenChange={setGuardrailsOpen} />
         )}
 
         {launchersOpen && (
@@ -1277,9 +1152,7 @@ function TmuxPage() {
         title="Rename session"
         description="Enter a new name for the active session."
         value={sessionCRUD.renameValue}
-        onValueChange={(value) =>
-          sessionCRUD.setRenameValue(slugifyTmuxName(value))
-        }
+        onValueChange={(value) => sessionCRUD.setRenameValue(slugifyTmuxName(value))}
         onSubmit={sessionCRUD.handleSubmitRename}
         onClose={() => sessionCRUD.setRenameSessionTarget(null)}
       />
@@ -1290,9 +1163,7 @@ function TmuxPage() {
         title="Rename window"
         description="Enter a new name for this tmux window."
         value={inspector.renameWindowValue}
-        onValueChange={(value) =>
-          inspector.setRenameWindowValue(sanitizeTmuxWindowName(value))
-        }
+        onValueChange={(value) => inspector.setRenameWindowValue(sanitizeTmuxWindowName(value))}
         onSubmit={inspector.handleSubmitRenameWindow}
         onClose={() => inspector.setRenameWindowTarget(null)}
       />
@@ -1303,9 +1174,7 @@ function TmuxPage() {
         title="Rename pane"
         description="Enter a new title for this tmux pane."
         value={inspector.renamePaneValue}
-        onValueChange={(value) =>
-          inspector.setRenamePaneValue(sanitizeTmuxPaneTitle(value))
-        }
+        onValueChange={(value) => inspector.setRenamePaneValue(sanitizeTmuxPaneTitle(value))}
         onSubmit={inspector.handleSubmitRenamePane}
         onClose={() => inspector.setRenamePaneTarget(null)}
       />

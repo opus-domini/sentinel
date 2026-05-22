@@ -31,11 +31,7 @@ describe('sortBySidebarOrder', () => {
 
 describe('moveSidebarItem', () => {
   it('moves an item before the target item', () => {
-    expect(moveSidebarItem(['api', 'web', 'docs'], 'docs', 'api')).toEqual([
-      'docs',
-      'api',
-      'web',
-    ])
+    expect(moveSidebarItem(['api', 'web', 'docs'], 'docs', 'api')).toEqual(['docs', 'api', 'web'])
   })
 
   it('returns the original order when the move is invalid', () => {

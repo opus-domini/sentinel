@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  createWebClipboardProvider,
-  writeClipboardText,
-} from './clipboardProvider'
+import { createWebClipboardProvider, writeClipboardText } from './clipboardProvider'
 
 describe('createWebClipboardProvider', () => {
   const originalNavigator = globalThis.navigator
@@ -67,9 +64,7 @@ describe('createWebClipboardProvider', () => {
       mockWriteText.mockRejectedValue(new DOMException('not allowed'))
       const provider = createWebClipboardProvider()
       // Should not throw even when navigator.clipboard.writeText rejects.
-      await expect(
-        provider.writeText('c' as never, 'hello'),
-      ).resolves.toBeUndefined()
+      await expect(provider.writeText('c' as never, 'hello')).resolves.toBeUndefined()
     })
   })
 

@@ -29,10 +29,7 @@ function service(partial: Partial<OpsBrowsedService> = {}): OpsBrowsedService {
 function createAPI() {
   const calls: Array<{ url: string; init?: RequestInit }> = []
   const spy = vi.fn()
-  const api: ServiceLogsAPI = async <T,>(
-    url: string,
-    init?: RequestInit,
-  ): Promise<T> => {
+  const api: ServiceLogsAPI = async <T,>(url: string, init?: RequestInit): Promise<T> => {
     spy(url, init)
     calls.push({ url, init })
     return { output: 'started\nready' } as T
@@ -82,9 +79,7 @@ describe('ServiceLogsSheet', () => {
     const parsed = new URL(url, 'http://sentinel.local')
 
     expect(parsed.pathname).toBe('/api/ops/services/unit/logs')
-    expect(parsed.searchParams.get('unit')).toBe(
-      'app-gnome\\x2dkeyring.service',
-    )
+    expect(parsed.searchParams.get('unit')).toBe('app-gnome\\x2dkeyring.service')
     expect(parsed.searchParams.get('scope')).toBe('user')
     expect(parsed.searchParams.get('manager')).toBe('systemd')
     expect(parsed.searchParams.get('lines')).toBe('200')

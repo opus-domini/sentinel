@@ -27,9 +27,7 @@ type RunbookRunDialogProps = {
   onCancel: () => void
 }
 
-function buildDefaults(
-  params: Array<RunbookParameter>,
-): Record<string, string> {
+function buildDefaults(params: Array<RunbookParameter>): Record<string, string> {
   const values: Record<string, string> = {}
   for (const p of params) {
     values[p.name] = p.default ?? ''
@@ -54,12 +52,7 @@ function validateParams(
   return errors
 }
 
-export function RunbookRunDialog({
-  open,
-  runbook,
-  onConfirm,
-  onCancel,
-}: RunbookRunDialogProps) {
+export function RunbookRunDialog({ open, runbook, onConfirm, onCancel }: RunbookRunDialogProps) {
   const params = useMemo(() => runbook?.parameters ?? [], [runbook])
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -109,11 +102,7 @@ export function RunbookRunDialog({
               <div key={p.name}>
                 <label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   {p.label || p.name}
-                  {p.required && (
-                    <span className="ml-0.5 text-destructive-foreground">
-                      *
-                    </span>
-                  )}
+                  {p.required && <span className="ml-0.5 text-destructive-foreground">*</span>}
                 </label>
 
                 {p.type === 'boolean' ? (
@@ -129,10 +118,7 @@ export function RunbookRunDialog({
                     <option value="true">true</option>
                   </select>
                 ) : p.type === 'select' && p.options && p.options.length > 0 ? (
-                  <Select
-                    value={values[p.name] ?? ''}
-                    onValueChange={(v) => setValue(p.name, v)}
-                  >
+                  <Select value={values[p.name] ?? ''} onValueChange={(v) => setValue(p.name, v)}>
                     <SelectTrigger
                       className={cn(
                         'mt-0.5 h-8 w-full bg-surface-overlay text-[12px]',
@@ -164,9 +150,7 @@ export function RunbookRunDialog({
                 )}
 
                 {errors[p.name] && (
-                  <p className="mt-0.5 text-[10px] text-destructive-foreground">
-                    {errors[p.name]}
-                  </p>
+                  <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors[p.name]}</p>
                 )}
               </div>
             ))}
@@ -174,12 +158,7 @@ export function RunbookRunDialog({
         )}
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            size="sm"
-            className="cursor-pointer"
-            onClick={onCancel}
-          >
+          <Button variant="outline" size="sm" className="cursor-pointer" onClick={onCancel}>
             Cancel
           </Button>
           <Button

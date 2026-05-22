@@ -42,11 +42,7 @@ export function formatRelativeTime(value: string): string {
   return `${years}y`
 }
 
-export function formatTimestamp(
-  value: string,
-  timezone?: string,
-  locale?: string,
-): string {
+export function formatTimestamp(value: string, timezone?: string, locale?: string): string {
   if (!value) {
     return '-'
   }

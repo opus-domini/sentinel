@@ -1089,9 +1089,7 @@ describe('useTerminalTmux – terminal chrome', () => {
 
     await act(async () => {
       latestTerminal()?.refresh.mockClear()
-      window.dispatchEvent(
-        new CustomEvent('sentinel-theme-change', { detail: 'dracula' }),
-      )
+      window.dispatchEvent(new CustomEvent('sentinel-theme-change', { detail: 'dracula' }))
       await Promise.resolve()
     })
 
@@ -1117,9 +1115,7 @@ describe('useTerminalTmux – terminal chrome', () => {
       await Promise.resolve()
     })
 
-    expect(host.querySelector('textarea')?.getAttribute('name')).toBe(
-      'terminal-input-test-session',
-    )
+    expect(host.querySelector('textarea')?.getAttribute('name')).toBe('terminal-input-test-session')
 
     host.remove()
   })
@@ -1168,9 +1164,7 @@ describe('useTerminalTmux – resize traffic', () => {
     })
 
     const ws = connectSession()
-    expect(ws.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'resize', cols: 80, rows: 24 }),
-    )
+    expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'resize', cols: 80, rows: 24 }))
 
     const terminal = latestTerminal()
     ws.send.mockClear()
@@ -1191,9 +1185,7 @@ describe('useTerminalTmux – resize traffic', () => {
       result.current.fitTerminal()
     })
 
-    expect(ws.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'resize', cols: 100, rows: 30 }),
-    )
+    expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'resize', cols: 100, rows: 30 }))
     expect(terminal?.refresh).toHaveBeenLastCalledWith(0, 29)
 
     host.remove()
@@ -1237,9 +1229,7 @@ describe('useTerminalTmux – incoming terminal writes', () => {
     })
 
     expect(terminal?.write).toHaveBeenCalledTimes(1)
-    expect(
-      Array.from(terminal?.write.mock.calls[0]?.[0] as Uint8Array),
-    ).toEqual([65, 66, 67])
+    expect(Array.from(terminal?.write.mock.calls[0]?.[0] as Uint8Array)).toEqual([65, 66, 67])
   })
 
   it('exposes terminal write metrics for smoke validation', () => {
@@ -1290,12 +1280,8 @@ describe('useTerminalTmux – incoming terminal writes', () => {
   })
 
   it('uses the timeout fallback when animation frames are suspended', () => {
-    const requestFrame = vi
-      .spyOn(window, 'requestAnimationFrame')
-      .mockReturnValue(123)
-    const cancelFrame = vi
-      .spyOn(window, 'cancelAnimationFrame')
-      .mockImplementation(() => undefined)
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(123)
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined)
 
     try {
       renderTerminalHook()
@@ -1322,9 +1308,7 @@ describe('useTerminalTmux – incoming terminal writes', () => {
       expect(requestFrame).toHaveBeenCalled()
       expect(cancelFrame).toHaveBeenCalledWith(123)
       expect(terminal?.write).toHaveBeenCalledTimes(1)
-      expect(
-        Array.from(terminal?.write.mock.calls[0]?.[0] as Uint8Array),
-      ).toEqual([65])
+      expect(Array.from(terminal?.write.mock.calls[0]?.[0] as Uint8Array)).toEqual([65])
     } finally {
       requestFrame.mockRestore()
       cancelFrame.mockRestore()
@@ -1358,9 +1342,7 @@ describe('useTerminalTmux – incoming terminal writes', () => {
     })
 
     expect(terminal?.write).toHaveBeenCalledTimes(1)
-    const firstWrite = terminal?.write.mock.calls[0]?.[0] as
-      | Uint8Array
-      | undefined
+    const firstWrite = terminal?.write.mock.calls[0]?.[0] as Uint8Array | undefined
     expect(firstWrite?.byteLength).toBe(firstChunk.byteLength)
     expect(firstWrite?.[0]).toBe(65)
 
@@ -1370,9 +1352,7 @@ describe('useTerminalTmux – incoming terminal writes', () => {
 
     expect(terminal?.write).toHaveBeenCalledTimes(1)
 
-    const firstWriteDone = terminal?.write.mock.calls[0]?.[1] as
-      | (() => void)
-      | undefined
+    const firstWriteDone = terminal?.write.mock.calls[0]?.[1] as (() => void) | undefined
     act(() => {
       firstWriteDone?.()
     })
@@ -1382,9 +1362,7 @@ describe('useTerminalTmux – incoming terminal writes', () => {
     })
 
     expect(terminal?.write).toHaveBeenCalledTimes(2)
-    const secondWrite = terminal?.write.mock.calls[1]?.[0] as
-      | Uint8Array
-      | undefined
+    const secondWrite = terminal?.write.mock.calls[1]?.[0] as Uint8Array | undefined
     expect(secondWrite?.byteLength).toBe(secondChunk.byteLength)
     expect(secondWrite?.[0]).toBe(66)
   })
@@ -1428,9 +1406,7 @@ describe('useTerminalTmux – incoming terminal writes', () => {
         nextRafId += 1
         return nextRafId
       })
-    const cancelFrame = vi
-      .spyOn(window, 'cancelAnimationFrame')
-      .mockImplementation(() => undefined)
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined)
 
     try {
       act(() => {
@@ -1464,9 +1440,7 @@ describe('useTerminalTmux – incoming terminal writes', () => {
       })
 
       expect(terminal?.write).toHaveBeenCalledTimes(1)
-      expect(
-        Array.from(terminal?.write.mock.calls[0]?.[0] as Uint8Array),
-      ).toEqual([66])
+      expect(Array.from(terminal?.write.mock.calls[0]?.[0] as Uint8Array)).toEqual([66])
     } finally {
       requestFrame.mockRestore()
       cancelFrame.mockRestore()

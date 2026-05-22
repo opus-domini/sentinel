@@ -1,8 +1,4 @@
-import type {
-  OpsBrowsedService,
-  OpsServiceAction,
-  OpsServiceStatus,
-} from '@/types'
+import type { OpsBrowsedService, OpsServiceAction, OpsServiceStatus } from '@/types'
 
 const opsBrowseUnitTypeOrder = [
   'service',
@@ -22,12 +18,7 @@ const opsBrowseUnitTypeOrder = [
 type HasActiveState = { activeState: string }
 type HasTrackingState = { tracked: boolean }
 
-export type OpsServiceStateFilter =
-  | 'all'
-  | 'active'
-  | 'inactive'
-  | 'failed'
-  | 'changing'
+export type OpsServiceStateFilter = 'all' | 'active' | 'inactive' | 'failed' | 'changing'
 
 export type OpsServiceTrackFilter = 'all' | 'tracked' | 'untracked'
 
@@ -113,10 +104,7 @@ export function canStartOpsService(service: HasActiveState): boolean {
 export function canStopOpsService(service: HasActiveState): boolean {
   const state = normalizedActiveState(service)
   return (
-    state === 'active' ||
-    state === 'running' ||
-    state === 'activating' ||
-    state === 'reloading'
+    state === 'active' || state === 'running' || state === 'activating' || state === 'reloading'
   )
 }
 
@@ -167,11 +155,9 @@ export function filterOpsServicesByQuery(
   query: string,
 ): Array<OpsServiceStatus> {
   const sorted = [...services].sort((left, right) => {
-    const displayNameCompare = left.displayName.localeCompare(
-      right.displayName,
-      undefined,
-      { sensitivity: 'base' },
-    )
+    const displayNameCompare = left.displayName.localeCompare(right.displayName, undefined, {
+      sensitivity: 'base',
+    })
     if (displayNameCompare !== 0) return displayNameCompare
     return left.unit.localeCompare(right.unit, undefined, {
       sensitivity: 'base',
@@ -189,9 +175,7 @@ export function filterOpsServicesByQuery(
 }
 
 export function sortOpsBrowseUnitTypes(types: Array<string>): Array<string> {
-  return [...new Set(types.map(normalizedBrowseUnitType))].sort(
-    compareBrowseUnitTypes,
-  )
+  return [...new Set(types.map(normalizedBrowseUnitType))].sort(compareBrowseUnitTypes)
 }
 
 export function listOpsBrowseUnitTypes(
@@ -210,9 +194,8 @@ export function defaultOpsBrowseUnitTypes(types: Array<string>): Array<string> {
 
 export function formatOpsUnitName(unit: string): string {
   return unit.replace(systemdHexEscapePattern, (sequence) => {
-    const bytes = Array.from(
-      sequence.matchAll(systemdHexBytePattern),
-      (match) => Number.parseInt(match[1], 16),
+    const bytes = Array.from(sequence.matchAll(systemdHexBytePattern), (match) =>
+      Number.parseInt(match[1], 16),
     )
     if (bytes.length === 0) return sequence
     return new TextDecoder().decode(new Uint8Array(bytes))
@@ -222,9 +205,6 @@ export function formatOpsUnitName(unit: string): string {
 export function deriveOpsTrackedServiceName(unit: string): string {
   return unit
     .trim()
-    .replace(
-      /\.(service|timer|socket|target|path|mount|automount|swap|slice|scope)$/,
-      '',
-    )
+    .replace(/\.(service|timer|socket|target|path|mount|automount|swap|slice|scope)$/, '')
     .replace(/\./g, '-')
 }

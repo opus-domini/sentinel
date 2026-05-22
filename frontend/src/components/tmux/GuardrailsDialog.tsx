@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -39,10 +39,7 @@ import {
 } from '@/components/ui/select'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { useDateFormat } from '@/hooks/useDateFormat'
-import {
-  OPS_GUARDRAILS_AUDIT_QUERY_KEY,
-  OPS_GUARDRAILS_QUERY_KEY,
-} from '@/lib/opsQueryCache'
+import { OPS_GUARDRAILS_AUDIT_QUERY_KEY, OPS_GUARDRAILS_QUERY_KEY } from '@/lib/opsQueryCache'
 import { cn } from '@/lib/utils'
 
 type Tab = 'rules' | 'audit'
@@ -105,8 +102,7 @@ const defaultNewRule: RuleDraft = {
   priority: 100,
 }
 
-const labelClass =
-  'text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground'
+const labelClass = 'text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground'
 
 const modeOptions = [
   { value: 'warn', label: 'Warn' },
@@ -119,6 +115,9 @@ const modeDescription: Record<string, string> = {
   confirm: 'Require explicit confirmation before execution',
   block: 'Deny execution entirely',
 }
+
+const EMPTY_GUARDRAIL_RULES: Array<GuardrailRule> = []
+const EMPTY_GUARDRAIL_AUDIT: Array<GuardrailAudit> = []
 
 function decisionBadgeClass(mode: string): string {
   switch (mode) {
@@ -169,15 +168,23 @@ function RuleForm({
   submittingLabel,
   submitting,
 }: RuleFormProps) {
+  const id = useId()
+  const actionsLabelId = `${id}-actions-label`
+  const modeLabelId = `${id}-mode-label`
+  const messageId = `${id}-message`
+  const nameId = `${id}-name`
+  const severityLabelId = `${id}-severity-label`
+  const priorityId = `${id}-priority`
+
   return (
     <div className="rounded border border-primary/30 bg-surface-elevated p-3">
       <h4 className="mb-3 text-[12px] font-semibold">{title}</h4>
       <div className="grid gap-3">
         <div>
-          <label className={labelClass}>
+          <span id={actionsLabelId} className={labelClass}>
             Actions <span className="text-destructive-foreground">*</span>
-          </label>
-          <div className="mt-1 flex flex-wrap gap-1">
+          </span>
+          <div aria-labelledby={actionsLabelId} className="mt-1 flex flex-wrap gap-1">
             {KNOWN_ACTIONS.map((action) => (
               <button
                 key={action}
@@ -207,15 +214,18 @@ function RuleForm({
         </div>
 
         <div>
-          <label className={labelClass}>Mode</label>
-          <div className="mt-1 flex gap-1 rounded-md border border-border-subtle bg-secondary p-1">
+          <span id={modeLabelId} className={labelClass}>
+            Mode
+          </span>
+          <div
+            aria-labelledby={modeLabelId}
+            className="mt-1 flex gap-1 rounded-md border border-border-subtle bg-secondary p-1"
+          >
             {modeOptions.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                onClick={() =>
-                  onDraftChange((prev) => ({ ...prev, mode: opt.value }))
-                }
+                onClick={() => onDraftChange((prev) => ({ ...prev, mode: opt.value }))}
                 className={cn(
                   'flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
                   draft.mode === opt.value
@@ -227,20 +237,19 @@ function RuleForm({
               </button>
             ))}
           </div>
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            {modeDescription[draft.mode]}
-          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">{modeDescription[draft.mode]}</p>
         </div>
 
         <div>
-          <label className={labelClass}>Message</label>
+          <label htmlFor={messageId} className={labelClass}>
+            Message
+          </label>
           <Input
+            id={messageId}
             type="text"
             placeholder="Dangerous operation detected"
             value={draft.message}
-            onChange={(e) =>
-              onDraftChange((prev) => ({ ...prev, message: e.target.value }))
-            }
+            onChange={(e) => onDraftChange((prev) => ({ ...prev, message: e.target.value }))}
             className="mt-0.5 h-8 bg-surface-overlay text-[12px]"
           />
           <p className="mt-1 text-[10px] text-muted-foreground">
@@ -249,19 +258,18 @@ function RuleForm({
         </div>
 
         <div>
-          <label className={labelClass}>Name</label>
+          <label htmlFor={nameId} className={labelClass}>
+            Name
+          </label>
           <Input
+            id={nameId}
             type="text"
             placeholder="Block destructive operations"
             value={draft.name}
-            onChange={(e) =>
-              onDraftChange((prev) => ({ ...prev, name: e.target.value }))
-            }
+            onChange={(e) => onDraftChange((prev) => ({ ...prev, name: e.target.value }))}
             className="mt-0.5 h-8 bg-surface-overlay text-[12px]"
           />
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            Optional friendly label
-          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">Optional friendly label</p>
         </div>
 
         <div>
@@ -270,18 +278,15 @@ function RuleForm({
             onClick={() => onAdvancedChange((prev) => !prev)}
             className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
           >
-            <ChevronRight
-              className={cn(
-                'h-3 w-3 transition-transform',
-                advanced && 'rotate-90',
-              )}
-            />
+            <ChevronRight className={cn('h-3 w-3 transition-transform', advanced && 'rotate-90')} />
             Advanced options
           </button>
           {advanced && (
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <div>
-                <label className={labelClass}>Severity</label>
+                <span id={severityLabelId} className={labelClass}>
+                  Severity
+                </span>
                 <Select
                   value={draft.severity}
                   onValueChange={(v) =>
@@ -291,7 +296,10 @@ function RuleForm({
                     }))
                   }
                 >
-                  <SelectTrigger className="mt-0.5 h-8 bg-surface-overlay text-[12px]">
+                  <SelectTrigger
+                    aria-labelledby={severityLabelId}
+                    className="mt-0.5 h-8 bg-surface-overlay text-[12px]"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -302,8 +310,11 @@ function RuleForm({
                 </Select>
               </div>
               <div>
-                <label className={labelClass}>Priority</label>
+                <label htmlFor={priorityId} className={labelClass}>
+                  Priority
+                </label>
                 <Input
+                  id={priorityId}
                   type="number"
                   value={draft.priority}
                   onChange={(e) =>
@@ -324,20 +335,10 @@ function RuleForm({
       </div>
 
       <div className="mt-3 flex items-center gap-2">
-        <Button
-          size="sm"
-          className="h-7 text-[11px]"
-          onClick={onSubmit}
-          disabled={submitting}
-        >
+        <Button size="sm" className="h-7 text-[11px]" onClick={onSubmit} disabled={submitting}>
           {submitting ? submittingLabel : submitLabel}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-[11px]"
-          onClick={onCancel}
-        >
+        <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={onCancel}>
           Cancel
         </Button>
       </div>
@@ -345,10 +346,7 @@ function RuleForm({
   )
 }
 
-export default function GuardrailsDialog({
-  open,
-  onOpenChange,
-}: GuardrailsDialogProps) {
+export default function GuardrailsDialog({ open, onOpenChange }: GuardrailsDialogProps) {
   const { formatDateTimeShort } = useDateFormat()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
@@ -369,9 +367,7 @@ export default function GuardrailsDialog({
   const rulesQuery = useQuery({
     queryKey: OPS_GUARDRAILS_QUERY_KEY,
     queryFn: async () => {
-      const data = await api<GuardrailRulesResponse>(
-        '/api/ops/guardrails/rules',
-      )
+      const data = await api<GuardrailRulesResponse>('/api/ops/guardrails/rules')
       return data.rules
     },
     enabled: open,
@@ -380,16 +376,14 @@ export default function GuardrailsDialog({
   const auditQuery = useQuery({
     queryKey: OPS_GUARDRAILS_AUDIT_QUERY_KEY,
     queryFn: async () => {
-      const data = await api<GuardrailAuditResponse>(
-        '/api/ops/guardrails/audit?limit=100',
-      )
+      const data = await api<GuardrailAuditResponse>('/api/ops/guardrails/audit?limit=100')
       return data.audit
     },
     enabled: open && activeTab === 'audit',
   })
 
-  const rules = rulesQuery.data ?? []
-  const audit = auditQuery.data ?? []
+  const rules = rulesQuery.data ?? EMPTY_GUARDRAIL_RULES
+  const audit = auditQuery.data ?? EMPTY_GUARDRAIL_AUDIT
   const rulesLoading = rulesQuery.isLoading
   const auditLoading = auditQuery.isLoading
 
@@ -408,10 +402,7 @@ export default function GuardrailsDialog({
   }, [activeTab, queryClient])
 
   const saveRule = useCallback(
-    async (
-      rule: GuardrailRule,
-      patch: Partial<GuardrailRule>,
-    ): Promise<boolean> => {
+    async (rule: GuardrailRule, patch: Partial<GuardrailRule>): Promise<boolean> => {
       setSavingID(rule.id)
       setError('')
       try {
@@ -437,9 +428,7 @@ export default function GuardrailsDialog({
         })
         return true
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'failed to update guardrail',
-        )
+        setError(err instanceof Error ? err.message : 'failed to update guardrail')
         return false
       } finally {
         setSavingID('')
@@ -476,9 +465,7 @@ export default function GuardrailsDialog({
       setNewRule(defaultNewRule)
       setShowAddForm(false)
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'failed to create guardrail rule',
-      )
+      setError(err instanceof Error ? err.message : 'failed to create guardrail rule')
     } finally {
       setCreating(false)
     }
@@ -489,18 +476,15 @@ export default function GuardrailsDialog({
       setDeletingID(ruleId)
       setError('')
       try {
-        await api<{ removed: string }>(
-          `/api/ops/guardrails/rules/${encodeURIComponent(ruleId)}`,
-          { method: 'DELETE' },
-        )
+        await api<{ removed: string }>(`/api/ops/guardrails/rules/${encodeURIComponent(ruleId)}`, {
+          method: 'DELETE',
+        })
         await queryClient.invalidateQueries({
           queryKey: OPS_GUARDRAILS_QUERY_KEY,
           exact: true,
         })
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'failed to delete guardrail',
-        )
+        setError(err instanceof Error ? err.message : 'failed to delete guardrail')
       } finally {
         setDeletingID('')
       }
@@ -563,7 +547,7 @@ export default function GuardrailsDialog({
 
         <section className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <nav
+            <div
               className="flex gap-1 rounded-md border border-border-subtle bg-secondary p-1"
               role="tablist"
             >
@@ -589,7 +573,7 @@ export default function GuardrailsDialog({
               >
                 Audit Log
               </button>
-            </nav>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -679,9 +663,7 @@ export default function GuardrailsDialog({
                     >
                       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-medium">
-                            {rule.name || rule.id}
-                          </p>
+                          <p className="truncate text-[12px] font-medium">{rule.name || rule.id}</p>
                           <p className="truncate text-[11px] text-muted-foreground">
                             {rule.message || rule.id}
                           </p>
@@ -737,9 +719,7 @@ export default function GuardrailsDialog({
                             <span
                               className={cn(
                                 'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                                rule.enabled
-                                  ? 'translate-x-5'
-                                  : 'translate-x-1',
+                                rule.enabled ? 'translate-x-5' : 'translate-x-1',
                               )}
                             />
                           </button>
@@ -766,9 +746,7 @@ export default function GuardrailsDialog({
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  Delete rule?
-                                </AlertDialogTitle>
+                                <AlertDialogTitle>Delete rule?</AlertDialogTitle>
                                 <AlertDialogDescription>
                                   This action cannot be undone.
                                 </AlertDialogDescription>
@@ -843,10 +821,7 @@ export default function GuardrailsDialog({
                         <div className="flex items-center gap-1.5">
                           <Badge
                             variant="outline"
-                            className={cn(
-                              'shrink-0',
-                              decisionBadgeClass(entry.decision),
-                            )}
+                            className={cn('shrink-0', decisionBadgeClass(entry.decision))}
                           >
                             {entry.decision}
                           </Badge>
@@ -863,9 +838,7 @@ export default function GuardrailsDialog({
                           )}
                         </div>
                         <div className="mt-0.5 flex flex-wrap gap-x-3 text-[10px] text-muted-foreground">
-                          {entry.sessionName && (
-                            <span>session: {entry.sessionName}</span>
-                          )}
+                          {entry.sessionName && <span>session: {entry.sessionName}</span>}
                           {entry.paneId && <span>pane: {entry.paneId}</span>}
                           {entry.ruleId && <span>rule: {entry.ruleId}</span>}
                           {entry.reason && <span>reason: {entry.reason}</span>}
@@ -891,9 +864,7 @@ export default function GuardrailsDialog({
 
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
           <span>
-            {activeTab === 'rules'
-              ? `${rules.length} rule(s)`
-              : `${audit.length} audit entries`}
+            {activeTab === 'rules' ? `${rules.length} rule(s)` : `${audit.length} audit entries`}
           </span>
         </div>
       </DialogContent>

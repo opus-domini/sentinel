@@ -23,16 +23,7 @@ type RenameDialogProps = {
 }
 
 export default function RenameDialog(props: RenameDialogProps) {
-  const {
-    open,
-    onOpenChange,
-    title,
-    description,
-    value,
-    onValueChange,
-    onSubmit,
-    onClose,
-  } = props
+  const { open, onOpenChange, title, description, value, onValueChange, onSubmit, onClose } = props
   const [saving, setSaving] = useState(false)
 
   return (
@@ -63,11 +54,7 @@ export default function RenameDialog(props: RenameDialogProps) {
             }
           }}
         >
-          <Input
-            value={value}
-            onChange={(e) => onValueChange(e.target.value)}
-            autoFocus
-          />
+          <Input value={value} onChange={(e) => onValueChange(e.target.value)} autoFocus />
           <DialogFooter className="mt-4">
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>

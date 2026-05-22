@@ -36,44 +36,40 @@ export default function GuardrailsHelpDialog() {
           </DialogHeader>
           <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <section>
-              <h3 className="mb-1 font-medium text-foreground">
-                What are Guardrails?
-              </h3>
+              <h3 className="mb-1 font-medium text-foreground">What are Guardrails?</h3>
               <p>
-                Guardrails are safety rules that evaluate operations before
-                execution. Each rule matches against one or more actions and
-                determines how the system should respond.
+                Guardrails are safety rules that evaluate operations before execution. Each rule
+                matches against one or more actions and determines how the system should respond.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Modes</h3>
               <ul className="list-inside list-disc space-y-1">
                 <li>
-                  <strong className="text-foreground">warn</strong> — log the
-                  match and allow execution to proceed
+                  <strong className="text-foreground">warn</strong> — log the match and allow
+                  execution to proceed
                 </li>
                 <li>
-                  <strong className="text-foreground">confirm</strong> — require
-                  explicit confirmation before execution
+                  <strong className="text-foreground">confirm</strong> — require explicit
+                  confirmation before execution
                 </li>
                 <li>
-                  <strong className="text-foreground">block</strong> — deny
-                  execution entirely
+                  <strong className="text-foreground">block</strong> — deny execution entirely
                 </li>
               </ul>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Priority</h3>
               <p>
-                Lower number means higher priority. When multiple rules match
-                the same action, the strictest mode wins.
+                Lower number means higher priority. When multiple rules match the same action, the
+                strictest mode wins.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Audit Log</h3>
               <p>
-                Every guardrail evaluation is recorded in the audit log for
-                review. Switch to the Audit Log tab to see past evaluations.
+                Every guardrail evaluation is recorded in the audit log for review. Switch to the
+                Audit Log tab to see past evaluations.
               </p>
             </section>
           </div>

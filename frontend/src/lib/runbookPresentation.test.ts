@@ -69,9 +69,7 @@ describe('runbookPresentation', () => {
 
   it('marks disabled runbooks before checking job history', () => {
     expect(
-      runbookStatusMeta(runbook({ enabled: false }), [
-        job({ status: 'succeeded' }),
-      ]),
+      runbookStatusMeta(runbook({ enabled: false }), [job({ status: 'succeeded' })]),
     ).toMatchObject({ label: 'Disabled', tone: 'muted' })
   })
 
@@ -113,9 +111,7 @@ describe('runbookPresentation', () => {
 
     expect(isActiveRunbookJob(running)).toBe(true)
     expect(runbookJobProgress(running)).toBe(25)
-    expect(
-      runbookJobDurationMs(running, new Date('2026-01-01T10:02:30Z')),
-    ).toBe(150000)
+    expect(runbookJobDurationMs(running, new Date('2026-01-01T10:02:30Z'))).toBe(150000)
     expect(formatRunbookDuration(150000)).toBe('2m 30s')
     expect(formatRunbookDuration(700)).toBe('700ms')
   })

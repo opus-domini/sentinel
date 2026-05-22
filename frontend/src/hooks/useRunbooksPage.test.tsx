@@ -92,8 +92,7 @@ describe('useRunbooksPage', () => {
 
     mocks.api.mockImplementation((url: string, init?: RequestInit) => {
       if (url === '/api/ops/runbooks') {
-        const response =
-          getResponses[Math.min(getCount, getResponses.length - 1)]
+        const response = getResponses[Math.min(getCount, getResponses.length - 1)]
         getCount += 1
         return Promise.resolve(response)
       }

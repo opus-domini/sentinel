@@ -17,24 +17,14 @@ const GAP = 6
 const PAD = 8
 
 // Grid layout: 7 8 9 / 4 5 6 / 1 2 3 / (0)
-const GRID: Array<Array<string>> = [
-  ['7', '8', '9'],
-  ['4', '5', '6'],
-  ['1', '2', '3'],
-  ['0'],
-]
+const GRID: Array<Array<string>> = [['7', '8', '9'], ['4', '5', '6'], ['1', '2', '3'], ['0']]
 
 const GRID_COLS = 3
 const GRID_ROWS = GRID.length
 const GRID_W = PAD * 2 + GRID_COLS * CELL_W + (GRID_COLS - 1) * GAP
 const GRID_H = PAD * 2 + GRID_ROWS * CELL_H + (GRID_ROWS - 1) * GAP
 
-function getNumAtPoint(
-  px: number,
-  py: number,
-  originX: number,
-  originY: number,
-): string | null {
+function getNumAtPoint(px: number, py: number, originX: number, originY: number): string | null {
   const lx = px - originX - PAD
   const ly = py - originY - PAD
   if (lx < 0 || ly < 0) return null
@@ -187,11 +177,7 @@ export default function NumPad({
             }}
           >
             {GRID.map((row, ri) => (
-              <div
-                key={ri}
-                className="flex"
-                style={{ gap: GAP, marginTop: ri > 0 ? GAP : 0 }}
-              >
+              <div key={ri} className="flex" style={{ gap: GAP, marginTop: ri > 0 ? GAP : 0 }}>
                 {row.map((num) => (
                   <div
                     key={num}

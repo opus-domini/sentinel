@@ -7,10 +7,7 @@ import type {
   PresenceSocketRef,
   RuntimeMetrics,
 } from '../tmuxTypes'
-import type {
-  SessionActivityPatch,
-  SessionPatchApplyResult,
-} from '@/lib/tmuxSessionEvents'
+import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import { act, renderHook } from '@testing-library/react'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import { shouldRefreshTimelineFromEvent } from '@/lib/tmuxTimeline'
@@ -73,9 +70,7 @@ class MockWebSocket {
   }
 
   emitMessage(data: Record<string, unknown>) {
-    this.onmessage?.(
-      new MessageEvent('message', { data: JSON.stringify(data) }),
-    )
+    this.onmessage?.(new MessageEvent('message', { data: JSON.stringify(data) }))
   }
 
   emitRawMessage(data: string) {
@@ -145,9 +140,7 @@ function makeRefreshInspectorMock() {
 
 function makeOptions(overrides?: Partial<Options>): Options {
   return {
-    api: vi.fn(() =>
-      Promise.resolve(defaultDeltaResponse()),
-    ) as unknown as ApiFunction,
+    api: vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction,
     authenticated: true,
     tokenRequired: false,
     setToken: vi.fn(),
@@ -383,9 +376,7 @@ describe('useTmuxEventsSocket', () => {
       let authenticated = false
       const opts = makeOptions({ authenticated, tokenRequired: true })
 
-      const { rerender } = renderHook(() =>
-        useTmuxEventsSocket({ ...opts, authenticated }),
-      )
+      const { rerender } = renderHook(() => useTmuxEventsSocket({ ...opts, authenticated }))
 
       expect(MockWebSocket.instances).toHaveLength(0)
 
@@ -428,12 +419,8 @@ describe('useTmuxEventsSocket', () => {
         lastSocket().emitOpen()
       })
 
-      const sessionPatches: Array<SessionActivityPatch> = [
-        { name: 'main', windows: 2 },
-      ]
-      const inspectorPatches: Array<InspectorSessionPatch> = [
-        { session: 'main' },
-      ]
+      const sessionPatches: Array<SessionActivityPatch> = [{ name: 'main', windows: 2 }]
+      const inspectorPatches: Array<InspectorSessionPatch> = [{ session: 'main' }]
 
       act(() => {
         lastSocket().emitMessage({
@@ -448,9 +435,7 @@ describe('useTmuxEventsSocket', () => {
       })
 
       expect(applySessionActivityPatches).toHaveBeenCalledWith(sessionPatches)
-      expect(applyInspectorProjectionPatches).toHaveBeenCalledWith(
-        inspectorPatches,
-      )
+      expect(applyInspectorProjectionPatches).toHaveBeenCalledWith(inspectorPatches)
     })
 
     it('lets a correlated tmux.sessions.updated handler suppress the generic session refresh schedule', () => {
@@ -491,9 +476,7 @@ describe('useTmuxEventsSocket', () => {
           operationId: 'session-create-1',
         }),
       )
-      expect(refreshSessions.mock.calls.length).toBe(
-        refreshSessionsCallsBeforeEvent,
-      )
+      expect(refreshSessions.mock.calls.length).toBe(refreshSessionsCallsBeforeEvent)
     })
 
     it('handles tmux.activity.updated and applies patches', () => {
@@ -520,12 +503,8 @@ describe('useTmuxEventsSocket', () => {
         })
       })
 
-      expect(applySessionActivityPatches).toHaveBeenCalledWith([
-        { name: 'dev', windows: 1 },
-      ])
-      expect(applyInspectorProjectionPatches).toHaveBeenCalledWith([
-        { session: 'dev' },
-      ])
+      expect(applySessionActivityPatches).toHaveBeenCalledWith([{ name: 'dev', windows: 1 }])
+      expect(applyInspectorProjectionPatches).toHaveBeenCalledWith([{ session: 'dev' }])
     })
 
     it('handles tmux.inspector.updated and schedules inspector refresh', () => {
@@ -577,8 +556,7 @@ describe('useTmuxEventsSocket', () => {
       act(() => {
         lastSocket().emitOpen()
       })
-      const refreshInspectorCallsBeforeEvent =
-        refreshInspector.mock.calls.length
+      const refreshInspectorCallsBeforeEvent = refreshInspector.mock.calls.length
 
       act(() => {
         lastSocket().emitMessage({
@@ -603,9 +581,7 @@ describe('useTmuxEventsSocket', () => {
           operationId: 'window-create-1',
         }),
       )
-      expect(refreshInspector.mock.calls.length).toBe(
-        refreshInspectorCallsBeforeEvent,
-      )
+      expect(refreshInspector.mock.calls.length).toBe(refreshInspectorCallsBeforeEvent)
     })
 
     it('skips inspector refresh when action is "seen"', () => {
@@ -910,10 +886,7 @@ describe('useTmuxEventsSocket', () => {
         })
       })
 
-      expect(pushErrorToast).toHaveBeenCalledWith(
-        'Guardrail',
-        'rm -rf blocked by policy',
-      )
+      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'rm -rf blocked by policy')
     })
 
     it('uses default guardrail message when decision.message is missing', () => {
@@ -982,12 +955,8 @@ describe('useTmuxEventsSocket', () => {
         lastSocket().emitOpen()
       })
 
-      const sessionPatches: Array<SessionActivityPatch> = [
-        { name: 'main', unreadPanes: 0 },
-      ]
-      const inspectorPatches: Array<InspectorSessionPatch> = [
-        { session: 'main' },
-      ]
+      const sessionPatches: Array<SessionActivityPatch> = [{ name: 'main', unreadPanes: 0 }]
+      const inspectorPatches: Array<InspectorSessionPatch> = [{ session: 'main' }]
 
       act(() => {
         lastSocket().emitMessage({
@@ -1002,9 +971,7 @@ describe('useTmuxEventsSocket', () => {
       expect(waiterCallback).toHaveBeenCalledWith(true)
       expect(seenAckWaitersRef.current.has('req-1')).toBe(false)
       expect(applySessionActivityPatches).toHaveBeenCalledWith(sessionPatches)
-      expect(applyInspectorProjectionPatches).toHaveBeenCalledWith(
-        inspectorPatches,
-      )
+      expect(applyInspectorProjectionPatches).toHaveBeenCalledWith(inspectorPatches)
     })
 
     it('ignores non-string WebSocket messages', () => {
@@ -1017,9 +984,7 @@ describe('useTmuxEventsSocket', () => {
 
       // Send a binary-like message (non-string data)
       act(() => {
-        lastSocket().onmessage?.(
-          new MessageEvent('message', { data: new ArrayBuffer(8) }),
-        )
+        lastSocket().onmessage?.(new MessageEvent('message', { data: new ArrayBuffer(8) }))
       })
 
       // Should not throw; wsMessages counter still increments
@@ -1078,9 +1043,7 @@ describe('useTmuxEventsSocket', () => {
 
   describe('delta sync', () => {
     it('triggers delta sync on socket open', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -1089,9 +1052,7 @@ describe('useTmuxEventsSocket', () => {
       })
 
       // syncActivityDelta is called with reason 'events-open' on open
-      expect(api).toHaveBeenCalledWith(
-        expect.stringContaining('/api/tmux/activity/delta'),
-      )
+      expect(api).toHaveBeenCalledWith(expect.stringContaining('/api/tmux/activity/delta'))
     })
 
     it('includes since parameter in delta sync request', async () => {
@@ -1110,9 +1071,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('debounces delta sync within 900ms window', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       const { result } = renderEventsHook(opts)
 
@@ -1120,9 +1079,7 @@ describe('useTmuxEventsSocket', () => {
         lastSocket().emitOpen()
       })
 
-      const callCountAfterOpen = (
-        api as ReturnType<typeof vi.fn>
-      ).mock.calls.filter((c) =>
+      const callCountAfterOpen = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
         String(c[0]).includes('/api/tmux/activity/delta'),
       ).length
 
@@ -1131,9 +1088,7 @@ describe('useTmuxEventsSocket', () => {
         await result.current.syncActivityDelta({ reason: 'test', force: true })
       })
 
-      const callCountAfterSecond = (
-        api as ReturnType<typeof vi.fn>
-      ).mock.calls.filter((c) =>
+      const callCountAfterSecond = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
         String(c[0]).includes('/api/tmux/activity/delta'),
       ).length
 
@@ -1142,9 +1097,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('allows delta sync after 900ms debounce period', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       const { result } = renderEventsHook(opts)
 
@@ -1152,9 +1105,7 @@ describe('useTmuxEventsSocket', () => {
         lastSocket().emitOpen()
       })
 
-      const callCountAfterOpen = (
-        api as ReturnType<typeof vi.fn>
-      ).mock.calls.filter((c) =>
+      const callCountAfterOpen = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
         String(c[0]).includes('/api/tmux/activity/delta'),
       ).length
 
@@ -1167,9 +1118,7 @@ describe('useTmuxEventsSocket', () => {
         await result.current.syncActivityDelta({ reason: 'test', force: true })
       })
 
-      const callCountAfterDelay = (
-        api as ReturnType<typeof vi.fn>
-      ).mock.calls.filter((c) =>
+      const callCountAfterDelay = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
         String(c[0]).includes('/api/tmux/activity/delta'),
       ).length
 
@@ -1205,9 +1154,7 @@ describe('useTmuxEventsSocket', () => {
         })
       })
 
-      const deltaCallCount = (
-        api as ReturnType<typeof vi.fn>
-      ).mock.calls.filter((c) =>
+      const deltaCallCount = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
         String(c[0]).includes('/api/tmux/activity/delta'),
       ).length
 
@@ -1221,9 +1168,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('skips delta sync when not connected and force is false', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       const { result } = renderEventsHook(opts)
 
@@ -1233,16 +1178,14 @@ describe('useTmuxEventsSocket', () => {
         await result.current.syncActivityDelta({ reason: 'test' })
       })
 
-      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter(
-        (c) => String(c[0]).includes('/api/tmux/activity/delta'),
+      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
+        String(c[0]).includes('/api/tmux/activity/delta'),
       )
       expect(deltaCalls).toHaveLength(0)
     })
 
     it('performs delta sync when disconnected but force is true', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       const { result } = renderEventsHook(opts)
 
@@ -1250,16 +1193,14 @@ describe('useTmuxEventsSocket', () => {
         await result.current.syncActivityDelta({ reason: 'test', force: true })
       })
 
-      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter(
-        (c) => String(c[0]).includes('/api/tmux/activity/delta'),
+      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
+        String(c[0]).includes('/api/tmux/activity/delta'),
       )
       expect(deltaCalls).toHaveLength(1)
     })
 
     it('increments deltaSyncCount metric on each sync', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -1271,9 +1212,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('increments deltaSyncErrors on API failure', async () => {
-      const api = vi.fn(() =>
-        Promise.reject(new Error('network error')),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.reject(new Error('network error'))) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -1340,9 +1279,7 @@ describe('useTmuxEventsSocket', () => {
       })
 
       // Trigger another sync directly via the returned function
-      ;(api as ReturnType<typeof vi.fn>).mockResolvedValue(
-        defaultDeltaResponse(),
-      )
+      ;(api as ReturnType<typeof vi.fn>).mockResolvedValue(defaultDeltaResponse())
       await act(async () => {
         await result.current.syncActivityDelta({ reason: 'test', force: true })
       })
@@ -1389,9 +1326,7 @@ describe('useTmuxEventsSocket', () => {
         vi.advanceTimersByTime(8_100)
       })
 
-      expect(
-        opts.runtimeMetricsRef.current.fallbackRefreshCount,
-      ).toBeGreaterThan(countBefore)
+      expect(opts.runtimeMetricsRef.current.fallbackRefreshCount).toBeGreaterThan(countBefore)
     })
 
     it('stops fallback polling when WS connects', () => {
@@ -1414,9 +1349,7 @@ describe('useTmuxEventsSocket', () => {
       // Should NOT have more calls from fallback polling (only scheduled refreshes)
       // The count might increase from scheduled refreshes, but not from the
       // 8s interval
-      expect(refreshSessions.mock.calls.length).toBeLessThanOrEqual(
-        callCount + 1,
-      )
+      expect(refreshSessions.mock.calls.length).toBeLessThanOrEqual(callCount + 1)
     })
 
     it('does not poll when tokenRequired and not authenticated', () => {
@@ -1457,9 +1390,7 @@ describe('useTmuxEventsSocket', () => {
         vi.advanceTimersByTime(8_100)
       })
 
-      expect(refreshSessions.mock.calls.length).toBeGreaterThan(
-        callCountAfterDisconnect,
-      )
+      expect(refreshSessions.mock.calls.length).toBeGreaterThan(callCountAfterDisconnect)
     })
 
     it('does not poll while the page is hidden and refreshes when visible again', async () => {
@@ -1693,9 +1624,7 @@ describe('useTmuxEventsSocket', () => {
 
   describe('event gap handling', () => {
     it('triggers delta sync on event ID gap for activity events', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -1728,16 +1657,14 @@ describe('useTmuxEventsSocket', () => {
       })
 
       // The gap should trigger a delta sync
-      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter(
-        (c) => String(c[0]).includes('/api/tmux/activity/delta'),
+      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
+        String(c[0]).includes('/api/tmux/activity/delta'),
       )
       expect(deltaCalls.length).toBeGreaterThanOrEqual(2) // initial + gap
     })
 
     it('triggers delta sync on event ID gap for session events', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -1768,8 +1695,8 @@ describe('useTmuxEventsSocket', () => {
         await vi.advanceTimersByTimeAsync(100)
       })
 
-      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter(
-        (c) => String(c[0]).includes('/api/tmux/activity/delta'),
+      const deltaCalls = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
+        String(c[0]).includes('/api/tmux/activity/delta'),
       )
       expect(deltaCalls.length).toBeGreaterThanOrEqual(2)
     })
@@ -1911,9 +1838,7 @@ describe('useTmuxEventsSocket', () => {
 
   describe('visibility and online reconciliation', () => {
     it('triggers delta sync when page becomes visible while connected', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -1921,9 +1846,7 @@ describe('useTmuxEventsSocket', () => {
         lastSocket().emitOpen()
       })
 
-      const deltaCountBefore = (
-        api as ReturnType<typeof vi.fn>
-      ).mock.calls.filter((c) =>
+      const deltaCountBefore = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
         String(c[0]).includes('/api/tmux/activity/delta'),
       ).length
 
@@ -1943,9 +1866,7 @@ describe('useTmuxEventsSocket', () => {
         document.dispatchEvent(new Event('visibilitychange'))
       })
 
-      const deltaCountAfter = (
-        api as ReturnType<typeof vi.fn>
-      ).mock.calls.filter((c) =>
+      const deltaCountAfter = (api as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
         String(c[0]).includes('/api/tmux/activity/delta'),
       ).length
 
@@ -1973,9 +1894,7 @@ describe('useTmuxEventsSocket', () => {
 
   describe('global revision tracking', () => {
     it('tracks globalRev from message-level field', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -1999,9 +1918,7 @@ describe('useTmuxEventsSocket', () => {
       })
 
       // Next delta sync should use since=50
-      ;(api as ReturnType<typeof vi.fn>).mockResolvedValue(
-        defaultDeltaResponse(),
-      )
+      ;(api as ReturnType<typeof vi.fn>).mockResolvedValue(defaultDeltaResponse())
 
       // Force a gap to trigger sync
       await act(async () => {
@@ -2022,9 +1939,7 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('tracks globalRev from payload-level field', async () => {
-      const api = vi.fn(() =>
-        Promise.resolve(defaultDeltaResponse()),
-      ) as unknown as ApiFunction
+      const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)
 
@@ -2043,9 +1958,7 @@ describe('useTmuxEventsSocket', () => {
       act(() => {
         vi.advanceTimersByTime(1000)
       })
-      ;(api as ReturnType<typeof vi.fn>).mockResolvedValue(
-        defaultDeltaResponse(),
-      )
+      ;(api as ReturnType<typeof vi.fn>).mockResolvedValue(defaultDeltaResponse())
 
       await act(async () => {
         lastSocket().emitMessage({
@@ -2249,9 +2162,7 @@ describe('useTmuxEventsSocket', () => {
       const windowWithMetrics = window as typeof window & {
         __SENTINEL_TMUX_METRICS?: unknown
       }
-      expect(windowWithMetrics.__SENTINEL_TMUX_METRICS).toBe(
-        opts.runtimeMetricsRef.current,
-      )
+      expect(windowWithMetrics.__SENTINEL_TMUX_METRICS).toBe(opts.runtimeMetricsRef.current)
     })
 
     it('cleans up window.__SENTINEL_TMUX_METRICS on unmount', () => {

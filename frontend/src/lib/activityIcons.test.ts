@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  Activity,
-  Bell,
-  BookOpen,
-  Clock,
-  Server,
-  Settings,
-  Shield,
-} from 'lucide-react'
+import { Activity, Bell, BookOpen, Clock, Server, Settings, Shield } from 'lucide-react'
 import { ACTIVITY_SOURCES, getActivitySourceIcon } from '@/lib/activityIcons'
 
 describe('getActivitySourceIcon', () => {

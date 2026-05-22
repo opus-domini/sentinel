@@ -57,14 +57,7 @@ function SortableTab({
   onRename?: () => void
   onKill?: () => void
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tabName,
   })
 
@@ -205,15 +198,8 @@ export default function SessionTabs({
       )}
 
       {openTabs.length > 0 && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={openTabs}
-            strategy={horizontalListSortingStrategy}
-          >
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={openTabs} strategy={horizontalListSortingStrategy}>
             {openTabs.map((tabName) => (
               <SortableTab
                 key={tabName}

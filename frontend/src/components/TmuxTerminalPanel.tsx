@@ -9,12 +9,7 @@ import PaneStrip from './tmux/PaneStrip'
 import TerminalHost from './tmux/TerminalHost'
 import WindowStrip from './tmux/WindowStrip'
 import type { RefCallback } from 'react'
-import type {
-  ConnectionState,
-  PaneInfo,
-  TmuxLauncher,
-  WindowInfo,
-} from '../types'
+import type { ConnectionState, PaneInfo, TmuxLauncher, WindowInfo } from '../types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { isEditableHotkeyTarget, useDocumentHotkeys } from '@/hooks/useHotkeys'
@@ -120,8 +115,7 @@ export default function TmuxTerminalPanel({
   const lockedTouchIDsRef = useRef<Set<number>>(new Set())
   const hasActiveSession = activeSession !== ''
   const showSessionTabs = isMobileLayout || sidebarCollapsed
-  const showControls =
-    isMobileLayout && hasActiveSession && !!onSendKey && !!onFocusTerminal
+  const showControls = isMobileLayout && hasActiveSession && !!onSendKey && !!onFocusTerminal
   const terminalLoadingMessage = (() => {
     if (!hasActiveSession || connectionState !== 'connecting') {
       return ''
@@ -130,18 +124,14 @@ export default function TmuxTerminalPanel({
     if (normalizedDetail.startsWith('reconnecting')) {
       return ''
     }
-    if (
-      normalizedDetail.startsWith('creating') ||
-      normalizedDetail.startsWith('opening')
-    ) {
+    if (normalizedDetail.startsWith('creating') || normalizedDetail.startsWith('opening')) {
       return 'Waiting for tmux server'
     }
     return 'Loading terminal'
   })()
 
   const isKeyboardVisible = useCallback(() => {
-    if (document.documentElement.classList.contains('keyboard-visible'))
-      return true
+    if (document.documentElement.classList.contains('keyboard-visible')) return true
     const el = document.activeElement as HTMLElement | null
     if (!el) return false
     const tag = el.tagName.toLowerCase()
@@ -199,8 +189,7 @@ export default function TmuxTerminalPanel({
         return
       }
 
-      const nextPosition =
-        direction === 'left' ? activePosition - 1 : activePosition + 1
+      const nextPosition = direction === 'left' ? activePosition - 1 : activePosition + 1
       const nextWindowIndex = sortedWindowIndexes[nextPosition]
       if (nextWindowIndex === undefined) {
         return
@@ -209,27 +198,16 @@ export default function TmuxTerminalPanel({
       onSelectWindow(nextWindowIndex)
       refocusTerminalAfterWindowAction()
     },
-    [
-      activeWindowIndex,
-      onSelectWindow,
-      refocusTerminalAfterWindowAction,
-      windows,
-    ],
+    [activeWindowIndex, onSelectWindow, refocusTerminalAfterWindowAction, windows],
   )
 
   const handleMoveActiveWindow = useCallback(
     (direction: 'left' | 'right') => {
-      if (
-        !onReorderWindow ||
-        activeWindowIndex === null ||
-        windows.length < 2
-      ) {
+      if (!onReorderWindow || activeWindowIndex === null || windows.length < 2) {
         return
       }
 
-      const sortedWindows = [...windows].sort(
-        (left, right) => left.index - right.index,
-      )
+      const sortedWindows = [...windows].sort((left, right) => left.index - right.index)
       const activePosition = sortedWindows.findIndex(
         (windowInfo) => windowInfo.index === activeWindowIndex,
       )
@@ -237,15 +215,13 @@ export default function TmuxTerminalPanel({
         return
       }
 
-      const targetPosition =
-        direction === 'left' ? activePosition - 1 : activePosition + 1
+      const targetPosition = direction === 'left' ? activePosition - 1 : activePosition + 1
       const targetWindow = sortedWindows[targetPosition]
       if (!targetWindow) {
         return
       }
 
-      const activeWindowID =
-        sortedWindows[activePosition]?.tmuxWindowId?.trim() ?? ''
+      const activeWindowID = sortedWindows[activePosition]?.tmuxWindowId?.trim() ?? ''
       const targetWindowID = targetWindow.tmuxWindowId?.trim() ?? ''
       if (!activeWindowID || !targetWindowID) {
         return
@@ -254,23 +230,13 @@ export default function TmuxTerminalPanel({
       onReorderWindow(activeWindowID, targetWindowID)
       refocusTerminalAfterWindowAction()
     },
-    [
-      activeWindowIndex,
-      onReorderWindow,
-      refocusTerminalAfterWindowAction,
-      windows,
-    ],
+    [activeWindowIndex, onReorderWindow, refocusTerminalAfterWindowAction, windows],
   )
 
   const isPanelHotkey = useCallback((event: KeyboardEvent) => {
     const panel = panelRef.current
     const target = event.target
-    if (
-      panel &&
-      target instanceof Element &&
-      !panel.contains(target) &&
-      target !== document.body
-    ) {
+    if (panel && target instanceof Element && !panel.contains(target) && target !== document.body) {
       return false
     }
     return !isEditableHotkeyTarget(target, { allowTerminalTarget: true })
@@ -349,8 +315,7 @@ export default function TmuxTerminalPanel({
 
     const lockedTouchIDs = lockedTouchIDsRef.current
     const isLockedTarget = (target: EventTarget | null): boolean =>
-      target instanceof Element &&
-      target.closest('[data-sentinel-touch-lock]') !== null
+      target instanceof Element && target.closest('[data-sentinel-touch-lock]') !== null
 
     const onTouchStart = (event: TouchEvent) => {
       const lockGesture = isLockedTarget(event.target)
@@ -459,11 +424,7 @@ export default function TmuxTerminalPanel({
               <ShieldCheck className="h-3.5 w-3.5" />
             </Button>
           </TooltipHelper>
-          <ConnectionBadge
-            state={connectionState}
-            detail={statusDetail}
-            onClick={onResync}
-          />
+          <ConnectionBadge state={connectionState} detail={statusDetail} onClick={onResync} />
         </div>
       </header>
 

@@ -8,10 +8,7 @@ type ToastViewportProps = {
   onDismiss: (id: number) => void
 }
 
-export default function ToastViewport({
-  toasts,
-  onDismiss,
-}: ToastViewportProps) {
+export default function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
   if (toasts.length === 0) {
     return null
   }
@@ -35,9 +32,7 @@ export default function ToastViewport({
           <div className="flex items-start justify-between gap-3">
             <div className="grid gap-1">
               <strong className="text-[12px]">{toast.title}</strong>
-              <p className="m-0 text-[12px] text-secondary-foreground">
-                {toast.message}
-              </p>
+              <p className="m-0 text-[12px] text-secondary-foreground">{toast.message}</p>
             </div>
             <Button
               variant="ghost"

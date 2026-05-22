@@ -1,10 +1,6 @@
 import type { ReactNode } from 'react'
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface TooltipHelperProps {
   content: string
@@ -12,11 +8,7 @@ interface TooltipHelperProps {
   children: ReactNode
 }
 
-export function TooltipHelper({
-  content,
-  side = 'bottom',
-  children,
-}: TooltipHelperProps) {
+export function TooltipHelper({ content, side = 'bottom', children }: TooltipHelperProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>

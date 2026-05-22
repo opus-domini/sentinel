@@ -28,9 +28,7 @@ function triggerNetworkError() {
 
 function triggerSuccess() {
   const cache = queryClient.getQueryCache()
-  const onSuccess = cache.config.onSuccess as
-    | ((data: unknown) => void)
-    | undefined
+  const onSuccess = cache.config.onSuccess as ((data: unknown) => void) | undefined
   onSuccess?.(undefined)
 }
 
@@ -91,9 +89,7 @@ describe('ServerOfflineBanner', () => {
 
     act(() => {
       const cache = queryClient.getQueryCache()
-      const onError = cache.config.onError as
-        | ((error: Error) => void)
-        | undefined
+      const onError = cache.config.onError as ((error: Error) => void) | undefined
       onError?.(new Error('HTTP 500'))
     })
 

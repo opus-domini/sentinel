@@ -94,11 +94,7 @@ export default function ServicesSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {authenticated ? (
-                    <Lock className="h-3 w-3" />
-                  ) : (
-                    <LockOpen className="h-3 w-3" />
-                  )}
+                  {authenticated ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
                 </Button>
               </TooltipHelper>
             </div>
@@ -127,19 +123,13 @@ export default function ServicesSidebar({
                 Pinned
               </div>
               {loading && services.length === 0 && (
-                <EmptyState
-                  variant="inline"
-                  className="border-dashed text-[12px]"
-                >
+                <EmptyState variant="inline" className="border-dashed text-[12px]">
                   Loading services...
                 </EmptyState>
               )}
 
               {!loading && filteredServices.length === 0 && (
-                <EmptyState
-                  variant="inline"
-                  className="grid gap-1 border-dashed p-3 text-[12px]"
-                >
+                <EmptyState variant="inline" className="grid gap-1 border-dashed p-3 text-[12px]">
                   <span>
                     {hasFilter
                       ? 'No tracked services match filter.'
@@ -173,10 +163,7 @@ export default function ServicesSidebar({
                   {sidebarDensity === 'minimal' ? (
                     <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                       <span
-                        className={cn(
-                          'h-1.5 w-1.5 shrink-0 rounded-full',
-                          statusDot(service),
-                        )}
+                        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', statusDot(service))}
                       />
                       <button
                         type="button"
@@ -189,15 +176,8 @@ export default function ServicesSidebar({
                   ) : (
                     <>
                       <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                        <span
-                          className={cn(
-                            'h-2 w-2 shrink-0 rounded-full',
-                            statusDot(service),
-                          )}
-                        />
-                        <TooltipHelper
-                          content={`${service.displayName} (${service.unit})`}
-                        >
+                        <span className={cn('h-2 w-2 shrink-0 rounded-full', statusDot(service))} />
+                        <TooltipHelper content={`${service.displayName} (${service.unit})`}>
                           <button
                             type="button"
                             className="block w-full min-w-0 flex-1 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap text-left font-semibold hover:text-primary-text-bright"
@@ -220,9 +200,7 @@ export default function ServicesSidebar({
                       </div>
                       <div className="flex min-w-0 items-center justify-between gap-1.5 text-[10px] text-muted-foreground">
                         <TooltipHelper content={service.unit}>
-                          <span className="min-w-0 flex-1 truncate">
-                            {service.unit}
-                          </span>
+                          <span className="min-w-0 flex-1 truncate">{service.unit}</span>
                         </TooltipHelper>
                         {sidebarDensity === 'full' && (
                           <span className="shrink-0 rounded border border-border-subtle bg-surface-overlay px-1 text-[10px] text-muted-foreground">
@@ -236,9 +214,7 @@ export default function ServicesSidebar({
               ))}
 
               {error !== '' && (
-                <p className="mt-1 text-[12px] text-destructive-foreground">
-                  {error}
-                </p>
+                <p className="mt-1 text-[12px] text-destructive-foreground">{error}</p>
               )}
             </div>
           </ScrollArea>

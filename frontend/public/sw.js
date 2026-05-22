@@ -29,9 +29,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CORE_CACHE)
-      .then((cache) =>
-        Promise.allSettled(CORE_URLS.map((url) => cache.add(url))),
-      )
+      .then((cache) => Promise.allSettled(CORE_URLS.map((url) => cache.add(url))))
       .then(() => self.skipWaiting()),
   )
 })
@@ -106,10 +104,7 @@ async function readValidCachedResponse(cache, request) {
     return null
   }
   const requestUrl = new URL(request.url)
-  if (
-    isRuntimeAssetPath(requestUrl.pathname) &&
-    (!cached.ok || isHTMLResponse(cached))
-  ) {
+  if (isRuntimeAssetPath(requestUrl.pathname) && (!cached.ok || isHTMLResponse(cached))) {
     await cache.delete(request)
     return null
   }

@@ -2,12 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { CheckCheck, Eye, EyeOff, Menu, Trash2 } from 'lucide-react'
-import type {
-  OpsActivityEvent,
-  OpsAlert,
-  OpsAlertsResponse,
-  OpsOverviewResponse,
-} from '@/types'
+import type { OpsActivityEvent, OpsAlert, OpsAlertsResponse, OpsOverviewResponse } from '@/types'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import AlertsSidebar from '@/components/AlertsSidebar'
@@ -41,6 +36,8 @@ type AlertsFooterSummaryParams = {
   totalCount: number
   openCount: number
 }
+
+const EMPTY_ALERTS: Array<OpsAlert> = []
 
 function buildAlertsFooterSummary({
   overviewError,
@@ -102,7 +99,7 @@ function AlertsPage() {
   })
 
   const overview = overviewQuery.data ?? null
-  const alerts = alertsQuery.data ?? []
+  const alerts = alertsQuery.data ?? EMPTY_ALERTS
   const overviewLoading = overviewQuery.isLoading
   const alertsLoading = alertsQuery.isLoading
   const overviewError =
@@ -110,9 +107,7 @@ function AlertsPage() {
       ? toErrorMessage(overviewQuery.error, 'failed to load overview')
       : ''
   const alertsError =
-    alertsQuery.error != null
-      ? toErrorMessage(alertsQuery.error, 'failed to load alerts')
-      : ''
+    alertsQuery.error != null ? toErrorMessage(alertsQuery.error, 'failed to load alerts') : ''
 
   const filteredAlerts = useMemo(() => {
     let result = alerts
@@ -128,10 +123,7 @@ function AlertsPage() {
     return result
   }, [alerts, selectedSeverity, showResolved, showAcked])
 
-  const openCount = useMemo(
-    () => alerts.filter((a) => a.status === 'open').length,
-    [alerts],
-  )
+  const openCount = useMemo(() => alerts.filter((a) => a.status === 'open').length, [alerts])
 
   // Clear selection when filtered list changes (e.g. after ack)
   useEffect(() => {
@@ -199,17 +191,11 @@ function AlertsPage() {
       if (!isOpsWsMessage(message)) return
       switch (message.type) {
         case 'ops.overview.updated':
-          queryClient.setQueryData(
-            OPS_OVERVIEW_QUERY_KEY,
-            message.payload.overview,
-          )
+          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, message.payload.overview)
           break
         case 'ops.alerts.updated':
           if (Array.isArray(message.payload.alerts)) {
-            queryClient.setQueryData(
-              OPS_ALERTS_QUERY_KEY,
-              message.payload.alerts,
-            )
+            queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, message.payload.alerts)
           } else {
             void refreshAlerts()
           }
@@ -238,12 +224,8 @@ function AlertsPage() {
       const previous = alerts.find((item) => item.id === alertID)
       if (!previous) return
 
-      queryClient.setQueryData<Array<OpsAlert>>(
-        OPS_ALERTS_QUERY_KEY,
-        (current = []) =>
-          current.map((item) =>
-            item.id === alertID ? { ...item, status: 'acked' } : item,
-          ),
+      queryClient.setQueryData<Array<OpsAlert>>(OPS_ALERTS_QUERY_KEY, (current = []) =>
+        current.map((item) => (item.id === alertID ? { ...item, status: 'acked' } : item)),
       )
 
       try {
@@ -253,32 +235,24 @@ function AlertsPage() {
         }>(`/api/ops/alerts/${alertID}/ack`, {
           method: 'POST',
         })
-        queryClient.setQueryData<Array<OpsAlert>>(
-          OPS_ALERTS_QUERY_KEY,
-          (current = []) =>
-            current.map((item) => (item.id === alertID ? data.alert : item)),
+        queryClient.setQueryData<Array<OpsAlert>>(OPS_ALERTS_QUERY_KEY, (current = []) =>
+          current.map((item) => (item.id === alertID ? data.alert : item)),
         )
         if (data.timelineEvent != null) {
           queryClient.setQueryData<Array<OpsActivityEvent>>(
             opsActivityQueryKey('', 'all'),
             (current = []) =>
-              prependOpsActivityEvent(
-                current,
-                data.timelineEvent as OpsActivityEvent,
-              ),
+              prependOpsActivityEvent(current, data.timelineEvent as OpsActivityEvent),
           )
         }
       } catch (error) {
-        queryClient.setQueryData<Array<OpsAlert>>(
-          OPS_ALERTS_QUERY_KEY,
-          (current = []) =>
-            current.map((item) => (item.id === alertID ? previous : item)),
+        queryClient.setQueryData<Array<OpsAlert>>(OPS_ALERTS_QUERY_KEY, (current = []) =>
+          current.map((item) => (item.id === alertID ? previous : item)),
         )
         pushToast({
           level: 'error',
           title: previous.title,
-          message:
-            error instanceof Error ? error.message : 'failed to ack alert',
+          message: error instanceof Error ? error.message : 'failed to ack alert',
         })
       }
     },
@@ -292,12 +266,8 @@ function AlertsPage() {
     setBulkAcking(true)
     const previousAlerts = alerts.filter((a) => ids.includes(a.id))
 
-    queryClient.setQueryData<Array<OpsAlert>>(
-      OPS_ALERTS_QUERY_KEY,
-      (current = []) =>
-        current.map((item) =>
-          ids.includes(item.id) ? { ...item, status: 'acked' } : item,
-        ),
+    queryClient.setQueryData<Array<OpsAlert>>(OPS_ALERTS_QUERY_KEY, (current = []) =>
+      current.map((item) => (ids.includes(item.id) ? { ...item, status: 'acked' } : item)),
     )
     setSelectedIds(new Set())
 
@@ -313,18 +283,14 @@ function AlertsPage() {
         message: `${ids.length} alert${ids.length > 1 ? 's' : ''} acknowledged`,
       })
     } catch (error) {
-      queryClient.setQueryData<Array<OpsAlert>>(
-        OPS_ALERTS_QUERY_KEY,
-        (current = []) => {
-          const restored = new Map(previousAlerts.map((a) => [a.id, a]))
-          return current.map((item) => restored.get(item.id) ?? item)
-        },
-      )
+      queryClient.setQueryData<Array<OpsAlert>>(OPS_ALERTS_QUERY_KEY, (current = []) => {
+        const restored = new Map(previousAlerts.map((a) => [a.id, a]))
+        return current.map((item) => restored.get(item.id) ?? item)
+      })
       pushToast({
         level: 'error',
         title: 'Bulk ack failed',
-        message:
-          error instanceof Error ? error.message : 'failed to ack alerts',
+        message: error instanceof Error ? error.message : 'failed to ack alerts',
       })
     } finally {
       setBulkAcking(false)
@@ -336,9 +302,8 @@ function AlertsPage() {
       const previous = alerts.find((item) => item.id === alertID)
       if (!previous) return
 
-      queryClient.setQueryData<Array<OpsAlert>>(
-        OPS_ALERTS_QUERY_KEY,
-        (current = []) => current.filter((item) => item.id !== alertID),
+      queryClient.setQueryData<Array<OpsAlert>>(OPS_ALERTS_QUERY_KEY, (current = []) =>
+        current.filter((item) => item.id !== alertID),
       )
 
       try {
@@ -346,15 +311,14 @@ function AlertsPage() {
           method: 'DELETE',
         })
       } catch (error) {
-        queryClient.setQueryData<Array<OpsAlert>>(
-          OPS_ALERTS_QUERY_KEY,
-          (current = []) => [...current, previous],
-        )
+        queryClient.setQueryData<Array<OpsAlert>>(OPS_ALERTS_QUERY_KEY, (current = []) => [
+          ...current,
+          previous,
+        ])
         pushToast({
           level: 'error',
           title: previous.title,
-          message:
-            error instanceof Error ? error.message : 'failed to dismiss alert',
+          message: error instanceof Error ? error.message : 'failed to dismiss alert',
         })
       }
     },
@@ -423,11 +387,7 @@ function AlertsPage() {
               onClick={() => setShowAcked((prev) => !prev)}
               aria-label={showAcked ? 'Hide acked' : 'Show acked'}
             >
-              {showAcked ? (
-                <Eye className="h-3.5 w-3.5" />
-              ) : (
-                <EyeOff className="h-3.5 w-3.5" />
-              )}
+              {showAcked ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
               <span className="hidden md:inline">Acked</span>
             </Button>
             <Button
@@ -437,11 +397,7 @@ function AlertsPage() {
               onClick={() => setShowResolved((prev) => !prev)}
               aria-label={showResolved ? 'Hide resolved' : 'Show resolved'}
             >
-              {showResolved ? (
-                <Eye className="h-3.5 w-3.5" />
-              ) : (
-                <EyeOff className="h-3.5 w-3.5" />
-              )}
+              {showResolved ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
               <span className="hidden md:inline">Resolved</span>
             </Button>
             <ConnectionBadge state={connectionState} onClick={resyncPage} />
@@ -450,9 +406,7 @@ function AlertsPage() {
 
         <section className="grid min-h-0 grid-rows-[1fr] overflow-hidden p-3">
           <div className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
-            {!alertsLoading &&
-            filteredAlerts.length === 0 &&
-            alertsError === '' ? (
+            {!alertsLoading && filteredAlerts.length === 0 && alertsError === '' ? (
               <div className="grid h-full place-items-center">
                 <div className="text-center">
                   <p className="text-[13px] text-muted-foreground">
@@ -518,9 +472,7 @@ function AlertsPage() {
                             />
                           )}
                           <div className="min-w-0">
-                            <p className="truncate text-[12px] font-semibold">
-                              {alert.title}
-                            </p>
+                            <p className="truncate text-[12px] font-semibold">{alert.title}</p>
                             <p className="truncate text-[10px] text-muted-foreground">
                               {alert.resource} • {alert.occurrences}x
                             </p>
@@ -567,9 +519,7 @@ function AlertsPage() {
                             ))}
                         </div>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        {alert.message}
-                      </p>
+                      <p className="text-[11px] text-muted-foreground">{alert.message}</p>
                       <p className="text-[10px] text-muted-foreground">
                         {formatRelativeTime(alert.firstSeenAt)}
                         {alert.lastSeenAt !== alert.firstSeenAt &&
@@ -591,9 +541,7 @@ function AlertsPage() {
                   ))}
                   {alertsError !== '' && (
                     <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3">
-                      <p className="text-[12px] text-destructive-foreground">
-                        {alertsError}
-                      </p>
+                      <p className="text-[12px] text-destructive-foreground">{alertsError}</p>
                       <Button
                         variant="outline"
                         size="sm"

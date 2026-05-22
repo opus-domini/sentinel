@@ -96,14 +96,12 @@ export function inspectorRefreshModeFromSessionProjection(
   if (prev === null || prev.name !== next.name) {
     return 'none'
   }
-  const structureChanged =
-    prev.windows !== next.windows || prev.panes !== next.panes
+  const structureChanged = prev.windows !== next.windows || prev.panes !== next.panes
   if (structureChanged) {
     return 'full'
   }
   const unreadCountChanged =
-    prev.unreadWindows !== next.unreadWindows ||
-    prev.unreadPanes !== next.unreadPanes
+    prev.unreadWindows !== next.unreadWindows || prev.unreadPanes !== next.unreadPanes
   if (unreadCountChanged) {
     return 'windows'
   }

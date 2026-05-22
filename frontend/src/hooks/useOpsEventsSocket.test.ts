@@ -247,9 +247,7 @@ describe('useOpsEventsSocket', () => {
     })
 
     act(() => {
-      MockWebSocket.instances[0].onmessage?.(
-        new MessageEvent('message', { data: 'not json' }),
-      )
+      MockWebSocket.instances[0].onmessage?.(new MessageEvent('message', { data: 'not json' }))
     })
 
     expect(onMessage).not.toHaveBeenCalled()

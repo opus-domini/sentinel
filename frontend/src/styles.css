@@ -110,9 +110,8 @@
 
 @theme inline {
   --font-mono:
-    'JetBrains Mono Variable', 'JetBrains Mono', 'Symbols Nerd Font Mono',
-    'Symbols Nerd Font', 'Noto Color Emoji', 'Apple Color Emoji',
-    'Segoe UI Emoji', 'SF Mono', monospace;
+    'JetBrains Mono Variable', 'JetBrains Mono', 'Symbols Nerd Font Mono', 'Symbols Nerd Font',
+    'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', 'SF Mono', monospace;
 
   /* Brand */
   --color-brand-ink: var(--brand-ink);
@@ -294,11 +293,7 @@
     left: 0;
     width: var(--visual-viewport-width, 100vw);
     height: var(--visual-viewport-height, 100dvh);
-    transform: translate3d(
-      var(--viewport-offset-left, 0px),
-      var(--viewport-offset-top, 0px),
-      0
-    );
+    transform: translate3d(var(--viewport-offset-left, 0px), var(--viewport-offset-top, 0px), 0);
     transform-origin: top left;
   }
 }

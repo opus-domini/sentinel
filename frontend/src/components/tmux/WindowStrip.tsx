@@ -59,10 +59,7 @@ function describeLauncherCommand(command: unknown) {
 }
 
 function canAutoScrollWindowStrip(element: Element): boolean {
-  return (
-    element instanceof HTMLElement &&
-    element.dataset.sentinelWindowStripScroll === 'true'
-  )
+  return element instanceof HTMLElement && element.dataset.sentinelWindowStripScroll === 'true'
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -79,9 +76,7 @@ export function clampWindowStripTransform(
 ): Transform {
   const stripElement = scrollableAncestors.find(canAutoScrollWindowStrip)
   const stripRect =
-    stripElement instanceof HTMLElement
-      ? stripElement.getBoundingClientRect()
-      : null
+    stripElement instanceof HTMLElement ? stripElement.getBoundingClientRect() : null
 
   if (draggingNodeRect === null || stripRect === null) {
     return {
@@ -104,8 +99,7 @@ const restrictToWindowStripBounds: Modifier = ({
   draggingNodeRect,
   scrollableAncestors,
   transform,
-}) =>
-  clampWindowStripTransform(transform, draggingNodeRect, scrollableAncestors)
+}) => clampWindowStripTransform(transform, draggingNodeRect, scrollableAncestors)
 
 type WindowStripProps = {
   hasActiveSession: boolean
@@ -168,9 +162,7 @@ function WindowChip({
     return `#${windowInfo.index}`
   })()
   const WindowIcon =
-    asText(windowInfo.displayIcon) !== ''
-      ? getTmuxIcon(asText(windowInfo.displayIcon))
-      : null
+    asText(windowInfo.displayIcon) !== '' ? getTmuxIcon(asText(windowInfo.displayIcon)) : null
   const iconClassName = cn(
     'size-3.5 shrink-0',
     isActive
@@ -215,13 +207,9 @@ function WindowChip({
               </TooltipHelper>
             )}
             {WindowIcon !== null && <WindowIcon className={iconClassName} />}
-            <span className="min-w-0 truncate pt-[3px] leading-none">
-              {displayName}
-            </span>
+            <span className="min-w-0 truncate pt-[3px] leading-none">{displayName}</span>
             {hasUnread && unreadPanes > 1 && (
-              <span className="ml-0.5 text-[9px] text-muted-foreground">
-                {unreadPanes}
-              </span>
+              <span className="ml-0.5 text-[9px] text-muted-foreground">{unreadPanes}</span>
             )}
           </>
         )}
@@ -243,9 +231,7 @@ function WindowChip({
     <ContextMenu>
       <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
       <ContextMenuContent className="w-44">
-        <ContextMenuItem onSelect={() => onRenameWindow(windowInfo)}>
-          Rename window
-        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => onRenameWindow(windowInfo)}>Rename window</ContextMenuItem>
         <ContextMenuItem
           className="text-destructive-foreground focus:text-destructive-foreground"
           onSelect={() => onCloseWindow(windowInfo.index)}
@@ -266,14 +252,7 @@ function SortableWindowChip(props: {
   onCloseWindow: (windowIndex: number) => void
   onRenameWindow: (windowInfo: WindowInfo) => void
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.windowInfo.tmuxWindowId ?? '',
   })
 
@@ -334,15 +313,11 @@ export default function WindowStrip({
     !isMobile &&
     typeof onReorderWindow === 'function' &&
     sortedWindows.length > 1 &&
-    sortedWindows.every(
-      (windowInfo) => asText(windowInfo.tmuxWindowId).trim() !== '',
-    )
+    sortedWindows.every((windowInfo) => asText(windowInfo.tmuxWindowId).trim() !== '')
   const sortableWindowIDs = useMemo(
     () =>
       reorderEnabled
-        ? sortedWindows.map((windowInfo) =>
-            asText(windowInfo.tmuxWindowId).trim(),
-          )
+        ? sortedWindows.map((windowInfo) => asText(windowInfo.tmuxWindowId).trim())
         : [],
     [reorderEnabled, sortedWindows],
   )
@@ -369,9 +344,7 @@ export default function WindowStrip({
     }
 
     const horizontalDelta =
-      Math.abs(event.deltaX) > Math.abs(event.deltaY)
-        ? event.deltaX
-        : event.deltaY
+      Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
 
     if (horizontalDelta === 0) {
       return
@@ -403,9 +376,7 @@ export default function WindowStrip({
   if (inspectorError && !hasRenderableWindows) {
     return (
       <div className={stripClass}>
-        <span className="truncate text-[11px] text-destructive-foreground">
-          {inspectorError}
-        </span>
+        <span className="truncate text-[11px] text-destructive-foreground">{inspectorError}</span>
       </div>
     )
   }
@@ -425,10 +396,7 @@ export default function WindowStrip({
         }}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext
-          items={sortableWindowIDs}
-          strategy={horizontalListSortingStrategy}
-        >
+        <SortableContext items={sortableWindowIDs} strategy={horizontalListSortingStrategy}>
           {sortedWindows.map((windowInfo) => (
             <SortableWindowChip
               key={windowInfo.tmuxWindowId}
@@ -446,10 +414,7 @@ export default function WindowStrip({
     ) : (
       sortedWindows.map((windowInfo) => (
         <WindowChip
-          key={
-            windowInfo.tmuxWindowId ??
-            `${windowInfo.session}:${windowInfo.index}`
-          }
+          key={windowInfo.tmuxWindowId ?? `${windowInfo.session}:${windowInfo.index}`}
           windowInfo={windowInfo}
           isActive={activeWindowIndex === windowInfo.index}
           isMobile={isMobile}
@@ -507,9 +472,7 @@ export default function WindowStrip({
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>Last used</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onSelect={() => onLaunchLauncher(recentLauncher.id)}
-                >
+                <DropdownMenuItem onSelect={() => onLaunchLauncher(recentLauncher.id)}>
                   {(() => {
                     const Icon = getTmuxIcon(recentLauncher.icon)
                     return <Icon className="h-3.5 w-3.5" />
@@ -547,9 +510,7 @@ export default function WindowStrip({
               </>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onOpenLaunchers}>
-              Manage launchers...
-            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onOpenLaunchers}>Manage launchers...</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

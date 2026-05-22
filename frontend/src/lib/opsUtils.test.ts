@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  browsedServiceDot,
-  formatBytes,
-  formatUptime,
-  toErrorMessage,
-} from './opsUtils'
+import { browsedServiceDot, formatBytes, formatUptime, toErrorMessage } from './opsUtils'
 
 describe('formatUptime', () => {
   it('returns seconds for < 60s', () => {

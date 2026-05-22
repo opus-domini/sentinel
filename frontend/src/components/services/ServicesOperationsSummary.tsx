@@ -1,10 +1,4 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  CircleOff,
-  Pin,
-  RefreshCw,
-} from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CircleOff, Pin, RefreshCw } from 'lucide-react'
 import type { OpsBrowsedService } from '@/types'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import {
@@ -14,10 +8,7 @@ import {
   isOpsServiceFailed,
   isOpsServiceInactive,
 } from '@/lib/opsServices'
-import type {
-  OpsServiceStateFilter,
-  OpsServiceTrackFilter,
-} from '@/lib/opsServices'
+import type { OpsServiceStateFilter, OpsServiceTrackFilter } from '@/lib/opsServices'
 import { cn } from '@/lib/utils'
 
 type ServicesOperationsSummaryProps = {
@@ -60,10 +51,7 @@ export function ServicesOperationsSummary({
       icon: AlertTriangle,
       selected: stateFilter === 'failed',
       onClick: () => onStateFilterChange('failed'),
-      className:
-        failed.length > 0
-          ? 'text-destructive-foreground'
-          : 'text-muted-foreground',
+      className: failed.length > 0 ? 'text-destructive-foreground' : 'text-muted-foreground',
     },
     {
       label: 'Changing units',
@@ -73,10 +61,7 @@ export function ServicesOperationsSummary({
       icon: RefreshCw,
       selected: stateFilter === 'changing',
       onClick: () => onStateFilterChange('changing'),
-      className:
-        changing.length > 0
-          ? 'text-warning-foreground'
-          : 'text-muted-foreground',
+      className: changing.length > 0 ? 'text-warning-foreground' : 'text-muted-foreground',
     },
     {
       label: 'Active units',
@@ -86,8 +71,7 @@ export function ServicesOperationsSummary({
       icon: CheckCircle2,
       selected: stateFilter === 'active',
       onClick: () => onStateFilterChange('active'),
-      className:
-        active.length > 0 ? 'text-ok-foreground' : 'text-muted-foreground',
+      className: active.length > 0 ? 'text-ok-foreground' : 'text-muted-foreground',
     },
     {
       label: 'Stopped units',
@@ -107,27 +91,17 @@ export function ServicesOperationsSummary({
       icon: Pin,
       selected: trackFilter === 'tracked',
       onClick: () => onTrackFilterChange('tracked'),
-      className:
-        tracked.length > 0
-          ? 'text-primary-text-bright'
-          : 'text-muted-foreground',
+      className: tracked.length > 0 ? 'text-primary-text-bright' : 'text-muted-foreground',
     },
   ]
 
   return (
-    <section
-      className="grid min-w-0 grid-cols-5 gap-1.5"
-      aria-label="Services operations summary"
-    >
+    <section className="grid min-w-0 grid-cols-5 gap-1.5" aria-label="Services operations summary">
       {items.map((item) => {
         const Icon = item.icon
         const isActionable = item.value > 0 || item.selected
         return (
-          <TooltipHelper
-            key={item.label}
-            side="bottom"
-            content={`${item.label}\n${item.detail}`}
-          >
+          <TooltipHelper key={item.label} side="bottom" content={`${item.label}\n${item.detail}`}>
             <button
               type="button"
               aria-disabled={!isActionable}
@@ -149,12 +123,7 @@ export function ServicesOperationsSummary({
                 <span className="hidden min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground sm:block">
                   {item.shortLabel}
                 </span>
-                <span
-                  className={cn(
-                    'shrink-0 text-[13px] font-semibold',
-                    item.className,
-                  )}
-                >
+                <span className={cn('shrink-0 text-[13px] font-semibold', item.className)}>
                   {item.value}
                 </span>
               </div>

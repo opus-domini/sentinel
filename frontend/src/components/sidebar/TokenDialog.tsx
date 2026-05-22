@@ -68,9 +68,7 @@ export default function TokenDialog({
           )}
           <DialogFooter className="mt-4">
             <DialogClose asChild>
-              <Button variant="outline">
-                {authenticated ? 'Close' : 'Cancel'}
-              </Button>
+              <Button variant="outline">{authenticated ? 'Close' : 'Cancel'}</Button>
             </DialogClose>
             {authenticated ? (
               <Button

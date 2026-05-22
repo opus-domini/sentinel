@@ -96,23 +96,15 @@ describe('TmuxTerminalPanel', () => {
     const { container } = render(<TmuxTerminalPanel {...baseProps} />)
 
     expect(screen.queryByText('Session Tabs')).toBeNull()
-    expect(container.querySelector('main')?.className).toContain(
-      'grid-rows-[40px_1fr_28px]',
-    )
-    expect(
-      screen.getByTestId('window-strip').parentElement?.className,
-    ).toContain('items-center')
+    expect(container.querySelector('main')?.className).toContain('grid-rows-[40px_1fr_28px]')
+    expect(screen.getByTestId('window-strip').parentElement?.className).toContain('items-center')
   })
 
   it('shows session tabs on desktop when the sidebar is collapsed', () => {
-    const { container } = render(
-      <TmuxTerminalPanel {...baseProps} sidebarCollapsed />,
-    )
+    const { container } = render(<TmuxTerminalPanel {...baseProps} sidebarCollapsed />)
 
     expect(screen.getByText('Session Tabs')).toBeTruthy()
-    expect(container.querySelector('main')?.className).toContain(
-      'grid-rows-[40px_30px_1fr_28px]',
-    )
+    expect(container.querySelector('main')?.className).toContain('grid-rows-[40px_30px_1fr_28px]')
   })
 
   it('keeps session tabs visible on mobile even when the sidebar is expanded', () => {
@@ -125,11 +117,7 @@ describe('TmuxTerminalPanel', () => {
 
   it('shows a loading overlay while tmux is still attaching', () => {
     render(
-      <TmuxTerminalPanel
-        {...baseProps}
-        connectionState="connecting"
-        statusDetail="opening dev"
-      />,
+      <TmuxTerminalPanel {...baseProps} connectionState="connecting" statusDetail="opening dev" />,
     )
 
     expect(screen.getByText('Waiting for tmux server')).toBeTruthy()
@@ -248,9 +236,7 @@ describe('TmuxTerminalPanel', () => {
       />,
     )
 
-    expect(fireEvent.keyDown(document, { key: 'PageUp', ctrlKey: true })).toBe(
-      false,
-    )
+    expect(fireEvent.keyDown(document, { key: 'PageUp', ctrlKey: true })).toBe(false)
     expect(onSelectWindow).toHaveBeenLastCalledWith(1)
 
     rerender(
@@ -263,9 +249,7 @@ describe('TmuxTerminalPanel', () => {
       />,
     )
 
-    expect(
-      fireEvent.keyDown(document, { key: 'PageDown', ctrlKey: true }),
-    ).toBe(false)
+    expect(fireEvent.keyDown(document, { key: 'PageDown', ctrlKey: true })).toBe(false)
     expect(onSelectWindow).toHaveBeenLastCalledWith(8)
     expect(onFocusTerminal).toHaveBeenCalled()
   })
@@ -341,13 +325,7 @@ describe('TmuxTerminalPanel', () => {
     const input = document.createElement('input')
     document.body.append(input)
 
-    render(
-      <TmuxTerminalPanel
-        {...baseProps}
-        activeWindowIndex={2}
-        onCloseWindow={onCloseWindow}
-      />,
-    )
+    render(<TmuxTerminalPanel {...baseProps} activeWindowIndex={2} onCloseWindow={onCloseWindow} />)
 
     expect(fireEvent.keyDown(input, { key: 'w', ctrlKey: true })).toBe(true)
     expect(onCloseWindow).not.toHaveBeenCalled()

@@ -2,11 +2,7 @@ import { formatBytes } from './opsUtils'
 
 export type MetricSeverity = 'ok' | 'warn' | 'critical' | 'unknown'
 
-export function percentSeverity(
-  value: number,
-  warn: number,
-  critical: number,
-): MetricSeverity {
+export function percentSeverity(value: number, warn: number, critical: number): MetricSeverity {
   if (!Number.isFinite(value) || value < 0) return 'unknown'
   if (value >= critical) return 'critical'
   if (value >= warn) return 'warn'
@@ -25,10 +21,7 @@ export function formatPercentValue(value: number, digits = 1): string {
   return `${value.toFixed(digits)}%`
 }
 
-export function computeByteRate(
-  samples: Array<number>,
-  timestamps: Array<number>,
-): number {
+export function computeByteRate(samples: Array<number>, timestamps: Array<number>): number {
   if (samples.length < 2 || timestamps.length < 2) return 0
 
   const currentIndex = samples.length - 1

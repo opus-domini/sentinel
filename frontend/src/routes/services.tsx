@@ -54,10 +54,7 @@ import {
   upsertOpsService,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
-import type {
-  OpsServiceStateFilter,
-  OpsServiceTrackFilter,
-} from '@/lib/opsServices'
+import type { OpsServiceStateFilter, OpsServiceTrackFilter } from '@/lib/opsServices'
 import {
   OPS_ALERTS_QUERY_KEY,
   OPS_BROWSE_QUERY_KEY,
@@ -70,9 +67,10 @@ import {
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 
-function browseServiceKey(
-  service: Pick<OpsBrowsedService, 'manager' | 'scope' | 'unit'>,
-): string {
+const EMPTY_SERVICES: Array<OpsServiceStatus> = []
+const EMPTY_BROWSE_SERVICES: Array<OpsBrowsedService> = []
+
+function browseServiceKey(service: Pick<OpsBrowsedService, 'manager' | 'scope' | 'unit'>): string {
   return `${service.manager}:${service.scope}:${service.unit}`
 }
 
@@ -155,9 +153,7 @@ const ServicesBrowseList = memo(function ServicesBrowseList({
         )}
         {browseError !== '' && (
           <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3 mx-2 mb-2">
-            <p className="text-[12px] text-destructive-foreground">
-              {browseError}
-            </p>
+            <p className="text-[12px] text-destructive-foreground">{browseError}</p>
             <Button
               variant="outline"
               size="sm"
@@ -243,6 +239,7 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground md:top-2" />
           <input
             name="services-search"
+            aria-label="Search units"
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             placeholder="Search units..."
@@ -293,19 +290,15 @@ function ServicesPage() {
   const [serviceStatusOpen, setServiceStatusOpen] = useState(false)
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [serviceStatusError, setServiceStatusError] = useState('')
-  const [serviceStatusData, setServiceStatusData] =
-    useState<OpsServiceInspect | null>(null)
+  const [serviceStatusData, setServiceStatusData] = useState<OpsServiceInspect | null>(null)
 
   const [serviceLogsOpen, setServiceLogsOpen] = useState(false)
-  const [serviceLogsService, setServiceLogsService] =
-    useState<OpsBrowsedService | null>(null)
+  const [serviceLogsService, setServiceLogsService] = useState<OpsBrowsedService | null>(null)
   const [serviceLogsFetchKey, setServiceLogsFetchKey] = useState(0)
 
-  const [svcStateFilter, setSvcStateFilter] =
-    useState<OpsServiceStateFilter>('all')
+  const [svcStateFilter, setSvcStateFilter] = useState<OpsServiceStateFilter>('all')
   const [svcScopeFilter, setSvcScopeFilter] = useState('all')
-  const [svcTrackFilter, setSvcTrackFilter] =
-    useState<OpsServiceTrackFilter>('all')
+  const [svcTrackFilter, setSvcTrackFilter] = useState<OpsServiceTrackFilter>('all')
   const [svcTypeFilter, setSvcTypeFilter] = useState<Array<string>>([])
   const [svcTypeFilterTouched, setSvcTypeFilterTouched] = useState(false)
   const [svcSearch, setSvcSearch] = useState('')
@@ -334,26 +327,19 @@ function ServicesPage() {
   const browseQuery = useQuery({
     queryKey: OPS_BROWSE_QUERY_KEY,
     queryFn: async () => {
-      const data = await api<OpsBrowseServicesResponse>(
-        '/api/ops/services/browse',
-      )
+      const data = await api<OpsBrowseServicesResponse>('/api/ops/services/browse')
       return data.services
     },
   })
 
-  const services = servicesQuery.data ?? []
-  const browseServices = browseQuery.data ?? []
-  const browseUnitTypes = useMemo(
-    () => listOpsBrowseUnitTypes(browseServices),
-    [browseServices],
-  )
+  const services = servicesQuery.data ?? EMPTY_SERVICES
+  const browseServices = browseQuery.data ?? EMPTY_BROWSE_SERVICES
+  const browseUnitTypes = useMemo(() => listOpsBrowseUnitTypes(browseServices), [browseServices])
   const defaultSvcTypeFilter = useMemo(
     () => defaultOpsBrowseUnitTypes(browseUnitTypes),
     [browseUnitTypes],
   )
-  const effectiveSvcTypeFilter = svcTypeFilterTouched
-    ? svcTypeFilter
-    : defaultSvcTypeFilter
+  const effectiveSvcTypeFilter = svcTypeFilterTouched ? svcTypeFilter : defaultSvcTypeFilter
   const allBrowseUnitTypesSelected =
     browseUnitTypes.length > 0 &&
     effectiveSvcTypeFilter.length === browseUnitTypes.length &&
@@ -370,21 +356,15 @@ function ServicesPage() {
       : ''
   const browseLoading = browseQuery.isLoading
   const browseError =
-    browseQuery.error != null
-      ? toErrorMessage(browseQuery.error, 'failed to browse services')
-      : ''
+    browseQuery.error != null ? toErrorMessage(browseQuery.error, 'failed to browse services') : ''
 
   const baseFilteredBrowseServices = useMemo(() => {
     let list = browseServices
     if (effectiveSvcTypeFilter.length > 0) {
-      list = list.filter((s) =>
-        effectiveSvcTypeFilter.includes(s.unitType.trim().toLowerCase()),
-      )
+      list = list.filter((s) => effectiveSvcTypeFilter.includes(s.unitType.trim().toLowerCase()))
     }
     if (svcScopeFilter !== 'all') {
-      list = list.filter(
-        (s) => s.scope.toLowerCase() === svcScopeFilter.toLowerCase(),
-      )
+      list = list.filter((s) => s.scope.toLowerCase() === svcScopeFilter.toLowerCase())
     }
     if (svcSearch.trim() !== '') {
       const q = svcSearch.trim().toLowerCase()
@@ -449,20 +429,14 @@ function ServicesPage() {
       switch (message.type) {
         case 'ops.services.updated':
           if (Array.isArray(message.payload.services)) {
-            queryClient.setQueryData(
-              OPS_SERVICES_QUERY_KEY,
-              message.payload.services,
-            )
+            queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, message.payload.services)
           } else {
             void refreshServices()
           }
           void refreshBrowse()
           break
         case 'ops.overview.updated':
-          queryClient.setQueryData(
-            OPS_OVERVIEW_QUERY_KEY,
-            message.payload.overview,
-          )
+          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, message.payload.overview)
           break
         default:
           break
@@ -479,14 +453,10 @@ function ServicesPage() {
       if (!previous) return
 
       previousServiceRef.current.set(serviceName, previous)
-      queryClient.setQueryData<Array<OpsServiceStatus>>(
-        OPS_SERVICES_QUERY_KEY,
-        (current = []) =>
-          current.map((item) =>
-            item.name === serviceName
-              ? withOptimisticServiceAction(item, action)
-              : item,
-          ),
+      queryClient.setQueryData<Array<OpsServiceStatus>>(OPS_SERVICES_QUERY_KEY, (current = []) =>
+        current.map((item) =>
+          item.name === serviceName ? withOptimisticServiceAction(item, action) : item,
+        ),
       )
 
       try {
@@ -513,10 +483,7 @@ function ServicesPage() {
           queryClient.setQueryData<Array<OpsActivityEvent>>(
             opsActivityQueryKey('', 'all'),
             (current = []) =>
-              prependOpsActivityEvent(
-                current,
-                data.timelineEvent as OpsActivityEvent,
-              ),
+              prependOpsActivityEvent(current, data.timelineEvent as OpsActivityEvent),
           )
         }
         pushToast({
@@ -547,9 +514,8 @@ function ServicesPage() {
   const unregisterService = useCallback(
     async (name: string) => {
       const previous = services.find((s) => s.name === name)
-      queryClient.setQueryData<Array<OpsServiceStatus>>(
-        OPS_SERVICES_QUERY_KEY,
-        (current = []) => current.filter((service) => service.name !== name),
+      queryClient.setQueryData<Array<OpsServiceStatus>>(OPS_SERVICES_QUERY_KEY, (current = []) =>
+        current.filter((service) => service.name !== name),
       )
       try {
         await api<{ removed: string; globalRev: number }>(
@@ -587,27 +553,21 @@ function ServicesPage() {
         if (svc.tracked && svc.trackedName) {
           await runServiceAction(svc.trackedName, action)
         } else {
-          const data = await api<OpsUnitActionResponse>(
-            '/api/ops/services/unit/action',
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                unit: svc.unit,
-                scope: svc.scope,
-                manager: svc.manager,
-                action,
-              }),
-            },
-          )
+          const data = await api<OpsUnitActionResponse>('/api/ops/services/unit/action', {
+            method: 'POST',
+            body: JSON.stringify({
+              unit: svc.unit,
+              scope: svc.scope,
+              manager: svc.manager,
+              action,
+            }),
+          })
           queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
           if (data.timelineEvent != null) {
             queryClient.setQueryData<Array<OpsActivityEvent>>(
               opsActivityQueryKey('', 'all'),
               (current = []) =>
-                prependOpsActivityEvent(
-                  current,
-                  data.timelineEvent as OpsActivityEvent,
-                ),
+                prependOpsActivityEvent(current, data.timelineEvent as OpsActivityEvent),
             )
           }
           pushToast({
@@ -659,9 +619,7 @@ function ServicesPage() {
       } catch (error) {
         setServiceStatusData(null)
         setServiceStatusError(
-          error instanceof Error
-            ? error.message
-            : 'failed to load service status',
+          error instanceof Error ? error.message : 'failed to load service status',
         )
       } finally {
         setServiceStatusLoading(false)

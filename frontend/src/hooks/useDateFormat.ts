@@ -12,10 +12,8 @@ export function useDateFormat() {
   return useMemo(
     () => ({
       formatDateTime: (value: string) => fmtDateTime(value, timezone, locale),
-      formatDateTimeShort: (value: string) =>
-        fmtDateTimeShort(value, timezone, locale),
-      formatRelativeTime: (value: string) =>
-        fmtRelativeTime(value, timezone, locale),
+      formatDateTimeShort: (value: string) => fmtDateTimeShort(value, timezone, locale),
+      formatRelativeTime: (value: string) => fmtRelativeTime(value, timezone, locale),
       formatTimestamp: (value: string) => fmtTimestamp(value, timezone, locale),
     }),
     [timezone, locale],

@@ -33,9 +33,7 @@ function buildService(partial: Partial<OpsServiceStatus>): OpsServiceStatus {
   }
 }
 
-function buildBrowsedService(
-  partial: Partial<OpsBrowsedService>,
-): OpsBrowsedService {
+function buildBrowsedService(partial: Partial<OpsBrowsedService>): OpsBrowsedService {
   return {
     unit: 'nginx.service',
     unitType: 'service',
@@ -51,101 +49,52 @@ function buildBrowsedService(
 
 describe('opsServices', () => {
   it('detects active states', () => {
-    expect(isOpsServiceActive(buildService({ activeState: 'active' }))).toBe(
-      true,
-    )
-    expect(isOpsServiceActive(buildService({ activeState: 'running' }))).toBe(
-      true,
-    )
-    expect(isOpsServiceActive(buildService({ activeState: 'inactive' }))).toBe(
-      false,
-    )
+    expect(isOpsServiceActive(buildService({ activeState: 'active' }))).toBe(true)
+    expect(isOpsServiceActive(buildService({ activeState: 'running' }))).toBe(true)
+    expect(isOpsServiceActive(buildService({ activeState: 'inactive' }))).toBe(false)
   })
 
   it('classifies service states for operational filters', () => {
-    expect(isOpsServiceFailed(buildService({ activeState: 'failed' }))).toBe(
-      true,
-    )
-    expect(isOpsServiceInactive(buildService({ activeState: 'dead' }))).toBe(
-      true,
-    )
-    expect(
-      isOpsServiceChanging(buildService({ activeState: 'restarting' })),
-    ).toBe(true)
+    expect(isOpsServiceFailed(buildService({ activeState: 'failed' }))).toBe(true)
+    expect(isOpsServiceInactive(buildService({ activeState: 'dead' }))).toBe(true)
+    expect(isOpsServiceChanging(buildService({ activeState: 'restarting' }))).toBe(true)
 
     expect(
-      matchesOpsServiceStateFilter(
-        buildBrowsedService({ activeState: 'activating' }),
-        'changing',
-      ),
+      matchesOpsServiceStateFilter(buildBrowsedService({ activeState: 'activating' }), 'changing'),
     ).toBe(true)
     expect(
-      matchesOpsServiceStateFilter(
-        buildBrowsedService({ activeState: 'active' }),
-        'inactive',
-      ),
+      matchesOpsServiceStateFilter(buildBrowsedService({ activeState: 'active' }), 'inactive'),
     ).toBe(false)
   })
 
   it('matches tracked and untracked browse filters', () => {
-    expect(
-      matchesOpsServiceTrackFilter(
-        buildBrowsedService({ tracked: true }),
-        'tracked',
-      ),
-    ).toBe(true)
-    expect(
-      matchesOpsServiceTrackFilter(
-        buildBrowsedService({ tracked: false }),
-        'untracked',
-      ),
-    ).toBe(true)
-    expect(
-      matchesOpsServiceTrackFilter(
-        buildBrowsedService({ tracked: true }),
-        'untracked',
-      ),
-    ).toBe(false)
+    expect(matchesOpsServiceTrackFilter(buildBrowsedService({ tracked: true }), 'tracked')).toBe(
+      true,
+    )
+    expect(matchesOpsServiceTrackFilter(buildBrowsedService({ tracked: false }), 'untracked')).toBe(
+      true,
+    )
+    expect(matchesOpsServiceTrackFilter(buildBrowsedService({ tracked: true }), 'untracked')).toBe(
+      false,
+    )
   })
 
   it('enables start/stop actions by service state', () => {
-    expect(canStartOpsService(buildService({ activeState: 'active' }))).toBe(
-      false,
-    )
-    expect(canStartOpsService(buildService({ activeState: 'running' }))).toBe(
-      false,
-    )
-    expect(canStartOpsService(buildService({ activeState: 'inactive' }))).toBe(
-      true,
-    )
-    expect(canStartOpsService(buildService({ activeState: 'failed' }))).toBe(
-      true,
-    )
+    expect(canStartOpsService(buildService({ activeState: 'active' }))).toBe(false)
+    expect(canStartOpsService(buildService({ activeState: 'running' }))).toBe(false)
+    expect(canStartOpsService(buildService({ activeState: 'inactive' }))).toBe(true)
+    expect(canStartOpsService(buildService({ activeState: 'failed' }))).toBe(true)
 
-    expect(canStopOpsService(buildService({ activeState: 'active' }))).toBe(
-      true,
-    )
-    expect(canStopOpsService(buildService({ activeState: 'running' }))).toBe(
-      true,
-    )
-    expect(canStopOpsService(buildService({ activeState: 'inactive' }))).toBe(
-      false,
-    )
-    expect(canStopOpsService(buildService({ activeState: 'failed' }))).toBe(
-      false,
-    )
+    expect(canStopOpsService(buildService({ activeState: 'active' }))).toBe(true)
+    expect(canStopOpsService(buildService({ activeState: 'running' }))).toBe(true)
+    expect(canStopOpsService(buildService({ activeState: 'inactive' }))).toBe(false)
+    expect(canStopOpsService(buildService({ activeState: 'failed' }))).toBe(false)
   })
 
   it('applies optimistic action state', () => {
-    expect(
-      withOptimisticServiceAction(buildService({}), 'start').activeState,
-    ).toBe('activating')
-    expect(
-      withOptimisticServiceAction(buildService({}), 'stop').activeState,
-    ).toBe('stopping')
-    expect(
-      withOptimisticServiceAction(buildService({}), 'restart').activeState,
-    ).toBe('restarting')
+    expect(withOptimisticServiceAction(buildService({}), 'start').activeState).toBe('activating')
+    expect(withOptimisticServiceAction(buildService({}), 'stop').activeState).toBe('stopping')
+    expect(withOptimisticServiceAction(buildService({}), 'restart').activeState).toBe('restarting')
   })
 
   it('upserts a service by name', () => {
@@ -187,11 +136,7 @@ describe('opsServices', () => {
     expect(filtered[0].name).toBe('api')
 
     const sorted = filterOpsServicesByQuery(services, '')
-    expect(sorted.map((service) => service.displayName)).toEqual([
-      'API',
-      'Queue Worker',
-      'Updater',
-    ])
+    expect(sorted.map((service) => service.displayName)).toEqual(['API', 'Queue Worker', 'Updater'])
   })
 
   it('lists browse unit types in stable order', () => {
@@ -207,9 +152,7 @@ describe('opsServices', () => {
   })
 
   it('defaults browse unit type selection to service when available', () => {
-    expect(defaultOpsBrowseUnitTypes(['timer', 'service', 'target'])).toEqual([
-      'service',
-    ])
+    expect(defaultOpsBrowseUnitTypes(['timer', 'service', 'target'])).toEqual(['service'])
     expect(defaultOpsBrowseUnitTypes(['job'])).toEqual(['job'])
     expect(defaultOpsBrowseUnitTypes([])).toEqual([])
   })
@@ -218,15 +161,11 @@ describe('opsServices', () => {
     expect(deriveOpsTrackedServiceName('nginx.service')).toBe('nginx')
     expect(deriveOpsTrackedServiceName('backup.timer')).toBe('backup')
     expect(deriveOpsTrackedServiceName('multi-user.target')).toBe('multi-user')
-    expect(deriveOpsTrackedServiceName('io.opusdomini.sentinel')).toBe(
-      'io-opusdomini-sentinel',
-    )
+    expect(deriveOpsTrackedServiceName('io.opusdomini.sentinel')).toBe('io-opusdomini-sentinel')
   })
 
   it('formats systemd escaped unit names for display', () => {
-    expect(formatOpsUnitName('app-gnome\\x2dkeyring.service')).toBe(
-      'app-gnome-keyring.service',
-    )
+    expect(formatOpsUnitName('app-gnome\\x2dkeyring.service')).toBe('app-gnome-keyring.service')
     expect(formatOpsUnitName('plain.service')).toBe('plain.service')
     expect(formatOpsUnitName('emoji\\xf0\\x9f\\x98\\x8a.service')).toBe(
       `emoji${String.fromCodePoint(0x1f60a)}.service`,

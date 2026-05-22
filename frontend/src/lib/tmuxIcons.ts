@@ -1,14 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import {
-  Bot,
-  Braces,
-  Bug,
-  Cloud,
-  Database,
-  Globe,
-  Server,
-  TerminalSquare,
-} from 'lucide-react'
+import { Bot, Braces, Bug, Cloud, Database, Globe, Server, TerminalSquare } from 'lucide-react'
 
 export type TmuxIconEntry = {
   key: string

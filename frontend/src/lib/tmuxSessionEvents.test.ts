@@ -252,11 +252,7 @@ describe('shouldRefreshInspectorFromSessionProjection', () => {
 
 describe('classifySessionPatches', () => {
   it('returns no-op result for undefined patches', () => {
-    const result = classifySessionPatches(
-      undefined,
-      new Set(['dev']),
-      new Set(['dev']),
-    )
+    const result = classifySessionPatches(undefined, new Set(['dev']), new Set(['dev']))
 
     expect(result).toEqual({
       hasInputPatches: false,
@@ -266,11 +262,7 @@ describe('classifySessionPatches', () => {
   })
 
   it('returns no-op result for empty patches array', () => {
-    const result = classifySessionPatches(
-      [],
-      new Set(['dev']),
-      new Set(['dev']),
-    )
+    const result = classifySessionPatches([], new Set(['dev']), new Set(['dev']))
 
     expect(result).toEqual({
       hasInputPatches: false,

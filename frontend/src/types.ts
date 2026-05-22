@@ -92,11 +92,7 @@ export type LaunchTmuxLauncherResponse = {
   managedWindowId: string
 }
 
-export type ConnectionState =
-  | 'connected'
-  | 'connecting'
-  | 'disconnected'
-  | 'error'
+export type ConnectionState = 'connected' | 'connecting' | 'disconnected' | 'error'
 
 export type SessionsResponse = {
   sessions: Array<Session>
@@ -234,12 +230,7 @@ export type StorageFlushResponse = {
   flushedAt: string
 }
 
-export type OpsServiceAction =
-  | 'start'
-  | 'stop'
-  | 'restart'
-  | 'enable'
-  | 'disable'
+export type OpsServiceAction = 'start' | 'stop' | 'restart' | 'enable' | 'disable'
 
 export type OpsServiceStatus = {
   name: string

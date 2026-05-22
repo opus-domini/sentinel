@@ -110,11 +110,7 @@ export default function RunbooksSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {authenticated ? (
-                    <Lock className="h-3 w-3" />
-                  ) : (
-                    <LockOpen className="h-3 w-3" />
-                  )}
+                  {authenticated ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
                 </Button>
               </TooltipHelper>
             </div>
@@ -152,24 +148,14 @@ export default function RunbooksSidebar({
                 </span>
               </div>
               {loading && runbooks.length === 0 && (
-                <EmptyState
-                  variant="inline"
-                  className="border-dashed text-[12px]"
-                >
+                <EmptyState variant="inline" className="border-dashed text-[12px]">
                   Loading runbooks...
                 </EmptyState>
               )}
 
               {!loading && filteredRunbooks.length === 0 && (
-                <EmptyState
-                  variant="inline"
-                  className="grid gap-1 border-dashed p-3 text-[12px]"
-                >
-                  <span>
-                    {hasFilter
-                      ? 'No runbooks match filter.'
-                      : 'No runbooks available.'}
-                  </span>
+                <EmptyState variant="inline" className="grid gap-1 border-dashed p-3 text-[12px]">
+                  <span>{hasFilter ? 'No runbooks match filter.' : 'No runbooks available.'}</span>
                   {hasFilter && (
                     <Button
                       variant="outline"
@@ -199,32 +185,18 @@ export default function RunbooksSidebar({
                         ? 'border-primary/40 bg-primary/10'
                         : 'border-border-subtle hover:border-border hover:bg-surface-overlay',
                     )}
-                    onClick={() =>
-                      onSelectRunbook(isSelected ? null : runbook.id)
-                    }
+                    onClick={() => onSelectRunbook(isSelected ? null : runbook.id)}
                   >
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <span
-                        className={cn(
-                          'h-2 w-2 shrink-0 rounded-full',
-                          status.dotClass,
-                        )}
-                      />
+                      <span className={cn('h-2 w-2 shrink-0 rounded-full', status.dotClass)} />
                       {scheduledRunbookIds.has(runbook.id) && (
                         <Clock className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
                       )}
                       {runbook.webhookURL && (
                         <Webhook className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
                       )}
-                      <span className="min-w-0 flex-1 truncate font-semibold">
-                        {runbook.name}
-                      </span>
-                      <span
-                        className={cn(
-                          'shrink-0 text-[10px] font-medium',
-                          status.textClass,
-                        )}
-                      >
+                      <span className="min-w-0 flex-1 truncate font-semibold">{runbook.name}</span>
+                      <span className={cn('shrink-0 text-[10px] font-medium', status.textClass)}>
                         {status.label}
                       </span>
                     </div>
@@ -242,9 +214,7 @@ export default function RunbooksSidebar({
                           ? `${formatDateTime(lastJob.createdAt)} · ${formatRunbookDuration(runbookJobDurationMs(lastJob))}`
                           : 'never ran'}
                       </span>
-                      <span className="shrink-0">
-                        {runbook.steps.length} steps
-                      </span>
+                      <span className="shrink-0">{runbook.steps.length} steps</span>
                     </div>
                   </button>
                 )

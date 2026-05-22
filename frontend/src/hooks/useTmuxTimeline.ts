@@ -51,11 +51,9 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
 
   const timelineOpenRef = useRef(false)
   const timelineSessionFilterRef = useRef('active')
-  const loadTimelineRef = useRef<(options?: { quiet?: boolean }) => void>(
-    () => {
-      return
-    },
-  )
+  const loadTimelineRef = useRef<(options?: { quiet?: boolean }) => void>(() => {
+    return
+  })
 
   useEffect(() => {
     timelineOpenRef.current = timelineOpen
@@ -84,9 +82,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
       if (!params?.quiet) {
         setTimelineLoading(true)
       }
-      const session = resolveTimelineSessionScope(
-        timelineSessionFilterRef.current,
-      )
+      const session = resolveTimelineSessionScope(timelineSessionFilterRef.current)
       const cacheKey = tmuxTimelineQueryKey({
         session,
         query: debouncedTimelineQuery,
@@ -107,9 +103,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
         limit: 180,
       })
       try {
-        const data = await api<TimelineResponse>(
-          `/api/tmux/timeline${queryString}`,
-        )
+        const data = await api<TimelineResponse>(`/api/tmux/timeline${queryString}`)
         if (gen !== timelineGenerationRef.current) return
         setTimelineEvents(data.events)
         setTimelineHasMore(data.hasMore)
@@ -120,8 +114,7 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
         setTimelineError('')
       } catch (error) {
         if (gen !== timelineGenerationRef.current) return
-        const message =
-          error instanceof Error ? error.message : 'failed to load timeline'
+        const message = error instanceof Error ? error.message : 'failed to load timeline'
         setTimelineError(message)
       } finally {
         if (gen === timelineGenerationRef.current) {

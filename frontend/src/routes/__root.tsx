@@ -93,8 +93,7 @@ function TokenGateDialog({
         <DialogHeader>
           <DialogTitle>Authentication required</DialogTitle>
           <DialogDescription>
-            This server requires a token. Access stays blocked until the token
-            is validated.
+            This server requires a token. Access stays blocked until the token is validated.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -130,9 +129,7 @@ function TokenGateDialog({
             aria-label="Authentication token"
             disabled={submitting}
           />
-          {error !== '' && (
-            <p className="mt-2 text-xs text-destructive-foreground">{error}</p>
-          )}
+          {error !== '' && <p className="mt-2 text-xs text-destructive-foreground">{error}</p>}
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={draft.trim() === '' || submitting}>
               Continue
@@ -216,9 +213,7 @@ function RootComponent() {
               <TooltipProvider delayDuration={300}>
                 <ErrorBoundary>
                   {showOutlet ? <Outlet /> : <LoadingGate />}
-                  {needsTokenGate && (
-                    <TokenGateDialog onSubmit={submitGateToken} />
-                  )}
+                  {needsTokenGate && <TokenGateDialog onSubmit={submitGateToken} />}
                   <ToastViewport toasts={toasts} onDismiss={dismissToast} />
                   {offline && <ServerOfflineBanner onRetry={retry} />}
                 </ErrorBoundary>
@@ -237,10 +232,7 @@ function NotFoundComponent() {
       <div className="text-center">
         <h1 className="text-2xl font-bold">404</h1>
         <p className="mt-2 text-secondary-foreground">Page not found</p>
-        <a
-          href="/tmux"
-          className="mt-4 inline-block text-primary hover:underline"
-        >
+        <a href="/tmux" className="mt-4 inline-block text-primary hover:underline">
           Go to tmux
         </a>
       </div>

@@ -19,11 +19,7 @@ import {
 } from './tmuxInspectorOptimistic'
 import type { PaneInfo, WindowInfo } from '@/types'
 
-function buildWindow(
-  session: string,
-  index: number,
-  panes: number,
-): WindowInfo {
+function buildWindow(session: string, index: number, panes: number): WindowInfo {
   return {
     session,
     index,
@@ -112,9 +108,7 @@ describe('pending split pane ids', () => {
 
 describe('mergePendingInspectorSnapshot', () => {
   it('keeps pending-created window visible and confirms it when backend catches up', () => {
-    const pendingCreates = new Map<string, Set<number>>([
-      ['alpha', new Set([2])],
-    ])
+    const pendingCreates = new Map<string, Set<number>>([['alpha', new Set([2])]])
     const options = {
       pendingWindowCreates: pendingCreates,
       pendingWindowCloses: new Map<string, Set<number>>(),
@@ -144,12 +138,8 @@ describe('mergePendingInspectorSnapshot', () => {
   it('keeps pending-closed windows and panes hidden until backend converges', () => {
     const options = {
       pendingWindowCreates: new Map<string, Set<number>>(),
-      pendingWindowCloses: new Map<string, Set<number>>([
-        ['alpha', new Set([1])],
-      ]),
-      pendingPaneCloses: new Map<string, Set<string>>([
-        ['alpha', new Set(['%2'])],
-      ]),
+      pendingWindowCloses: new Map<string, Set<number>>([['alpha', new Set([1])]]),
+      pendingPaneCloses: new Map<string, Set<string>>([['alpha', new Set(['%2'])]]),
       pendingWindowPaneFloors: new Map<string, Map<number, number>>(),
     }
 
@@ -179,9 +169,7 @@ describe('mergePendingInspectorSnapshot', () => {
       pendingWindowCreates: new Map<string, Set<number>>(),
       pendingWindowCloses: new Map<string, Set<number>>(),
       pendingPaneCloses: new Map<string, Set<string>>(),
-      pendingWindowPaneFloors: new Map<string, Map<number, number>>([
-        ['alpha', new Map([[0, 3]])],
-      ]),
+      pendingWindowPaneFloors: new Map<string, Map<number, number>>([['alpha', new Map([[0, 3]])]]),
     }
 
     const stale = mergePendingInspectorSnapshot(
@@ -197,9 +185,7 @@ describe('mergePendingInspectorSnapshot', () => {
       buildPendingSplitPaneID('alpha', 0, 2),
     ])
     expect(
-      stale.panes.find(
-        (item) => item.paneId === buildPendingSplitPaneID('alpha', 0, 2),
-      )?.title,
+      stale.panes.find((item) => item.paneId === buildPendingSplitPaneID('alpha', 0, 2))?.title,
     ).toBe('new')
     expect(stale.confirmedWindowPaneFloors).toEqual([])
 
@@ -231,9 +217,7 @@ describe('mergePendingInspectorSnapshot', () => {
 
   it('confirms pending create by cardinality when tmux assigns a different index', () => {
     const options = {
-      pendingWindowCreates: new Map<string, Set<number>>([
-        ['alpha', new Set([3])],
-      ]),
+      pendingWindowCreates: new Map<string, Set<number>>([['alpha', new Set([3])]]),
       pendingWindowCloses: new Map<string, Set<number>>(),
       pendingPaneCloses: new Map<string, Set<string>>(),
       pendingWindowPaneFloors: new Map<string, Map<number, number>>(),
@@ -242,11 +226,7 @@ describe('mergePendingInspectorSnapshot', () => {
 
     const merged = mergePendingInspectorSnapshot(
       'alpha',
-      [
-        buildWindow('alpha', 0, 1),
-        buildWindow('alpha', 1, 1),
-        buildWindow('alpha', 2, 1),
-      ],
+      [buildWindow('alpha', 0, 1), buildWindow('alpha', 1, 1), buildWindow('alpha', 2, 1)],
       [
         buildPane('alpha', 0, 0, '%1'),
         buildPane('alpha', 1, 0, '%2'),

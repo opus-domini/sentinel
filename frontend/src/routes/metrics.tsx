@@ -18,11 +18,7 @@ import {
   Waves,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type {
-  OpsHostMetrics,
-  OpsMetricsResponse,
-  OpsOverviewResponse,
-} from '@/types'
+import type { OpsHostMetrics, OpsMetricsResponse, OpsOverviewResponse } from '@/types'
 import type { MetricsSnapshot } from '@/lib/MetricsHistory'
 import type { MetricSeverity } from '@/lib/metricsView'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
@@ -36,11 +32,7 @@ import { useMetaContext } from '@/contexts/MetaContext'
 import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { MetricsHistory } from '@/lib/MetricsHistory'
-import {
-  OPS_METRICS_QUERY_KEY,
-  OPS_OVERVIEW_QUERY_KEY,
-  isOpsWsMessage,
-} from '@/lib/opsQueryCache'
+import { OPS_METRICS_QUERY_KEY, OPS_OVERVIEW_QUERY_KEY, isOpsWsMessage } from '@/lib/opsQueryCache'
 import { formatBytes, toErrorMessage } from '@/lib/opsUtils'
 import { ProgressBar } from '@/lib/ProgressBar'
 import { Sparkline } from '@/lib/Sparkline'
@@ -185,9 +177,7 @@ function buildRisk(metrics: OpsHostMetrics | null): {
     percentSeverity(metrics.memPercent, 80, 90),
     percentSeverity(metrics.diskPercent, 85, 95),
     percentSeverity(metrics.diskInodesPercent, 80, 90),
-    metrics.swapTotalBytes > 0
-      ? percentSeverity(metrics.swapPercent, 20, 60)
-      : 'ok',
+    metrics.swapTotalBytes > 0 ? percentSeverity(metrics.swapPercent, 20, 60) : 'ok',
     pressureSeverity(metrics.cpuPressureAvg10),
     pressureSeverity(metrics.memPressureAvg10),
     pressureSeverity(metrics.ioPressureAvg10),
@@ -195,8 +185,7 @@ function buildRisk(metrics: OpsHostMetrics | null): {
   const critical = signals.filter((signal) => signal === 'critical').length
   const warn = signals.filter((signal) => signal === 'warn').length
   const severity = signals.reduce<MetricSeverity>(
-    (worst, signal) =>
-      severityRank(signal) > severityRank(worst) ? signal : worst,
+    (worst, signal) => (severityRank(signal) > severityRank(worst) ? signal : worst),
     'ok',
   )
 
@@ -272,13 +261,7 @@ function severityClass(severity: MetricSeverity): string {
   }
 }
 
-function StatusPill({
-  severity,
-  label,
-}: {
-  severity: MetricSeverity
-  label: string
-}) {
+function StatusPill({ severity, label }: { severity: MetricSeverity; label: string }) {
   return (
     <span
       className={cn(
@@ -297,11 +280,7 @@ function SectionHeading({ title, detail }: { title: string; detail?: string }) {
       <h2 className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
         {title}
       </h2>
-      {detail && (
-        <span className="shrink-0 text-[10px] text-muted-foreground">
-          {detail}
-        </span>
-      )}
+      {detail && <span className="shrink-0 text-[10px] text-muted-foreground">{detail}</span>}
     </div>
   )
 }
@@ -320,9 +299,8 @@ function MetricTitle({
   return (
     <TooltipHelper content={metricTooltip(title, sampleRate)}>
       <span
-        tabIndex={0}
         aria-label={metricTooltip(title, sampleRate).replace('\n', '. ')}
-        className="flex min-w-0 cursor-help items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="flex min-w-0 cursor-help items-center gap-2 rounded-sm"
       >
         <span
           className={cn(
@@ -376,9 +354,7 @@ function MetricPanel({
     <div
       className={cn(
         'grid min-h-[156px] grid-rows-[auto_auto_1fr] overflow-hidden rounded-lg border p-3',
-        severity === 'ok'
-          ? 'border-border-subtle bg-surface-elevated'
-          : severityClass(severity),
+        severity === 'ok' ? 'border-border-subtle bg-surface-elevated' : severityClass(severity),
         className,
       )}
     >
@@ -387,14 +363,8 @@ function MetricPanel({
         <StatusPill severity={severity} label={severity} />
       </div>
       <div className="mt-3 min-w-0">
-        <p className="truncate text-[24px] font-semibold leading-none text-foreground">
-          {value}
-        </p>
-        {detail && (
-          <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
-            {detail}
-          </p>
-        )}
+        <p className="truncate text-[24px] font-semibold leading-none text-foreground">{value}</p>
+        {detail && <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{detail}</p>}
         {showProgress && <ProgressBar percent={Math.max(0, percent)} />}
       </div>
       <div className={cn('mt-3 h-12 min-h-0 w-full', chartClassName)}>
@@ -405,8 +375,7 @@ function MetricPanel({
             color={trendColor}
             domain={trendDomain}
             formatValue={
-              formatTrendValue ??
-              ((v) => (trendDomain ? formatPercentValue(v) : `${v}`))
+              formatTrendValue ?? ((v) => (trendDomain ? formatPercentValue(v) : `${v}`))
             }
             className="h-full w-full"
           />
@@ -439,9 +408,7 @@ function MiniStat({
     <div
       className={cn(
         'grid min-h-[96px] grid-cols-[28px_1fr] gap-2 rounded-lg border p-2.5',
-        severity === 'ok'
-          ? 'border-border-subtle bg-surface-elevated'
-          : severityClass(severity),
+        severity === 'ok' ? 'border-border-subtle bg-surface-elevated' : severityClass(severity),
         className,
       )}
     >
@@ -451,12 +418,8 @@ function MiniStat({
         </div>
       </div>
       <div className="col-span-2 min-w-0 pl-[36px]">
-        <p className="mt-1 truncate text-[14px] font-semibold text-foreground">
-          {value}
-        </p>
-        {sub && (
-          <p className="text-[10px] leading-3 text-muted-foreground">{sub}</p>
-        )}
+        <p className="mt-1 truncate text-[14px] font-semibold text-foreground">{value}</p>
+        {sub && <p className="text-[10px] leading-3 text-muted-foreground">{sub}</p>}
       </div>
     </div>
   )
@@ -478,20 +441,9 @@ function PostureStat({
   return (
     <div className="flex min-w-0 items-center gap-2 border-t border-border-subtle pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
       <div className="min-w-0">
-        <MetricTitle
-          title={label}
-          Icon={Icon}
-          sampleRate={sampleRate}
-          iconClassName="h-8 w-8"
-        />
-        <p className="mt-0.5 text-[18px] font-semibold leading-none text-foreground">
-          {value}
-        </p>
-        {sub && (
-          <p className="mt-1 text-[10px] leading-3 text-secondary-foreground">
-            {sub}
-          </p>
-        )}
+        <MetricTitle title={label} Icon={Icon} sampleRate={sampleRate} iconClassName="h-8 w-8" />
+        <p className="mt-0.5 text-[18px] font-semibold leading-none text-foreground">{value}</p>
+        {sub && <p className="mt-1 text-[10px] leading-3 text-secondary-foreground">{sub}</p>}
       </div>
     </div>
   )
@@ -511,6 +463,7 @@ function MetricsTabButton({
       id={`metrics-tab-${tab.id}`}
       type="button"
       role="tab"
+      aria-label={`${tab.label}: ${tab.detail}`}
       aria-selected={active}
       aria-controls={`metrics-panel-${tab.id}`}
       className={cn(
@@ -535,9 +488,7 @@ function MetricsTabButton({
         <span className="block text-[11px] font-semibold uppercase tracking-[0.08em]">
           {tab.label}
         </span>
-        <span className="block text-[10px] leading-3 text-muted-foreground">
-          {tab.detail}
-        </span>
+        <span className="block text-[10px] leading-3 text-muted-foreground">{tab.detail}</span>
       </span>
     </button>
   )
@@ -600,9 +551,7 @@ function MetricsPage() {
       ? toErrorMessage(overviewQuery.error, 'failed to load overview')
       : ''
   const metricsError =
-    metricsQuery.error != null
-      ? toErrorMessage(metricsQuery.error, 'failed to load metrics')
-      : ''
+    metricsQuery.error != null ? toErrorMessage(metricsQuery.error, 'failed to load metrics') : ''
 
   useEffect(() => {
     if (metrics != null && !seededRef.current) {
@@ -640,10 +589,7 @@ function MetricsPage() {
       if (!isOpsWsMessage(message)) return
       switch (message.type) {
         case 'ops.overview.updated':
-          queryClient.setQueryData(
-            OPS_OVERVIEW_QUERY_KEY,
-            message.payload.overview,
-          )
+          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, message.payload.overview)
           break
         case 'ops.metrics.updated': {
           const m = message.payload.metrics
@@ -695,8 +641,7 @@ function MetricsPage() {
   const rxRate = computeByteRate(trends.rx.values, trends.rx.timestamps)
   const txRate = computeByteRate(trends.tx.values, trends.tx.timestamps)
   const risk = buildRisk(metrics)
-  const activeTabMeta =
-    METRICS_TABS.find((tab) => tab.id === activeTab) ?? METRICS_TABS[0]
+  const activeTabMeta = METRICS_TABS.find((tab) => tab.id === activeTab) ?? METRICS_TABS[0]
 
   return (
     <AppShell>
@@ -717,9 +662,7 @@ function MetricsPage() {
 
             {metricsError !== '' && (
               <div className="grid gap-2 rounded-lg border border-dashed border-destructive/40 bg-destructive/10 p-3">
-                <p className="text-[12px] text-destructive-foreground">
-                  {metricsError}
-                </p>
+                <p className="text-[12px] text-destructive-foreground">{metricsError}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -732,10 +675,7 @@ function MetricsPage() {
             )}
 
             {!metricsLoading && metrics == null && metricsError === '' && (
-              <EmptyState
-                variant="inline"
-                className="grid gap-2 p-3 text-[12px]"
-              >
+              <EmptyState variant="inline" className="grid gap-2 p-3 text-[12px]">
                 <p>No metric sample received yet.</p>
                 <Button
                   variant="outline"
@@ -785,11 +725,7 @@ function MetricsPage() {
                       />
                       <PostureStat
                         label="Load / core"
-                        value={
-                          metrics.loadPerCPU >= 0
-                            ? metrics.loadPerCPU.toFixed(2)
-                            : '-'
-                        }
+                        value={metrics.loadPerCPU >= 0 ? metrics.loadPerCPU.toFixed(2) : '-'}
                         sub={`${metrics.loadAvg1.toFixed(2)} load · ${metrics.cpuCount} cores`}
                         Icon={Gauge}
                         sampleRate={SAMPLE_RATE.live}
@@ -860,32 +796,17 @@ function MetricsPage() {
                   aria-labelledby={`metrics-tab-${activeTab}`}
                   className="grid gap-2"
                 >
-                  <SectionHeading
-                    title={activeTabMeta.label}
-                    detail={activeTabMeta.detail}
-                  />
+                  <SectionHeading title={activeTabMeta.label} detail={activeTabMeta.detail} />
 
                   {activeTab === 'saturation' && (
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                       <MetricPanel
                         title="Load / core"
-                        value={
-                          metrics.loadPerCPU >= 0
-                            ? metrics.loadPerCPU.toFixed(2)
-                            : '-'
-                        }
+                        value={metrics.loadPerCPU >= 0 ? metrics.loadPerCPU.toFixed(2) : '-'}
                         detail={`1m ${metrics.loadAvg1.toFixed(2)} · 5m ${metrics.loadAvg5.toFixed(2)} · 15m ${metrics.loadAvg15.toFixed(2)} · ${metrics.cpuCount} cores`}
                         Icon={Gauge}
-                        severity={percentSeverity(
-                          metrics.loadPerCPU * 100,
-                          70,
-                          100,
-                        )}
-                        percent={
-                          metrics.loadPerCPU >= 0
-                            ? metrics.loadPerCPU * 100
-                            : undefined
-                        }
+                        severity={percentSeverity(metrics.loadPerCPU * 100, 70, 100)}
+                        percent={metrics.loadPerCPU >= 0 ? metrics.loadPerCPU * 100 : undefined}
                         trend={trends.load}
                         trendColor={SPARKLINE_COLORS.loadAvg}
                         formatTrendValue={(value) => value.toFixed(2)}
@@ -911,14 +832,8 @@ function MetricsPage() {
                             ? percentSeverity(metrics.swapPercent, 20, 60)
                             : 'ok'
                         }
-                        percent={
-                          metrics.swapTotalBytes > 0
-                            ? metrics.swapPercent
-                            : undefined
-                        }
-                        trend={
-                          metrics.swapTotalBytes > 0 ? trends.swap : undefined
-                        }
+                        percent={metrics.swapTotalBytes > 0 ? metrics.swapPercent : undefined}
+                        trend={metrics.swapTotalBytes > 0 ? trends.swap : undefined}
                         trendColor={SPARKLINE_COLORS.swap}
                         trendDomain={[0, 100]}
                         className="min-h-[190px]"
@@ -938,21 +853,11 @@ function MetricsPage() {
                             : 'inode usage is not reported by this filesystem'
                         }
                         Icon={Database}
-                        severity={percentSeverity(
-                          metrics.diskInodesPercent,
-                          80,
-                          90,
-                        )}
+                        severity={percentSeverity(metrics.diskInodesPercent, 80, 90)}
                         percent={
-                          metrics.diskInodesTotal > 0
-                            ? metrics.diskInodesPercent
-                            : undefined
+                          metrics.diskInodesTotal > 0 ? metrics.diskInodesPercent : undefined
                         }
-                        trend={
-                          metrics.diskInodesTotal > 0
-                            ? trends.inodes
-                            : undefined
-                        }
+                        trend={metrics.diskInodesTotal > 0 ? trends.inodes : undefined}
                         trendColor={SPARKLINE_COLORS.inodes}
                         trendDomain={[0, 100]}
                         className="min-h-[190px]"
@@ -962,9 +867,7 @@ function MetricsPage() {
                       <MetricPanel
                         title="CPU pressure"
                         value={
-                          metrics.cpuPressureAvg10 >= 0
-                            ? metrics.cpuPressureAvg10.toFixed(2)
-                            : '-'
+                          metrics.cpuPressureAvg10 >= 0 ? metrics.cpuPressureAvg10.toFixed(2) : '-'
                         }
                         detail="Linux PSI avg10 for CPU stalls"
                         Icon={Waves}
@@ -979,9 +882,7 @@ function MetricsPage() {
                       <MetricPanel
                         title="Memory pressure"
                         value={
-                          metrics.memPressureAvg10 >= 0
-                            ? metrics.memPressureAvg10.toFixed(2)
-                            : '-'
+                          metrics.memPressureAvg10 >= 0 ? metrics.memPressureAvg10.toFixed(2) : '-'
                         }
                         detail="Linux PSI avg10 for memory stalls"
                         Icon={Waves}
@@ -996,9 +897,7 @@ function MetricsPage() {
                       <MetricPanel
                         title="IO pressure"
                         value={
-                          metrics.ioPressureAvg10 >= 0
-                            ? metrics.ioPressureAvg10.toFixed(2)
-                            : '-'
+                          metrics.ioPressureAvg10 >= 0 ? metrics.ioPressureAvg10.toFixed(2) : '-'
                         }
                         detail="Linux PSI avg10 for I/O stalls"
                         Icon={Waves}
@@ -1122,11 +1021,7 @@ function MetricsPage() {
                         value={metrics.loadAvg1.toFixed(2)}
                         detail={`${metrics.loadAvg5.toFixed(2)} / ${metrics.loadAvg15.toFixed(2)} load averages · ${metrics.cpuCount} cores`}
                         Icon={Gauge}
-                        severity={percentSeverity(
-                          metrics.loadPerCPU * 100,
-                          70,
-                          100,
-                        )}
+                        severity={percentSeverity(metrics.loadPerCPU * 100, 70, 100)}
                         trend={trends.load}
                         trendColor={SPARKLINE_COLORS.loadAvg}
                         formatTrendValue={(value) => value.toFixed(2)}

@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { SessionLauncher } from '@/types'
 import {
   AlertDialog,
@@ -96,9 +96,7 @@ function draftFromLauncher(launcher: SessionLauncher): SessionLauncherDraft {
   }
 }
 
-function describeSessionLauncher(
-  launcher: Pick<SessionLauncher, 'cwd' | 'user'>,
-) {
+function describeSessionLauncher(launcher: Pick<SessionLauncher, 'cwd' | 'user'>) {
   const cwd = launcher.cwd.trim()
   const user = (launcher.user ?? '').trim()
   if (cwd === '') {
@@ -121,14 +119,9 @@ function SortableSessionLauncherItem({
   dragEnabled: boolean
   onSelect: (id: string) => void
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: launcher.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: launcher.id,
+  })
   const Icon = getTmuxIcon(launcher.icon)
 
   return (
@@ -156,16 +149,12 @@ function SortableSessionLauncherItem({
       >
         <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12px] font-semibold">
-            {launcher.name}
-          </span>
+          <span className="block truncate text-[12px] font-semibold">{launcher.name}</span>
           <span className="block truncate text-[10px] text-muted-foreground">
             {describeSessionLauncher(launcher)}
           </span>
         </span>
-        {!launcher.lastUsedAt && (
-          <span className="text-[10px] text-muted-foreground">New</span>
-        )}
+        {!launcher.lastUsedAt && <span className="text-[10px] text-muted-foreground">New</span>}
       </button>
     </li>
   )
@@ -181,6 +170,11 @@ export default function SessionLaunchersDialog({
   onReorder,
 }: SessionLaunchersDialogProps) {
   const meta = useMetaContext()
+  const dialogId = useId()
+  const nameId = `${dialogId}-name`
+  const iconLabelId = `${dialogId}-icon-label`
+  const cwdId = `${dialogId}-cwd`
+  const userLabelId = `${dialogId}-user-label`
   const isMobile = useIsMobileLayout()
   const dragEnabled = !isMobile
   const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
@@ -207,9 +201,7 @@ export default function SessionLaunchersDialog({
     setDraft(defaultDraft)
   }
 
-  const updateDraft = (
-    updater: (previous: SessionLauncherDraft) => SessionLauncherDraft,
-  ) => {
+  const updateDraft = (updater: (previous: SessionLauncherDraft) => SessionLauncherDraft) => {
     setSaveError('')
     setDraft(updater)
   }
@@ -335,8 +327,8 @@ export default function SessionLaunchersDialog({
         <DialogHeader>
           <DialogTitle>Session Launchers</DialogTitle>
           <DialogDescription>
-            Configure reusable tmux session launchers for common workspaces and
-            users. These also appear in the `+` menu.
+            Configure reusable tmux session launchers for common workspaces and users. These also
+            appear in the `+` menu.
           </DialogDescription>
         </DialogHeader>
 
@@ -353,16 +345,10 @@ export default function SessionLaunchersDialog({
               </Button>
 
               {launchers.length === 0 ? (
-                <EmptyState
-                  variant="inline"
-                  className="grid gap-2 p-3 text-left text-[12px]"
-                >
-                  <span className="text-[12px]">
-                    No session launchers configured yet.
-                  </span>
+                <EmptyState variant="inline" className="grid gap-2 p-3 text-left text-[12px]">
+                  <span className="text-[12px]">No session launchers configured yet.</span>
                   <span className="text-muted-foreground">
-                    Save a named session target here to make it available from
-                    the sidebar `+` menu.
+                    Save a named session target here to make it available from the sidebar `+` menu.
                   </span>
                 </EmptyState>
               ) : (
@@ -393,9 +379,13 @@ export default function SessionLaunchersDialog({
 
             <section className="grid min-h-0 gap-3 rounded-lg border border-border-subtle bg-secondary p-3 md:overflow-y-auto">
               <div className="grid gap-2 md:grid-cols-2">
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                <label
+                  htmlFor={nameId}
+                  className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
+                >
                   Name
                   <Input
+                    id={nameId}
                     className="bg-surface-overlay"
                     value={draft.name}
                     onChange={(event) =>
@@ -408,13 +398,14 @@ export default function SessionLaunchersDialog({
                   />
                 </label>
 
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                  Icon
+                <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                  <span id={iconLabelId}>Icon</span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         type="button"
                         variant="outline"
+                        aria-labelledby={iconLabelId}
                         className="w-full cursor-pointer justify-start bg-surface-overlay text-[12px]"
                       >
                         <SelectedIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -442,12 +433,16 @@ export default function SessionLaunchersDialog({
                       })}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </label>
+                </div>
               </div>
 
-              <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+              <label
+                htmlFor={cwdId}
+                className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
+              >
                 Working Directory
                 <Input
+                  id={cwdId}
                   className="bg-surface-overlay font-mono"
                   value={draft.cwd}
                   onChange={(event) =>
@@ -461,8 +456,8 @@ export default function SessionLaunchersDialog({
               </label>
 
               {meta.canSwitchUser && (
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                  Run as user
+                <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                  <span id={userLabelId}>Run as user</span>
                   <Select
                     value={draft.user === '' ? '__default__' : draft.user}
                     onValueChange={(value) =>
@@ -472,33 +467,28 @@ export default function SessionLaunchersDialog({
                       }))
                     }
                   >
-                    <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                    <SelectTrigger
+                      aria-labelledby={userLabelId}
+                      className="w-full cursor-pointer bg-surface-overlay text-[12px]"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="z-[60]">
-                      <SelectItem
-                        value="__default__"
-                        className="cursor-pointer"
-                      >
+                      <SelectItem value="__default__" className="cursor-pointer">
                         Default user
                       </SelectItem>
                       {meta.allowedUsers.map((user) => (
-                        <SelectItem
-                          key={user}
-                          value={user}
-                          className="cursor-pointer"
-                        >
+                        <SelectItem key={user} value={user} className="cursor-pointer">
                           {user}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </label>
+                </div>
               )}
 
               <div className="rounded-md border border-border-subtle bg-surface-overlay px-3 py-2 text-[11px] text-muted-foreground">
-                Session launchers stay available from the sidebar `+` menu until
-                you delete them.
+                Session launchers stay available from the sidebar `+` menu until you delete them.
               </div>
 
               {saveError !== '' && (
@@ -524,19 +514,14 @@ export default function SessionLaunchersDialog({
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>
-                            Delete session launcher?
-                          </AlertDialogTitle>
+                          <AlertDialogTitle>Delete session launcher?</AlertDialogTitle>
                           <AlertDialogDescription>
                             This action cannot be undone.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            variant="destructive"
-                            onClick={handleDelete}
-                          >
+                          <AlertDialogAction variant="destructive" onClick={handleDelete}>
                             Delete
                           </AlertDialogAction>
                         </AlertDialogFooter>

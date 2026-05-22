@@ -14,9 +14,7 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   define: {
-    'process.env.NODE_ENV': JSON.stringify(
-      process.env.NODE_ENV ?? 'production',
-    ),
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
   },
   publicDir: 'public',
   server: {
@@ -41,9 +39,6 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('/node_modules/@xterm/xterm/')) {
             return 'vendor-xterm-core'
-          }
-          if (id.includes('/node_modules/@xterm/addon-webgl/')) {
-            return 'vendor-xterm-webgl'
           }
           if (id.includes('/node_modules/@xterm/')) {
             return 'vendor-xterm-addons'

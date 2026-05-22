@@ -7,17 +7,12 @@ export function cn(...inputs: Array<ClassValue>) {
 }
 
 export function randomId(): string {
-  if (
-    typeof crypto !== 'undefined' &&
-    typeof crypto.randomUUID === 'function'
-  ) {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 export function getCSSVar(name: string): string {
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    .trim()
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }

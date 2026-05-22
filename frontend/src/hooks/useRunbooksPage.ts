@@ -26,6 +26,10 @@ import {
 import { isActiveRunbookJob } from '@/lib/runbookPresentation'
 import { randomId } from '@/lib/utils'
 
+const EMPTY_RUNBOOKS: Array<OpsRunbook> = []
+const EMPTY_RUNBOOK_JOBS: OpsRunbooksResponse['jobs'] = []
+const EMPTY_RUNBOOK_SCHEDULES: Array<OpsSchedule> = []
+
 function runbookToDraft(runbook: OpsRunbook): RunbookDraft {
   return {
     id: runbook.id,
@@ -180,13 +184,9 @@ export function useRunbooksPage() {
   const { pushToast } = useToastContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
-  const jobPollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
-    new Set(),
-  )
+  const jobPollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
-  const [selectedRunbookId, setSelectedRunbookId] = useState<string | null>(
-    null,
-  )
+  const [selectedRunbookId, setSelectedRunbookId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState<RunbookDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [editorErrors, setEditorErrors] = useState<Record<string, string>>({})
@@ -201,19 +201,16 @@ export function useRunbooksPage() {
   } | null>(null)
   const [scheduleSaving, setScheduleSaving] = useState(false)
 
-  const fetchRunbooks = useCallback(
-    () => api<OpsRunbooksResponse>('/api/ops/runbooks'),
-    [api],
-  )
+  const fetchRunbooks = useCallback(() => api<OpsRunbooksResponse>('/api/ops/runbooks'), [api])
 
   const runbooksQuery = useQuery({
     queryKey: OPS_RUNBOOKS_QUERY_KEY,
     queryFn: fetchRunbooks,
   })
 
-  const runbooks = runbooksQuery.data?.runbooks ?? []
-  const jobs = runbooksQuery.data?.jobs ?? []
-  const schedules = runbooksQuery.data?.schedules ?? []
+  const runbooks = runbooksQuery.data?.runbooks ?? EMPTY_RUNBOOKS
+  const jobs = runbooksQuery.data?.jobs ?? EMPTY_RUNBOOK_JOBS
+  const schedules = runbooksQuery.data?.schedules ?? EMPTY_RUNBOOK_SCHEDULES
   const runbooksLoading = runbooksQuery.isLoading
 
   const refreshRunbooks = useCallback(async () => {
@@ -233,9 +230,10 @@ export function useRunbooksPage() {
   }, [])
 
   useEffect(() => {
+    const jobPollTimeouts = jobPollTimeoutsRef.current
     return () => {
-      jobPollTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout))
-      jobPollTimeoutsRef.current.clear()
+      jobPollTimeouts.forEach((timeout) => clearTimeout(timeout))
+      jobPollTimeouts.clear()
     }
   }, [])
 
@@ -265,16 +263,13 @@ export function useRunbooksPage() {
       switch (msg.type) {
         case 'ops.job.updated': {
           const job = msg.payload.job
-          queryClient.setQueryData<OpsRunbooksResponse>(
-            OPS_RUNBOOKS_QUERY_KEY,
-            (previous) => {
-              if (previous == null) return previous
-              return {
-                ...previous,
-                jobs: upsertOpsRunbookJob(previous.jobs, job),
-              }
-            },
-          )
+          queryClient.setQueryData<OpsRunbooksResponse>(OPS_RUNBOOKS_QUERY_KEY, (previous) => {
+            if (previous == null) return previous
+            return {
+              ...previous,
+              jobs: upsertOpsRunbookJob(previous.jobs, job),
+            }
+          })
           break
         }
         case 'ops.schedule.updated':
@@ -306,24 +301,18 @@ export function useRunbooksPage() {
           },
         )
         const job = data.job
-        queryClient.setQueryData<OpsRunbooksResponse>(
-          OPS_RUNBOOKS_QUERY_KEY,
-          (previous) => {
-            if (previous == null) return previous
-            return {
-              ...previous,
-              jobs: upsertOpsRunbookJob(previous.jobs, job),
-            }
-          },
-        )
+        queryClient.setQueryData<OpsRunbooksResponse>(OPS_RUNBOOKS_QUERY_KEY, (previous) => {
+          if (previous == null) return previous
+          return {
+            ...previous,
+            jobs: upsertOpsRunbookJob(previous.jobs, job),
+          }
+        })
         if (data.timelineEvent != null) {
           queryClient.setQueryData<Array<OpsActivityEvent>>(
             opsActivityQueryKey('', 'all'),
             (current = []) =>
-              prependOpsActivityEvent(
-                current,
-                data.timelineEvent as OpsActivityEvent,
-              ),
+              prependOpsActivityEvent(current, data.timelineEvent as OpsActivityEvent),
           )
         }
         trackJobUntilSettled(job.id)
@@ -336,8 +325,7 @@ export function useRunbooksPage() {
         pushToast({
           level: 'error',
           title: runbook.name,
-          message:
-            error instanceof Error ? error.message : 'failed to run runbook',
+          message: error instanceof Error ? error.message : 'failed to run runbook',
         })
       }
     },
@@ -429,8 +417,7 @@ export function useRunbooksPage() {
       pushToast({
         level: 'error',
         title: 'Save failed',
-        message:
-          error instanceof Error ? error.message : 'failed to save runbook',
+        message: error instanceof Error ? error.message : 'failed to save runbook',
       })
     } finally {
       setSaving(false)
@@ -466,8 +453,7 @@ export function useRunbooksPage() {
       pushToast({
         level: 'error',
         title: 'Delete failed',
-        message:
-          error instanceof Error ? error.message : 'failed to delete runbook',
+        message: error instanceof Error ? error.message : 'failed to delete runbook',
       })
     } finally {
       setDeleting(false)
@@ -481,22 +467,18 @@ export function useRunbooksPage() {
         await api(`/api/ops/jobs/${encodeURIComponent(jobId)}`, {
           method: 'DELETE',
         })
-        queryClient.setQueryData<OpsRunbooksResponse>(
-          OPS_RUNBOOKS_QUERY_KEY,
-          (previous) => {
-            if (previous == null) return previous
-            return {
-              ...previous,
-              jobs: previous.jobs.filter((j) => j.id !== jobId),
-            }
-          },
-        )
+        queryClient.setQueryData<OpsRunbooksResponse>(OPS_RUNBOOKS_QUERY_KEY, (previous) => {
+          if (previous == null) return previous
+          return {
+            ...previous,
+            jobs: previous.jobs.filter((j) => j.id !== jobId),
+          }
+        })
       } catch (error) {
         pushToast({
           level: 'error',
           title: 'Delete failed',
-          message:
-            error instanceof Error ? error.message : 'failed to delete job',
+          message: error instanceof Error ? error.message : 'failed to delete job',
         })
       }
     },
@@ -506,10 +488,9 @@ export function useRunbooksPage() {
   const approveJob = useCallback(
     async (jobId: string) => {
       try {
-        await api<OpsRunbookRunResponse>(
-          `/api/ops/runs/${encodeURIComponent(jobId)}/approve`,
-          { method: 'POST' },
-        )
+        await api<OpsRunbookRunResponse>(`/api/ops/runs/${encodeURIComponent(jobId)}/approve`, {
+          method: 'POST',
+        })
         await refreshRunbooks()
         trackJobUntilSettled(jobId)
         pushToast({
@@ -521,8 +502,7 @@ export function useRunbooksPage() {
         pushToast({
           level: 'error',
           title: 'Approve failed',
-          message:
-            error instanceof Error ? error.message : 'failed to approve run',
+          message: error instanceof Error ? error.message : 'failed to approve run',
         })
       }
     },
@@ -536,16 +516,13 @@ export function useRunbooksPage() {
           `/api/ops/runs/${encodeURIComponent(jobId)}/reject`,
           { method: 'POST' },
         )
-        queryClient.setQueryData<OpsRunbooksResponse>(
-          OPS_RUNBOOKS_QUERY_KEY,
-          (previous) => {
-            if (previous == null) return previous
-            return {
-              ...previous,
-              jobs: upsertOpsRunbookJob(previous.jobs, data.job),
-            }
-          },
-        )
+        queryClient.setQueryData<OpsRunbooksResponse>(OPS_RUNBOOKS_QUERY_KEY, (previous) => {
+          if (previous == null) return previous
+          return {
+            ...previous,
+            jobs: upsertOpsRunbookJob(previous.jobs, data.job),
+          }
+        })
         pushToast({
           level: 'success',
           title: 'Approval rejected',
@@ -555,8 +532,7 @@ export function useRunbooksPage() {
         pushToast({
           level: 'error',
           title: 'Reject failed',
-          message:
-            error instanceof Error ? error.message : 'failed to reject run',
+          message: error instanceof Error ? error.message : 'failed to reject run',
         })
       }
     },
@@ -578,10 +554,10 @@ export function useRunbooksPage() {
           enabled: draft.enabled,
         }
         if (editingSchedule.schedule != null) {
-          await api(
-            `/api/ops/schedules/${encodeURIComponent(editingSchedule.schedule.id)}`,
-            { method: 'PUT', body: JSON.stringify(payload) },
-          )
+          await api(`/api/ops/schedules/${encodeURIComponent(editingSchedule.schedule.id)}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          })
           pushToast({
             level: 'success',
             title: 'Schedule updated',
@@ -604,8 +580,7 @@ export function useRunbooksPage() {
         pushToast({
           level: 'error',
           title: 'Schedule save failed',
-          message:
-            error instanceof Error ? error.message : 'failed to save schedule',
+          message: error instanceof Error ? error.message : 'failed to save schedule',
         })
       } finally {
         setScheduleSaving(false)
@@ -631,10 +606,7 @@ export function useRunbooksPage() {
         pushToast({
           level: 'error',
           title: 'Delete failed',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'failed to delete schedule',
+          message: error instanceof Error ? error.message : 'failed to delete schedule',
         })
       }
     },
@@ -666,10 +638,7 @@ export function useRunbooksPage() {
         pushToast({
           level: 'error',
           title: 'Update failed',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'failed to update schedule',
+          message: error instanceof Error ? error.message : 'failed to update schedule',
         })
       }
     },
@@ -679,10 +648,9 @@ export function useRunbooksPage() {
   const triggerSchedule = useCallback(
     async (scheduleId: string) => {
       try {
-        await api(
-          `/api/ops/schedules/${encodeURIComponent(scheduleId)}/trigger`,
-          { method: 'POST' },
-        )
+        await api(`/api/ops/schedules/${encodeURIComponent(scheduleId)}/trigger`, {
+          method: 'POST',
+        })
         await refreshRunbooks()
         pushToast({
           level: 'success',
@@ -693,10 +661,7 @@ export function useRunbooksPage() {
         pushToast({
           level: 'error',
           title: 'Trigger failed',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'failed to trigger schedule',
+          message: error instanceof Error ? error.message : 'failed to trigger schedule',
         })
       }
     },
@@ -720,20 +685,14 @@ export function useRunbooksPage() {
       selectedRunbookId
         ? jobs
             .filter((j) => j.runbookId === selectedRunbookId)
-            .sort(
-              (a, b) =>
-                new Date(b.createdAt).getTime() -
-                new Date(a.createdAt).getTime(),
-            )
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         : [],
     [jobs, selectedRunbookId],
   )
 
   const selectedSchedule = useMemo(
     () =>
-      selectedRunbookId
-        ? (schedules.find((s) => s.runbookId === selectedRunbookId) ?? null)
-        : null,
+      selectedRunbookId ? (schedules.find((s) => s.runbookId === selectedRunbookId) ?? null) : null,
     [schedules, selectedRunbookId],
   )
 

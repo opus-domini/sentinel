@@ -30,43 +30,35 @@ export default function MetricsHelpDialog() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>About Metrics</DialogTitle>
-            <DialogDescription>
-              How the Sentinel metrics dashboard works.
-            </DialogDescription>
+            <DialogDescription>How the Sentinel metrics dashboard works.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <section>
-              <h3 className="mb-1 font-medium text-foreground">
-                System Metrics
-              </h3>
+              <h3 className="mb-1 font-medium text-foreground">System Metrics</h3>
               <p>
-                CPU, memory, swap, disk, inode, network, process, uptime, load,
-                and pressure signals are collected from the host operating
-                system.
+                CPU, memory, swap, disk, inode, network, process, uptime, load, and pressure signals
+                are collected from the host operating system.
               </p>
             </section>
             <section>
-              <h3 className="mb-1 font-medium text-foreground">
-                Runtime Metrics
-              </h3>
+              <h3 className="mb-1 font-medium text-foreground">Runtime Metrics</h3>
               <p>
-                Go runtime statistics include goroutine count, heap allocation,
-                runtime memory, GC count, and the latest GC pause for the
-                Sentinel process.
+                Go runtime statistics include goroutine count, heap allocation, runtime memory, GC
+                count, and the latest GC pause for the Sentinel process.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Live Updates</h3>
               <p>
-                Metrics are pushed from the server every 2 seconds over
-                WebSocket. No manual refresh is needed while connected.
+                Metrics are pushed from the server every 2 seconds over WebSocket. No manual refresh
+                is needed while connected.
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-foreground">Data Source</h3>
               <p>
-                All metrics are collected locally by the Sentinel backend. No
-                external monitoring agents or services are required.
+                All metrics are collected locally by the Sentinel backend. No external monitoring
+                agents or services are required.
               </p>
             </section>
           </div>

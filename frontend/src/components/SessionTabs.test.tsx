@@ -30,15 +30,9 @@ describe('SessionTabs', () => {
   it('marks the active tab and labels close buttons per session', () => {
     renderTabs()
 
-    expect(
-      screen.getByRole('tab', { name: 'api' }).getAttribute('aria-selected'),
-    ).toBe('true')
-    expect(
-      screen.getByRole('tab', { name: 'worker' }).getAttribute('aria-selected'),
-    ).toBe('false')
-    expect(
-      screen.getByRole('button', { name: 'Close worker tab' }),
-    ).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'api' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: 'worker' }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.getByRole('button', { name: 'Close worker tab' })).toBeTruthy()
   })
 
   it('selects and closes tabs from the keyboard', () => {

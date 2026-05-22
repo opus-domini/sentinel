@@ -76,14 +76,10 @@ const LogLine = React.memo(function LogLine({
         )}
         {line.timestamp && ' '}
         {line.unit && (
-          <span className="text-purple-400/70">
-            {highlightMatch(line.unit, searchRegex)}
-          </span>
+          <span className="text-purple-400/70">{highlightMatch(line.unit, searchRegex)}</span>
         )}
         {line.unit && ' '}
-        <span className={levelClass}>
-          {highlightMatch(line.message, searchRegex)}
-        </span>
+        <span className={levelClass}>{highlightMatch(line.message, searchRegex)}</span>
       </span>
     </div>
   )
@@ -107,8 +103,7 @@ export function LogViewer({
   }, [lines])
 
   const searchRegex = useMemo(
-    () =>
-      searchQuery ? new RegExp(`(${escapeRegex(searchQuery)})`, 'i') : null,
+    () => (searchQuery ? new RegExp(`(${escapeRegex(searchQuery)})`, 'i') : null),
     [searchQuery],
   )
 

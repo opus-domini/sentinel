@@ -47,9 +47,7 @@ export default function AlertsSidebar({
 
   const health = useMemo(() => {
     if (overview == null) return '-'
-    return overview.services.failed > 0
-      ? `${overview.services.failed} failed`
-      : 'healthy'
+    return overview.services.failed > 0 ? `${overview.services.failed} failed` : 'healthy'
   }, [overview])
 
   return (
@@ -78,11 +76,7 @@ export default function AlertsSidebar({
                   onClick={() => setIsTokenOpen(true)}
                   aria-label="API token"
                 >
-                  {authenticated ? (
-                    <Lock className="h-3 w-3" />
-                  ) : (
-                    <LockOpen className="h-3 w-3" />
-                  )}
+                  {authenticated ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
                 </Button>
               </TooltipHelper>
             </div>
@@ -113,9 +107,7 @@ export default function AlertsSidebar({
             <div className="rounded-md border border-border-subtle bg-surface-elevated p-2">
               <p className="text-[10px] text-muted-foreground">Uptime</p>
               <p className="mt-0.5 text-[11px] font-medium">
-                {overview != null
-                  ? formatUptime(overview.sentinel.uptimeSec)
-                  : '-'}
+                {overview != null ? formatUptime(overview.sentinel.uptimeSec) : '-'}
               </p>
             </div>
             <div className="rounded-md border border-border-subtle bg-surface-elevated p-2">

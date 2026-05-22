@@ -29,9 +29,7 @@ export function ServiceStatusDialog({
       <DialogContent className="max-h-[85vh] max-w-[calc(100vw-1rem)] overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {data?.service.unit
-              ? formatOpsUnitName(data.service.unit)
-              : 'Service status'}
+            {data?.service.unit ? formatOpsUnitName(data.service.unit) : 'Service status'}
           </DialogTitle>
           <DialogDescription>
             {data?.summary ?? 'Runtime details from service manager'}
@@ -40,9 +38,7 @@ export function ServiceStatusDialog({
 
         <div className="grid min-h-0 gap-2 overflow-hidden">
           {loading && (
-            <p className="text-[12px] text-muted-foreground">
-              Loading service status...
-            </p>
+            <p className="text-[12px] text-muted-foreground">Loading service status...</p>
           )}
           {error !== '' && (
             <p className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[12px] text-destructive-foreground">
@@ -57,42 +53,31 @@ export function ServiceStatusDialog({
                   <p className="text-[11px] font-semibold text-foreground">
                     {formatOpsUnitName(data.service.unit)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    checked at {data.checkedAt}
-                  </p>
+                  <p className="text-[10px] text-muted-foreground">checked at {data.checkedAt}</p>
                 </div>
 
-                {data.properties != null &&
-                  Object.keys(data.properties).length > 0 && (
-                    <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                      <p className="mb-1 text-[11px] font-semibold text-foreground">
-                        Properties
-                      </p>
-                      <div className="grid gap-1 overflow-hidden text-[11px]">
-                        {Object.entries(data.properties)
-                          .sort(([a], [b]) => a.localeCompare(b))
-                          .map(([key, value]) => (
-                            <div
-                              key={key}
-                              className="grid grid-cols-[5.5rem_1fr] gap-2 sm:grid-cols-[9rem_1fr]"
-                            >
-                              <span className="break-all font-mono text-muted-foreground">
-                                {key}
-                              </span>
-                              <span className="break-all font-mono text-foreground">
-                                {value}
-                              </span>
-                            </div>
-                          ))}
-                      </div>
+                {data.properties != null && Object.keys(data.properties).length > 0 && (
+                  <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
+                    <p className="mb-1 text-[11px] font-semibold text-foreground">Properties</p>
+                    <div className="grid gap-1 overflow-hidden text-[11px]">
+                      {Object.entries(data.properties)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([key, value]) => (
+                          <div
+                            key={key}
+                            className="grid grid-cols-[5.5rem_1fr] gap-2 sm:grid-cols-[9rem_1fr]"
+                          >
+                            <span className="break-all font-mono text-muted-foreground">{key}</span>
+                            <span className="break-all font-mono text-foreground">{value}</span>
+                          </div>
+                        ))}
                     </div>
-                  )}
+                  </div>
+                )}
 
                 {data.output?.trim() !== '' && (
                   <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                    <p className="mb-1 text-[11px] font-semibold text-foreground">
-                      Raw output
-                    </p>
+                    <p className="mb-1 text-[11px] font-semibold text-foreground">Raw output</p>
                     <pre className="max-h-[36vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-background p-2 font-mono text-[11px] text-secondary-foreground">
                       {data.output}
                     </pre>

@@ -4,21 +4,18 @@ import type { VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
 
-const emptyStateVariants = cva(
-  'select-none text-center text-muted-foreground',
-  {
-    variants: {
-      variant: {
-        default:
-          'grid h-full place-items-center rounded-md border border-border-subtle bg-surface-sunken',
-        inline: 'rounded-md border border-border bg-surface-overlay px-2 py-2',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
+const emptyStateVariants = cva('select-none text-center text-muted-foreground', {
+  variants: {
+    variant: {
+      default:
+        'grid h-full place-items-center rounded-md border border-border-subtle bg-surface-sunken',
+      inline: 'rounded-md border border-border bg-surface-overlay px-2 py-2',
     },
   },
-)
+  defaultVariants: {
+    variant: 'default',
+  },
+})
 
 function EmptyState({
   className,

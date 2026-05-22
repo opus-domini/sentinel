@@ -54,11 +54,7 @@ function resolveLocale(locale: string): string | undefined {
   return locale || undefined
 }
 
-export function formatDateTime(
-  value: string,
-  timezone: string,
-  locale = '',
-): string {
+export function formatDateTime(value: string, timezone: string, locale = ''): string {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
@@ -77,11 +73,7 @@ export function formatDateTime(
   }
 }
 
-export function formatDateTimeShort(
-  value: string,
-  timezone: string,
-  locale = '',
-): string {
+export function formatDateTimeShort(value: string, timezone: string, locale = ''): string {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
@@ -99,11 +91,7 @@ export function formatDateTimeShort(
   }
 }
 
-export function formatRelativeTime(
-  value: string,
-  timezone: string,
-  locale = '',
-): string {
+export function formatRelativeTime(value: string, timezone: string, locale = ''): string {
   const parsed = Date.parse(value)
   if (Number.isNaN(parsed)) return value
   const d = new Date(parsed)
@@ -116,11 +104,7 @@ export function formatRelativeTime(
   return formatDateTimeShort(value, timezone, locale)
 }
 
-export function formatTimestamp(
-  value: string,
-  timezone: string,
-  locale = '',
-): string {
+export function formatTimestamp(value: string, timezone: string, locale = ''): string {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'

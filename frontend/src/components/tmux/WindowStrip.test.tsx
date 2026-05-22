@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import WindowStrip, { clampWindowStripTransform } from './WindowStrip'
@@ -22,10 +16,10 @@ describe('WindowStrip', () => {
   })
 
   function openLauncherMenu() {
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'Open launcher menu' }),
-      { button: 0, ctrlKey: false },
-    )
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Open launcher menu' }), {
+      button: 0,
+      ctrlKey: false,
+    })
   }
 
   function renderStrip(props: Parameters<typeof WindowStrip>[0]) {
@@ -58,12 +52,10 @@ describe('WindowStrip', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create blank window' }))
 
     expect(onCreateWindow).toHaveBeenCalledTimes(1)
-    expect(
-      screen.getByRole('button', { name: 'Create blank window' }).className,
-    ).toContain('size-5')
-    expect(
-      screen.getByRole('button', { name: 'Open launcher menu' }).className,
-    ).toContain('size-5')
+    expect(screen.getByRole('button', { name: 'Create blank window' }).className).toContain(
+      'size-5',
+    )
+    expect(screen.getByRole('button', { name: 'Open launcher menu' }).className).toContain('size-5')
   })
 
   it('prevents pointer focus from sticking to the blank window button', () => {
@@ -83,11 +75,9 @@ describe('WindowStrip', () => {
       onOpenLaunchers: vi.fn(),
     })
 
-    expect(
-      fireEvent.mouseDown(
-        screen.getByRole('button', { name: 'Create blank window' }),
-      ),
-    ).toBe(false)
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Create blank window' }))).toBe(
+      false,
+    )
   })
 
   it('launches configured launchers from the dropdown menu', async () => {
@@ -382,15 +372,9 @@ describe('WindowStrip', () => {
 
     expect(stripRoot?.className).toContain('overflow-y-hidden')
     expect(stripRoot?.className).toContain('no-scrollbar')
-    expect(stripRoot?.getAttribute('data-sentinel-window-strip-scroll')).toBe(
-      'true',
-    )
-    expect(stripRoot?.getAttribute('style')).toContain(
-      'overscroll-behavior-x: contain',
-    )
-    expect(stripRoot?.getAttribute('style')).toContain(
-      'overscroll-behavior-y: none',
-    )
+    expect(stripRoot?.getAttribute('data-sentinel-window-strip-scroll')).toBe('true')
+    expect(stripRoot?.getAttribute('style')).toContain('overscroll-behavior-x: contain')
+    expect(stripRoot?.getAttribute('style')).toContain('overscroll-behavior-y: none')
   })
 
   it('maps wheel movement to horizontal strip scrolling', () => {

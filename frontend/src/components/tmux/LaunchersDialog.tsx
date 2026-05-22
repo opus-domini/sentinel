@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ChevronDown, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { DEFAULT_ICON_KEY, TMUX_ICONS, getTmuxIcon } from '@/lib/tmuxIcons'
 import type { LauncherCwdMode, LauncherUserMode, TmuxLauncher } from '@/types'
 import {
@@ -147,14 +147,9 @@ function SortableLauncherItem({
   dragEnabled: boolean
   onSelect: (id: string) => void
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: launcher.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: launcher.id,
+  })
   const Icon = getTmuxIcon(launcher.icon)
 
   return (
@@ -182,16 +177,12 @@ function SortableLauncherItem({
       >
         <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12px] font-semibold">
-            {launcher.name}
-          </span>
+          <span className="block truncate text-[12px] font-semibold">{launcher.name}</span>
           <span className="block truncate text-[10px] text-muted-foreground">
             {describeLauncherCommand(launcher.command)}
           </span>
         </span>
-        {!launcher.lastUsedAt && (
-          <span className="text-[10px] text-muted-foreground">New</span>
-        )}
+        {!launcher.lastUsedAt && <span className="text-[10px] text-muted-foreground">New</span>}
       </button>
     </li>
   )
@@ -206,6 +197,15 @@ export default function LaunchersDialog({
   onReorder,
 }: LaunchersDialogProps) {
   const meta = useMetaContext()
+  const dialogId = useId()
+  const nameId = `${dialogId}-name`
+  const iconLabelId = `${dialogId}-icon-label`
+  const commandId = `${dialogId}-command`
+  const cwdModeLabelId = `${dialogId}-cwd-mode-label`
+  const windowNameId = `${dialogId}-window-name`
+  const fixedPathId = `${dialogId}-fixed-path`
+  const userModeLabelId = `${dialogId}-user-mode-label`
+  const fixedUserLabelId = `${dialogId}-fixed-user-label`
   const isMobile = useIsMobileLayout()
   const dragEnabled = !isMobile
   const [selectedID, setSelectedID] = useState<string>('new')
@@ -325,8 +325,8 @@ export default function LaunchersDialog({
         <DialogHeader>
           <DialogTitle>Launchers</DialogTitle>
           <DialogDescription>
-            Configure reusable tmux window launchers for Codex, Claude Code, and
-            any other command workflow.
+            Configure reusable tmux window launchers for Codex, Claude Code, and any other command
+            workflow.
           </DialogDescription>
         </DialogHeader>
 
@@ -355,10 +355,7 @@ export default function LaunchersDialog({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuItem
-                      className="cursor-pointer"
-                      onSelect={startNewLauncher}
-                    >
+                    <DropdownMenuItem className="cursor-pointer" onSelect={startNewLauncher}>
                       Blank launcher
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -381,16 +378,10 @@ export default function LaunchersDialog({
               </div>
 
               {launchers.length === 0 ? (
-                <EmptyState
-                  variant="inline"
-                  className="grid gap-2 p-3 text-left text-[12px]"
-                >
-                  <span className="text-[12px]">
-                    No launchers configured yet.
-                  </span>
+                <EmptyState variant="inline" className="grid gap-2 p-3 text-left text-[12px]">
+                  <span className="text-[12px]">No launchers configured yet.</span>
                   <span className="text-muted-foreground">
-                    Start from a blank launcher or pick a preset from the split
-                    button above.
+                    Start from a blank launcher or pick a preset from the split button above.
                   </span>
                 </EmptyState>
               ) : (
@@ -421,9 +412,13 @@ export default function LaunchersDialog({
 
             <section className="grid min-h-0 gap-3 rounded-lg border border-border-subtle bg-secondary p-3 md:overflow-y-auto">
               <div className="grid gap-2 md:grid-cols-2">
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                <label
+                  htmlFor={nameId}
+                  className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
+                >
                   Name
                   <Input
+                    id={nameId}
                     className="bg-surface-overlay"
                     value={draft.name}
                     onChange={(event) =>
@@ -436,13 +431,14 @@ export default function LaunchersDialog({
                   />
                 </label>
 
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                  Icon
+                <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                  <span id={iconLabelId}>Icon</span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         type="button"
                         variant="outline"
+                        aria-labelledby={iconLabelId}
                         className="w-full cursor-pointer justify-start bg-surface-overlay text-[12px]"
                       >
                         <SelectedIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -470,12 +466,16 @@ export default function LaunchersDialog({
                       })}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </label>
+                </div>
               </div>
 
-              <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+              <label
+                htmlFor={commandId}
+                className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
+              >
                 Command
                 <Input
+                  id={commandId}
                   className="bg-surface-overlay font-mono"
                   value={draft.command}
                   onChange={(event) =>
@@ -492,8 +492,8 @@ export default function LaunchersDialog({
               </label>
 
               <div className="grid gap-2 md:grid-cols-2">
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                  Working Directory
+                <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                  <span id={cwdModeLabelId}>Working Directory</span>
                   <Select
                     value={draft.cwdMode}
                     onValueChange={(value: LauncherCwdMode) =>
@@ -504,17 +504,17 @@ export default function LaunchersDialog({
                       }))
                     }
                   >
-                    <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                    <SelectTrigger
+                      aria-labelledby={cwdModeLabelId}
+                      className="w-full cursor-pointer bg-surface-overlay text-[12px]"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="z-[60]">
                       <SelectItem value="session" className="cursor-pointer">
                         session cwd
                       </SelectItem>
-                      <SelectItem
-                        value="active-pane"
-                        className="cursor-pointer"
-                      >
+                      <SelectItem value="active-pane" className="cursor-pointer">
                         active pane cwd
                       </SelectItem>
                       <SelectItem value="fixed" className="cursor-pointer">
@@ -522,11 +522,15 @@ export default function LaunchersDialog({
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                </label>
+                </div>
 
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                <label
+                  htmlFor={windowNameId}
+                  className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
+                >
                   Window Name
                   <Input
+                    id={windowNameId}
                     className="bg-surface-overlay"
                     value={draft.windowName}
                     onChange={(event) =>
@@ -541,9 +545,13 @@ export default function LaunchersDialog({
               </div>
 
               {draft.cwdMode === 'fixed' && (
-                <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                <label
+                  htmlFor={fixedPathId}
+                  className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
+                >
                   Fixed Path
                   <Input
+                    id={fixedPathId}
                     className="bg-surface-overlay font-mono"
                     value={draft.cwdValue}
                     onChange={(event) =>
@@ -559,8 +567,8 @@ export default function LaunchersDialog({
 
               {meta.canSwitchUser && (
                 <>
-                  <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                    Run as user
+                  <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                    <span id={userModeLabelId}>Run as user</span>
                     <Select
                       value={draft.userMode}
                       onValueChange={(value: LauncherUserMode) =>
@@ -571,7 +579,10 @@ export default function LaunchersDialog({
                         }))
                       }
                     >
-                      <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                      <SelectTrigger
+                        aria-labelledby={userModeLabelId}
+                        className="w-full cursor-pointer bg-surface-overlay text-[12px]"
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="z-[60]">
@@ -584,13 +595,13 @@ export default function LaunchersDialog({
                       </SelectContent>
                     </Select>
                     <span className="text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
-                      Override the system user for this window. Leave blank to
-                      inherit from the session.
+                      Override the system user for this window. Leave blank to inherit from the
+                      session.
                     </span>
-                  </label>
+                  </div>
                   {draft.userMode === 'fixed' && (
-                    <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                      Fixed User
+                    <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                      <span id={fixedUserLabelId}>Fixed User</span>
                       <Select
                         value={draft.userValue}
                         onValueChange={(value) =>
@@ -600,29 +611,28 @@ export default function LaunchersDialog({
                           }))
                         }
                       >
-                        <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                        <SelectTrigger
+                          aria-labelledby={fixedUserLabelId}
+                          className="w-full cursor-pointer bg-surface-overlay text-[12px]"
+                        >
                           <SelectValue placeholder="Select user" />
                         </SelectTrigger>
                         <SelectContent className="z-[60]">
                           {meta.allowedUsers.map((u) => (
-                            <SelectItem
-                              key={u}
-                              value={u}
-                              className="cursor-pointer"
-                            >
+                            <SelectItem key={u} value={u} className="cursor-pointer">
                               {u}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                    </label>
+                    </div>
                   )}
                 </>
               )}
 
               <div className="rounded-md border border-border-subtle bg-surface-overlay px-3 py-2 text-[11px] text-muted-foreground">
-                Launchers always open a new tmux window from the active session.
-                The `+` menu becomes the fast path to use them.
+                Launchers always open a new tmux window from the active session. The `+` menu
+                becomes the fast path to use them.
               </div>
 
               {saveError !== '' && (
@@ -655,10 +665,7 @@ export default function LaunchersDialog({
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            variant="destructive"
-                            onClick={handleDelete}
-                          >
+                          <AlertDialogAction variant="destructive" onClick={handleDelete}>
                             Delete
                           </AlertDialogAction>
                         </AlertDialogFooter>

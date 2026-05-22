@@ -13,11 +13,7 @@ import {
 import type { OpsBrowsedService, OpsServiceAction } from '@/types'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
-import {
-  canStartOpsService,
-  canStopOpsService,
-  formatOpsUnitName,
-} from '@/lib/opsServices'
+import { canStartOpsService, canStopOpsService, formatOpsUnitName } from '@/lib/opsServices'
 import { browsedServiceDot } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 
@@ -55,9 +51,7 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
   const disableDisabled = rowBusy || !canDisableService(svc)
   const unitLabel = formatOpsUnitName(svc.unit)
   const description =
-    svc.description &&
-    svc.description !== svc.unit &&
-    svc.description !== unitLabel
+    svc.description && svc.description !== svc.unit && svc.description !== unitLabel
       ? svc.description
       : ''
 
@@ -65,10 +59,7 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
     <div className="grid min-w-0 gap-1.5 rounded border border-border-subtle bg-surface-elevated px-2 py-1.5">
       <div className="flex min-w-0 items-start gap-2">
         <span
-          className={cn(
-            'mt-1 h-2 w-2 shrink-0 rounded-full',
-            browsedServiceDot(svc.activeState),
-          )}
+          className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', browsedServiceDot(svc.activeState))}
         />
         <div className="min-w-0 flex-1">
           <div className="grid min-w-0 gap-1 sm:flex sm:items-center sm:gap-1.5">
@@ -93,8 +84,7 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
                 <span
                   className={cn(
                     'cursor-default rounded border px-1 text-[9px]',
-                    svc.activeState === 'active' ||
-                      svc.activeState === 'running'
+                    svc.activeState === 'active' || svc.activeState === 'running'
                       ? 'border-ok/30 text-ok-foreground'
                       : svc.activeState === 'failed'
                         ? 'border-destructive/30 text-destructive-foreground'
@@ -122,9 +112,7 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
           </div>
         </div>
         {pending && (
-          <span className="shrink-0 text-[10px] text-muted-foreground">
-            {pending}...
-          </span>
+          <span className="shrink-0 text-[10px] text-muted-foreground">{pending}...</span>
         )}
       </div>
       <div className="grid min-w-0 gap-1 pl-4 sm:flex sm:items-center sm:gap-2">
@@ -218,9 +206,7 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
               <Clock3 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           </TooltipHelper>
-          <TooltipHelper
-            content={svc.tracked ? 'Unpin from sidebar' : 'Pin to sidebar'}
-          >
+          <TooltipHelper content={svc.tracked ? 'Unpin from sidebar' : 'Pin to sidebar'}>
             <Button
               variant="outline"
               size="icon-lg"

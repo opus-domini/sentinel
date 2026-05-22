@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +43,15 @@ export function RunbookStepEditor({
 }: RunbookStepEditorProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const retriesNum = Number(step.retries) || 0
+  const id = useId()
+  const titleId = `${id}-title`
+  const commandId = `${id}-command`
+  const scriptId = `${id}-script`
+  const descriptionId = `${id}-description`
+  const continueOnErrorId = `${id}-continue-on-error`
+  const timeoutId = `${id}-timeout`
+  const retriesId = `${id}-retries`
+  const retryDelayId = `${id}-retry-delay`
 
   return (
     <div className="grid gap-2 rounded-lg border border-border-subtle bg-surface-elevated p-2.5">
@@ -99,10 +108,11 @@ export function RunbookStepEditor({
 
       <div className="grid gap-1.5">
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label htmlFor={titleId} className="text-[10px] font-medium text-muted-foreground">
             Title
           </label>
           <Input
+            id={titleId}
             className={cn(
               'mt-0.5 h-7 bg-surface-overlay text-[12px]',
               errors.title && 'border-destructive',
@@ -112,18 +122,17 @@ export function RunbookStepEditor({
             onChange={(e) => onChange({ ...step, title: e.target.value })}
           />
           {errors.title && (
-            <p className="mt-0.5 text-[10px] text-destructive-foreground">
-              {errors.title}
-            </p>
+            <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.title}</p>
           )}
         </div>
 
         {step.type === 'run' && (
           <div>
-            <label className="text-[10px] font-medium text-muted-foreground">
+            <label htmlFor={commandId} className="text-[10px] font-medium text-muted-foreground">
               Command
             </label>
             <Input
+              id={commandId}
               className={cn(
                 'mt-0.5 h-7 bg-surface-overlay font-mono text-[11px]',
                 errors.command && 'border-destructive',
@@ -133,57 +142,52 @@ export function RunbookStepEditor({
               onChange={(e) => onChange({ ...step, command: e.target.value })}
             />
             {errors.command && (
-              <p className="mt-0.5 text-[10px] text-destructive-foreground">
-                {errors.command}
-              </p>
+              <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.command}</p>
             )}
           </div>
         )}
 
         {step.type === 'script' && (
           <div>
-            <label className="text-[10px] font-medium text-muted-foreground">
+            <label htmlFor={scriptId} className="text-[10px] font-medium text-muted-foreground">
               Script
             </label>
             <Textarea
+              id={scriptId}
               className={cn(
                 'mt-0.5 min-h-36 bg-surface-overlay font-mono text-sm leading-relaxed',
                 errors.script && 'border-destructive',
               )}
-              placeholder={
-                '#!/bin/bash\nset -euo pipefail\n\n# your script here'
-              }
+              placeholder={'#!/bin/bash\nset -euo pipefail\n\n# your script here'}
               value={step.script}
               onChange={(e) => onChange({ ...step, script: e.target.value })}
             />
             {errors.script && (
-              <p className="mt-0.5 text-[10px] text-destructive-foreground">
-                {errors.script}
-              </p>
+              <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.script}</p>
             )}
           </div>
         )}
 
         {step.type === 'approval' && (
           <div>
-            <label className="text-[10px] font-medium text-muted-foreground">
+            <label
+              htmlFor={descriptionId}
+              className="text-[10px] font-medium text-muted-foreground"
+            >
               Approval instructions
             </label>
             <Textarea
+              id={descriptionId}
               className={cn(
                 'mt-0.5 min-h-12 bg-surface-overlay text-[12px]',
                 errors.description && 'border-destructive',
               )}
               placeholder="Describe what the operator should verify before approving..."
               value={step.description}
-              onChange={(e) =>
-                onChange({ ...step, description: e.target.value })
-              }
+              onChange={(e) => onChange({ ...step, description: e.target.value })}
             />
             {errors.description && (
-              <p className="mt-0.5 text-[10px] text-destructive-foreground">
-                {errors.description}
-              </p>
+              <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.description}</p>
             )}
           </div>
         )}
@@ -207,61 +211,67 @@ export function RunbookStepEditor({
           <div className="grid gap-2 rounded border border-border-subtle bg-surface-overlay p-2">
             <label className="flex cursor-pointer items-center gap-2 text-[11px] select-none">
               <input
+                id={continueOnErrorId}
                 type="checkbox"
+                aria-label="Continue on error"
                 checked={step.continueOnError}
-                onChange={(e) =>
-                  onChange({ ...step, continueOnError: e.target.checked })
-                }
+                onChange={(e) => onChange({ ...step, continueOnError: e.target.checked })}
                 className="h-3.5 w-3.5 rounded border-border accent-primary"
               />
               <span className="text-muted-foreground">Continue on error</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground">
+                <label
+                  htmlFor={timeoutId}
+                  className="text-[10px] font-medium text-muted-foreground"
+                >
                   Timeout (seconds)
                 </label>
                 <Input
+                  id={timeoutId}
                   className="mt-0.5 h-7 bg-surface-elevated text-[11px]"
                   type="text"
                   inputMode="numeric"
                   placeholder="30"
                   value={step.timeout}
-                  onChange={(e) =>
-                    onChange({ ...step, timeout: e.target.value })
-                  }
+                  onChange={(e) => onChange({ ...step, timeout: e.target.value })}
                 />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground">
+                <label
+                  htmlFor={retriesId}
+                  className="text-[10px] font-medium text-muted-foreground"
+                >
                   Retries
                 </label>
                 <Input
+                  id={retriesId}
                   className="mt-0.5 h-7 bg-surface-elevated text-[11px]"
                   type="text"
                   inputMode="numeric"
                   placeholder="0"
                   value={step.retries}
-                  onChange={(e) =>
-                    onChange({ ...step, retries: e.target.value })
-                  }
+                  onChange={(e) => onChange({ ...step, retries: e.target.value })}
                 />
               </div>
             </div>
             {retriesNum > 0 && (
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground">
+                <label
+                  htmlFor={retryDelayId}
+                  className="text-[10px] font-medium text-muted-foreground"
+                >
                   Retry delay (seconds)
                 </label>
                 <Input
+                  id={retryDelayId}
                   className="mt-0.5 h-7 bg-surface-elevated text-[11px]"
                   type="text"
                   inputMode="numeric"
                   placeholder="2"
                   value={step.retryDelay}
-                  onChange={(e) =>
-                    onChange({ ...step, retryDelay: e.target.value })
-                  }
+                  onChange={(e) => onChange({ ...step, retryDelay: e.target.value })}
                 />
               </div>
             )}

@@ -12,9 +12,7 @@ describe('TerminalControls', () => {
   it('sends a plain tab when shift is not active', () => {
     const onSendKey = vi.fn()
 
-    render(
-      <TerminalControls onSendKey={onSendKey} onRefocus={() => undefined} />,
-    )
+    render(<TerminalControls onSendKey={onSendKey} onRefocus={() => undefined} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Tab' }))
 
@@ -24,9 +22,7 @@ describe('TerminalControls', () => {
   it('sends reverse tab and consumes sticky shift', () => {
     const onSendKey = vi.fn()
 
-    render(
-      <TerminalControls onSendKey={onSendKey} onRefocus={() => undefined} />,
-    )
+    render(<TerminalControls onSendKey={onSendKey} onRefocus={() => undefined} />)
 
     const shiftButton = screen.getByRole('button', { name: /Shift modifier/i })
     const tabButton = screen.getByRole('button', { name: 'Tab' })
@@ -43,9 +39,7 @@ describe('TerminalControls', () => {
   it('applies shift to CSI keys from the helper', () => {
     const onSendKey = vi.fn()
 
-    render(
-      <TerminalControls onSendKey={onSendKey} onRefocus={() => undefined} />,
-    )
+    render(<TerminalControls onSendKey={onSendKey} onRefocus={() => undefined} />)
 
     fireEvent.click(screen.getByRole('button', { name: /Shift modifier/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Arrow up' }))

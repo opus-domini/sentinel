@@ -15,11 +15,8 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
-  useRouterState: ({
-    select,
-  }: {
-    select: (state: { location: { pathname: string } }) => string
-  }) => select({ location: { pathname: '/tmux' } }),
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) =>
+    select({ location: { pathname: '/tmux' } }),
 }))
 
 const layoutValue = {

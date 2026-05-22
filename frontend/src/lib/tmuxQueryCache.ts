@@ -7,9 +7,7 @@ export type TmuxInspectorSnapshot = {
   panes: Array<PaneInfo>
 }
 
-export function tmuxInspectorQueryKey(
-  session: string,
-): readonly ['tmux', 'inspector', string] {
+export function tmuxInspectorQueryKey(session: string): readonly ['tmux', 'inspector', string] {
   return ['tmux', 'inspector', session.trim()] as const
 }
 
@@ -39,14 +37,12 @@ export function shouldCacheActiveInspectorSnapshot(
   const active = activeSession.trim()
   if (active === '') return false
 
-  const windowSession =
-    windows.find((item) => item.session.trim() !== '')?.session.trim() ?? ''
+  const windowSession = windows.find((item) => item.session.trim() !== '')?.session.trim() ?? ''
   if (windowSession !== '') {
     return windowSession === active
   }
 
-  const paneSession =
-    panes.find((item) => item.session.trim() !== '')?.session.trim() ?? ''
+  const paneSession = panes.find((item) => item.session.trim() !== '')?.session.trim() ?? ''
   if (paneSession !== '') {
     return paneSession === active
   }

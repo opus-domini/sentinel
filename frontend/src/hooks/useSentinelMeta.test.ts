@@ -127,9 +127,7 @@ describe('useSentinelMeta', () => {
   })
 
   it('keeps defaults on network error', async () => {
-    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error('network fail'),
-    )
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network fail'))
 
     const { result } = renderHook(() => useSentinelMeta(), { wrapper })
 

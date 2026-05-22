@@ -75,10 +75,7 @@ type RunbookDetailPanelProps = {
   onEdit: (runbook: OpsRunbook) => void
   onDelete: (runbook: OpsRunbook) => void
   onRun: (runbookId: string) => void
-  onEditSchedule: (value: {
-    runbookId: string
-    schedule: OpsSchedule | null
-  }) => void
+  onEditSchedule: (value: { runbookId: string; schedule: OpsSchedule | null }) => void
   onCancelScheduleEdit: () => void
   onSaveSchedule: (draft: ScheduleDraft) => void
   onDeleteSchedule: (scheduleId: string) => void
@@ -106,14 +103,9 @@ export function RunbookDetailPanel({
   const status = runbookStatusMeta(runbook, lastJob ? [lastJob] : [])
   const activeRun = lastJob != null && isActiveRunbookJob(lastJob)
   const progress = lastJob ? runbookJobProgress(lastJob) : 0
-  const waitingApproval =
-    lastJob != null && isWaitingApprovalRunbookJob(lastJob)
-  const lastRunStatusLabel = waitingApproval
-    ? 'Waiting approval'
-    : (lastJob?.status ?? '')
-  const runDuration = lastJob
-    ? formatRunbookDuration(runbookJobDurationMs(lastJob))
-    : 'n/a'
+  const waitingApproval = lastJob != null && isWaitingApprovalRunbookJob(lastJob)
+  const lastRunStatusLabel = waitingApproval ? 'Waiting approval' : (lastJob?.status ?? '')
+  const runDuration = lastJob ? formatRunbookDuration(runbookJobDurationMs(lastJob)) : 'n/a'
   const lastRunLabel = lastJob
     ? `${lastRunStatusLabel} · ${formatDateTime(lastJob.createdAt)}`
     : 'No runs recorded'
@@ -130,9 +122,7 @@ export function RunbookDetailPanel({
       <div className="grid gap-2 sm:flex sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="truncate text-[14px] font-semibold">{runbook.name}</h2>
-          <p className="text-[12px] text-muted-foreground">
-            {runbook.description}
-          </p>
+          <p className="text-[12px] text-muted-foreground">{runbook.description}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button
@@ -147,12 +137,7 @@ export function RunbookDetailPanel({
           {isBuiltinRunbook(runbook.id) ? (
             <TooltipHelper content="Built-in runbooks cannot be deleted">
               <span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1 px-3 text-[11px]"
-                  disabled
-                >
+                <Button variant="outline" size="sm" className="h-8 gap-1 px-3 text-[11px]" disabled>
                   <Trash2 className="h-3 w-3" />
                   Delete
                 </Button>
@@ -281,9 +266,7 @@ export function RunbookDetailPanel({
                 </pre>
               )}
               {step.type === 'approval' && step.description && (
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {step.description}
-                </p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">{step.description}</p>
               )}
               {(step.continueOnError || step.timeout || step.retries) && (
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -330,26 +313,17 @@ export function RunbookDetailPanel({
                 {param.type}
               </Badge>
               {param.required && (
-                <Badge
-                  variant="outline"
-                  className="h-4 px-1 text-[9px] text-warning-foreground"
-                >
+                <Badge variant="outline" className="h-4 px-1 text-[9px] text-warning-foreground">
                   required
                 </Badge>
               )}
-              {param.label && (
-                <span className="text-muted-foreground">{param.label}</span>
+              {param.label && <span className="text-muted-foreground">{param.label}</span>}
+              {param.default && <span className="text-muted-foreground">= {param.default}</span>}
+              {param.type === 'select' && param.options && param.options.length > 0 && (
+                <span className="truncate text-[10px] text-muted-foreground">
+                  [{param.options.join(', ')}]
+                </span>
               )}
-              {param.default && (
-                <span className="text-muted-foreground">= {param.default}</span>
-              )}
-              {param.type === 'select' &&
-                param.options &&
-                param.options.length > 0 && (
-                  <span className="truncate text-[10px] text-muted-foreground">
-                    [{param.options.join(', ')}]
-                  </span>
-                )}
             </div>
           ))}
         </div>
@@ -377,12 +351,8 @@ export function RunbookDetailPanel({
           <div className="rounded border border-border-subtle bg-surface-overlay px-2.5 py-2">
             <div className="flex items-center gap-1.5">
               <Clock className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[11px] font-medium">
-                {scheduleDescription(schedule)}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                ({schedule.timezone})
-              </span>
+              <span className="text-[11px] font-medium">{scheduleDescription(schedule)}</span>
+              <span className="text-[10px] text-muted-foreground">({schedule.timezone})</span>
               {!schedule.enabled && (
                 <span className="rounded bg-warning/20 px-1 text-[9px] font-medium text-warning-foreground">
                   paused
@@ -391,14 +361,12 @@ export function RunbookDetailPanel({
             </div>
             {schedule.nextRunAt && (
               <p className="mt-0.5 text-[10px] text-muted-foreground">
-                Next:{' '}
-                {formatScheduleDate(schedule.nextRunAt, schedule.timezone)}
+                Next: {formatScheduleDate(schedule.nextRunAt, schedule.timezone)}
               </p>
             )}
             {schedule.lastRunAt && (
               <p className="text-[10px] text-muted-foreground">
-                Last:{' '}
-                {formatScheduleDate(schedule.lastRunAt, schedule.timezone)}
+                Last: {formatScheduleDate(schedule.lastRunAt, schedule.timezone)}
                 {schedule.lastRunStatus && ` \u00b7 ${schedule.lastRunStatus}`}
               </p>
             )}

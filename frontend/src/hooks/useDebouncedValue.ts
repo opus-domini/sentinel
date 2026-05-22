@@ -2,10 +2,7 @@ import { useEffect, useState } from 'react'
 
 const DEFAULT_DEBOUNCE_MS = 180
 
-export function useDebouncedValue<T>(
-  value: T,
-  delayMs: number = DEFAULT_DEBOUNCE_MS,
-): T {
+export function useDebouncedValue<T>(value: T, delayMs: number = DEFAULT_DEBOUNCE_MS): T {
   const [debounced, setDebounced] = useState(value)
 
   useEffect(() => {

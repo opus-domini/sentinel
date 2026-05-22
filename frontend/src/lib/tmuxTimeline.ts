@@ -38,23 +38,16 @@ function normalizePaneFallback(paneID: string): string {
   return normalized
 }
 
-export function formatTimelineEventLocation(
-  event: TimelineEvent,
-): TimelineEventLocation {
+export function formatTimelineEventLocation(event: TimelineEvent): TimelineEventLocation {
   const metadata =
-    event.metadata != null && typeof event.metadata === 'object'
-      ? event.metadata
-      : null
+    event.metadata != null && typeof event.metadata === 'object' ? event.metadata : null
   const session = event.session.trim() !== '' ? event.session.trim() : '?'
   const windowName = metadataString(metadata, ['windowName'])
   const paneName = metadataString(metadata, ['paneTitle', 'title'])
 
   const windowLabel =
-    windowName !== ''
-      ? windowName
-      : `#${normalizeWindowFallback(event.windowIndex)}`
-  const paneLabel =
-    paneName !== '' ? paneName : normalizePaneFallback(event.paneId)
+    windowName !== '' ? windowName : `#${normalizeWindowFallback(event.windowIndex)}`
+  const paneLabel = paneName !== '' ? paneName : normalizePaneFallback(event.paneId)
 
   return {
     label: `${session} > ${windowLabel} > ${paneLabel}`,
@@ -85,9 +78,7 @@ export function buildTimelineQueryString(filter: TimelineEventFilter): string {
     params.set('eventType', eventType)
   }
 
-  const limit = Number.isFinite(filter.limit)
-    ? Math.trunc(filter.limit ?? 0)
-    : 0
+  const limit = Number.isFinite(filter.limit) ? Math.trunc(filter.limit ?? 0) : 0
   if (limit > 0) {
     params.set('limit', String(limit))
   }
@@ -99,10 +90,7 @@ export function buildTimelineQueryString(filter: TimelineEventFilter): string {
   return `?${encoded}`
 }
 
-export function shouldRefreshTimelineFromEvent(
-  sessions: unknown,
-  trackedSession: string,
-): boolean {
+export function shouldRefreshTimelineFromEvent(sessions: unknown, trackedSession: string): boolean {
   const scope = trackedSession.trim()
   if (!Array.isArray(sessions)) {
     return false
@@ -110,7 +98,5 @@ export function shouldRefreshTimelineFromEvent(
   if (scope === '' || scope === 'all') {
     return sessions.length > 0
   }
-  return sessions.some(
-    (item) => typeof item === 'string' && item.trim() === scope,
-  )
+  return sessions.some((item) => typeof item === 'string' && item.trim() === scope)
 }

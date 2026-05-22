@@ -10,11 +10,7 @@ const EDGE_THRESHOLD = 30
 const SWIPE_DISTANCE = 50
 const SWIPE_RATIO = 1.5
 
-export function useEdgeSwipe({
-  enabled,
-  isOpen,
-  onSwipeOpen,
-}: UseEdgeSwipeOptions): void {
+export function useEdgeSwipe({ enabled, isOpen, onSwipeOpen }: UseEdgeSwipeOptions): void {
   useEffect(() => {
     if (!enabled || isOpen) return
 

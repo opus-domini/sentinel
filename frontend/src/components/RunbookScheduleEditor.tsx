@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useState } from 'react'
 import cronstrue from 'cronstrue'
 import { CronExpressionParser } from 'cron-parser'
 import { Clock, Save, Trash2, X } from 'lucide-react'
@@ -56,9 +56,7 @@ const CRON_PRESETS = [
 ] as const
 
 function scheduleToPreset(cronExpr: string): string {
-  const match = CRON_PRESETS.find(
-    (p) => p.value !== 'custom' && p.value === cronExpr,
-  )
+  const match = CRON_PRESETS.find((p) => p.value !== 'custom' && p.value === cronExpr)
   return match ? match.value : 'custom'
 }
 
@@ -106,6 +104,15 @@ export function RunbookScheduleEditor({
   onDelete,
 }: RunbookScheduleEditorProps) {
   const isEditing = schedule != null
+  const id = useId()
+  const nameId = `${id}-name`
+  const scheduleTypeCronId = `${id}-schedule-type-cron`
+  const scheduleTypeOnceId = `${id}-schedule-type-once`
+  const presetLabelId = `${id}-preset-label`
+  const cronExprId = `${id}-cron-expr`
+  const runAtId = `${id}-run-at`
+  const timezoneLabelId = `${id}-timezone-label`
+  const enabledId = `${id}-enabled`
 
   const [draft, setDraft] = useState<ScheduleDraft>(() => initDraft(schedule))
   const [selectedPreset, setSelectedPreset] = useState<string>(() =>
@@ -113,10 +120,7 @@ export function RunbookScheduleEditor({
   )
 
   const updateField = useCallback(
-    <TKey extends keyof ScheduleDraft>(
-      key: TKey,
-      value: ScheduleDraft[TKey],
-    ) => {
+    <TKey extends keyof ScheduleDraft>(key: TKey, value: ScheduleDraft[TKey]) => {
       setDraft((prev) => ({ ...prev, [key]: value }))
     },
     [],
@@ -184,10 +188,14 @@ export function RunbookScheduleEditor({
       <div className="grid gap-2.5">
         {/* Name */}
         <div>
-          <Label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          <Label
+            htmlFor={nameId}
+            className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+          >
             Name
           </Label>
           <Input
+            id={nameId}
             className="mt-0.5 h-8 bg-surface-overlay text-[12px]"
             placeholder="Schedule name"
             value={draft.name}
@@ -203,7 +211,9 @@ export function RunbookScheduleEditor({
           <div className="mt-1 flex items-center gap-4">
             <label className="flex cursor-pointer items-center gap-1.5 text-[12px] select-none">
               <input
+                id={scheduleTypeCronId}
                 type="radio"
+                aria-label="Recurring"
                 name="scheduleType"
                 value="cron"
                 checked={draft.scheduleType === 'cron'}
@@ -214,7 +224,9 @@ export function RunbookScheduleEditor({
             </label>
             <label className="flex cursor-pointer items-center gap-1.5 text-[12px] select-none">
               <input
+                id={scheduleTypeOnceId}
                 type="radio"
+                aria-label="One-time"
                 name="scheduleType"
                 value="once"
                 checked={draft.scheduleType === 'once'}
@@ -230,15 +242,18 @@ export function RunbookScheduleEditor({
         {draft.scheduleType === 'cron' && (
           <>
             <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <Label
+                id={presetLabelId}
+                className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
                 Preset
               </Label>
               <div className="mt-0.5">
-                <Select
-                  value={selectedPreset}
-                  onValueChange={handlePresetChange}
-                >
-                  <SelectTrigger className="w-full bg-surface-overlay text-[12px]">
+                <Select value={selectedPreset} onValueChange={handlePresetChange}>
+                  <SelectTrigger
+                    aria-labelledby={presetLabelId}
+                    className="w-full bg-surface-overlay text-[12px]"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -253,10 +268,14 @@ export function RunbookScheduleEditor({
             </div>
 
             <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <Label
+                htmlFor={cronExprId}
+                className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
                 Cron Expression
               </Label>
               <Input
+                id={cronExprId}
                 className={cn(
                   'mt-0.5 h-8 bg-surface-overlay font-mono text-[12px]',
                   cronError && 'border-destructive',
@@ -270,21 +289,16 @@ export function RunbookScheduleEditor({
                 }}
               />
               {cronError && (
-                <p className="mt-0.5 text-[10px] text-destructive-foreground">
-                  {cronError}
-                </p>
+                <p className="mt-0.5 text-[10px] text-destructive-foreground">{cronError}</p>
               )}
             </div>
 
             {cronDescription && (
               <div className="rounded border border-border-subtle bg-surface-overlay px-2.5 py-1.5">
-                <p className="text-[11px] text-muted-foreground">
-                  {cronDescription}
-                </p>
+                <p className="text-[11px] text-muted-foreground">{cronDescription}</p>
                 {nextRuns.length > 0 && (
                   <p className="mt-1 text-[10px] text-muted-foreground">
-                    <span className="font-medium">Next:</span>{' '}
-                    {nextRuns.join(', ')}
+                    <span className="font-medium">Next:</span> {nextRuns.join(', ')}
                   </p>
                 )}
               </div>
@@ -295,10 +309,14 @@ export function RunbookScheduleEditor({
         {/* One-time fields */}
         {draft.scheduleType === 'once' && (
           <div>
-            <Label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            <Label
+              htmlFor={runAtId}
+              className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+            >
               Date / Time
             </Label>
             <Input
+              id={runAtId}
               type="datetime-local"
               className="mt-0.5 h-8 bg-surface-overlay text-[12px]"
               value={draft.runAt ? draft.runAt.slice(0, 16) : ''}
@@ -312,15 +330,18 @@ export function RunbookScheduleEditor({
 
         {/* Timezone */}
         <div>
-          <Label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          <Label
+            id={timezoneLabelId}
+            className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+          >
             Timezone
           </Label>
           <div className="mt-0.5">
-            <Select
-              value={draft.timezone}
-              onValueChange={(v) => updateField('timezone', v)}
-            >
-              <SelectTrigger className="w-full bg-surface-overlay text-[12px]">
+            <Select value={draft.timezone} onValueChange={(v) => updateField('timezone', v)}>
+              <SelectTrigger
+                aria-labelledby={timezoneLabelId}
+                className="w-full bg-surface-overlay text-[12px]"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -337,7 +358,9 @@ export function RunbookScheduleEditor({
         {/* Enabled */}
         <label className="flex cursor-pointer items-center gap-2 text-[12px] select-none">
           <input
+            id={enabledId}
             type="checkbox"
+            aria-label="Enabled"
             checked={draft.enabled}
             onChange={(e) => updateField('enabled', e.target.checked)}
             className="h-3.5 w-3.5 rounded border-border accent-primary"
@@ -382,9 +405,7 @@ export function RunbookScheduleEditor({
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete schedule?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone.
-                </AlertDialogDescription>
+                <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>

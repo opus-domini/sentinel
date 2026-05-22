@@ -26,9 +26,10 @@ describe('ConnectionBadge', () => {
     const badge = screen.getByRole('button', {
       name: 'Connected; Resync connection',
     })
-    fireEvent.click(badge)
-    fireEvent.keyDown(badge, { key: 'Enter' })
+    expect(badge).toBeInstanceOf(HTMLButtonElement)
 
-    expect(onClick).toHaveBeenCalledTimes(2)
+    fireEvent.click(badge)
+
+    expect(onClick).toHaveBeenCalledTimes(1)
   })
 })

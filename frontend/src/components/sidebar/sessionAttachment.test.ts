@@ -22,21 +22,15 @@ describe('isSessionAttachedWithLocalTab', () => {
 
 describe('isSessionAttached', () => {
   it('returns true when backend reports attached clients', () => {
-    expect(
-      isSessionAttached({ name: 'dev', attached: 2 }, new Set<string>()),
-    ).toBe(true)
+    expect(isSessionAttached({ name: 'dev', attached: 2 }, new Set<string>())).toBe(true)
   })
 
   it('returns true when session tab is open locally (optimistic attach)', () => {
-    expect(
-      isSessionAttached({ name: 'dev', attached: 0 }, new Set(['dev'])),
-    ).toBe(true)
+    expect(isSessionAttached({ name: 'dev', attached: 0 }, new Set(['dev']))).toBe(true)
   })
 
   it('returns false when detached in backend and locally', () => {
-    expect(
-      isSessionAttached({ name: 'dev', attached: 0 }, new Set(['other'])),
-    ).toBe(false)
+    expect(isSessionAttached({ name: 'dev', attached: 0 }, new Set(['other']))).toBe(false)
   })
 })
 

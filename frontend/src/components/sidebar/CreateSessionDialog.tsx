@@ -2,7 +2,7 @@
 // free-form text input with server-side filesystem path suggestions fetched
 // on each keystroke.
 import { ChevronRight } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -42,6 +42,8 @@ export default function CreateSessionDialog({
   onCreate,
 }: CreateSessionDialogProps) {
   const meta = useMetaContext()
+  const id = useId()
+  const runAsUserLabelId = `${id}-run-as-user-label`
   const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState(normalizedDefaultCwd)
@@ -55,7 +57,7 @@ export default function CreateSessionDialog({
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [user, setUser] = useState('')
 
-  function resetForm() {
+  const resetForm = useCallback(() => {
     setName('')
     setCwd(normalizedDefaultCwd)
     setCwdSuggestions([])
@@ -65,7 +67,7 @@ export default function CreateSessionDialog({
     setSaving(false)
     setAdvancedOpen(false)
     setUser('')
-  }
+  }, [normalizedDefaultCwd])
 
   useEffect(() => {
     if (!open) {
@@ -100,7 +102,7 @@ export default function CreateSessionDialog({
     })()
 
     return () => abort.abort()
-  }, [normalizedDefaultCwd, open])
+  }, [normalizedDefaultCwd, open, resetForm])
 
   useEffect(() => {
     if (!open) return
@@ -214,6 +216,7 @@ export default function CreateSessionDialog({
         <form onSubmit={handleSubmit}>
           <div className="grid gap-2">
             <Input
+              aria-label="Session name"
               placeholder="session name"
               value={name}
               onChange={(e) => setName(slugifyTmuxName(e.target.value))}
@@ -221,12 +224,12 @@ export default function CreateSessionDialog({
             />
             <div className="relative">
               <Input
+                aria-label="Working directory"
                 placeholder="working directory"
                 value={cwd}
                 role="combobox"
-                aria-expanded={
-                  cwdFocused && (cwdLoading || cwdSuggestions.length > 0)
-                }
+                tabIndex={0}
+                aria-expanded={cwdFocused && (cwdLoading || cwdSuggestions.length > 0)}
                 aria-autocomplete="list"
                 aria-controls="cwd-listbox"
                 onChange={(e) => {
@@ -250,9 +253,7 @@ export default function CreateSessionDialog({
 
                   if (event.key === 'ArrowDown') {
                     event.preventDefault()
-                    setActiveSuggestion((prev) =>
-                      Math.min(prev + 1, cwdSuggestions.length - 1),
-                    )
+                    setActiveSuggestion((prev) => Math.min(prev + 1, cwdSuggestions.length - 1))
                     return
                   }
                   if (event.key === 'ArrowUp') {
@@ -275,41 +276,39 @@ export default function CreateSessionDialog({
                 }}
               />
 
-              {open &&
-                cwdFocused &&
-                (cwdLoading || cwdSuggestions.length > 0) && (
-                  <div
-                    id="cwd-listbox"
-                    role="listbox"
-                    className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
-                  >
-                    {cwdLoading && (
-                      <div className="px-2 py-1 text-[11px] text-secondary-foreground">
-                        Searching directories...
-                      </div>
-                    )}
-                    {!cwdLoading &&
-                      cwdSuggestions.map((item, idx) => (
-                        <button
-                          key={item}
-                          type="button"
-                          role="option"
-                          aria-selected={idx === activeSuggestion}
-                          className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] ${
-                            idx === activeSuggestion
-                              ? 'bg-accent text-accent-foreground'
-                              : 'hover:bg-secondary'
-                          }`}
-                          onMouseDown={(event) => {
-                            event.preventDefault()
-                            selectSuggestion(item)
-                          }}
-                        >
-                          {item}
-                        </button>
-                      ))}
-                  </div>
-                )}
+              {open && cwdFocused && (cwdLoading || cwdSuggestions.length > 0) && (
+                <div
+                  id="cwd-listbox"
+                  role="listbox"
+                  className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
+                >
+                  {cwdLoading && (
+                    <div className="px-2 py-1 text-[11px] text-secondary-foreground">
+                      Searching directories...
+                    </div>
+                  )}
+                  {!cwdLoading &&
+                    cwdSuggestions.map((item, idx) => (
+                      <button
+                        key={item}
+                        type="button"
+                        role="option"
+                        aria-selected={idx === activeSuggestion}
+                        className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] ${
+                          idx === activeSuggestion
+                            ? 'bg-accent text-accent-foreground'
+                            : 'hover:bg-secondary'
+                        }`}
+                        onMouseDown={(event) => {
+                          event.preventDefault()
+                          selectSuggestion(item)
+                        }}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
             {filteredFrequentDirs.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -343,38 +342,32 @@ export default function CreateSessionDialog({
                 </button>
                 {advancedOpen && (
                   <div className="mt-2 rounded-md border border-border-subtle p-2.5">
-                    <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                      Run as user
+                    <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                      <span id={runAsUserLabelId}>Run as user</span>
                       <Select
                         value={user || '__default__'}
-                        onValueChange={(v) =>
-                          setUser(v === '__default__' ? '' : v)
-                        }
+                        onValueChange={(v) => setUser(v === '__default__' ? '' : v)}
                       >
-                        <SelectTrigger className="w-full cursor-pointer bg-surface-overlay text-[12px]">
+                        <SelectTrigger
+                          aria-labelledby={runAsUserLabelId}
+                          className="w-full cursor-pointer bg-surface-overlay text-[12px]"
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem
-                            value="__default__"
-                            className="cursor-pointer"
-                          >
+                          <SelectItem value="__default__" className="cursor-pointer">
                             {meta.processUser || 'default'} (default)
                           </SelectItem>
                           {meta.allowedUsers
                             .filter((u) => u !== meta.processUser)
                             .map((u) => (
-                              <SelectItem
-                                key={u}
-                                value={u}
-                                className="cursor-pointer"
-                              >
+                              <SelectItem key={u} value={u} className="cursor-pointer">
                                 {u}
                               </SelectItem>
                             ))}
                         </SelectContent>
                       </Select>
-                    </label>
+                    </div>
                   </div>
                 )}
               </div>

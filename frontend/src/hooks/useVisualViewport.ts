@@ -18,10 +18,7 @@ export function useVisualViewport(): void {
       const keyboardInset = Math.max(0, baselineHeight - vv.height)
       const keyboardVisible = keyboardInset > KEYBOARD_THRESHOLD
 
-      root.style.setProperty(
-        '--keyboard-inset',
-        `${keyboardVisible ? keyboardInset : 0}px`,
-      )
+      root.style.setProperty('--keyboard-inset', `${keyboardVisible ? keyboardInset : 0}px`)
       const offsetTop = keyboardVisible ? 0 : vv.offsetTop
       const offsetLeft = keyboardVisible ? 0 : vv.offsetLeft
       root.style.setProperty('--viewport-offset-top', `${offsetTop}px`)

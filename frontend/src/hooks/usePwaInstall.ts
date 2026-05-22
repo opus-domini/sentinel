@@ -27,13 +27,10 @@ function canUsePwaFeatures(): boolean {
 }
 
 export function usePwaInstall() {
-  const [installEvent, setInstallEvent] =
-    useState<BeforeInstallPromptEvent | null>(null)
+  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [installed, setInstalled] = useState(false)
   const [updating, setUpdating] = useState(false)
-  const [updateAvailable, setUpdateAvailable] = useState(() =>
-    hasSentinelPwaUpdate(),
-  )
+  const [updateAvailable, setUpdateAvailable] = useState(() => hasSentinelPwaUpdate())
 
   useEffect(() => {
     setInstalled(isStandaloneDisplayMode())
@@ -91,18 +88,17 @@ export function usePwaInstall() {
     return applied
   }, [])
 
-  const checkForUpdate =
-    useCallback(async (): Promise<CheckForUpdateResult> => {
-      setUpdating(true)
-      const result = await checkAndApplyPwaUpdate()
-      if (result !== 'applied') {
-        setUpdating(false)
-      }
-      if (result === 'applied') {
-        setUpdateAvailable(false)
-      }
-      return result
-    }, [])
+  const checkForUpdate = useCallback(async (): Promise<CheckForUpdateResult> => {
+    setUpdating(true)
+    const result = await checkAndApplyPwaUpdate()
+    if (result !== 'applied') {
+      setUpdating(false)
+    }
+    if (result === 'applied') {
+      setUpdateAvailable(false)
+    }
+    return result
+  }, [])
 
   return {
     supportsPwa: canUsePwaFeatures(),

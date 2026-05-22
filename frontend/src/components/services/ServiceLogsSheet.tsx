@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ArrowDownToLine,
-  Radio,
-  RefreshCw,
-  Search,
-  WrapText,
-  X,
-} from 'lucide-react'
-import type {
-  OpsBrowsedService,
-  OpsServiceLogsResponse,
-  OpsUnitLogsResponse,
-} from '@/types'
+import { ArrowDownToLine, Radio, RefreshCw, Search, WrapText, X } from 'lucide-react'
+import type { OpsBrowsedService, OpsServiceLogsResponse, OpsUnitLogsResponse } from '@/types'
 import type { ParsedLogLine } from '@/lib/log-parser'
 import { LogViewer } from '@/components/LogViewer'
 import { Button } from '@/components/ui/button'
@@ -37,6 +26,7 @@ type ServiceLogTarget = Pick<
 >
 
 type ServiceLogRequest = {
+  fetchKey: number
   target: ServiceLogTarget
   url: string
 }
@@ -95,18 +85,11 @@ export function ServiceLogsSheet({
       unit: service.unit,
     }
     return {
+      fetchKey,
       target,
       url: buildServiceLogURL(target),
     }
-  }, [
-    fetchKey,
-    open,
-    service?.manager,
-    service?.scope,
-    service?.tracked,
-    service?.trackedName,
-    service?.unit,
-  ])
+  }, [fetchKey, open, service])
 
   // Fetch initial logs when fetchKey changes (i.e. when opened for a service)
   useEffect(() => {
@@ -122,9 +105,7 @@ export function ServiceLogsSheet({
     let cancelled = false
     const fetchLogs = async () => {
       try {
-        const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(
-          initialLogRequest.url,
-        )
+        const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(initialLogRequest.url)
         if (cancelled) return
         const parsed = parseLogLines(data.output)
         lineCounterRef.current = parsed.length
@@ -191,9 +172,7 @@ export function ServiceLogsSheet({
     if (!svc) return
     setStreamEnabled(false)
     try {
-      const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(
-        buildServiceLogURL(svc),
-      )
+      const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(buildServiceLogURL(svc))
       const parsed = parseLogLines(data.output)
       lineCounterRef.current = parsed.length
       setLogLines(parsed)
@@ -219,9 +198,7 @@ export function ServiceLogsSheet({
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className="flex flex-col gap-0 p-0">
         <SheetHeader className="shrink-0 border-b border-border-subtle px-4 py-3">
-          <SheetTitle>
-            {service ? formatOpsUnitName(service.unit) : 'Service logs'}
-          </SheetTitle>
+          <SheetTitle>{service ? formatOpsUnitName(service.unit) : 'Service logs'}</SheetTitle>
           <SheetDescription>
             {streamEnabled && streamStatus === 'connected' ? (
               <span className="inline-flex items-center gap-1.5">
@@ -241,6 +218,7 @@ export function ServiceLogsSheet({
           <div className="relative min-w-0 flex-1">
             <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
             <input
+              aria-label="Search logs"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search logs..."
@@ -282,17 +260,13 @@ export function ServiceLogsSheet({
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           </TooltipHelper>
-          <TooltipHelper
-            content={streamEnabled ? 'Stop streaming' : 'Stream live'}
-          >
+          <TooltipHelper content={streamEnabled ? 'Stop streaming' : 'Stream live'}>
             <Button
               variant={streamEnabled ? 'default' : 'outline'}
               size="sm"
               className={cn(
                 'h-7 w-7 cursor-pointer p-0',
-                streamEnabled && streamStatus === 'connected'
-                  ? 'text-ok-foreground'
-                  : '',
+                streamEnabled && streamStatus === 'connected' ? 'text-ok-foreground' : '',
               )}
               onClick={() => setStreamEnabled((v) => !v)}
               aria-label={streamEnabled ? 'Stop streaming' : 'Stream live'}

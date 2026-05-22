@@ -5,10 +5,7 @@ type AppSectionTitleProps = {
   section: string
 }
 
-export default function AppSectionTitle({
-  hostname,
-  section,
-}: AppSectionTitleProps) {
+export default function AppSectionTitle({ hostname, section }: AppSectionTitleProps) {
   return (
     <>
       <span className="truncate">{formatHeaderBrand(hostname)}</span>

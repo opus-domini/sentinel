@@ -164,12 +164,7 @@ export function setPendingWindowPaneFloor(
 ): void {
   const name = normalizeSession(session)
   const index = normalizeWindowIndex(windowIndex)
-  if (
-    name === '' ||
-    index === null ||
-    !Number.isFinite(paneFloor) ||
-    paneFloor < 0
-  ) {
+  if (name === '' || index === null || !Number.isFinite(paneFloor) || paneFloor < 0) {
     return
   }
   const floor = Math.trunc(paneFloor)
@@ -252,9 +247,7 @@ export function mergePendingInspectorSnapshot(
       .filter((index): index is number => index !== null),
   )
   const backendPaneIDs = new Set(
-    panes
-      .map((paneInfo) => paneInfo.paneId.trim())
-      .filter((paneID) => paneID !== ''),
+    panes.map((paneInfo) => paneInfo.paneId.trim()).filter((paneID) => paneID !== ''),
   )
 
   const blockedWindowIndexes = new Set<number>()
@@ -270,9 +263,7 @@ export function mergePendingInspectorSnapshot(
 
   const optimisticCreatedWindowIndexes = new Set<number>()
   const confirmedWindowCreates: Array<number> = []
-  const mergedWindows = windows.filter(
-    (windowInfo) => !blockedWindowIndexes.has(windowInfo.index),
-  )
+  const mergedWindows = windows.filter((windowInfo) => !blockedWindowIndexes.has(windowInfo.index))
   const seenWindowIndexes = new Set(
     mergedWindows.map((windowInfo) => normalizeWindowIndex(windowInfo.index)),
   )
@@ -299,14 +290,8 @@ export function mergePendingInspectorSnapshot(
       : null
   let fallbackConfirmedCreates = 0
   if (optimisticVisibleWindowBaseline !== null) {
-    const realizedCreateCount = Math.max(
-      0,
-      mergedWindows.length - optimisticVisibleWindowBaseline,
-    )
-    fallbackConfirmedCreates = Math.max(
-      0,
-      realizedCreateCount - confirmedWindowCreates.length,
-    )
+    const realizedCreateCount = Math.max(0, mergedWindows.length - optimisticVisibleWindowBaseline)
+    fallbackConfirmedCreates = Math.max(0, realizedCreateCount - confirmedWindowCreates.length)
   }
 
   for (const index of unmatchedPendingCreateIndexes) {
@@ -332,10 +317,7 @@ export function mergePendingInspectorSnapshot(
       rev: 0,
     })
   }
-  if (
-    blockedWindowIndexes.size > 0 ||
-    optimisticCreatedWindowIndexes.size > 0
-  ) {
+  if (blockedWindowIndexes.size > 0 || optimisticCreatedWindowIndexes.size > 0) {
     mergedWindows.sort((left, right) => left.index - right.index)
   }
 
@@ -365,9 +347,7 @@ export function mergePendingInspectorSnapshot(
     return visibleWindowIndexes.has(windowIndex)
   })
   const paneIDs = new Set(
-    mergedPanes
-      .map((paneInfo) => paneInfo.paneId.trim())
-      .filter((id) => id !== ''),
+    mergedPanes.map((paneInfo) => paneInfo.paneId.trim()).filter((id) => id !== ''),
   )
   const paneCountByWindow = new Map<number, number>()
   const realPaneCountByWindow = new Map<number, number>()
@@ -375,15 +355,9 @@ export function mergePendingInspectorSnapshot(
   for (const paneInfo of mergedPanes) {
     const windowIndex = normalizeWindowIndex(paneInfo.windowIndex)
     if (windowIndex === null) continue
-    paneCountByWindow.set(
-      windowIndex,
-      (paneCountByWindow.get(windowIndex) ?? 0) + 1,
-    )
+    paneCountByWindow.set(windowIndex, (paneCountByWindow.get(windowIndex) ?? 0) + 1)
     if (!isPendingSplitPaneID(paneInfo.paneId)) {
-      realPaneCountByWindow.set(
-        windowIndex,
-        (realPaneCountByWindow.get(windowIndex) ?? 0) + 1,
-      )
+      realPaneCountByWindow.set(windowIndex, (realPaneCountByWindow.get(windowIndex) ?? 0) + 1)
     }
     const paneIndex = normalizeWindowIndex(paneInfo.paneIndex) ?? 0
     paneMaxIndexByWindow.set(
@@ -409,11 +383,7 @@ export function mergePendingInspectorSnapshot(
     }
 
     let nextPaneIndex = (paneMaxIndexByWindow.get(windowIndex) ?? -1) + 1
-    for (
-      let offset = 0;
-      offset < normalizedFloor - currentPaneCount;
-      offset += 1
-    ) {
+    for (let offset = 0; offset < normalizedFloor - currentPaneCount; offset += 1) {
       const slot = currentPaneCount + offset
       const pendingPaneID = buildPendingSplitPaneID(name, windowIndex, slot)
       if (paneIDs.has(pendingPaneID)) {

@@ -2,11 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu } from 'lucide-react'
-import type {
-  OpsActivityEvent,
-  OpsActivityResponse,
-  OpsOverviewResponse,
-} from '@/types'
+import type { OpsActivityEvent, OpsActivityResponse, OpsOverviewResponse } from '@/types'
 import { getActivitySourceIcon } from '@/lib/activityIcons'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
@@ -37,6 +33,8 @@ type ActivitiesFooterSummaryParams = {
   activityLoading: boolean
   eventCount: number
 }
+
+const EMPTY_ACTIVITY_EVENTS: Array<OpsActivityEvent> = []
 
 function buildActivitiesFooterSummary({
   overviewError,
@@ -99,15 +97,13 @@ function ActivitiesPage() {
         params.set('q', debouncedActivityQuery.trim())
       }
       if (activitySeverity !== 'all') params.set('severity', activitySeverity)
-      const data = await api<OpsActivityResponse>(
-        `/api/ops/activity?${params.toString()}`,
-      )
+      const data = await api<OpsActivityResponse>(`/api/ops/activity?${params.toString()}`)
       return data.events
     },
   })
 
   const overview = overviewQuery.data ?? null
-  const activityEventsRaw = activityEventsQuery.data ?? []
+  const activityEventsRaw = activityEventsQuery.data ?? EMPTY_ACTIVITY_EVENTS
 
   const MAX_VISIBLE_EVENTS = 500
   const activityEvents = useMemo(() => {
@@ -137,10 +133,7 @@ function ActivitiesPage() {
 
   const refreshActivity = useCallback(async () => {
     await queryClient.refetchQueries({
-      queryKey: opsActivityQueryKey(
-        activityQueryRef.current,
-        activitySeverityRef.current,
-      ),
+      queryKey: opsActivityQueryKey(activityQueryRef.current, activitySeverityRef.current),
       exact: true,
     })
   }, [queryClient])
@@ -160,29 +153,19 @@ function ActivitiesPage() {
       if (!isOpsWsMessage(message)) return
       switch (message.type) {
         case 'ops.overview.updated':
-          queryClient.setQueryData(
-            OPS_OVERVIEW_QUERY_KEY,
-            message.payload.overview,
-          )
+          queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, message.payload.overview)
           break
         case 'ops.activity.updated':
           if (Array.isArray(message.payload.events)) {
             queryClient.setQueryData<Array<OpsActivityEvent>>(
-              opsActivityQueryKey(
-                activityQueryRef.current,
-                activitySeverityRef.current,
-              ),
+              opsActivityQueryKey(activityQueryRef.current, activitySeverityRef.current),
               message.payload.events,
             )
           } else if (message.payload.event != null) {
             const activityEvent = message.payload.event
             queryClient.setQueryData<Array<OpsActivityEvent>>(
-              opsActivityQueryKey(
-                activityQueryRef.current,
-                activitySeverityRef.current,
-              ),
-              (previous = []) =>
-                prependOpsActivityEvent(previous, activityEvent),
+              opsActivityQueryKey(activityQueryRef.current, activitySeverityRef.current),
+              (previous = []) => prependOpsActivityEvent(previous, activityEvent),
             )
           } else {
             void refreshActivity()
@@ -204,9 +187,7 @@ function ActivitiesPage() {
     eventCount: activityEvents.length,
   })
   const footerCadence =
-    activityEvents.length > 0 || activityEventsQuery.isSuccess
-      ? 'Live · 5s'
-      : 'waiting'
+    activityEvents.length > 0 || activityEventsQuery.isSuccess ? 'Live · 5s' : 'waiting'
 
   return (
     <AppShell
@@ -277,8 +258,7 @@ function ActivitiesPage() {
                         </span>
                       </div>
                       <p className="mt-1 break-words text-[10px] text-muted-foreground">
-                        {event.source} • {event.resource} •{' '}
-                        {formatDateTime(event.createdAt)}
+                        {event.source} • {event.resource} • {formatDateTime(event.createdAt)}
                       </p>
                       {event.details.trim() !== '' && (
                         <p className="mt-1 break-words text-[11px] text-muted-foreground">
@@ -289,10 +269,7 @@ function ActivitiesPage() {
                   )
                 })}
                 {!activityLoading && activityEvents.length === 0 && (
-                  <EmptyState
-                    variant="inline"
-                    className="grid gap-2 p-3 text-[12px]"
-                  >
+                  <EmptyState variant="inline" className="grid gap-2 p-3 text-[12px]">
                     <p>No activity events for the selected filters.</p>
                     <div className="flex flex-wrap gap-2">
                       {(activityQuery.trim() !== '' ||
@@ -324,9 +301,7 @@ function ActivitiesPage() {
                 )}
                 {activityError !== '' && (
                   <div className="grid gap-2 rounded border border-dashed border-destructive/40 bg-destructive/10 p-3">
-                    <p className="text-[12px] text-destructive-foreground">
-                      {activityError}
-                    </p>
+                    <p className="text-[12px] text-destructive-foreground">{activityError}</p>
                     <Button
                       variant="outline"
                       size="sm"

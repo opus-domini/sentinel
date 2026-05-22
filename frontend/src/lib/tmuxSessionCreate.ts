@@ -37,13 +37,7 @@ export function upsertOptimisticAttachedSession(
   const index = sessions.findIndex((item) => item.name === sessionName)
   if (index === -1) {
     return [
-      buildOptimisticSession(
-        sessionName,
-        at,
-        icon,
-        nextFrontSortOrder(sessions),
-        user,
-      ),
+      buildOptimisticSession(sessionName, at, icon, nextFrontSortOrder(sessions), user),
       ...sessions,
     ]
   }
@@ -51,11 +45,7 @@ export function upsertOptimisticAttachedSession(
   const existing = sessions[index]
   const attached = Math.max(1, existing.attached)
   const nextIcon = existing.icon || icon
-  if (
-    attached === existing.attached &&
-    existing.activityAt === at &&
-    existing.icon === nextIcon
-  ) {
+  if (attached === existing.attached && existing.activityAt === at && existing.icon === nextIcon) {
     return sessions
   }
 
@@ -136,12 +126,8 @@ export function mergePendingCreateSessions(
 
   const sessionNamesForSync = Array.from(
     new Set([
-      ...mergedSessions
-        .map((item) => item.name)
-        .filter((name) => !pendingKillNames.has(name)),
-      ...Array.from(pendingCreates.keys()).filter(
-        (name) => !pendingKillNames.has(name),
-      ),
+      ...mergedSessions.map((item) => item.name).filter((name) => !pendingKillNames.has(name)),
+      ...Array.from(pendingCreates.keys()).filter((name) => !pendingKillNames.has(name)),
     ]),
   )
 

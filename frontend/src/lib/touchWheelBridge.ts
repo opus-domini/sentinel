@@ -22,10 +22,9 @@ function isBlockedTouchTarget(target: EventTarget | null): boolean {
   return target.closest('[data-sentinel-touch-lock]') !== null
 }
 
-export function attachTouchWheelBridge({
-  host,
-  dispatchTarget,
-}: TouchWheelBridgeOptions): { dispose: () => void } {
+export function attachTouchWheelBridge({ host, dispatchTarget }: TouchWheelBridgeOptions): {
+  dispose: () => void
+} {
   if (!host.isConnected || !dispatchTarget.isConnected) {
     return noopDispose
   }

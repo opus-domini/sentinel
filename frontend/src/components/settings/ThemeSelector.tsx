@@ -8,16 +8,7 @@ type ThemeSelectorProps = {
   onSelect: (id: string) => void
 }
 
-const ansiKeys = [
-  'black',
-  'red',
-  'green',
-  'yellow',
-  'blue',
-  'magenta',
-  'cyan',
-  'white',
-] as const
+const ansiKeys = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const
 
 function ThemeCard({
   theme,
@@ -63,10 +54,7 @@ function ThemeCard({
   )
 }
 
-export default function ThemeSelector({
-  activeThemeId,
-  onSelect,
-}: ThemeSelectorProps) {
+export default function ThemeSelector({ activeThemeId, onSelect }: ThemeSelectorProps) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {terminalThemes.map((theme) => (

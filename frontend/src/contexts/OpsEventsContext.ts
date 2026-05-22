@@ -9,16 +9,12 @@ type OpsEventsContextValue = {
   forceReconnect: () => void
 }
 
-export const OpsEventsContext = createContext<OpsEventsContextValue | null>(
-  null,
-)
+export const OpsEventsContext = createContext<OpsEventsContextValue | null>(null)
 
 export function useOpsEventsContext(): OpsEventsContextValue {
   const value = useContext(OpsEventsContext)
   if (!value) {
-    throw new Error(
-      'useOpsEventsContext must be used within an OpsEventsContext.Provider',
-    )
+    throw new Error('useOpsEventsContext must be used within an OpsEventsContext.Provider')
   }
   return value
 }

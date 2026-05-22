@@ -171,9 +171,7 @@ describe('useLogStream', () => {
     })
 
     act(() => {
-      lastSocket().simulateMessage(
-        JSON.stringify({ type: 'log', line: 'hello world' }),
-      )
+      lastSocket().simulateMessage(JSON.stringify({ type: 'log', line: 'hello world' }))
     })
 
     expect(onLine).toHaveBeenCalledWith('hello world')
@@ -194,9 +192,7 @@ describe('useLogStream', () => {
 
     act(() => {
       lastSocket().simulateOpen()
-      lastSocket().simulateMessage(
-        JSON.stringify({ type: 'status', state: 'streaming' }),
-      )
+      lastSocket().simulateMessage(JSON.stringify({ type: 'status', state: 'streaming' }))
       lastSocket().simulateMessage('not json at all')
     })
 
@@ -369,9 +365,7 @@ describe('useLogStream', () => {
     // responsibility, but the hook itself should not break.
     expect(() => {
       act(() => {
-        lastSocket().simulateMessage(
-          JSON.stringify({ type: 'log', line: 'boom' }),
-        )
+        lastSocket().simulateMessage(JSON.stringify({ type: 'log', line: 'boom' }))
       })
     }).toThrow('handler error')
 

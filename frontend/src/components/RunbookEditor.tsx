@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { ArrowLeft, Plus, Save } from 'lucide-react'
 import type { RunbookParameterType } from '@/types'
 import type { RunbookParameterDraft } from '@/components/RunbookParameterEditor'
@@ -67,6 +68,11 @@ export function RunbookEditor({
   onCancel,
 }: RunbookEditorProps) {
   const isCreating = draft.id === null
+  const id = useId()
+  const nameId = `${id}-name`
+  const descriptionId = `${id}-description`
+  const enabledId = `${id}-enabled`
+  const webhookURLId = `${id}-webhook-url`
 
   const addStep = () => {
     onDraftChange({
@@ -149,64 +155,68 @@ export function RunbookEditor({
         <div className="grid gap-3 pb-4">
           <div className="grid gap-2 rounded-lg border border-border-subtle bg-surface-elevated p-3">
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <label
+                htmlFor={nameId}
+                className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
                 Name
               </label>
               <Input
+                id={nameId}
                 className={cn(
                   'mt-0.5 h-8 bg-surface-overlay text-[12px]',
                   errors.name && 'border-destructive',
                 )}
                 placeholder="Runbook name"
                 value={draft.name}
-                onChange={(e) =>
-                  onDraftChange({ ...draft, name: e.target.value })
-                }
+                onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
               />
               {errors.name && (
-                <p className="mt-0.5 text-[10px] text-destructive-foreground">
-                  {errors.name}
-                </p>
+                <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.name}</p>
               )}
             </div>
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <label
+                htmlFor={descriptionId}
+                className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
                 Description
               </label>
               <Textarea
+                id={descriptionId}
                 className="mt-0.5 min-h-12 bg-surface-overlay text-[12px]"
                 placeholder="What does this runbook do?"
                 value={draft.description}
-                onChange={(e) =>
-                  onDraftChange({ ...draft, description: e.target.value })
-                }
+                onChange={(e) => onDraftChange({ ...draft, description: e.target.value })}
               />
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-[12px] select-none">
               <input
+                id={enabledId}
                 type="checkbox"
+                aria-label="Enabled"
                 checked={draft.enabled}
-                onChange={(e) =>
-                  onDraftChange({ ...draft, enabled: e.target.checked })
-                }
+                onChange={(e) => onDraftChange({ ...draft, enabled: e.target.checked })}
                 className="h-3.5 w-3.5 rounded border-border accent-primary"
               />
               <span className="text-muted-foreground">Enabled</span>
             </label>
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <label
+                htmlFor={webhookURLId}
+                className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
                 Webhook URL
               </label>
               <Input
+                id={webhookURLId}
                 className={cn(
                   'mt-0.5 h-8 bg-surface-overlay text-[12px]',
                   errors.webhookURL && 'border-destructive',
                 )}
                 placeholder="https://hooks.example.com/..."
                 value={draft.webhookURL}
-                onChange={(e) =>
-                  onDraftChange({ ...draft, webhookURL: e.target.value })
-                }
+                onChange={(e) => onDraftChange({ ...draft, webhookURL: e.target.value })}
               />
               {errors.webhookURL && (
                 <p className="mt-0.5 text-[10px] text-destructive-foreground">
@@ -232,9 +242,7 @@ export function RunbookEditor({
               </Button>
             </div>
             {errors.parameters && (
-              <p className="px-1 text-[10px] text-destructive-foreground">
-                {errors.parameters}
-              </p>
+              <p className="px-1 text-[10px] text-destructive-foreground">{errors.parameters}</p>
             )}
             {draft.parameters.map((param, i) => (
               <RunbookParameterEditor
@@ -254,8 +262,8 @@ export function RunbookEditor({
             {draft.parameters.length === 0 && (
               <div className="rounded-lg border border-dashed border-border-subtle p-3 text-center">
                 <p className="text-[11px] text-muted-foreground">
-                  No parameters. Click &ldquo;Add Parameter&rdquo; to define
-                  inputs for this runbook.
+                  No parameters. Click &ldquo;Add Parameter&rdquo; to define inputs for this
+                  runbook.
                 </p>
               </div>
             )}
@@ -277,9 +285,7 @@ export function RunbookEditor({
               </Button>
             </div>
             {errors.steps && (
-              <p className="px-1 text-[10px] text-destructive-foreground">
-                {errors.steps}
-              </p>
+              <p className="px-1 text-[10px] text-destructive-foreground">{errors.steps}</p>
             )}
             {draft.steps.map((step, i) => (
               <RunbookStepEditor

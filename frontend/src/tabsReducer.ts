@@ -30,11 +30,8 @@ export function loadPersistedTabs(): TabsState {
     }
     if (!Array.isArray(parsed.openTabs)) return initialTabsState
     return {
-      openTabs: parsed.openTabs.filter(
-        (t) => typeof t === 'string' && t !== '',
-      ),
-      activeSession:
-        typeof parsed.activeSession === 'string' ? parsed.activeSession : '',
+      openTabs: parsed.openTabs.filter((t) => typeof t === 'string' && t !== ''),
+      activeSession: typeof parsed.activeSession === 'string' ? parsed.activeSession : '',
       activeEpoch: 0,
     }
   } catch {
@@ -79,9 +76,7 @@ export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
         return state
       }
 
-      const openTabs = state.openTabs.filter(
-        (tabName) => tabName !== action.session,
-      )
+      const openTabs = state.openTabs.filter((tabName) => tabName !== action.session)
       if (state.activeSession !== action.session) {
         return { ...state, openTabs }
       }
@@ -93,23 +88,15 @@ export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
       }
     }
     case 'rename': {
-      if (
-        action.oldName === '' ||
-        action.newName === '' ||
-        action.oldName === action.newName
-      ) {
+      if (action.oldName === '' || action.newName === '' || action.oldName === action.newName) {
         return state
       }
 
       const openTabs = dedupe(
-        state.openTabs.map((tabName) =>
-          tabName === action.oldName ? action.newName : tabName,
-        ),
+        state.openTabs.map((tabName) => (tabName === action.oldName ? action.newName : tabName)),
       )
       const activeSession =
-        state.activeSession === action.oldName
-          ? action.newName
-          : state.activeSession
+        state.activeSession === action.oldName ? action.newName : state.activeSession
 
       return {
         ...state,
@@ -135,12 +122,8 @@ export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
     }
     case 'sync': {
       const allowed = new Set(action.sessions)
-      const openTabs = dedupe(
-        state.openTabs.filter((tabName) => allowed.has(tabName)),
-      )
-      let activeSession = allowed.has(state.activeSession)
-        ? state.activeSession
-        : ''
+      const openTabs = dedupe(state.openTabs.filter((tabName) => allowed.has(tabName)))
+      let activeSession = allowed.has(state.activeSession) ? state.activeSession : ''
 
       if (activeSession === '' && openTabs.length > 0) {
         activeSession = openTabs[openTabs.length - 1]
@@ -150,9 +133,7 @@ export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
         openTabs,
         activeSession,
         activeEpoch:
-          activeSession === state.activeSession
-            ? state.activeEpoch
-            : state.activeEpoch + 1,
+          activeSession === state.activeSession ? state.activeEpoch : state.activeEpoch + 1,
       }
     }
     case 'clear': {

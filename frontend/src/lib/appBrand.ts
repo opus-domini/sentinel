@@ -4,11 +4,7 @@ function normalizeHostname(hostname?: string | null): string {
   return (hostname ?? '').trim()
 }
 
-function setHeadMetaContent(
-  doc: Document,
-  name: string,
-  content: string,
-): void {
+function setHeadMetaContent(doc: Document, name: string, content: string): void {
   const meta = doc.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)
   if (!meta) {
     return
@@ -32,16 +28,9 @@ export function formatInstalledAppShortName(hostname?: string | null): string {
   return normalizeHostname(hostname) || DEFAULT_APP_NAME
 }
 
-export function applyDocumentAppBrand(
-  hostname?: string | null,
-  doc: Document = document,
-): void {
+export function applyDocumentAppBrand(hostname?: string | null, doc: Document = document): void {
   const appName = formatInstalledAppName(hostname)
   doc.title = appName
-  setHeadMetaContent(
-    doc,
-    'apple-mobile-web-app-title',
-    formatInstalledAppShortName(hostname),
-  )
+  setHeadMetaContent(doc, 'apple-mobile-web-app-title', formatInstalledAppShortName(hostname))
   setHeadMetaContent(doc, 'application-name', appName)
 }

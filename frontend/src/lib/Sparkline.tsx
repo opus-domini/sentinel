@@ -36,12 +36,8 @@ export function Sparkline({
 
   if (data.length < 2) return null
 
-  const min = domain
-    ? domain[0]
-    : data.reduce((a, b) => (b < a ? b : a), data[0])
-  const max = domain
-    ? domain[1]
-    : data.reduce((a, b) => (b > a ? b : a), data[0])
+  const min = domain ? domain[0] : data.reduce((a, b) => (b < a ? b : a), data[0])
+  const max = domain ? domain[1] : data.reduce((a, b) => (b > a ? b : a), data[0])
   const range = max - min || 1
 
   const pad = 2
@@ -67,8 +63,7 @@ export function Sparkline({
 
   const handleMouseLeave = () => setHoverIndex(null)
 
-  const hoverXPct =
-    hoverIndex !== null ? (hoverIndex / (data.length - 1)) * 100 : 0
+  const hoverXPct = hoverIndex !== null ? (hoverIndex / (data.length - 1)) * 100 : 0
   const hoverYPct = hoverIndex !== null ? (coords[hoverIndex].y / 40) * 100 : 0
 
   return (
@@ -92,12 +87,7 @@ export function Sparkline({
             </linearGradient>
           </defs>
         )}
-        {fill && (
-          <polygon
-            points={`0,40 ${polylinePoints} ${w},40`}
-            fill={`url(#${gradientId})`}
-          />
-        )}
+        {fill && <polygon points={`0,40 ${polylinePoints} ${w},40`} fill={`url(#${gradientId})`} />}
         <polyline
           points={polylinePoints}
           fill="none"

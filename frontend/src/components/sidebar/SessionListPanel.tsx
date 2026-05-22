@@ -72,10 +72,7 @@ export default function SessionListPanel({
   )
 
   const openTabsSet = useMemo(() => new Set(openTabs), [openTabs])
-  const pinnedNames = useMemo(
-    () => new Set(presets.map((preset) => preset.name)),
-    [presets],
-  )
+  const pinnedNames = useMemo(() => new Set(presets.map((preset) => preset.name)), [presets])
   const { attachedSessions, idleSessions } = useMemo(() => {
     const attached: Array<Session> = []
     const idle: Array<Session> = []

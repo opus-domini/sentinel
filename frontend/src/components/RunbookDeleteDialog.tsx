@@ -31,19 +31,15 @@ export function RunbookDeleteDialog({
           <AlertDialogTitle>Delete runbook</AlertDialogTitle>
           <AlertDialogDescription>
             Are you sure you want to delete{' '}
-            <span className="font-semibold text-foreground">{runbookName}</span>
-            ? This action cannot be undone.
+            <span className="font-semibold text-foreground">{runbookName}</span>? This action cannot
+            be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={deleting} onClick={onCancel}>
             Cancel
           </AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            disabled={deleting}
-            onClick={onConfirm}
-          >
+          <AlertDialogAction variant="destructive" disabled={deleting} onClick={onConfirm}>
             {deleting ? 'Deleting...' : 'Delete'}
           </AlertDialogAction>
         </AlertDialogFooter>

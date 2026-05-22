@@ -15,11 +15,8 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
-  useRouterState: ({
-    select,
-  }: {
-    select: (state: { location: { pathname: string } }) => string
-  }) => select({ location: { pathname: '/services' } }),
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) =>
+    select({ location: { pathname: '/services' } }),
 }))
 
 vi.mock('@/components/settings/SettingsDialog', () => ({
@@ -48,10 +45,7 @@ describe('SideRail', () => {
   it('keeps desktop side rail icon-only with accessible labels', () => {
     const { container } = render(
       <LayoutContext.Provider value={layoutValue}>
-        <SideRail
-          sidebarCollapsed={false}
-          onToggleSidebarCollapsed={() => {}}
-        />
+        <SideRail sidebarCollapsed={false} onToggleSidebarCollapsed={() => {}} />
       </LayoutContext.Provider>,
     )
 
@@ -66,33 +60,21 @@ describe('SideRail', () => {
     expect((desktopTmuxLink.textContent || '').trim()).toBe('')
     expect(desktopTmuxLink.getAttribute('aria-label')).toBe('Tmux')
 
-    const desktopSettingsButton = aside?.querySelector(
-      'button[aria-label="Settings"]',
-    )
+    const desktopSettingsButton = aside?.querySelector('button[aria-label="Settings"]')
     expect(desktopSettingsButton).not.toBeNull()
   })
 
   it('keeps metrics immediately after tmux in the desktop rail', () => {
     const { container } = render(
       <LayoutContext.Provider value={layoutValue}>
-        <SideRail
-          sidebarCollapsed={false}
-          onToggleSidebarCollapsed={() => {}}
-        />
+        <SideRail sidebarCollapsed={false} onToggleSidebarCollapsed={() => {}} />
       </LayoutContext.Provider>,
     )
 
-    const links = Array.from(container.querySelectorAll('aside a')).map(
-      (link) => link.getAttribute('aria-label'),
+    const links = Array.from(container.querySelectorAll('aside a')).map((link) =>
+      link.getAttribute('aria-label'),
     )
 
-    expect(links).toEqual([
-      'Tmux',
-      'Metrics',
-      'Services',
-      'Alerts',
-      'Runbooks',
-      'Activities',
-    ])
+    expect(links).toEqual(['Tmux', 'Metrics', 'Services', 'Alerts', 'Runbooks', 'Activities'])
   })
 })

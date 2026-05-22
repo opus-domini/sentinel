@@ -1,11 +1,6 @@
 import type { OpsRunbook, OpsRunbookRun } from '@/types'
 
-export type RunbookStatusTone =
-  | 'ok'
-  | 'danger'
-  | 'warning'
-  | 'muted'
-  | 'neutral'
+export type RunbookStatusTone = 'ok' | 'danger' | 'warning' | 'muted' | 'neutral'
 
 export type RunbookStatusMeta = {
   label: string
@@ -24,25 +19,17 @@ export function normalizeRunbookStatus(status: string): string {
   return status.trim().toLowerCase()
 }
 
-export function isActiveRunbookJob(
-  job: Pick<OpsRunbookRun, 'status'>,
-): boolean {
+export function isActiveRunbookJob(job: Pick<OpsRunbookRun, 'status'>): boolean {
   const status = normalizeRunbookStatus(job.status)
-  return (
-    status === 'queued' || status === 'running' || status === 'waiting_approval'
-  )
+  return status === 'queued' || status === 'running' || status === 'waiting_approval'
 }
 
-export function isExecutingRunbookJob(
-  job: Pick<OpsRunbookRun, 'status'>,
-): boolean {
+export function isExecutingRunbookJob(job: Pick<OpsRunbookRun, 'status'>): boolean {
   const status = normalizeRunbookStatus(job.status)
   return status === 'queued' || status === 'running'
 }
 
-export function isWaitingApprovalRunbookJob(
-  job: Pick<OpsRunbookRun, 'status'>,
-): boolean {
+export function isWaitingApprovalRunbookJob(job: Pick<OpsRunbookRun, 'status'>): boolean {
   return normalizeRunbookStatus(job.status) === 'waiting_approval'
 }
 
@@ -165,10 +152,7 @@ export function runbookJobProgress(job: OpsRunbookRun): number {
   return Math.min(100, Math.max(0, (job.completedSteps / job.totalSteps) * 100))
 }
 
-export function runbookJobDurationMs(
-  job: OpsRunbookRun,
-  now: Date = new Date(),
-): number | null {
+export function runbookJobDurationMs(job: OpsRunbookRun, now: Date = new Date()): number | null {
   const startedAt = Date.parse(job.startedAt || job.createdAt)
   if (Number.isNaN(startedAt)) {
     return null
@@ -209,9 +193,7 @@ export function formatRunbookDuration(ms: number | null): string {
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = seconds % 60
   if (minutes < 60) {
-    return remainingSeconds > 0
-      ? `${minutes}m ${remainingSeconds}s`
-      : `${minutes}m`
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
   }
 
   const hours = Math.floor(minutes / 60)

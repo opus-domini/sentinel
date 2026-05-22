@@ -18,16 +18,10 @@ describe('useIsMobileLayout', () => {
         get matches() {
           return currentMatches
         },
-        addEventListener: (
-          _: string,
-          cb: (event: { matches: boolean }) => void,
-        ) => {
+        addEventListener: (_: string, cb: (event: { matches: boolean }) => void) => {
           listeners.push(cb)
         },
-        removeEventListener: (
-          _: string,
-          cb: (event: { matches: boolean }) => void,
-        ) => {
+        removeEventListener: (_: string, cb: (event: { matches: boolean }) => void) => {
           listeners = listeners.filter((l) => l !== cb)
         },
       })),

@@ -14,9 +14,6 @@ export function isSessionAttached(
   return isSessionAttachedWithLocalTab(session, openTabsSet.has(session.name))
 }
 
-export function effectiveAttachedClients(
-  attached: number,
-  hasLocalTab: boolean,
-): number {
+export function effectiveAttachedClients(attached: number, hasLocalTab: boolean): number {
   return Math.max(attached, hasLocalTab ? 1 : 0)
 }

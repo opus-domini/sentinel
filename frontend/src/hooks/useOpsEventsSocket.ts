@@ -14,8 +14,7 @@ export function useOpsEventsSocket({
   tokenRequired,
   onMessage,
 }: UseOpsEventsSocketOptions): ConnectionState {
-  const [connectionState, setConnectionState] =
-    useState<ConnectionState>('disconnected')
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
 
   const onMessageRef = useRef(onMessage)
   useEffect(() => {

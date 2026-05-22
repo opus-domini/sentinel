@@ -52,14 +52,7 @@ function SortablePresetLaunchItem({
   dragEnabled?: boolean
   onLaunchPreset: (name: string) => void
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: preset.name,
   })
   const PresetIcon = getTmuxIcon(preset.icon)
@@ -85,9 +78,7 @@ function SortablePresetLaunchItem({
       >
         <PresetIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12px] font-semibold">
-            {preset.name}
-          </span>
+          <span className="block truncate text-[12px] font-semibold">{preset.name}</span>
           <span className="block truncate text-[10px] text-muted-foreground">
             {preset.cwd}
             {preset.user && (
@@ -98,9 +89,7 @@ function SortablePresetLaunchItem({
             )}
           </span>
         </span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
-          Start
-        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">Start</span>
       </button>
     </li>
   )
@@ -145,9 +134,7 @@ export default function PinnedSessionsPanel({
     if (normalizedFilter === '') {
       return presets
     }
-    return presets.filter((preset) =>
-      preset.name.toLowerCase().includes(normalizedFilter),
-    )
+    return presets.filter((preset) => preset.name.toLowerCase().includes(normalizedFilter))
   }, [normalizedFilter, presets])
 
   if (visiblePresets.length === 0) {
@@ -165,11 +152,7 @@ export default function PinnedSessionsPanel({
 
   return (
     <section className="rounded-lg border border-border-subtle bg-secondary">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext
           items={visiblePresets.map((preset) => preset.name)}
           strategy={verticalListSortingStrategy}

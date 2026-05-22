@@ -1,11 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import {
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Trash2,
-  XCircle,
-} from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, Trash2, XCircle } from 'lucide-react'
 import type { OpsRunbookRun } from '@/types'
 import {
   AlertDialog,
@@ -63,9 +57,7 @@ export function RunbookJobHistory({
 }: RunbookJobHistoryProps) {
   const { formatDateTime } = useDateFormat()
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
-  const [expandedStepIndices, setExpandedStepIndices] = useState<Set<number>>(
-    new Set(),
-  )
+  const [expandedStepIndices, setExpandedStepIndices] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState<JobFilter>('all')
   const [actingJobId, setActingJobId] = useState<string | null>(null)
 
@@ -83,11 +75,8 @@ export function RunbookJobHistory({
     () => ({
       active: jobs.filter(isActiveRunbookJob).length,
       approval: jobs.filter(isWaitingApprovalRunbookJob).length,
-      failed: jobs.filter((job) => job.status.trim().toLowerCase() === 'failed')
-        .length,
-      succeeded: jobs.filter(
-        (job) => job.status.trim().toLowerCase() === 'succeeded',
-      ).length,
+      failed: jobs.filter((job) => job.status.trim().toLowerCase() === 'failed').length,
+      succeeded: jobs.filter((job) => job.status.trim().toLowerCase() === 'succeeded').length,
     }),
     [jobs],
   )
@@ -203,15 +192,12 @@ export function RunbookJobHistory({
                       <ChevronRight className="h-3 w-3" />
                     )}
                   </button>
-                  <div
-                    className="min-w-0 flex-1 cursor-pointer"
-                    role="button"
-                    tabIndex={0}
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 cursor-pointer text-left"
                     onClick={() => toggleJobExpand(job.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ')
-                        toggleJobExpand(job.id)
-                    }}
+                    aria-label="Toggle job details"
+                    aria-expanded={isExpanded}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span
@@ -241,34 +227,28 @@ export function RunbookJobHistory({
                     </p>
                     {isWaitingApproval && (
                       <p className="mt-1 text-[10px] text-warning-foreground">
-                        Review the recorded output and choose whether this run
-                        can continue.
+                        Review the recorded output and choose whether this run can continue.
                       </p>
                     )}
                     {job.error && (
-                      <p className="mt-1 text-[10px] text-destructive-foreground">
-                        {job.error}
-                      </p>
+                      <p className="mt-1 text-[10px] text-destructive-foreground">{job.error}</p>
                     )}
-                    {job.parametersUsed &&
-                      Object.keys(job.parametersUsed).length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {Object.entries(job.parametersUsed).map(
-                            ([key, val]) => (
-                              <Badge
-                                key={key}
-                                variant="outline"
-                                className="h-4 gap-0.5 px-1 text-[9px]"
-                              >
-                                <span className="font-mono">{key}</span>
-                                <span className="text-muted-foreground">=</span>
-                                <span>{val}</span>
-                              </Badge>
-                            ),
-                          )}
-                        </div>
-                      )}
-                  </div>
+                    {job.parametersUsed && Object.keys(job.parametersUsed).length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {Object.entries(job.parametersUsed).map(([key, val]) => (
+                          <Badge
+                            key={key}
+                            variant="outline"
+                            className="h-4 gap-0.5 px-1 text-[9px]"
+                          >
+                            <span className="font-mono">{key}</span>
+                            <span className="text-muted-foreground">=</span>
+                            <span>{val}</span>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </button>
                   {isWaitingApproval && (
                     <div className="flex shrink-0 items-center gap-1">
                       <button
@@ -293,12 +273,10 @@ export function RunbookJobHistory({
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>
-                              Reject approval?
-                            </AlertDialogTitle>
+                            <AlertDialogTitle>Reject approval?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              This marks the run as failed and it will not
-                              execute the remaining steps.
+                              This marks the run as failed and it will not execute the remaining
+                              steps.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -375,9 +353,7 @@ export function RunbookJobHistory({
                               <span className="shrink-0 rounded border border-border-subtle px-1 text-[9px] uppercase text-muted-foreground">
                                 {sr.type}
                               </span>
-                              <span className="truncate font-medium">
-                                {sr.title}
-                              </span>
+                              <span className="truncate font-medium">{sr.title}</span>
                             </div>
                             <span className="shrink-0 text-[10px] text-muted-foreground">
                               {sr.durationMs}ms
@@ -408,9 +384,7 @@ export function RunbookJobHistory({
                 )}
                 {isExpanded && steps.length === 0 && (
                   <div className="border-t border-border-subtle px-2.5 py-2">
-                    <p className="text-[10px] text-muted-foreground">
-                      No step output recorded.
-                    </p>
+                    <p className="text-[10px] text-muted-foreground">No step output recorded.</p>
                   </div>
                 )}
               </div>
@@ -418,9 +392,7 @@ export function RunbookJobHistory({
           })}
           {filteredJobs.length === 0 && (
             <p className="p-2 text-[12px] text-muted-foreground">
-              {jobs.length === 0
-                ? 'No runs yet.'
-                : 'No runs match this filter.'}
+              {jobs.length === 0 ? 'No runs yet.' : 'No runs match this filter.'}
             </p>
           )}
         </div>

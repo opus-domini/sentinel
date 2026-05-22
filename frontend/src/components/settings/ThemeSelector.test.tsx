@@ -16,9 +16,7 @@ describe('ThemeSelector', () => {
     render(<ThemeSelector activeThemeId={activeTheme.id} onSelect={() => {}} />)
 
     expect(
-      screen
-        .getByRole('button', { name: activeTheme.label })
-        .getAttribute('aria-pressed'),
+      screen.getByRole('button', { name: activeTheme.label }).getAttribute('aria-pressed'),
     ).toBe('true')
   })
 
@@ -26,12 +24,7 @@ describe('ThemeSelector', () => {
     const onSelect = vi.fn()
     const nextTheme = terminalThemes[1]
 
-    render(
-      <ThemeSelector
-        activeThemeId={terminalThemes[0].id}
-        onSelect={onSelect}
-      />,
-    )
+    render(<ThemeSelector activeThemeId={terminalThemes[0].id} onSelect={onSelect} />)
 
     fireEvent.click(screen.getByRole('button', { name: nextTheme.label }))
 

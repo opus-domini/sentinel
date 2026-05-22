@@ -34,11 +34,7 @@ function paneFor(session: string): PaneInfo {
 describe('tmuxQueryCache', () => {
   it('builds stable query keys', () => {
     expect(TMUX_SESSIONS_QUERY_KEY).toEqual(['tmux', 'sessions'])
-    expect(tmuxInspectorQueryKey(' alpha ')).toEqual([
-      'tmux',
-      'inspector',
-      'alpha',
-    ])
+    expect(tmuxInspectorQueryKey(' alpha ')).toEqual(['tmux', 'inspector', 'alpha'])
     expect(
       tmuxTimelineQueryKey({
         session: ' alpha ',
@@ -51,27 +47,17 @@ describe('tmuxQueryCache', () => {
   })
 
   it('persists inspector snapshot only when current data belongs to active session', () => {
-    expect(
-      shouldCacheActiveInspectorSnapshot('alpha', [windowFor('alpha')], []),
-    ).toBe(true)
-    expect(
-      shouldCacheActiveInspectorSnapshot('alpha', [windowFor('beta')], []),
-    ).toBe(false)
+    expect(shouldCacheActiveInspectorSnapshot('alpha', [windowFor('alpha')], [])).toBe(true)
+    expect(shouldCacheActiveInspectorSnapshot('alpha', [windowFor('beta')], [])).toBe(false)
   })
 
   it('falls back to pane session when windows are absent', () => {
-    expect(
-      shouldCacheActiveInspectorSnapshot('alpha', [], [paneFor('alpha')]),
-    ).toBe(true)
-    expect(
-      shouldCacheActiveInspectorSnapshot('alpha', [], [paneFor('beta')]),
-    ).toBe(false)
+    expect(shouldCacheActiveInspectorSnapshot('alpha', [], [paneFor('alpha')])).toBe(true)
+    expect(shouldCacheActiveInspectorSnapshot('alpha', [], [paneFor('beta')])).toBe(false)
   })
 
   it('does not persist when session cannot be resolved', () => {
     expect(shouldCacheActiveInspectorSnapshot('alpha', [], [])).toBe(false)
-    expect(
-      shouldCacheActiveInspectorSnapshot('', [windowFor('alpha')], []),
-    ).toBe(false)
+    expect(shouldCacheActiveInspectorSnapshot('', [windowFor('alpha')], [])).toBe(false)
   })
 })

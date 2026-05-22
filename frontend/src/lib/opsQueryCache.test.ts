@@ -81,13 +81,9 @@ describe('opsQueryCache', () => {
     const second = buildActivityEvent(2)
     const updatedFirst = { ...first, message: 'updated' }
 
+    expect(prependOpsActivityEvent([first], second).map((item) => item.id)).toEqual([2, 1])
     expect(
-      prependOpsActivityEvent([first], second).map((item) => item.id),
-    ).toEqual([2, 1])
-    expect(
-      prependOpsActivityEvent([first, second], updatedFirst).map(
-        (item) => item.message,
-      ),
+      prependOpsActivityEvent([first, second], updatedFirst).map((item) => item.message),
     ).toEqual(['updated', 'event-2'])
   })
 
@@ -96,13 +92,10 @@ describe('opsQueryCache', () => {
     const second = buildJob('b')
     const updatedFirst = { ...first, status: 'succeeded' }
 
-    expect(upsertOpsRunbookJob([first], second).map((item) => item.id)).toEqual(
-      ['b', 'a'],
-    )
-    expect(
-      upsertOpsRunbookJob([first, second], updatedFirst).map(
-        (item) => item.status,
-      ),
-    ).toEqual(['succeeded', 'queued'])
+    expect(upsertOpsRunbookJob([first], second).map((item) => item.id)).toEqual(['b', 'a'])
+    expect(upsertOpsRunbookJob([first, second], updatedFirst).map((item) => item.status)).toEqual([
+      'succeeded',
+      'queued',
+    ])
   })
 })

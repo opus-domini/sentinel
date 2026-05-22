@@ -23,8 +23,7 @@ export function useLogStream({
   enabled,
   onLine,
 }: UseLogStreamOptions): ConnectionState {
-  const [connectionState, setConnectionState] =
-    useState<ConnectionState>('disconnected')
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
 
   const onLineRef = useRef(onLine)
   useEffect(() => {
@@ -67,10 +66,7 @@ export function useLogStream({
         params.set('manager', target.manager)
       }
 
-      const wsURL = new URL(
-        `/ws/logs?${params.toString()}`,
-        window.location.origin,
-      )
+      const wsURL = new URL(`/ws/logs?${params.toString()}`, window.location.origin)
       wsURL.protocol = wsURL.protocol === 'https:' ? 'wss:' : 'ws:'
 
       socket = new WebSocket(wsURL.toString(), buildWSProtocols())

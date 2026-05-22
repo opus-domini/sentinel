@@ -9,15 +9,11 @@ function touch(x: number, y: number): Touch {
 }
 
 function fireTouchStart(x: number, y: number): void {
-  document.dispatchEvent(
-    new TouchEvent('touchstart', { touches: [touch(x, y)] }),
-  )
+  document.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(x, y)] }))
 }
 
 function fireTouchMove(x: number, y: number): void {
-  document.dispatchEvent(
-    new TouchEvent('touchmove', { touches: [touch(x, y)] }),
-  )
+  document.dispatchEvent(new TouchEvent('touchmove', { touches: [touch(x, y)] }))
 }
 
 function fireTouchEnd(): void {
@@ -28,9 +24,7 @@ describe('useEdgeSwipe', () => {
   it('calls onSwipeOpen on a right swipe from left edge', () => {
     const onSwipeOpen = vi.fn()
 
-    renderHook(() =>
-      useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }),
-    )
+    renderHook(() => useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }))
 
     fireTouchStart(10, 100)
     fireTouchMove(70, 105)
@@ -41,9 +35,7 @@ describe('useEdgeSwipe', () => {
   it('does not trigger when disabled', () => {
     const onSwipeOpen = vi.fn()
 
-    renderHook(() =>
-      useEdgeSwipe({ enabled: false, isOpen: false, onSwipeOpen }),
-    )
+    renderHook(() => useEdgeSwipe({ enabled: false, isOpen: false, onSwipeOpen }))
 
     fireTouchStart(10, 100)
     fireTouchMove(70, 105)
@@ -65,9 +57,7 @@ describe('useEdgeSwipe', () => {
   it('does not trigger when touch starts away from edge', () => {
     const onSwipeOpen = vi.fn()
 
-    renderHook(() =>
-      useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }),
-    )
+    renderHook(() => useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }))
 
     fireTouchStart(100, 100)
     fireTouchMove(200, 105)
@@ -78,9 +68,7 @@ describe('useEdgeSwipe', () => {
   it('does not trigger for short swipe', () => {
     const onSwipeOpen = vi.fn()
 
-    renderHook(() =>
-      useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }),
-    )
+    renderHook(() => useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }))
 
     fireTouchStart(10, 100)
     fireTouchMove(30, 100)
@@ -91,9 +79,7 @@ describe('useEdgeSwipe', () => {
   it('does not trigger for vertical swipe', () => {
     const onSwipeOpen = vi.fn()
 
-    renderHook(() =>
-      useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }),
-    )
+    renderHook(() => useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }))
 
     fireTouchStart(10, 100)
     fireTouchMove(70, 200)
@@ -104,9 +90,7 @@ describe('useEdgeSwipe', () => {
   it('resets tracking on touchend', () => {
     const onSwipeOpen = vi.fn()
 
-    renderHook(() =>
-      useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }),
-    )
+    renderHook(() => useEdgeSwipe({ enabled: true, isOpen: false, onSwipeOpen }))
 
     fireTouchStart(10, 100)
     fireTouchEnd()

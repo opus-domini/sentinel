@@ -27,9 +27,7 @@ describe('useTmuxApi', () => {
     mockFetch(200, { data: { sessions: ['a', 'b'] } })
 
     const { result } = renderHook(() => useTmuxApi())
-    const data = await result.current<{ sessions: Array<string> }>(
-      '/api/tmux/sessions',
-    )
+    const data = await result.current<{ sessions: Array<string> }>('/api/tmux/sessions')
 
     expect(data).toEqual({ sessions: ['a', 'b'] })
   })
@@ -58,9 +56,7 @@ describe('useTmuxApi', () => {
     mockFetch(400, { error: { message: 'invalid session name' } })
 
     const { result } = renderHook(() => useTmuxApi())
-    await expect(result.current('/api/tmux/sessions')).rejects.toThrow(
-      'invalid session name',
-    )
+    await expect(result.current('/api/tmux/sessions')).rejects.toThrow('invalid session name')
   })
 
   it('throws with HTTP status when no error message in body', async () => {

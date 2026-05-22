@@ -110,9 +110,7 @@ describe('SessionListPanel', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /web/i }).style.touchAction).toBe(
-      'pan-y',
-    )
+    expect(screen.getByRole('button', { name: /web/i }).style.touchAction).toBe('pan-y')
   })
 
   it('does not create its own vertical scroll container on desktop', () => {

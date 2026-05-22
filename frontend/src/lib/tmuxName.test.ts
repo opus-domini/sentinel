@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  sanitizeTmuxPaneTitle,
-  sanitizeTmuxWindowName,
-  slugifyTmuxName,
-} from './tmuxName'
+import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName, slugifyTmuxName } from './tmuxName'
 
 describe('slugifyTmuxName', () => {
   it('passes through valid names unchanged', () => {

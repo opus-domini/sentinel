@@ -104,9 +104,7 @@ export default function SessionControls({
 
   const addControl = (
     <div className="flex items-center text-foreground">
-      <TooltipHelper
-        content={tmuxUnavailable ? 'tmux not available' : 'New session'}
-      >
+      <TooltipHelper content={tmuxUnavailable ? 'tmux not available' : 'New session'}>
         <Button
           variant="outline"
           size="icon-xs"
@@ -140,9 +138,7 @@ export default function SessionControls({
             <>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Last used</DropdownMenuLabel>
-              <DropdownMenuItem
-                onSelect={() => onLaunchLauncher(recentLauncher.id)}
-              >
+              <DropdownMenuItem onSelect={() => onLaunchLauncher(recentLauncher.id)}>
                 {(() => {
                   const Icon = getTmuxIcon(recentLauncher.icon)
                   return <Icon className="h-3.5 w-3.5" />
@@ -211,9 +207,7 @@ export default function SessionControls({
 
       {tmuxUnavailable && (
         <div className="rounded-md border border-warning/45 bg-warning/20 px-2.5 py-2 text-[11px] text-warning-foreground">
-          <p className="font-semibold uppercase tracking-[0.06em]">
-            tmux not available
-          </p>
+          <p className="font-semibold uppercase tracking-[0.06em]">tmux not available</p>
           <p className="mt-1 text-secondary-foreground">
             Install tmux on this host and restart Sentinel.
           </p>

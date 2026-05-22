@@ -37,9 +37,7 @@ function bindControllerChangeReload(): void {
   })
 }
 
-function watchRegistrationForUpdates(
-  registration: ServiceWorkerRegistration,
-): void {
+function watchRegistrationForUpdates(registration: ServiceWorkerRegistration): void {
   if (registration.waiting) {
     notifyUpdateReady(registration.waiting)
   }
@@ -50,10 +48,7 @@ function watchRegistrationForUpdates(
       return
     }
     installing.addEventListener('statechange', () => {
-      if (
-        installing.state === 'installed' &&
-        navigator.serviceWorker.controller
-      ) {
+      if (installing.state === 'installed' && navigator.serviceWorker.controller) {
         notifyUpdateReady(installing)
       }
     })
@@ -105,11 +100,7 @@ export function getPwaUpdateReadyEventName(): string {
   return PWA_UPDATE_READY_EVENT
 }
 
-export type CheckForUpdateResult =
-  | 'applied'
-  | 'no-update'
-  | 'unsupported'
-  | 'failed'
+export type CheckForUpdateResult = 'applied' | 'no-update' | 'unsupported' | 'failed'
 
 const INSTALL_TIMEOUT_MS = 10_000
 

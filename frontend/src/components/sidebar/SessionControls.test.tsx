@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -22,18 +16,15 @@ vi.mock('@/components/TmuxHelpDialog', () => ({
 }))
 
 vi.mock('./CreateSessionDialog', () => ({
-  default: ({ open }: { open: boolean }) =>
-    open ? <div>Create Session Dialog</div> : null,
+  default: ({ open }: { open: boolean }) => (open ? <div>Create Session Dialog</div> : null),
 }))
 
 vi.mock('./SessionLaunchersDialog', () => ({
-  default: ({ open }: { open: boolean }) =>
-    open ? <div>Session Launchers Dialog</div> : null,
+  default: ({ open }: { open: boolean }) => (open ? <div>Session Launchers Dialog</div> : null),
 }))
 
 vi.mock('./TokenDialog', () => ({
-  default: ({ open }: { open: boolean }) =>
-    open ? <div>Token Dialog</div> : null,
+  default: ({ open }: { open: boolean }) => (open ? <div>Token Dialog</div> : null),
 }))
 
 afterEach(() => {
@@ -61,26 +52,18 @@ describe('SessionControls', () => {
   it('uses compact header controls to match the tmux window strip buttons', () => {
     render(<SessionControls {...baseProps} />)
 
+    expect(screen.getByRole('button', { name: 'New session' }).getAttribute('data-size')).toBe(
+      'icon-xs',
+    )
     expect(
-      screen
-        .getByRole('button', { name: 'New session' })
-        .getAttribute('data-size'),
+      screen.getByRole('button', { name: 'Open session launcher menu' }).getAttribute('data-size'),
     ).toBe('icon-xs')
-    expect(
-      screen
-        .getByRole('button', { name: 'Open session launcher menu' })
-        .getAttribute('data-size'),
-    ).toBe('icon-xs')
-    expect(
-      screen
-        .getByRole('button', { name: 'About Terminal' })
-        .getAttribute('data-size'),
-    ).toBe('icon-xs')
-    expect(
-      screen
-        .getByRole('button', { name: 'API token' })
-        .getAttribute('data-size'),
-    ).toBe('icon-xs')
+    expect(screen.getByRole('button', { name: 'About Terminal' }).getAttribute('data-size')).toBe(
+      'icon-xs',
+    )
+    expect(screen.getByRole('button', { name: 'API token' }).getAttribute('data-size')).toBe(
+      'icon-xs',
+    )
   })
 
   it('opens the create session dialog from the primary add button', () => {
@@ -123,10 +106,10 @@ describe('SessionControls', () => {
       />,
     )
 
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'Open session launcher menu' }),
-      { button: 0, ctrlKey: false },
-    )
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Open session launcher menu' }), {
+      button: 0,
+      ctrlKey: false,
+    })
 
     expect(await screen.findByText('Last used')).toBeTruthy()
 
@@ -136,10 +119,10 @@ describe('SessionControls', () => {
       expect(onLaunchLauncher).toHaveBeenCalledWith('launcher-api')
     })
 
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'Open session launcher menu' }),
-      { button: 0, ctrlKey: false },
-    )
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Open session launcher menu' }), {
+      button: 0,
+      ctrlKey: false,
+    })
     fireEvent.click(await screen.findByText('Manage session launchers...'))
 
     expect(screen.getByText('Session Launchers Dialog')).toBeTruthy()
