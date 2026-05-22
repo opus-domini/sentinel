@@ -64,7 +64,7 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 14 { //nolint: migrations 000001, 000003..000015
+	if count != 14 {
 		t.Fatalf("schema_migrations rows = %d, want 14", count)
 	}
 }

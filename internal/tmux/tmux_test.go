@@ -278,13 +278,13 @@ func TestPatchMouseDown3PaneBinding(t *testing.T) {
 		changed   bool
 		wantToken string
 	}{
-		{ //nolint:gosec // G101 false positive: tmux config test data, not credentials
+		{
 			name:      "adds_O_and_M_flags",
 			line:      `bind-key -T root MouseDown3Pane if-shell -F "#{mouse_any_flag}" { send-keys -M } { display-menu -T "Pane" -t = -x M -y M "Kill" X { kill-pane } }`,
 			changed:   true,
 			wantToken: "display-menu -O -M -T",
 		},
-		{ //nolint:gosec // G101 false positive: tmux config test data, not credentials
+		{
 			name:      "already_patched",
 			line:      `bind-key -T root MouseDown3Pane if-shell -F "#{mouse_any_flag}" { send-keys -M } { display-menu -O -M -T "Pane" -t = -x M -y M "Kill" X { kill-pane } }`,
 			changed:   false,

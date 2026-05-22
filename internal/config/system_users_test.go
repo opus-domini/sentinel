@@ -95,7 +95,7 @@ hugo:x:1000:1000:Hugo:/home/hugo:/bin/bash
 	original := readPasswdFile
 	t.Cleanup(func() { readPasswdFile = original })
 	readPasswdFile = func() (*os.File, error) {
-		return os.Open(tmpFile) //nolint:gosec // test-only, path is controlled
+		return os.Open(tmpFile)
 	}
 
 	users := ReadSystemUsers()
@@ -142,7 +142,7 @@ func TestReadSystemUsersPasswdNotFound(t *testing.T) {
 func writeTempPasswd(t *testing.T, content string) *os.File {
 	t.Helper()
 	path := writeTempPasswdPath(t, content)
-	f, err := os.Open(path) //nolint:gosec // test-only, path is controlled
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("open temp passwd: %v", err)
 	}

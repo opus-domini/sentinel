@@ -9,14 +9,14 @@ import (
 
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
 
 func readFile(t *testing.T, path string) string {
 	t.Helper()
-	data, err := os.ReadFile(path) //nolint:gosec // test reads its own fixture
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}

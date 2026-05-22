@@ -9,6 +9,6 @@ import (
 
 func isTerminal(fd uintptr) bool {
 	var t syscall.Termios
-	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TCGETS, uintptr(unsafe.Pointer(&t))) //nolint:gosec // ioctl requires unsafe.Pointer
+	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TCGETS, uintptr(unsafe.Pointer(&t)))
 	return err == 0
 }

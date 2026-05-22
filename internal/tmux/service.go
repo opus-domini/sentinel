@@ -26,13 +26,13 @@ var validUserRe = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
 // SystemUsers holds the list of valid system users loaded at startup.
 // Set from main.go after config.ReadSystemUsers().
-var SystemUsers []string //nolint:gochecknoglobals // set once at startup from main
+var SystemUsers []string // set once at startup from main
 
 // UserSwitchMethod controls how multi-user tmux commands are launched.
 // Set from main.go after config.Load().
-var UserSwitchMethod = userswitch.DefaultMethod(runtime.GOOS) //nolint:gochecknoglobals // set once at startup from config
+var UserSwitchMethod = userswitch.DefaultMethod(runtime.GOOS) // set once at startup from config
 
-var execCommandContext = exec.CommandContext //nolint:gochecknoglobals // var enables test injection
+var execCommandContext = exec.CommandContext // var enables test injection
 
 // verifySystemUser checks that the username matches the safe character set
 // and exists in the in-memory system users list.
@@ -64,7 +64,7 @@ func runAsUser(ctx context.Context, user string, args ...string) (string, error)
 	if err != nil {
 		return "", &Error{Kind: ErrKindCommandFailed, Msg: err.Error()}
 	}
-	cmd := execCommandContext(ctx, name, commandArgs...) //nolint:gosec // user validated by verifySystemUser above
+	cmd := execCommandContext(ctx, name, commandArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

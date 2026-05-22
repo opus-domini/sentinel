@@ -267,7 +267,7 @@ func (e *Executor) executeScript(ctx context.Context, step Step) (string, error)
 }
 
 func defaultRunner(ctx context.Context, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G702: name/args are controlled by runbook steps, not user input
+	cmd := exec.CommandContext(ctx, name, args...)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

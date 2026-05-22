@@ -57,7 +57,7 @@ func TestLaunchdStartInterval(t *testing.T) {
 		want  int
 	}{
 		{input: "", want: 86400},
-		{input: "daily", want: 86400}, //nolint:goconst // test value
+		{input: "daily", want: 86400},
 		{input: "hourly", want: 3600},
 		{input: "weekly", want: 604800},
 		{input: "30m", want: 1800},
@@ -877,7 +877,7 @@ func TestWriteLaunchdAutoUpdatePlist(t *testing.T) {
 		t.Fatalf("writeLaunchdAutoUpdatePlist() error: %v", err)
 	}
 
-	data, err := os.ReadFile(plistPath) //nolint:gosec // test reads from t.TempDir()
+	data, err := os.ReadFile(plistPath)
 	if err != nil {
 		t.Fatalf("read plist: %v", err)
 	}

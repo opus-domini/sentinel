@@ -1038,7 +1038,7 @@ func writeState(dataDir string, mutate func(*State)) {
 		return
 	}
 	tmpPath := stPath + ".tmp"
-	if err := os.WriteFile(tmpPath, payload, 0o600); err != nil { //nolint:gosec // internal state write
+	if err := os.WriteFile(tmpPath, payload, 0o600); err != nil {
 		return
 	}
 	_ = os.Rename(tmpPath, stPath)

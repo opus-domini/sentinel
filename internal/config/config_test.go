@@ -264,7 +264,7 @@ func TestLoadCreatesDefaultConfig(t *testing.T) {
 	cfg := Load()
 
 	configPath := filepath.Join(dir, "config.toml")
-	data, err := os.ReadFile(configPath) //nolint:gosec // test file, path is from t.TempDir()
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("expected config file to be created: %v", err)
 	}
@@ -314,7 +314,7 @@ listen = "0.0.0.0:8080"
 
 	cfg := Load()
 
-	data, err := os.ReadFile(configPath) //nolint:gosec // test file, path is from t.TempDir()
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}

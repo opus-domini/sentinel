@@ -234,7 +234,7 @@ func TestCreateOpsRunbookRunWithParams(t *testing.T) {
 		if run.ParametersUsed == nil {
 			t.Fatal("parametersUsed should not be nil")
 		}
-		if run.ParametersUsed["host"] != "server.example.com" { //nolint:goconst // test fixture
+		if run.ParametersUsed["host"] != "server.example.com" {
 			t.Fatalf("parametersUsed[host] = %q, want server.example.com", run.ParametersUsed["host"])
 		}
 		if run.ParametersUsed["env"] != "prod" {

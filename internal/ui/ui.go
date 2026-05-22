@@ -48,7 +48,7 @@ var (
 	tmuxSetSessionMouse     = tmux.SetSessionMouse
 	tmuxSetSessionStatus    = tmux.SetSessionStatus
 	startTmuxAttachFn       = term.StartTmuxAttach
-	startTmuxAttachAsUserFn = term.StartTmuxAttachAsUser //nolint:gochecknoglobals // seam for testing
+	startTmuxAttachAsUserFn = term.StartTmuxAttachAsUser // seam for testing
 )
 
 // OpsLogStreamer provides streaming log access for managed services.

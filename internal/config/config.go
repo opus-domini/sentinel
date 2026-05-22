@@ -674,7 +674,7 @@ func decodeTOML(content string) (map[string]string, error) {
 // Best-effort: errors are silently ignored.
 func writeDefaultConfig(path string) {
 	_ = os.MkdirAll(filepath.Dir(path), 0o700)
-	_ = os.WriteFile(path, []byte(defaultConfigContent), 0o600) //nolint:gosec // fixed content, not user input
+	_ = os.WriteFile(path, []byte(defaultConfigContent), 0o600)
 }
 
 func splitCSV(s string) []string {

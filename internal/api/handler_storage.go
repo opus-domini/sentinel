@@ -223,7 +223,7 @@ func (h *Handler) patchWebhookSettings(w http.ResponseWriter, r *http.Request) {
 	webhookURL := strings.TrimSpace(req.URL)
 	if webhookURL != "" {
 		parsed, err := url.ParseRequestURI(webhookURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") { //nolint:goconst // inline URL scheme check
+		if err != nil || !isHTTPOrHTTPSScheme(parsed.Scheme) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url must be a valid http or https URL", nil)
 			return
 		}
@@ -289,7 +289,7 @@ func (h *Handler) testWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parsed, err := url.ParseRequestURI(webhookURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") { //nolint:goconst // inline URL scheme check
+	if err != nil || !isHTTPOrHTTPSScheme(parsed.Scheme) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url must be a valid http or https URL", nil)
 		return
 	}
@@ -354,5 +354,5 @@ func upsertConfigKey(path, key, value string) error {
 		lines = append(lines, newLine)
 	}
 
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600) //nolint:gosec // fixed content
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
 }

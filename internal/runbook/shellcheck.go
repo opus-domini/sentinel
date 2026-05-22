@@ -62,7 +62,7 @@ func validateShell(step int, src string) []ShellWarning {
 // asParseError attempts to extract a syntax.ParseError from the error.
 // The syntax package may return the error directly or wrapped.
 func asParseError(err error, target *syntax.ParseError) bool {
-	if pe, ok := err.(syntax.ParseError); ok { //nolint:errorlint // syntax.ParseError is a value type, not a pointer
+	if pe, ok := err.(syntax.ParseError); ok {
 		*target = pe
 		return true
 	}

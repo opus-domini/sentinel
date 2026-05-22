@@ -117,7 +117,7 @@ func TestSettingsHandlersPersistConfig(t *testing.T) {
 		t.Fatalf("handler locale = %q, want pt-BR", h.locale)
 	}
 
-	content, err := os.ReadFile(configPath) //nolint:gosec // test path is created under t.TempDir
+	content, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestUpsertConfigKeyQuotesValues(t *testing.T) {
 	if err := upsertConfigKey(path, "locale", `pt-"BR"\test`); err != nil {
 		t.Fatalf("upsertConfigKey: %v", err)
 	}
-	content, err := os.ReadFile(path) //nolint:gosec // test path is created under t.TempDir
+	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}

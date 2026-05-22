@@ -24,7 +24,7 @@ type PTY struct {
 	closeOnce sync.Once
 }
 
-var UserSwitchMethod = userswitch.MethodSudo //nolint:gochecknoglobals // set once at startup from config
+var UserSwitchMethod = userswitch.MethodSudo // set once at startup from config
 
 func StartTmuxAttach(ctx context.Context, session string, cols, rows int) (*PTY, error) {
 	cmd := exec.CommandContext(ctx, "tmux", tmuxAttachArgs(session)...)

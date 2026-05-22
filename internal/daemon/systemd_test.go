@@ -1894,7 +1894,7 @@ func TestInstallNeedrestartOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	installNeedrestartOverride(confDir, confPath)
-	data, err := os.ReadFile(confPath) //nolint:gosec // test reads from temp dir
+	data, err := os.ReadFile(confPath)
 	if err != nil {
 		t.Fatalf("read override: %v", err)
 	}

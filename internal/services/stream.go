@@ -13,7 +13,7 @@ import (
 // for the service manager in use (e.g. launchd).
 var ErrStreamingUnsupported = errors.New("log streaming is not supported for this service manager")
 
-var journalctlCommandContext = exec.CommandContext //nolint:gochecknoglobals // var enables test injection
+var journalctlCommandContext = exec.CommandContext // var enables test injection
 
 // logStreamCloser wraps a journalctl process pipe so callers can read
 // streaming log output and cleanly tear down the child process.

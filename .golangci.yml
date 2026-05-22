@@ -18,6 +18,7 @@ linters:
     - noctx
     - exhaustive
     - misspell
+    - nolintlint
   exclusions:
     rules:
       # httptest.NewRequest is the standard Go test pattern; it uses
@@ -26,6 +27,7 @@ linters:
       - path: _test\.go
         linters:
           - noctx
+          - gosec
   settings:
     goconst:
       # Test files legitimately repeat literals across table-driven cases;
@@ -45,6 +47,8 @@ linters:
         # Auth cookies set HttpOnly, SameSite and a policy-driven Secure flag;
         # gosec's literal heuristic cannot see the dynamic Secure value.
         - G124
+        # Long-running services store cancel funcs and call them from Stop/Close.
+        - G118
         # Taint-analysis rules produce false positives on structured logging,
         # internal file paths, and httptest clients.
         - G703

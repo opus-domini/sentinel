@@ -53,7 +53,7 @@ func TestListSessions(t *testing.T) {
 		if len(sessions) != 2 {
 			t.Fatalf("got %d sessions, want 2", len(sessions))
 		}
-		if sessions[0].Name != "dev" || sessions[0].Windows != 2 || sessions[0].Attached != 1 { //nolint:goconst // test assertion value
+		if sessions[0].Name != "dev" || sessions[0].Windows != 2 || sessions[0].Attached != 1 {
 			t.Errorf("sessions[0] = %+v", sessions[0])
 		}
 		if sessions[1].Name != "web" || sessions[1].Windows != 1 || sessions[1].Attached != 0 {

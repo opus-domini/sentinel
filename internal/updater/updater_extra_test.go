@@ -55,10 +55,10 @@ func TestRestartAfterApplyRollsBackOnFailedHealthCheck(t *testing.T) {
 	dir := t.TempDir()
 	execPath := filepath.Join(dir, "sentinel")
 	backupPath := filepath.Join(dir, "sentinel.bak")
-	if err := os.WriteFile(execPath, []byte("new-binary"), 0o755); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(execPath, []byte("new-binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(backupPath, []byte("old-binary"), 0o755); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(backupPath, []byte("old-binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,7 +82,7 @@ func TestRestartAfterApplyRollsBackOnFailedHealthCheck(t *testing.T) {
 	if !strings.Contains(err.Error(), "health check") {
 		t.Fatalf("error = %v, want it to mention the health check", err)
 	}
-	got, readErr := os.ReadFile(execPath) //nolint:gosec // test fixture
+	got, readErr := os.ReadFile(execPath)
 	if readErr != nil {
 		t.Fatalf("read execPath after rollback: %v", readErr)
 	}
@@ -114,7 +114,7 @@ func TestRollbackBinary(t *testing.T) {
 		t.Fatalf("rollbackBinary: %v", err)
 	}
 
-	data, err := os.ReadFile(execPath) //nolint:gosec // test file
+	data, err := os.ReadFile(execPath)
 	if err != nil {
 		t.Fatalf("read after rollback: %v", err)
 	}

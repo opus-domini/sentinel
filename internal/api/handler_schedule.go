@@ -76,7 +76,7 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Timezone == "" && req.ScheduleType == scheduleTypeCron {
-		req.Timezone = "UTC" //nolint:goconst // UTC is clearer inline than a constant
+		req.Timezone = defaultTimezoneUTC
 	}
 
 	schedule, err := h.repo.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
@@ -153,7 +153,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Timezone == "" && req.ScheduleType == scheduleTypeCron {
-		req.Timezone = "UTC"
+		req.Timezone = defaultTimezoneUTC
 	}
 
 	schedule, err := h.repo.UpdateOpsSchedule(ctx, store.OpsScheduleWrite{
@@ -353,7 +353,7 @@ func validateScheduleRequest(ctx context.Context, repo runbookLookup, runbookID,
 		}
 		tz := timezone
 		if tz == "" {
-			tz = "UTC"
+			tz = defaultTimezoneUTC
 		}
 		if err := validate.Timezone(tz); err != nil {
 			return "", fmt.Errorf("invalid timezone")

@@ -93,7 +93,7 @@ func TestBuildRestartCommandLaunchd(t *testing.T) {
 	if len(cmd) != 4 {
 		t.Fatalf("len(buildRestartCommand) = %d, want 4", len(cmd))
 	}
-	if cmd[0] != "launchctl" || cmd[1] != "kickstart" || cmd[2] != "-k" { //nolint:goconst // test assertion
+	if cmd[0] != "launchctl" || cmd[1] != "kickstart" || cmd[2] != "-k" {
 		t.Fatalf("unexpected launchd restart command: %#v", cmd)
 	}
 	if os.Geteuid() == 0 {
@@ -129,7 +129,7 @@ func TestBuildRestartCommandSystemScope(t *testing.T) {
 	if len(cmd) != 3 {
 		t.Fatalf("len(buildRestartCommand) = %d, want 3", len(cmd))
 	}
-	if cmd[0] != "systemctl" || cmd[1] != "restart" || cmd[2] != "sentinel" { //nolint:goconst // test assertion
+	if cmd[0] != "systemctl" || cmd[1] != "restart" || cmd[2] != "sentinel" {
 		t.Fatalf("unexpected linux system restart command: %#v", cmd)
 	}
 }
@@ -347,7 +347,7 @@ func newUpdaterReleaseServer(t *testing.T, tagName, archiveName, archivePath, su
 				},
 			})
 		case "/assets/archive":
-			data, _ := os.ReadFile(archivePath) //nolint:gosec // test file
+			data, _ := os.ReadFile(archivePath)
 			_, _ = w.Write(data)
 		case checksumAssetPath:
 			_, _ = fmt.Fprintf(w, "%s  %s\n", sum, archiveName)
@@ -361,14 +361,14 @@ func newUpdaterReleaseServer(t *testing.T, tagName, archiveName, archivePath, su
 
 func assertUpdaterInstalledBinary(t *testing.T, execPath, wantInstalled, wantBackup string) {
 	t.Helper()
-	gotBinary, err := os.ReadFile(execPath) //nolint:gosec // test file
+	gotBinary, err := os.ReadFile(execPath)
 	if err != nil {
 		t.Fatalf("read installed binary: %v", err)
 	}
 	if string(gotBinary) != wantInstalled {
 		t.Fatalf("installed binary = %q, want %q", string(gotBinary), wantInstalled)
 	}
-	backup, err := os.ReadFile(execPath + ".bak") //nolint:gosec // test file
+	backup, err := os.ReadFile(execPath + ".bak")
 	if err != nil {
 		t.Fatalf("read backup binary: %v", err)
 	}
@@ -427,7 +427,7 @@ func TestApplyFailsOnChecksumMismatch(t *testing.T) {
 				},
 			})
 		case "/assets/archive":
-			data, _ := os.ReadFile(archivePath) //nolint:gosec // test file
+			data, _ := os.ReadFile(archivePath)
 			_, _ = w.Write(data)
 		case checksumAssetPath:
 			// Intentionally wrong checksum.
@@ -456,7 +456,7 @@ func TestApplyFailsOnChecksumMismatch(t *testing.T) {
 		t.Fatalf("Apply() error = %v, want checksum mismatch", err)
 	}
 
-	current, readErr := os.ReadFile(execPath) //nolint:gosec // test file
+	current, readErr := os.ReadFile(execPath)
 	if readErr != nil {
 		t.Fatalf("read current binary: %v", readErr)
 	}
@@ -466,7 +466,7 @@ func TestApplyFailsOnChecksumMismatch(t *testing.T) {
 }
 
 func writeArchive(path string, binary []byte) error {
-	out, err := os.Create(path) //nolint:gosec // test helper controls path.
+	out, err := os.Create(path)
 	if err != nil {
 		return err
 	}

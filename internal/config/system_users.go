@@ -11,7 +11,7 @@ import (
 
 // readPasswdFile is the function used to open /etc/passwd. It exists as a
 // package-level variable so tests can inject sample content.
-var readPasswdFile = func() (*os.File, error) { //nolint:gochecknoglobals // var enables test injection
+var readPasswdFile = func() (*os.File, error) { // var enables test injection
 	return os.Open("/etc/passwd")
 }
 
@@ -66,7 +66,7 @@ func readPasswdUsers() []string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close() //nolint:errcheck // best-effort read of /etc/passwd
+	defer func() { _ = f.Close() }()
 
 	return parsePasswd(f)
 }

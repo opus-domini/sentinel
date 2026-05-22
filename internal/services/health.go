@@ -121,7 +121,7 @@ func (hc *HealthChecker) SetUpdaterStateDir(dir string) {
 // Start begins the periodic health check loop.
 func (hc *HealthChecker) Start(ctx context.Context) {
 	hc.startOnce.Do(func() {
-		childCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118: cancel stored in HealthChecker.stopFn, called in Stop
+		childCtx, cancel := context.WithCancel(ctx)
 		hc.stopFn = cancel
 		go hc.loop(childCtx)
 	})

@@ -219,7 +219,7 @@ func (g *Generator) StartSchedule(parent context.Context, cronExpr, timezone str
 	}
 
 	g.startOnce.Do(func() {
-		ctx, cancel := context.WithCancel(parent) //nolint:gosec // G118: cancel stored in g.stopFn, called in Stop()
+		ctx, cancel := context.WithCancel(parent)
 		g.stopFn = cancel
 
 		go func() {

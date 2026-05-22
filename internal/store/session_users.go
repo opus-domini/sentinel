@@ -37,7 +37,7 @@ func (s *Store) ListSessionUsers(ctx context.Context) (map[string]string, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close() //nolint:errcheck // read-only query
+	defer func() { _ = rows.Close() }()
 
 	result := make(map[string]string)
 	for rows.Next() {
@@ -59,7 +59,7 @@ func (s *Store) RenameSessionUser(ctx context.Context, oldName, newName string) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() //nolint:errcheck // commit follows
+	defer func() { _ = tx.Rollback() }()
 
 	var user string
 	err = tx.QueryRowContext(ctx, `SELECT user FROM session_users WHERE session_name = ?`, oldName).Scan(&user)

@@ -114,7 +114,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	// Fetch runbook steps.
 	rb, err := repo.GetOpsRunbook(ctx, job.RunbookID)
 	if err != nil {
-		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second) //nolint:govet // finCancel is deferred
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer finCancel()
 		finishRun(finCtx, repo, emit, params, 0, "", err.Error(), "[]", "")
 		return
@@ -484,7 +484,7 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 	// Fetch runbook steps.
 	rb, err := repo.GetOpsRunbook(ctx, job.RunbookID)
 	if err != nil {
-		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second) //nolint:govet // finCancel is deferred
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer finCancel()
 		finishRun(finCtx, repo, emit, params, resumeFromStep+1, "", err.Error(), "[]", "")
 		return

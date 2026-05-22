@@ -218,7 +218,7 @@ func installExecCommandRecorder(t *testing.T) {
 	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		helperArgs := []string{"-test.run=TestExecCommandRecorder", "--", name}
 		helperArgs = append(helperArgs, args...)
-		cmd := exec.CommandContext(ctx, os.Args[0], helperArgs...) //nolint:gosec // test helper re-execs the current test binary with recorded args
+		cmd := exec.CommandContext(ctx, os.Args[0], helperArgs...)
 		cmd.Env = append(os.Environ(), "SENTINEL_EXEC_COMMAND_RECORDER=1")
 		return cmd
 	}

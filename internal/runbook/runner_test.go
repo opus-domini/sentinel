@@ -458,7 +458,7 @@ func TestRunWithWebhookURL(t *testing.T) {
 		RunTimeout:  5 * time.Second,
 	})
 
-	if receivedPayload.Event != "runbook.completed" { //nolint:goconst // test assertion
+	if receivedPayload.Event != "runbook.completed" {
 		t.Errorf("webhook event = %q, want runbook.completed", receivedPayload.Event)
 	}
 	if receivedPayload.Runbook.ID != "rb-wh" {
@@ -568,7 +568,7 @@ func TestBuildWebhookPayload(t *testing.T) {
 	if payload.Job.Steps[0].DurationMs != 120 {
 		t.Fatalf("steps[0].durationMs = %d, want 120", payload.Job.Steps[0].DurationMs)
 	}
-	if payload.Job.Steps[1].Type != "run" { //nolint:goconst // test assertion, not worth a constant
+	if payload.Job.Steps[1].Type != "run" {
 		t.Fatalf("steps[1].type = %q, want run", payload.Job.Steps[1].Type)
 	}
 	if payload.Job.Steps[2].Title != "Verify" {

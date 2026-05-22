@@ -102,7 +102,7 @@ func TestDetectTimelineMarkerFallback(t *testing.T) {
 	if !matched {
 		t.Fatal("expected fallback match for 'panic'")
 	}
-	if marker != "panic" || sev != "error" { //nolint:goconst // test fixture
+	if marker != "panic" || sev != "error" {
 		t.Fatalf("fallback: marker=%q sev=%q, want panic/error", marker, sev)
 	}
 

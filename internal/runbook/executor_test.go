@@ -782,7 +782,7 @@ func TestRetryOnFailure(t *testing.T) {
 	runner := func(_ context.Context, _ string, _ ...string) (string, error) {
 		callIdx++
 		if callIdx < 3 {
-			return "fail", fmt.Errorf("transient error") //nolint:goconst // test fixture
+			return "fail", fmt.Errorf("transient error")
 		}
 		return "ok", nil
 	}

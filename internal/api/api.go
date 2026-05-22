@@ -29,8 +29,8 @@ import (
 )
 
 var (
-	osCurrentUser = user.Current //nolint:gochecknoglobals // seam for testing
-	osGeteuid     = os.Geteuid   //nolint:gochecknoglobals // seam for testing
+	osCurrentUser = user.Current // seam for testing
+	osGeteuid     = os.Geteuid   // seam for testing
 )
 
 type tmuxService interface {
@@ -277,7 +277,14 @@ const (
 	scheduleTypeCron             = "cron"
 	scheduleTypeOnce             = "once"
 	stepTypeApproval             = "approval"
+	defaultTimezoneUTC           = "UTC"
+	urlSchemeHTTP                = "http"
+	urlSchemeHTTPS               = "https"
 )
+
+func isHTTPOrHTTPSScheme(scheme string) bool {
+	return scheme == urlSchemeHTTP || scheme == urlSchemeHTTPS
+}
 
 func marshalMetadata(v any) string {
 	b, err := json.Marshal(v)
@@ -303,7 +310,7 @@ func Register(
 	if runbookMaxConcurrent <= 0 {
 		runbookMaxConcurrent = 5
 	}
-	runCtx, runCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel called in Handler.Close()
+	runCtx, runCancel := context.WithCancel(context.Background())
 	h := &Handler{
 		guard:            guard,
 		tmux:             tmux.Service{},

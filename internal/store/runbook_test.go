@@ -90,7 +90,7 @@ func TestInsertOpsRunbook(t *testing.T) {
 		if len(rb.Steps) != 2 {
 			t.Fatalf("len(steps) = %d, want 2", len(rb.Steps))
 		}
-		if rb.Steps[0].Type != "run" || rb.Steps[1].Type != "approval" { //nolint:goconst // matching against wire format
+		if rb.Steps[0].Type != "run" || rb.Steps[1].Type != "approval" {
 			t.Fatalf("unexpected step types: %+v", rb.Steps)
 		}
 	})

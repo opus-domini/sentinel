@@ -4952,7 +4952,7 @@ func TestOpsConfigHandler(t *testing.T) {
 	}
 
 	// Verify written content.
-	got, err := os.ReadFile(configPath) //nolint:gosec // test file with known temp path
+	got, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
