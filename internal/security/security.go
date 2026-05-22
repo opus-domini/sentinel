@@ -13,15 +13,23 @@ import (
 )
 
 var (
-	ErrUnauthorized      = errors.New("unauthorized")
-	ErrOriginDenied      = errors.New("origin denied")
-	ErrRemoteToken       = errors.New("token is required for non-loopback listen address")
-	ErrRootNotAllowed    = errors.New("root user is not allowed as a target")
-	ErrUserNotAllowlist  = errors.New("user not in allowlist")
-	ErrNoSystemUsers     = errors.New("no system users loaded; multi-user switching unavailable")
+	// ErrUnauthorized is returned when a request is not authenticated.
+	ErrUnauthorized = errors.New("unauthorized")
+	// ErrOriginDenied is returned when a request origin is not allowed.
+	ErrOriginDenied = errors.New("origin denied")
+	// ErrRemoteToken is returned when remote access has no token configured.
+	ErrRemoteToken = errors.New("token is required for non-loopback listen address")
+	// ErrRootNotAllowed is returned when root is rejected as a target user.
+	ErrRootNotAllowed = errors.New("root user is not allowed as a target")
+	// ErrUserNotAllowlist is returned when a target user is outside the allowlist.
+	ErrUserNotAllowlist = errors.New("user not in allowlist")
+	// ErrNoSystemUsers is returned when no system user inventory is available.
+	ErrNoSystemUsers = errors.New("no system users loaded; multi-user switching unavailable")
+	// ErrUserNotSystemUser is returned when the target user is not known to the OS.
 	ErrUserNotSystemUser = errors.New("user not found in system users")
 )
 
+// AuthCookieName identifies the auth cookie name value.
 const AuthCookieName = "sentinel_auth"
 
 // CookieSecurePolicy controls the Secure flag on auth cookies.
@@ -55,6 +63,7 @@ type MultiUserConfig struct {
 	SystemUsers     []string
 }
 
+// Guard represents guard data.
 type Guard struct {
 	token          string
 	allowedOrigins map[string]struct{}
@@ -62,10 +71,12 @@ type Guard struct {
 	multiUser      MultiUserConfig
 }
 
+// New creates a new service value.
 func New(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy) *Guard {
 	return NewWithMultiUser(token, allowedOrigins, cookieSecure, MultiUserConfig{})
 }
 
+// NewWithMultiUser creates with multi user.
 func NewWithMultiUser(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy, mu MultiUserConfig) *Guard {
 	g := &Guard{
 		token:          strings.TrimSpace(token),
@@ -154,10 +165,12 @@ func (g *Guard) ValidateTargetUser(targetUser string) error {
 	return fmt.Errorf("%w: %s", ErrUserNotSystemUser, targetUser)
 }
 
+// TokenRequired reports whether a token is required for value.
 func (g *Guard) TokenRequired() bool {
 	return g.token != ""
 }
 
+// CheckOrigin checks origin.
 func (g *Guard) CheckOrigin(r *http.Request) error {
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
@@ -182,6 +195,7 @@ func (g *Guard) CheckOrigin(r *http.Request) error {
 	return nil
 }
 
+// RequireAuth requires auth.
 func (g *Guard) RequireAuth(r *http.Request) error {
 	if !g.TokenMatches(cookieToken(r)) {
 		return ErrUnauthorized
@@ -189,6 +203,7 @@ func (g *Guard) RequireAuth(r *http.Request) error {
 	return nil
 }
 
+// SetAuthCookie sets auth cookie.
 func (g *Guard) SetAuthCookie(w http.ResponseWriter, r *http.Request) {
 	if !g.TokenRequired() {
 		return
@@ -204,6 +219,7 @@ func (g *Guard) SetAuthCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ClearAuthCookie clears auth cookie.
 func (g *Guard) ClearAuthCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     AuthCookieName,
@@ -229,6 +245,7 @@ func (g *Guard) resolveSecure(r *http.Request) bool {
 	return requestUsesTLS(r)
 }
 
+// TokenMatches reports whether a token matches value.
 func (g *Guard) TokenMatches(token string) bool {
 	if !g.TokenRequired() {
 		return true

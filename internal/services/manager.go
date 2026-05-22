@@ -22,13 +22,20 @@ type customServicesRepo interface {
 }
 
 const (
+	// ServiceNameSentinel identifies the Sentinel service.
 	ServiceNameSentinel = "sentinel"
-	ServiceNameUpdater  = "sentinel-updater"
+	// ServiceNameUpdater identifies the Sentinel updater service.
+	ServiceNameUpdater = "sentinel-updater"
 
-	ActionStart   = "start"
-	ActionStop    = "stop"
+	// ActionStart starts a managed service.
+	ActionStart = "start"
+	// ActionStop stops a managed service.
+	ActionStop = "stop"
+	// ActionRestart restarts a managed service.
 	ActionRestart = "restart"
-	ActionEnable  = "enable"
+	// ActionEnable enables a managed service.
+	ActionEnable = "enable"
+	// ActionDisable disables a managed service.
 	ActionDisable = "disable"
 
 	scopeUser   = "user"
@@ -54,8 +61,10 @@ const (
 )
 
 var (
+	// ErrServiceNotFound is returned when an ops service cannot be found.
 	ErrServiceNotFound = errors.New("ops service not found")
-	ErrInvalidAction   = errors.New("ops invalid action")
+	// ErrInvalidAction is returned when an ops service action is not supported.
+	ErrInvalidAction = errors.New("ops invalid action")
 
 	systemdBrowseUnitTypes = []string{
 		unitTypeService,
@@ -73,6 +82,7 @@ var (
 
 type commandRunner func(ctx context.Context, name string, args ...string) (string, error)
 
+// ServiceStatus represents service status data.
 type ServiceStatus struct {
 	Name         string `json:"name"`
 	DisplayName  string `json:"displayName"`
@@ -86,6 +96,7 @@ type ServiceStatus struct {
 	UpdatedAt    string `json:"updatedAt"`
 }
 
+// ServiceInspect represents service inspect data.
 type ServiceInspect struct {
 	Service    ServiceStatus     `json:"service"`
 	Summary    string            `json:"summary"`
@@ -94,6 +105,7 @@ type ServiceInspect struct {
 	CheckedAt  string            `json:"checkedAt"`
 }
 
+// HostOverview represents host overview data.
 type HostOverview struct {
 	Hostname  string `json:"hostname"`
 	OS        string `json:"os"`
@@ -102,24 +114,28 @@ type HostOverview struct {
 	GoVersion string `json:"goVersion"`
 }
 
+// SentinelOverview represents sentinel overview data.
 type SentinelOverview struct {
 	PID       int   `json:"pid"`
 	UptimeSec int64 `json:"uptimeSec"`
 }
 
-type ServicesSummary struct {
+// Summary represents aggregate service state.
+type Summary struct {
 	Total  int `json:"total"`
 	Active int `json:"active"`
 	Failed int `json:"failed"`
 }
 
+// Overview represents overview data.
 type Overview struct {
 	Host      HostOverview     `json:"host"`
 	Sentinel  SentinelOverview `json:"sentinel"`
-	Services  ServicesSummary  `json:"services"`
+	Services  Summary          `json:"services"`
 	UpdatedAt string           `json:"updatedAt"`
 }
 
+// Manager represents manager data.
 type Manager struct {
 	startedAt      time.Time
 	nowFn          func() time.Time
@@ -136,6 +152,7 @@ type Manager struct {
 	commandRunner     commandRunner
 }
 
+// NewManager creates manager.
 func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 	now := time.Now().UTC()
 	if startedAt.IsZero() {
@@ -156,6 +173,7 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 	}
 }
 
+// Metrics returns value.
 func (m *Manager) Metrics(ctx context.Context) HostMetrics {
 	return m.metricsCollector().Collect(ctx, "/")
 }
@@ -172,6 +190,7 @@ func (m *Manager) metricsCollector() *metricsCollector {
 	return m.metrics
 }
 
+// Overview returns value.
 func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 	services, err := m.ListServices(ctx)
 	if err != nil {
@@ -213,6 +232,7 @@ func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 	return out, nil
 }
 
+// ListServices lists services.
 func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
 	now := m.nowFn().UTC().Format(time.RFC3339)
 	var services []ServiceStatus
@@ -279,6 +299,7 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 	}
 }
 
+// Act runs value.
 func (m *Manager) Act(ctx context.Context, name, action string) (ServiceStatus, error) {
 	serviceName, ok := normalizeServiceName(name)
 	if !ok {
@@ -324,6 +345,7 @@ func (m *Manager) Act(ctx context.Context, name, action string) (ServiceStatus, 
 	return ServiceStatus{}, ErrServiceNotFound
 }
 
+// Inspect inspects value.
 func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, error) {
 	serviceName, ok := normalizeServiceName(name)
 	if !ok {

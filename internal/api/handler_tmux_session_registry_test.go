@@ -10,7 +10,7 @@ import (
 func TestPopulateSessionUsersFromPresets(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 	if err := st.SetSessionUser(ctx, "api", "deploy"); err != nil {
 		t.Fatalf("SetSessionUser: %v", err)

@@ -1,3 +1,4 @@
+// Package report builds diagnostic reports.
 package report
 
 import (

@@ -1,5 +1,6 @@
 //go:build linux
 
+// Package term starts interactive PTYs.
 package term
 
 import (

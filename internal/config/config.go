@@ -1,3 +1,4 @@
+// Package config loads Sentinel configuration.
 package config
 
 import (
@@ -17,25 +18,32 @@ import (
 )
 
 const (
-	CookieSecureAuto   = "auto"
+	// CookieSecureAuto lets Sentinel decide the cookie Secure flag per request.
+	CookieSecureAuto = "auto"
+	// CookieSecureAlways always enables the cookie Secure flag.
 	CookieSecureAlways = "always"
-	CookieSecureNever  = "never"
+	// CookieSecureNever always disables the cookie Secure flag.
+	CookieSecureNever = "never"
 
+	// DefaultLogLevel is the fallback log level when config omits one.
 	DefaultLogLevel = "info"
 )
 
+// AlertThresholds represents alert thresholds data.
 type AlertThresholds struct {
 	CPUPercent  float64
 	MemPercent  float64
 	DiskPercent float64
 }
 
+// MultiUserConfig represents multi user config data.
 type MultiUserConfig struct {
 	AllowedUsers     []string
 	AllowRootTarget  bool
 	UserSwitchMethod string // "systemd-run" on Linux by default; "sudo" elsewhere
 }
 
+// Config represents config data.
 type Config struct {
 	ListenAddr             string
 	Token                  string
@@ -57,6 +65,7 @@ type Config struct {
 	HealthReportSchedule   string
 }
 
+// WatchtowerConfig represents watchtower config data.
 type WatchtowerConfig struct {
 	Enabled        bool
 	TickInterval   time.Duration
@@ -188,6 +197,7 @@ const defaultConfigContent = `# Sentinel configuration
 # user_switch_method = "systemd-run"
 `
 
+// Load handles load.
 func Load() Config {
 	cfg := Config{
 		ListenAddr:           "127.0.0.1:4040",

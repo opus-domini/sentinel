@@ -13,6 +13,7 @@ func BuildWatchtowerWindowPatches(windows []WatchtowerWindow, panes []Watchtower
 	return BuildWatchtowerWindowPatchesWithManaged(windows, panes, nil)
 }
 
+// BuildWatchtowerWindowPatchesWithManaged builds watchtower window patches with managed.
 func BuildWatchtowerWindowPatchesWithManaged(
 	windows []WatchtowerWindow,
 	panes []WatchtowerPane,
@@ -56,6 +57,7 @@ func BuildWatchtowerWindowPatchesWithManaged(
 	return patches
 }
 
+// UpsertWatchtowerWindow upserts watchtower window.
 func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindowWrite) error {
 	name := strings.TrimSpace(row.SessionName)
 	if name == "" {
@@ -96,6 +98,7 @@ func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindow
 	return err
 }
 
+// ListWatchtowerWindows lists watchtower windows.
 func (s *Store) ListWatchtowerWindows(ctx context.Context, sessionName string) ([]WatchtowerWindow, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT session_name, tmux_window_id, window_index, name, active, layout,
@@ -141,6 +144,7 @@ func (s *Store) ListWatchtowerWindows(ctx context.Context, sessionName string) (
 	return out, rows.Err()
 }
 
+// PurgeWatchtowerWindows purges watchtower windows.
 func (s *Store) PurgeWatchtowerWindows(ctx context.Context, sessionName string, activeWindowIndices []int) error {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {

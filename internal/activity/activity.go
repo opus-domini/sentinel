@@ -1,3 +1,4 @@
+// Package activity tracks operational activity events.
 package activity
 
 import (

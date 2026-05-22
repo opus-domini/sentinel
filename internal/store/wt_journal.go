@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// InsertWatchtowerJournal inserts watchtower journal.
 func (s *Store) InsertWatchtowerJournal(ctx context.Context, row WatchtowerJournalWrite) (int64, error) {
 	entityType := strings.TrimSpace(row.EntityType)
 	if entityType == "" {
@@ -37,6 +38,7 @@ func (s *Store) InsertWatchtowerJournal(ctx context.Context, row WatchtowerJourn
 	return result.LastInsertId()
 }
 
+// ListWatchtowerJournalSince lists watchtower journal since.
 func (s *Store) ListWatchtowerJournalSince(ctx context.Context, sinceRev int64, limit int) ([]WatchtowerJournal, error) {
 	if limit <= 0 {
 		limit = 200
@@ -80,6 +82,7 @@ func (s *Store) ListWatchtowerJournalSince(ctx context.Context, sinceRev int64, 
 	return out, rows.Err()
 }
 
+// PruneWatchtowerJournalRows prunes watchtower journal rows.
 func (s *Store) PruneWatchtowerJournalRows(ctx context.Context, maxRows int) (int64, error) {
 	if maxRows <= 0 {
 		return 0, nil
@@ -101,6 +104,7 @@ func (s *Store) PruneWatchtowerJournalRows(ctx context.Context, maxRows int) (in
 	return result.RowsAffected()
 }
 
+// SetWatchtowerRuntimeValue sets watchtower runtime value.
 func (s *Store) SetWatchtowerRuntimeValue(ctx context.Context, key, value string) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO wt_runtime (key, value, updated_at)
@@ -114,6 +118,7 @@ func (s *Store) SetWatchtowerRuntimeValue(ctx context.Context, key, value string
 	return err
 }
 
+// GetWatchtowerRuntimeValue returns watchtower runtime value.
 func (s *Store) GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error) {
 	var value string
 	err := s.db.QueryRowContext(ctx,

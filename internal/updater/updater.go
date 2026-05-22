@@ -1,3 +1,4 @@
+// Package updater checks and applies Sentinel updates.
 package updater
 
 import (
@@ -52,6 +53,7 @@ const healthCheckDelay = 5 * time.Second
 // sleepFn is overridable in tests to avoid real delays.
 var sleepFn = time.Sleep
 
+// CheckOptions represents check options data.
 type CheckOptions struct {
 	CurrentVersion string
 	Repo           string
@@ -62,6 +64,7 @@ type CheckOptions struct {
 	HTTPClient     *http.Client
 }
 
+// CheckResult represents check result data.
 type CheckResult struct {
 	CurrentVersion string
 	LatestVersion  string
@@ -73,6 +76,7 @@ type CheckResult struct {
 	CheckedAt      time.Time
 }
 
+// ApplyOptions represents apply options data.
 type ApplyOptions struct {
 	CurrentVersion  string
 	Repo            string
@@ -89,6 +93,7 @@ type ApplyOptions struct {
 	HTTPClient      *http.Client
 }
 
+// ApplyResult represents apply result data.
 type ApplyResult struct {
 	Applied        bool
 	CurrentVersion string
@@ -99,6 +104,7 @@ type ApplyResult struct {
 	AppliedAt      time.Time
 }
 
+// State represents state data.
 type State struct {
 	LastCheckedAt      time.Time `json:"lastCheckedAt,omitempty"`
 	LastAppliedAt      time.Time `json:"lastAppliedAt,omitempty"`
@@ -130,6 +136,7 @@ var (
 	updaterGeteuid     = os.Geteuid
 )
 
+// Check looks for an available update.
 func Check(ctx context.Context, opts CheckOptions) (CheckResult, error) {
 	now := time.Now().UTC()
 	cfg := normalizeCheckOptions(opts)
@@ -178,6 +185,7 @@ func Check(ctx context.Context, opts CheckOptions) (CheckResult, error) {
 	return result, nil
 }
 
+// Apply downloads and installs an available update.
 func Apply(ctx context.Context, opts ApplyOptions) (ApplyResult, error) {
 	cfg := normalizeApplyOptions(opts)
 	out, err := applyWithLock(ctx, cfg)
@@ -341,6 +349,7 @@ func restartAfterApply(ctx context.Context, cfg ApplyOptions, execPath, backupPa
 	return nil
 }
 
+// Status returns the current updater state.
 func Status(dataDir string) (State, error) {
 	return loadState(dataDir)
 }

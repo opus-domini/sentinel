@@ -714,7 +714,7 @@ func TestFailOrphanedRuns(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 2, 15, 14, 0, 0, 0, time.UTC)
 
-	runs := seedFailOrphanedRunsFixture(t, s, ctx, now)
+	runs := seedFailOrphanedRunsFixture(ctx, t, s, now)
 
 	// Reconcile orphaned runs.
 	n, err := s.FailOrphanedRuns(ctx)
@@ -725,10 +725,10 @@ func TestFailOrphanedRuns(t *testing.T) {
 		t.Fatalf("affected = %d, want 2", n)
 	}
 
-	assertQueuedOrphanedRunFailed(t, s, ctx, runs.queuedID)
-	assertRunningOrphanedRunFailed(t, s, ctx, runs.runningID)
-	assertWaitingApprovalRunPreserved(t, s, ctx, runs.waitingID)
-	assertSucceededRunUntouched(t, s, ctx, runs.succeededID)
+	assertQueuedOrphanedRunFailed(ctx, t, s, runs.queuedID)
+	assertRunningOrphanedRunFailed(ctx, t, s, runs.runningID)
+	assertWaitingApprovalRunPreserved(ctx, t, s, runs.waitingID)
+	assertSucceededRunUntouched(ctx, t, s, runs.succeededID)
 
 	// Calling again should affect 0 rows.
 	n2, err := s.FailOrphanedRuns(ctx)
@@ -748,24 +748,24 @@ type failOrphanedRunsFixture struct {
 }
 
 func seedFailOrphanedRunsFixture(
+	ctx context.Context,
 	t *testing.T,
 	s *Store,
-	ctx context.Context,
 	now time.Time,
 ) failOrphanedRunsFixture {
 	t.Helper()
 
-	seedOrphanRunbook(t, s, ctx)
+	seedOrphanRunbook(ctx, t, s)
 
-	queuedRun := createOrphanRun(t, s, ctx, now, "queued")
-	runningRun := createOrphanRun(t, s, ctx, now, "running")
-	updateRunningOrphanRun(t, s, ctx, now, runningRun.ID)
+	queuedRun := createOrphanRun(ctx, t, s, now, "queued")
+	runningRun := createOrphanRun(ctx, t, s, now, "running")
+	updateRunningOrphanRun(ctx, t, s, now, runningRun.ID)
 
-	waitingRun := createOrphanRun(t, s, ctx, now, "waiting")
-	updateWaitingApprovalRun(t, s, ctx, now, waitingRun.ID)
+	waitingRun := createOrphanRun(ctx, t, s, now, "waiting")
+	updateWaitingApprovalRun(ctx, t, s, now, waitingRun.ID)
 
-	succeededRun := createOrphanRun(t, s, ctx, now, "succeeded")
-	updateSucceededRun(t, s, ctx, now, succeededRun.ID)
+	succeededRun := createOrphanRun(ctx, t, s, now, "succeeded")
+	updateSucceededRun(ctx, t, s, now, succeededRun.ID)
 
 	return failOrphanedRunsFixture{
 		queuedID:    queuedRun.ID,
@@ -775,7 +775,7 @@ func seedFailOrphanedRunsFixture(
 	}
 }
 
-func seedOrphanRunbook(t *testing.T, s *Store, ctx context.Context) {
+func seedOrphanRunbook(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	if _, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
@@ -791,7 +791,7 @@ func seedOrphanRunbook(t *testing.T, s *Store, ctx context.Context) {
 	}
 }
 
-func createOrphanRun(t *testing.T, s *Store, ctx context.Context, now time.Time, label string) OpsRunbookRun {
+func createOrphanRun(ctx context.Context, t *testing.T, s *Store, now time.Time, label string) OpsRunbookRun {
 	t.Helper()
 
 	run, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
@@ -801,7 +801,7 @@ func createOrphanRun(t *testing.T, s *Store, ctx context.Context, now time.Time,
 	return run
 }
 
-func updateRunningOrphanRun(t *testing.T, s *Store, ctx context.Context, now time.Time, runID string) {
+func updateRunningOrphanRun(ctx context.Context, t *testing.T, s *Store, now time.Time, runID string) {
 	t.Helper()
 
 	// Simulate: step 1 completed, step 2 was pre-populated by beforeStep
@@ -822,7 +822,7 @@ func updateRunningOrphanRun(t *testing.T, s *Store, ctx context.Context, now tim
 	}
 }
 
-func updateWaitingApprovalRun(t *testing.T, s *Store, ctx context.Context, now time.Time, runID string) {
+func updateWaitingApprovalRun(ctx context.Context, t *testing.T, s *Store, now time.Time, runID string) {
 	t.Helper()
 
 	waitingStepResults := marshalRunbookStepResults(t, []OpsRunbookStepResult{
@@ -841,7 +841,7 @@ func updateWaitingApprovalRun(t *testing.T, s *Store, ctx context.Context, now t
 	}
 }
 
-func updateSucceededRun(t *testing.T, s *Store, ctx context.Context, now time.Time, runID string) {
+func updateSucceededRun(ctx context.Context, t *testing.T, s *Store, now time.Time, runID string) {
 	t.Helper()
 
 	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
@@ -867,7 +867,7 @@ func marshalRunbookStepResults(t *testing.T, results []OpsRunbookStepResult) str
 	return string(raw)
 }
 
-func assertQueuedOrphanedRunFailed(t *testing.T, s *Store, ctx context.Context, runID string) {
+func assertQueuedOrphanedRunFailed(ctx context.Context, t *testing.T, s *Store, runID string) {
 	t.Helper()
 
 	q, err := s.GetOpsRunbookRun(ctx, runID)
@@ -888,7 +888,7 @@ func assertQueuedOrphanedRunFailed(t *testing.T, s *Store, ctx context.Context, 
 	}
 }
 
-func assertRunningOrphanedRunFailed(t *testing.T, s *Store, ctx context.Context, runID string) {
+func assertRunningOrphanedRunFailed(ctx context.Context, t *testing.T, s *Store, runID string) {
 	t.Helper()
 
 	r, err := s.GetOpsRunbookRun(ctx, runID)
@@ -927,7 +927,7 @@ func assertPrePopulatedRestartStep(t *testing.T, step OpsRunbookStepResult) {
 	}
 }
 
-func assertWaitingApprovalRunPreserved(t *testing.T, s *Store, ctx context.Context, runID string) {
+func assertWaitingApprovalRunPreserved(ctx context.Context, t *testing.T, s *Store, runID string) {
 	t.Helper()
 
 	w, err := s.GetOpsRunbookRun(ctx, runID)
@@ -945,7 +945,7 @@ func assertWaitingApprovalRunPreserved(t *testing.T, s *Store, ctx context.Conte
 	}
 }
 
-func assertSucceededRunUntouched(t *testing.T, s *Store, ctx context.Context, runID string) {
+func assertSucceededRunUntouched(ctx context.Context, t *testing.T, s *Store, runID string) {
 	t.Helper()
 
 	su, err := s.GetOpsRunbookRun(ctx, runID)

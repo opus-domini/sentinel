@@ -1,3 +1,4 @@
+// Package store persists Sentinel state in SQLite.
 package store
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/activity"
 )
 
+// InsertActivityEvent inserts activity event.
 func (s *Store) InsertActivityEvent(ctx context.Context, write activity.EventWrite) (activity.Event, error) {
 	now := write.CreatedAt.UTC()
 	if now.IsZero() {
@@ -71,6 +73,7 @@ func (s *Store) getActivityEventByID(ctx context.Context, id int64) (activity.Ev
 	return out, nil
 }
 
+// PruneOpsActivityRows prunes ops activity rows.
 func (s *Store) PruneOpsActivityRows(ctx context.Context, maxRows int) (int64, error) {
 	if maxRows <= 0 {
 		return 0, nil
@@ -132,6 +135,7 @@ func (s *Store) CountActivityEventsBySource(ctx context.Context, since time.Time
 	return counts, nil
 }
 
+// SearchActivityEvents searches activity events.
 func (s *Store) SearchActivityEvents(ctx context.Context, query activity.Query) (activity.Result, error) {
 	limit := query.Limit
 	if limit <= 0 {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 )
@@ -43,7 +44,7 @@ func TestGetOpsRunbookEmptyID(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	_, err := s.GetOpsRunbook(context.Background(), "")
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("error = %v, want sql.ErrNoRows", err)
 	}
 }
@@ -55,7 +56,7 @@ func TestGetOpsRunbookNonexistent(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	_, err := s.GetOpsRunbook(context.Background(), "nonexistent-runbook-id")
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("error = %v, want sql.ErrNoRows", err)
 	}
 }
@@ -269,7 +270,7 @@ func TestCreateOpsRunbookRunWithParams(t *testing.T) {
 
 	t.Run("empty runbook ID returns ErrNoRows", func(t *testing.T) {
 		_, err := s.CreateOpsRunbookRunWithParams(ctx, "", now, nil)
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})

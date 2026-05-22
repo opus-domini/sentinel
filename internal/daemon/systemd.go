@@ -32,12 +32,14 @@ const (
 	defaultOnCalendar         = "daily"
 )
 
+// InstallUserOptions represents install user options data.
 type InstallUserOptions struct {
 	ExecPath string
 	Enable   bool
 	Start    bool
 }
 
+// UninstallUserOptions represents uninstall user options data.
 type UninstallUserOptions struct {
 	Disable    bool
 	Stop       bool
@@ -54,6 +56,7 @@ type LogsOptions struct {
 
 const defaultLogLines = 50
 
+// InstallUserAutoUpdateOptions represents install user auto update options data.
 type InstallUserAutoUpdateOptions struct {
 	ExecPath        string
 	Enable          bool
@@ -64,6 +67,7 @@ type InstallUserAutoUpdateOptions struct {
 	RandomizedDelay time.Duration
 }
 
+// UninstallUserAutoUpdateOptions represents uninstall user auto update options data.
 type UninstallUserAutoUpdateOptions struct {
 	Disable    bool
 	Stop       bool
@@ -71,6 +75,7 @@ type UninstallUserAutoUpdateOptions struct {
 	Scope      string
 }
 
+// UserServiceStatus represents user service status data.
 type UserServiceStatus struct {
 	ServicePath        string
 	UnitFileExists     bool
@@ -79,6 +84,7 @@ type UserServiceStatus struct {
 	ActiveState        string
 }
 
+// UserAutoUpdateServiceStatus represents user auto update service status data.
 type UserAutoUpdateServiceStatus struct {
 	ServicePath        string
 	TimerPath          string
@@ -98,6 +104,7 @@ type installUserAutoUpdateConfig struct {
 	randomizedDelay time.Duration
 }
 
+// InstallUser handles install user.
 func InstallUser(opts InstallUserOptions) error {
 	if runtime.GOOS == launchdSupportedOS {
 		return installUserLaunchd(opts)
@@ -133,9 +140,10 @@ func InstallUser(opts InstallUserOptions) error {
 	if err := runSystemctlUser("daemon-reload"); err != nil {
 		return err
 	}
-	return applySystemdUnitState("sentinel", opts.Enable, opts.Start, isSystemctlUserActive, runSystemctlUser)
+	return applySystemdUnitState(opts.Enable, opts.Start, isSystemctlUserActive, runSystemctlUser)
 }
 
+// InstallUserAutoUpdate handles install user auto update.
 func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 	if runtime.GOOS == launchdSupportedOS {
 		return installUserAutoUpdateLaunchd(opts)
@@ -251,6 +259,7 @@ func applyUserAutoUpdateTimerState(enable, start bool) error {
 	}
 }
 
+// UninstallUser handles uninstall user.
 func UninstallUser(opts UninstallUserOptions) error {
 	if runtime.GOOS == launchdSupportedOS {
 		return uninstallUserLaunchd(opts)
@@ -299,6 +308,7 @@ func uninstallUserSystemd(opts UninstallUserOptions, servicePath string, runFn f
 	return runFn("daemon-reload")
 }
 
+// UninstallUserAutoUpdate handles uninstall user auto update.
 func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
 	if runtime.GOOS == launchdSupportedOS {
 		return uninstallUserAutoUpdateLaunchd(opts)
@@ -445,10 +455,12 @@ func runLogCommand(cmd *exec.Cmd) error {
 	return nil
 }
 
+// UserAutoUpdateStatus handles user auto update status.
 func UserAutoUpdateStatus() (UserAutoUpdateServiceStatus, error) {
 	return UserAutoUpdateStatusForScope("")
 }
 
+// UserAutoUpdateStatusForScope handles user auto update status for scope.
 func UserAutoUpdateStatusForScope(scopeRaw string) (UserAutoUpdateServiceStatus, error) {
 	if runtime.GOOS == launchdSupportedOS {
 		return userAutoUpdateStatusLaunchdForScope(scopeRaw)
@@ -503,6 +515,7 @@ func UserAutoUpdateStatusForScope(scopeRaw string) (UserAutoUpdateServiceStatus,
 	return st, nil
 }
 
+// UserServicePath handles user service path.
 func UserServicePath() (string, error) {
 	if runtime.GOOS == launchdSupportedOS {
 		return userServicePathLaunchd()
@@ -520,10 +533,12 @@ func UserServicePath() (string, error) {
 	return filepath.Join(home, ".config", "systemd", "user", userUnitName), nil
 }
 
+// UserAutoUpdateServicePath handles user auto update service path.
 func UserAutoUpdateServicePath() (string, error) {
 	return UserAutoUpdateServicePathForScope("")
 }
 
+// UserAutoUpdateServicePathForScope handles user auto update service path for scope.
 func UserAutoUpdateServicePathForScope(scopeRaw string) (string, error) {
 	if runtime.GOOS == launchdSupportedOS {
 		return userAutoUpdatePathLaunchdForScope(scopeRaw)
@@ -545,10 +560,12 @@ func UserAutoUpdateServicePathForScope(scopeRaw string) (string, error) {
 	return filepath.Join(home, ".config", "systemd", "user", userAutoUpdateServiceName), nil
 }
 
+// UserAutoUpdateTimerPath handles user auto update timer path.
 func UserAutoUpdateTimerPath() (string, error) {
 	return UserAutoUpdateTimerPathForScope("")
 }
 
+// UserAutoUpdateTimerPathForScope handles user auto update timer path for scope.
 func UserAutoUpdateTimerPathForScope(scopeRaw string) (string, error) {
 	if runtime.GOOS == launchdSupportedOS {
 		// launchd runs timer semantics inside a single plist.
@@ -627,7 +644,7 @@ func installSystemServiceLinux(opts InstallUserOptions) error {
 	if err := runSystemctlSystem("daemon-reload"); err != nil {
 		return err
 	}
-	return applySystemdUnitState("sentinel", opts.Enable, opts.Start, isSystemctlSystemActive, runSystemctlSystem)
+	return applySystemdUnitState(opts.Enable, opts.Start, isSystemctlSystemActive, runSystemctlSystem)
 }
 
 func uninstallSystemServiceLinux(opts UninstallUserOptions) error {
@@ -652,7 +669,7 @@ func uninstallSystemServiceLinux(opts UninstallUserOptions) error {
 	return runSystemctlSystem("daemon-reload")
 }
 
-func userStatusSystemLinux() (UserServiceStatus, error) {
+func userStatusSystemLinux() UserServiceStatus {
 	st := UserServiceStatus{
 		ServicePath: systemUnitPath,
 	}
@@ -661,12 +678,12 @@ func userStatusSystemLinux() (UserServiceStatus, error) {
 	}
 
 	if _, err := exec.LookPath("systemctl"); err != nil {
-		return st, nil
+		return st
 	}
 	st.SystemctlAvailable = true
 	st.EnabledState = readSystemctlSystemState("is-enabled", "sentinel")
 	st.ActiveState = readSystemctlSystemState("is-active", "sentinel")
-	return st, nil
+	return st
 }
 
 func installSystemAutoUpdateLinux(execPath, serviceUnit, scope, onCalendar string, randomizedDelay time.Duration, enable, start bool) error {
@@ -766,12 +783,13 @@ func isSystemctlSystemActive(unit string) bool {
 }
 
 func applySystemdUnitState(
-	unit string,
 	enable bool,
 	start bool,
 	isActiveFn func(unit string) bool,
 	runFn func(args ...string) error,
 ) error {
+	const unit = "sentinel"
+
 	if enable {
 		if err := runFn("enable", unit); err != nil {
 			return err

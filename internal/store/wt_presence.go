@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// UpsertWatchtowerPresence upserts watchtower presence.
 func (s *Store) UpsertWatchtowerPresence(ctx context.Context, row WatchtowerPresenceWrite) error {
 	terminalID := strings.TrimSpace(row.TerminalID)
 	if terminalID == "" {
@@ -43,6 +44,7 @@ func (s *Store) UpsertWatchtowerPresence(ctx context.Context, row WatchtowerPres
 	return err
 }
 
+// ListWatchtowerPresence lists watchtower presence.
 func (s *Store) ListWatchtowerPresence(ctx context.Context) ([]WatchtowerPresence, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT terminal_id, session_name, window_index, pane_id,
@@ -83,6 +85,7 @@ func (s *Store) ListWatchtowerPresence(ctx context.Context) ([]WatchtowerPresenc
 	return out, rows.Err()
 }
 
+// ListWatchtowerPresenceBySession lists watchtower presence by session.
 func (s *Store) ListWatchtowerPresenceBySession(ctx context.Context, sessionName string) ([]WatchtowerPresence, error) {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
@@ -130,6 +133,7 @@ func (s *Store) ListWatchtowerPresenceBySession(ctx context.Context, sessionName
 	return out, rows.Err()
 }
 
+// PruneWatchtowerPresence prunes watchtower presence.
 func (s *Store) PruneWatchtowerPresence(ctx context.Context, now time.Time) (int64, error) {
 	now = now.UTC()
 	if now.IsZero() {

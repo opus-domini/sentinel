@@ -49,7 +49,7 @@ func TestLogs(t *testing.T) {
 			svcName: "sentinel",
 			lines:   50,
 			goos:    "linux",
-			runner: func(_ context.Context, name string, args ...string) (string, error) {
+			runner: func(_ context.Context, name string, _ ...string) (string, error) {
 				if name == cmdJournalctl {
 					return "line1\nline2\nline3", nil
 				}

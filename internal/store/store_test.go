@@ -93,12 +93,12 @@ func TestPurgeRemovesInactive(t *testing.T) {
 	s := newTestStore(t)
 	defer func() { _ = s.Close() }()
 
-	seedSessionsForPurgeTest(t, s, ctx, []string{"a", "b", "c"})
+	seedSessionsForPurgeTest(ctx, t, s, []string{"a", "b", "c"})
 	if err := s.Purge(ctx, []string{"a", "c"}); err != nil {
 		t.Fatalf("Purge([a,c]) error = %v", err)
 	}
 
-	got := mustGetAllSessions(t, s, ctx)
+	got := mustGetAllSessions(ctx, t, s)
 	if len(got) != 2 {
 		t.Fatalf("after purge got %d entries, want 2", len(got))
 	}
@@ -113,12 +113,12 @@ func TestPurgeWithEmptyActiveRemovesAll(t *testing.T) {
 	s := newTestStore(t)
 	defer func() { _ = s.Close() }()
 
-	seedSessionsForPurgeTest(t, s, ctx, []string{"a", "b", "c"})
+	seedSessionsForPurgeTest(ctx, t, s, []string{"a", "b", "c"})
 	if err := s.Purge(ctx, []string{}); err != nil {
 		t.Fatalf("Purge([]) error = %v", err)
 	}
 
-	got := mustGetAllSessions(t, s, ctx)
+	got := mustGetAllSessions(ctx, t, s)
 	if len(got) != 0 {
 		t.Fatalf("after purge-all got %d entries, want 0", len(got))
 	}
@@ -130,18 +130,18 @@ func TestPurgeKeepsAllActive(t *testing.T) {
 	s := newTestStore(t)
 	defer func() { _ = s.Close() }()
 
-	seedSessionsForPurgeTest(t, s, ctx, []string{"x", "y"})
+	seedSessionsForPurgeTest(ctx, t, s, []string{"x", "y"})
 	if err := s.Purge(ctx, []string{"x", "y"}); err != nil {
 		t.Fatalf("Purge([x,y]) error = %v", err)
 	}
 
-	got := mustGetAllSessions(t, s, ctx)
+	got := mustGetAllSessions(ctx, t, s)
 	if len(got) != 2 {
 		t.Fatalf("after purge-none got %d entries, want 2", len(got))
 	}
 }
 
-func seedSessionsForPurgeTest(t *testing.T, s *Store, ctx context.Context, names []string) {
+func seedSessionsForPurgeTest(ctx context.Context, t *testing.T, s *Store, names []string) {
 	t.Helper()
 	for _, name := range names {
 		if err := s.UpsertSession(ctx, name, "h", "c"); err != nil {
@@ -150,7 +150,7 @@ func seedSessionsForPurgeTest(t *testing.T, s *Store, ctx context.Context, names
 	}
 }
 
-func mustGetAllSessions(t *testing.T, s *Store, ctx context.Context) map[string]SessionMeta {
+func mustGetAllSessions(ctx context.Context, t *testing.T, s *Store) map[string]SessionMeta {
 	t.Helper()
 	got, err := s.GetAll(ctx)
 	if err != nil {

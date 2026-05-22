@@ -124,7 +124,7 @@ func TestErrorUnwrap(t *testing.T) {
 		t.Parallel()
 		inner := fmt.Errorf("wrapped")
 		e := &Error{Kind: ErrKindCommandFailed, Err: inner}
-		if got := e.Unwrap(); got != inner {
+		if got := e.Unwrap(); !errors.Is(got, inner) {
 			t.Errorf("Unwrap() = %v, want %v", got, inner)
 		}
 	})
@@ -216,7 +216,7 @@ func TestClassifyError(t *testing.T) {
 			if terr.Kind != tt.want {
 				t.Errorf("classifyError kind = %q, want %q", terr.Kind, tt.want)
 			}
-			if terr.Err != tt.err {
+			if !errors.Is(terr.Err, tt.err) {
 				t.Errorf("classifyError wrapped err = %v, want %v", terr.Err, tt.err)
 			}
 		})

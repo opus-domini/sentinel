@@ -29,6 +29,7 @@ type CustomServiceWrite struct {
 	Scope       string
 }
 
+// InsertCustomService inserts custom service.
 func (s *Store) InsertCustomService(ctx context.Context, w CustomServiceWrite) (CustomService, error) {
 	name := strings.TrimSpace(w.Name)
 	if name == "" {
@@ -70,6 +71,7 @@ func (s *Store) InsertCustomService(ctx context.Context, w CustomServiceWrite) (
 	}, nil
 }
 
+// ListCustomServices lists custom services.
 func (s *Store) ListCustomServices(ctx context.Context) ([]CustomService, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		name, display_name, manager, unit, scope, enabled, created_at, updated_at
@@ -98,6 +100,7 @@ func (s *Store) ListCustomServices(ctx context.Context) ([]CustomService, error)
 	return out, rows.Err()
 }
 
+// DeleteCustomService deletes custom service.
 func (s *Store) DeleteCustomService(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {

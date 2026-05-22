@@ -1,3 +1,4 @@
+// Package userswitch builds commands for executing as another user.
 package userswitch
 
 import (
@@ -6,7 +7,9 @@ import (
 )
 
 const (
-	MethodSudo       = "sudo"
+	// MethodSudo switches users through sudo.
+	MethodSudo = "sudo"
+	// MethodSystemdRun switches users through systemd-run.
 	MethodSystemdRun = "systemd-run"
 )
 
@@ -16,6 +19,7 @@ const (
 	execTmux = "tmux"
 )
 
+// DefaultMethod returns the default method.
 func DefaultMethod(goos string) string {
 	if goos == "linux" {
 		return MethodSystemdRun
@@ -23,6 +27,7 @@ func DefaultMethod(goos string) string {
 	return MethodSudo
 }
 
+// NormalizeMethod normalizes method.
 func NormalizeMethod(method, fallback string) string {
 	if fallback == "" {
 		fallback = MethodSudo
@@ -37,6 +42,7 @@ func NormalizeMethod(method, fallback string) string {
 	}
 }
 
+// BuildTmuxCommand builds tmux command.
 func BuildTmuxCommand(method, user string, tmuxArgs []string, interactive bool) (string, []string, error) {
 	user = strings.TrimSpace(user)
 	args := append([]string{}, tmuxArgs...)
@@ -54,6 +60,7 @@ func BuildTmuxCommand(method, user string, tmuxArgs []string, interactive bool) 
 	}
 }
 
+// BuildShellCommand builds shell command.
 func BuildShellCommand(method, user, command string) (string, error) {
 	user = strings.TrimSpace(user)
 	if user == "" {

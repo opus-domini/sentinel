@@ -17,6 +17,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
+// PTY represents PTY data.
 type PTY struct {
 	master    *os.File
 	cmd       *exec.Cmd
@@ -27,6 +28,7 @@ type PTY struct {
 // Set from main.go after config.Load().
 var UserSwitchMethod = userswitch.MethodSystemdRun // set once at startup from config
 
+// StartTmuxAttach starts tmux attach.
 func StartTmuxAttach(ctx context.Context, session string, cols, rows int) (*PTY, error) {
 	cmd := exec.CommandContext(ctx, "tmux", tmuxAttachArgs(session)...)
 	return startCommand(ctx, cmd, cols, rows)
@@ -50,6 +52,7 @@ func buildTmuxAttachCommandAsUser(session, user string) (string, []string, error
 	return userswitch.BuildTmuxCommand(UserSwitchMethod, user, tmuxAttachArgs(session), true)
 }
 
+// StartShell starts shell.
 func StartShell(ctx context.Context, requestedShell string, cols, rows int) (*PTY, error) {
 	shellPath, err := resolveShell(requestedShell)
 	if err != nil {
@@ -87,7 +90,7 @@ func resolveShell(requestedShell string) (string, error) {
 	return "", errors.New("no interactive shell found on host")
 }
 
-func startCommand(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*PTY, error) {
+func startCommand(_ context.Context, cmd *exec.Cmd, cols, rows int) (*PTY, error) {
 	master, slave, err := openPTY()
 	if err != nil {
 		return nil, err
@@ -132,6 +135,7 @@ func (p *PTY) Write(src []byte) (int, error) {
 	return p.master.Write(src)
 }
 
+// Wait handles wait.
 func (p *PTY) Wait() error {
 	if p.cmd == nil {
 		return nil
@@ -139,6 +143,7 @@ func (p *PTY) Wait() error {
 	return p.cmd.Wait()
 }
 
+// Resize handles resize.
 func (p *PTY) Resize(cols, rows int) error {
 	if cols <= 0 || rows <= 0 {
 		return errors.New("invalid terminal dimensions")
@@ -146,6 +151,7 @@ func (p *PTY) Resize(cols, rows int) error {
 	return setWinsize(p.master.Fd(), cols, rows)
 }
 
+// Close closes value.
 func (p *PTY) Close() error {
 	var outErr error
 	p.closeOnce.Do(func() {

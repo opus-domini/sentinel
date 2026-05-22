@@ -1,3 +1,4 @@
+// Package ui serves the embedded Sentinel frontend.
 package ui
 
 import (

@@ -22,7 +22,7 @@ import (
 func TestReconcileManagedTmuxWindowsWithRows(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	ctx := context.Background()
 
 	row, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
@@ -72,7 +72,7 @@ func TestManagedTmuxWindowForIndexReturnsManagedRow(t *testing.T) {
 			return []tmux.Window{{ID: "@10", Index: 0, Name: "codex"}}, nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 	ctx := context.Background()
 	if _, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
 		SessionName:     "dev",
@@ -106,7 +106,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("session scope succeeds", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		h.events = events.NewHub()
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`{"scope":"session"}`))
@@ -119,7 +119,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("window scope succeeds", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		h.events = events.NewHub()
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`{"scope":"window","windowIndex":0}`))
@@ -132,7 +132,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("pane scope succeeds", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		h.events = events.NewHub()
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`{"scope":"pane","paneId":"%1"}`))
@@ -145,7 +145,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("rejects invalid session name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad/mark-seen", strings.NewReader(`{"scope":"session"}`))
 		r.SetPathValue("session", "bad name")
@@ -157,7 +157,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`bad`))
 		r.SetPathValue("session", "dev")
@@ -169,7 +169,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("rejects missing scope", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`{}`))
 		r.SetPathValue("session", "dev")
@@ -181,7 +181,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("rejects pane scope without percent prefix", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`{"scope":"pane","paneId":"7"}`))
 		r.SetPathValue("session", "dev")
@@ -193,7 +193,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("rejects window scope with negative index", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`{"scope":"window","windowIndex":-1}`))
 		r.SetPathValue("session", "dev")
@@ -205,7 +205,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 
 	t.Run("rejects unknown scope", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/mark-seen", strings.NewReader(`{"scope":"galaxy"}`))
 		r.SetPathValue("session", "dev")
@@ -223,7 +223,7 @@ func TestMarkSessionSeenScopes(t *testing.T) {
 func TestCreateOpsRunbookSuccess(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(
 		`{"name":"deploy","steps":[{"type":"run","title":"echo","command":"echo hello"}]}`))
@@ -250,7 +250,7 @@ func TestCreateOpsRunbookSuccess(t *testing.T) {
 func TestCreateOpsRunbookRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(`bad`))
 	h.createOpsRunbook(w, r)
@@ -262,7 +262,7 @@ func TestCreateOpsRunbookRejectsMalformedJSON(t *testing.T) {
 func TestRunOpsRunbookRejectsMissingRequiredParameter(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -288,7 +288,7 @@ func TestRunOpsRunbookRejectsMissingRequiredParameter(t *testing.T) {
 func TestRunOpsRunbookRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/abc/run", strings.NewReader(`{bad`))
 	r.SetPathValue("runbook", "abc")
@@ -301,7 +301,7 @@ func TestRunOpsRunbookRejectsMalformedJSON(t *testing.T) {
 func TestRunOpsRunbookSuccessWithParameters(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -332,7 +332,7 @@ func TestRunOpsRunbookSuccessWithParameters(t *testing.T) {
 func TestListGuardrailRulesWithData(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 	if err := st.UpsertGuardrailRule(context.Background(), store.GuardrailRuleWrite{
 		ID:      "rule-1",
@@ -368,7 +368,7 @@ func TestListGuardrailRulesWithData(t *testing.T) {
 func TestListGuardrailRulesNilGuardrails(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.guardrails = nil
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails", nil)
@@ -381,7 +381,7 @@ func TestListGuardrailRulesNilGuardrails(t *testing.T) {
 func TestListMarkerPatternsNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/markers", nil)
@@ -394,7 +394,7 @@ func TestListMarkerPatternsNilRepo(t *testing.T) {
 func TestCreateGuardrailRuleSuccess(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails", strings.NewReader(
@@ -422,7 +422,7 @@ func TestCreateGuardrailRuleSuccess(t *testing.T) {
 func TestDeleteGuardrailRuleSuccess(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 	if err := st.UpsertGuardrailRule(context.Background(), store.GuardrailRuleWrite{
 		ID:      "del-me",
@@ -449,7 +449,7 @@ func TestDeleteGuardrailRuleSuccess(t *testing.T) {
 func TestActivityStatsNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/activity/stats", nil)
@@ -462,7 +462,7 @@ func TestActivityStatsNilRepo(t *testing.T) {
 func TestTimelineSearchSuccess(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/timeline/search?limit=10&since="+
 		time.Now().Add(-time.Hour).UTC().Format(time.RFC3339), nil)
@@ -479,7 +479,7 @@ func TestTimelineSearchSuccess(t *testing.T) {
 func TestListSessionsFromProjection(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
@@ -514,7 +514,7 @@ func TestListSessionsFromTmuxFallback(t *testing.T) {
 			return []tmux.Session{{Name: "dev", Windows: 1, CreatedAt: time.Now(), ActivityAt: time.Now()}}, nil
 		},
 	}
-	h, _ := newTestHandler(t, tm, nil)
+	h, _ := newTestHandler(t, tm)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 	h.listSessions(w, r)
@@ -537,7 +537,7 @@ func TestListSessionsFromTmuxError(t *testing.T) {
 			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 		},
 	}
-	h, _ := newTestHandler(t, tm, nil)
+	h, _ := newTestHandler(t, tm)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
 	h.listSessions(w, r)
@@ -555,7 +555,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 
 	t.Run("reorder sessions rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/order", strings.NewReader(`bad`))
 		h.reorderSessions(w, r)
@@ -566,7 +566,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 
 	t.Run("reorder sessions rejects empty names", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/order", strings.NewReader(`{"names":[]}`))
 		h.reorderSessions(w, r)
@@ -577,7 +577,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 
 	t.Run("reorder sessions rejects duplicate names", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/order", strings.NewReader(`{"names":["a","a"]}`))
 		h.reorderSessions(w, r)
@@ -588,7 +588,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 
 	t.Run("reorder session presets rejects bad name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-presets/order", strings.NewReader(`{"names":["bad name"]}`))
 		h.reorderSessionPresets(w, r)
@@ -599,7 +599,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 
 	t.Run("reorder windows rejects invalid session", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/bad/windows/order", strings.NewReader(`{"windowIds":["@1"]}`))
 		r.SetPathValue("session", "bad name")
@@ -611,7 +611,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 
 	t.Run("reorder windows rejects empty window ids", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/windows/order", strings.NewReader(`{"windowIds":[]}`))
 		r.SetPathValue("session", "dev")
@@ -628,7 +628,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 				return []tmux.Window{{ID: "@1", Index: 0}, {ID: "@2", Index: 1}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/windows/order", strings.NewReader(`{"windowIds":["@1"]}`))
 		r.SetPathValue("session", "dev")
@@ -645,7 +645,7 @@ func TestReorderHandlersRejectBadInput(t *testing.T) {
 				return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/windows/order", strings.NewReader(`{"windowIds":["@1"]}`))
 		r.SetPathValue("session", "dev")
@@ -734,7 +734,7 @@ func TestDecodeSessionPresetWriteDefaults(t *testing.T) {
 func TestCreateTmuxLauncherRejectsDuplicate(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	if _, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
 		Name:       "Codex",
 		Icon:       "code",

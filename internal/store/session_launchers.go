@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// SessionLauncher represents session launcher data.
 type SessionLauncher struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
@@ -21,6 +22,7 @@ type SessionLauncher struct {
 	UseCount   int       `json:"useCount"`
 }
 
+// SessionLauncherWrite represents session launcher write data.
 type SessionLauncherWrite struct {
 	Name string
 	Cwd  string
@@ -28,6 +30,7 @@ type SessionLauncherWrite struct {
 	User string
 }
 
+// ListSessionLaunchers lists session launchers.
 func (s *Store) ListSessionLaunchers(ctx context.Context) ([]SessionLauncher, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, name, cwd, icon, user, sort_order, created_at, updated_at, last_used_at, use_count
@@ -68,6 +71,7 @@ func (s *Store) ListSessionLaunchers(ctx context.Context) ([]SessionLauncher, er
 	return out, rows.Err()
 }
 
+// GetSessionLauncher returns session launcher.
 func (s *Store) GetSessionLauncher(ctx context.Context, id string) (SessionLauncher, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -105,6 +109,7 @@ func (s *Store) GetSessionLauncher(ctx context.Context, id string) (SessionLaunc
 	return row, nil
 }
 
+// CreateSessionLauncher creates session launcher.
 func (s *Store) CreateSessionLauncher(ctx context.Context, row SessionLauncherWrite) (SessionLauncher, error) {
 	normalized, err := normalizeSessionLauncherWrite(row)
 	if err != nil {
@@ -136,6 +141,7 @@ func (s *Store) CreateSessionLauncher(ctx context.Context, row SessionLauncherWr
 	return s.GetSessionLauncher(ctx, id)
 }
 
+// UpdateSessionLauncher updates session launcher.
 func (s *Store) UpdateSessionLauncher(ctx context.Context, id string, row SessionLauncherWrite) (SessionLauncher, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -171,6 +177,7 @@ func (s *Store) UpdateSessionLauncher(ctx context.Context, id string, row Sessio
 	return s.GetSessionLauncher(ctx, id)
 }
 
+// DeleteSessionLauncher deletes session launcher.
 func (s *Store) DeleteSessionLauncher(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -190,6 +197,7 @@ func (s *Store) DeleteSessionLauncher(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReorderSessionLaunchers reorders session launchers.
 func (s *Store) ReorderSessionLaunchers(ctx context.Context, ids []string) error {
 	normalized, err := normalizeSessionLauncherIDs(ids)
 	if err != nil {
@@ -215,6 +223,7 @@ func (s *Store) ReorderSessionLaunchers(ctx context.Context, ids []string) error
 	return tx.Commit()
 }
 
+// MarkSessionLauncherUsed marks session launcher used.
 func (s *Store) MarkSessionLauncherUsed(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {

@@ -1,3 +1,4 @@
+// Package daemon installs and inspects Sentinel user services.
 package daemon
 
 import (

@@ -9,11 +9,15 @@ import (
 )
 
 const (
-	TmuxLauncherCwdModeSession    = "session"
+	// TmuxLauncherCwdModeSession uses the session working directory.
+	TmuxLauncherCwdModeSession = "session"
+	// TmuxLauncherCwdModeActivePane uses the active pane working directory.
 	TmuxLauncherCwdModeActivePane = "active-pane"
-	TmuxLauncherCwdModeFixed      = "fixed"
+	// TmuxLauncherCwdModeFixed uses a fixed configured working directory.
+	TmuxLauncherCwdModeFixed = "fixed"
 )
 
+// TmuxLauncher represents tmux launcher data.
 type TmuxLauncher struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
@@ -30,6 +34,7 @@ type TmuxLauncher struct {
 	LastUsedAt time.Time `json:"lastUsedAt"`
 }
 
+// TmuxLauncherWrite represents tmux launcher write data.
 type TmuxLauncherWrite struct {
 	Name       string
 	Icon       string
@@ -41,6 +46,7 @@ type TmuxLauncherWrite struct {
 	UserValue  string
 }
 
+// ListTmuxLaunchers lists tmux launchers.
 func (s *Store) ListTmuxLaunchers(ctx context.Context) ([]TmuxLauncher, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, name, icon, command, cwd_mode, cwd_value, window_name, user_mode, user_value, sort_order, created_at, updated_at, last_used_at
@@ -83,6 +89,7 @@ func (s *Store) ListTmuxLaunchers(ctx context.Context) ([]TmuxLauncher, error) {
 	return out, rows.Err()
 }
 
+// GetTmuxLauncher returns tmux launcher.
 func (s *Store) GetTmuxLauncher(ctx context.Context, id string) (TmuxLauncher, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -122,6 +129,7 @@ func (s *Store) GetTmuxLauncher(ctx context.Context, id string) (TmuxLauncher, e
 	return row, nil
 }
 
+// CreateTmuxLauncher creates tmux launcher.
 func (s *Store) CreateTmuxLauncher(ctx context.Context, row TmuxLauncherWrite) (TmuxLauncher, error) {
 	normalized, err := normalizeTmuxLauncherWrite(row)
 	if err != nil {
@@ -156,6 +164,7 @@ func (s *Store) CreateTmuxLauncher(ctx context.Context, row TmuxLauncherWrite) (
 	return s.GetTmuxLauncher(ctx, id)
 }
 
+// UpdateTmuxLauncher updates tmux launcher.
 func (s *Store) UpdateTmuxLauncher(ctx context.Context, id string, row TmuxLauncherWrite) (TmuxLauncher, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -195,6 +204,7 @@ func (s *Store) UpdateTmuxLauncher(ctx context.Context, id string, row TmuxLaunc
 	return s.GetTmuxLauncher(ctx, id)
 }
 
+// DeleteTmuxLauncher deletes tmux launcher.
 func (s *Store) DeleteTmuxLauncher(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -214,6 +224,7 @@ func (s *Store) DeleteTmuxLauncher(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReorderTmuxLaunchers reorders tmux launchers.
 func (s *Store) ReorderTmuxLaunchers(ctx context.Context, ids []string) error {
 	normalized := make([]string, 0, len(ids))
 	seen := make(map[string]struct{}, len(ids))
@@ -249,6 +260,7 @@ func (s *Store) ReorderTmuxLaunchers(ctx context.Context, ids []string) error {
 	return tx.Commit()
 }
 
+// MarkTmuxLauncherUsed marks tmux launcher used.
 func (s *Store) MarkTmuxLauncherUsed(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -275,8 +287,10 @@ func (s *Store) MarkTmuxLauncherUsed(ctx context.Context, id string) error {
 }
 
 const (
+	// TmuxLauncherUserModeSession runs the launcher as the session user.
 	TmuxLauncherUserModeSession = "session"
-	TmuxLauncherUserModeFixed   = "fixed"
+	// TmuxLauncherUserModeFixed runs the launcher as a fixed configured user.
+	TmuxLauncherUserModeFixed = "fixed"
 )
 
 func normalizeTmuxLauncherWrite(row TmuxLauncherWrite) (TmuxLauncherWrite, error) {

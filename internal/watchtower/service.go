@@ -101,8 +101,10 @@ type watchtowerStore interface {
 // Compile-time check: *store.Store satisfies watchtowerStore.
 var _ watchtowerStore = (*store.Store)(nil)
 
+// CollectFunc represents collect func data.
 type CollectFunc func(ctx context.Context) error
 
+// Options represents options data.
 type Options struct {
 	TickInterval   time.Duration
 	CaptureLines   int
@@ -118,6 +120,7 @@ type Options struct {
 	UserProvider func(ctx context.Context) []string
 }
 
+// Service represents service data.
 type Service struct {
 	store   watchtowerStore
 	tmux    tmuxClient
@@ -172,6 +175,7 @@ func qualifyPaneID(user, paneID string) string {
 	return user + ":" + paneID
 }
 
+// New creates a new service value.
 func New(st watchtowerStore, tm tmuxClient, options Options) *Service {
 	if options.TickInterval <= 0 {
 		options.TickInterval = defaultTickInterval
@@ -196,6 +200,7 @@ func New(st watchtowerStore, tm tmuxClient, options Options) *Service {
 	}
 }
 
+// Start starts value.
 func (s *Service) Start(parent context.Context) {
 	if s == nil {
 		return
@@ -227,6 +232,7 @@ func (s *Service) Start(parent context.Context) {
 	})
 }
 
+// Stop stops value.
 func (s *Service) Stop(ctx context.Context) {
 	if s == nil {
 		return
@@ -313,11 +319,10 @@ func (s *Service) listCollectSessions(ctx context.Context) ([]taggedSession, boo
 
 	sessions, err := s.tmux.ListSessions(ctx)
 	if err != nil {
-		if tmux.IsKind(err, tmux.ErrKindServerNotRunning) || tmux.IsKind(err, tmux.ErrKindNotFound) {
-			// Default server not running — still try multi-user below.
-		} else {
+		if !tmux.IsKind(err, tmux.ErrKindServerNotRunning) && !tmux.IsKind(err, tmux.ErrKindNotFound) {
 			return nil, false, err
 		}
+		// Default server not running; still try multi-user below.
 	} else {
 		anySourceReachable = true
 		for _, sess := range sessions {

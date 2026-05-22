@@ -42,7 +42,7 @@ func TestListSessions(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("happy_path_with_activity", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
+		setRun(t, func(_ context.Context, _ ...string) (string, error) {
 			return "dev\t2\t1\t1700000000\t1700000300\nweb\t1\t0\t1700000100\t1700000400\n", nil
 		})
 
@@ -77,7 +77,7 @@ func TestListSessions(t *testing.T) {
 
 	t.Run("retry_without_activity_on_format_error", func(t *testing.T) {
 		calls := 0
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
+		setRun(t, func(_ context.Context, _ ...string) (string, error) {
 			calls++
 			if calls == 1 {
 				return "", errCommandFailed("unknown format: session_activity")
@@ -1068,26 +1068,26 @@ func TestNewWindow(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("happy_path_with_next_index", func(t *testing.T) {
-		testNewWindowHappyPathWithNextIndex(t, ctx)
+		testNewWindowHappyPathWithNextIndex(ctx, t)
 	})
 	t.Run("list_windows_fails_falls_back", func(t *testing.T) {
-		testNewWindowListWindowsFailsFallsBack(t, ctx)
+		testNewWindowListWindowsFailsFallsBack(ctx, t)
 	})
 	t.Run("new_window_error", func(t *testing.T) {
-		testNewWindowError(t, ctx)
+		testNewWindowError(ctx, t)
 	})
 	t.Run("new_window_parse_error", func(t *testing.T) {
-		testNewWindowParseError(t, ctx)
+		testNewWindowParseError(ctx, t)
 	})
 	t.Run("display_message_fails_omits_cwd", func(t *testing.T) {
-		testNewWindowDisplayMessageFailsOmitsCWD(t, ctx)
+		testNewWindowDisplayMessageFailsOmitsCWD(ctx, t)
 	})
 	t.Run("with_name_and_explicit_cwd", func(t *testing.T) {
-		testNewWindowWithNameAndExplicitCWD(t, ctx)
+		testNewWindowWithNameAndExplicitCWD(ctx, t)
 	})
 }
 
-func testNewWindowHappyPathWithNextIndex(t *testing.T, ctx context.Context) {
+func testNewWindowHappyPathWithNextIndex(ctx context.Context, t *testing.T) {
 	t.Helper()
 
 	setRun(t, func(_ context.Context, args ...string) (string, error) {
@@ -1114,7 +1114,7 @@ func testNewWindowHappyPathWithNextIndex(t *testing.T, ctx context.Context) {
 	}
 }
 
-func testNewWindowListWindowsFailsFallsBack(t *testing.T, ctx context.Context) {
+func testNewWindowListWindowsFailsFallsBack(ctx context.Context, t *testing.T) {
 	t.Helper()
 
 	setRun(t, func(_ context.Context, args ...string) (string, error) {
@@ -1140,7 +1140,7 @@ func testNewWindowListWindowsFailsFallsBack(t *testing.T, ctx context.Context) {
 	}
 }
 
-func testNewWindowError(t *testing.T, ctx context.Context) {
+func testNewWindowError(ctx context.Context, t *testing.T) {
 	t.Helper()
 
 	setRun(t, func(_ context.Context, args ...string) (string, error) {
@@ -1162,7 +1162,7 @@ func testNewWindowError(t *testing.T, ctx context.Context) {
 	}
 }
 
-func testNewWindowParseError(t *testing.T, ctx context.Context) {
+func testNewWindowParseError(ctx context.Context, t *testing.T) {
 	t.Helper()
 
 	setRun(t, func(_ context.Context, args ...string) (string, error) {
@@ -1184,7 +1184,7 @@ func testNewWindowParseError(t *testing.T, ctx context.Context) {
 	}
 }
 
-func testNewWindowDisplayMessageFailsOmitsCWD(t *testing.T, ctx context.Context) {
+func testNewWindowDisplayMessageFailsOmitsCWD(ctx context.Context, t *testing.T) {
 	t.Helper()
 
 	setRun(t, func(_ context.Context, args ...string) (string, error) {
@@ -1210,7 +1210,7 @@ func testNewWindowDisplayMessageFailsOmitsCWD(t *testing.T, ctx context.Context)
 	}
 }
 
-func testNewWindowWithNameAndExplicitCWD(t *testing.T, ctx context.Context) {
+func testNewWindowWithNameAndExplicitCWD(ctx context.Context, t *testing.T) {
 	t.Helper()
 
 	setRun(t, func(_ context.Context, args ...string) (string, error) {

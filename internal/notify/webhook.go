@@ -1,3 +1,4 @@
+// Package notify delivers Sentinel notifications.
 package notify
 
 import (

@@ -278,7 +278,7 @@ func TestActSystemdUpdaterRetriesAfterUnitNotFound(t *testing.T) {
 			startCalls = append(startCalls, row)
 			startAttempt++
 			if startAttempt == 1 {
-				return "", errors.New("systemctl --user start sentinel-updater.timer failed: Unit sentinel-updater.timer not found.")
+				return "", errors.New("systemctl --user start sentinel-updater.timer failed: unit sentinel-updater.timer not found")
 			}
 			return "", nil
 		},
@@ -1039,7 +1039,7 @@ func TestActByUnit(t *testing.T) {
 			scope:   "system",
 			manager: "systemd",
 			action:  "restart",
-			runner: func(_ context.Context, name string, args ...string) (string, error) {
+			runner: func(_ context.Context, _ string, args ...string) (string, error) {
 				if args[0] == argUser {
 					return "", errors.New("unexpected --user flag for system scope")
 				}
@@ -1100,7 +1100,7 @@ func TestActByUnit(t *testing.T) {
 			scope:   "user",
 			manager: "launchd",
 			action:  "start",
-			runner: func(_ context.Context, _ string, args ...string) (string, error) {
+			runner: func(_ context.Context, _ string, _ ...string) (string, error) {
 				return "ok", nil
 			},
 		},

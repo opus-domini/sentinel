@@ -290,7 +290,7 @@ func TestRaiseAlertPublishes(t *testing.T) {
 	var published bool
 	hc := &HealthChecker{
 		alerts: repo,
-		publish: func(eventType string, payload map[string]any) {
+		publish: func(eventType string, _ map[string]any) {
 			published = true
 			if eventType != "ops.alerts.updated" {
 				t.Errorf("eventType = %q, want ops.alerts.updated", eventType)
@@ -345,7 +345,7 @@ func TestResolveAlertPublishes(t *testing.T) {
 	var published bool
 	hc := &HealthChecker{
 		alerts: repo,
-		publish: func(eventType string, payload map[string]any) {
+		publish: func(eventType string, _ map[string]any) {
 			published = true
 			if eventType != "ops.alerts.updated" {
 				t.Errorf("eventType = %q, want ops.alerts.updated", eventType)

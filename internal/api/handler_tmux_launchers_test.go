@@ -29,7 +29,7 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 func testTmuxLauncherCreateListUpdateDelete(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	createW := httptest.NewRecorder()
 	createR := httptest.NewRequest(http.MethodPost, "/api/tmux/launchers", strings.NewReader(`{"name":"Codex","icon":"code","command":"codex","cwdMode":"active-pane","windowName":"codex"}`))
@@ -83,7 +83,7 @@ func testTmuxLauncherCreateListUpdateDelete(t *testing.T) {
 func testTmuxLauncherCreateValidatesIconAndCWD(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/launchers", strings.NewReader(`{"name":"Bad","icon":"bad icon","command":"codex","cwdMode":"fixed","cwdValue":"relative"}`))
@@ -97,7 +97,7 @@ func testTmuxLauncherCreateValidatesIconAndCWD(t *testing.T) {
 func testTmuxLauncherCreateAcceptsBlankCommand(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/launchers", strings.NewReader(`{"name":"Runner","icon":"terminal","command":"","cwdMode":"session","windowName":"runner"}`))
@@ -118,7 +118,7 @@ func testTmuxLauncherCreateAcceptsBlankCommand(t *testing.T) {
 func testTmuxLauncherCreateRequiresFixedCWD(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/launchers", strings.NewReader(`{"name":"Runner","icon":"terminal","command":"runner","cwdMode":"fixed","cwdValue":"","windowName":"runner"}`))
@@ -138,7 +138,7 @@ func testTmuxLauncherCreateRequiresFixedCWD(t *testing.T) {
 func testTmuxLauncherReorder(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	first, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
 		Name:       "One",
 		Icon:       "terminal",
@@ -214,7 +214,7 @@ func testTmuxLauncherLaunchCreatesWindowAndSendsCommand(t *testing.T) {
 			return nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	launcher, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
 		Name:       "Codex",
@@ -257,15 +257,15 @@ func testTmuxLauncherLaunchSkipsBlankCommand(t *testing.T) {
 
 	var sendKeysCalls int
 	tm := &mockTmux{
-		newWindowWithOptionsFn: func(_ context.Context, session, name, cwd string) (tmux.NewWindowResult, error) {
+		newWindowWithOptionsFn: func(_ context.Context, _, _, _ string) (tmux.NewWindowResult, error) {
 			return tmux.NewWindowResult{ID: "@12", Index: 2, PaneID: "%22"}, nil
 		},
-		sendKeysFn: func(_ context.Context, paneID, keys string, enter bool) error {
+		sendKeysFn: func(_ context.Context, _, _ string, _ bool) error {
 			sendKeysCalls++
 			return nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	launcher, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
 		Name:       "Runner",
@@ -297,7 +297,7 @@ func testTmuxLauncherLaunchFixedUserWrapsCommand(t *testing.T) {
 
 	var gotKeys string
 	tm := &mockTmux{
-		newWindowWithOptionsFn: func(_ context.Context, session, name, cwd string) (tmux.NewWindowResult, error) {
+		newWindowWithOptionsFn: func(_ context.Context, session, _, _ string) (tmux.NewWindowResult, error) {
 			if session != sessionName {
 				t.Fatalf("session = %q, want %q", session, sessionName)
 			}
@@ -311,7 +311,7 @@ func testTmuxLauncherLaunchFixedUserWrapsCommand(t *testing.T) {
 			return nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 	h.userSwitchMethod = userswitch.MethodSystemdRun
 	h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
 		AllowedUsers: []string{"postgres"},

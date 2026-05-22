@@ -1,6 +1,7 @@
 package runbook
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -62,7 +63,8 @@ func validateShell(step int, src string) []ShellWarning {
 // asParseError attempts to extract a syntax.ParseError from the error.
 // The syntax package may return the error directly or wrapped.
 func asParseError(err error, target *syntax.ParseError) bool {
-	if pe, ok := err.(syntax.ParseError); ok {
+	var pe syntax.ParseError
+	if errors.As(err, &pe) {
 		*target = pe
 		return true
 	}

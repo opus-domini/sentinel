@@ -183,8 +183,6 @@ func (m *mockTmux) SendKeys(ctx context.Context, paneID, keys string, enter bool
 	return nil
 }
 
-type mockSysTerms struct{}
-
 type mockOpsControlPlane struct {
 	overviewFn      func(ctx context.Context) (opsplane.Overview, error)
 	listServicesFn  func(ctx context.Context) ([]opsplane.ServiceStatus, error)
@@ -291,14 +289,13 @@ func newTestStore(t *testing.T) *store.Store {
 	return s
 }
 
-func newTestHandler(t *testing.T, tm *mockTmux, sys *mockSysTerms) (*Handler, *store.Store) {
+func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 	t.Helper()
 	guard := security.New("", nil, security.CookieSecureAuto)
 	st := newTestStore(t)
 	if tm == nil {
 		tm = &mockTmux{}
 	}
-	_ = sys
 	runCtx, runCancel := context.WithCancel(context.Background())
 	t.Cleanup(runCancel)
 	return &Handler{
@@ -978,7 +975,7 @@ func TestListDirectoriesHandler(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	req := httptest.NewRequest(http.MethodGet, "/api/fs/dirs?prefix="+url.QueryEscape(filepath.Join(base, "alp"))+"&limit=10", nil)
 	w := httptest.NewRecorder()
 
@@ -1037,7 +1034,7 @@ func TestListSessionsHandler(t *testing.T) {
 				return "$ echo hello", nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
@@ -1098,7 +1095,7 @@ func TestListSessionsHandler(t *testing.T) {
 				}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
@@ -1140,7 +1137,7 @@ func TestListSessionsHandler(t *testing.T) {
 				return map[string]tmux.PaneSnapshot{}, nil
 			},
 		}
-		h, st := newTestHandler(t, tm, nil)
+		h, st := newTestHandler(t, tm)
 
 		if err := st.UpsertSession(context.Background(), apiSession, "hash-api", "ready"); err != nil {
 			t.Fatalf("UpsertSession(api): %v", err)
@@ -1179,7 +1176,7 @@ func TestListSessionsHandler(t *testing.T) {
 				return nil, &tmux.Error{Kind: tmux.ErrKindNotFound}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
@@ -1204,7 +1201,7 @@ func TestListSessionsHandler(t *testing.T) {
 				return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
@@ -1227,7 +1224,7 @@ func TestListSessionsHandlerProjectedFromWatchtower(t *testing.T) {
 			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	if err := st.UpsertSession(ctx, sessionName, "h-fixed", "legacy"); err != nil {
 		t.Fatalf("UpsertSession: %v", err)
@@ -1300,7 +1297,7 @@ func TestCreateSessionHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"test-session"}`))
 		h.createSession(w, r)
@@ -1318,7 +1315,7 @@ func TestCreateSessionHandler(t *testing.T) {
 	t.Run("emits operation id on create event", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		hub := events.NewHub()
 		eventsCh, unsubscribe := hub.Subscribe(8)
 		defer unsubscribe()
@@ -1362,7 +1359,7 @@ func TestCreateSessionHandler(t *testing.T) {
 				return nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":"/tmp"}`))
 		h.createSession(w, r)
@@ -1385,7 +1382,7 @@ func TestCreateSessionHandler(t *testing.T) {
 				return nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":""}`))
 		h.createSession(w, r)
@@ -1401,7 +1398,7 @@ func TestCreateSessionHandler(t *testing.T) {
 	t.Run("invalid name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"bad name!"}`))
 		h.createSession(w, r)
@@ -1414,7 +1411,7 @@ func TestCreateSessionHandler(t *testing.T) {
 	t.Run("relative cwd", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"s1","cwd":"relative/path"}`))
 		h.createSession(w, r)
@@ -1427,7 +1424,7 @@ func TestCreateSessionHandler(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{bad}`))
 		h.createSession(w, r)
@@ -1455,7 +1452,7 @@ func TestCreateSessionHandler(t *testing.T) {
 				return nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"api"}`))
 		h.createSession(w, r)
@@ -1481,7 +1478,7 @@ func TestCreateSessionHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindSessionExists}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"existing"}`))
 		h.createSession(w, r)
@@ -1505,7 +1502,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 				return []tmux.Pane{{Session: sessionName, PaneID: "%5"}}, nil
 			},
 		}
-		h, st := newTestHandler(t, tm, nil)
+		h, st := newTestHandler(t, tm)
 		ctx := context.Background()
 		if _, err := st.CreateSessionPreset(ctx, store.SessionPresetWrite{
 			Name: sessionName,
@@ -1535,7 +1532,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 	t.Run("emits operation id on new window events", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		hub := events.NewHub()
 		eventsCh, unsubscribe := hub.Subscribe(8)
 		defer unsubscribe()
@@ -1575,7 +1572,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 	t.Run("invalid name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/bad%20name", nil)
 		r.SetPathValue("session", "bad name")
@@ -1602,7 +1599,7 @@ func TestDeleteSessionHandler(t *testing.T) {
 					return &tmux.Error{Kind: tt.kind}
 				},
 			}
-			h, st := newTestHandler(t, tm, nil)
+			h, st := newTestHandler(t, tm)
 			h.sessionUsers.Store(sessionName, "")
 			if err := st.SetSessionUser(context.Background(), sessionName, "drako"); err != nil {
 				t.Fatalf("SetSessionUser() error = %v", err)
@@ -1656,7 +1653,7 @@ func TestRenameSessionHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%3"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "old")
@@ -1675,7 +1672,7 @@ func TestRenameSessionHandler(t *testing.T) {
 	t.Run("renames pinned session preset when present", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, &mockTmux{}, nil)
+		h, st := newTestHandler(t, &mockTmux{})
 		ctx := context.Background()
 		if _, err := st.CreateSessionPreset(ctx, store.SessionPresetWrite{
 			Name: "old",
@@ -1709,7 +1706,7 @@ func TestRenameSessionHandler(t *testing.T) {
 	t.Run("invalid source session", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/bad%20name", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "bad name")
@@ -1723,7 +1720,7 @@ func TestRenameSessionHandler(t *testing.T) {
 	t.Run("invalid new name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{"newName":"bad name!"}`))
 		r.SetPathValue("session", "old")
@@ -1737,7 +1734,7 @@ func TestRenameSessionHandler(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "old")
@@ -1756,7 +1753,7 @@ func TestRenameSessionHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/old", strings.NewReader(`{"newName":"new"}`))
 		r.SetPathValue("session", "old")
@@ -1774,7 +1771,7 @@ func TestRenameWindowHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":1,"name":"editor"}`))
 		r.SetPathValue("session", "dev")
@@ -1788,7 +1785,7 @@ func TestRenameWindowHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/rename-window", strings.NewReader(`{"index":0,"name":"main"}`))
 		r.SetPathValue("session", "bad name")
@@ -1802,7 +1799,7 @@ func TestRenameWindowHandler(t *testing.T) {
 	t.Run("negative index", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":-1,"name":"main"}`))
 		r.SetPathValue("session", "dev")
@@ -1816,7 +1813,7 @@ func TestRenameWindowHandler(t *testing.T) {
 	t.Run("invalid name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":0,"name":"  "}`))
 		r.SetPathValue("session", "dev")
@@ -1830,7 +1827,7 @@ func TestRenameWindowHandler(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
@@ -1849,7 +1846,7 @@ func TestRenameWindowHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-window", strings.NewReader(`{"index":0,"name":"main"}`))
 		r.SetPathValue("session", "dev")
@@ -1872,7 +1869,7 @@ func TestRenamePaneHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%5","title":"logs"}`))
 		r.SetPathValue("session", "dev")
@@ -1886,7 +1883,7 @@ func TestRenamePaneHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/rename-pane", strings.NewReader(`{"paneId":"%0","title":"main"}`))
 		r.SetPathValue("session", "bad name")
@@ -1900,7 +1897,7 @@ func TestRenamePaneHandler(t *testing.T) {
 	t.Run("paneId without percent", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"5","title":"main"}`))
 		r.SetPathValue("session", "dev")
@@ -1914,7 +1911,7 @@ func TestRenamePaneHandler(t *testing.T) {
 	t.Run("invalid title", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%0","title":"  "}`))
 		r.SetPathValue("session", "dev")
@@ -1928,7 +1925,7 @@ func TestRenamePaneHandler(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
@@ -1950,7 +1947,7 @@ func TestRenamePaneHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/rename-pane", strings.NewReader(`{"paneId":"%0","title":"main"}`))
 		r.SetPathValue("session", "dev")
@@ -1970,7 +1967,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, &mockTmux{}, nil)
+		h, st := newTestHandler(t, &mockTmux{})
 		// Seed a session so the store has a row to update.
 		if err := st.UpsertSession(context.Background(), "dev", "h1", "c1"); err != nil {
 			t.Fatalf("UpsertSession error = %v", err)
@@ -1997,7 +1994,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/bad%20name/icon", strings.NewReader(`{"icon":"`+botIconKey+`"}`))
 		r.SetPathValue("session", "bad name")
@@ -2011,7 +2008,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 	t.Run("invalid icon key", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":"Bad Icon!"}`))
 		r.SetPathValue("session", "dev")
@@ -2025,7 +2022,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 	t.Run("empty icon key", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/icon", strings.NewReader(`{"icon":""}`))
 		r.SetPathValue("session", "dev")
@@ -2039,7 +2036,7 @@ func TestSetSessionIconHandler(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/icon", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
@@ -2065,7 +2062,7 @@ func TestListWindowsHandler(t *testing.T) {
 				}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/windows", nil)
 		r.SetPathValue("session", "dev")
@@ -2085,7 +2082,7 @@ func TestListWindowsHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/bad%20name/windows", nil)
 		r.SetPathValue("session", "bad name")
@@ -2104,7 +2101,7 @@ func TestListWindowsHandler(t *testing.T) {
 				return nil, &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/ghost/windows", nil)
 		r.SetPathValue("session", "ghost")
@@ -2126,7 +2123,7 @@ func TestListWindowsHandlerProjectedFromWatchtower(t *testing.T) {
 			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
 		SessionName: "dev",
@@ -2235,7 +2232,7 @@ func TestListWindowsHandlerProjectedFromWatchtowerUsesManagedRuntimeIdentity(t *
 			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	for _, window := range []store.WatchtowerWindowWrite{
 		{
@@ -2330,7 +2327,7 @@ func TestListWindowsHandlerPrefersLiveTmuxOverStaleProjection(t *testing.T) {
 			}, nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
 		SessionName: "dev",
@@ -2387,7 +2384,7 @@ func TestListPanesHandler(t *testing.T) {
 				}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/panes", nil)
 		r.SetPathValue("session", "dev")
@@ -2401,7 +2398,7 @@ func TestListPanesHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/bad%20name/panes", nil)
 		r.SetPathValue("session", "bad name")
@@ -2420,7 +2417,7 @@ func TestListPanesHandler(t *testing.T) {
 				return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions/dev/panes", nil)
 		r.SetPathValue("session", "dev")
@@ -2442,7 +2439,7 @@ func TestListPanesHandlerProjectedFromWatchtower(t *testing.T) {
 			return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
 		SessionName: "dev",
@@ -2527,7 +2524,7 @@ func TestListPanesHandlerPrefersLiveTmuxOverStaleProjection(t *testing.T) {
 			}, nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
 		SessionName: "dev",
@@ -2581,7 +2578,7 @@ func TestSelectWindowHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-window", strings.NewReader(`{"index":2}`))
 		r.SetPathValue("session", "dev")
@@ -2595,7 +2592,7 @@ func TestSelectWindowHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/select-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "bad name")
@@ -2609,7 +2606,7 @@ func TestSelectWindowHandler(t *testing.T) {
 	t.Run("negative index", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-window", strings.NewReader(`{"index":-1}`))
 		r.SetPathValue("session", "dev")
@@ -2623,7 +2620,7 @@ func TestSelectWindowHandler(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-window", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
@@ -2642,7 +2639,7 @@ func TestSelectWindowHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/ghost/select-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "ghost")
@@ -2665,7 +2662,7 @@ func TestSelectPaneHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%5"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%5"}`))
 		r.SetPathValue("session", "dev")
@@ -2679,7 +2676,7 @@ func TestSelectPaneHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/select-pane", strings.NewReader(`{"paneId":"%0"}`))
 		r.SetPathValue("session", "bad name")
@@ -2693,7 +2690,7 @@ func TestSelectPaneHandler(t *testing.T) {
 	t.Run("paneId without percent", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"5"}`))
 		r.SetPathValue("session", "dev")
@@ -2719,7 +2716,7 @@ func TestSelectPaneHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/select-pane", strings.NewReader(`{"paneId":"%99"}`))
 		r.SetPathValue("session", "dev")
@@ -2737,7 +2734,7 @@ func TestNewWindowHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/new-window", nil)
 		r.SetPathValue("session", "dev")
@@ -2774,7 +2771,7 @@ func TestNewWindowHandler(t *testing.T) {
 			},
 		}
 
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/new-window", nil)
 		r.SetPathValue("session", "dev")
@@ -2810,7 +2807,7 @@ func TestNewWindowHandler(t *testing.T) {
 			},
 		}
 
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 
 		for i := range 2 {
 			w := httptest.NewRecorder()
@@ -2836,7 +2833,7 @@ func TestNewWindowHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/new-window", nil)
 		r.SetPathValue("session", "bad name")
@@ -2855,7 +2852,7 @@ func TestNewWindowHandler(t *testing.T) {
 				return tmux.NewWindowResult{}, &tmux.Error{Kind: tmux.ErrKindServerNotRunning}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/new-window", nil)
 		r.SetPathValue("session", "dev")
@@ -2873,7 +2870,7 @@ func TestKillWindowHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{"index":1}`))
 		r.SetPathValue("session", "dev")
@@ -2887,7 +2884,7 @@ func TestKillWindowHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/kill-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "bad name")
@@ -2901,7 +2898,7 @@ func TestKillWindowHandler(t *testing.T) {
 	t.Run("negative index", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{"index":-1}`))
 		r.SetPathValue("session", "dev")
@@ -2915,7 +2912,7 @@ func TestKillWindowHandler(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-window", strings.NewReader(`{bad}`))
 		r.SetPathValue("session", "dev")
@@ -2934,7 +2931,7 @@ func TestKillWindowHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/ghost/kill-window", strings.NewReader(`{"index":0}`))
 		r.SetPathValue("session", "ghost")
@@ -2957,7 +2954,7 @@ func TestKillPaneHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%3"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%3"}`))
 		r.SetPathValue("session", "dev")
@@ -2971,7 +2968,7 @@ func TestKillPaneHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/kill-pane", strings.NewReader(`{"paneId":"%0"}`))
 		r.SetPathValue("session", "bad name")
@@ -2985,7 +2982,7 @@ func TestKillPaneHandler(t *testing.T) {
 	t.Run("paneId without percent", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"3"}`))
 		r.SetPathValue("session", "dev")
@@ -3007,7 +3004,7 @@ func TestKillPaneHandler(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/kill-pane", strings.NewReader(`{"paneId":"%99"}`))
 		r.SetPathValue("session", "dev")
@@ -3030,7 +3027,7 @@ func TestSplitPaneHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
@@ -3049,7 +3046,7 @@ func TestSplitPaneHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		hub := events.NewHub()
 		eventsCh, unsubscribe := hub.Subscribe(8)
 		defer unsubscribe()
@@ -3094,7 +3091,7 @@ func TestSplitPaneHandler(t *testing.T) {
 				return []tmux.Pane{{Session: "dev", PaneID: "%0"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"horizontal"}`))
 		r.SetPathValue("session", "dev")
@@ -3122,7 +3119,7 @@ func TestSplitPaneHandler(t *testing.T) {
 			},
 		}
 
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
@@ -3139,7 +3136,7 @@ func TestSplitPaneHandler(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad%20name/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "bad name")
@@ -3153,7 +3150,7 @@ func TestSplitPaneHandler(t *testing.T) {
 	t.Run("paneId without percent", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
@@ -3167,7 +3164,7 @@ func TestSplitPaneHandler(t *testing.T) {
 	t.Run("invalid direction", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"diagonal"}`))
 		r.SetPathValue("session", "dev")
@@ -3189,7 +3186,7 @@ func TestSplitPaneHandler(t *testing.T) {
 				return "", &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/split-pane", strings.NewReader(`{"paneId":"%0","direction":"vertical"}`))
 		r.SetPathValue("session", "dev")
@@ -3259,7 +3256,7 @@ func TestPaneScopedHandlersRejectPaneOutsideSession(t *testing.T) {
 					return []tmux.Pane{{Session: "dev", PaneID: "%1"}}, nil
 				},
 			}
-			h, _ := newTestHandler(t, tm, nil)
+			h, _ := newTestHandler(t, tm)
 			w := tc.run(h)
 
 			if w.Code != http.StatusBadRequest {
@@ -3345,7 +3342,7 @@ func seededActivityDeltaHandler(t *testing.T) (*Handler, *store.Store) {
 	const sessionName = "dev"
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	if err := st.SetWatchtowerRuntimeValue(ctx, "global_rev", "3"); err != nil {
 		t.Fatalf("SetWatchtowerRuntimeValue(global_rev): %v", err)
 	}
@@ -3392,11 +3389,11 @@ func seededActivityDeltaHandler(t *testing.T) (*Handler, *store.Store) {
 	}); err != nil {
 		t.Fatalf("UpsertWatchtowerPane(dev): %v", err)
 	}
-	seedActivityDeltaJournal(t, st, ctx, now, sessionName)
+	seedActivityDeltaJournal(ctx, t, st, now, sessionName)
 	return h, st
 }
 
-func seedActivityDeltaJournal(t *testing.T, st *store.Store, ctx context.Context, now time.Time, sessionName string) {
+func seedActivityDeltaJournal(ctx context.Context, t *testing.T, st *store.Store, now time.Time, sessionName string) {
 	t.Helper()
 	for rev := 1; rev <= 3; rev++ {
 		if _, err := st.InsertWatchtowerJournal(ctx, store.WatchtowerJournalWrite{
@@ -3436,7 +3433,7 @@ func TestActivityStatsHandler(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	for key, value := range map[string]string{
 		"global_rev":                    "11",
 		"collect_total":                 "25",
@@ -3487,7 +3484,7 @@ func TestActivityStatsHandler(t *testing.T) {
 func TestTimelineSearchHandler(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
 
@@ -3609,7 +3606,7 @@ func TestTimelineSearchHandler(t *testing.T) {
 func TestOpsOverviewAndServicesHandlers(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		overviewFn: func(context.Context) (opsplane.Overview, error) {
 			return opsplane.Overview{
@@ -3672,7 +3669,7 @@ func TestOpsServiceActionHandler(t *testing.T) {
 	eventsCh, unsubscribe := eventHub.Subscribe(8)
 	defer unsubscribe()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.events = eventHub
 	h.ops = &mockOpsControlPlane{
 		actFn: func(_ context.Context, name, action string) (opsplane.ServiceStatus, error) {
@@ -3751,7 +3748,7 @@ func TestOpsServiceActionHandler(t *testing.T) {
 func TestOpsServiceStatusHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		inspectFn: func(_ context.Context, name string) (opsplane.ServiceInspect, error) {
 			if name != opsplane.ServiceNameUpdater {
@@ -3804,7 +3801,7 @@ func TestOpsServiceStatusHandler(t *testing.T) {
 func TestOpsServiceStatusHandlerNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		inspectFn: func(context.Context, string) (opsplane.ServiceInspect, error) {
 			return opsplane.ServiceInspect{}, opsplane.ErrServiceNotFound
@@ -3827,7 +3824,7 @@ func TestOpsServiceStatusHandlerNotFound(t *testing.T) {
 func TestOpsServiceActionHandlerInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{}
 
 	w := httptest.NewRecorder()
@@ -3849,7 +3846,7 @@ func TestOpsServiceActionHandlerInvalidInput(t *testing.T) {
 func TestOpsServiceActionHandlerNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		actFn: func(context.Context, string, string) (opsplane.ServiceStatus, error) {
 			return opsplane.ServiceStatus{}, opsplane.ErrServiceNotFound
@@ -3876,7 +3873,7 @@ func TestOpsServiceActionHandlerNotFound(t *testing.T) {
 func TestOpsAlertsAndActivityHandlers(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -3993,7 +3990,7 @@ func TestOpsAlertsAndActivityHandlers(t *testing.T) {
 func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 
 	w := httptest.NewRecorder()
@@ -4068,10 +4065,10 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 func TestStorageStatsAndFlushHandlers(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
-	seedStorageHandlersData(t, st, ctx, base)
+	seedStorageHandlersData(ctx, t, st, base)
 
 	getResources := func(t *testing.T) map[string]map[string]any {
 		t.Helper()
@@ -4145,7 +4142,7 @@ func TestStorageStatsAndFlushHandlers(t *testing.T) {
 	}
 }
 
-func seedStorageHandlersData(t *testing.T, st *store.Store, ctx context.Context, base time.Time) {
+func seedStorageHandlersData(ctx context.Context, t *testing.T, st *store.Store, base time.Time) {
 	t.Helper()
 	if _, err := st.InsertWatchtowerTimelineEvent(ctx, store.WatchtowerTimelineEventWrite{
 		Session:   "dev",
@@ -4189,7 +4186,7 @@ func seedStorageHandlersData(t *testing.T, st *store.Store, ctx context.Context,
 func TestFlushStorageRejectsInvalidResource(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(
 		http.MethodPost,
@@ -4220,7 +4217,7 @@ func TestDeleteSessionGuardrailConfirmRequired(t *testing.T) {
 			}
 			return nil
 		},
-	}, nil)
+	})
 	h.guardrails = guardrails.New(st)
 	hub := events.NewHub()
 	eventsCh, unsubscribe := hub.Subscribe(8)
@@ -4262,7 +4259,7 @@ func TestDeleteSessionGuardrailConfirmRequired(t *testing.T) {
 func TestGuardrailEndpoints(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 
 	t.Run("list rules", func(t *testing.T) {
@@ -4346,14 +4343,14 @@ func TestMarkSessionSeenHandler(t *testing.T) {
 	}
 	data, _ := jsonBody(t, w)["data"].(map[string]any)
 	assertMarkSeenResponsePayload(t, data, sessionName)
-	assertMarkSeenStoreState(t, st, ctx, sessionName)
+	assertMarkSeenStoreState(ctx, t, st, sessionName)
 	sessionsEvent := expectMarkSeenEvents(t, eventsCh)
 	assertMarkSeenEventPayload(t, sessionsEvent, sessionName)
 }
 
 func seededMarkSessionSeenHandler(t *testing.T, sessionName string) (*Handler, *store.Store, <-chan events.Event) {
 	t.Helper()
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	hub := events.NewHub()
 	eventsCh, unsubscribe := hub.Subscribe(8)
 	t.Cleanup(unsubscribe)
@@ -4435,7 +4432,7 @@ func assertMarkSeenResponsePayload(t *testing.T, data map[string]any, sessionNam
 	}
 }
 
-func assertMarkSeenStoreState(t *testing.T, st *store.Store, ctx context.Context, sessionName string) {
+func assertMarkSeenStoreState(ctx context.Context, t *testing.T, st *store.Store, sessionName string) {
 	t.Helper()
 	panes, err := st.ListWatchtowerPanes(ctx, sessionName)
 	if err != nil {
@@ -4499,7 +4496,7 @@ func assertMarkSeenEventPayload(t *testing.T, sessionsEvent events.Event, sessio
 func TestMarkSessionSeenHandlerInvalidScope(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/seen", strings.NewReader(`{"scope":"bad"}`))
 	r.SetPathValue("session", "dev")
@@ -4519,7 +4516,7 @@ func TestSetTmuxPresenceHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/tmux/presence", strings.NewReader(`{
 		  "terminalId":"term-1",
@@ -4556,7 +4553,7 @@ func TestSetTmuxPresenceHandler(t *testing.T) {
 	t.Run("invalid pane id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/tmux/presence", strings.NewReader(`{
 		  "terminalId":"term-1",
@@ -4584,7 +4581,7 @@ func TestSetTmuxPresenceHandler(t *testing.T) {
 func TestRegisterAndUnregisterOpsService(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 
 	// Register a custom service.
 	w := httptest.NewRecorder()
@@ -4654,7 +4651,7 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 func TestRegisterOpsServiceValidation(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	// Missing name.
 	w := httptest.NewRecorder()
@@ -4684,7 +4681,7 @@ func TestRegisterOpsServiceValidation(t *testing.T) {
 func TestOpsServiceLogsHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		logsFn: func(_ context.Context, name string, lines int) (string, error) {
 			if name != "sentinel" {
@@ -4714,7 +4711,7 @@ func TestOpsServiceLogsHandler(t *testing.T) {
 func TestOpsServiceLogsNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		logsFn: func(context.Context, string, int) (string, error) {
 			return "", opsplane.ErrServiceNotFound
@@ -4737,7 +4734,7 @@ func TestOpsServiceLogsNotFound(t *testing.T) {
 func TestOpsMetricsHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		metricsFn: func(context.Context) opsplane.HostMetrics {
 			return opsplane.HostMetrics{
@@ -4773,7 +4770,7 @@ const testNginxUnit = "nginx.service"
 func TestBrowseOpsServicesHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		browseFn: func(context.Context) ([]opsplane.BrowsedService, error) {
 			return []opsplane.BrowsedService{
@@ -4814,9 +4811,9 @@ func TestBrowseOpsServicesHandler(t *testing.T) {
 func TestOpsUnitActionHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
-		actByUnitFn: func(_ context.Context, unit, scope, manager, action string) error {
+		actByUnitFn: func(_ context.Context, unit, _, _, action string) error {
 			if unit != testNginxUnit {
 				t.Fatalf("unit = %q, want %s", unit, testNginxUnit)
 			}
@@ -4843,7 +4840,7 @@ func TestOpsUnitActionHandler(t *testing.T) {
 func TestOpsUnitActionHandlerMissingUnit(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{}
 
 	w := httptest.NewRecorder()
@@ -4859,7 +4856,7 @@ func TestOpsUnitActionHandlerMissingUnit(t *testing.T) {
 func TestOpsUnitStatusHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		inspectByUnitFn: func(_ context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error) {
 			if unit != testNginxUnit {
@@ -4889,9 +4886,9 @@ func TestOpsUnitStatusHandler(t *testing.T) {
 func TestOpsUnitLogsHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
-		logsByUnitFn: func(_ context.Context, unit, scope, manager string, lines int) (string, error) {
+		logsByUnitFn: func(_ context.Context, unit, _, _ string, lines int) (string, error) {
 			if unit != testNginxUnit {
 				t.Fatalf("unit = %q, want %s", unit, testNginxUnit)
 			}
@@ -4922,7 +4919,7 @@ func TestOpsUnitLogsHandler(t *testing.T) {
 func TestOpsConfigHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(configPath, []byte("[server]\nport = 4040\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -4963,7 +4960,7 @@ func TestOpsConfigHandler(t *testing.T) {
 func TestOpsConfigNoPath(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	// configPath is empty by default.
 
 	w := httptest.NewRecorder()
@@ -4977,7 +4974,7 @@ func TestOpsConfigNoPath(t *testing.T) {
 func TestOpsPatchConfigValidation(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.configPath = filepath.Join(t.TempDir(), "config.toml")
 
 	// Empty content should fail.
@@ -4996,7 +4993,7 @@ func TestOpsPatchConfigValidation(t *testing.T) {
 func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	ctx := context.Background()
 	_ = ctx
 
@@ -5065,7 +5062,7 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 func TestCreateOpsRunbookValidation(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	// Missing name.
 	w := httptest.NewRecorder()
@@ -5081,7 +5078,7 @@ func TestCreateOpsRunbookValidation(t *testing.T) {
 func TestUpdateOpsRunbookNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/nonexistent", strings.NewReader(`{
@@ -5097,7 +5094,7 @@ func TestUpdateOpsRunbookNotFound(t *testing.T) {
 func TestTriggerScheduleFinalisesState(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 
@@ -5181,7 +5178,7 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 
@@ -5241,7 +5238,7 @@ func TestTriggerOnceScheduleDisabledAfterManualRun(t *testing.T) {
 func TestDeleteRunbookCascadesSchedules(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 
@@ -5295,7 +5292,7 @@ func TestDeleteRunbookCascadesSchedules(t *testing.T) {
 func TestCreateRunbookRejectsInvalidStepType(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	tests := []struct {
 		name string
@@ -5351,7 +5348,7 @@ func TestValidateWebhookURL(t *testing.T) {
 func TestCreateRunbookRejectsInvalidWebhookURL(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	body := `{"name":"bad-hook","webhookURL":"ftp://not-http","steps":[{"type":"run","title":"Build","command":"make"}]}`
 	w := httptest.NewRecorder()
@@ -5365,7 +5362,7 @@ func TestCreateRunbookRejectsInvalidWebhookURL(t *testing.T) {
 func TestTriggerCronScheduleRecomputesNextRunAt(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 
@@ -5437,7 +5434,7 @@ func TestTriggerCronScheduleRecomputesNextRunAt(t *testing.T) {
 func TestGuardrailFailClosedOnEvaluateError(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 
 	// Close the store to force Evaluate to fail.
@@ -5462,7 +5459,7 @@ func TestGuardrailFailClosedOnEvaluateError(t *testing.T) {
 func TestCreateGuardrailRule(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 
 	// Create a rule with explicit ID.
@@ -5511,7 +5508,7 @@ func TestCreateGuardrailRule(t *testing.T) {
 func TestCreateGuardrailRuleAutoID(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 
 	// Create a rule without ID — should auto-generate.
@@ -5531,7 +5528,7 @@ func TestCreateGuardrailRuleAutoID(t *testing.T) {
 func TestCreateGuardrailRuleValidation(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 
 	tests := []struct {
@@ -5558,7 +5555,7 @@ func TestCreateGuardrailRuleValidation(t *testing.T) {
 func TestDeleteGuardrailRule(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 	ctx := context.Background()
 
@@ -5607,7 +5604,7 @@ func TestDeleteGuardrailRule(t *testing.T) {
 func TestDeleteGuardrailRuleNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 
 	w := httptest.NewRecorder()
@@ -5630,7 +5627,7 @@ func TestListSchedulesHandler(t *testing.T) {
 	t.Run("empty list", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/schedules", nil)
 		h.listSchedules(w, r)
@@ -5649,7 +5646,7 @@ func TestListSchedulesHandler(t *testing.T) {
 	t.Run("with schedules", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		ctx := context.Background()
 		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
 			Name:  "list-sched-rb",
@@ -5684,7 +5681,7 @@ func TestListSchedulesHandler(t *testing.T) {
 	t.Run("nil repo", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/schedules", nil)
@@ -5702,7 +5699,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 	t.Run("cron schedule", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.events = events.NewHub()
 		ctx := context.Background()
 		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -5732,7 +5729,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 	t.Run("once schedule", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.events = events.NewHub()
 		ctx := context.Background()
 		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -5757,7 +5754,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 	t.Run("validation errors", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		tests := []struct {
 			name string
 			body string
@@ -5785,7 +5782,7 @@ func TestCreateScheduleHandler(t *testing.T) {
 	t.Run("nil repo", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
@@ -5803,7 +5800,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.events = events.NewHub()
 		ctx := context.Background()
 		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -5842,7 +5839,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		ctx := context.Background()
 		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
 			Name:  "upd-nf-rb",
@@ -5862,7 +5859,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 	t.Run("missing schedule id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/", strings.NewReader(`{"runbookId":"x","name":"x","scheduleType":"cron","cronExpr":"0 * * * *"}`))
 		r.SetPathValue("schedule", "")
@@ -5876,7 +5873,7 @@ func TestUpdateScheduleHandler(t *testing.T) {
 	t.Run("nil repo", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/abc", strings.NewReader(`{}`))
@@ -5895,7 +5892,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.events = events.NewHub()
 		ctx := context.Background()
 		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -5926,7 +5923,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/nonexistent", nil)
 		r.SetPathValue("schedule", "nonexistent")
@@ -5940,7 +5937,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 	t.Run("missing id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/", nil)
 		r.SetPathValue("schedule", "")
@@ -5954,7 +5951,7 @@ func TestDeleteScheduleHandler(t *testing.T) {
 	t.Run("nil repo", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/abc", nil)
@@ -6089,7 +6086,7 @@ func TestDeleteOpsAlertHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.events = events.NewHub()
 		ctx := context.Background()
 
@@ -6125,7 +6122,7 @@ func TestDeleteOpsAlertHandler(t *testing.T) {
 	t.Run("invalid id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		tests := []struct {
 			name string
 			id   string
@@ -6153,7 +6150,7 @@ func TestDeleteOpsAlertHandler(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/alerts/99999", nil)
 		r.SetPathValue("alert", "99999")
@@ -6171,7 +6168,7 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			discoverFn: func(_ context.Context) ([]opsplane.AvailableService, error) {
 				return []opsplane.AvailableService{{Unit: "test.service", UnitType: "service"}}, nil
@@ -6200,7 +6197,7 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			discoverFn: func(_ context.Context) ([]opsplane.AvailableService, error) {
 				return nil, fmt.Errorf("discover fail")
@@ -6219,7 +6216,7 @@ func TestDiscoverOpsServicesHandler(t *testing.T) {
 	t.Run("nil ops", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = nil
 
 		w := httptest.NewRecorder()
@@ -6242,7 +6239,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		ctx := context.Background()
 
 		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -6272,7 +6269,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/nonexistent", nil)
@@ -6287,7 +6284,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 	t.Run("empty id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/", nil)
@@ -6302,7 +6299,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 	t.Run("nil repo", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.repo = nil
 
 		w := httptest.NewRecorder()
@@ -6319,7 +6316,7 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 func TestOpsJobHandlerNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/jobs/nonexistent", nil)
@@ -6334,7 +6331,7 @@ func TestOpsJobHandlerNotFound(t *testing.T) {
 func TestOpsJobHandlerEmptyID(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/jobs/", nil)
@@ -6349,7 +6346,7 @@ func TestOpsJobHandlerEmptyID(t *testing.T) {
 func TestOpsJobHandlerNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 
 	w := httptest.NewRecorder()
@@ -6372,7 +6369,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
@@ -6393,7 +6390,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 	t.Run("with custom limit", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
@@ -6408,7 +6405,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 	t.Run("invalid limit", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
@@ -6423,7 +6420,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 	t.Run("zero limit", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		w := httptest.NewRecorder()
@@ -6438,7 +6435,7 @@ func TestListGuardrailAuditHandler(t *testing.T) {
 	t.Run("nil guardrails returns empty", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.guardrails = nil
 
 		w := httptest.NewRecorder()
@@ -6457,7 +6454,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		ctx := context.Background()
 
@@ -6483,7 +6480,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 	t.Run("missing pattern", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		body := `{"name":"x","pattern":"","mode":"block","severity":"error","enabled":true}`
@@ -6500,7 +6497,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 	t.Run("missing enabled", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error"}`
@@ -6517,7 +6514,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 	t.Run("missing rule id", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error","enabled":true}`
@@ -6534,7 +6531,7 @@ func TestUpdateGuardrailRuleHandler(t *testing.T) {
 	t.Run("nil guardrails", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.guardrails = nil
 
 		body := `{"name":"x","pattern":"rm","mode":"block","severity":"error","enabled":true}`
@@ -6559,7 +6556,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 	t.Run("invalid limit", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?limit=bad", nil)
 		h.opsAlerts(w, r)
@@ -6572,7 +6569,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 	t.Run("nil repo", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.repo = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts", nil)
@@ -6586,7 +6583,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 	t.Run("valid status filter", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?status=open", nil)
 		h.opsAlerts(w, r)
@@ -6599,7 +6596,7 @@ func TestOpsAlertsHandlerFilters(t *testing.T) {
 	t.Run("invalid status filter", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?status=bogus", nil)
 		h.opsAlerts(w, r)
@@ -6616,7 +6613,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 	t.Run("missing unit", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?manager=systemd", nil)
 		h.opsUnitStatus(w, r)
@@ -6629,7 +6626,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 	t.Run("invalid manager", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?unit=test.service&manager=bad", nil)
 		h.opsUnitStatus(w, r)
@@ -6642,7 +6639,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 	t.Run("invalid scope", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?unit=test.service&manager=systemd&scope=bad", nil)
 		h.opsUnitStatus(w, r)
@@ -6655,7 +6652,7 @@ func TestOpsUnitStatusHandlerValidation(t *testing.T) {
 	t.Run("nil ops", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/status?unit=test.service&manager=systemd", nil)
@@ -6673,7 +6670,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 	t.Run("missing unit", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?manager=systemd", nil)
 		h.opsUnitLogs(w, r)
@@ -6686,7 +6683,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 	t.Run("invalid manager", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=bad", nil)
 		h.opsUnitLogs(w, r)
@@ -6699,7 +6696,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 	t.Run("invalid scope", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=systemd&scope=bad", nil)
 		h.opsUnitLogs(w, r)
@@ -6712,7 +6709,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 	t.Run("success with lines param", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			logsByUnitFn: func(_ context.Context, _, _, _ string, lines int) (string, error) {
 				return fmt.Sprintf("lines=%d", lines), nil
@@ -6731,7 +6728,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 	t.Run("error from service", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			logsByUnitFn: func(_ context.Context, _, _, _ string, _ int) (string, error) {
 				return "", fmt.Errorf("logs fail")
@@ -6750,7 +6747,7 @@ func TestOpsUnitLogsHandlerValidation(t *testing.T) {
 	t.Run("nil ops", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/units/logs?unit=test.service&manager=systemd", nil)
@@ -6772,7 +6769,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 	t.Run("missing terminalId", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		body := `{"session":"dev","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
@@ -6786,7 +6783,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 	t.Run("invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		body := `{"terminalId":"t1","session":"inv@lid","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
@@ -6800,7 +6797,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 	t.Run("invalid windowIndex", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		body := `{"terminalId":"t1","session":"dev","windowIndex":-2,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
@@ -6814,7 +6811,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 	t.Run("invalid paneId", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		body := `{"terminalId":"t1","session":"dev","windowIndex":0,"paneId":"nopercent","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/presence", strings.NewReader(body))
@@ -6828,7 +6825,7 @@ func TestSetTmuxPresenceHandlerValidation(t *testing.T) {
 	t.Run("nil repo", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.repo = nil
 		body := `{"terminalId":"t1","session":"dev","windowIndex":0,"paneId":"%1","visible":true,"focused":true}`
 		w := httptest.NewRecorder()
@@ -6851,7 +6848,7 @@ func TestOpsOverviewHandlerErrors(t *testing.T) {
 	t.Run("nil ops", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/overview", nil)
@@ -6865,7 +6862,7 @@ func TestOpsOverviewHandlerErrors(t *testing.T) {
 	t.Run("overview error", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			overviewFn: func(_ context.Context) (opsplane.Overview, error) {
 				return opsplane.Overview{}, fmt.Errorf("fail")
@@ -6887,7 +6884,7 @@ func TestOpsServicesHandlerErrors(t *testing.T) {
 	t.Run("nil ops", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/services", nil)
@@ -6901,7 +6898,7 @@ func TestOpsServicesHandlerErrors(t *testing.T) {
 	t.Run("list error", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			listServicesFn: func(_ context.Context) ([]opsplane.ServiceStatus, error) {
 				return nil, fmt.Errorf("fail")
@@ -6924,7 +6921,7 @@ func TestOpsServicesHandlerErrors(t *testing.T) {
 func TestOpsMetricsNilOps(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = nil
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/metrics", nil)
@@ -6945,7 +6942,7 @@ func TestEvaluateGuardrailHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		body := `{"action":"rm -rf /","sessionName":"dev","windowIndex":0,"paneId":"%1"}`
@@ -6961,7 +6958,7 @@ func TestEvaluateGuardrailHandler(t *testing.T) {
 	t.Run("invalid paneId", func(t *testing.T) {
 		t.Parallel()
 
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 
 		body := `{"action":"test","paneId":"nopercent"}`
@@ -6977,7 +6974,7 @@ func TestEvaluateGuardrailHandler(t *testing.T) {
 	t.Run("nil guardrails", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.guardrails = nil
 
 		body := `{"action":"test"}`
@@ -6998,7 +6995,7 @@ func TestEvaluateGuardrailHandler(t *testing.T) {
 func TestOpsServiceActionHandlerInvalidActionFromService(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		actFn: func(_ context.Context, _, _ string) (opsplane.ServiceStatus, error) {
 			return opsplane.ServiceStatus{}, opsplane.ErrInvalidAction
@@ -7024,7 +7021,7 @@ func TestOpsServiceLogsCustomLines(t *testing.T) {
 	t.Parallel()
 
 	var gotLines int
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		logsFn: func(_ context.Context, _ string, lines int) (string, error) {
 			gotLines = lines
@@ -7052,7 +7049,7 @@ func TestOpsServiceLogsCustomLines(t *testing.T) {
 func TestAckOpsAlertNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/alerts/99999/ack", nil)
 	r.SetPathValue("alert", "99999")
@@ -7070,7 +7067,7 @@ func TestAckOpsAlertNotFound(t *testing.T) {
 func TestBrowseOpsServicesNilResult(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		browseFn: func(_ context.Context) ([]opsplane.BrowsedService, error) {
 			return nil, nil
@@ -7113,7 +7110,7 @@ func TestOpsUnitActionHandlerValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, _ := newTestHandler(t, nil, nil)
+			h, _ := newTestHandler(t, nil)
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(tt.body))
 			h.opsUnitAction(w, r)
@@ -7128,7 +7125,7 @@ func TestOpsUnitActionHandlerValidation(t *testing.T) {
 func TestOpsUnitActionHandlerInvalidActionFromService(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		actByUnitFn: func(_ context.Context, _, _, _, _ string) error {
 			return opsplane.ErrInvalidAction
@@ -7155,7 +7152,7 @@ func TestOpsUnitActionHandlerInvalidActionFromService(t *testing.T) {
 func TestOpsConfigHandlerReadError(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.configPath = "/nonexistent/path/config.toml"
 
 	w := httptest.NewRecorder()
@@ -7170,7 +7167,7 @@ func TestOpsConfigHandlerReadError(t *testing.T) {
 func TestPatchOpsConfigHandlerEmptyContent(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.configPath = filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(h.configPath, []byte("# orig"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
@@ -7193,7 +7190,7 @@ func TestPatchOpsConfigHandlerEmptyContent(t *testing.T) {
 func TestStorageStatsNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 
 	w := httptest.NewRecorder()
@@ -7208,7 +7205,7 @@ func TestStorageStatsNilRepo(t *testing.T) {
 func TestFlushStorageNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 
 	w := httptest.NewRecorder()
@@ -7341,7 +7338,7 @@ func TestParseActivityLimitParam(t *testing.T) {
 func TestOpsActivityNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 
 	w := httptest.NewRecorder()
@@ -7356,7 +7353,7 @@ func TestOpsActivityNilRepo(t *testing.T) {
 func TestOpsActivityInvalidLimit(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/activity?limit=bad", nil)
@@ -7374,7 +7371,7 @@ func TestOpsActivityInvalidLimit(t *testing.T) {
 func TestOpsRunbooksNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 
 	w := httptest.NewRecorder()
@@ -7393,7 +7390,7 @@ func TestOpsRunbooksNilRepo(t *testing.T) {
 func TestRunOpsRunbookNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 
 	w := httptest.NewRecorder()
@@ -7409,7 +7406,7 @@ func TestRunOpsRunbookNilRepo(t *testing.T) {
 func TestRunOpsRunbookEmptyID(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks//run", nil)
@@ -7424,7 +7421,7 @@ func TestRunOpsRunbookEmptyID(t *testing.T) {
 func TestRunOpsRunbookNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/nonexistent/run", nil)
@@ -7439,7 +7436,7 @@ func TestRunOpsRunbookNotFound(t *testing.T) {
 func TestRunOpsRunbookSemaphoreAccepted(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 
@@ -7467,7 +7464,7 @@ func TestRunOpsRunbookSemaphoreAccepted(t *testing.T) {
 func TestRunOpsRunbookSemaphoreFull(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	// Replace the semaphore with capacity 1 for this test.
 	h.runSem = make(chan struct{}, 1)
@@ -7517,7 +7514,7 @@ func TestRunOpsRunbookSemaphoreFull(t *testing.T) {
 func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	// Use capacity 1 to verify the slot is released after goroutine completes.
 	h.runSem = make(chan struct{}, 1)
@@ -7559,7 +7556,7 @@ func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
 func TestRunOpsRunbookSemaphoreReleasedOnNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.runSem = make(chan struct{}, 1)
 
 	// Request with a non-existent runbook ID — should acquire then release.
@@ -7589,7 +7586,7 @@ func TestRunOpsRunbookSemaphoreReleasedOnNotFound(t *testing.T) {
 func TestSuggestRunbooksForMarker(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 
 	// Seed runbooks with varied names and descriptions.
@@ -7689,7 +7686,7 @@ func TestSuggestRunbooksForMarker(t *testing.T) {
 func TestSuggestRunbooksForMarkerNilRepo(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 
 	w := httptest.NewRecorder()

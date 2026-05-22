@@ -68,7 +68,7 @@ func installJournalctlCommandRecorder(t *testing.T) {
 	}
 }
 
-func TestJournalctlCommandRecorder(t *testing.T) {
+func TestJournalctlCommandRecorder(_ *testing.T) {
 	if os.Getenv("SENTINEL_JOURNALCTL_COMMAND_RECORDER") != "1" {
 		return
 	}

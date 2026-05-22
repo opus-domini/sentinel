@@ -13,17 +13,25 @@ import (
 	"time"
 )
 
+// ErrorKind represents error kind data.
 type ErrorKind string
 
 const (
-	ErrKindNotFound          ErrorKind = "TMUX_NOT_FOUND"
-	ErrKindSessionNotFound   ErrorKind = "SESSION_NOT_FOUND"
-	ErrKindSessionExists     ErrorKind = "SESSION_ALREADY_EXISTS"
-	ErrKindServerNotRunning  ErrorKind = "TMUX_SERVER_NOT_RUNNING"
-	ErrKindCommandFailed     ErrorKind = "TMUX_COMMAND_FAILED"
+	// ErrKindNotFound reports that tmux is not installed or unavailable.
+	ErrKindNotFound ErrorKind = "TMUX_NOT_FOUND"
+	// ErrKindSessionNotFound reports that a tmux session does not exist.
+	ErrKindSessionNotFound ErrorKind = "SESSION_NOT_FOUND"
+	// ErrKindSessionExists reports that a tmux session already exists.
+	ErrKindSessionExists ErrorKind = "SESSION_ALREADY_EXISTS"
+	// ErrKindServerNotRunning reports that the tmux server is not running.
+	ErrKindServerNotRunning ErrorKind = "TMUX_SERVER_NOT_RUNNING"
+	// ErrKindCommandFailed reports that a tmux command failed.
+	ErrKindCommandFailed ErrorKind = "TMUX_COMMAND_FAILED"
+	// ErrKindInvalidIdentifier reports that a tmux identifier is invalid.
 	ErrKindInvalidIdentifier ErrorKind = "INVALID_IDENTIFIER"
 )
 
+// Error represents error data.
 type Error struct {
 	Kind ErrorKind
 	Msg  string
@@ -44,11 +52,13 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
+// IsKind reports whether kind.
 func IsKind(err error, kind ErrorKind) bool {
 	var terr *Error
 	return errors.As(err, &terr) && terr.Kind == kind
 }
 
+// Session represents session data.
 type Session struct {
 	Name       string    `json:"name"`
 	Windows    int       `json:"windows"`
@@ -57,6 +67,7 @@ type Session struct {
 	ActivityAt time.Time `json:"activityAt"`
 }
 
+// PaneSnapshot represents pane snapshot data.
 type PaneSnapshot struct {
 	Command string
 	Panes   int
@@ -67,6 +78,7 @@ const (
 	listSessionsFormatWithoutActivity = "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}"
 )
 
+// Window represents window data.
 type Window struct {
 	Session string `json:"session"`
 	ID      string `json:"id"`
@@ -77,6 +89,7 @@ type Window struct {
 	Layout  string `json:"layout,omitempty"`
 }
 
+// Pane represents pane data.
 type Pane struct {
 	Session        string `json:"session"`
 	WindowIndex    int    `json:"windowIndex"`
@@ -94,12 +107,14 @@ type Pane struct {
 	Height         int    `json:"height,omitempty"`
 }
 
+// NewWindowResult represents new window result data.
 type NewWindowResult struct {
 	ID     string
 	Index  int
 	PaneID string
 }
 
+// ListSessions lists sessions.
 func ListSessions(ctx context.Context) ([]Session, error) {
 	out, err := run(ctx, "list-sessions", "-F", listSessionsFormatWithActivity)
 	if err != nil {
@@ -128,6 +143,7 @@ var runners = map[string]bool{
 	"env": true, "sudo": true, "exec": true,
 }
 
+// ListActivePaneCommands lists active pane commands.
 func ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
 	out, err := run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_start_command}\t#{pane_current_command}")
 	if err != nil {
@@ -211,6 +227,7 @@ func inferCommand(raw string) string {
 	return ""
 }
 
+// CapturePane captures pane.
 func CapturePane(ctx context.Context, session string) (string, error) {
 	out, err := run(ctx, "capture-pane", "-t", session+":", "-p", "-S", "-3")
 	if err != nil {
@@ -226,11 +243,13 @@ func CapturePane(ctx context.Context, session string) (string, error) {
 	return "", nil
 }
 
+// SessionHash handles session hash.
 func SessionHash(name string, epoch int64) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", name, epoch)))
 	return fmt.Sprintf("%x", h[:6])
 }
 
+// CreateSession creates session.
 func CreateSession(ctx context.Context, name, cwd string) error {
 	args := []string{"new-session", "-d", "-s", name}
 	if cwd != "" {
@@ -420,42 +439,50 @@ func patchCopyModeDragEndBinding(line string) (string, bool) {
 	return patched, patched != line
 }
 
+// RenameSession renames session.
 func RenameSession(ctx context.Context, session, newName string) error {
 	_, err := run(ctx, "rename-session", "-t", session, newName)
 	return err
 }
 
+// RenameWindow renames window.
 func RenameWindow(ctx context.Context, session string, index int, name string) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	_, err := run(ctx, "rename-window", "-t", target, name)
 	return err
 }
 
+// RenamePane renames pane.
 func RenamePane(ctx context.Context, paneID, title string) error {
 	_, err := run(ctx, "select-pane", "-t", paneID, "-T", title)
 	return err
 }
 
+// KillSession handles kill session.
 func KillSession(ctx context.Context, session string) error {
 	_, err := run(ctx, "kill-session", "-t", session)
 	return err
 }
 
+// SelectWindow selects window.
 func SelectWindow(ctx context.Context, session string, index int) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	_, err := run(ctx, "select-window", "-t", target)
 	return err
 }
 
+// SelectPane selects pane.
 func SelectPane(ctx context.Context, paneID string) error {
 	_, err := run(ctx, "select-pane", "-t", paneID)
 	return err
 }
 
+// NewWindow creates window.
 func NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
 	return NewWindowWithOptions(ctx, session, "", "")
 }
 
+// NewWindowWithOptions creates window with options.
 func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWindowResult, error) {
 	target := fmt.Sprintf("%s:", session)
 	if indexesOut, listErr := run(ctx, "list-windows", "-t", session, "-F", "#{window_index}"); listErr == nil {
@@ -487,6 +514,7 @@ func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWi
 	return result, nil
 }
 
+// NewWindowAt creates window at.
 func NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	args := []string{cmdNewWindow, "-d", "-t", target}
@@ -500,12 +528,14 @@ func NewWindowAt(ctx context.Context, session string, index int, name, cwd strin
 	return err
 }
 
+// KillWindow handles kill window.
 func KillWindow(ctx context.Context, session string, index int) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	_, err := run(ctx, "kill-window", "-t", target)
 	return err
 }
 
+// ReorderWindows reorders windows.
 func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
 	session = strings.TrimSpace(session)
 	if session == "" {
@@ -569,11 +599,13 @@ func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []stri
 	return nil
 }
 
+// KillPane handles kill pane.
 func KillPane(ctx context.Context, paneID string) error {
 	_, err := run(ctx, "kill-pane", "-t", paneID)
 	return err
 }
 
+// SplitPane splits pane.
 func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	args := []string{cmdSplitWindow, "-t", paneID}
 	switch direction {
@@ -596,6 +628,7 @@ func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	return createdPaneID, nil
 }
 
+// SplitPaneIn splits pane in.
 func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
 	args := []string{cmdSplitWindow, "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
 	switch direction {
@@ -616,12 +649,14 @@ func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, er
 	return strings.TrimSpace(out), nil
 }
 
+// SelectLayout selects layout.
 func SelectLayout(ctx context.Context, session string, index int, layout string) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	_, err := run(ctx, "select-layout", "-t", target, layout)
 	return err
 }
 
+// SendKeys sends keys.
 func SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
 	keys = strings.TrimSpace(keys)
 	if keys != "" {
@@ -637,6 +672,7 @@ func SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
 	return nil
 }
 
+// ListWindows lists windows.
 func ListWindows(ctx context.Context, session string) ([]Window, error) {
 	out, err := run(ctx, "list-windows", "-t", session, "-F", "#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}")
 	if err != nil {
@@ -672,6 +708,7 @@ func ListWindows(ctx context.Context, session string) ([]Window, error) {
 	return windows, nil
 }
 
+// ListPanes lists panes.
 func ListPanes(ctx context.Context, session string) ([]Pane, error) {
 	out, err := run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_id}\t#{pane_title}\t#{pane_active}\t#{pane_tty}\t#{pane_current_path}\t#{pane_start_command}\t#{pane_current_command}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}")
 	if err != nil {
@@ -716,6 +753,7 @@ func ListPanes(ctx context.Context, session string) ([]Pane, error) {
 	return panes, nil
 }
 
+// CapturePaneLines captures pane lines.
 func CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
 	if strings.TrimSpace(target) == "" {
 		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "target is required"}
@@ -731,6 +769,7 @@ func CapturePaneLines(ctx context.Context, target string, lines int) (string, er
 	return out, nil
 }
 
+// SessionExists handles session exists.
 func SessionExists(ctx context.Context, session string) (bool, error) {
 	_, err := run(ctx, "has-session", "-t", session)
 	if err != nil {

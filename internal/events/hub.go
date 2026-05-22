@@ -1,3 +1,4 @@
+// Package events publishes in-process Sentinel events.
 package events
 
 import (
@@ -9,21 +10,35 @@ import (
 const PresenceExpiry = 30 * time.Second
 
 const (
-	TypeReady           = "events.ready"
-	TypeTmuxSessions    = "tmux.sessions.updated"
-	TypeTmuxInspector   = "tmux.inspector.updated"
-	TypeTmuxActivity    = "tmux.activity.updated"
-	TypeTmuxTimeline    = "tmux.timeline.updated"
-	TypeTmuxGuardrail   = "tmux.guardrail.blocked"
-	TypeOpsOverview     = "ops.overview.updated"
-	TypeOpsServices     = "ops.services.updated"
-	TypeOpsAlerts       = "ops.alerts.updated"
-	TypeOpsActivity     = "ops.activity.updated"
-	TypeOpsJob          = "ops.job.updated"
-	TypeOpsMetrics      = "ops.metrics.updated"
+	// TypeReady announces that the events stream is connected.
+	TypeReady = "events.ready"
+	// TypeTmuxSessions announces that tmux session projections changed.
+	TypeTmuxSessions = "tmux.sessions.updated"
+	// TypeTmuxInspector announces that tmux inspector projections changed.
+	TypeTmuxInspector = "tmux.inspector.updated"
+	// TypeTmuxActivity announces that tmux activity stats changed.
+	TypeTmuxActivity = "tmux.activity.updated"
+	// TypeTmuxTimeline announces that the tmux timeline changed.
+	TypeTmuxTimeline = "tmux.timeline.updated"
+	// TypeTmuxGuardrail announces that a tmux guardrail blocked an action.
+	TypeTmuxGuardrail = "tmux.guardrail.blocked"
+	// TypeOpsOverview announces that the ops overview changed.
+	TypeOpsOverview = "ops.overview.updated"
+	// TypeOpsServices announces that ops service state changed.
+	TypeOpsServices = "ops.services.updated"
+	// TypeOpsAlerts announces that ops alerts changed.
+	TypeOpsAlerts = "ops.alerts.updated"
+	// TypeOpsActivity announces that ops activity changed.
+	TypeOpsActivity = "ops.activity.updated"
+	// TypeOpsJob announces that an ops job changed.
+	TypeOpsJob = "ops.job.updated"
+	// TypeOpsMetrics announces that ops metrics changed.
+	TypeOpsMetrics = "ops.metrics.updated"
+	// TypeScheduleUpdated announces that scheduler state changed.
 	TypeScheduleUpdated = "ops.schedule.updated"
 )
 
+// Event represents event data.
 type Event struct {
 	EventID   int64          `json:"eventId"`
 	Type      string         `json:"type"`
@@ -31,6 +46,7 @@ type Event struct {
 	Payload   map[string]any `json:"payload,omitempty"`
 }
 
+// NewEvent creates event.
 func NewEvent(eventType string, payload map[string]any) Event {
 	return Event{
 		Type:      eventType,
@@ -39,6 +55,7 @@ func NewEvent(eventType string, payload map[string]any) Event {
 	}
 }
 
+// Hub represents hub data.
 type Hub struct {
 	mu          sync.RWMutex
 	nextSubID   int64
@@ -46,12 +63,14 @@ type Hub struct {
 	subscribers map[int64]chan Event
 }
 
+// NewHub creates hub.
 func NewHub() *Hub {
 	return &Hub{
 		subscribers: make(map[int64]chan Event),
 	}
 }
 
+// Subscribe subscribes to value.
 func (h *Hub) Subscribe(buffer int) (<-chan Event, func()) {
 	if h == nil {
 		ch := make(chan Event)
@@ -83,6 +102,7 @@ func (h *Hub) Subscribe(buffer int) (<-chan Event, func()) {
 	return ch, unsubscribe
 }
 
+// Publish publishes value.
 func (h *Hub) Publish(event Event) {
 	if h == nil {
 		return

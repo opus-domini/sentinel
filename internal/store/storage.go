@@ -11,12 +11,19 @@ import (
 )
 
 const (
-	StorageResourceTimeline      = "timeline"
-	StorageResourceActivityLog   = "activity-journal"
-	StorageResourceGuardrailLog  = "guardrail-audit"
-	StorageResourceOpsActivity   = "ops-activity"
-	StorageResourceOpsAlerts     = "ops-alerts"
-	StorageResourceOpsJobs       = "ops-jobs"
+	// StorageResourceTimeline identifies timeline event storage.
+	StorageResourceTimeline = "timeline"
+	// StorageResourceActivityLog identifies watchtower activity journal storage.
+	StorageResourceActivityLog = "activity-journal"
+	// StorageResourceGuardrailLog identifies guardrail audit storage.
+	StorageResourceGuardrailLog = "guardrail-audit"
+	// StorageResourceOpsActivity identifies ops activity storage.
+	StorageResourceOpsActivity = "ops-activity"
+	// StorageResourceOpsAlerts identifies ops alert storage.
+	StorageResourceOpsAlerts = "ops-alerts"
+	// StorageResourceOpsJobs identifies ops runbook job storage.
+	StorageResourceOpsJobs = "ops-jobs"
+	// StorageResourceAll targets every flushable storage resource.
 	StorageResourceAll           = "all"
 	storageResourceTimelineLabel = "Timeline events"
 	storageResourceActivityLabel = "Activity journal"
@@ -26,8 +33,10 @@ const (
 	storageResourceOpsJobsLbl    = "Ops runbook jobs"
 )
 
+// ErrInvalidStorageResource is returned when invalid storage resource occurs.
 var ErrInvalidStorageResource = errors.New("invalid storage resource")
 
+// StorageResourceStat represents storage resource stat data.
 type StorageResourceStat struct {
 	Resource    string `json:"resource"`
 	Label       string `json:"label"`
@@ -35,6 +44,7 @@ type StorageResourceStat struct {
 	ApproxBytes int64  `json:"approxBytes"`
 }
 
+// StorageStats represents storage stats data.
 type StorageStats struct {
 	DatabaseBytes int64                 `json:"databaseBytes"`
 	WALBytes      int64                 `json:"walBytes"`
@@ -44,15 +54,18 @@ type StorageStats struct {
 	CollectedAt   time.Time             `json:"collectedAt"`
 }
 
+// StorageFlushResult represents storage flush result data.
 type StorageFlushResult struct {
 	Resource    string `json:"resource"`
 	RemovedRows int64  `json:"removedRows"`
 }
 
+// NormalizeStorageResource normalizes storage resource.
 func NormalizeStorageResource(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }
 
+// IsStorageResource reports whether storage resource.
 func IsStorageResource(raw string) bool {
 	switch NormalizeStorageResource(raw) {
 	case StorageResourceTimeline,
@@ -68,6 +81,7 @@ func IsStorageResource(raw string) bool {
 	}
 }
 
+// GetStorageStats returns storage stats.
 func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 	stats := StorageStats{
 		Resources:   make([]StorageResourceStat, 0, 6),
@@ -110,6 +124,7 @@ func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 	return stats, nil
 }
 
+// FlushStorageResource handles flush storage resource.
 func (s *Store) FlushStorageResource(ctx context.Context, resource string) ([]StorageFlushResult, error) {
 	resource = NormalizeStorageResource(resource)
 	if resource == StorageResourceAll {
@@ -310,8 +325,8 @@ func queryRowsAndBytes(ctx context.Context, db *sql.DB, query string) (int64, in
 	return rows, approxBytes, nil
 }
 
-func deleteRows(ctx context.Context, db *sql.DB, query string, args ...any) (int64, error) {
-	result, err := db.ExecContext(ctx, query, args...)
+func deleteRows(ctx context.Context, db *sql.DB, query string) (int64, error) {
+	result, err := db.ExecContext(ctx, query)
 	if err != nil {
 		return 0, err
 	}

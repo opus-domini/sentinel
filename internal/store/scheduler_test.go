@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 )
@@ -93,7 +94,7 @@ func TestSchedulerUpdateNonexistent(t *testing.T) {
 		Name:         "Test",
 		ScheduleType: "cron",
 	})
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("error = %v, want sql.ErrNoRows", err)
 	}
 }
@@ -105,7 +106,7 @@ func TestSchedulerDeleteNonexistent(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	err := s.DeleteOpsSchedule(context.Background(), "nonexistent")
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("error = %v, want sql.ErrNoRows", err)
 	}
 }

@@ -231,7 +231,6 @@ func TestApplySystemdUnitState(t *testing.T) {
 			t.Parallel()
 			var calls []string
 			err := applySystemdUnitState(
-				testServiceUnit,
 				tc.enable,
 				tc.start,
 				func(unit string) bool {
@@ -260,7 +259,6 @@ func TestApplySystemdUnitStateReturnsEnableError(t *testing.T) {
 
 	expected := "enable failed"
 	err := applySystemdUnitState(
-		testServiceUnit,
 		true,
 		true,
 		func(string) bool { return false },
@@ -281,7 +279,6 @@ func TestApplySystemdUnitStateReturnsStartError(t *testing.T) {
 
 	expected := "restart failed"
 	err := applySystemdUnitState(
-		testServiceUnit,
 		true,
 		true,
 		func(string) bool { return true },
@@ -302,7 +299,6 @@ func TestApplySystemdUnitStateNilIsActiveFn(t *testing.T) {
 
 	var calls []string
 	err := applySystemdUnitState(
-		testServiceUnit,
 		false,
 		true,
 		nil,
@@ -1152,10 +1148,7 @@ func TestUserStatusSystemLinuxNonRoot(t *testing.T) {
 	}
 
 	// userStatusSystemLinux doesn't check euid; it just reads the system unit path
-	st, err := userStatusSystemLinux()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	st := userStatusSystemLinux()
 
 	if st.ServicePath != systemUnitPath {
 		t.Fatalf("ServicePath = %q, want %q", st.ServicePath, systemUnitPath)
@@ -1464,7 +1457,7 @@ func TestWithSystemdUserBusHintNonBusError(t *testing.T) {
 	// Error without any bus-related keywords should pass through unchanged
 	original := errors.New("some unrelated error")
 	got := withSystemdUserBusHint(original)
-	if got != original {
+	if !errors.Is(got, original) {
 		t.Fatal("non-bus error should pass through unchanged")
 	}
 }
@@ -1630,7 +1623,7 @@ func TestUninstallUserSystemdRemoveUnitNotExist(t *testing.T) {
 	err := uninstallUserSystemd(
 		UninstallUserOptions{RemoveUnit: true},
 		"/nonexistent/sentinel.service",
-		func(args ...string) error { return nil },
+		func(_ ...string) error { return nil },
 	)
 	if err != nil {
 		t.Fatalf("should ignore missing unit file: %v", err)

@@ -1,3 +1,4 @@
+// Package guardrails evaluates safety rules before ops actions.
 package guardrails
 
 import (
@@ -11,6 +12,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
+// Input represents input data.
 type Input struct {
 	Action      string `json:"action"`
 	SessionName string `json:"sessionName"`
@@ -18,6 +20,7 @@ type Input struct {
 	PaneID      string `json:"paneId"`
 }
 
+// Decision represents decision data.
 type Decision struct {
 	Mode           string                `json:"mode"`
 	Allowed        bool                  `json:"allowed"`
@@ -35,6 +38,7 @@ type repo interface {
 	InsertGuardrailAudit(ctx context.Context, audit store.GuardrailAuditWrite) (int64, error)
 }
 
+// Service represents service data.
 type Service struct {
 	repo repo
 }
@@ -46,10 +50,12 @@ type evaluatedSelection struct {
 	matched []store.GuardrailRule
 }
 
+// New creates a new service value.
 func New(r repo) *Service {
 	return &Service{repo: r}
 }
 
+// Evaluate handles evaluate.
 func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
 	defaultDecision := Decision{
 		Allowed: true,
@@ -163,6 +169,7 @@ func defaultDecisionMessage(mode string) string {
 	}
 }
 
+// ListRules lists rules.
 func (s *Service) ListRules(ctx context.Context) ([]store.GuardrailRule, error) {
 	if s == nil || s.repo == nil {
 		return []store.GuardrailRule{}, nil
@@ -170,6 +177,7 @@ func (s *Service) ListRules(ctx context.Context) ([]store.GuardrailRule, error) 
 	return s.repo.ListGuardrailRules(ctx)
 }
 
+// UpsertRule upserts rule.
 func (s *Service) UpsertRule(ctx context.Context, rule store.GuardrailRuleWrite) error {
 	if s == nil || s.repo == nil {
 		return nil
@@ -177,6 +185,7 @@ func (s *Service) UpsertRule(ctx context.Context, rule store.GuardrailRuleWrite)
 	return s.repo.UpsertGuardrailRule(ctx, rule)
 }
 
+// DeleteRule deletes rule.
 func (s *Service) DeleteRule(ctx context.Context, id string) error {
 	if s == nil || s.repo == nil {
 		return nil
@@ -184,6 +193,7 @@ func (s *Service) DeleteRule(ctx context.Context, id string) error {
 	return s.repo.DeleteGuardrailRule(ctx, id)
 }
 
+// ListAudit lists audit.
 func (s *Service) ListAudit(ctx context.Context, limit int) ([]store.GuardrailAudit, error) {
 	if s == nil || s.repo == nil {
 		return []store.GuardrailAudit{}, nil
@@ -191,6 +201,7 @@ func (s *Service) ListAudit(ctx context.Context, limit int) ([]store.GuardrailAu
 	return s.repo.ListGuardrailAudit(ctx, limit)
 }
 
+// RecordAudit records audit.
 func (s *Service) RecordAudit(ctx context.Context, input Input, decision Decision, override bool, reason string) error {
 	if s == nil || s.repo == nil {
 		return nil

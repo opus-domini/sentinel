@@ -22,7 +22,7 @@ import (
 func TestAlertLifecycleTimelineEvents(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -253,7 +253,7 @@ func TestAlertLifecycleTableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, st := newTestHandler(t, nil, nil)
+			h, st := newTestHandler(t, nil)
 			ctx := context.Background()
 
 			alertID := tt.setup(t, h, st, ctx)
@@ -287,7 +287,7 @@ func TestAlertLifecycleTableDriven(t *testing.T) {
 func TestGuardrailBlockedTimelineEvent(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.guardrails = guardrails.New(st)
 	ctx := context.Background()
 	const sessionName = "dev"
@@ -347,7 +347,7 @@ func TestGuardrailBlockedTimelineEvent(t *testing.T) {
 func TestScheduleLifecycleTimelineEvents(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 
 	// Get a runbook ID for the schedule.

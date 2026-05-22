@@ -161,7 +161,7 @@ func TestEventFiltering(t *testing.T) {
 			t.Parallel()
 
 			var received atomic.Bool
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				received.Store(true)
 				w.WriteHeader(http.StatusOK)
 			}))
@@ -273,7 +273,7 @@ func TestSendJSONNilNotifierIsNoOp(t *testing.T) {
 func TestSendJSONReturnsErrorOnClientError(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer srv.Close()
@@ -288,7 +288,7 @@ func TestSendReturnsErrorOnServerError(t *testing.T) {
 	t.Parallel()
 
 	var attempts atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -316,7 +316,7 @@ func TestSendReturnsErrorOnServerError(t *testing.T) {
 func TestSendReturnsErrorOnClientError(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer srv.Close()
@@ -336,7 +336,7 @@ func TestSendReturnsErrorOnClientError(t *testing.T) {
 func TestSendContextTimeout(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Simulate a slow server.
 		time.Sleep(2 * time.Second)
 		w.WriteHeader(http.StatusOK)
@@ -363,7 +363,7 @@ func TestSendAsyncDelivers(t *testing.T) {
 	t.Parallel()
 
 	var received atomic.Bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		received.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -393,7 +393,7 @@ func TestSendAsyncSkipsFilteredEvent(t *testing.T) {
 	t.Parallel()
 
 	var received atomic.Bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		received.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))

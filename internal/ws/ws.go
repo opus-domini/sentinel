@@ -1,3 +1,4 @@
+// Package ws implements Sentinel WebSocket transport.
 package ws
 
 import (
@@ -16,7 +17,9 @@ import (
 )
 
 const (
-	OpText   byte = 0x1
+	// OpText identifies a text WebSocket frame.
+	OpText byte = 0x1
+	// OpBinary identifies a binary WebSocket frame.
 	OpBinary byte = 0x2
 	opClose  byte = 0x8
 	opPing   byte = 0x9
@@ -24,11 +27,16 @@ const (
 )
 
 const (
-	CloseNormal    = 1000
+	// CloseNormal identifies a normal WebSocket close.
+	CloseNormal = 1000
+	// CloseGoingAway identifies a going-away WebSocket close.
 	CloseGoingAway = 1001
-	CloseProtocol  = 1002
-	CloseTooLarge  = 1009
-	CloseInternal  = 1011
+	// CloseProtocol identifies a protocol-error WebSocket close.
+	CloseProtocol = 1002
+	// CloseTooLarge identifies a message-too-large WebSocket close.
+	CloseTooLarge = 1009
+	// CloseInternal identifies an internal-error WebSocket close.
+	CloseInternal = 1011
 )
 
 const (
@@ -37,9 +45,11 @@ const (
 )
 
 var (
+	// ErrClosed is returned when closed occurs.
 	ErrClosed = errors.New("websocket closed")
 )
 
+// Conn represents conn data.
 type Conn struct {
 	conn      net.Conn
 	reader    *bufio.Reader
@@ -49,11 +59,13 @@ type Conn struct {
 	closed    atomic.Bool
 }
 
+// Upgrade handles upgrade.
 func Upgrade(w http.ResponseWriter, r *http.Request, originCheck func(*http.Request) error) (*Conn, error) {
 	conn, _, err := UpgradeWithSubprotocols(w, r, originCheck, nil)
 	return conn, err
 }
 
+// UpgradeWithSubprotocols handles upgrade with subprotocols.
 func UpgradeWithSubprotocols(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -127,6 +139,7 @@ func UpgradeWithSubprotocols(
 	}, selectedProtocol, nil
 }
 
+// ReadMessage handles read message.
 func (c *Conn) ReadMessage() (byte, []byte, error) {
 	for {
 		opcode, payload, err := c.readFrame(defaultMaxFramePayload)
@@ -164,14 +177,17 @@ func (c *Conn) ReadMessage() (byte, []byte, error) {
 	}
 }
 
+// WriteText handles write text.
 func (c *Conn) WriteText(payload []byte) error {
 	return c.writeFrame(OpText, payload)
 }
 
+// WriteBinary handles write binary.
 func (c *Conn) WriteBinary(payload []byte) error {
 	return c.writeFrame(OpBinary, payload)
 }
 
+// WritePing handles write ping.
 func (c *Conn) WritePing(payload []byte) error {
 	if len(payload) > maxControlFramePayload {
 		payload = payload[:maxControlFramePayload]
@@ -179,6 +195,7 @@ func (c *Conn) WritePing(payload []byte) error {
 	return c.writeFrame(opPing, payload)
 }
 
+// WritePong handles write pong.
 func (c *Conn) WritePong(payload []byte) error {
 	if len(payload) > maxControlFramePayload {
 		payload = payload[:maxControlFramePayload]
@@ -186,6 +203,7 @@ func (c *Conn) WritePong(payload []byte) error {
 	return c.writeFrame(opPong, payload)
 }
 
+// WriteClose handles write close.
 func (c *Conn) WriteClose(code int, reason string) error {
 	if len(reason) > 123 {
 		reason = reason[:123]
@@ -201,6 +219,7 @@ func (c *Conn) WriteClose(code int, reason string) error {
 	return err
 }
 
+// Close closes value.
 func (c *Conn) Close() error {
 	var err error
 	c.closeOnce.Do(func() {

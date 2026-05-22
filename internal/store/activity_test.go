@@ -81,43 +81,43 @@ func TestSearchOpsActivityEventsFilters(t *testing.T) {
 	s, ctx := newActivitySearchTestStore(t)
 
 	t.Run("filter by severity only", func(t *testing.T) {
-		assertActivityFilterBySeverityOnly(t, s, ctx)
+		assertActivityFilterBySeverityOnly(ctx, t, s)
 	})
 
 	t.Run("filter by source only", func(t *testing.T) {
-		assertActivityFilterBySourceOnly(t, s, ctx)
+		assertActivityFilterBySourceOnly(ctx, t, s)
 	})
 
 	t.Run("filter by query text", func(t *testing.T) {
-		assertActivityFilterByQueryText(t, s, ctx)
+		assertActivityFilterByQueryText(ctx, t, s)
 	})
 
 	t.Run("empty query returns all", func(t *testing.T) {
-		assertActivityEmptyQueryReturnsAll(t, s, ctx)
+		assertActivityEmptyQueryReturnsAll(ctx, t, s)
 	})
 
 	t.Run("severity 'all' returns all", func(t *testing.T) {
-		assertActivitySeverityAllReturnsAll(t, s, ctx)
+		assertActivitySeverityAllReturnsAll(ctx, t, s)
 	})
 
 	t.Run("invalid severity returns error", func(t *testing.T) {
-		assertActivityInvalidSeverityReturnsError(t, s, ctx)
+		assertActivityInvalidSeverityReturnsError(ctx, t, s)
 	})
 
 	t.Run("HasMore when limit exceeded", func(t *testing.T) {
-		assertActivityHasMoreWhenLimitExceeded(t, s, ctx)
+		assertActivityHasMoreWhenLimitExceeded(ctx, t, s)
 	})
 
 	t.Run("negative limit defaults to 100", func(t *testing.T) {
-		assertActivityNegativeLimitDefaultsTo100(t, s, ctx)
+		assertActivityNegativeLimitDefaultsTo100(ctx, t, s)
 	})
 
 	t.Run("severity aliases normalized", func(t *testing.T) {
-		assertActivitySeverityAliasesNormalized(t, s, ctx)
+		assertActivitySeverityAliasesNormalized(ctx, t, s)
 	})
 
 	t.Run("results ordered by created_at DESC", func(t *testing.T) {
-		assertActivityResultsOrderedByCreatedAtDesc(t, s, ctx)
+		assertActivityResultsOrderedByCreatedAtDesc(ctx, t, s)
 	})
 }
 
@@ -143,7 +143,7 @@ func newActivitySearchTestStore(t *testing.T) (*Store, context.Context) {
 	return s, ctx
 }
 
-func assertActivityFilterBySeverityOnly(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityFilterBySeverityOnly(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "error"})
@@ -155,7 +155,7 @@ func assertActivityFilterBySeverityOnly(t *testing.T, s *Store, ctx context.Cont
 	}
 }
 
-func assertActivityFilterBySourceOnly(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityFilterBySourceOnly(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{Source: "service"})
@@ -167,7 +167,7 @@ func assertActivityFilterBySourceOnly(t *testing.T, s *Store, ctx context.Contex
 	}
 }
 
-func assertActivityFilterByQueryText(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityFilterByQueryText(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{Query: "redis"})
@@ -179,7 +179,7 @@ func assertActivityFilterByQueryText(t *testing.T, s *Store, ctx context.Context
 	}
 }
 
-func assertActivityEmptyQueryReturnsAll(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityEmptyQueryReturnsAll(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{})
@@ -191,7 +191,7 @@ func assertActivityEmptyQueryReturnsAll(t *testing.T, s *Store, ctx context.Cont
 	}
 }
 
-func assertActivitySeverityAllReturnsAll(t *testing.T, s *Store, ctx context.Context) {
+func assertActivitySeverityAllReturnsAll(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "all"})
@@ -203,7 +203,7 @@ func assertActivitySeverityAllReturnsAll(t *testing.T, s *Store, ctx context.Con
 	}
 }
 
-func assertActivityInvalidSeverityReturnsError(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityInvalidSeverityReturnsError(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	_, err := s.SearchActivityEvents(ctx, activity.Query{Severity: "critical"})
@@ -215,7 +215,7 @@ func assertActivityInvalidSeverityReturnsError(t *testing.T, s *Store, ctx conte
 	}
 }
 
-func assertActivityHasMoreWhenLimitExceeded(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityHasMoreWhenLimitExceeded(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{Limit: 2})
@@ -230,7 +230,7 @@ func assertActivityHasMoreWhenLimitExceeded(t *testing.T, s *Store, ctx context.
 	}
 }
 
-func assertActivityNegativeLimitDefaultsTo100(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityNegativeLimitDefaultsTo100(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{Limit: -5})
@@ -243,7 +243,7 @@ func assertActivityNegativeLimitDefaultsTo100(t *testing.T, s *Store, ctx contex
 	}
 }
 
-func assertActivitySeverityAliasesNormalized(t *testing.T, s *Store, ctx context.Context) {
+func assertActivitySeverityAliasesNormalized(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	// "warning" should be treated as "warn".
@@ -265,7 +265,7 @@ func assertActivitySeverityAliasesNormalized(t *testing.T, s *Store, ctx context
 	}
 }
 
-func assertActivityResultsOrderedByCreatedAtDesc(t *testing.T, s *Store, ctx context.Context) {
+func assertActivityResultsOrderedByCreatedAtDesc(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 
 	result, err := s.SearchActivityEvents(ctx, activity.Query{})

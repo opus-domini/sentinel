@@ -530,7 +530,7 @@ func TestWatchtowerJournalAccessorsAndPrune(t *testing.T) {
 
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
-	seedWatchtowerJournalRows(t, s, ctx, now)
+	seedWatchtowerJournalRows(ctx, t, s, now)
 	entries, err := s.ListWatchtowerJournalSince(ctx, 1, 10)
 	if err != nil {
 		t.Fatalf("ListWatchtowerJournalSince: %v", err)
@@ -539,7 +539,7 @@ func TestWatchtowerJournalAccessorsAndPrune(t *testing.T) {
 		t.Fatalf("unexpected journal entries: %+v", entries)
 	}
 	for i := 3; i <= 8; i++ {
-		insertWatchtowerJournalEntry(t, s, ctx, WatchtowerJournalWrite{
+		insertWatchtowerJournalEntry(ctx, t, s, WatchtowerJournalWrite{
 			GlobalRev:  int64(i),
 			EntityType: "session",
 			Session:    "dev",
@@ -564,9 +564,9 @@ func TestWatchtowerJournalAccessorsAndPrune(t *testing.T) {
 	}
 }
 
-func seedWatchtowerJournalRows(t *testing.T, s *Store, ctx context.Context, now time.Time) {
+func seedWatchtowerJournalRows(ctx context.Context, t *testing.T, s *Store, now time.Time) {
 	t.Helper()
-	insertWatchtowerJournalEntry(t, s, ctx, WatchtowerJournalWrite{
+	insertWatchtowerJournalEntry(ctx, t, s, WatchtowerJournalWrite{
 		GlobalRev:  1,
 		EntityType: "pane",
 		Session:    "dev",
@@ -575,7 +575,7 @@ func seedWatchtowerJournalRows(t *testing.T, s *Store, ctx context.Context, now 
 		ChangeKind: "tail-changed",
 		ChangedAt:  now,
 	})
-	insertWatchtowerJournalEntry(t, s, ctx, WatchtowerJournalWrite{
+	insertWatchtowerJournalEntry(ctx, t, s, WatchtowerJournalWrite{
 		GlobalRev:  2,
 		EntityType: "window",
 		Session:    "dev",
@@ -585,7 +585,7 @@ func seedWatchtowerJournalRows(t *testing.T, s *Store, ctx context.Context, now 
 	})
 }
 
-func insertWatchtowerJournalEntry(t *testing.T, s *Store, ctx context.Context, row WatchtowerJournalWrite) {
+func insertWatchtowerJournalEntry(ctx context.Context, t *testing.T, s *Store, row WatchtowerJournalWrite) {
 	t.Helper()
 	if _, err := s.InsertWatchtowerJournal(ctx, row); err != nil {
 		t.Fatalf("InsertWatchtowerJournal(%d): %v", row.GlobalRev, err)
@@ -601,15 +601,15 @@ func TestWatchtowerPurgeHelpers(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
-	seedWatchtowerProjectionSession(t, s, ctx, now, "a")
-	seedWatchtowerProjectionSession(t, s, ctx, now, "b")
-	seedWatchtowerProjectionSession(t, s, ctx, now, "c")
+	seedWatchtowerProjectionSession(ctx, t, s, now, "a")
+	seedWatchtowerProjectionSession(ctx, t, s, now, "b")
+	seedWatchtowerProjectionSession(ctx, t, s, now, "c")
 
 	if err := s.PurgeWatchtowerSessions(ctx, []string{"a", "c"}); err != nil {
 		t.Fatalf("PurgeWatchtowerSessions([a,c]): %v", err)
 	}
 
-	assertWatchtowerSessionNames(t, s, ctx, []string{"a", "c"})
+	assertWatchtowerSessionNames(ctx, t, s, []string{"a", "c"})
 	if _, err := s.GetWatchtowerSession(ctx, "b"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("GetWatchtowerSession(b) err = %v, want sql.ErrNoRows", err)
 	}
@@ -617,15 +617,15 @@ func TestWatchtowerPurgeHelpers(t *testing.T) {
 	if err := s.PurgeWatchtowerWindows(ctx, "a", []int{}); err != nil {
 		t.Fatalf("PurgeWatchtowerWindows(a, []): %v", err)
 	}
-	assertWatchtowerWindowCount(t, s, ctx, "a", 0)
+	assertWatchtowerWindowCount(ctx, t, s, "a", 0)
 
 	if err := s.PurgeWatchtowerPanes(ctx, "c", []string{}); err != nil {
 		t.Fatalf("PurgeWatchtowerPanes(c, []): %v", err)
 	}
-	assertWatchtowerPaneCount(t, s, ctx, "c", 0)
+	assertWatchtowerPaneCount(ctx, t, s, "c", 0)
 }
 
-func seedWatchtowerProjectionSession(t *testing.T, s *Store, ctx context.Context, now time.Time, name string) {
+func seedWatchtowerProjectionSession(ctx context.Context, t *testing.T, s *Store, now time.Time, name string) {
 	t.Helper()
 	if err := s.UpsertWatchtowerSession(ctx, WatchtowerSessionWrite{
 		SessionName:   name,
@@ -669,7 +669,7 @@ func seedWatchtowerProjectionSession(t *testing.T, s *Store, ctx context.Context
 	}
 }
 
-func assertWatchtowerSessionNames(t *testing.T, s *Store, ctx context.Context, want []string) {
+func assertWatchtowerSessionNames(ctx context.Context, t *testing.T, s *Store, want []string) {
 	t.Helper()
 	sessions, err := s.ListWatchtowerSessions(ctx)
 	if err != nil {
@@ -685,7 +685,7 @@ func assertWatchtowerSessionNames(t *testing.T, s *Store, ctx context.Context, w
 	}
 }
 
-func assertWatchtowerWindowCount(t *testing.T, s *Store, ctx context.Context, session string, want int) {
+func assertWatchtowerWindowCount(ctx context.Context, t *testing.T, s *Store, session string, want int) {
 	t.Helper()
 	windows, err := s.ListWatchtowerWindows(ctx, session)
 	if err != nil {
@@ -696,7 +696,7 @@ func assertWatchtowerWindowCount(t *testing.T, s *Store, ctx context.Context, se
 	}
 }
 
-func assertWatchtowerPaneCount(t *testing.T, s *Store, ctx context.Context, session string, want int) {
+func assertWatchtowerPaneCount(ctx context.Context, t *testing.T, s *Store, session string, want int) {
 	t.Helper()
 	panes, err := s.ListWatchtowerPanes(ctx, session)
 	if err != nil {
@@ -715,7 +715,7 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
-	seedWatchtowerSeenScopeState(t, s, ctx, now)
+	seedWatchtowerSeenScopeState(ctx, t, s, now)
 
 	changed, err := s.MarkWatchtowerPaneSeen(ctx, "dev", "%1")
 	if err != nil {
@@ -724,7 +724,7 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 	if !changed {
 		t.Fatalf("MarkWatchtowerPaneSeen changed = false, want true")
 	}
-	assertWatchtowerPaneSeenRevision(t, s, ctx, "dev", "%1")
+	assertWatchtowerPaneSeenRevision(ctx, t, s, "dev", "%1")
 
 	changed, err = s.MarkWatchtowerWindowSeen(ctx, "dev", 1)
 	if err != nil {
@@ -733,7 +733,7 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 	if !changed {
 		t.Fatalf("MarkWatchtowerWindowSeen changed = false, want true")
 	}
-	assertWatchtowerPaneSeenRevision(t, s, ctx, "dev", "%3")
+	assertWatchtowerPaneSeenRevision(ctx, t, s, "dev", "%3")
 
 	changed, err = s.MarkWatchtowerSessionSeen(ctx, "dev")
 	if err != nil {
@@ -743,10 +743,10 @@ func TestWatchtowerSeenScopes(t *testing.T) {
 		t.Fatalf("MarkWatchtowerSessionSeen changed = true, want false (already seen)")
 	}
 
-	assertWatchtowerSessionAndWindowsRead(t, s, ctx, "dev")
+	assertWatchtowerSessionAndWindowsRead(ctx, t, s, "dev")
 }
 
-func seedWatchtowerSeenScopeState(t *testing.T, s *Store, ctx context.Context, now time.Time) {
+func seedWatchtowerSeenScopeState(ctx context.Context, t *testing.T, s *Store, now time.Time) {
 	t.Helper()
 	if err := s.UpsertWatchtowerSession(ctx, WatchtowerSessionWrite{
 		SessionName:   "dev",
@@ -779,7 +779,7 @@ func seedWatchtowerSeenScopeState(t *testing.T, s *Store, ctx context.Context, n
 	}
 }
 
-func assertWatchtowerPaneSeenRevision(t *testing.T, s *Store, ctx context.Context, sessionName, paneID string) {
+func assertWatchtowerPaneSeenRevision(ctx context.Context, t *testing.T, s *Store, sessionName, paneID string) {
 	t.Helper()
 	panes, err := s.ListWatchtowerPanes(ctx, sessionName)
 	if err != nil {
@@ -796,7 +796,7 @@ func assertWatchtowerPaneSeenRevision(t *testing.T, s *Store, ctx context.Contex
 	t.Fatalf("pane %s not found", paneID)
 }
 
-func assertWatchtowerSessionAndWindowsRead(t *testing.T, s *Store, ctx context.Context, sessionName string) {
+func assertWatchtowerSessionAndWindowsRead(ctx context.Context, t *testing.T, s *Store, sessionName string) {
 	t.Helper()
 	session, err := s.GetWatchtowerSession(ctx, sessionName)
 	if err != nil {

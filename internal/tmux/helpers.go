@@ -1,3 +1,4 @@
+// Package tmux wraps tmux command execution.
 package tmux
 
 import (

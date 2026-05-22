@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// ManagedTmuxWindow represents managed tmux window data.
 type ManagedTmuxWindow struct {
 	ID              string    `json:"id"`
 	SessionName     string    `json:"sessionName"`
@@ -26,6 +27,7 @@ type ManagedTmuxWindow struct {
 	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
+// ManagedTmuxWindowWrite represents managed tmux window write data.
 type ManagedTmuxWindowWrite struct {
 	SessionName     string
 	LauncherID      string
@@ -40,6 +42,7 @@ type ManagedTmuxWindowWrite struct {
 	LastWindowIndex int
 }
 
+// ListManagedTmuxWindowsBySession lists managed tmux windows by session.
 func (s *Store) ListManagedTmuxWindowsBySession(ctx context.Context, sessionName string) ([]ManagedTmuxWindow, error) {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
@@ -70,6 +73,7 @@ func (s *Store) ListManagedTmuxWindowsBySession(ctx context.Context, sessionName
 	return out, rows.Err()
 }
 
+// CreateManagedTmuxWindow creates managed tmux window.
 func (s *Store) CreateManagedTmuxWindow(ctx context.Context, row ManagedTmuxWindowWrite) (ManagedTmuxWindow, error) {
 	normalized, err := normalizeManagedTmuxWindowWrite(row)
 	if err != nil {
@@ -108,6 +112,7 @@ func (s *Store) CreateManagedTmuxWindow(ctx context.Context, row ManagedTmuxWind
 	return s.getManagedTmuxWindow(ctx, id)
 }
 
+// UpdateManagedTmuxWindowRuntime updates managed tmux window runtime.
 func (s *Store) UpdateManagedTmuxWindowRuntime(ctx context.Context, id, tmuxWindowID string, lastWindowIndex int) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -134,6 +139,7 @@ func (s *Store) UpdateManagedTmuxWindowRuntime(ctx context.Context, id, tmuxWind
 	return nil
 }
 
+// UpdateManagedTmuxWindowName updates managed tmux window name.
 func (s *Store) UpdateManagedTmuxWindowName(ctx context.Context, id, windowName string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -163,6 +169,7 @@ func (s *Store) UpdateManagedTmuxWindowName(ctx context.Context, id, windowName 
 	return nil
 }
 
+// UpdateManagedTmuxWindowSortOrder updates managed tmux window sort order.
 func (s *Store) UpdateManagedTmuxWindowSortOrder(ctx context.Context, id string, sortOrder int) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -191,6 +198,7 @@ func (s *Store) UpdateManagedTmuxWindowSortOrder(ctx context.Context, id string,
 	return nil
 }
 
+// DeleteManagedTmuxWindow deletes managed tmux window.
 func (s *Store) DeleteManagedTmuxWindow(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -210,6 +218,7 @@ func (s *Store) DeleteManagedTmuxWindow(ctx context.Context, id string) error {
 	return nil
 }
 
+// DeleteManagedTmuxWindowsMissingRuntime deletes managed tmux windows missing runtime.
 func (s *Store) DeleteManagedTmuxWindowsMissingRuntime(ctx context.Context, sessionName string, liveWindowIDs []string) error {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {

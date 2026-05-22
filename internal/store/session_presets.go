@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// SessionPreset represents session preset data.
 type SessionPreset struct {
 	Name           string    `json:"name"`
 	Cwd            string    `json:"cwd"`
@@ -20,6 +21,7 @@ type SessionPreset struct {
 	LaunchCount    int       `json:"launchCount"`
 }
 
+// SessionPresetWrite represents session preset write data.
 type SessionPresetWrite struct {
 	Name string
 	Cwd  string
@@ -27,6 +29,7 @@ type SessionPresetWrite struct {
 	User string
 }
 
+// ListSessionPresets lists session presets.
 func (s *Store) ListSessionPresets(ctx context.Context) ([]SessionPreset, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT name, cwd, icon, user, sort_order, created_at, updated_at, last_launched_at, launch_count
@@ -65,6 +68,7 @@ func (s *Store) ListSessionPresets(ctx context.Context) ([]SessionPreset, error)
 	return out, rows.Err()
 }
 
+// CreateSessionPreset creates session preset.
 func (s *Store) CreateSessionPreset(ctx context.Context, row SessionPresetWrite) (SessionPreset, error) {
 	name, cwd, icon, err := normalizeSessionPresetWrite(row)
 	if err != nil {
@@ -92,6 +96,7 @@ func (s *Store) CreateSessionPreset(ctx context.Context, row SessionPresetWrite)
 	return s.getSessionPreset(ctx, name)
 }
 
+// UpdateSessionPreset updates session preset.
 func (s *Store) UpdateSessionPreset(ctx context.Context, oldName string, row SessionPresetWrite) (SessionPreset, error) {
 	oldName = strings.TrimSpace(oldName)
 	if oldName == "" {
@@ -124,6 +129,7 @@ func (s *Store) UpdateSessionPreset(ctx context.Context, oldName string, row Ses
 	return s.getSessionPreset(ctx, name)
 }
 
+// DeleteSessionPreset deletes session preset.
 func (s *Store) DeleteSessionPreset(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -143,6 +149,7 @@ func (s *Store) DeleteSessionPreset(ctx context.Context, name string) error {
 	return nil
 }
 
+// MarkSessionPresetLaunched marks session preset launched.
 func (s *Store) MarkSessionPresetLaunched(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -169,6 +176,7 @@ func (s *Store) MarkSessionPresetLaunched(ctx context.Context, name string) erro
 	return nil
 }
 
+// ReorderSessionPresets reorders session presets.
 func (s *Store) ReorderSessionPresets(ctx context.Context, names []string) error {
 	normalized, err := normalizeSessionOrderNames(names)
 	if err != nil {

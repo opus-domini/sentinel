@@ -1,3 +1,4 @@
+// Package services inspects host services for ops views.
 package services
 
 import (

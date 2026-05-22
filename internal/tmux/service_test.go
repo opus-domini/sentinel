@@ -148,7 +148,7 @@ func TestServiceSessionExistsWithNoUser(t *testing.T) {
 	original := run
 	t.Cleanup(func() { run = original })
 
-	run = func(_ context.Context, args ...string) (string, error) {
+	run = func(_ context.Context, _ ...string) (string, error) {
 		return "", nil
 	}
 
@@ -224,7 +224,7 @@ func installExecCommandRecorder(t *testing.T) {
 	}
 }
 
-func TestExecCommandRecorder(t *testing.T) {
+func TestExecCommandRecorder(_ *testing.T) {
 	if os.Getenv("SENTINEL_EXEC_COMMAND_RECORDER") != "1" {
 		return
 	}

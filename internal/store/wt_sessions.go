@@ -34,6 +34,7 @@ func BuildWatchtowerInspectorPatch(sessionName string, windows []WatchtowerWindo
 	return BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, nil)
 }
 
+// BuildWatchtowerInspectorPatchWithManaged builds watchtower inspector patch with managed.
 func BuildWatchtowerInspectorPatchWithManaged(
 	sessionName string,
 	windows []WatchtowerWindow,
@@ -55,6 +56,7 @@ func BuildWatchtowerInspectorPatchWithManaged(
 	}
 }
 
+// UpsertWatchtowerSession upserts watchtower session.
 func (s *Store) UpsertWatchtowerSession(ctx context.Context, row WatchtowerSessionWrite) error {
 	name := strings.TrimSpace(row.SessionName)
 	if name == "" {
@@ -99,6 +101,7 @@ func (s *Store) UpsertWatchtowerSession(ctx context.Context, row WatchtowerSessi
 	return err
 }
 
+// GetWatchtowerSession returns watchtower session.
 func (s *Store) GetWatchtowerSession(ctx context.Context, sessionName string) (WatchtowerSession, error) {
 	var (
 		row                                     WatchtowerSession
@@ -134,6 +137,7 @@ func (s *Store) GetWatchtowerSession(ctx context.Context, sessionName string) (W
 	return row, nil
 }
 
+// GetWatchtowerSessionActivityPatch returns watchtower session activity patch.
 func (s *Store) GetWatchtowerSessionActivityPatch(ctx context.Context, sessionName string) (map[string]any, error) {
 	row, err := s.GetWatchtowerSession(ctx, sessionName)
 	if err != nil {
@@ -142,6 +146,7 @@ func (s *Store) GetWatchtowerSessionActivityPatch(ctx context.Context, sessionNa
 	return BuildWatchtowerSessionActivityPatch(row), nil
 }
 
+// GetWatchtowerInspectorPatch returns watchtower inspector patch.
 func (s *Store) GetWatchtowerInspectorPatch(ctx context.Context, sessionName string) (map[string]any, error) {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
@@ -162,6 +167,7 @@ func (s *Store) GetWatchtowerInspectorPatch(ctx context.Context, sessionName str
 	return BuildWatchtowerInspectorPatchWithManaged(sessionName, windows, panes, managedWindowsByRuntime(managed)), nil
 }
 
+// ListWatchtowerSessions lists watchtower sessions.
 func (s *Store) ListWatchtowerSessions(ctx context.Context) ([]WatchtowerSession, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT session_name, attached, windows, panes, activity_at,
@@ -205,6 +211,7 @@ func (s *Store) ListWatchtowerSessions(ctx context.Context) ([]WatchtowerSession
 	return out, rows.Err()
 }
 
+// PurgeWatchtowerSessions purges watchtower sessions.
 func (s *Store) PurgeWatchtowerSessions(ctx context.Context, activeSessions []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

@@ -1,3 +1,4 @@
+// Package api serves Sentinel HTTP API endpoints.
 package api
 
 import (
@@ -234,6 +235,7 @@ type handlerRepo interface {
 // Compile-time check: *store.Store satisfies handlerRepo.
 var _ handlerRepo = (*store.Store)(nil)
 
+// Handler represents handler data.
 type Handler struct {
 	guard            *security.Guard
 	tmux             tmuxService
@@ -295,6 +297,7 @@ func marshalMetadata(v any) string {
 	return string(b)
 }
 
+// Register wires the package routes into the HTTP mux.
 func Register(
 	mux *http.ServeMux,
 	guard *security.Guard,

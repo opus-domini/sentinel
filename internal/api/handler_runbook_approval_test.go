@@ -15,7 +15,7 @@ import (
 func TestRejectOpsRunbookRun(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	run := createWaitingApprovalRun(t, st)
 
@@ -51,7 +51,7 @@ func TestRejectOpsRunbookRun(t *testing.T) {
 func TestApproveOpsRunbookRunResumesRun(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	run := createWaitingApprovalRun(t, st)
 
@@ -86,7 +86,7 @@ func TestApproveOpsRunbookRunResumesRun(t *testing.T) {
 func TestApproveOpsRunbookRunResumesFollowingSteps(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	run := createWaitingApprovalRunWithSteps(t, st, []store.OpsRunbookStep{
 		{Type: stepTypeApproval, Title: "Approve"},
@@ -127,7 +127,7 @@ func TestApproveOpsRunbookRunResumesFollowingSteps(t *testing.T) {
 func TestApproveOpsRunbookRunRejectsInvalidState(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	run := createWaitingApprovalRun(t, st)
 	if _, err := st.UpdateOpsRunbookRun(context.Background(), store.OpsRunbookRunUpdate{
 		RunID:          run.ID,

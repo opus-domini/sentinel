@@ -24,7 +24,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("create rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/launchers", strings.NewReader(`{`))
 		h.createTmuxLauncher(w, r)
@@ -36,7 +36,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("update rejects empty id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/launchers/", strings.NewReader(`{}`))
 		h.updateTmuxLauncher(w, r)
@@ -48,7 +48,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("update rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/launchers/abc", strings.NewReader(`not json`))
 		r.SetPathValue("launcher", "abc")
@@ -61,7 +61,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("update returns 404 for unknown launcher", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/launchers/missing", strings.NewReader(`{"name":"Codex","icon":"code","command":"codex","cwdMode":"session"}`))
 		r.SetPathValue("launcher", "missing")
@@ -74,7 +74,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("delete rejects empty id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/launchers/", nil)
 		h.deleteTmuxLauncher(w, r)
@@ -86,7 +86,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("delete returns 404 for unknown launcher", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/launchers/missing", nil)
 		r.SetPathValue("launcher", "missing")
@@ -99,7 +99,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("reorder rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/launchers/order", strings.NewReader(`{`))
 		h.reorderTmuxLaunchers(w, r)
@@ -111,7 +111,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("reorder rejects empty ids", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/launchers/order", strings.NewReader(`{"ids":[]}`))
 		h.reorderTmuxLaunchers(w, r)
@@ -123,7 +123,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("launch rejects invalid session name", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/bad/launchers/x/launch", nil)
 		r.SetPathValue("session", "bad name")
@@ -137,7 +137,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("launch rejects empty launcher id", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/launchers//launch", nil)
 		r.SetPathValue("session", "dev")
@@ -150,7 +150,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 	t.Run("launch returns 404 for unknown launcher", func(t *testing.T) {
 		t.Parallel()
 
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/launchers/missing/launch", nil)
 		r.SetPathValue("session", "dev")
@@ -169,7 +169,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 				return tmux.NewWindowResult{}, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, st := newTestHandler(t, tm, nil)
+		h, st := newTestHandler(t, tm)
 		launcher, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
 			Name:       "Codex",
 			Icon:       "code",
@@ -198,7 +198,7 @@ func TestTmuxLauncherErrorPaths(t *testing.T) {
 				return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, st := newTestHandler(t, tm, nil)
+		h, st := newTestHandler(t, tm)
 		launcher, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
 			Name:       "Codex",
 			Icon:       "code",
@@ -225,7 +225,7 @@ func TestResolveTmuxLauncherCwd(t *testing.T) {
 
 	t.Run("session mode returns empty", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		cwd, err := h.resolveTmuxLauncherCwd(context.Background(), "dev", store.TmuxLauncher{
 			CwdMode: store.TmuxLauncherCwdModeSession,
 		})
@@ -236,7 +236,7 @@ func TestResolveTmuxLauncherCwd(t *testing.T) {
 
 	t.Run("fixed mode returns configured value", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		cwd, err := h.resolveTmuxLauncherCwd(context.Background(), "dev", store.TmuxLauncher{
 			CwdMode:  store.TmuxLauncherCwdModeFixed,
 			CwdValue: "/srv/api",
@@ -248,7 +248,7 @@ func TestResolveTmuxLauncherCwd(t *testing.T) {
 
 	t.Run("invalid mode returns error", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		if _, err := h.resolveTmuxLauncherCwd(context.Background(), "dev", store.TmuxLauncher{
 			CwdMode: "bogus",
 		}); err == nil {
@@ -266,7 +266,7 @@ func TestResolveTmuxLauncherCwd(t *testing.T) {
 				}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		cwd, err := h.resolveTmuxLauncherCwd(context.Background(), "dev", store.TmuxLauncher{
 			CwdMode: store.TmuxLauncherCwdModeActivePane,
 		})
@@ -285,7 +285,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("create rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-presets", strings.NewReader(`{`))
 		h.createSessionPreset(w, r)
@@ -296,7 +296,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("create rejects duplicate preset", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, &mockTmux{}, nil)
+		h, st := newTestHandler(t, &mockTmux{})
 		if _, err := st.CreateSessionPreset(context.Background(), store.SessionPresetWrite{
 			Name: "api", Cwd: "/srv/api", Icon: "server",
 		}); err != nil {
@@ -312,7 +312,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("update rejects invalid name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-presets/bad%20name", strings.NewReader(`{}`))
 		r.SetPathValue("preset", "bad name")
@@ -324,7 +324,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("update rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-presets/api", strings.NewReader(`bad`))
 		r.SetPathValue("preset", "api")
@@ -336,7 +336,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("update returns 404 for unknown preset", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-presets/missing", strings.NewReader(`{"name":"missing","cwd":"/srv/x","icon":"server"}`))
 		r.SetPathValue("preset", "missing")
@@ -348,7 +348,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("delete rejects invalid name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/session-presets/bad", nil)
 		r.SetPathValue("preset", "bad name")
@@ -360,7 +360,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("delete returns 404 for unknown preset", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/session-presets/missing", nil)
 		r.SetPathValue("preset", "missing")
@@ -372,7 +372,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("launch rejects invalid name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-presets/bad/launch", nil)
 		r.SetPathValue("preset", "bad name")
@@ -384,7 +384,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 
 	t.Run("launch returns 404 for unknown preset", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-presets/missing/launch", nil)
 		r.SetPathValue("preset", "missing")
@@ -401,7 +401,7 @@ func TestSessionPresetErrorPaths(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, st := newTestHandler(t, tm, nil)
+		h, st := newTestHandler(t, tm)
 		if _, err := st.CreateSessionPreset(context.Background(), store.SessionPresetWrite{
 			Name: "api", Cwd: "/srv/api", Icon: "server",
 		}); err != nil {
@@ -426,7 +426,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("create rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-launchers", strings.NewReader(`{`))
 		h.createSessionLauncher(w, r)
@@ -437,7 +437,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("create rejects invalid name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-launchers", strings.NewReader(`{"name":"bad name","cwd":"/srv/api","icon":"server"}`))
 		h.createSessionLauncher(w, r)
@@ -448,7 +448,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("create rejects duplicate launcher", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, &mockTmux{}, nil)
+		h, st := newTestHandler(t, &mockTmux{})
 		if _, err := st.CreateSessionLauncher(context.Background(), store.SessionLauncherWrite{
 			Name: "api", Cwd: "/srv/api", Icon: "server",
 		}); err != nil {
@@ -464,7 +464,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("update rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-launchers/", strings.NewReader(`{}`))
 		h.updateSessionLauncher(w, r)
@@ -475,7 +475,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("update rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-launchers/abc", strings.NewReader(`bad`))
 		r.SetPathValue("launcher", "abc")
@@ -487,7 +487,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("update returns 404 for unknown launcher", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-launchers/missing", strings.NewReader(`{"name":"x","cwd":"/srv/x","icon":"server"}`))
 		r.SetPathValue("launcher", "missing")
@@ -499,7 +499,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("delete rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/session-launchers/", nil)
 		h.deleteSessionLauncher(w, r)
@@ -510,7 +510,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("delete returns 404 for unknown launcher", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/tmux/session-launchers/missing", nil)
 		r.SetPathValue("launcher", "missing")
@@ -522,7 +522,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("reorder rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-launchers/order", strings.NewReader(`{`))
 		h.reorderSessionLaunchers(w, r)
@@ -533,7 +533,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("reorder rejects empty ids", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/session-launchers/order", strings.NewReader(`{"ids":[]}`))
 		h.reorderSessionLaunchers(w, r)
@@ -544,7 +544,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("launch rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-launchers//launch", nil)
 		h.launchSessionLauncher(w, r)
@@ -555,7 +555,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 
 	t.Run("launch returns 404 for unknown launcher", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, &mockTmux{}, nil)
+		h, _ := newTestHandler(t, &mockTmux{})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-launchers/missing/launch", nil)
 		r.SetPathValue("launcher", "missing")
@@ -572,7 +572,7 @@ func TestSessionLauncherErrorPaths(t *testing.T) {
 				return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, st := newTestHandler(t, tm, nil)
+		h, st := newTestHandler(t, tm)
 		launcher, err := st.CreateSessionLauncher(context.Background(), store.SessionLauncherWrite{
 			Name: "api", Cwd: "/srv/api", Icon: "server",
 		})
@@ -598,7 +598,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("update rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/", strings.NewReader(`{}`))
 		h.updateOpsRunbook(w, r)
@@ -609,7 +609,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("update rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/abc", strings.NewReader(`bad`))
 		r.SetPathValue("runbook", "abc")
@@ -621,7 +621,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("update rejects invalid step type", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/abc", strings.NewReader(`{"name":"rb","steps":[{"type":"bogus","title":"x"}]}`))
 		r.SetPathValue("runbook", "abc")
@@ -633,7 +633,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("update rejects invalid webhook URL", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/abc", strings.NewReader(`{"name":"rb","webhookUrl":"ftp://bad","steps":[]}`))
 		r.SetPathValue("runbook", "abc")
@@ -645,7 +645,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("delete rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/runbooks/", nil)
 		h.deleteOpsRunbook(w, r)
@@ -656,7 +656,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("delete returns 404 for unknown runbook", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/runbooks/missing", nil)
 		r.SetPathValue("runbook", "missing")
@@ -668,7 +668,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("reject rejects empty run id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/jobs//reject", nil)
 		h.rejectOpsRunbookRun(w, r)
@@ -679,7 +679,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("reject returns 404 for unknown run", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/jobs/missing/reject", nil)
 		r.SetPathValue("runId", "missing")
@@ -691,7 +691,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("reject rejects run not waiting for approval", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		ctx := context.Background()
 		rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
 			Name:  "reject-state",
@@ -715,7 +715,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("approve rejects empty run id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/jobs//approve", nil)
 		h.approveOpsRunbookRun(w, r)
@@ -726,7 +726,7 @@ func TestRunbookErrorPaths(t *testing.T) {
 
 	t.Run("approve returns 404 for unknown run", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/jobs/missing/approve", nil)
 		r.SetPathValue("runId", "missing")
@@ -746,7 +746,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("update rejects empty rule id", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/", strings.NewReader(`{}`))
@@ -758,7 +758,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("update rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rule-1", strings.NewReader(`bad`))
@@ -771,7 +771,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("update rejects missing pattern", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rule-1", strings.NewReader(`{"enabled":true}`))
@@ -784,7 +784,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("update rejects missing enabled flag", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/guardrails/rule-1", strings.NewReader(`{"pattern":"rm -rf"}`))
@@ -797,7 +797,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("create rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails", strings.NewReader(`bad`))
@@ -809,7 +809,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("create rejects missing enabled flag", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails", strings.NewReader(`{"pattern":"rm -rf"}`))
@@ -821,7 +821,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("delete rejects empty rule id", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/guardrails/", nil)
@@ -833,7 +833,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("evaluate rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/evaluate", strings.NewReader(`bad`))
@@ -845,7 +845,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("evaluate rejects bad pane id", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails/evaluate", strings.NewReader(`{"action":"pane.kill","paneId":"7"}`))
@@ -857,7 +857,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("list audit rejects invalid limit", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/audit?limit=-1", nil)
@@ -869,7 +869,7 @@ func TestGuardrailErrorPaths(t *testing.T) {
 
 	t.Run("list audit caps oversized limit", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		h.guardrails = guardrails.New(st)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails/audit?limit=99999", nil)
@@ -889,7 +889,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("create rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(`bad`))
 		h.createSchedule(w, r)
@@ -900,7 +900,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("create rejects missing runbook id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(`{"name":"x","scheduleType":"cron"}`))
 		h.createSchedule(w, r)
@@ -911,7 +911,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("create rejects missing name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(`{"runbookId":"rb","scheduleType":"cron"}`))
 		h.createSchedule(w, r)
@@ -922,7 +922,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("create rejects invalid schedule type", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(`{"runbookId":"rb","name":"x","scheduleType":"weekly"}`))
 		h.createSchedule(w, r)
@@ -933,7 +933,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("create rejects unknown runbook", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules", strings.NewReader(`{"runbookId":"missing","name":"x","scheduleType":"cron","cronExpr":"* * * * *"}`))
 		h.createSchedule(w, r)
@@ -944,7 +944,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("create rejects invalid cron expression", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		rb, err := st.InsertOpsRunbook(context.Background(), store.OpsRunbookWrite{Name: "rb"})
 		if err != nil {
 			t.Fatalf("InsertOpsRunbook: %v", err)
@@ -959,7 +959,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("update rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/", strings.NewReader(`{}`))
 		h.updateSchedule(w, r)
@@ -970,7 +970,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("update rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/abc", strings.NewReader(`bad`))
 		r.SetPathValue("schedule", "abc")
@@ -982,7 +982,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("update rejects invalid schedule type", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/schedules/abc", strings.NewReader(`{"runbookId":"rb","name":"x","scheduleType":"weekly"}`))
 		r.SetPathValue("schedule", "abc")
@@ -994,7 +994,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("update returns 404 for unknown schedule", func(t *testing.T) {
 		t.Parallel()
-		h, st := newTestHandler(t, nil, nil)
+		h, st := newTestHandler(t, nil)
 		rb, err := st.InsertOpsRunbook(context.Background(), store.OpsRunbookWrite{Name: "rb"})
 		if err != nil {
 			t.Fatalf("InsertOpsRunbook: %v", err)
@@ -1010,7 +1010,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("delete rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/", nil)
 		h.deleteSchedule(w, r)
@@ -1021,7 +1021,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("delete returns 404 for unknown schedule", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/schedules/missing", nil)
 		r.SetPathValue("schedule", "missing")
@@ -1033,7 +1033,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("trigger rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules//trigger", nil)
 		h.triggerSchedule(w, r)
@@ -1044,7 +1044,7 @@ func TestScheduleErrorPaths(t *testing.T) {
 
 	t.Run("trigger returns 404 for unknown schedule", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules/missing/trigger", nil)
 		r.SetPathValue("schedule", "missing")
@@ -1064,7 +1064,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("delete marker rejects empty id", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/markers/", nil)
 		h.deleteMarkerPattern(w, r)
@@ -1075,7 +1075,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("delete marker returns 404 for unknown pattern", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/markers/missing", nil)
 		r.SetPathValue("pattern", "missing")
@@ -1087,7 +1087,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("upsert marker rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/markers/x", strings.NewReader(`bad`))
 		r.SetPathValue("pattern", "x")
@@ -1099,7 +1099,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("test webhook rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/settings/webhook/test", strings.NewReader(`bad`))
 		h.testWebhook(w, r)
@@ -1110,7 +1110,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("test webhook rejects empty url", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/settings/webhook/test", strings.NewReader(`{"url":""}`))
 		h.testWebhook(w, r)
@@ -1121,7 +1121,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("test webhook rejects bad url scheme", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/settings/webhook/test", strings.NewReader(`{"url":"ftp://example.com"}`))
 		h.testWebhook(w, r)
@@ -1132,7 +1132,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("test webhook reports delivery failure", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		// Unroutable address -> Send fails.
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/settings/webhook/test", strings.NewReader(`{"url":"http://127.0.0.1:0/hook"}`))
@@ -1144,7 +1144,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("patch webhook rejects bad url", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/webhook", strings.NewReader(`{"url":"ftp://example.com"}`))
 		h.patchWebhookSettings(w, r)
@@ -1155,7 +1155,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("patch webhook rejects unsupported event", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/webhook", strings.NewReader(`{"url":"https://example.com","events":["bogus.event"]}`))
 		h.patchWebhookSettings(w, r)
@@ -1166,7 +1166,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("patch timezone rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/timezone", strings.NewReader(`bad`))
 		h.patchTimezone(w, r)
@@ -1177,7 +1177,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("patch timezone rejects empty timezone", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/timezone", strings.NewReader(`{"timezone":""}`))
 		h.patchTimezone(w, r)
@@ -1188,7 +1188,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("patch locale rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/locale", strings.NewReader(`bad`))
 		h.patchLocale(w, r)
@@ -1199,7 +1199,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("patch ops config rejects empty content", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.configPath = t.TempDir() + "/config.toml"
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/config", strings.NewReader(`{"content":""}`))
@@ -1211,7 +1211,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("patch ops config rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.configPath = t.TempDir() + "/config.toml"
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPut, "/api/ops/config", strings.NewReader(`bad`))
@@ -1223,7 +1223,7 @@ func TestMarkerAndStorageErrorPaths(t *testing.T) {
 
 	t.Run("flush storage rejects empty resource", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/storage/flush", strings.NewReader(`{"resource":""}`))
 		h.flushStorage(w, r)
@@ -1276,7 +1276,7 @@ func TestTimelineSearchRejectsBadParams(t *testing.T) {
 
 	t.Run("invalid window index", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/timeline/search?windowIndex=-1", nil)
 		h.timelineSearch(w, r)
@@ -1287,7 +1287,7 @@ func TestTimelineSearchRejectsBadParams(t *testing.T) {
 
 	t.Run("invalid since timestamp", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/timeline/search?since=not-a-time", nil)
 		h.timelineSearch(w, r)
@@ -1298,7 +1298,7 @@ func TestTimelineSearchRejectsBadParams(t *testing.T) {
 
 	t.Run("invalid session scope", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/timeline/search?session=bad%20name", nil)
 		h.timelineSearch(w, r)
@@ -1309,7 +1309,7 @@ func TestTimelineSearchRejectsBadParams(t *testing.T) {
 
 	t.Run("invalid pane scope", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/timeline/search?paneId=7", nil)
 		h.timelineSearch(w, r)
@@ -1370,7 +1370,7 @@ func TestManagedTmuxWindowForIndex(t *testing.T) {
 				return nil, &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		if _, _, err := h.managedTmuxWindowForIndex(context.Background(), "dev", 0); err == nil {
 			t.Fatal("expected error from list windows failure")
 		}
@@ -1383,7 +1383,7 @@ func TestManagedTmuxWindowForIndex(t *testing.T) {
 				return []tmux.Window{{Index: 0, ID: "@1"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		_, ok, err := h.managedTmuxWindowForIndex(context.Background(), "dev", 9)
 		if err != nil || ok {
 			t.Fatalf("got (ok=%v, err=%v), want (false, nil)", ok, err)
@@ -1397,7 +1397,7 @@ func TestManagedTmuxWindowForIndex(t *testing.T) {
 				return []tmux.Window{{Index: 0, ID: "@1"}}, nil
 			},
 		}
-		h, _ := newTestHandler(t, tm, nil)
+		h, _ := newTestHandler(t, tm)
 		_, ok, err := h.managedTmuxWindowForIndex(context.Background(), "dev", 0)
 		if err != nil || ok {
 			t.Fatalf("got (ok=%v, err=%v), want (false, nil)", ok, err)
@@ -1408,7 +1408,7 @@ func TestManagedTmuxWindowForIndex(t *testing.T) {
 func TestReconcileManagedTmuxWindowsNoRows(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	rows, err := h.reconcileManagedTmuxWindows(context.Background(), "dev", nil)
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("got (%d rows, %v), want (0, nil)", len(rows), err)
@@ -1422,7 +1422,7 @@ func TestReconcileManagedTmuxWindowsNoRows(t *testing.T) {
 func TestSetNotifier(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	n := notify.New("https://example.com/hook", []string{"alert.created"})
 	h.SetNotifier(n)
 	if h.notifier != n {

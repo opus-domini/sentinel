@@ -11,6 +11,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/alerts"
 )
 
+// UpsertAlert upserts alert.
 func (s *Store) UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error) {
 	now := write.CreatedAt.UTC()
 	if now.IsZero() {
@@ -101,6 +102,7 @@ func (s *Store) getAlertByDedupeKey(ctx context.Context, dedupeKey string) (aler
 	return out, nil
 }
 
+// ListAlerts lists alerts.
 func (s *Store) ListAlerts(ctx context.Context, limit int, status string) ([]alerts.Alert, error) {
 	if limit <= 0 {
 		limit = 100
@@ -154,6 +156,7 @@ func (s *Store) ListAlerts(ctx context.Context, limit int, status string) ([]ale
 	return items, nil
 }
 
+// AckAlert acknowledges alert.
 func (s *Store) AckAlert(ctx context.Context, id int64, ackAt time.Time) (alerts.Alert, error) {
 	if id <= 0 {
 		return alerts.Alert{}, sql.ErrNoRows
@@ -218,6 +221,7 @@ func (s *Store) AckAlert(ctx context.Context, id int64, ackAt time.Time) (alerts
 	return out, nil
 }
 
+// BulkAckAlerts acknowledges matching alerts.
 func (s *Store) BulkAckAlerts(ctx context.Context, ids []int64, ackAt time.Time) ([]alerts.Alert, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -288,6 +292,7 @@ func (s *Store) BulkAckAlerts(ctx context.Context, ids []int64, ackAt time.Time)
 	return out, rows.Err()
 }
 
+// DeleteAlert deletes alert.
 func (s *Store) DeleteAlert(ctx context.Context, id int64) error {
 	if id <= 0 {
 		return sql.ErrNoRows
@@ -312,6 +317,7 @@ func (s *Store) DeleteAlert(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ResolveAlert resolves alert.
 func (s *Store) ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error) {
 	dedupeKey = strings.TrimSpace(dedupeKey)
 	if dedupeKey == "" {

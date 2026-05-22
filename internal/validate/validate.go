@@ -1,3 +1,4 @@
+// Package validate validates Sentinel API input.
 package validate
 
 import (

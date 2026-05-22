@@ -115,7 +115,7 @@ func (f *fakePinnedTmux) ListPanes(_ context.Context, session string) ([]tmux.Pa
 	return append([]tmux.Pane(nil), f.panesBySession[session]...), nil
 }
 
-func (f *fakePinnedTmux) RenameWindow(_ context.Context, session string, index int, name string) error {
+func (f *fakePinnedTmux) RenameWindow(_ context.Context, _ string, _ int, name string) error {
 	f.renamedWindows = append(f.renamedWindows, name)
 	return nil
 }

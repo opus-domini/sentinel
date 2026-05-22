@@ -1,3 +1,4 @@
+// Package scheduler runs periodic Sentinel jobs.
 package scheduler
 
 import (

@@ -120,10 +120,7 @@ func ServiceStatus() ([]ScopedServiceStatus, error) {
 		report = append(report, ScopedServiceStatus{Scope: managerScopeUser, UserServiceStatus: st})
 	}
 	if scopes.System {
-		st, err := userStatusSystemLinux()
-		if err != nil {
-			return nil, err
-		}
+		st := userStatusSystemLinux()
 		report = append(report, ScopedServiceStatus{Scope: managerScopeSystem, UserServiceStatus: st})
 	}
 	return report, nil

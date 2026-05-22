@@ -24,7 +24,7 @@ func TestSessionPresetHandlers(t *testing.T) {
 func testSessionPresetCreateListUpdateDelete(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	createW := httptest.NewRecorder()
 	createR := httptest.NewRequest(http.MethodPost, "/api/tmux/session-presets", strings.NewReader(`{"name":"api","cwd":"/srv/api","icon":"server"}`))
@@ -70,7 +70,7 @@ func testSessionPresetCreateListUpdateDelete(t *testing.T) {
 func testSessionPresetCreateValidatesIconAndCWD(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/session-presets", strings.NewReader(`{"name":"api","cwd":"relative","icon":"bad icon"}`))
@@ -97,7 +97,7 @@ func testSessionPresetLaunchCreatesSessionAndRecordsLaunch(t *testing.T) {
 			return nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	if _, err := st.CreateSessionPreset(context.Background(), store.SessionPresetWrite{
 		Name: botName,
@@ -160,7 +160,7 @@ func testSessionPresetLaunchExistingSession(t *testing.T) {
 			return nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 
 	if _, err := st.CreateSessionPreset(context.Background(), store.SessionPresetWrite{
 		Name: apiSession,
@@ -201,7 +201,7 @@ func testSessionPresetLaunchExistingSession(t *testing.T) {
 func testSessionPresetCreateSessionAcceptsOptionalIcon(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	if err := st.UpsertSession(context.Background(), "older", "hash-older", "ready"); err != nil {
 		t.Fatalf("UpsertSession(older) error = %v", err)
 	}

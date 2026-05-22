@@ -99,7 +99,7 @@ func TestServiceMethodsWithUser(t *testing.T) {
 
 	svc := Service{User: "testuser"}
 	for _, m := range serviceMethodCalls() {
-		t.Run(m.name, func(t *testing.T) {
+		t.Run(m.name, func(_ *testing.T) {
 			// The recorder echoes argv rather than tmux output, so parse
 			// errors are expected; the test asserts the user-scoped path
 			// runs without panicking.

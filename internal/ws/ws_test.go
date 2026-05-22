@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -412,7 +413,7 @@ func TestUpgrade(t *testing.T) {
 		t.Parallel()
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = Upgrade(w, r, func(r *http.Request) error {
+			_, _ = Upgrade(w, r, func(_ *http.Request) error {
 				return fmt.Errorf("origin denied")
 			})
 		}))
@@ -595,14 +596,10 @@ func newTestServerConn(t *testing.T) (*Conn, net.Conn) {
 	}, cConn
 }
 
-// writeMaskedFrame writes a complete masked WebSocket frame with configurable
-// FIN bit, RSV bits, opcode, and payload. Supports all payload length encodings.
-func writeMaskedFrame(w io.Writer, fin bool, rsv byte, opcode byte, payload []byte) error {
-	var b0 byte
-	if fin {
-		b0 = 0x80
-	}
-	b0 |= (rsv << 4) & 0x70
+// writeMaskedFrame writes a complete masked WebSocket frame with opcode and
+// payload. Supports all payload length encodings.
+func writeMaskedFrame(w io.Writer, opcode byte, payload []byte) error {
+	b0 := byte(0x80)
 	b0 |= opcode & 0x0F
 
 	length := len(payload)
@@ -726,7 +723,7 @@ func TestWriteFrameWhenClosed(t *testing.T) {
 	wsConn.closed.Store(true)
 
 	err := wsConn.writeFrame(OpText, []byte("hello"))
-	if err != ErrClosed {
+	if !errors.Is(err, ErrClosed) {
 		t.Errorf("writeFrame on closed conn: error = %v, want ErrClosed", err)
 	}
 }
@@ -1016,7 +1013,7 @@ func TestReadMessageEmptyPayload(t *testing.T) {
 
 	wsConn, rawConn := newTestServerConn(t)
 	go func() {
-		_ = writeMaskedFrame(rawConn, true, 0, OpText, nil)
+		_ = writeMaskedFrame(rawConn, OpText, nil)
 	}()
 
 	op, payload, err := wsConn.ReadMessage()
@@ -1042,7 +1039,7 @@ func TestReadMessageMediumPayload(t *testing.T) {
 	}
 
 	go func() {
-		_ = writeMaskedFrame(rawConn, true, 0, OpBinary, payload)
+		_ = writeMaskedFrame(rawConn, OpBinary, payload)
 	}()
 
 	op, got, err := wsConn.ReadMessage()
@@ -1070,13 +1067,13 @@ func TestReadMessageCloseFrame(t *testing.T) {
 	go func() {
 		closePayload := make([]byte, 2)
 		binary.BigEndian.PutUint16(closePayload, CloseNormal)
-		_ = writeMaskedFrame(rawConn, true, 0, opClose, closePayload)
+		_ = writeMaskedFrame(rawConn, opClose, closePayload)
 		// Drain the close reply so WriteClose doesn't block.
 		_, _, _ = readServerFrame(rawConn)
 	}()
 
 	_, _, err := wsConn.ReadMessage()
-	if err != ErrClosed {
+	if !errors.Is(err, ErrClosed) {
 		t.Errorf("ReadMessage on close frame: error = %v, want ErrClosed", err)
 	}
 }
@@ -1086,8 +1083,8 @@ func TestReadMessagePongSkipped(t *testing.T) {
 
 	wsConn, rawConn := newTestServerConn(t)
 	go func() {
-		_ = writeMaskedFrame(rawConn, true, 0, opPong, []byte("pong-data"))
-		_ = writeMaskedFrame(rawConn, true, 0, OpText, []byte("hello"))
+		_ = writeMaskedFrame(rawConn, opPong, []byte("pong-data"))
+		_ = writeMaskedFrame(rawConn, OpText, []byte("hello"))
 	}()
 
 	op, payload, err := wsConn.ReadMessage()
@@ -1109,14 +1106,14 @@ func TestReadMessagePingAutoReply(t *testing.T) {
 
 	pongReceived := make(chan []byte, 1)
 	go func() {
-		_ = writeMaskedFrame(rawConn, true, 0, opPing, []byte("ping"))
+		_ = writeMaskedFrame(rawConn, opPing, []byte("ping"))
 		// Read the auto-pong reply.
 		op, payload, err := readServerFrame(rawConn)
 		if err == nil && op == opPong {
 			pongReceived <- payload
 		}
 		// Send a text frame so ReadMessage returns.
-		_ = writeMaskedFrame(rawConn, true, 0, OpText, []byte("after-ping"))
+		_ = writeMaskedFrame(rawConn, OpText, []byte("after-ping"))
 	}()
 
 	op, payload, err := wsConn.ReadMessage()
@@ -1142,8 +1139,8 @@ func TestReadMessageUnsupportedOpcode(t *testing.T) {
 
 	wsConn, rawConn := newTestServerConn(t)
 	go func() {
-		_ = writeMaskedFrame(rawConn, true, 0, 0x3, []byte("data")) // 0x3 is reserved
-		_, _, _ = readServerFrame(rawConn)                          // drain close reply
+		_ = writeMaskedFrame(rawConn, 0x3, []byte("data")) // 0x3 is reserved
+		_, _, _ = readServerFrame(rawConn)                 // drain close reply
 	}()
 
 	_, _, err := wsConn.ReadMessage()
@@ -1228,7 +1225,7 @@ func TestReadMessageEOF(t *testing.T) {
 	_ = rawConn.Close()
 
 	_, _, err := wsConn.ReadMessage()
-	if err != ErrClosed {
+	if !errors.Is(err, ErrClosed) {
 		t.Errorf("ReadMessage after EOF: error = %v, want ErrClosed", err)
 	}
 }

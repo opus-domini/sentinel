@@ -1,3 +1,4 @@
+// Package watchtower collects tmux runtime state.
 package watchtower
 
 import (

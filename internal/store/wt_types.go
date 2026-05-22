@@ -2,6 +2,7 @@ package store
 
 import "time"
 
+// WatchtowerSession represents watchtower session data.
 type WatchtowerSession struct {
 	SessionName       string    `json:"sessionName"`
 	Attached          int       `json:"attached"`
@@ -17,6 +18,7 @@ type WatchtowerSession struct {
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
+// WatchtowerSessionWrite represents watchtower session write data.
 type WatchtowerSessionWrite struct {
 	SessionName       string
 	Attached          int
@@ -32,6 +34,7 @@ type WatchtowerSessionWrite struct {
 	UpdatedAt         time.Time
 }
 
+// WatchtowerWindow represents watchtower window data.
 type WatchtowerWindow struct {
 	SessionName      string    `json:"sessionName"`
 	TmuxWindowID     string    `json:"tmuxWindowId"`
@@ -46,6 +49,7 @@ type WatchtowerWindow struct {
 	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
+// WatchtowerWindowWrite represents watchtower window write data.
 type WatchtowerWindowWrite struct {
 	SessionName      string
 	TmuxWindowID     string
@@ -60,6 +64,7 @@ type WatchtowerWindowWrite struct {
 	UpdatedAt        time.Time
 }
 
+// WatchtowerPane represents watchtower pane data.
 type WatchtowerPane struct {
 	PaneID         string    `json:"paneId"`
 	SessionName    string    `json:"sessionName"`
@@ -80,6 +85,7 @@ type WatchtowerPane struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
+// WatchtowerPaneWrite represents watchtower pane write data.
 type WatchtowerPaneWrite struct {
 	PaneID         string
 	SessionName    string
@@ -100,6 +106,7 @@ type WatchtowerPaneWrite struct {
 	UpdatedAt      time.Time
 }
 
+// WatchtowerPresence represents watchtower presence data.
 type WatchtowerPresence struct {
 	TerminalID  string    `json:"terminalId"`
 	SessionName string    `json:"sessionName"`
@@ -111,6 +118,7 @@ type WatchtowerPresence struct {
 	ExpiresAt   time.Time `json:"expiresAt"`
 }
 
+// WatchtowerPresenceWrite represents watchtower presence write data.
 type WatchtowerPresenceWrite struct {
 	TerminalID  string
 	SessionName string
@@ -122,6 +130,7 @@ type WatchtowerPresenceWrite struct {
 	ExpiresAt   time.Time
 }
 
+// WatchtowerJournal represents watchtower journal data.
 type WatchtowerJournal struct {
 	ID         int64     `json:"id"`
 	GlobalRev  int64     `json:"globalRev"`
@@ -133,6 +142,7 @@ type WatchtowerJournal struct {
 	ChangedAt  time.Time `json:"changedAt"`
 }
 
+// WatchtowerJournalWrite represents watchtower journal write data.
 type WatchtowerJournalWrite struct {
 	GlobalRev  int64
 	EntityType string

@@ -15,6 +15,7 @@ const (
 	timelineSeverityError = "error"
 )
 
+// WatchtowerTimelineEvent represents watchtower timeline event data.
 type WatchtowerTimelineEvent struct {
 	ID         int64           `json:"id"`
 	Session    string          `json:"session"`
@@ -32,6 +33,7 @@ type WatchtowerTimelineEvent struct {
 	CreatedAt  time.Time       `json:"createdAt"`
 }
 
+// WatchtowerTimelineEventWrite represents watchtower timeline event write data.
 type WatchtowerTimelineEventWrite struct {
 	Session    string
 	WindowIdx  int
@@ -48,6 +50,7 @@ type WatchtowerTimelineEventWrite struct {
 	CreatedAt  time.Time
 }
 
+// WatchtowerTimelineQuery represents watchtower timeline query data.
 type WatchtowerTimelineQuery struct {
 	Session   string
 	WindowIdx *int
@@ -60,11 +63,13 @@ type WatchtowerTimelineQuery struct {
 	Limit     int
 }
 
+// WatchtowerTimelineResult represents watchtower timeline result data.
 type WatchtowerTimelineResult struct {
 	Events  []WatchtowerTimelineEvent `json:"events"`
 	HasMore bool                      `json:"hasMore"`
 }
 
+// WatchtowerPaneRuntime represents watchtower pane runtime data.
 type WatchtowerPaneRuntime struct {
 	PaneID         string
 	SessionName    string
@@ -74,6 +79,7 @@ type WatchtowerPaneRuntime struct {
 	UpdatedAt      time.Time
 }
 
+// WatchtowerPaneRuntimeWrite represents watchtower pane runtime write data.
 type WatchtowerPaneRuntimeWrite struct {
 	PaneID         string
 	SessionName    string
@@ -83,6 +89,7 @@ type WatchtowerPaneRuntimeWrite struct {
 	UpdatedAt      time.Time
 }
 
+// InsertWatchtowerTimelineEvent inserts watchtower timeline event.
 func (s *Store) InsertWatchtowerTimelineEvent(ctx context.Context, row WatchtowerTimelineEventWrite) (int64, error) {
 	eventType := strings.TrimSpace(row.EventType)
 	if eventType == "" {
@@ -127,6 +134,7 @@ func (s *Store) InsertWatchtowerTimelineEvent(ctx context.Context, row Watchtowe
 	return result.LastInsertId()
 }
 
+// SearchWatchtowerTimelineEvents searches watchtower timeline events.
 func (s *Store) SearchWatchtowerTimelineEvents(ctx context.Context, query WatchtowerTimelineQuery) (WatchtowerTimelineResult, error) {
 	limit := normalizeTimelineLimit(query.Limit)
 	sqlQuery, args := buildTimelineSearchQuery(query, limit)
@@ -273,6 +281,7 @@ func normalizeTimelineMetadata(raw string) json.RawMessage {
 	return metadata
 }
 
+// PruneWatchtowerTimelineRows prunes watchtower timeline rows.
 func (s *Store) PruneWatchtowerTimelineRows(ctx context.Context, maxRows int) (int64, error) {
 	if maxRows <= 0 {
 		return 0, nil
@@ -293,6 +302,7 @@ func (s *Store) PruneWatchtowerTimelineRows(ctx context.Context, maxRows int) (i
 	return result.RowsAffected()
 }
 
+// UpsertWatchtowerPaneRuntime upserts watchtower pane runtime.
 func (s *Store) UpsertWatchtowerPaneRuntime(ctx context.Context, row WatchtowerPaneRuntimeWrite) error {
 	paneID := strings.TrimSpace(row.PaneID)
 	if paneID == "" {
@@ -327,6 +337,7 @@ func (s *Store) UpsertWatchtowerPaneRuntime(ctx context.Context, row WatchtowerP
 	return err
 }
 
+// ListWatchtowerPaneRuntimeBySession lists watchtower pane runtime by session.
 func (s *Store) ListWatchtowerPaneRuntimeBySession(ctx context.Context, sessionName string) ([]WatchtowerPaneRuntime, error) {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
@@ -368,6 +379,7 @@ func (s *Store) ListWatchtowerPaneRuntimeBySession(ctx context.Context, sessionN
 	return out, rows.Err()
 }
 
+// PurgeWatchtowerPaneRuntime purges watchtower pane runtime.
 func (s *Store) PurgeWatchtowerPaneRuntime(ctx context.Context, sessionName string, activePaneIDs []string) error {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {

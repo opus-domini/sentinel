@@ -38,6 +38,7 @@ func BuildWatchtowerPanePatches(panes []WatchtowerPane) []map[string]any {
 	return patches
 }
 
+// UpsertWatchtowerPane upserts watchtower pane.
 func (s *Store) UpsertWatchtowerPane(ctx context.Context, row WatchtowerPaneWrite) error {
 	paneID := strings.TrimSpace(row.PaneID)
 	if paneID == "" {
@@ -97,6 +98,7 @@ func (s *Store) UpsertWatchtowerPane(ctx context.Context, row WatchtowerPaneWrit
 	return err
 }
 
+// ListWatchtowerPanes lists watchtower panes.
 func (s *Store) ListWatchtowerPanes(ctx context.Context, sessionName string) ([]WatchtowerPane, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT pane_id, session_name, window_index, pane_index, title,
@@ -150,6 +152,7 @@ func (s *Store) ListWatchtowerPanes(ctx context.Context, sessionName string) ([]
 	return out, rows.Err()
 }
 
+// PurgeWatchtowerPanes purges watchtower panes.
 func (s *Store) PurgeWatchtowerPanes(ctx context.Context, sessionName string, activePaneIDs []string) error {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
@@ -173,6 +176,7 @@ func (s *Store) PurgeWatchtowerPanes(ctx context.Context, sessionName string, ac
 	return err
 }
 
+// MarkWatchtowerPaneSeen marks watchtower pane seen.
 func (s *Store) MarkWatchtowerPaneSeen(ctx context.Context, sessionName, paneID string) (bool, error) {
 	sessionName = strings.TrimSpace(sessionName)
 	paneID = strings.TrimSpace(paneID)
@@ -195,6 +199,7 @@ func (s *Store) MarkWatchtowerPaneSeen(ctx context.Context, sessionName, paneID 
 	)
 }
 
+// MarkWatchtowerWindowSeen marks watchtower window seen.
 func (s *Store) MarkWatchtowerWindowSeen(ctx context.Context, sessionName string, windowIndex int) (bool, error) {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
@@ -216,6 +221,7 @@ func (s *Store) MarkWatchtowerWindowSeen(ctx context.Context, sessionName string
 	)
 }
 
+// MarkWatchtowerSessionSeen marks watchtower session seen.
 func (s *Store) MarkWatchtowerSessionSeen(ctx context.Context, sessionName string) (bool, error) {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {

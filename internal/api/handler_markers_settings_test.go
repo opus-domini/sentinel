@@ -16,7 +16,7 @@ import (
 func TestMarkerPatternHandlers(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	listEmptyW := httptest.NewRecorder()
 	h.listMarkerPatterns(listEmptyW, httptest.NewRequest(http.MethodGet, "/api/ops/markers", nil))
@@ -67,7 +67,7 @@ func TestMarkerPatternHandlers(t *testing.T) {
 func TestMarkerPatternHandlersValidateInput(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/api/ops/markers/bad", strings.NewReader(`{"pattern":"","enabled":true}`))
@@ -89,7 +89,7 @@ func TestMarkerPatternHandlersValidateInput(t *testing.T) {
 func TestSettingsHandlersPersistConfig(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	configPath := t.TempDir() + "/config.toml"
 	if err := os.WriteFile(configPath, []byte("# timezone = \"UTC\"\nlocale = \"en-US\"\n"), 0o600); err != nil {
@@ -132,7 +132,7 @@ func TestSettingsHandlersPersistConfig(t *testing.T) {
 func TestWebhookSettingsHandlers(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	configPath := t.TempDir() + "/config.toml"
 	if err := os.WriteFile(configPath, []byte("webhook_url = \"\"\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -187,7 +187,7 @@ func TestUpsertConfigKeyQuotesValues(t *testing.T) {
 func TestPatchTimezoneRejectsInvalidTimezone(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/timezone", strings.NewReader(`{"timezone":"Not/AZone"}`))
 	h.patchTimezone(w, r)
@@ -199,7 +199,7 @@ func TestPatchTimezoneRejectsInvalidTimezone(t *testing.T) {
 func TestGetWebhookSettingsWithNilNotifier(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	h.getWebhookSettings(w, httptest.NewRequest(http.MethodGet, "/api/ops/settings/webhook", nil))
 	if w.Code != http.StatusOK {
@@ -225,7 +225,7 @@ func TestTestWebhookDeliversPayload(t *testing.T) {
 	}))
 	defer server.Close()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/settings/webhook/test", strings.NewReader(`{"url":"`+server.URL+`"}`))
 	h.testWebhook(w, r)
@@ -245,7 +245,7 @@ func TestTestWebhookDeliversPayload(t *testing.T) {
 func TestMarkerPatternGeneratedID(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/api/ops/markers", strings.NewReader(`{"pattern":"panic","enabled":true}`))
 	h.upsertMarkerPattern(w, r)
@@ -273,7 +273,7 @@ func TestFrequentDirectories(t *testing.T) {
 
 	const apiDir = "/srv/api"
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
 	for _, dir := range []string{apiDir, "/srv/web", apiDir} {
 		if err := st.RecordSessionDirectory(ctx, dir); err != nil {

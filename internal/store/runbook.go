@@ -10,15 +10,17 @@ import (
 )
 
 const (
-	opsRunbookStatusQueued          = "queued"
-	opsRunbookStatusRunning         = "running"
-	opsRunbookStatusSucceeded       = "succeeded"
-	opsRunbookStatusFailed          = "failed"
+	opsRunbookStatusQueued    = "queued"
+	opsRunbookStatusRunning   = "running"
+	opsRunbookStatusSucceeded = "succeeded"
+	opsRunbookStatusFailed    = "failed"
+	// OpsRunbookStatusWaitingApproval identifies the ops runbook status waiting approval value.
 	OpsRunbookStatusWaitingApproval = "waiting_approval"
 
 	opsRunbookOrphanError = "interrupted by server restart"
 )
 
+// OpsRunbookStep represents ops runbook step data.
 type OpsRunbookStep struct {
 	Type            string `json:"type"`
 	Title           string `json:"title"`
@@ -42,6 +44,7 @@ type RunbookParameter struct {
 	Options  []string `json:"options,omitempty"` // for type "select"
 }
 
+// OpsRunbook represents ops runbook data.
 type OpsRunbook struct {
 	ID          string             `json:"id"`
 	Name        string             `json:"name"`
@@ -54,6 +57,7 @@ type OpsRunbook struct {
 	UpdatedAt   string             `json:"updatedAt"`
 }
 
+// OpsRunbookStepResult represents ops runbook step result data.
 type OpsRunbookStepResult struct {
 	StepIndex  int    `json:"stepIndex"`
 	Title      string `json:"title"`
@@ -63,6 +67,7 @@ type OpsRunbookStepResult struct {
 	DurationMs int64  `json:"durationMs"`
 }
 
+// OpsRunbookRun represents ops runbook run data.
 type OpsRunbookRun struct {
 	ID             string                 `json:"id"`
 	RunbookID      string                 `json:"runbookId"`
@@ -79,6 +84,7 @@ type OpsRunbookRun struct {
 	FinishedAt     string                 `json:"finishedAt,omitempty"`
 }
 
+// OpsRunbookWrite represents ops runbook write data.
 type OpsRunbookWrite struct {
 	ID          string
 	Name        string
@@ -89,6 +95,7 @@ type OpsRunbookWrite struct {
 	WebhookURL  string
 }
 
+// OpsRunbookRunUpdate represents ops runbook run update data.
 type OpsRunbookRunUpdate struct {
 	RunID          string
 	Status         string
@@ -100,6 +107,7 @@ type OpsRunbookRunUpdate struct {
 	FinishedAt     string
 }
 
+// ListOpsRunbooks lists ops runbooks.
 func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, name, description, steps_json, enabled, webhook_url, parameters, created_at, updated_at
@@ -146,6 +154,7 @@ func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
 	return runbooks, nil
 }
 
+// StartOpsRunbook starts ops runbook.
 func (s *Store) StartOpsRunbook(ctx context.Context, runbookID string, at time.Time) (OpsRunbookRun, error) {
 	runbookID = strings.TrimSpace(runbookID)
 	if runbookID == "" {
@@ -223,6 +232,7 @@ func (s *Store) StartOpsRunbook(ctx context.Context, runbookID string, at time.T
 	return s.GetOpsRunbookRun(ctx, runID)
 }
 
+// ListOpsRunbookRuns lists ops runbook runs.
 func (s *Store) ListOpsRunbookRuns(ctx context.Context, limit int) ([]OpsRunbookRun, error) {
 	if limit <= 0 {
 		limit = 20
@@ -254,6 +264,7 @@ func (s *Store) ListOpsRunbookRuns(ctx context.Context, limit int) ([]OpsRunbook
 	return out, nil
 }
 
+// GetOpsRunbookRun returns ops runbook run.
 func (s *Store) GetOpsRunbookRun(ctx context.Context, runID string) (OpsRunbookRun, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
@@ -361,6 +372,7 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 	return out, nil
 }
 
+// InsertOpsRunbook inserts ops runbook.
 func (s *Store) InsertOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRunbook, error) {
 	id := strings.TrimSpace(w.ID)
 	if id == "" {
@@ -401,6 +413,7 @@ func (s *Store) InsertOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRun
 	return s.getOpsRunbookByID(ctx, id)
 }
 
+// UpdateOpsRunbook updates ops runbook.
 func (s *Store) UpdateOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRunbook, error) {
 	id := strings.TrimSpace(w.ID)
 	if id == "" {
@@ -449,6 +462,7 @@ func (s *Store) UpdateOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRun
 	return s.getOpsRunbookByID(ctx, id)
 }
 
+// DeleteOpsRunbook deletes ops runbook.
 func (s *Store) DeleteOpsRunbook(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -468,6 +482,7 @@ func (s *Store) DeleteOpsRunbook(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateOpsRunbookRun updates ops runbook run.
 func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) (OpsRunbookRun, error) {
 	runID := strings.TrimSpace(u.RunID)
 	if runID == "" {
@@ -499,6 +514,7 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 	return s.GetOpsRunbookRun(ctx, runID)
 }
 
+// CreateOpsRunbookRun creates ops runbook run.
 func (s *Store) CreateOpsRunbookRun(ctx context.Context, runbookID string, at time.Time) (OpsRunbookRun, error) {
 	runbookID = strings.TrimSpace(runbookID)
 	if runbookID == "" {
@@ -566,6 +582,7 @@ func (s *Store) CreateOpsRunbookRunWithParams(ctx context.Context, runbookID str
 	return s.GetOpsRunbookRun(ctx, runID)
 }
 
+// FailOrphanedRuns handles fail orphaned runs.
 func (s *Store) FailOrphanedRuns(ctx context.Context) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.ExecContext(ctx,
@@ -686,6 +703,7 @@ func (s *Store) SuggestRunbooksForMarker(ctx context.Context, marker, sessionNam
 	return runbooks, nil
 }
 
+// DeleteOpsRunbookRun deletes ops runbook run.
 func (s *Store) DeleteOpsRunbookRun(ctx context.Context, runID string) error {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {

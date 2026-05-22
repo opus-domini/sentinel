@@ -22,7 +22,7 @@ import (
 func TestOpsRunbooksListSuccess(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	if _, err := st.InsertOpsRunbook(context.Background(), store.OpsRunbookWrite{
 		Name:  "deploy",
 		Steps: []store.OpsRunbookStep{{Type: "run", Title: "x", Command: "true"}},
@@ -52,7 +52,7 @@ func TestOpsRunbooksListSuccess(t *testing.T) {
 func TestDeleteOpsRunbookSuccessWithScheduleCascade(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -98,7 +98,7 @@ func TestDeleteOpsRunbookSuccessWithScheduleCascade(t *testing.T) {
 func TestCreateSessionRejectsDisallowedUser(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	// Default guard rejects any non-empty target user.
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"dev","cwd":"/tmp","user":"postgres"}`))
@@ -111,7 +111,7 @@ func TestCreateSessionRejectsDisallowedUser(t *testing.T) {
 func TestCreateSessionRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`bad`))
 	h.createSession(w, r)
@@ -123,7 +123,7 @@ func TestCreateSessionRejectsMalformedJSON(t *testing.T) {
 func TestCreateSessionRejectsRelativeCwd(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions", strings.NewReader(`{"name":"dev","cwd":"relative"}`))
 	h.createSession(w, r)
@@ -136,7 +136,7 @@ func TestRenameSessionMigratesPreset(t *testing.T) {
 	t.Parallel()
 
 	tm := &mockTmux{}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 	h.events = events.NewHub()
 	ctx := context.Background()
 	if _, err := st.CreateSessionPreset(ctx, store.SessionPresetWrite{
@@ -165,7 +165,7 @@ func TestRenameSessionMigratesPreset(t *testing.T) {
 func TestRenameSessionRejectsInvalidNewName(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/api/rename", strings.NewReader(`{"newName":"bad name"}`))
 	r.SetPathValue("session", "api")
@@ -183,7 +183,7 @@ func TestRenameSessionSurfacesTmuxError(t *testing.T) {
 			return &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
 		},
 	}
-	h, _ := newTestHandler(t, tm, nil)
+	h, _ := newTestHandler(t, tm)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/api/rename", strings.NewReader(`{"newName":"web"}`))
 	r.SetPathValue("session", "api")
@@ -196,7 +196,7 @@ func TestRenameSessionSurfacesTmuxError(t *testing.T) {
 func TestSetSessionIconRejectsBadIcon(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/api/tmux/sessions/api/icon", strings.NewReader(`{"icon":"BAD ICON"}`))
 	r.SetPathValue("session", "api")
@@ -209,7 +209,7 @@ func TestSetSessionIconRejectsBadIcon(t *testing.T) {
 func TestSetSessionIconRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/api/tmux/sessions/api/icon", strings.NewReader(`bad`))
 	r.SetPathValue("session", "api")
@@ -222,7 +222,7 @@ func TestSetSessionIconRejectsMalformedJSON(t *testing.T) {
 func TestDeleteSessionRejectsInvalidName(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/bad", nil)
 	r.SetPathValue("session", "bad name")
@@ -240,7 +240,7 @@ func TestDeleteSessionSurfacesTmuxError(t *testing.T) {
 			return &tmux.Error{Kind: tmux.ErrKindCommandFailed}
 		},
 	}
-	h, _ := newTestHandler(t, tm, nil)
+	h, _ := newTestHandler(t, tm)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/dev", nil)
 	r.SetPathValue("session", "dev")
@@ -258,7 +258,7 @@ func TestDeleteSessionTolerantOfMissingSession(t *testing.T) {
 			return &tmux.Error{Kind: tmux.ErrKindSessionNotFound}
 		},
 	}
-	h, _ := newTestHandler(t, tm, nil)
+	h, _ := newTestHandler(t, tm)
 	h.events = events.NewHub()
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodDelete, "/api/tmux/sessions/dev", nil)
@@ -272,7 +272,7 @@ func TestDeleteSessionTolerantOfMissingSession(t *testing.T) {
 func TestFrequentDirectoriesCapsLimit(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/tmux/frequent-directories?limit=999", nil)
 	h.frequentDirectories(w, r)
@@ -288,7 +288,7 @@ func TestFrequentDirectoriesCapsLimit(t *testing.T) {
 func TestTmuxForUserAndSessionUser(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	// Empty user returns the handler's default tmux service.
 	if got := h.tmuxForUser(""); got != h.tmux {
@@ -414,7 +414,7 @@ func TestHandlersRejectNilRepo(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			h, _ := newTestHandler(t, nil, nil)
+			h, _ := newTestHandler(t, nil)
 			h.repo = nil
 			w := httptest.NewRecorder()
 			tc.call(h, w, tc.req())
@@ -468,7 +468,7 @@ func TestGuardrailHandlersRejectNilGuardrails(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			h, _ := newTestHandler(t, nil, nil)
+			h, _ := newTestHandler(t, nil)
 			h.guardrails = nil
 			w := httptest.NewRecorder()
 			tc.call(h, w, tc.req())
@@ -488,7 +488,7 @@ func TestEnforceGuardrailDecisions(t *testing.T) {
 
 	t.Run("nil guardrails allows action", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.guardrails = nil
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/x", nil)

@@ -74,6 +74,7 @@ func runAsUser(ctx context.Context, user string, args ...string) (string, error)
 	return stdout.String(), nil
 }
 
+// ListSessions lists sessions.
 func (s Service) ListSessions(ctx context.Context) ([]Session, error) {
 	if s.User == "" {
 		return ListSessions(ctx)
@@ -97,6 +98,7 @@ func (s Service) ListSessions(ctx context.Context) ([]Session, error) {
 	return parseSessionListOutput(out), nil
 }
 
+// ListActivePaneCommands lists active pane commands.
 func (s Service) ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
 	if s.User == "" {
 		return ListActivePaneCommands(ctx)
@@ -111,6 +113,7 @@ func (s Service) ListActivePaneCommands(ctx context.Context) (map[string]PaneSna
 	return parseActivePaneCommandsOutput(out), nil
 }
 
+// CapturePane captures pane.
 func (s Service) CapturePane(ctx context.Context, session string) (string, error) {
 	if s.User == "" {
 		return CapturePane(ctx, session)
@@ -118,6 +121,7 @@ func (s Service) CapturePane(ctx context.Context, session string) (string, error
 	return capturePane(ctx, s.run, session)
 }
 
+// HasSession reports whether session.
 func (s Service) HasSession(ctx context.Context, session string) bool {
 	if s.User == "" {
 		return HasSession(ctx, session)
@@ -126,6 +130,7 @@ func (s Service) HasSession(ctx context.Context, session string) bool {
 	return err == nil
 }
 
+// CreateSession creates session.
 func (s Service) CreateSession(ctx context.Context, name, cwd string) error {
 	if s.User == "" {
 		return CreateSession(ctx, name, cwd)
@@ -138,6 +143,7 @@ func (s Service) CreateSession(ctx context.Context, name, cwd string) error {
 	return err
 }
 
+// RenameSession renames session.
 func (s Service) RenameSession(ctx context.Context, session, newName string) error {
 	if s.User == "" {
 		return RenameSession(ctx, session, newName)
@@ -146,6 +152,7 @@ func (s Service) RenameSession(ctx context.Context, session, newName string) err
 	return err
 }
 
+// RenameWindow renames window.
 func (s Service) RenameWindow(ctx context.Context, session string, index int, name string) error {
 	if s.User == "" {
 		return RenameWindow(ctx, session, index, name)
@@ -153,6 +160,7 @@ func (s Service) RenameWindow(ctx context.Context, session string, index int, na
 	return renameWindowVia(ctx, s.run, session, index, name)
 }
 
+// RenamePane renames pane.
 func (s Service) RenamePane(ctx context.Context, paneID, title string) error {
 	if s.User == "" {
 		return RenamePane(ctx, paneID, title)
@@ -161,6 +169,7 @@ func (s Service) RenamePane(ctx context.Context, paneID, title string) error {
 	return err
 }
 
+// KillSession handles kill session.
 func (s Service) KillSession(ctx context.Context, session string) error {
 	if s.User == "" {
 		return KillSession(ctx, session)
@@ -169,6 +178,7 @@ func (s Service) KillSession(ctx context.Context, session string) error {
 	return err
 }
 
+// ListWindows lists windows.
 func (s Service) ListWindows(ctx context.Context, session string) ([]Window, error) {
 	if s.User == "" {
 		return ListWindows(ctx, session)
@@ -176,6 +186,7 @@ func (s Service) ListWindows(ctx context.Context, session string) ([]Window, err
 	return listWindowsVia(ctx, s.run, session)
 }
 
+// ListPanes lists panes.
 func (s Service) ListPanes(ctx context.Context, session string) ([]Pane, error) {
 	if s.User == "" {
 		return ListPanes(ctx, session)
@@ -183,6 +194,7 @@ func (s Service) ListPanes(ctx context.Context, session string) ([]Pane, error) 
 	return listPanesVia(ctx, s.run, session)
 }
 
+// ReorderWindows reorders windows.
 func (s Service) ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
 	if s.User == "" {
 		return ReorderWindows(ctx, session, orderedWindowIDs)
@@ -190,6 +202,7 @@ func (s Service) ReorderWindows(ctx context.Context, session string, orderedWind
 	return reorderWindowsVia(ctx, s.run, session, orderedWindowIDs)
 }
 
+// SelectWindow selects window.
 func (s Service) SelectWindow(ctx context.Context, session string, index int) error {
 	if s.User == "" {
 		return SelectWindow(ctx, session, index)
@@ -197,6 +210,7 @@ func (s Service) SelectWindow(ctx context.Context, session string, index int) er
 	return selectWindowVia(ctx, s.run, session, index)
 }
 
+// SelectPane selects pane.
 func (s Service) SelectPane(ctx context.Context, paneID string) error {
 	if s.User == "" {
 		return SelectPane(ctx, paneID)
@@ -205,10 +219,12 @@ func (s Service) SelectPane(ctx context.Context, paneID string) error {
 	return err
 }
 
+// NewWindow creates window.
 func (s Service) NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
 	return s.NewWindowWithOptions(ctx, session, "", "")
 }
 
+// NewWindowWithOptions creates window with options.
 func (s Service) NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWindowResult, error) {
 	if s.User == "" {
 		return NewWindowWithOptions(ctx, session, name, cwd)
@@ -216,6 +232,7 @@ func (s Service) NewWindowWithOptions(ctx context.Context, session, name, cwd st
 	return newWindowWithOptionsVia(ctx, s.run, session, name, cwd)
 }
 
+// NewWindowAt creates window at.
 func (s Service) NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
 	if s.User == "" {
 		return NewWindowAt(ctx, session, index, name, cwd)
@@ -223,6 +240,7 @@ func (s Service) NewWindowAt(ctx context.Context, session string, index int, nam
 	return newWindowAtVia(ctx, s.run, session, index, name, cwd)
 }
 
+// KillWindow handles kill window.
 func (s Service) KillWindow(ctx context.Context, session string, index int) error {
 	if s.User == "" {
 		return KillWindow(ctx, session, index)
@@ -230,6 +248,7 @@ func (s Service) KillWindow(ctx context.Context, session string, index int) erro
 	return killWindowVia(ctx, s.run, session, index)
 }
 
+// KillPane handles kill pane.
 func (s Service) KillPane(ctx context.Context, paneID string) error {
 	if s.User == "" {
 		return KillPane(ctx, paneID)
@@ -238,6 +257,7 @@ func (s Service) KillPane(ctx context.Context, paneID string) error {
 	return err
 }
 
+// SplitPane splits pane.
 func (s Service) SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 	if s.User == "" {
 		return SplitPane(ctx, paneID, direction)
@@ -245,6 +265,7 @@ func (s Service) SplitPane(ctx context.Context, paneID, direction string) (strin
 	return splitPaneVia(ctx, s.run, paneID, direction)
 }
 
+// SessionExists handles session exists.
 func (s Service) SessionExists(ctx context.Context, session string) (bool, error) {
 	if s.User == "" {
 		return SessionExists(ctx, session)
@@ -259,6 +280,7 @@ func (s Service) SessionExists(ctx context.Context, session string) (bool, error
 	return true, nil
 }
 
+// SplitPaneIn splits pane in.
 func (s Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
 	if s.User == "" {
 		return SplitPaneIn(ctx, paneID, direction, cwd)
@@ -266,6 +288,7 @@ func (s Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string)
 	return splitPaneInVia(ctx, s.run, paneID, direction, cwd)
 }
 
+// SelectLayout selects layout.
 func (s Service) SelectLayout(ctx context.Context, session string, index int, layout string) error {
 	if s.User == "" {
 		return SelectLayout(ctx, session, index, layout)
@@ -273,6 +296,7 @@ func (s Service) SelectLayout(ctx context.Context, session string, index int, la
 	return selectLayoutVia(ctx, s.run, session, index, layout)
 }
 
+// SendKeys sends keys.
 func (s Service) SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
 	if s.User == "" {
 		return SendKeys(ctx, paneID, keys, enter)
@@ -280,6 +304,7 @@ func (s Service) SendKeys(ctx context.Context, paneID, keys string, enter bool) 
 	return sendKeysVia(ctx, s.run, paneID, keys, enter)
 }
 
+// CapturePaneLines captures pane lines.
 func (s Service) CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
 	if s.User == "" {
 		return CapturePaneLines(ctx, target, lines)
@@ -287,6 +312,7 @@ func (s Service) CapturePaneLines(ctx context.Context, target string, lines int)
 	return capturePaneLinesVia(ctx, s.run, target, lines)
 }
 
+// SetSessionMouse sets session mouse.
 func (s Service) SetSessionMouse(ctx context.Context, session string, enabled bool) error {
 	if s.User == "" {
 		return SetSessionMouse(ctx, session, enabled)
@@ -294,6 +320,7 @@ func (s Service) SetSessionMouse(ctx context.Context, session string, enabled bo
 	return setSessionOptionVia(ctx, s.run, session, "mouse", enabled)
 }
 
+// SetSessionStatus sets session status.
 func (s Service) SetSessionStatus(ctx context.Context, session string, enabled bool) error {
 	if s.User == "" {
 		return SetSessionStatus(ctx, session, enabled)
@@ -301,6 +328,7 @@ func (s Service) SetSessionStatus(ctx context.Context, session string, enabled b
 	return setSessionOptionVia(ctx, s.run, session, "status", enabled)
 }
 
+// EnsureWebMouseBindings ensures web mouse bindings.
 func (s Service) EnsureWebMouseBindings(ctx context.Context) error {
 	if s.User == "" {
 		return EnsureWebMouseBindings(ctx)

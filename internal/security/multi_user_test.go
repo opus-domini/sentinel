@@ -1,3 +1,4 @@
+// Package security enforces Sentinel authentication and origin checks.
 package security
 
 import (

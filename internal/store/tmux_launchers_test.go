@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 )
 
@@ -113,7 +114,7 @@ func TestTmuxLaunchers(t *testing.T) {
 		if err == nil {
 			t.Fatal("GetTmuxLauncher() error = nil, want error")
 		}
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("GetTmuxLauncher() error = %v, want sql.ErrNoRows", err)
 		}
 	})

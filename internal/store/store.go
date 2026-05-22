@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // register the sqlite driver used by sql.Open
 )
 
+// SessionMeta represents session meta data.
 type SessionMeta struct {
 	Hash        string
 	LastContent string
@@ -19,11 +20,13 @@ type SessionMeta struct {
 	SortOrder   int
 }
 
+// Store represents store data.
 type Store struct {
 	db     *sql.DB
 	dbPath string
 }
 
+// New creates a new service value.
 func New(dbPath string) (*Store, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -59,6 +62,7 @@ func New(dbPath string) (*Store, error) {
 	return &Store{db: db, dbPath: dbPath}, nil
 }
 
+// GetAll returns all.
 func (s *Store) GetAll(ctx context.Context) (map[string]SessionMeta, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT name, hash, last_content, icon, sort_order FROM sessions")
 	if err != nil {
@@ -85,6 +89,7 @@ func (s *Store) GetAll(ctx context.Context) (map[string]SessionMeta, error) {
 	return result, rows.Err()
 }
 
+// UpsertSession upserts session.
 func (s *Store) UpsertSession(ctx context.Context, name, hash, content string) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO sessions (name, hash, last_content, sort_order, updated_at)
@@ -102,6 +107,7 @@ func (s *Store) UpsertSession(ctx context.Context, name, hash, content string) e
 	return err
 }
 
+// Purge purges value.
 func (s *Store) Purge(ctx context.Context, activeNames []string) error {
 	if len(activeNames) == 0 {
 		_, err := s.db.ExecContext(ctx, "DELETE FROM sessions")
@@ -118,6 +124,7 @@ func (s *Store) Purge(ctx context.Context, activeNames []string) error {
 	return err
 }
 
+// Rename renames value.
 func (s *Store) Rename(ctx context.Context, oldName, newName string) error {
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE sessions SET name = ? WHERE name = ?",
@@ -126,6 +133,7 @@ func (s *Store) Rename(ctx context.Context, oldName, newName string) error {
 	return err
 }
 
+// GetSessionIcon returns session icon.
 func (s *Store) GetSessionIcon(ctx context.Context, name string) (string, error) {
 	var icon string
 	err := s.db.QueryRowContext(ctx,
@@ -138,6 +146,7 @@ func (s *Store) GetSessionIcon(ctx context.Context, name string) (string, error)
 	return icon, err
 }
 
+// SetIcon sets icon.
 func (s *Store) SetIcon(ctx context.Context, name, icon string) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO sessions (name, hash, icon, sort_order, updated_at)
@@ -154,6 +163,7 @@ func (s *Store) SetIcon(ctx context.Context, name, icon string) error {
 	return err
 }
 
+// MoveSessionToFront moves session to front.
 func (s *Store) MoveSessionToFront(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -174,6 +184,7 @@ func (s *Store) MoveSessionToFront(ctx context.Context, name string) error {
 	return err
 }
 
+// ReorderSessions reorders sessions.
 func (s *Store) ReorderSessions(ctx context.Context, names []string) error {
 	normalized, err := normalizeSessionOrderNames(names)
 	if err != nil {
@@ -199,6 +210,7 @@ func (s *Store) ReorderSessions(ctx context.Context, names []string) error {
 	return tx.Commit()
 }
 
+// AllocateNextWindowSequence allocates next window sequence.
 func (s *Store) AllocateNextWindowSequence(ctx context.Context, name string, minimum int) (int, error) {
 	if minimum < 1 {
 		minimum = 1
@@ -242,6 +254,7 @@ func (s *Store) AllocateNextWindowSequence(ctx context.Context, name string, min
 	return current, nil
 }
 
+// RecordSessionDirectory records session directory.
 func (s *Store) RecordSessionDirectory(ctx context.Context, path string) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO session_directories (path, use_count, last_used)
@@ -254,6 +267,7 @@ func (s *Store) RecordSessionDirectory(ctx context.Context, path string) error {
 	return err
 }
 
+// ListFrequentDirectories lists frequent directories.
 func (s *Store) ListFrequentDirectories(ctx context.Context, limit int) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT path FROM session_directories ORDER BY use_count DESC, last_used DESC LIMIT ?",
@@ -275,6 +289,7 @@ func (s *Store) ListFrequentDirectories(ctx context.Context, limit int) ([]strin
 	return dirs, rows.Err()
 }
 
+// Close closes value.
 func (s *Store) Close() error {
 	return s.db.Close()
 }

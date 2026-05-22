@@ -9,17 +9,25 @@ import (
 )
 
 const (
+	// GuardrailScopeAction applies a guardrail to action names.
 	GuardrailScopeAction = "action"
 
-	GuardrailModeWarn    = "warn"
+	// GuardrailModeWarn allows the action and records a warning.
+	GuardrailModeWarn = "warn"
+	// GuardrailModeConfirm requires explicit user confirmation.
 	GuardrailModeConfirm = "confirm"
-	GuardrailModeBlock   = "block"
+	// GuardrailModeBlock blocks the action.
+	GuardrailModeBlock = "block"
 
-	GuardrailSeverityInfo  = "info"
-	GuardrailSeverityWarn  = "warn"
+	// GuardrailSeverityInfo marks an informational guardrail decision.
+	GuardrailSeverityInfo = "info"
+	// GuardrailSeverityWarn marks a warning guardrail decision.
+	GuardrailSeverityWarn = "warn"
+	// GuardrailSeverityError marks an error guardrail decision.
 	GuardrailSeverityError = "error"
 )
 
+// GuardrailRule represents guardrail rule data.
 type GuardrailRule struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -34,6 +42,7 @@ type GuardrailRule struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// GuardrailRuleWrite represents guardrail rule write data.
 type GuardrailRuleWrite struct {
 	ID       string
 	Name     string
@@ -46,6 +55,7 @@ type GuardrailRuleWrite struct {
 	Priority int
 }
 
+// GuardrailAudit represents guardrail audit data.
 type GuardrailAudit struct {
 	ID          int64     `json:"id"`
 	RuleID      string    `json:"ruleId"`
@@ -61,6 +71,7 @@ type GuardrailAudit struct {
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
+// GuardrailAuditWrite represents guardrail audit write data.
 type GuardrailAuditWrite struct {
 	RuleID      string
 	Decision    string
@@ -75,6 +86,7 @@ type GuardrailAuditWrite struct {
 	CreatedAt   time.Time
 }
 
+// ListGuardrailRules lists guardrail rules.
 func (s *Store) ListGuardrailRules(ctx context.Context) ([]GuardrailRule, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, name, scope, pattern, mode, severity, message, enabled, priority, created_at, updated_at
@@ -116,6 +128,7 @@ func (s *Store) ListGuardrailRules(ctx context.Context) ([]GuardrailRule, error)
 	return out, rows.Err()
 }
 
+// UpsertGuardrailRule upserts guardrail rule.
 func (s *Store) UpsertGuardrailRule(ctx context.Context, row GuardrailRuleWrite) error {
 	id := strings.TrimSpace(row.ID)
 	if id == "" {
@@ -154,6 +167,7 @@ func (s *Store) UpsertGuardrailRule(ctx context.Context, row GuardrailRuleWrite)
 	return err
 }
 
+// DeleteGuardrailRule deletes guardrail rule.
 func (s *Store) DeleteGuardrailRule(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -173,6 +187,7 @@ func (s *Store) DeleteGuardrailRule(ctx context.Context, id string) error {
 	return nil
 }
 
+// InsertGuardrailAudit inserts guardrail audit.
 func (s *Store) InsertGuardrailAudit(ctx context.Context, row GuardrailAuditWrite) (int64, error) {
 	createdAt := row.CreatedAt.UTC()
 	if createdAt.IsZero() {
@@ -206,6 +221,7 @@ func (s *Store) InsertGuardrailAudit(ctx context.Context, row GuardrailAuditWrit
 	return result.LastInsertId()
 }
 
+// ListGuardrailAudit lists guardrail audit.
 func (s *Store) ListGuardrailAudit(ctx context.Context, limit int) ([]GuardrailAudit, error) {
 	if limit <= 0 {
 		limit = 50

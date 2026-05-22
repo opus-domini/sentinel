@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 )
 
@@ -64,7 +65,7 @@ func TestDeleteGuardrailRuleNonexistent(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	err := s.DeleteGuardrailRule(context.Background(), "nonexistent-rule-id")
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("error = %v, want sql.ErrNoRows", err)
 	}
 }

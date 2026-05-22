@@ -5,24 +5,28 @@ run:
 
 linters:
   enable:
+    - bodyclose
+    - copyloopvar
     - errcheck
+    - errorlint
+    - exhaustive
+    - goconst
+    - gocritic
+    - gocyclo
+    - gosec
     - govet
     - ineffassign
-    - staticcheck
-    - unused
-    - gocyclo
-    - copyloopvar
     - intrange
-    - usestdlibvars
-    - gocritic
-    - goconst
-    - whitespace
-    - bodyclose
-    - gosec
-    - noctx
-    - exhaustive
     - misspell
+    - noctx
     - nolintlint
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - whitespace
   exclusions:
     rules:
       # httptest.NewRequest is the standard Go test pattern; it uses
@@ -59,12 +63,11 @@ linters:
         - G704
         - G705
         - G706
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
 formatters:
   enable:
     - gofmt
     - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

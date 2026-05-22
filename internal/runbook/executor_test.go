@@ -569,7 +569,7 @@ func TestScriptStepParameterSubstitution(t *testing.T) {
 	t.Parallel()
 
 	var capturedArgs []string
-	runner := func(_ context.Context, name string, args ...string) (string, error) {
+	runner := func(_ context.Context, _ string, args ...string) (string, error) {
 		capturedArgs = args
 		return "ok", nil
 	}

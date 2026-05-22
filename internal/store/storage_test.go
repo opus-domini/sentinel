@@ -18,7 +18,7 @@ func TestStorageStatsAndFlush(t *testing.T) {
 
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
-	seedStorageStatsData(t, s, ctx, base)
+	seedStorageStatsData(ctx, t, s, base)
 
 	stats, err := s.GetStorageStats(ctx)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestStorageStatsAndFlush(t *testing.T) {
 	}
 }
 
-func seedStorageStatsData(t *testing.T, s *Store, ctx context.Context, base time.Time) {
+func seedStorageStatsData(ctx context.Context, t *testing.T, s *Store, base time.Time) {
 	t.Helper()
 	if _, err := s.InsertWatchtowerTimelineEvent(ctx, WatchtowerTimelineEventWrite{
 		Session:   "dev",

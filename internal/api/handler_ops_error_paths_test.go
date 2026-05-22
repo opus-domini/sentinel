@@ -21,7 +21,7 @@ func TestOpsServiceStatusErrorPaths(t *testing.T) {
 
 	t.Run("rejects empty service name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/services//status", nil)
 		h.opsServiceStatus(w, r)
@@ -32,7 +32,7 @@ func TestOpsServiceStatusErrorPaths(t *testing.T) {
 
 	t.Run("returns 404 for unknown service", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			inspectFn: func(context.Context, string) (opsplane.ServiceInspect, error) {
 				return opsplane.ServiceInspect{}, opsplane.ErrServiceNotFound
@@ -49,7 +49,7 @@ func TestOpsServiceStatusErrorPaths(t *testing.T) {
 
 	t.Run("returns 500 on inspect failure", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			inspectFn: func(context.Context, string) (opsplane.ServiceInspect, error) {
 				return opsplane.ServiceInspect{}, errors.New("boom")
@@ -70,7 +70,7 @@ func TestOpsServiceLogsErrorPaths(t *testing.T) {
 
 	t.Run("rejects empty service name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/ops/services//logs", nil)
 		h.opsServiceLogs(w, r)
@@ -81,7 +81,7 @@ func TestOpsServiceLogsErrorPaths(t *testing.T) {
 
 	t.Run("returns 404 for unknown service", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			logsFn: func(context.Context, string, int) (string, error) {
 				return "", opsplane.ErrServiceNotFound
@@ -98,7 +98,7 @@ func TestOpsServiceLogsErrorPaths(t *testing.T) {
 
 	t.Run("returns 500 on logs failure", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			logsFn: func(context.Context, string, int) (string, error) {
 				return "", errors.New("boom")
@@ -117,7 +117,7 @@ func TestOpsServiceLogsErrorPaths(t *testing.T) {
 func TestBrowseOpsServicesError(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		browseFn: func(context.Context) ([]opsplane.BrowsedService, error) {
 			return nil, errors.New("boom")
@@ -136,7 +136,7 @@ func TestOpsServiceActionErrorPaths(t *testing.T) {
 
 	t.Run("rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/services/api/action", strings.NewReader(`bad`))
 		r.SetPathValue("service", "api")
@@ -148,7 +148,7 @@ func TestOpsServiceActionErrorPaths(t *testing.T) {
 
 	t.Run("rejects empty service name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/services//action", strings.NewReader(`{"action":"start"}`))
 		h.opsServiceAction(w, r)
@@ -159,7 +159,7 @@ func TestOpsServiceActionErrorPaths(t *testing.T) {
 
 	t.Run("returns 500 on action failure", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			actFn: func(context.Context, string, string) (opsplane.ServiceStatus, error) {
 				return opsplane.ServiceStatus{}, errors.New("boom")
@@ -180,7 +180,7 @@ func TestRegisterOpsServiceErrorPaths(t *testing.T) {
 
 	t.Run("rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`bad`))
 		h.registerOpsService(w, r)
@@ -191,7 +191,7 @@ func TestRegisterOpsServiceErrorPaths(t *testing.T) {
 
 	t.Run("rejects missing name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{"name":"","unit":"x.service"}`))
 		h.registerOpsService(w, r)
@@ -202,7 +202,7 @@ func TestRegisterOpsServiceErrorPaths(t *testing.T) {
 
 	t.Run("rejects missing unit", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{"name":"api","unit":""}`))
 		h.registerOpsService(w, r)
@@ -213,7 +213,7 @@ func TestRegisterOpsServiceErrorPaths(t *testing.T) {
 
 	t.Run("rejects duplicate registration", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.events = events.NewHub()
 		body := `{"name":"api","unit":"api.service","manager":"systemd","scope":"system"}`
 
@@ -236,7 +236,7 @@ func TestUnregisterOpsServiceErrorPaths(t *testing.T) {
 
 	t.Run("rejects empty service name", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/services/", nil)
 		h.unregisterOpsService(w, r)
@@ -247,7 +247,7 @@ func TestUnregisterOpsServiceErrorPaths(t *testing.T) {
 
 	t.Run("returns 404 for unknown service", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/services/missing", nil)
 		r.SetPathValue("service", "missing")
@@ -263,7 +263,7 @@ func TestOpsUnitActionErrorPaths(t *testing.T) {
 
 	t.Run("rejects malformed JSON", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(`bad`))
 		h.opsUnitAction(w, r)
@@ -274,7 +274,7 @@ func TestOpsUnitActionErrorPaths(t *testing.T) {
 
 	t.Run("rejects bad manager", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(`{"unit":"x.service","action":"start","manager":"upstart","scope":"system"}`))
 		h.opsUnitAction(w, r)
@@ -285,7 +285,7 @@ func TestOpsUnitActionErrorPaths(t *testing.T) {
 
 	t.Run("rejects bad scope", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(`{"unit":"x.service","action":"start","manager":"systemd","scope":"global"}`))
 		h.opsUnitAction(w, r)
@@ -296,7 +296,7 @@ func TestOpsUnitActionErrorPaths(t *testing.T) {
 
 	t.Run("returns 500 on action failure", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			actByUnitFn: func(context.Context, string, string, string, string) error {
 				return errors.New("boom")
@@ -312,7 +312,7 @@ func TestOpsUnitActionErrorPaths(t *testing.T) {
 
 	t.Run("maps invalid action error to 400", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newTestHandler(t, nil, nil)
+		h, _ := newTestHandler(t, nil)
 		h.ops = &mockOpsControlPlane{
 			actByUnitFn: func(context.Context, string, string, string, string) error {
 				return opsplane.ErrInvalidAction
@@ -373,7 +373,7 @@ func TestOpsHandlersRejectNilControlPlane(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			h, _ := newTestHandler(t, nil, nil)
+			h, _ := newTestHandler(t, nil)
 			h.ops = nil
 			w := httptest.NewRecorder()
 			tc.call(h, w, tc.req())

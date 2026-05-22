@@ -29,7 +29,7 @@ func TestSessionLauncherHandlers(t *testing.T) {
 func testSessionLauncherCreateListUpdateDelete(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, &mockTmux{}, nil)
+	h, _ := newTestHandler(t, &mockTmux{})
 
 	createW := httptest.NewRecorder()
 	createR := httptest.NewRequest(http.MethodPost, "/api/tmux/session-launchers", strings.NewReader(`{"name":"api","cwd":"/srv/api","icon":"server"}`))
@@ -82,7 +82,7 @@ func testSessionLauncherCreateListUpdateDelete(t *testing.T) {
 func testSessionLauncherReorder(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	ctx := context.Background()
 	first, err := st.CreateSessionLauncher(ctx, store.SessionLauncherWrite{
 		Name: apiSession,
@@ -132,7 +132,7 @@ func testSessionLauncherLaunchCreatesSessionAndRecordsUsage(t *testing.T) {
 			return nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 	launcher, err := st.CreateSessionLauncher(context.Background(), store.SessionLauncherWrite{
 		Name: apiSession,
 		Cwd:  apiSessionCwd,
@@ -176,7 +176,7 @@ func testSessionLauncherLaunchExistingSessionCreatesNumberedSession(t *testing.T
 			return nil
 		},
 	}
-	h, st := newTestHandler(t, tm, nil)
+	h, st := newTestHandler(t, tm)
 	launcher, err := st.CreateSessionLauncher(context.Background(), store.SessionLauncherWrite{
 		Name: apiSession,
 		Cwd:  apiSessionCwd,
@@ -207,7 +207,7 @@ func testSessionLauncherLaunchExistingSessionCreatesNumberedSession(t *testing.T
 func testSessionLauncherKillingLaunchedSessionKeepsLauncher(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	ctx := context.Background()
 	launcher, err := st.CreateSessionLauncher(ctx, store.SessionLauncherWrite{
 		Name: apiSession,

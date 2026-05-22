@@ -141,7 +141,7 @@ func TestStatusRecorderHijackUnsupported(t *testing.T) {
 	}
 }
 
-func TestInitLogger(t *testing.T) {
+func TestInitLogger(_ *testing.T) {
 	for _, level := range []string{"debug", "warn", "error", "info", "unknown"} {
 		initLogger(level)
 	}

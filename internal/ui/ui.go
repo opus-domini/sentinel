@@ -85,6 +85,7 @@ var _ uiStore = (*store.Store)(nil)
 // Returns empty string when the session runs as the default user.
 type SessionUserLookup func(session string) string
 
+// Handler represents handler data.
 type Handler struct {
 	guard             *security.Guard
 	events            *events.Hub
@@ -93,6 +94,7 @@ type Handler struct {
 	sessionUserLookup SessionUserLookup
 }
 
+// Register wires the package routes into the HTTP mux.
 func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, eventsHub *events.Hub, ops OpsLogStreamer, sessionUserLookup SessionUserLookup) error {
 	h := &Handler{guard: guard, events: eventsHub, store: st, ops: ops, sessionUserLookup: sessionUserLookup}
 	if err := registerAssetRoutes(mux); err != nil {
@@ -678,7 +680,7 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 	attachCtx, cancelAttach := context.WithCancel(parent)
 	defer cancelAttach()
 
-	pty, ok := startAttachPTY(wsConn, opts, attachCtx)
+	pty, ok := startAttachPTY(attachCtx, wsConn, opts)
 	if !ok {
 		return
 	}
@@ -710,7 +712,7 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 	_ = wsConn.WriteClose(ws.CloseNormal, "done")
 }
 
-func startAttachPTY(wsConn *ws.Conn, opts attachPTYOptions, attachCtx context.Context) (*term.PTY, bool) {
+func startAttachPTY(attachCtx context.Context, wsConn *ws.Conn, opts attachPTYOptions) (*term.PTY, bool) {
 	pty, err := opts.startPTY(attachCtx)
 	if err != nil {
 		slog.Error("pty start failed", "label", opts.label, "err", err)

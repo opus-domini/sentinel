@@ -16,7 +16,7 @@ import (
 func TestReorderSessionsHandler(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	ctx := context.Background()
 	for _, name := range []string{"api", "web", "docs"} {
 		if err := st.UpsertSession(ctx, name, "hash-"+name, "ready"); err != nil {
@@ -50,7 +50,7 @@ func TestReorderSessionPresetsHandler(t *testing.T) {
 		docsPreset = "docs"
 	)
 
-	h, st := newTestHandler(t, &mockTmux{}, nil)
+	h, st := newTestHandler(t, &mockTmux{})
 	ctx := context.Background()
 	for _, name := range []string{apiPreset, webPreset, docsPreset} {
 		if _, err := st.CreateSessionPreset(ctx, store.SessionPresetWrite{
@@ -87,7 +87,7 @@ func TestReorderWindowsHandler(t *testing.T) {
 
 		const sessionName = "dev"
 
-		h, st := newTestHandler(t, &mockTmux{}, nil)
+		h, st := newTestHandler(t, &mockTmux{})
 		ctx := context.Background()
 
 		firstManaged, err := st.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
@@ -218,7 +218,7 @@ func TestReorderWindowsHandler(t *testing.T) {
 				reorderCalled = true
 				return nil
 			},
-		}, nil)
+		})
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPatch, "/api/tmux/sessions/dev/windows/order", strings.NewReader(`{"windowIds":["@1","@3"]}`))

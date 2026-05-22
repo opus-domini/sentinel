@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
 
 // SetSessionUser persists the OS user that owns a tmux session.
@@ -63,7 +64,7 @@ func (s *Store) RenameSessionUser(ctx context.Context, oldName, newName string) 
 
 	var user string
 	err = tx.QueryRowContext(ctx, `SELECT user FROM session_users WHERE session_name = ?`, oldName).Scan(&user)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {

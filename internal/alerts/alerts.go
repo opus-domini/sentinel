@@ -1,3 +1,4 @@
+// Package alerts tracks operational alerts.
 package alerts
 
 import (

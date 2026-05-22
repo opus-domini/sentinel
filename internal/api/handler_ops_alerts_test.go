@@ -17,7 +17,7 @@ import (
 func TestBulkAckOpsAlerts(t *testing.T) {
 	t.Parallel()
 
-	h, st := newTestHandler(t, nil, nil)
+	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	ctx := context.Background()
 
@@ -71,7 +71,7 @@ func TestBulkAckOpsAlerts(t *testing.T) {
 func TestBulkAckOpsAlertsValidatesIDs(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil, nil)
+	h, _ := newTestHandler(t, nil)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/ops/alerts/bulk-ack", strings.NewReader(`{"ids":[]}`))
 	h.bulkAckOpsAlerts(w, r)
