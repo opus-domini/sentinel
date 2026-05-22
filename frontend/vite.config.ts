@@ -28,6 +28,7 @@ export default defineConfig({
   build: {
     outDir: '../internal/ui/dist',
     emptyOutDir: true,
+    target: 'es2024',
     sourcemap: false,
     cssCodeSplit: false,
     rollupOptions: {
