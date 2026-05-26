@@ -80,6 +80,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const pendingRenameSessionsRef = useRef(new Map<string, string>())
   const pendingSessionCreateOpsRef = useRef(new Map<string, PendingSessionCreateOperation>())
   const lastSessionsRefreshAtRef = useRef(0)
+  const connectionStateRef = useRef(connectionState)
   const refreshSessionsFnRef = useRef<() => Promise<void>>(async () => {})
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
@@ -104,6 +105,22 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     window.clearTimeout(op.timeoutId)
     op.timeoutId = null
   }, [])
+
+  useEffect(() => {
+    connectionStateRef.current = connectionState
+  }, [connectionState])
+
+  const hasAttachedPendingSession = useCallback(
+    (sessionName: string) => {
+      const target = sessionName.trim()
+      return (
+        target !== '' &&
+        tabsStateRef.current.activeSession === target &&
+        connectionStateRef.current === 'connected'
+      )
+    },
+    [tabsStateRef],
+  )
 
   const settlePendingSessionCreateSuccess = useCallback(
     (operationId: string) => {
@@ -203,6 +220,10 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           if (!currentOp) {
             return
           }
+          if (hasAttachedPendingSession(currentOp.sessionName)) {
+            settlePendingSessionCreateSuccess(operationId)
+            return
+          }
           await refreshSessionsFnRef.current()
           if (currentOp.sessionName.trim() !== '') {
             await refreshInspector(currentOp.sessionName, { force: true })
@@ -211,7 +232,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
           if (!refreshedOp) {
             return
           }
-          if (refreshedOp.converged) {
+          if (refreshedOp.converged || hasAttachedPendingSession(refreshedOp.sessionName)) {
             settlePendingSessionCreateSuccess(operationId)
             return
           }
@@ -222,7 +243,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         })()
       }, sessionCreateConvergenceTimeoutMs)
     },
-    [refreshInspector, rollbackPendingSessionCreate, settlePendingSessionCreateSuccess],
+    [
+      hasAttachedPendingSession,
+      refreshInspector,
+      rollbackPendingSessionCreate,
+      settlePendingSessionCreateSuccess,
+    ],
   )
 
   useEffect(() => {

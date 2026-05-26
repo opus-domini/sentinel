@@ -231,6 +231,24 @@ func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[str
 		result = append(result, h.projectedSessionToEnriched(ctx, row, stored[row.SessionName]))
 	}
 
+	// The watchtower projection can lag immediately after a tmux session is
+	// created. Overlay live tmux sessions so creation convergence follows tmux
+	// truth instead of waiting for the next watchtower collection.
+	liveSessions, listErr := h.tmux.ListSessions(ctx)
+	if listErr != nil {
+		slog.Warn("tmux session overlay failed", "err", listErr)
+	} else {
+		snapshots := h.loadActivePaneSnapshots(ctx)
+		for _, sess := range liveSessions {
+			if _, exists := seen[sess.Name]; exists {
+				continue
+			}
+			seen[sess.Name] = struct{}{}
+			activeNames = append(activeNames, sess.Name)
+			result = append(result, h.tmuxSessionToEnriched(ctx, sess, snapshots[sess.Name], stored[sess.Name]))
+		}
+	}
+
 	// Append sessions from multi-user tmux servers not covered by
 	// the watchtower projection (which only monitors the default user).
 	for _, user := range h.knownSessionUsers() {

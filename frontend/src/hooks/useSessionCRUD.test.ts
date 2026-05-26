@@ -367,6 +367,53 @@ describe('useSessionCRUD – createSession', () => {
 
     expect(opts.pendingCreateSessionsRef.current.has('dev')).toBe(false)
   })
+
+  it('does not roll back a created session that already attached before list convergence', async () => {
+    vi.useFakeTimers()
+    try {
+      const api = vi
+        .fn()
+        .mockResolvedValueOnce({ name: 'dev' })
+        .mockResolvedValueOnce({ sessions: [] })
+      const opts = createMockOptions({
+        api,
+        sessions: [],
+        activeSession: '',
+        openTabs: [],
+        connectionState: 'connecting',
+      })
+
+      const { result, rerender } = renderHook(() => useSessionCRUD(opts))
+
+      await act(async () => {
+        await result.current.createSession('dev', '/tmp')
+      })
+
+      act(() => {
+        opts.tabsStateRef.current = { openTabs: ['dev'], activeSession: 'dev', activeEpoch: 1 }
+        opts.connectionState = 'connected'
+        rerender()
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000)
+      })
+
+      expect(opts.pushSuccessToast).toHaveBeenCalledWith('Create Session', 'session "dev" created')
+      expect(opts.pushErrorToast).not.toHaveBeenCalledWith(
+        'Create Session',
+        'timed out waiting for session "dev" to be ready',
+      )
+      expect(opts.dispatchTabs).not.toHaveBeenCalledWith({ type: 'close', session: 'dev' })
+      expect(opts.setConnection).not.toHaveBeenCalledWith(
+        'error',
+        'timed out waiting for session "dev" to be ready',
+      )
+      expect(opts.pendingCreateSessionsRef.current.has('dev')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('useSessionCRUD – refreshSessions', () => {

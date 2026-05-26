@@ -506,6 +506,53 @@ func TestListSessionsFromProjection(t *testing.T) {
 	}
 }
 
+func TestListSessionsFromProjectionOverlaysLiveTmuxSessions(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	tm := &mockTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{
+				{Name: "dev", Windows: 1, CreatedAt: now, ActivityAt: now},
+				{Name: "fresh", Windows: 1, CreatedAt: now, ActivityAt: now},
+			}, nil
+		},
+		listPanesFn: func(_ context.Context, session string) ([]tmux.Pane, error) {
+			return []tmux.Pane{{Session: session, PaneID: "%1"}}, nil
+		},
+	}
+	h, st := newTestHandler(t, tm)
+	ctx := context.Background()
+	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName: "dev",
+		Windows:     1,
+		Panes:       1,
+		ActivityAt:  now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil)
+	h.listSessions(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	sessions, _ := data["sessions"].([]any)
+	found := map[string]bool{}
+	for _, raw := range sessions {
+		item, _ := raw.(map[string]any)
+		name, _ := item["name"].(string)
+		found[name] = true
+	}
+	if !found["dev"] || !found["fresh"] {
+		t.Fatalf("sessions = %v, want projected and live-only sessions", found)
+	}
+}
+
 func TestListSessionsFromTmuxFallback(t *testing.T) {
 	t.Parallel()
 
