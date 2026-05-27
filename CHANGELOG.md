@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.3](https://github.com/opus-domini/sentinel/compare/v0.6.2...v0.6.3) (2026-05-27)
+
+
+### Features
+
+* add config management commands ([42a4138](https://github.com/opus-domini/sentinel/commit/42a413853601a96dad79f4fa03484f2dd5b27ad9))
+* add db setup commands ([6da5e07](https://github.com/opus-domini/sentinel/commit/6da5e07e4d91bca8c0fd9cff790c8f6de2f59fd1))
+
+
+### Bug Fixes
+
+* avoid false session create timeouts ([5687984](https://github.com/opus-domini/sentinel/commit/5687984af9c74f80fa67a9fe4c16551f6fa5c31b))
+
+
+### CI
+
+* retrigger codeql ([d9dcecb](https://github.com/opus-domini/sentinel/commit/d9dcecbd497e22fe34b977d5bb593dc7d3db1afb))
+* run canonical make ci workflow ([e2d5721](https://github.com/opus-domini/sentinel/commit/e2d5721b683eaf061926d4e3facba2cca254d15e))
+
 ## [0.6.2](https://github.com/opus-domini/sentinel/compare/v0.6.1...v0.6.2) (2026-05-22)
 
 
