@@ -8,13 +8,14 @@ Configuration precedence:
 
 ## Files and Directories
 
-- Data dir default: `~/.sentinel`
-- Config file: `<data-dir>/config.toml`
-- Database: `<data-dir>/sentinel.db`
+- Config file: `~/.sentinel/config.toml`
+- Database: `~/.sentinel/sentinel.db`
+- Daemon log: `~/.sentinel/logs/sentinel.log`
 
-When running as root, defaults resolve under root home (for example `/root/.sentinel`).
+`SENTINEL_DATA_DIR` changes the default data root. `SENTINEL_CONFIG` or
+`sentinel --config <path>` changes only the config file path.
 
-Use the CLI as the source of truth for config file location and initialization:
+Use the CLI as the source of truth:
 
 ```bash
 sentinel config path
@@ -26,31 +27,37 @@ sentinel db init
 ```
 
 `sentinel config init --force` overwrites an existing config file.
-`sentinel config edit` creates the file when missing, opens it with `$EDITOR`,
-`$VISUAL`, or `xdg-open`, and validates after blocking editors close.
 `sentinel config show` prints the effective runtime configuration as JSON with
 secret values redacted.
-`sentinel db init` ensures both the config file and SQLite database are ready.
 
-## Core Keys
+## Config File
 
 ```toml
+version = 1
+
 [server]
-listen = "127.0.0.1:4040"
+host = "127.0.0.1"
+port = 4040
 token = ""
-allowed_origins = ""
-log_level = "info"
-timezone = "America/Sao_Paulo"
-locale = "pt-BR"
+allowed_origins = []
 cookie_secure = "auto"
 allow_insecure_cookie = false
+timezone = "America/Sao_Paulo"
+locale = "pt-BR"
+
+[storage]
+path = "~/.sentinel/sentinel.db"
+
+[log]
+level = "info"
+path = "~/.sentinel/logs/sentinel.log"
 
 [alerts]
 cpu_percent = 90.0
 mem_percent = 90.0
 disk_percent = 95.0
 webhook_url = ""
-webhook_events = "alert.created,alert.resolved,alert.acked"
+webhook_events = ["alert.created", "alert.resolved", "alert.acked"]
 
 [health_report]
 webhook_url = ""
@@ -66,31 +73,34 @@ journal_rows = 5000
 [runbooks]
 max_concurrent = 5
 
-# Multi-user session support.
 [multi_user]
-# allowed_users = ["alice", "bob"]
-# allow_root_target = false
-# user_switch_method = "systemd-run" # Linux default; use "sudo" elsewhere
+allowed_users = []
+allow_root_target = false
+user_switch_method = "systemd-run"
 ```
 
 ## Environment Variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SENTINEL_LISTEN` | `127.0.0.1:4040` | HTTP listen address |
-| `SENTINEL_TOKEN` | empty | Auth token (cookie-based) |
-| `SENTINEL_ALLOWED_ORIGINS` | empty | Comma-separated allowed origins |
+| `SENTINEL_CONFIG` | `<data-dir>/config.toml` | Config file path |
+| `SENTINEL_DATA_DIR` | `~/.sentinel` | Default data root |
+| `SENTINEL_SERVER_HOST` | `127.0.0.1` | HTTP listen host |
+| `SENTINEL_SERVER_PORT` | `4040` | HTTP listen port |
+| `SENTINEL_SERVER_TOKEN` | empty | Auth token |
+| `SENTINEL_SERVER_ALLOWED_ORIGINS` | empty | Comma-separated allowed origins |
+| `SENTINEL_SERVER_COOKIE_SECURE` | `auto` | Cookie secure flag: `auto`, `always`, `never` |
+| `SENTINEL_SERVER_ALLOW_INSECURE_COOKIE` | `false` | Allow auth cookie over plain HTTP |
+| `SENTINEL_SERVER_TIMEZONE` | system timezone | IANA timezone for displayed timestamps |
+| `SENTINEL_SERVER_LOCALE` | empty | BCP 47 locale for date/number formatting |
+| `SENTINEL_STORAGE_PATH` | `~/.sentinel/sentinel.db` | SQLite database path |
 | `SENTINEL_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `SENTINEL_DATA_DIR` | `~/.sentinel` | Data directory |
-| `SENTINEL_TIMEZONE` | system timezone | IANA timezone for displayed timestamps |
-| `SENTINEL_LOCALE` | empty (browser default) | BCP 47 locale for date/number formatting |
-| `SENTINEL_COOKIE_SECURE` | `auto` | Cookie secure flag: `auto`, `always`, `never` |
-| `SENTINEL_ALLOW_INSECURE_COOKIE` | `false` | Allow auth cookie over plain HTTP |
-| `SENTINEL_ALERT_CPU_PERCENT` | `90` | CPU usage alert threshold (percent) |
-| `SENTINEL_ALERT_MEM_PERCENT` | `90` | Memory usage alert threshold (percent) |
-| `SENTINEL_ALERT_DISK_PERCENT` | `95` | Disk usage alert threshold (percent) |
+| `SENTINEL_LOG_PATH` | `~/.sentinel/logs/sentinel.log` | Daemon log file path |
+| `SENTINEL_ALERT_CPU_PERCENT` | `90` | CPU usage alert threshold |
+| `SENTINEL_ALERT_MEM_PERCENT` | `90` | Memory usage alert threshold |
+| `SENTINEL_ALERT_DISK_PERCENT` | `95` | Disk usage alert threshold |
 | `SENTINEL_ALERT_WEBHOOK_URL` | empty | Webhook URL for alert notifications |
-| `SENTINEL_ALERT_WEBHOOK_EVENTS` | `alert.created,alert.resolved` | Comma-separated alert webhook events (`alert.created`, `alert.resolved`, `alert.acked`) |
+| `SENTINEL_ALERT_WEBHOOK_EVENTS` | `alert.created,alert.resolved` | Comma-separated alert webhook events |
 | `SENTINEL_HEALTH_REPORT_WEBHOOK_URL` | empty | Webhook URL for health report delivery |
 | `SENTINEL_HEALTH_REPORT_SCHEDULE` | empty | Cron schedule for health reports |
 | `SENTINEL_WATCHTOWER_ENABLED` | `true` | Enable watchtower service |
@@ -99,9 +109,9 @@ max_concurrent = 5
 | `SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT` | `150ms` | Per-pane capture timeout |
 | `SENTINEL_WATCHTOWER_JOURNAL_ROWS` | `5000` | Activity journal retention |
 | `SENTINEL_RUNBOOK_MAX_CONCURRENT` | `5` | Max concurrent manual runbook executions |
-| `SENTINEL_ALLOWED_USERS` | (empty) | Comma-separated list of OS users allowed as session targets |
-| `SENTINEL_ALLOW_ROOT_TARGET` | `false` | Whether to allow targeting the root user |
-| `SENTINEL_USER_SWITCH_METHOD` | `systemd-run` on Linux, `sudo` elsewhere | Method for switching users: `systemd-run` or `sudo` |
+| `SENTINEL_ALLOWED_USERS` | empty | Comma-separated OS users allowed as session targets |
+| `SENTINEL_ALLOW_ROOT_TARGET` | `false` | Whether to allow targeting root |
+| `SENTINEL_USER_SWITCH_METHOD` | `systemd-run` on Linux, `sudo` elsewhere | User switch method |
 
 ## Recommended Profiles
 
@@ -109,15 +119,17 @@ max_concurrent = 5
 
 ```toml
 [server]
-listen = "127.0.0.1:4040"
+host = "127.0.0.1"
+port = 4040
 token = ""
 ```
 
-### Remote access (minimum safe baseline)
+### Remote access
 
 ```toml
 [server]
-listen = "0.0.0.0:4040"
+host = "0.0.0.0"
+port = 4040
 token = "strong-secret"
-allowed_origins = "https://sentinel.example.com"
+allowed_origins = ["https://sentinel.example.com"]
 ```

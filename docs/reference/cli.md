@@ -17,6 +17,10 @@ sentinel --version | -v | version
 Running `sentinel` with no arguments prints this help; the server starts only
 via the explicit `daemon` command.
 
+Global flag:
+
+- `--config <path>`: use a specific config file path for the invocation.
+
 ## `sentinel config`
 
 ### Init

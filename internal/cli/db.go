@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/humanize"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -41,16 +41,10 @@ func newDBInitCmd(app *App) *cobra.Command {
 }
 
 func runDBInit(app *App) error {
-	configPath, err := config.Init(false)
+	cfg, configPath, err := config.Ensure()
 	if err != nil {
-		if !errors.Is(err, config.ErrConfigExists) {
-			return failf(1, "db init failed: %w", err)
-		}
-		if err := config.ValidateFile(configPath); err != nil {
-			return failf(1, "config validation failed: %w", err)
-		}
+		return failf(1, "db init failed: %w", err)
 	}
-	cfg := config.Load()
 	st, dbPath, err := openDBStore(cfg)
 	if err != nil {
 		return failf(1, "db init failed: %w", err)
@@ -59,7 +53,7 @@ func runDBInit(app *App) error {
 
 	reportHeader(app.Stdout, "db", "initialization")
 	printRows(app.Stdout, []outputRow{
-		{Key: "config", Value: configPath},
+		{Key: cmdConfig, Value: configPath},
 		{Key: dbOutputKeyDatabase, Value: dbPath},
 		{Key: cmdStatus, Value: "ok"},
 	})
@@ -94,15 +88,15 @@ func runDBStatus(ctx context.Context, app *App) error {
 	}
 	rows := []outputRow{
 		{Key: dbOutputKeyDatabase, Value: dbPath},
-		{Key: "database bytes", Value: fmt.Sprint(stats.DatabaseBytes)},
-		{Key: "wal bytes", Value: fmt.Sprint(stats.WALBytes)},
-		{Key: "shm bytes", Value: fmt.Sprint(stats.SHMBytes)},
-		{Key: "total bytes", Value: fmt.Sprint(stats.TotalBytes)},
+		{Key: "database size", Value: humanize.Bytes(stats.DatabaseBytes)},
+		{Key: "wal size", Value: humanize.Bytes(stats.WALBytes)},
+		{Key: "shm size", Value: humanize.Bytes(stats.SHMBytes)},
+		{Key: "total size", Value: humanize.Bytes(stats.TotalBytes)},
 	}
 	for _, stat := range stats.Resources {
 		rows = append(rows, outputRow{
 			Key:   stat.Resource,
-			Value: fmt.Sprintf("%d rows, %d approx bytes", stat.Rows, stat.ApproxBytes),
+			Value: fmt.Sprintf("%d %s, %s approx", stat.Rows, humanize.Pluralize(stat.Rows, "row", ""), humanize.Bytes(stat.ApproxBytes)),
 		})
 	}
 	reportHeader(app.Stdout, "db", "status")
@@ -181,7 +175,7 @@ func runDBResetForce(app *App) error {
 	if err != nil {
 		return failf(1, "db reset failed: %w", err)
 	}
-	dbPath := filepath.Join(cfg.DataDir, "sentinel.db")
+	dbPath := cfg.Storage.Path
 	removed, err := removeDBFiles(dbPath)
 	if err != nil {
 		return failf(1, "db reset failed: %w", err)
@@ -221,7 +215,7 @@ func removeDBFiles(dbPath string) ([]string, error) {
 }
 
 func openDBStore(cfg config.Config) (*store.Store, string, error) {
-	dbPath := filepath.Join(cfg.DataDir, "sentinel.db")
+	dbPath := cfg.Storage.Path
 	st, err := storeNewFn(dbPath)
 	if err != nil {
 		return nil, dbPath, err

@@ -38,7 +38,7 @@ Recommendations:
 
 ## Remote Exposure Baseline
 
-If `listen = "0.0.0.0:4040"`:
+If `server.host = "0.0.0.0"`:
 
 - Always set `token`.
 - Always set `allowed_origins`.

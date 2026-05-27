@@ -70,19 +70,23 @@ automatic validation after saving.
 
 ```toml
 [server]
-listen = "127.0.0.1:4040"
+host = "127.0.0.1"
+port = 4040
 token = ""
-allowed_origins = ""
-log_level = "info"
+allowed_origins = []
+
+[log]
+level = "info"
 ```
 
 Remote access baseline:
 
 ```toml
 [server]
-listen = "0.0.0.0:4040"
+host = "0.0.0.0"
+port = 4040
 token = "replace-with-strong-token"
-allowed_origins = "https://sentinel.example.com"
+allowed_origins = ["https://sentinel.example.com"]
 ```
 
 Validate before restarting the service:

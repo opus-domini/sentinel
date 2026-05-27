@@ -508,7 +508,8 @@ npm --prefix "$root_dir/frontend" run build
 echo "starting sentinel at $base_url"
 (
   cd "$root_dir"
-  SENTINEL_LISTEN="127.0.0.1:${port}" \
+  SENTINEL_SERVER_HOST="127.0.0.1" \
+  SENTINEL_SERVER_PORT="${port}" \
     SENTINEL_DATA_DIR="$data_dir" \
     go run ./cmd/sentinel daemon
 ) >"$artifacts_dir/server.log" 2>&1 &

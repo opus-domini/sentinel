@@ -18,9 +18,9 @@ type App struct {
 	Stderr io.Writer
 }
 
-// cmdStatus is the shared name of the "status" leaf command, reused by the
-// service, autoupdate and update command groups.
+// Shared command and output keys.
 const cmdStatus = "status"
+const cmdConfig = "config"
 
 // Test indirections: swapped to fakes so command behaviour can be exercised
 // without touching the real service manager, updater or HTTP server.

@@ -142,9 +142,13 @@ func TestStatusRecorderHijackUnsupported(t *testing.T) {
 	}
 }
 
-func TestInitLogger(_ *testing.T) {
+func TestInitLogger(t *testing.T) {
 	for _, level := range []string{"debug", "warn", "error", "info", "unknown"} {
-		initLogger(level)
+		closeLogger, err := initLogger(level, "")
+		if err != nil {
+			t.Fatalf("initLogger(%q) error = %v", level, err)
+		}
+		closeLogger()
 	}
 }
 
@@ -313,7 +317,9 @@ func TestTickHandlersWithClosedStore(t *testing.T) {
 func TestRunFailsOnInvalidListenAddr(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.Config{ListenAddr: "localhost:999999"}
+	cfg := config.Default()
+	cfg.Server.Host = "localhost"
+	cfg.Server.Port = 999999
 	if code := run("test-version", cfg, http.NewServeMux()); code != 1 {
 		t.Fatalf("run() = %d, want 1 for an invalid listen address", code)
 	}
@@ -324,7 +330,8 @@ func TestRunFailsOnInvalidListenAddr(t *testing.T) {
 // listen address makes the embedded HTTP server fail fast so Serve returns
 // without needing a shutdown signal.
 func TestServeBootsAndShutsDown(t *testing.T) {
-	t.Setenv("SENTINEL_LISTEN", "localhost:999999")
+	t.Setenv("SENTINEL_SERVER_HOST", "localhost")
+	t.Setenv("SENTINEL_SERVER_PORT", "999999")
 	t.Setenv("SENTINEL_DATA_DIR", t.TempDir())
 
 	if code := Serve("test-version"); code != 1 {
@@ -337,7 +344,7 @@ func TestServeFailsOnInvalidConfig(t *testing.T) {
 	t.Setenv("SENTINEL_DATA_DIR", dir)
 
 	configPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"verbose\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[log]\nlevel = \"verbose\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

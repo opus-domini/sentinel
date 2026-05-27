@@ -56,7 +56,7 @@ Alert state is kept current via the `/ws/events` WebSocket:
 
 ## Webhook Notifications
 
-Alert lifecycle events can be forwarded to an external system via webhook. Set `alert_webhook_url` in the config (or `SENTINEL_ALERT_WEBHOOK_URL` env var) and Sentinel sends an HTTP POST for each configured event. Use `alert_webhook_events` to control which lifecycle events trigger the webhook.
+Alert lifecycle events can be forwarded to an external system via webhook. Set `alerts.webhook_url` in the config (or `SENTINEL_ALERT_WEBHOOK_URL` env var) and Sentinel sends an HTTP POST for each configured event. Use `alerts.webhook_events` to control which lifecycle events trigger the webhook.
 
 ## API Endpoints
 

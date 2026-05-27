@@ -22,7 +22,7 @@ func newDoctorCmd(app *App) *cobra.Command {
 }
 
 func runDoctor(app *App) {
-	cfg := loadConfigFn()
+	cfg, _, cfgErr := loadConfigFn()
 	tmuxPath, tmuxErr := exec.LookPath("tmux")
 	managerLabel := runtimeServiceManagerLabel()
 	managerPath, managerErr := exec.LookPath(managerLabel)
@@ -35,9 +35,12 @@ func runDoctor(app *App) {
 	rows := []outputRow{
 		{Key: "os", Value: fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)},
 		{Key: "supported host", Value: fmt.Sprintf("%t", runtime.GOOS == "linux" || runtime.GOOS == "darwin")},
-		{Key: "listen", Value: cfg.ListenAddr},
-		{Key: "data dir", Value: cfg.DataDir},
-		{Key: "token required", Value: fmt.Sprintf("%t", cfg.Token != "")},
+		{Key: "listen", Value: cfg.Address()},
+		{Key: "data dir", Value: cfg.DataDir()},
+		{Key: "token required", Value: fmt.Sprintf("%t", cfg.Server.Token != "")},
+	}
+	if cfgErr != nil {
+		rows = append(rows, outputRow{Key: cmdConfig, Value: fmt.Sprintf("invalid (%v)", cfgErr)})
 	}
 	if tmuxErr == nil {
 		rows = append(rows, outputRow{Key: "tmux", Value: tmuxPath})

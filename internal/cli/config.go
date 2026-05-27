@@ -55,7 +55,7 @@ func newConfigInitCmd(app *App) *cobra.Command {
 
 func newConfigCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "config",
+		Use:   cmdConfig,
 		Short: "Initialize, edit, inspect and validate Sentinel config",
 		Long:  "Initialize, edit, inspect and validate the canonical Sentinel config file.",
 		Args:  cobra.NoArgs,
@@ -196,36 +196,32 @@ func newConfigShowCmd(app *App) *cobra.Command {
 }
 
 func loadValidatedConfig() (config.Config, error) {
-	configPath := config.Path()
-	if _, err := os.Stat(configPath); err == nil {
-		if err := config.ValidateFile(configPath); err != nil {
-			return config.Config{}, err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return config.Config{}, fmt.Errorf("stat config file: %w", err)
-	}
-	return config.Load(), nil
+	cfg, _, err := config.Load()
+	return cfg, err
 }
 
 type configShowOutput struct {
-	ListenAddr             string                    `json:"listen_addr"`
-	Token                  string                    `json:"token"`
-	AllowedOrigins         []string                  `json:"allowed_origins"`
-	CookieSecure           string                    `json:"cookie_secure"`
-	AllowInsecureCookie    bool                      `json:"allow_insecure_cookie"`
-	DataDir                string                    `json:"data_dir"`
-	LogLevel               string                    `json:"log_level"`
-	Timezone               string                    `json:"timezone"`
-	Locale                 string                    `json:"locale"`
-	RunbookMaxConcurrent   int                       `json:"runbook_max_concurrent"`
-	MultiUser              configShowMultiUser       `json:"multi_user"`
-	SystemUsers            []string                  `json:"system_users"`
-	Watchtower             configShowWatchtower      `json:"watchtower"`
-	AlertThresholds        configShowAlertThresholds `json:"alert_thresholds"`
-	AlertWebhookURL        string                    `json:"alert_webhook_url"`
-	AlertWebhookEvents     []string                  `json:"alert_webhook_events"`
-	HealthReportWebhookURL string                    `json:"health_report_webhook_url"`
-	HealthReportSchedule   string                    `json:"health_report_schedule"`
+	Version      int                       `json:"version"`
+	Server       configShowServer          `json:"server"`
+	Storage      config.StorageConfig      `json:"storage"`
+	Log          config.LogConfig          `json:"log"`
+	Alerts       configShowAlerts          `json:"alerts"`
+	HealthReport config.HealthReportConfig `json:"health_report"`
+	Watchtower   configShowWatchtower      `json:"watchtower"`
+	Runbooks     config.RunbooksConfig     `json:"runbooks"`
+	MultiUser    configShowMultiUser       `json:"multi_user"`
+	SystemUsers  []string                  `json:"system_users"`
+}
+
+type configShowServer struct {
+	Host                string   `json:"host"`
+	Port                int      `json:"port"`
+	Token               string   `json:"token"`
+	AllowedOrigins      []string `json:"allowed_origins"`
+	CookieSecure        string   `json:"cookie_secure"`
+	AllowInsecureCookie bool     `json:"allow_insecure_cookie"`
+	Timezone            string   `json:"timezone"`
+	Locale              string   `json:"locale"`
 }
 
 type configShowMultiUser struct {
@@ -242,24 +238,31 @@ type configShowWatchtower struct {
 	JournalRows    int    `json:"journal_rows"`
 }
 
-type configShowAlertThresholds struct {
-	CPUPercent  float64 `json:"cpu_percent"`
-	MemPercent  float64 `json:"mem_percent"`
-	DiskPercent float64 `json:"disk_percent"`
+type configShowAlerts struct {
+	CPUPercent    float64  `json:"cpu_percent"`
+	MemPercent    float64  `json:"mem_percent"`
+	DiskPercent   float64  `json:"disk_percent"`
+	WebhookURL    string   `json:"webhook_url"`
+	WebhookEvents []string `json:"webhook_events"`
 }
 
 func newConfigShowOutput(cfg config.Config) configShowOutput {
 	return configShowOutput{
-		ListenAddr:           cfg.ListenAddr,
-		Token:                redactConfigSecret(cfg.Token),
-		AllowedOrigins:       nonNilStrings(cfg.AllowedOrigins),
-		CookieSecure:         cfg.CookieSecure,
-		AllowInsecureCookie:  cfg.AllowInsecureCookie,
-		DataDir:              cfg.DataDir,
-		LogLevel:             cfg.LogLevel,
-		Timezone:             cfg.Timezone,
-		Locale:               cfg.Locale,
-		RunbookMaxConcurrent: cfg.RunbookMaxConcurrent,
+		Version: cfg.Version,
+		Server: configShowServer{
+			Host:                cfg.Server.Host,
+			Port:                cfg.Server.Port,
+			Token:               redactConfigSecret(cfg.Server.Token),
+			AllowedOrigins:      nonNilStrings(cfg.Server.AllowedOrigins),
+			CookieSecure:        cfg.Server.CookieSecure,
+			AllowInsecureCookie: cfg.Server.AllowInsecureCookie,
+			Timezone:            cfg.Server.Timezone,
+			Locale:              cfg.Server.Locale,
+		},
+		Storage:      cfg.Storage,
+		Log:          cfg.Log,
+		HealthReport: cfg.HealthReport,
+		Runbooks:     cfg.Runbooks,
 		MultiUser: configShowMultiUser{
 			AllowedUsers:     nonNilStrings(cfg.MultiUser.AllowedUsers),
 			AllowRootTarget:  cfg.MultiUser.AllowRootTarget,
@@ -273,15 +276,13 @@ func newConfigShowOutput(cfg config.Config) configShowOutput {
 			CaptureTimeout: cfg.Watchtower.CaptureTimeout.String(),
 			JournalRows:    cfg.Watchtower.JournalRows,
 		},
-		AlertThresholds: configShowAlertThresholds{
-			CPUPercent:  cfg.AlertThresholds.CPUPercent,
-			MemPercent:  cfg.AlertThresholds.MemPercent,
-			DiskPercent: cfg.AlertThresholds.DiskPercent,
+		Alerts: configShowAlerts{
+			CPUPercent:    cfg.Alerts.CPUPercent,
+			MemPercent:    cfg.Alerts.MemPercent,
+			DiskPercent:   cfg.Alerts.DiskPercent,
+			WebhookURL:    cfg.Alerts.WebhookURL,
+			WebhookEvents: nonNilStrings(cfg.Alerts.WebhookEvents),
 		},
-		AlertWebhookURL:        cfg.AlertWebhookURL,
-		AlertWebhookEvents:     nonNilStrings(cfg.AlertWebhookEvents),
-		HealthReportWebhookURL: cfg.HealthReportWebhookURL,
-		HealthReportSchedule:   cfg.HealthReportSchedule,
 	}
 }
 

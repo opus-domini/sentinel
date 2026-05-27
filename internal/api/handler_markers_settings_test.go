@@ -92,7 +92,7 @@ func TestSettingsHandlersPersistConfig(t *testing.T) {
 	h, _ := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	configPath := t.TempDir() + "/config.toml"
-	if err := os.WriteFile(configPath, []byte("# timezone = \"UTC\"\nlocale = \"en-US\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[server]\n# timezone = \"UTC\"\nlocale = \"en-US\"\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	h.configPath = configPath
@@ -134,7 +134,7 @@ func TestWebhookSettingsHandlers(t *testing.T) {
 
 	h, _ := newTestHandler(t, nil)
 	configPath := t.TempDir() + "/config.toml"
-	if err := os.WriteFile(configPath, []byte("webhook_url = \"\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[alerts]\nwebhook_url = \"\"\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	h.configPath = configPath
@@ -169,11 +169,11 @@ func TestUpsertConfigKeyQuotesValues(t *testing.T) {
 	t.Parallel()
 
 	path := t.TempDir() + "/config.toml"
-	if err := os.WriteFile(path, []byte("# locale = \"en-US\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[server]\n# locale = \"en-US\"\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	if err := upsertConfigKey(path, "locale", `pt-"BR"\test`); err != nil {
-		t.Fatalf("upsertConfigKey: %v", err)
+	if err := upsertConfigString(path, "server", "locale", `pt-"BR"\test`); err != nil {
+		t.Fatalf("upsertConfigString: %v", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {

@@ -1,9 +1,15 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"os"
+	"strings"
+
+	"github.com/spf13/cobra"
+)
 
 // newRootCmd builds the Sentinel root command and wires every subcommand.
 func newRootCmd(app *App) *cobra.Command {
+	var configPath string
 	root := &cobra.Command{
 		Use:   "sentinel",
 		Short: "Sentinel command-line interface",
@@ -18,11 +24,17 @@ func newRootCmd(app *App) *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	root.PersistentPreRun = func(_ *cobra.Command, _ []string) {
+		if path := strings.TrimSpace(configPath); path != "" {
+			_ = os.Setenv("SENTINEL_CONFIG", path)
+		}
+	}
 	root.SetVersionTemplate("sentinel version {{.Version}}\n")
 	root.InitDefaultVersionFlag()
 	if f := root.Flags().Lookup("version"); f != nil {
 		f.Shorthand = "v"
 	}
+	root.PersistentFlags().StringVar(&configPath, "config", "", "config file path")
 
 	applyHelpStyle(root)
 	addGrouped(root, groupSetup,

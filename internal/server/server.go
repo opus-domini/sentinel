@@ -5,6 +5,8 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -33,28 +35,29 @@ import (
 // the process exit code. The Serve/run split keeps os.Exit out of any function
 // holding a defer (the exitAfterDefer lint issue): run returns the exit code.
 func Serve(version string) int {
-	configPath := config.Path()
-	if _, err := os.Stat(configPath); err == nil {
-		if err := config.ValidateFile(configPath); err != nil {
-			initLogger(config.DefaultLogLevel)
-			slog.Error("config validation failed", "err", err)
-			return 1
-		}
-	} else if err != nil && !os.IsNotExist(err) {
-		initLogger(config.DefaultLogLevel)
-		slog.Error("config path check failed", "err", err)
+	cfg, configPath, err := config.Load()
+	if err != nil {
+		closeLogger, _ := initLogger(config.DefaultLogLevel, "")
+		defer closeLogger()
+		slog.Error("config load failed", "err", err)
 		return 1
 	}
-
-	cfg := config.Load()
-	initLogger(cfg.LogLevel)
-
-	if err := security.ValidateRemoteExposure(cfg.ListenAddr, cfg.Token); err != nil {
-		slog.Error("security: token is required for remote listen address", "listen", cfg.ListenAddr)
+	closeLogger, err := initLogger(cfg.Log.Level, cfg.Log.Path)
+	if err != nil {
+		closeFallback, _ := initLogger(config.DefaultLogLevel, "")
+		defer closeFallback()
+		slog.Error("logger init failed", "err", err)
 		return 1
 	}
-	if security.ExposesBeyondLoopback(cfg.ListenAddr) && !security.HasAllowedOrigins(cfg.AllowedOrigins) {
-		slog.Warn("consider setting allowed_origins to restrict cross-origin access", "listen", cfg.ListenAddr)
+	defer closeLogger()
+
+	listenAddr := cfg.Address()
+	if err := security.ValidateRemoteExposure(listenAddr, cfg.Server.Token); err != nil {
+		slog.Error("security: token is required for remote listen address", "listen", listenAddr)
+		return 1
+	}
+	if security.ExposesBeyondLoopback(listenAddr) && !security.HasAllowedOrigins(cfg.Server.AllowedOrigins) {
+		slog.Warn("consider setting allowed_origins to restrict cross-origin access", "listen", listenAddr)
 	}
 
 	cfg.SystemUsers = config.ReadSystemUsers()
@@ -69,24 +72,24 @@ func Serve(version string) int {
 	tmux.UserSwitchMethod = cfg.MultiUser.UserSwitchMethod
 	term.UserSwitchMethod = cfg.MultiUser.UserSwitchMethod
 	slog.Info("multi-user switching configured", "method", cfg.MultiUser.UserSwitchMethod)
-	cookiePolicy := security.ParseCookieSecurePolicy(cfg.CookieSecure)
-	guard := security.NewWithMultiUser(cfg.Token, cfg.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
+	cookiePolicy := security.ParseCookieSecurePolicy(cfg.Server.CookieSecure)
+	guard := security.NewWithMultiUser(cfg.Server.Token, cfg.Server.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
 		AllowedUsers:    cfg.MultiUser.AllowedUsers,
 		AllowRootTarget: cfg.MultiUser.AllowRootTarget,
 		SystemUsers:     cfg.SystemUsers,
 	})
 
-	if security.ExposesBeyondLoopback(cfg.ListenAddr) && cfg.Token != "" && cookiePolicy == security.CookieSecureNever {
-		if cfg.AllowInsecureCookie {
-			slog.Warn("cookie_secure=never with remote exposure and token auth; bypassed via SENTINEL_ALLOW_INSECURE_COOKIE")
+	if security.ExposesBeyondLoopback(listenAddr) && cfg.Server.Token != "" && cookiePolicy == security.CookieSecureNever {
+		if cfg.Server.AllowInsecureCookie {
+			slog.Warn("cookie_secure=never with remote exposure and token auth; bypassed via SENTINEL_SERVER_ALLOW_INSECURE_COOKIE")
 		} else {
-			slog.Error("cookie_secure=never is not allowed with remote exposure and token auth; set cookie_secure=auto or cookie_secure=always, or set SENTINEL_ALLOW_INSECURE_COOKIE=true to bypass")
+			slog.Error("cookie_secure=never is not allowed with remote exposure and token auth; set cookie_secure=auto or cookie_secure=always, or set SENTINEL_SERVER_ALLOW_INSECURE_COOKIE=true to bypass")
 			return 1
 		}
 	}
 	eventHub := events.NewHub()
 
-	st, err := store.New(filepath.Join(cfg.DataDir, "sentinel.db"))
+	st, err := store.New(cfg.Storage.Path)
 	if err != nil {
 		slog.Error("store init failed", "err", err)
 		return 1
@@ -113,7 +116,7 @@ func Serve(version string) int {
 	opsManager := services.NewManager(time.Now(), st)
 
 	mux := http.NewServeMux()
-	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configPath, cfg.Timezone, cfg.Locale, cfg.RunbookMaxConcurrent)
+	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configPath, cfg.Server.Timezone, cfg.Server.Locale, cfg.Runbooks.MaxConcurrent)
 
 	if err := ui.Register(mux, guard, st, eventHub, opsManager, apiHandler.SessionUser); err != nil {
 		slog.Error("frontend init failed", "err", err)
@@ -150,21 +153,21 @@ func Serve(version string) int {
 		watchtowerService.Start(context.Background())
 	}
 
-	alertNotifier := notify.New(cfg.AlertWebhookURL, cfg.AlertWebhookEvents)
+	alertNotifier := notify.New(cfg.Alerts.WebhookURL, cfg.Alerts.WebhookEvents)
 	if alertNotifier != nil {
-		slog.Info("alert webhook enabled", "url", cfg.AlertWebhookURL)
+		slog.Info("alert webhook enabled", "url", cfg.Alerts.WebhookURL)
 	}
 
 	healthChecker := services.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
 		eventHub.Publish(events.NewEvent(eventType, payload))
 	}, 0, services.AlertThresholds{
-		CPUPercent:  cfg.AlertThresholds.CPUPercent,
-		MemPercent:  cfg.AlertThresholds.MemPercent,
-		DiskPercent: cfg.AlertThresholds.DiskPercent,
+		CPUPercent:  cfg.Alerts.CPUPercent,
+		MemPercent:  cfg.Alerts.MemPercent,
+		DiskPercent: cfg.Alerts.DiskPercent,
 	})
 	healthChecker.SetActivityRepo(st)
 	healthChecker.SetNotifier(alertNotifier)
-	healthChecker.SetUpdaterStateDir(cfg.DataDir)
+	healthChecker.SetUpdaterStateDir(cfg.DataDir())
 	healthChecker.Start(context.Background())
 
 	schedulerService := scheduler.New(st, st, scheduler.Options{
@@ -176,14 +179,14 @@ func Serve(version string) int {
 
 	// Health report generator (optional: requires webhook URL + schedule).
 	var reportGen *report.Generator
-	if cfg.HealthReportWebhookURL != "" {
-		reportNotifier := notify.New(cfg.HealthReportWebhookURL, nil)
+	if cfg.HealthReport.WebhookURL != "" {
+		reportNotifier := notify.New(cfg.HealthReport.WebhookURL, nil)
 		reportGen = report.New(st, opsManager, reportNotifier)
-		if cfg.HealthReportSchedule != "" {
-			if err := reportGen.StartSchedule(context.Background(), cfg.HealthReportSchedule, cfg.Timezone); err != nil {
+		if cfg.HealthReport.Schedule != "" {
+			if err := reportGen.StartSchedule(context.Background(), cfg.HealthReport.Schedule, cfg.Server.Timezone); err != nil {
 				slog.Warn("health report schedule failed to start", "error", err)
 			} else {
-				slog.Info("health report enabled", "url", cfg.HealthReportWebhookURL, "schedule", cfg.HealthReportSchedule)
+				slog.Info("health report enabled", "url", cfg.HealthReport.WebhookURL, "schedule", cfg.HealthReport.Schedule)
 			}
 		}
 	}
@@ -242,7 +245,7 @@ func Serve(version string) int {
 
 func run(version string, cfg config.Config, mux *http.ServeMux) int {
 	server := &http.Server{
-		Addr:         cfg.ListenAddr,
+		Addr:         cfg.Address(),
 		Handler:      requestLog(mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
@@ -268,8 +271,8 @@ func run(version string, cfg config.Config, mux *http.ServeMux) int {
 		}
 	}()
 
-	slog.Info("sentinel starting", "version", version, "listen", cfg.ListenAddr, "data_dir", cfg.DataDir)
-	slog.Info("security", "token_required", cfg.Token != "", "allowed_origins", len(cfg.AllowedOrigins))
+	slog.Info("sentinel starting", "version", version, "listen", cfg.Address(), "data_dir", cfg.DataDir(), "log", cfg.Log.Path)
+	slog.Info("security", "token_required", cfg.Server.Token != "", "allowed_origins", len(cfg.Server.AllowedOrigins))
 
 	if cfg.Watchtower.Enabled {
 		slog.Info("watchtower enabled", "tick", cfg.Watchtower.TickInterval, "capture_lines", cfg.Watchtower.CaptureLines)
@@ -285,7 +288,7 @@ func run(version string, cfg config.Config, mux *http.ServeMux) int {
 	return 0
 }
 
-func initLogger(level string) {
+func initLogger(level, path string) (func(), error) {
 	var lv slog.Level
 	switch level {
 	case "debug":
@@ -297,5 +300,19 @@ func initLogger(level string) {
 	default:
 		lv = slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lv})))
+	writer := io.Writer(os.Stderr)
+	closeFn := func() {}
+	if strings.TrimSpace(path) != "" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return closeFn, fmt.Errorf("create log dir: %w", err)
+		}
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // configured daemon log path.
+		if err != nil {
+			return closeFn, fmt.Errorf("open log file: %w", err)
+		}
+		writer = io.MultiWriter(os.Stderr, file)
+		closeFn = func() { _ = file.Close() }
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(writer, &slog.HandlerOptions{Level: lv})))
+	return closeFn, nil
 }

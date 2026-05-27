@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/updater"
@@ -116,11 +115,27 @@ func TestRunCLIConfigPath(t *testing.T) {
 	}
 }
 
+func TestRunCLIConfigFlagOverridesPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_CONFIG", "")
+	configPath := filepath.Join(dir, "custom.toml")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"--config", configPath, "config", "path"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if got := strings.TrimSpace(out.String()); got != configPath {
+		t.Fatalf("config path output = %q, want %q", got, configPath)
+	}
+}
+
 func TestRunCLIConfigValidate(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
 	configPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"info\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[log]\nlevel = \"info\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,7 +149,7 @@ func TestRunCLIConfigValidate(t *testing.T) {
 		t.Fatalf("unexpected stdout: %s", out.String())
 	}
 
-	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"verbose\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[log]\nlevel = \"verbose\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
@@ -143,7 +158,7 @@ func TestRunCLIConfigValidate(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if !strings.Contains(errOut.String(), "server.log_level") {
+	if !strings.Contains(errOut.String(), "log.level") {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }
@@ -151,18 +166,24 @@ func TestRunCLIConfigValidate(t *testing.T) {
 func TestRunCLIConfigShowPrintsEffectiveConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_SERVER_HOST", "")
+	t.Setenv("SENTINEL_SERVER_PORT", "")
+	t.Setenv("SENTINEL_SERVER_ALLOWED_ORIGINS", "")
 	t.Setenv("SENTINEL_LOG_LEVEL", "")
 	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
 	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
 	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
 	configPath := filepath.Join(dir, "config.toml")
-	content := `[server]
-listen = "127.0.0.1:5050"
+	content := `version = 1
+
+[server]
+host = "127.0.0.1"
+port = 5050
 token = "super-secret"
-allowed_origins = "http://localhost:3000, http://127.0.0.1:3000"
-log_level = "debug"
+allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+[log]
+level = "debug"
 
 [watchtower]
 enabled = false
@@ -184,21 +205,23 @@ capture_timeout = "250ms"
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("config show output is not JSON: %v\n%s", err, out.String())
 	}
-	if got["listen_addr"] != "127.0.0.1:5050" {
-		t.Fatalf("listen_addr = %v", got["listen_addr"])
+	server, ok := got["server"].(map[string]any)
+	if !ok {
+		t.Fatalf("server = %#v", got["server"])
 	}
-	if got["data_dir"] != dir {
-		t.Fatalf("data_dir = %v, want %s", got["data_dir"], dir)
+	if server["host"] != "127.0.0.1" || server["port"] != float64(5050) {
+		t.Fatalf("server = %#v", server)
 	}
-	if got["log_level"] != "debug" {
-		t.Fatalf("log_level = %v", got["log_level"])
+	logCfg, ok := got["log"].(map[string]any)
+	if !ok || logCfg["level"] != "debug" {
+		t.Fatalf("log = %#v", got["log"])
 	}
-	if got["token"] != "******" {
-		t.Fatalf("token = %v, want redacted", got["token"])
+	if server["token"] != "******" {
+		t.Fatalf("token = %v, want redacted", server["token"])
 	}
-	origins, ok := got["allowed_origins"].([]any)
+	origins, ok := server["allowed_origins"].([]any)
 	if !ok || len(origins) != 2 || origins[0] != "http://localhost:3000" || origins[1] != "http://127.0.0.1:3000" {
-		t.Fatalf("allowed_origins = %#v", got["allowed_origins"])
+		t.Fatalf("allowed_origins = %#v", server["allowed_origins"])
 	}
 	watchtower, ok := got["watchtower"].(map[string]any)
 	if !ok {
@@ -218,8 +241,9 @@ capture_timeout = "250ms"
 func TestRunCLIConfigShowValidatesExistingConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_CONFIG", "")
 	configPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"verbose\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[log]\nlevel = \"verbose\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -229,7 +253,7 @@ func TestRunCLIConfigShowValidatesExistingConfig(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
 	}
-	if !strings.Contains(errOut.String(), "server.log_level") {
+	if !strings.Contains(errOut.String(), "log.level") {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }
@@ -365,7 +389,7 @@ func TestRunCLIDBStatus(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"database: " + filepath.Join(dir, "sentinel.db"),
-		"total bytes:",
+		"total size:",
 		store.StorageResourceTimeline + ":",
 		store.StorageResourceOpsAlerts + ":",
 	} {
@@ -608,13 +632,7 @@ func TestRunCLIDoctor(t *testing.T) {
 		serviceStatusFn = origStatus
 	})
 
-	loadConfigFn = func() config.Config {
-		return config.Config{
-			ListenAddr: "127.0.0.1:4040",
-			DataDir:    "/tmp/.sentinel",
-			Token:      "token",
-		}
-	}
+	loadConfigFn = testLoadConfig("/tmp/.sentinel", "token")
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
 			Scope: "user",
@@ -656,13 +674,7 @@ func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 		serviceStatusFn = origStatus
 	})
 
-	loadConfigFn = func() config.Config {
-		return config.Config{
-			ListenAddr: "127.0.0.1:4040",
-			DataDir:    "/tmp/.sentinel",
-			Token:      "",
-		}
-	}
+	loadConfigFn = testLoadConfig("/tmp/.sentinel", "")
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
 			Scope: "system",
@@ -875,9 +887,7 @@ func TestRunCLIUpdateCheck(t *testing.T) {
 		updateCheckFn = origCheck
 	})
 
-	loadConfigFn = func() config.Config {
-		return config.Config{DataDir: testSentinelPath}
-	}
+	loadConfigFn = testLoadConfig(testSentinelPath, "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 
 	var got updater.CheckOptions
@@ -923,9 +933,7 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 		updateApplyFn = origApply
 	})
 
-	loadConfigFn = func() config.Config {
-		return config.Config{DataDir: testSentinelPath}
-	}
+	loadConfigFn = testLoadConfig(testSentinelPath, "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 
 	var got updater.ApplyOptions
@@ -988,9 +996,7 @@ func TestRunCLIUpdateApplyParsesLegacySystemdScopeFlag(t *testing.T) {
 		updateApplyFn = origApply
 	})
 
-	loadConfigFn = func() config.Config {
-		return config.Config{DataDir: testSentinelPath}
-	}
+	loadConfigFn = testLoadConfig(testSentinelPath, "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 
 	var got updater.ApplyOptions
@@ -1033,9 +1039,7 @@ func TestRunCLIUpdateStatus(t *testing.T) {
 		updateStatusFn = origStatus
 	})
 
-	loadConfigFn = func() config.Config {
-		return config.Config{DataDir: testSentinelPath}
-	}
+	loadConfigFn = testLoadConfig(testSentinelPath, "")
 	updateStatusFn = func(dataDir string) (updater.State, error) {
 		if dataDir != testSentinelPath {
 			t.Fatalf("dataDir = %q, want %s", dataDir, testSentinelPath)

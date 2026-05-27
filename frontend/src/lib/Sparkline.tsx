@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 
+import { formatElapsedRelativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 type SparklineProps = {
@@ -10,16 +11,6 @@ type SparklineProps = {
   className?: string
   formatValue?: (v: number) => string
   domain?: [number, number]
-}
-
-function formatRelativeTime(ts: number): string {
-  const diff = Math.round((Date.now() - ts) / 1000)
-  if (diff < 10) return 'just now'
-  if (diff < 60) return `${diff}s ago`
-  const m = Math.floor(diff / 60)
-  const s = diff % 60
-  if (m < 60) return s > 0 ? `${m}m ${s}s ago` : `${m}m ago`
-  return `${Math.floor(m / 60)}h ${m % 60}m ago`
 }
 
 export function Sparkline({
@@ -127,7 +118,7 @@ export function Sparkline({
             </span>
             {timestamps?.[hoverIndex] != null && (
               <span className="text-muted-foreground">
-                · {formatRelativeTime(timestamps[hoverIndex])}
+                · {formatElapsedRelativeTime(timestamps[hoverIndex])}
               </span>
             )}
           </div>

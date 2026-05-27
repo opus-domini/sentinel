@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/opus-domini/sentinel/internal/humanize"
 	"github.com/opus-domini/sentinel/internal/userswitch"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
@@ -31,51 +32,81 @@ const (
 	DefaultLogLevel = "info"
 
 	configFileName = "config.toml"
+	defaultHost    = "127.0.0.1"
+	defaultPort    = 4040
 )
 
-// AlertThresholds represents alert thresholds data.
-type AlertThresholds struct {
-	CPUPercent  float64
-	MemPercent  float64
-	DiskPercent float64
-}
-
-// MultiUserConfig represents multi user config data.
-type MultiUserConfig struct {
-	AllowedUsers     []string
-	AllowRootTarget  bool
-	UserSwitchMethod string // "systemd-run" on Linux by default; "sudo" elsewhere
-}
-
-// Config represents config data.
+// Config is the complete runtime configuration for Sentinel.
 type Config struct {
-	ListenAddr             string
-	Token                  string
-	AllowedOrigins         []string
-	CookieSecure           string
-	AllowInsecureCookie    bool
-	DataDir                string
-	LogLevel               string
-	Timezone               string
-	Locale                 string
-	RunbookMaxConcurrent   int
-	MultiUser              MultiUserConfig
-	SystemUsers            []string // populated at startup from OS, not from config file
-	Watchtower             WatchtowerConfig
-	AlertThresholds        AlertThresholds
-	AlertWebhookURL        string
-	AlertWebhookEvents     []string
-	HealthReportWebhookURL string
-	HealthReportSchedule   string
+	Version      int                `toml:"version" json:"version"`
+	Server       ServerConfig       `toml:"server" json:"server"`
+	Storage      StorageConfig      `toml:"storage" json:"storage"`
+	Log          LogConfig          `toml:"log" json:"log"`
+	Alerts       AlertsConfig       `toml:"alerts" json:"alerts"`
+	HealthReport HealthReportConfig `toml:"health_report" json:"health_report"`
+	Watchtower   WatchtowerConfig   `toml:"watchtower" json:"watchtower"`
+	Runbooks     RunbooksConfig     `toml:"runbooks" json:"runbooks"`
+	MultiUser    MultiUserConfig    `toml:"multi_user" json:"multi_user"`
+	SystemUsers  []string           `toml:"-" json:"system_users"`
+}
+
+// ServerConfig controls the local HTTP API and web UI listener.
+type ServerConfig struct {
+	Host                string   `toml:"host" json:"host"`
+	Port                int      `toml:"port" json:"port"`
+	Token               string   `toml:"token" json:"token,omitempty"`
+	AllowedOrigins      []string `toml:"allowed_origins" json:"allowed_origins"`
+	CookieSecure        string   `toml:"cookie_secure" json:"cookie_secure"`
+	AllowInsecureCookie bool     `toml:"allow_insecure_cookie" json:"allow_insecure_cookie"`
+	Timezone            string   `toml:"timezone" json:"timezone"`
+	Locale              string   `toml:"locale" json:"locale"`
+}
+
+// StorageConfig controls the SQLite database location.
+type StorageConfig struct {
+	Path string `toml:"path" json:"path"`
+}
+
+// LogConfig controls daemon logging.
+type LogConfig struct {
+	Level string `toml:"level" json:"level"`
+	Path  string `toml:"path" json:"path"`
+}
+
+// AlertsConfig controls metric thresholds and alert notifications.
+type AlertsConfig struct {
+	CPUPercent    float64  `toml:"cpu_percent" json:"cpu_percent"`
+	MemPercent    float64  `toml:"mem_percent" json:"mem_percent"`
+	DiskPercent   float64  `toml:"disk_percent" json:"disk_percent"`
+	WebhookURL    string   `toml:"webhook_url" json:"webhook_url"`
+	WebhookEvents []string `toml:"webhook_events" json:"webhook_events"`
+}
+
+// HealthReportConfig controls scheduled health report delivery.
+type HealthReportConfig struct {
+	WebhookURL string `toml:"webhook_url" json:"webhook_url"`
+	Schedule   string `toml:"schedule" json:"schedule"`
 }
 
 // WatchtowerConfig represents watchtower config data.
 type WatchtowerConfig struct {
-	Enabled        bool
-	TickInterval   time.Duration
-	CaptureLines   int
-	CaptureTimeout time.Duration
-	JournalRows    int
+	Enabled        bool          `toml:"enabled" json:"enabled"`
+	TickInterval   time.Duration `toml:"tick_interval" json:"tick_interval"`
+	CaptureLines   int           `toml:"capture_lines" json:"capture_lines"`
+	CaptureTimeout time.Duration `toml:"capture_timeout" json:"capture_timeout"`
+	JournalRows    int           `toml:"journal_rows" json:"journal_rows"`
+}
+
+// RunbooksConfig controls runbook execution behavior.
+type RunbooksConfig struct {
+	MaxConcurrent int `toml:"max_concurrent" json:"max_concurrent"`
+}
+
+// MultiUserConfig represents multi user config data.
+type MultiUserConfig struct {
+	AllowedUsers     []string `toml:"allowed_users" json:"allowed_users"`
+	AllowRootTarget  bool     `toml:"allow_root_target" json:"allow_root_target"`
+	UserSwitchMethod string   `toml:"user_switch_method" json:"user_switch_method"`
 }
 
 var (
@@ -88,127 +119,24 @@ var (
 // ErrConfigExists is returned when Init refuses to overwrite an existing file.
 var ErrConfigExists = errors.New("config file already exists")
 
-const defaultConfigContent = `# Sentinel configuration
-# All values shown are defaults. Uncomment and edit to customize.
-# Environment variables (SENTINEL_*) always take precedence over file values.
-
-[server]
-# Address and port the server listens on.
-# Environment variable: SENTINEL_LISTEN
-# listen = "127.0.0.1:4040"
-
-# Authentication token used by the lock dialog to issue an HttpOnly cookie.
-# When set, all API and WebSocket requests require a valid auth cookie.
-# Environment variable: SENTINEL_TOKEN
-# token = ""
-
-# Comma-separated list of allowed CORS origins.
-# Environment variable: SENTINEL_ALLOWED_ORIGINS
-# allowed_origins = ""
-
-# Cookie Secure flag: "auto", "always", or "never".
-# Environment variable: SENTINEL_COOKIE_SECURE
-# cookie_secure = "auto"
-
-# Allow insecure (non-HTTPS) cookies.
-# Environment variable: SENTINEL_ALLOW_INSECURE_COOKIE
-# allow_insecure_cookie = false
-
-# Log level: debug, info, warn, error.
-# Environment variable: SENTINEL_LOG_LEVEL
-# log_level = "info"
-
-# IANA timezone for all displayed timestamps.
-# Environment variable: SENTINEL_TIMEZONE
-# timezone = "America/Sao_Paulo"
-
-# BCP 47 locale for date/number formatting (e.g. "pt-BR", "en-US").
-# When empty, the browser's default locale is used.
-# Environment variable: SENTINEL_LOCALE
-# locale = "pt-BR"
-
-[alerts]
-# CPU usage threshold percentage for alerts.
-# Environment variable: SENTINEL_ALERT_CPU_PERCENT
-# cpu_percent = 90.0
-
-# Memory usage threshold percentage for alerts.
-# Environment variable: SENTINEL_ALERT_MEM_PERCENT
-# mem_percent = 90.0
-
-# Disk usage threshold percentage for alerts.
-# Environment variable: SENTINEL_ALERT_DISK_PERCENT
-# disk_percent = 95.0
-
-# Webhook URL for alert notifications. When set, HTTP POST requests
-# are sent for alert lifecycle events.
-# Environment variable: SENTINEL_ALERT_WEBHOOK_URL
-# webhook_url = ""
-
-# Comma-separated list of events that trigger webhooks.
-# Supported: "alert.created", "alert.resolved", "alert.acked"
-# Default (when URL is set): "alert.created,alert.resolved"
-# Environment variable: SENTINEL_ALERT_WEBHOOK_EVENTS
-# webhook_events = "alert.created,alert.resolved"
-
-[health_report]
-# Webhook URL for scheduled health report delivery.
-# Environment variable: SENTINEL_HEALTH_REPORT_WEBHOOK_URL
-# webhook_url = ""
-
-# Cron schedule for health report generation (5-field cron or @descriptor).
-# Example: "0 8 * * *" for daily at 8am.
-# Environment variable: SENTINEL_HEALTH_REPORT_SCHEDULE
-# schedule = ""
-
-[watchtower]
-# Enable the watchtower subsystem (background activity projection + unread journal).
-# Environment variable: SENTINEL_WATCHTOWER_ENABLED
-# enabled = true
-
-# How often watchtower polls for activity.
-# Environment variable: SENTINEL_WATCHTOWER_TICK_INTERVAL
-# tick_interval = "1s"
-
-# Number of lines to capture from each pane.
-# Environment variable: SENTINEL_WATCHTOWER_CAPTURE_LINES
-# capture_lines = 80
-
-# Timeout for capturing pane content.
-# Environment variable: SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT
-# capture_timeout = "150ms"
-
-# Maximum number of rows in the unread journal.
-# Environment variable: SENTINEL_WATCHTOWER_JOURNAL_ROWS
-# journal_rows = 5000
-
-[runbooks]
-# Maximum number of concurrent manual runbook executions.
-# Environment variable: SENTINEL_RUNBOOK_MAX_CONCURRENT
-# max_concurrent = 5
-
-[multi_user]
-# Multi-user tmux session support is always active. Sessions can be
-# created as a different OS user via sudo.
-
-# List of OS users allowed as session targets. When empty, any user is allowed.
-# Environment variable: SENTINEL_ALLOWED_USERS (comma-separated)
-# allowed_users = []
-
-# Allow targeting the root user for sessions.
-# Environment variable: SENTINEL_ALLOW_ROOT_TARGET
-# allow_root_target = false
-
-# Method for switching users: "systemd-run" (Linux default) or "sudo" (non-Linux default).
-# Environment variable: SENTINEL_USER_SWITCH_METHOD
-# user_switch_method = "systemd-run"
-`
-
-// Load handles load.
-func Load() Config {
-	cfg := Config{
-		ListenAddr:           "127.0.0.1:4040",
-		RunbookMaxConcurrent: 5,
+// Default returns Sentinel's built-in configuration.
+func Default() Config {
+	dataRoot := defaultDataDir()
+	return Config{
+		Version: 1,
+		Server: ServerConfig{
+			Host:         defaultHost,
+			Port:         defaultPort,
+			CookieSecure: CookieSecureAuto,
+			Timezone:     time.Now().Location().String(),
+		},
+		Storage: StorageConfig{Path: filepath.Join(dataRoot, "sentinel.db")},
+		Log:     LogConfig{Level: DefaultLogLevel, Path: filepath.Join(dataRoot, "logs", "sentinel.log")},
+		Alerts: AlertsConfig{
+			CPUPercent:  90.0,
+			MemPercent:  90.0,
+			DiskPercent: 95.0,
+		},
 		Watchtower: WatchtowerConfig{
 			Enabled:        true,
 			TickInterval:   1 * time.Second,
@@ -216,28 +144,120 @@ func Load() Config {
 			CaptureTimeout: 150 * time.Millisecond,
 			JournalRows:    5000,
 		},
-		AlertThresholds: AlertThresholds{
-			CPUPercent:  90.0,
-			MemPercent:  90.0,
-			DiskPercent: 95.0,
+		Runbooks: RunbooksConfig{MaxConcurrent: 5},
+		MultiUser: MultiUserConfig{
+			UserSwitchMethod: defaultUserSwitchMethod(),
 		},
 	}
-
-	cfg.Timezone = time.Now().Location().String()
-	cfg.DataDir = resolveDataDir()
-
-	file := loadFile(filepath.Join(cfg.DataDir, configFileName))
-	applyCoreConfig(&cfg, file)
-	applyWatchtowerConfig(&cfg, file)
-	applyAlertThresholdsConfig(&cfg, file)
-	applyMultiUserConfig(&cfg, file)
-
-	return cfg
 }
 
-// Path returns the canonical config file path for the current environment.
+// Address returns the configured HTTP listen address.
+func (c Config) Address() string {
+	return c.Server.Address()
+}
+
+// DataDir returns the directory that owns local Sentinel runtime data.
+func (c Config) DataDir() string {
+	if strings.TrimSpace(c.Storage.Path) == "" {
+		return ""
+	}
+	return filepath.Dir(c.Storage.Path)
+}
+
+// Address returns the configured HTTP listen address.
+func (c ServerConfig) Address() string {
+	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
+}
+
+// Path returns the resolved config file path for the current environment.
 func Path() string {
-	return filepath.Join(resolveDataDir(), configFileName)
+	path := strings.TrimSpace(os.Getenv("SENTINEL_CONFIG"))
+	if path == "" {
+		path = filepath.Join(defaultDataDir(), configFileName)
+	}
+	resolved, err := ExpandPath(path)
+	if err != nil {
+		return path
+	}
+	return resolved
+}
+
+// Load reads the configured TOML file and returns the resolved effective config.
+func Load() (Config, string, error) {
+	return LoadPath(Path())
+}
+
+// LoadPath reads a TOML file and resolves defaults without creating files.
+func LoadPath(path string) (Config, string, error) {
+	resolved, err := resolvePathOrDefault(path)
+	if err != nil {
+		cfg := Default()
+		return cfg, path, err
+	}
+	if _, err := os.Stat(resolved); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			cfg := Default()
+			return cfg, resolved, fmt.Errorf("stat config file: %w", err)
+		}
+		cfg := Default()
+		applyEnv(&cfg)
+		return cfg, resolved, cfg.Resolve()
+	}
+	return loadExisting(resolved, true)
+}
+
+func loadExisting(path string, applyEnvironment bool) (Config, string, error) {
+	cfg := Default()
+	meta, err := toml.DecodeFile(path, &cfg)
+	if err != nil {
+		return cfg, path, fmt.Errorf("decode config: %w", err)
+	}
+	var issues []string
+	for _, key := range meta.Undecoded() {
+		issues = append(issues, "unknown key: "+strings.Join(key, "."))
+	}
+	if err := cfg.Resolve(); err != nil {
+		issues = append(issues, err.Error())
+	}
+	if applyEnvironment {
+		applyEnv(&cfg)
+		if err := cfg.Resolve(); err != nil {
+			issues = append(issues, err.Error())
+		}
+	}
+	if len(issues) > 0 {
+		return cfg, path, configValidationError{Path: path, Issues: issues}
+	}
+	return cfg, path, nil
+}
+
+// ValidateFile validates a Sentinel TOML config file.
+func ValidateFile(path string) error {
+	resolved, err := resolvePathOrDefault(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("config file not found: %s", resolved)
+		}
+		return fmt.Errorf("stat config file: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("config path is a directory: %s", resolved)
+	}
+	_, _, err = loadExisting(resolved, false)
+	return err
+}
+
+type configValidationError struct {
+	Path   string
+	Issues []string
+}
+
+func (e configValidationError) Error() string {
+	return fmt.Sprintf("invalid config %s: %s", e.Path, strings.Join(e.Issues, "; "))
 }
 
 // Init creates the canonical config file. It refuses to overwrite existing
@@ -247,7 +267,7 @@ func Init(force bool) (string, error) {
 	if !force {
 		if _, err := os.Stat(path); err == nil {
 			return path, fmt.Errorf("%w: %s", ErrConfigExists, path)
-		} else if !os.IsNotExist(err) {
+		} else if !errors.Is(err, os.ErrNotExist) {
 			return path, fmt.Errorf("stat config file: %w", err)
 		}
 	}
@@ -267,7 +287,7 @@ func Init(force bool) (string, error) {
 		}
 		return path, fmt.Errorf("create config file: %w", err)
 	}
-	if _, err := file.WriteString(defaultConfigContent); err != nil {
+	if _, err := file.Write(defaultConfigTOML(Default())); err != nil {
 		_ = file.Close()
 		return path, fmt.Errorf("write config file: %w", err)
 	}
@@ -277,50 +297,424 @@ func Init(force bool) (string, error) {
 	return path, nil
 }
 
-// ValidateFile validates a Sentinel TOML config file.
-func ValidateFile(path string) error {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		path = Path()
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("config file not found: %s", path)
+// Ensure loads the config, creates it when missing, and creates local dirs.
+func Ensure() (Config, string, error) {
+	path := Path()
+	if _, err := os.Stat(path); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return Config{}, path, fmt.Errorf("stat config file: %w", err)
 		}
-		return fmt.Errorf("stat config file: %w", err)
+		if _, err := Init(false); err != nil && !errors.Is(err, ErrConfigExists) {
+			return Config{}, path, err
+		}
 	}
-	if info.IsDir() {
-		return fmt.Errorf("config path is a directory: %s", path)
-	}
-
-	var tc tomlConfig
-	meta, err := toml.DecodeFile(path, &tc)
+	cfg, resolved, err := Load()
 	if err != nil {
-		return fmt.Errorf("decode config: %w", err)
+		return cfg, resolved, err
 	}
+	if err := EnsureDirs(cfg); err != nil {
+		return cfg, resolved, err
+	}
+	return cfg, resolved, nil
+}
 
-	var issues []string
-	for _, key := range meta.Undecoded() {
-		issues = append(issues, "unknown key: "+strings.Join(key, "."))
-	}
-	issues = append(issues, validateFlattenedConfig(tc.flatten())...)
-	if len(issues) > 0 {
-		return configValidationError{Path: path, Issues: issues}
+// EnsureDirs creates local directories referenced by config paths.
+func EnsureDirs(cfg Config) error {
+	for label, path := range map[string]string{
+		"storage": cfg.Storage.Path,
+		"log":     cfg.Log.Path,
+	} {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return fmt.Errorf("create %s dir: %w", label, err)
+		}
 	}
 	return nil
 }
 
-type configValidationError struct {
-	Path   string
-	Issues []string
+// Resolve expands paths, normalizes defaults, and validates configured values.
+func (c *Config) Resolve() error {
+	if c == nil {
+		return nil
+	}
+	defaults := Default()
+	if c.Version == 0 {
+		c.Version = defaults.Version
+	}
+	if strings.TrimSpace(c.Server.Host) == "" {
+		c.Server.Host = defaults.Server.Host
+	}
+	if c.Server.Port == 0 {
+		c.Server.Port = defaults.Server.Port
+	}
+	c.Server.CookieSecure = normalizeCookieSecure(c.Server.CookieSecure, defaults.Server.CookieSecure)
+	c.Server.AllowedOrigins = cleanStrings(c.Server.AllowedOrigins)
+	c.Server.Locale = strings.TrimSpace(c.Server.Locale)
+	c.Server.Timezone = strings.TrimSpace(c.Server.Timezone)
+	if c.Server.Timezone == "" {
+		c.Server.Timezone = defaults.Server.Timezone
+	}
+	if strings.TrimSpace(c.Storage.Path) == "" {
+		c.Storage.Path = defaults.Storage.Path
+	}
+	if strings.TrimSpace(c.Log.Level) == "" {
+		c.Log.Level = defaults.Log.Level
+	}
+	c.Log.Level = strings.ToLower(strings.TrimSpace(c.Log.Level))
+	if strings.TrimSpace(c.Log.Path) == "" {
+		c.Log.Path = defaults.Log.Path
+	}
+	if c.Runbooks.MaxConcurrent == 0 {
+		c.Runbooks.MaxConcurrent = defaults.Runbooks.MaxConcurrent
+	}
+	if c.Watchtower.TickInterval == 0 {
+		c.Watchtower.TickInterval = defaults.Watchtower.TickInterval
+	}
+	if c.Watchtower.CaptureLines == 0 {
+		c.Watchtower.CaptureLines = defaults.Watchtower.CaptureLines
+	}
+	if c.Watchtower.CaptureTimeout == 0 {
+		c.Watchtower.CaptureTimeout = defaults.Watchtower.CaptureTimeout
+	}
+	if c.Watchtower.JournalRows == 0 {
+		c.Watchtower.JournalRows = defaults.Watchtower.JournalRows
+	}
+	if c.Alerts.CPUPercent == 0 {
+		c.Alerts.CPUPercent = defaults.Alerts.CPUPercent
+	}
+	if c.Alerts.MemPercent == 0 {
+		c.Alerts.MemPercent = defaults.Alerts.MemPercent
+	}
+	if c.Alerts.DiskPercent == 0 {
+		c.Alerts.DiskPercent = defaults.Alerts.DiskPercent
+	}
+	c.Alerts.WebhookEvents = cleanStrings(c.Alerts.WebhookEvents)
+	c.MultiUser.AllowedUsers = cleanStrings(c.MultiUser.AllowedUsers)
+	if strings.TrimSpace(c.MultiUser.UserSwitchMethod) == "" {
+		c.MultiUser.UserSwitchMethod = defaults.MultiUser.UserSwitchMethod
+	}
+	c.MultiUser.UserSwitchMethod = userswitch.NormalizeMethod(c.MultiUser.UserSwitchMethod, defaults.MultiUser.UserSwitchMethod)
+
+	var err error
+	c.Storage.Path, err = ExpandPath(c.Storage.Path)
+	if err != nil {
+		return err
+	}
+	c.Log.Path, err = ExpandPath(c.Log.Path)
+	if err != nil {
+		return err
+	}
+	return validateConfig(*c)
 }
 
-func (e configValidationError) Error() string {
-	return fmt.Sprintf("invalid config %s: %s", e.Path, strings.Join(e.Issues, "; "))
+func validateConfig(cfg Config) error {
+	var issues []string
+	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+		issues = append(issues, "server.port must be between 1 and 65535")
+	}
+	if err := validateListenAddress(cfg.Address()); err != nil {
+		issues = append(issues, "server host and port must form a valid listen address: "+err.Error())
+	}
+	switch cfg.Server.CookieSecure {
+	case CookieSecureAuto, CookieSecureAlways, CookieSecureNever:
+	default:
+		issues = append(issues, `server.cookie_secure must be one of "auto", "always", or "never"`)
+	}
+	switch cfg.Log.Level {
+	case "debug", "info", "warn", "error":
+	default:
+		issues = append(issues, `log.level must be one of "debug", "info", "warn", or "error"`)
+	}
+	if err := validate.Timezone(cfg.Server.Timezone); err != nil {
+		issues = append(issues, "server.timezone "+err.Error())
+	}
+	if cfg.Runbooks.MaxConcurrent <= 0 {
+		issues = append(issues, "runbooks.max_concurrent must be a positive integer")
+	}
+	if cfg.Watchtower.TickInterval <= 0 {
+		issues = append(issues, "watchtower.tick_interval must be a positive duration")
+	}
+	if cfg.Watchtower.CaptureLines <= 0 {
+		issues = append(issues, "watchtower.capture_lines must be a positive integer")
+	}
+	if cfg.Watchtower.CaptureTimeout <= 0 {
+		issues = append(issues, "watchtower.capture_timeout must be a positive duration")
+	}
+	if cfg.Watchtower.JournalRows <= 0 {
+		issues = append(issues, "watchtower.journal_rows must be a positive integer")
+	}
+	for _, item := range []struct {
+		label string
+		value float64
+	}{
+		{label: "alerts.cpu_percent", value: cfg.Alerts.CPUPercent},
+		{label: "alerts.mem_percent", value: cfg.Alerts.MemPercent},
+		{label: "alerts.disk_percent", value: cfg.Alerts.DiskPercent},
+	} {
+		if item.value <= 0 {
+			issues = append(issues, item.label+" must be a positive number")
+		}
+	}
+	if strings.TrimSpace(cfg.HealthReport.Schedule) != "" {
+		if err := validate.CronExpression(cfg.HealthReport.Schedule); err != nil {
+			issues = append(issues, "health_report.schedule "+err.Error())
+		}
+	}
+	if len(issues) > 0 {
+		return errors.New(strings.Join(issues, "; "))
+	}
+	return nil
 }
 
-func resolveDataDir() string {
+func applyEnv(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	applyServerEnv(cfg)
+	applyStorageEnv(cfg)
+	applyLogEnv(cfg)
+	applyAlertsEnv(cfg)
+	applyHealthReportEnv(cfg)
+	applyWatchtowerEnv(cfg)
+	applyRunbooksEnv(cfg)
+	applyMultiUserEnv(cfg)
+}
+
+func applyServerEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_HOST")); v != "" {
+		cfg.Server.Host = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_PORT")); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			cfg.Server.Port = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_TOKEN")); v != "" {
+		cfg.Server.Token = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_ALLOWED_ORIGINS")); v != "" {
+		cfg.Server.AllowedOrigins = splitCSV(v)
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_COOKIE_SECURE")); v != "" {
+		cfg.Server.CookieSecure = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_ALLOW_INSECURE_COOKIE")); v != "" {
+		if parsed, ok := parseBool(v); ok {
+			cfg.Server.AllowInsecureCookie = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_TIMEZONE")); v != "" {
+		cfg.Server.Timezone = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_LOCALE")); v != "" {
+		cfg.Server.Locale = v
+	}
+}
+
+func applyStorageEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_STORAGE_PATH")); v != "" {
+		cfg.Storage.Path = v
+	}
+}
+
+func applyLogEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_LOG_LEVEL")); v != "" {
+		cfg.Log.Level = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_LOG_PATH")); v != "" {
+		cfg.Log.Path = v
+	}
+}
+
+func applyAlertsEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_CPU_PERCENT")); v != "" {
+		if parsed, ok := parsePositiveFloat(v); ok {
+			cfg.Alerts.CPUPercent = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_MEM_PERCENT")); v != "" {
+		if parsed, ok := parsePositiveFloat(v); ok {
+			cfg.Alerts.MemPercent = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_DISK_PERCENT")); v != "" {
+		if parsed, ok := parsePositiveFloat(v); ok {
+			cfg.Alerts.DiskPercent = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_WEBHOOK_URL")); v != "" {
+		cfg.Alerts.WebhookURL = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_WEBHOOK_EVENTS")); v != "" {
+		cfg.Alerts.WebhookEvents = splitCSV(v)
+	}
+}
+
+func applyHealthReportEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_HEALTH_REPORT_WEBHOOK_URL")); v != "" {
+		cfg.HealthReport.WebhookURL = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_HEALTH_REPORT_SCHEDULE")); v != "" {
+		cfg.HealthReport.Schedule = v
+	}
+}
+
+func applyWatchtowerEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_ENABLED")); v != "" {
+		if parsed, ok := parseBool(v); ok {
+			cfg.Watchtower.Enabled = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_TICK_INTERVAL")); v != "" {
+		if parsed, ok := parseDuration(v); ok {
+			cfg.Watchtower.TickInterval = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_CAPTURE_LINES")); v != "" {
+		if parsed, ok := parsePositiveInt(v); ok {
+			cfg.Watchtower.CaptureLines = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT")); v != "" {
+		if parsed, ok := parseDuration(v); ok {
+			cfg.Watchtower.CaptureTimeout = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS")); v != "" {
+		if parsed, ok := parsePositiveInt(v); ok {
+			cfg.Watchtower.JournalRows = parsed
+		}
+	}
+}
+
+func applyRunbooksEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_RUNBOOK_MAX_CONCURRENT")); v != "" {
+		if parsed, ok := parsePositiveInt(v); ok {
+			cfg.Runbooks.MaxConcurrent = parsed
+		}
+	}
+}
+
+func applyMultiUserEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALLOWED_USERS")); v != "" {
+		cfg.MultiUser.AllowedUsers = splitCSV(v)
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALLOW_ROOT_TARGET")); v != "" {
+		if parsed, ok := parseBool(v); ok {
+			cfg.MultiUser.AllowRootTarget = parsed
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_USER_SWITCH_METHOD")); v != "" {
+		cfg.MultiUser.UserSwitchMethod = v
+	}
+}
+
+func defaultConfigTOML(cfg Config) []byte {
+	var b strings.Builder
+	writeConfigLine(&b, "# Sentinel configuration")
+	writeConfigLine(&b, "#")
+	writeConfigLine(&b, "# This file is created by `sentinel config init`. Fields you remove fall back to")
+	writeConfigLine(&b, "# built-in defaults. Paths support ~ and $ENV expansion.")
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Config schema version.")
+	writeConfigLine(&b, "version = %d", cfg.Version)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Local HTTP API and embedded web UI.")
+	writeConfigLine(&b, "[server]")
+	writeConfigLine(&b, "  # Keep localhost unless you also set server.token.")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_HOST")
+	writeConfigLine(&b, "  host = %q", cfg.Server.Host)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_PORT")
+	writeConfigLine(&b, "  port = %d", cfg.Server.Port)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_TOKEN")
+	writeConfigLine(&b, "  token = %q", cfg.Server.Token)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_ALLOWED_ORIGINS")
+	writeConfigLine(&b, "  allowed_origins = [%s]", quoteStringList(cfg.Server.AllowedOrigins))
+	writeConfigLine(&b, "  # Cookie Secure flag: auto, always, or never.")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_COOKIE_SECURE")
+	writeConfigLine(&b, "  cookie_secure = %q", cfg.Server.CookieSecure)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_ALLOW_INSECURE_COOKIE")
+	writeConfigLine(&b, "  allow_insecure_cookie = %t", cfg.Server.AllowInsecureCookie)
+	writeConfigLine(&b, "  # IANA timezone for all displayed timestamps.")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_TIMEZONE")
+	writeConfigLine(&b, "  timezone = %q", cfg.Server.Timezone)
+	writeConfigLine(&b, "  # BCP 47 locale for date/number formatting. Empty uses browser default.")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_LOCALE")
+	writeConfigLine(&b, "  locale = %q", cfg.Server.Locale)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Local SQLite database.")
+	writeConfigLine(&b, "[storage]")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_STORAGE_PATH")
+	writeConfigLine(&b, "  path = %q", cfg.Storage.Path)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Daemon logging.")
+	writeConfigLine(&b, "[log]")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_LOG_LEVEL")
+	writeConfigLine(&b, "  level = %q", cfg.Log.Level)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_LOG_PATH")
+	writeConfigLine(&b, "  path = %q", cfg.Log.Path)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Metric alerting and lifecycle webhooks.")
+	writeConfigLine(&b, "[alerts]")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_CPU_PERCENT")
+	writeConfigLine(&b, "  cpu_percent = %.1f", cfg.Alerts.CPUPercent)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_MEM_PERCENT")
+	writeConfigLine(&b, "  mem_percent = %.1f", cfg.Alerts.MemPercent)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_DISK_PERCENT")
+	writeConfigLine(&b, "  disk_percent = %.1f", cfg.Alerts.DiskPercent)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_WEBHOOK_URL")
+	writeConfigLine(&b, "  webhook_url = %q", cfg.Alerts.WebhookURL)
+	writeConfigLine(&b, "  # Supported: alert.created, alert.resolved, alert.acked.")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_WEBHOOK_EVENTS")
+	writeConfigLine(&b, "  webhook_events = [%s]", quoteStringList(cfg.Alerts.WebhookEvents))
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Scheduled health report delivery.")
+	writeConfigLine(&b, "[health_report]")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_HEALTH_REPORT_WEBHOOK_URL")
+	writeConfigLine(&b, "  webhook_url = %q", cfg.HealthReport.WebhookURL)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_HEALTH_REPORT_SCHEDULE")
+	writeConfigLine(&b, "  schedule = %q", cfg.HealthReport.Schedule)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Background activity projection and unread journal.")
+	writeConfigLine(&b, "[watchtower]")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_WATCHTOWER_ENABLED")
+	writeConfigLine(&b, "  enabled = %t", cfg.Watchtower.Enabled)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_WATCHTOWER_TICK_INTERVAL")
+	writeConfigLine(&b, "  tick_interval = %q", humanize.Duration(cfg.Watchtower.TickInterval))
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_WATCHTOWER_CAPTURE_LINES")
+	writeConfigLine(&b, "  capture_lines = %d", cfg.Watchtower.CaptureLines)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT")
+	writeConfigLine(&b, "  capture_timeout = %q", humanize.Duration(cfg.Watchtower.CaptureTimeout))
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_WATCHTOWER_JOURNAL_ROWS")
+	writeConfigLine(&b, "  journal_rows = %d", cfg.Watchtower.JournalRows)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Manual runbook execution.")
+	writeConfigLine(&b, "[runbooks]")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_RUNBOOK_MAX_CONCURRENT")
+	writeConfigLine(&b, "  max_concurrent = %d", cfg.Runbooks.MaxConcurrent)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# OS-user session targeting.")
+	writeConfigLine(&b, "[multi_user]")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALLOWED_USERS")
+	writeConfigLine(&b, "  allowed_users = [%s]", quoteStringList(cfg.MultiUser.AllowedUsers))
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALLOW_ROOT_TARGET")
+	writeConfigLine(&b, "  allow_root_target = %t", cfg.MultiUser.AllowRootTarget)
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_USER_SWITCH_METHOD")
+	writeConfigLine(&b, "  user_switch_method = %q", cfg.MultiUser.UserSwitchMethod)
+	return []byte(b.String())
+}
+
+func resolvePathOrDefault(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		path = Path()
+	}
+	return ExpandPath(path)
+}
+
+func defaultDataDir() string {
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_DATA_DIR")); v != "" {
 		return v
 	}
@@ -331,234 +725,32 @@ func resolveDataDir() string {
 	return filepath.Join(osTempDir(), "sentinel")
 }
 
-func applyCoreConfig(cfg *Config, file map[string]string) {
-	if cfg == nil {
-		return
+// ExpandPath expands ~ and environment variables, then returns an absolute path.
+func ExpandPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("path is required")
 	}
-
-	cfg.Token = readRawEnvOrFile("SENTINEL_TOKEN", "token", file)
-	if listen := readRawEnvOrFile("SENTINEL_LISTEN", "listen", file); listen != "" {
-		cfg.ListenAddr = listen
-	}
-	if origins := readRawEnvOrFile("SENTINEL_ALLOWED_ORIGINS", "allowed_origins", file); origins != "" {
-		cfg.AllowedOrigins = splitCSV(origins)
-	}
-	cfg.CookieSecure = CookieSecureAuto
-	if cs := readRawEnvOrFile("SENTINEL_COOKIE_SECURE", "cookie_secure", file); cs != "" {
-		switch strings.ToLower(cs) {
-		case CookieSecureAuto, CookieSecureAlways, CookieSecureNever:
-			cfg.CookieSecure = strings.ToLower(cs)
-		default:
-			cfg.CookieSecure = CookieSecureAuto
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := resolveHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if path == "~" {
+			path = home
+		} else {
+			path = filepath.Join(home, strings.TrimPrefix(path, "~/"))
 		}
 	}
-
-	cfg.AllowInsecureCookie = readBoolEnvOrFile(
-		"SENTINEL_ALLOW_INSECURE_COOKIE",
-		"allow_insecure_cookie",
-		file,
-		false,
-	)
-
-	cfg.LogLevel = DefaultLogLevel
-	if level := readRawEnvOrFile("SENTINEL_LOG_LEVEL", "log_level", file); level != "" {
-		cfg.LogLevel = strings.ToLower(level)
+	path = os.ExpandEnv(path)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
 	}
-
-	if tz := readRawEnvOrFile("SENTINEL_TIMEZONE", "timezone", file); tz != "" {
-		if _, err := time.LoadLocation(tz); err == nil {
-			cfg.Timezone = tz
-		}
-	}
-
-	if locale := readRawEnvOrFile("SENTINEL_LOCALE", "locale", file); locale != "" {
-		cfg.Locale = locale
-	}
-
-	cfg.RunbookMaxConcurrent = readPositiveIntEnvOrFile(
-		"SENTINEL_RUNBOOK_MAX_CONCURRENT",
-		"runbook_max_concurrent",
-		file,
-		cfg.RunbookMaxConcurrent,
-	)
-
-	cfg.AlertWebhookURL = readRawEnvOrFile("SENTINEL_ALERT_WEBHOOK_URL", "alert_webhook_url", file)
-	if evts := readRawEnvOrFile("SENTINEL_ALERT_WEBHOOK_EVENTS", "alert_webhook_events", file); evts != "" {
-		cfg.AlertWebhookEvents = splitCSV(evts)
-	}
-
-	cfg.HealthReportWebhookURL = readRawEnvOrFile("SENTINEL_HEALTH_REPORT_WEBHOOK_URL", "health_report_webhook_url", file)
-	cfg.HealthReportSchedule = readRawEnvOrFile("SENTINEL_HEALTH_REPORT_SCHEDULE", "health_report_schedule", file)
+	return filepath.Clean(abs), nil
 }
 
-func applyWatchtowerConfig(cfg *Config, file map[string]string) {
-	if cfg == nil {
-		return
-	}
-
-	cfg.Watchtower.Enabled = readBoolEnvOrFile(
-		"SENTINEL_WATCHTOWER_ENABLED",
-		"watchtower_enabled",
-		file,
-		cfg.Watchtower.Enabled,
-	)
-	cfg.Watchtower.TickInterval = readDurationEnvOrFile(
-		"SENTINEL_WATCHTOWER_TICK_INTERVAL",
-		"watchtower_tick_interval",
-		file,
-		cfg.Watchtower.TickInterval,
-	)
-	cfg.Watchtower.CaptureLines = readPositiveIntEnvOrFile(
-		"SENTINEL_WATCHTOWER_CAPTURE_LINES",
-		"watchtower_capture_lines",
-		file,
-		cfg.Watchtower.CaptureLines,
-	)
-	cfg.Watchtower.CaptureTimeout = readDurationEnvOrFile(
-		"SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT",
-		"watchtower_capture_timeout",
-		file,
-		cfg.Watchtower.CaptureTimeout,
-	)
-	cfg.Watchtower.JournalRows = readPositiveIntEnvOrFile(
-		"SENTINEL_WATCHTOWER_JOURNAL_ROWS",
-		"watchtower_journal_rows",
-		file,
-		cfg.Watchtower.JournalRows,
-	)
-}
-
-func applyAlertThresholdsConfig(cfg *Config, file map[string]string) {
-	if cfg == nil {
-		return
-	}
-	cfg.AlertThresholds.CPUPercent = readPositiveFloatEnvOrFile(
-		"SENTINEL_ALERT_CPU_PERCENT",
-		"alert_cpu_percent",
-		file,
-		cfg.AlertThresholds.CPUPercent,
-	)
-	cfg.AlertThresholds.MemPercent = readPositiveFloatEnvOrFile(
-		"SENTINEL_ALERT_MEM_PERCENT",
-		"alert_mem_percent",
-		file,
-		cfg.AlertThresholds.MemPercent,
-	)
-	cfg.AlertThresholds.DiskPercent = readPositiveFloatEnvOrFile(
-		"SENTINEL_ALERT_DISK_PERCENT",
-		"alert_disk_percent",
-		file,
-		cfg.AlertThresholds.DiskPercent,
-	)
-}
-
-func applyMultiUserConfig(cfg *Config, file map[string]string) {
-	if cfg == nil {
-		return
-	}
-
-	if users := readRawEnvOrFile("SENTINEL_ALLOWED_USERS", "allowed_users", file); users != "" {
-		cfg.MultiUser.AllowedUsers = splitCSV(users)
-	}
-
-	cfg.MultiUser.AllowRootTarget = readBoolEnvOrFile(
-		"SENTINEL_ALLOW_ROOT_TARGET",
-		"allow_root_target",
-		file,
-		false,
-	)
-
-	cfg.MultiUser.UserSwitchMethod = defaultUserSwitchMethod()
-	if method := readRawEnvOrFile("SENTINEL_USER_SWITCH_METHOD", "user_switch_method", file); method != "" {
-		cfg.MultiUser.UserSwitchMethod = userswitch.NormalizeMethod(method, cfg.MultiUser.UserSwitchMethod)
-	}
-}
-
-func validateFlattenedConfig(file map[string]string) []string {
-	if len(file) == 0 {
-		return nil
-	}
-
-	var issues []string
-	if value := strings.TrimSpace(file["listen"]); value != "" {
-		if err := validateListenAddr(value); err != nil {
-			issues = append(issues, "server.listen must be a valid host:port address: "+err.Error())
-		}
-	}
-	if value := strings.TrimSpace(file["cookie_secure"]); value != "" {
-		switch strings.ToLower(value) {
-		case CookieSecureAuto, CookieSecureAlways, CookieSecureNever:
-		default:
-			issues = append(issues, `server.cookie_secure must be one of "auto", "always", or "never"`)
-		}
-	}
-	if value := strings.TrimSpace(file["log_level"]); value != "" {
-		switch strings.ToLower(value) {
-		case "debug", "info", "warn", "error":
-		default:
-			issues = append(issues, `server.log_level must be one of "debug", "info", "warn", or "error"`)
-		}
-	}
-	if value := strings.TrimSpace(file["timezone"]); value != "" {
-		if err := validate.Timezone(value); err != nil {
-			issues = append(issues, "server.timezone "+err.Error())
-		}
-	}
-	if value := strings.TrimSpace(file["runbook_max_concurrent"]); value != "" {
-		if _, ok := parsePositiveInt(value); !ok {
-			issues = append(issues, "runbooks.max_concurrent must be a positive integer")
-		}
-	}
-	if value := strings.TrimSpace(file["watchtower_tick_interval"]); value != "" {
-		if _, ok := parseDuration(value); !ok {
-			issues = append(issues, "watchtower.tick_interval must be a positive duration")
-		}
-	}
-	if value := strings.TrimSpace(file["watchtower_capture_lines"]); value != "" {
-		if _, ok := parsePositiveInt(value); !ok {
-			issues = append(issues, "watchtower.capture_lines must be a positive integer")
-		}
-	}
-	if value := strings.TrimSpace(file["watchtower_capture_timeout"]); value != "" {
-		if _, ok := parseDuration(value); !ok {
-			issues = append(issues, "watchtower.capture_timeout must be a positive duration")
-		}
-	}
-	if value := strings.TrimSpace(file["watchtower_journal_rows"]); value != "" {
-		if _, ok := parsePositiveInt(value); !ok {
-			issues = append(issues, "watchtower.journal_rows must be a positive integer")
-		}
-	}
-	for _, key := range []struct {
-		flat  string
-		label string
-	}{
-		{flat: "alert_cpu_percent", label: "alerts.cpu_percent"},
-		{flat: "alert_mem_percent", label: "alerts.mem_percent"},
-		{flat: "alert_disk_percent", label: "alerts.disk_percent"},
-	} {
-		if value := strings.TrimSpace(file[key.flat]); value != "" {
-			if _, ok := parsePositiveFloat(value); !ok {
-				issues = append(issues, key.label+" must be a positive number")
-			}
-		}
-	}
-	if value := strings.TrimSpace(file["health_report_schedule"]); value != "" {
-		if err := validate.CronExpression(value); err != nil {
-			issues = append(issues, "health_report.schedule "+err.Error())
-		}
-	}
-	if value := strings.TrimSpace(file["user_switch_method"]); value != "" {
-		switch strings.ToLower(value) {
-		case userswitch.MethodSudo, userswitch.MethodSystemdRun, "systemd":
-		default:
-			issues = append(issues, `multi_user.user_switch_method must be "systemd-run" or "sudo"`)
-		}
-	}
-	return issues
-}
-
-func validateListenAddr(addr string) error {
+func validateListenAddress(addr string) error {
 	_, port, err := net.SplitHostPort(strings.TrimSpace(addr))
 	if err != nil {
 		return err
@@ -571,6 +763,70 @@ func validateListenAddr(addr string) error {
 		return fmt.Errorf("port %d out of range", value)
 	}
 	return nil
+}
+
+func normalizeCookieSecure(value, fallback string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case CookieSecureAuto, CookieSecureAlways, CookieSecureNever:
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return fallback
+	}
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for p := range strings.SplitSeq(s, ",") {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func cleanStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func parseBool(raw string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func parseDuration(raw string) (time.Duration, bool) {
+	v, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+func parsePositiveInt(raw string) (int, bool) {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
+}
+
+func parsePositiveFloat(raw string) (float64, bool) {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }
 
 func defaultUserSwitchMethod() string {
@@ -612,292 +868,21 @@ func ValidateMultiUser(cfg *Config) {
 	}
 }
 
-func readRawEnvOrFile(envKey, fileKey string, file map[string]string) string {
-	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
-		return v
+func quoteStringList(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		quoted = append(quoted, fmt.Sprintf("%q", value))
 	}
-	if file == nil {
-		return ""
-	}
-	return strings.TrimSpace(file[fileKey])
+	return strings.Join(quoted, ", ")
 }
 
-func readBoolEnvOrFile(envKey, fileKey string, file map[string]string, fallback bool) bool {
-	raw := readRawEnvOrFile(envKey, fileKey, file)
-	if raw == "" {
-		return fallback
+func writeConfigLine(b *strings.Builder, format string, args ...any) {
+	if len(args) == 0 {
+		b.WriteString(format)
+	} else {
+		_, _ = fmt.Fprintf(b, format, args...)
 	}
-	if parsed, ok := parseBool(raw); ok {
-		return parsed
-	}
-	return fallback
-}
-
-func readDurationEnvOrFile(envKey, fileKey string, file map[string]string, fallback time.Duration) time.Duration {
-	raw := readRawEnvOrFile(envKey, fileKey, file)
-	if raw == "" {
-		return fallback
-	}
-	if parsed, ok := parseDuration(raw); ok {
-		return parsed
-	}
-	return fallback
-}
-
-func readPositiveIntEnvOrFile(envKey, fileKey string, file map[string]string, fallback int) int {
-	raw := readRawEnvOrFile(envKey, fileKey, file)
-	if raw == "" {
-		return fallback
-	}
-	if parsed, ok := parsePositiveInt(raw); ok {
-		return parsed
-	}
-	return fallback
-}
-
-func readPositiveFloatEnvOrFile(envKey, fileKey string, file map[string]string, fallback float64) float64 {
-	raw := readRawEnvOrFile(envKey, fileKey, file)
-	if raw == "" {
-		return fallback
-	}
-	if parsed, ok := parsePositiveFloat(raw); ok {
-		return parsed
-	}
-	return fallback
-}
-
-func parsePositiveFloat(raw string) (float64, bool) {
-	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
-	if err != nil || value <= 0 {
-		return 0, false
-	}
-	return value, true
-}
-
-// tomlServer maps the [server] section of the config file.
-type tomlServer struct {
-	Listen              *string `toml:"listen"`
-	Token               *string `toml:"token"`
-	AllowedOrigins      *string `toml:"allowed_origins"`
-	CookieSecure        *string `toml:"cookie_secure"`
-	AllowInsecureCookie *bool   `toml:"allow_insecure_cookie"`
-	LogLevel            *string `toml:"log_level"`
-	Timezone            *string `toml:"timezone"`
-	Locale              *string `toml:"locale"`
-}
-
-// tomlAlerts maps the [alerts] section of the config file.
-type tomlAlerts struct {
-	CPUPercent  *float64 `toml:"cpu_percent"`
-	MemPercent  *float64 `toml:"mem_percent"`
-	DiskPercent *float64 `toml:"disk_percent"`
-	WebhookURL  *string  `toml:"webhook_url"`
-	WebhookEvts *string  `toml:"webhook_events"`
-}
-
-// tomlWatchtower maps the [watchtower] section of the config file.
-type tomlWatchtower struct {
-	Enabled        *bool   `toml:"enabled"`
-	TickInterval   *string `toml:"tick_interval"`
-	CaptureLines   *int64  `toml:"capture_lines"`
-	CaptureTimeout *string `toml:"capture_timeout"`
-	JournalRows    *int64  `toml:"journal_rows"`
-}
-
-// tomlHealthReport maps the [health_report] section of the config file.
-type tomlHealthReport struct {
-	WebhookURL *string `toml:"webhook_url"`
-	Schedule   *string `toml:"schedule"`
-}
-
-// tomlRunbooks maps the [runbooks] section of the config file.
-type tomlRunbooks struct {
-	MaxConcurrent *int64 `toml:"max_concurrent"`
-}
-
-// tomlMultiUser maps the [multi_user] section of the config file.
-type tomlMultiUser struct {
-	AllowedUsers     []string `toml:"allowed_users"`
-	AllowRootTarget  *bool    `toml:"allow_root_target"`
-	UserSwitchMethod *string  `toml:"user_switch_method"`
-}
-
-// tomlConfig is the top-level structure for the TOML config file.
-// It supports both sectioned format (preferred) and flat legacy keys.
-type tomlConfig struct {
-	Server       tomlServer       `toml:"server"`
-	Alerts       tomlAlerts       `toml:"alerts"`
-	HealthReport tomlHealthReport `toml:"health_report"`
-	Watchtower   tomlWatchtower   `toml:"watchtower"`
-	Runbooks     tomlRunbooks     `toml:"runbooks"`
-	MultiUser    tomlMultiUser    `toml:"multi_user"`
-
-	// Legacy flat keys (for backward compatibility with pre-section configs).
-	Listen                   *string  `toml:"listen"`
-	Token                    *string  `toml:"token"`
-	AllowedOrigins           *string  `toml:"allowed_origins"`
-	CookieSecure             *string  `toml:"cookie_secure"`
-	AllowInsecureCookie      *bool    `toml:"allow_insecure_cookie"`
-	LogLevel                 *string  `toml:"log_level"`
-	Timezone                 *string  `toml:"timezone"`
-	Locale                   *string  `toml:"locale"`
-	RunbookMaxConcurrent     *int64   `toml:"runbook_max_concurrent"`
-	WatchtowerEnabled        *bool    `toml:"watchtower_enabled"`
-	WatchtowerTickInterval   *string  `toml:"watchtower_tick_interval"`
-	WatchtowerCaptureLines   *int64   `toml:"watchtower_capture_lines"`
-	WatchtowerCaptureTimeout *string  `toml:"watchtower_capture_timeout"`
-	WatchtowerJournalRows    *int64   `toml:"watchtower_journal_rows"`
-	AlertCPUPercent          *float64 `toml:"alert_cpu_percent"`
-	AlertMemPercent          *float64 `toml:"alert_mem_percent"`
-	AlertDiskPercent         *float64 `toml:"alert_disk_percent"`
-	AlertWebhookURL          *string  `toml:"alert_webhook_url"`
-	AlertWebhookEvents       *string  `toml:"alert_webhook_events"`
-	HealthReportWebhookURL   *string  `toml:"health_report_webhook_url"`
-	HealthReportSchedule     *string  `toml:"health_report_schedule"`
-}
-
-// flatten converts the parsed TOML config into a flat key-value map.
-// Sectioned keys take precedence over legacy flat keys.
-func (tc *tomlConfig) flatten() map[string]string {
-	m := make(map[string]string)
-
-	// Helper to set a string value if the pointer is non-nil.
-	setStr := func(key string, v *string) {
-		if v != nil {
-			m[key] = *v
-		}
-	}
-	setBool := func(key string, v *bool) {
-		if v != nil {
-			m[key] = strconv.FormatBool(*v)
-		}
-	}
-	setInt := func(key string, v *int64) {
-		if v != nil {
-			m[key] = strconv.FormatInt(*v, 10)
-		}
-	}
-	setFloat := func(key string, v *float64) {
-		if v != nil {
-			m[key] = strconv.FormatFloat(*v, 'f', -1, 64)
-		}
-	}
-
-	// Apply legacy flat keys first.
-	setStr("listen", tc.Listen)
-	setStr("token", tc.Token)
-	setStr("allowed_origins", tc.AllowedOrigins)
-	setStr("cookie_secure", tc.CookieSecure)
-	setBool("allow_insecure_cookie", tc.AllowInsecureCookie)
-	setStr("log_level", tc.LogLevel)
-	setStr("timezone", tc.Timezone)
-	setStr("locale", tc.Locale)
-	setInt("runbook_max_concurrent", tc.RunbookMaxConcurrent)
-	setBool("watchtower_enabled", tc.WatchtowerEnabled)
-	setStr("watchtower_tick_interval", tc.WatchtowerTickInterval)
-	setInt("watchtower_capture_lines", tc.WatchtowerCaptureLines)
-	setStr("watchtower_capture_timeout", tc.WatchtowerCaptureTimeout)
-	setInt("watchtower_journal_rows", tc.WatchtowerJournalRows)
-	setFloat("alert_cpu_percent", tc.AlertCPUPercent)
-	setFloat("alert_mem_percent", tc.AlertMemPercent)
-	setFloat("alert_disk_percent", tc.AlertDiskPercent)
-	setStr("alert_webhook_url", tc.AlertWebhookURL)
-	setStr("alert_webhook_events", tc.AlertWebhookEvents)
-	setStr("health_report_webhook_url", tc.HealthReportWebhookURL)
-	setStr("health_report_schedule", tc.HealthReportSchedule)
-
-	// Sectioned keys override legacy flat keys.
-	setStr("listen", tc.Server.Listen)
-	setStr("token", tc.Server.Token)
-	setStr("allowed_origins", tc.Server.AllowedOrigins)
-	setStr("cookie_secure", tc.Server.CookieSecure)
-	setBool("allow_insecure_cookie", tc.Server.AllowInsecureCookie)
-	setStr("log_level", tc.Server.LogLevel)
-	setStr("timezone", tc.Server.Timezone)
-	setStr("locale", tc.Server.Locale)
-
-	setFloat("alert_cpu_percent", tc.Alerts.CPUPercent)
-	setFloat("alert_mem_percent", tc.Alerts.MemPercent)
-	setFloat("alert_disk_percent", tc.Alerts.DiskPercent)
-	setStr("alert_webhook_url", tc.Alerts.WebhookURL)
-	setStr("alert_webhook_events", tc.Alerts.WebhookEvts)
-
-	setStr("health_report_webhook_url", tc.HealthReport.WebhookURL)
-	setStr("health_report_schedule", tc.HealthReport.Schedule)
-
-	setBool("watchtower_enabled", tc.Watchtower.Enabled)
-	setStr("watchtower_tick_interval", tc.Watchtower.TickInterval)
-	setInt("watchtower_capture_lines", tc.Watchtower.CaptureLines)
-	setStr("watchtower_capture_timeout", tc.Watchtower.CaptureTimeout)
-	setInt("watchtower_journal_rows", tc.Watchtower.JournalRows)
-
-	setInt("runbook_max_concurrent", tc.Runbooks.MaxConcurrent)
-
-	if len(tc.MultiUser.AllowedUsers) > 0 {
-		joined := strings.Join(tc.MultiUser.AllowedUsers, ",")
-		m["allowed_users"] = joined
-	}
-	setBool("allow_root_target", tc.MultiUser.AllowRootTarget)
-	setStr("user_switch_method", tc.MultiUser.UserSwitchMethod)
-
-	return m
-}
-
-// loadFile parses a TOML config file and returns a flat key-value map.
-// Returns an empty map if the file does not exist or cannot be parsed.
-func loadFile(path string) map[string]string {
-	var tc tomlConfig
-	if _, err := toml.DecodeFile(path, &tc); err != nil {
-		return make(map[string]string)
-	}
-	return tc.flatten()
-}
-
-// decodeTOML parses TOML content from a string and returns a flat key-value map.
-// Used for testing; returns an error if parsing fails.
-func decodeTOML(content string) (map[string]string, error) {
-	var tc tomlConfig
-	if _, err := toml.Decode(content, &tc); err != nil {
-		return nil, fmt.Errorf("decode toml: %w", err)
-	}
-	return tc.flatten(), nil
-}
-
-func splitCSV(s string) []string {
-	var out []string
-	for p := range strings.SplitSeq(s, ",") {
-		if v := strings.TrimSpace(p); v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-func parseBool(raw string) (bool, bool) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "1", "true", "yes", "on":
-		return true, true
-	case "0", "false", "no", "off":
-		return false, true
-	default:
-		return false, false
-	}
-}
-
-func parseDuration(raw string) (time.Duration, bool) {
-	v, err := time.ParseDuration(strings.TrimSpace(raw))
-	if err != nil || v <= 0 {
-		return 0, false
-	}
-	return v, true
-}
-
-func parsePositiveInt(raw string) (int, bool) {
-	value, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || value <= 0 {
-		return 0, false
-	}
-	return value, true
+	b.WriteByte('\n')
 }
 
 func resolveHomeDir() (string, error) {

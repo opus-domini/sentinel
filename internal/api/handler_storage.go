@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/activity"
+	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -147,7 +148,7 @@ func (h *Handler) patchTimezone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.configPath != "" {
-		if err := upsertConfigKey(h.configPath, "timezone", tz); err != nil {
+		if err := upsertConfigString(h.configPath, "server", "timezone", tz); err != nil {
 			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist timezone", nil)
 			return
 		}
@@ -174,7 +175,7 @@ func (h *Handler) patchLocale(w http.ResponseWriter, r *http.Request) {
 	// Empty locale is valid — means "use browser default".
 
 	if h.configPath != "" {
-		if err := upsertConfigKey(h.configPath, "locale", loc); err != nil {
+		if err := upsertConfigString(h.configPath, "server", "locale", loc); err != nil {
 			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist locale", nil)
 			return
 		}
@@ -250,11 +251,11 @@ func (h *Handler) patchWebhookSettings(w http.ResponseWriter, r *http.Request) {
 
 	// Persist to config file.
 	if h.configPath != "" {
-		if err := upsertConfigKey(h.configPath, "webhook_url", webhookURL); err != nil {
+		if err := upsertConfigString(h.configPath, "alerts", "webhook_url", webhookURL); err != nil {
 			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook_url", nil)
 			return
 		}
-		if err := upsertConfigKey(h.configPath, "webhook_events", strings.Join(cleanEvents, ",")); err != nil {
+		if err := upsertConfigStringList(h.configPath, "alerts", "webhook_events", cleanEvents); err != nil {
 			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook_events", nil)
 			return
 		}
@@ -327,8 +328,20 @@ func (h *Handler) testWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// upsertConfigKey updates or inserts a key = "value" line in the config file.
-func upsertConfigKey(path, key, value string) error {
+func upsertConfigString(path, section, key, value string) error {
+	return upsertConfigValue(path, section, key, strconv.Quote(value))
+}
+
+func upsertConfigStringList(path, section, key string, values []string) error {
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		quoted = append(quoted, strconv.Quote(value))
+	}
+	return upsertConfigValue(path, section, key, "["+strings.Join(quoted, ", ")+"]")
+}
+
+// upsertConfigValue updates or inserts a sectioned key in the config file.
+func upsertConfigValue(path, section, key, encodedValue string) error {
 	data, err := os.ReadFile(path) //nolint:gosec // path is derived from DataDir
 	if err != nil {
 		return err
@@ -337,22 +350,52 @@ func upsertConfigKey(path, key, value string) error {
 	var lines []string
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	found := false
-	newLine := key + " = " + strconv.Quote(value)
+	inSection := false
+	sectionSeen := false
+	sectionHeader := "[" + section + "]"
+	newLine := "  " + key + " = " + encodedValue
 	for scanner.Scan() {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
-		// Match both active and commented-out lines for this key.
-		if !found && (strings.HasPrefix(trimmed, key+" =") || strings.HasPrefix(trimmed, key+"=") ||
-			strings.HasPrefix(trimmed, "# "+key+" =") || strings.HasPrefix(trimmed, "# "+key+"=")) {
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			if inSection && !found {
+				lines = append(lines, newLine)
+				found = true
+			}
+			inSection = trimmed == sectionHeader
+			if inSection {
+				sectionSeen = true
+			}
+		}
+		if inSection && !found && matchesConfigKey(trimmed, key) {
 			lines = append(lines, newLine)
 			found = true
 			continue
 		}
 		lines = append(lines, line)
 	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
 	if !found {
+		if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) != "" {
+			lines = append(lines, "")
+		}
+		if !sectionSeen {
+			lines = append(lines, sectionHeader)
+		}
 		lines = append(lines, newLine)
 	}
+	content := strings.Join(lines, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return err
+	}
+	return config.ValidateFile(path)
+}
 
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
+func matchesConfigKey(trimmed, key string) bool {
+	return strings.HasPrefix(trimmed, key+" =") ||
+		strings.HasPrefix(trimmed, key+"=") ||
+		strings.HasPrefix(trimmed, "# "+key+" =") ||
+		strings.HasPrefix(trimmed, "# "+key+"=")
 }

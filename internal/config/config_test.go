@@ -10,324 +10,92 @@ import (
 	"time"
 )
 
-func TestLoadFileWithSectionedTOML(t *testing.T) {
-	t.Parallel()
-
+func TestDefaultUsesSentinelDataRoot(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
+	t.Setenv("HOME", dir)
+	t.Setenv("SENTINEL_DATA_DIR", "")
+	t.Setenv("SENTINEL_CONFIG", "")
 
-	content := `[server]
-listen = "0.0.0.0:4040"
-token = "my-secret"
-allowed_origins = "http://localhost:3000, http://192.168.1.10:4040"
-log_level = "debug"
+	cfg := Default()
 
-[alerts]
-cpu_percent = 85.0
-
-[watchtower]
-enabled = false
-tick_interval = "2s"
-capture_lines = 100
-
-[runbooks]
-max_concurrent = 10
-`
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
+	if got, want := cfg.Address(), "127.0.0.1:4040"; got != want {
+		t.Fatalf("Address() = %q, want %q", got, want)
 	}
-
-	m := loadFile(path)
-
-	tests := []struct {
-		key, want string
-	}{
-		{"listen", "0.0.0.0:4040"},
-		{"token", "my-secret"},
-		{"allowed_origins", "http://localhost:3000, http://192.168.1.10:4040"},
-		{"log_level", "debug"},
-		{"alert_cpu_percent", "85"},
-		{"watchtower_enabled", "false"},
-		{"watchtower_tick_interval", "2s"},
-		{"watchtower_capture_lines", "100"},
-		{"runbook_max_concurrent", "10"},
+	if got, want := cfg.Storage.Path, filepath.Join(dir, ".sentinel", "sentinel.db"); got != want {
+		t.Fatalf("Storage.Path = %q, want %q", got, want)
 	}
-	for _, tt := range tests {
-		t.Run(tt.key, func(t *testing.T) {
-			t.Parallel()
-			if got := m[tt.key]; got != tt.want {
-				t.Errorf("loadFile[%q] = %q, want %q", tt.key, got, tt.want)
-			}
-		})
+	if got, want := cfg.Log.Path, filepath.Join(dir, ".sentinel", "logs", "sentinel.log"); got != want {
+		t.Fatalf("Log.Path = %q, want %q", got, want)
 	}
 }
 
-func TestLoadFileWithFlatLegacyTOML(t *testing.T) {
-	t.Parallel()
-
+func TestPathUsesExplicitConfigEnv(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
+	path := filepath.Join(dir, "custom.toml")
+	t.Setenv("SENTINEL_CONFIG", path)
 
-	content := `listen = "0.0.0.0:4040"
-token = 'my-secret'
-allowed_origins = "http://localhost:3000, http://192.168.1.10:4040"
-watchtower_enabled = false
-watchtower_tick_interval = "2s"
-watchtower_capture_lines = 100
-runbook_max_concurrent = 10
-alert_cpu_percent = 85.0
-`
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	m := loadFile(path)
-
-	tests := []struct {
-		key, want string
-	}{
-		{"listen", "0.0.0.0:4040"},
-		{"token", "my-secret"},
-		{"allowed_origins", "http://localhost:3000, http://192.168.1.10:4040"},
-		{"watchtower_enabled", "false"},
-		{"watchtower_tick_interval", "2s"},
-		{"watchtower_capture_lines", "100"},
-		{"runbook_max_concurrent", "10"},
-		{"alert_cpu_percent", "85"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.key, func(t *testing.T) {
-			t.Parallel()
-			if got := m[tt.key]; got != tt.want {
-				t.Errorf("loadFile[%q] = %q, want %q", tt.key, got, tt.want)
-			}
-		})
+	if got := Path(); got != path {
+		t.Fatalf("Path() = %q, want %q", got, path)
 	}
 }
 
-func TestLoadFileSectionedOverridesFlat(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-
-	// Flat key first, then sectioned key — sectioned should win.
-	content := `listen = "flat-addr"
-
-[server]
-listen = "sectioned-addr"
-`
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	m := loadFile(path)
-	if got := m["listen"]; got != "sectioned-addr" {
-		t.Errorf("loadFile[listen] = %q, want %q (sectioned should override flat)", got, "sectioned-addr")
-	}
-}
-
-func TestLoadFileMissing(t *testing.T) {
-	t.Parallel()
-
-	m := loadFile("/nonexistent/path/config.toml")
-	if len(m) != 0 {
-		t.Errorf("expected empty map for missing file, got %v", m)
-	}
-}
-
-func TestLoadFileInvalidTOML(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-
-	content := `this is not valid toml =[[[`
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	m := loadFile(path)
-	if len(m) != 0 {
-		t.Errorf("expected empty map for invalid TOML, got %v", m)
-	}
-}
-
-func TestDecodeTOML(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		input   string
-		wantKey string
-		wantVal string
-		wantErr bool
-	}{
-		{
-			name:    "server listen",
-			input:   "[server]\nlisten = \"0.0.0.0:9090\"",
-			wantKey: "listen",
-			wantVal: "0.0.0.0:9090",
-		},
-		{
-			name:    "flat legacy token",
-			input:   `token = "abc123"`,
-			wantKey: "token",
-			wantVal: "abc123",
-		},
-		{
-			name:    "invalid toml",
-			input:   `[[[broken`,
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			m, err := decodeTOML(tt.input)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got := m[tt.wantKey]; got != tt.wantVal {
-				t.Errorf("decodeTOML[%q] = %q, want %q", tt.wantKey, got, tt.wantVal)
-			}
-		})
-	}
-}
-
-func TestLoadUsesConfigFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[server]
-listen = "0.0.0.0:9090"
-token = "file-token"
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-
-	cfg := Load()
-
-	if cfg.ListenAddr != "0.0.0.0:9090" {
-		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, "0.0.0.0:9090")
-	}
-	if cfg.Token != "file-token" {
-		t.Errorf("Token = %q, want %q", cfg.Token, "file-token")
-	}
-}
-
-func TestLoadUsesLegacyFlatConfigFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `listen = "0.0.0.0:9090"
-token = "file-token"
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-
-	cfg := Load()
-
-	if cfg.ListenAddr != "0.0.0.0:9090" {
-		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, "0.0.0.0:9090")
-	}
-	if cfg.Token != "file-token" {
-		t.Errorf("Token = %q, want %q", cfg.Token, "file-token")
-	}
-}
-
-func TestPathUsesDataDir(t *testing.T) {
+func TestLoadMissingConfigUsesDefaultsWithoutCreatingFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_CONFIG", "")
+	clearConfigEnv(t)
 
-	if got, want := Path(), filepath.Join(dir, "config.toml"); got != want {
-		t.Fatalf("Path() = %q, want %q", got, want)
+	cfg, path, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
 	}
-}
-
-func TestLoadDoesNotCreateDefaultConfig(t *testing.T) {
-	dir := t.TempDir()
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-
-	cfg := Load()
-
-	configPath := filepath.Join(dir, "config.toml")
-	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
-		t.Fatalf("Load created config file: err=%v", err)
+	if got, want := path, filepath.Join(dir, "config.toml"); got != want {
+		t.Fatalf("Load() path = %q, want %q", got, want)
 	}
-
-	// Defaults should still apply when the config file does not exist.
-	if cfg.ListenAddr != "127.0.0.1:4040" {
-		t.Errorf("ListenAddr = %q, want default", cfg.ListenAddr)
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Load() created config file: %v", err)
 	}
-	if cfg.Token != "" {
-		t.Errorf("Token = %q, want empty", cfg.Token)
-	}
-	if cfg.LogLevel != DefaultLogLevel {
-		t.Errorf("LogLevel = %q, want %s", cfg.LogLevel, DefaultLogLevel)
+	if cfg.Address() != "127.0.0.1:4040" {
+		t.Fatalf("Address() = %q", cfg.Address())
 	}
 }
 
 func TestInitCreatesDefaultConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_CONFIG", "")
 
-	configPath, err := Init(false)
+	path, err := Init(false)
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
-	if configPath != filepath.Join(dir, "config.toml") {
-		t.Fatalf("Init() path = %q, want %q", configPath, filepath.Join(dir, "config.toml"))
-	}
-
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("expected config file to be created: %v", err)
+		t.Fatalf("read config: %v", err)
 	}
 	content := string(data)
-
-	// Check that TOML sections are present.
-	for _, section := range []string{"[server]", "[alerts]", "[watchtower]", "[runbooks]"} {
-		if !strings.Contains(content, section) {
-			t.Errorf("expected config file to contain %q", section)
+	for _, fragment := range []string{
+		"version = 1",
+		"[server]",
+		`host = "127.0.0.1"`,
+		"port = 4040",
+		"[storage]",
+		`path = "` + filepath.Join(dir, "sentinel.db") + `"`,
+		"[log]",
+		`path = "` + filepath.Join(dir, "logs", "sentinel.log") + `"`,
+	} {
+		if !strings.Contains(content, fragment) {
+			t.Fatalf("default config missing %q:\n%s", fragment, content)
 		}
-	}
-	// Check that commented-out keys are present.
-	if !strings.Contains(content, "# listen") {
-		t.Error("expected config file to contain '# listen'")
-	}
-	if !strings.Contains(content, "# token") {
-		t.Error("expected config file to contain '# token'")
 	}
 }
 
 func TestInitRejectsExistingConfigWithoutForce(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
-	configPath := filepath.Join(dir, "config.toml")
-	original := "[server]\nlisten = \"127.0.0.1:5050\"\n"
-	if err := os.WriteFile(configPath, []byte(original), 0o600); err != nil {
+	path := filepath.Join(dir, "config.toml")
+	original := "version = 1\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -335,7 +103,7 @@ func TestInitRejectsExistingConfigWithoutForce(t *testing.T) {
 	if !errors.Is(err, ErrConfigExists) {
 		t.Fatalf("Init(false) error = %v, want ErrConfigExists", err)
 	}
-	got, err := os.ReadFile(configPath)
+	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,8 +115,8 @@ func TestInitRejectsExistingConfigWithoutForce(t *testing.T) {
 func TestInitForceOverwritesExistingConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
-	configPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(configPath, []byte("stale = true\n"), 0o600); err != nil {
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("stale = true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -356,18 +124,141 @@ func TestInitForceOverwritesExistingConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Init(true) error = %v", err)
 	}
-	if gotPath != configPath {
-		t.Fatalf("Init(true) path = %q, want %q", gotPath, configPath)
+	if gotPath != path {
+		t.Fatalf("Init(true) path = %q, want %q", gotPath, path)
 	}
-	got, err := os.ReadFile(configPath)
+	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(got), "stale = true") {
 		t.Fatalf("force init did not overwrite stale config:\n%s", string(got))
 	}
-	if !strings.Contains(string(got), "# Sentinel configuration") {
-		t.Fatalf("force init did not write default content:\n%s", string(got))
+}
+
+func TestLoadSectionedConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+	dbPath := filepath.Join(dir, "data", "sentinel.db")
+	logPath := filepath.Join(dir, "logs", "sentinel.log")
+	content := `version = 1
+
+[server]
+host = "0.0.0.0"
+port = 8080
+token = "my-token"
+allowed_origins = ["http://localhost:3000"]
+cookie_secure = "always"
+allow_insecure_cookie = true
+timezone = "UTC"
+locale = "en-US"
+
+[storage]
+path = "` + dbPath + `"
+
+[log]
+level = "debug"
+path = "` + logPath + `"
+
+[alerts]
+cpu_percent = 75.0
+mem_percent = 80.0
+disk_percent = 85.0
+webhook_url = "https://example.com/hook"
+webhook_events = ["alert.created", "alert.acked"]
+
+[health_report]
+webhook_url = "https://example.com/report"
+schedule = "@daily"
+
+[watchtower]
+enabled = false
+tick_interval = "5s"
+capture_lines = 200
+capture_timeout = "500ms"
+journal_rows = 10000
+
+[runbooks]
+max_concurrent = 8
+
+[multi_user]
+allowed_users = ["deploy"]
+allow_root_target = true
+user_switch_method = "sudo"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SENTINEL_CONFIG", configPath)
+	clearConfigEnv(t)
+
+	cfg, resolved, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if resolved != configPath {
+		t.Fatalf("resolved path = %q, want %q", resolved, configPath)
+	}
+	if cfg.Address() != "0.0.0.0:8080" {
+		t.Fatalf("Address() = %q", cfg.Address())
+	}
+	if cfg.Server.Token != "my-token" {
+		t.Fatalf("Server.Token = %q", cfg.Server.Token)
+	}
+	if len(cfg.Server.AllowedOrigins) != 1 || cfg.Server.AllowedOrigins[0] != "http://localhost:3000" {
+		t.Fatalf("AllowedOrigins = %v", cfg.Server.AllowedOrigins)
+	}
+	if cfg.Storage.Path != dbPath || cfg.Log.Path != logPath {
+		t.Fatalf("paths = storage:%q log:%q", cfg.Storage.Path, cfg.Log.Path)
+	}
+	if cfg.Log.Level != "debug" {
+		t.Fatalf("Log.Level = %q", cfg.Log.Level)
+	}
+	if cfg.Alerts.CPUPercent != 75 || cfg.Alerts.MemPercent != 80 || cfg.Alerts.DiskPercent != 85 {
+		t.Fatalf("Alerts = %+v", cfg.Alerts)
+	}
+	if cfg.Watchtower.TickInterval != 5*time.Second || cfg.Watchtower.CaptureTimeout != 500*time.Millisecond {
+		t.Fatalf("Watchtower = %+v", cfg.Watchtower)
+	}
+	if cfg.Runbooks.MaxConcurrent != 8 {
+		t.Fatalf("Runbooks.MaxConcurrent = %d", cfg.Runbooks.MaxConcurrent)
+	}
+	if cfg.MultiUser.UserSwitchMethod != "sudo" {
+		t.Fatalf("UserSwitchMethod = %q", cfg.MultiUser.UserSwitchMethod)
+	}
+}
+
+func TestLoadEnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte(`version = 1
+[server]
+host = "0.0.0.0"
+port = 8080
+token = "file-token"
+[storage]
+path = "`+filepath.Join(dir, "file.db")+`"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SENTINEL_CONFIG", configPath)
+	t.Setenv("SENTINEL_SERVER_HOST", "127.0.0.1")
+	t.Setenv("SENTINEL_SERVER_PORT", "5050")
+	t.Setenv("SENTINEL_SERVER_TOKEN", "env-token")
+	t.Setenv("SENTINEL_STORAGE_PATH", filepath.Join(dir, "env.db"))
+
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := cfg.Address(), "127.0.0.1:5050"; got != want {
+		t.Fatalf("Address() = %q, want %q", got, want)
+	}
+	if cfg.Server.Token != "env-token" {
+		t.Fatalf("Server.Token = %q", cfg.Server.Token)
+	}
+	if cfg.Storage.Path != filepath.Join(dir, "env.db") {
+		t.Fatalf("Storage.Path = %q", cfg.Storage.Path)
 	}
 }
 
@@ -378,59 +269,34 @@ func TestValidateFile(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "valid config",
-			content: `[server]
-listen = "127.0.0.1:4040"
-log_level = "debug"
-timezone = "UTC"
-
-[watchtower]
-tick_interval = "1s"
-capture_lines = 80
-
+			name: "valid",
+			content: `version = 1
+[server]
+host = "127.0.0.1"
+port = 4040
+[log]
+level = "debug"
 [health_report]
 schedule = "@daily"
 `,
 		},
-		{
-			name:    "invalid log level",
-			content: "[server]\nlog_level = \"verbose\"\n",
-			wantErr: "server.log_level",
-		},
-		{
-			name:    "invalid listen",
-			content: "[server]\nlisten = \"localhost:999999\"\n",
-			wantErr: "server.listen",
-		},
-		{
-			name:    "invalid schedule",
-			content: "[health_report]\nschedule = \"not cron\"\n",
-			wantErr: "health_report.schedule",
-		},
-		{
-			name:    "unknown key",
-			content: "[server]\nwat = true\n",
-			wantErr: "unknown key: server.wat",
-		},
-		{
-			name:    "bad toml",
-			content: "[server\n",
-			wantErr: "decode config",
-		},
+		{name: "legacy listen rejected", content: "[server]\nlisten = \"127.0.0.1:4040\"\n", wantErr: "unknown key: server.listen"},
+		{name: "invalid port", content: "[server]\nport = 999999\n", wantErr: "server.port"},
+		{name: "invalid log level", content: "[log]\nlevel = \"verbose\"\n", wantErr: "log.level"},
+		{name: "invalid schedule", content: "[health_report]\nschedule = \"not cron\"\n", wantErr: "health_report.schedule"},
+		{name: "unknown key", content: "[server]\nwat = true\n", wantErr: "unknown key: server.wat"},
+		{name: "bad toml", content: "[server\n", wantErr: "decode config"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			configPath := filepath.Join(dir, "config.toml")
-			if err := os.WriteFile(configPath, []byte(tt.content), 0o600); err != nil {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
 				t.Fatal(err)
 			}
-
-			err := ValidateFile(configPath)
+			err := ValidateFile(path)
 			if tt.wantErr == "" {
 				if err != nil {
-					t.Fatalf("ValidateFile() error = %v, want nil", err)
+					t.Fatalf("ValidateFile() error = %v", err)
 				}
 				return
 			}
@@ -448,68 +314,46 @@ func TestValidateFileMissing(t *testing.T) {
 	}
 }
 
-func TestLoadDoesNotOverwriteExistingConfig(t *testing.T) {
+func TestEnsureCreatesConfigAndDirs(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	original := `[server]
-listen = "0.0.0.0:8080"
-`
-	if err := os.WriteFile(configPath, []byte(original), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
+	t.Setenv("SENTINEL_CONFIG", "")
+	clearConfigEnv(t)
 
-	cfg := Load()
-
-	data, err := os.ReadFile(configPath)
+	cfg, path, err := Ensure()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Ensure() error = %v", err)
 	}
-	if string(data) != original {
-		t.Errorf("config file was overwritten: got %q", string(data))
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("config not created: %v", err)
 	}
-	if cfg.ListenAddr != "0.0.0.0:8080" {
-		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, "0.0.0.0:8080")
+	if _, err := os.Stat(filepath.Dir(cfg.Storage.Path)); err != nil {
+		t.Fatalf("storage dir not created: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(cfg.Log.Path)); err != nil {
+		t.Fatalf("log dir not created: %v", err)
 	}
 }
 
-func TestLoadEnvOverridesFile(t *testing.T) {
+func TestExpandPath(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[server]
-listen = "0.0.0.0:9090"
-token = "file-token"
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
+	t.Setenv("HOME", dir)
+	t.Setenv("SENTINEL_TMP_NAME", "nested")
+
+	got, err := ExpandPath("~/$SENTINEL_TMP_NAME/file.txt")
+	if err != nil {
+		t.Fatalf("ExpandPath() error = %v", err)
 	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "127.0.0.1:5050")
-	t.Setenv("SENTINEL_TOKEN", "env-token")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-
-	cfg := Load()
-
-	if cfg.ListenAddr != "127.0.0.1:5050" {
-		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, "127.0.0.1:5050")
-	}
-	if cfg.Token != "env-token" {
-		t.Errorf("Token = %q, want %q", cfg.Token, "env-token")
+	want := filepath.Join(dir, "nested", "file.txt")
+	if got != want {
+		t.Fatalf("ExpandPath() = %q, want %q", got, want)
 	}
 }
 
 func TestLoadFallsBackToCurrentUserHome(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", "")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_CONFIG", "")
 	t.Setenv("HOME", "")
 
 	originalHomeFn := osUserHomeDir
@@ -526,19 +370,20 @@ func TestLoadFallsBackToCurrentUserHome(t *testing.T) {
 		return &user.User{HomeDir: dir}, nil
 	}
 
-	cfg := Load()
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
 	want := filepath.Join(dir, ".sentinel")
-	if cfg.DataDir != want {
-		t.Fatalf("DataDir = %q, want %q", cfg.DataDir, want)
+	if cfg.DataDir() != want {
+		t.Fatalf("DataDir() = %q, want %q", cfg.DataDir(), want)
 	}
 }
 
 func TestLoadFallsBackToTempDirWhenHomeUnavailable(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", "")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_CONFIG", "")
 	t.Setenv("HOME", "")
 
 	originalHomeFn := osUserHomeDir
@@ -565,545 +410,74 @@ func TestLoadFallsBackToTempDirWhenHomeUnavailable(t *testing.T) {
 		return dir
 	}
 
-	cfg := Load()
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
 	want := filepath.Join(dir, "sentinel")
-	if cfg.DataDir != want {
-		t.Fatalf("DataDir = %q, want %q", cfg.DataDir, want)
+	if cfg.DataDir() != want {
+		t.Fatalf("DataDir() = %q, want %q", cfg.DataDir(), want)
 	}
 }
 
-func TestSplitCSV(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		input string
-		want  []string
-	}{
-		{"empty string", "", nil},
-		{"single value", "foo", []string{"foo"}},
-		{"multiple values", "a, b, c", []string{"a", "b", "c"}},
-		{"whitespace", " a , b ", []string{"a", "b"}},
-		{"empty segments", "a,,b,,", []string{"a", "b"}},
+func TestParseHelpers(t *testing.T) {
+	if v, ok := parsePositiveFloat("90.5"); !ok || v != 90.5 {
+		t.Fatalf("parsePositiveFloat = %f, %t", v, ok)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := splitCSV(tt.input)
-			if len(got) != len(tt.want) {
-				t.Fatalf("splitCSV(%q) = %v (len %d), want %v (len %d)", tt.input, got, len(got), tt.want, len(tt.want))
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("splitCSV(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
-				}
-			}
-		})
+	if _, ok := parsePositiveFloat("0"); ok {
+		t.Fatal("parsePositiveFloat accepted zero")
+	}
+	if v, ok := parseBool("yes"); !ok || !v {
+		t.Fatalf("parseBool yes = %t, %t", v, ok)
+	}
+	if _, ok := parseBool("maybe"); ok {
+		t.Fatal("parseBool accepted invalid value")
+	}
+	if v, ok := parseDuration("150ms"); !ok || v != 150*time.Millisecond {
+		t.Fatalf("parseDuration = %s, %t", v, ok)
+	}
+	if _, ok := parseDuration("0s"); ok {
+		t.Fatal("parseDuration accepted zero")
+	}
+	if v, ok := parsePositiveInt("42"); !ok || v != 42 {
+		t.Fatalf("parsePositiveInt = %d, %t", v, ok)
+	}
+	if _, ok := parsePositiveInt("-1"); ok {
+		t.Fatal("parsePositiveInt accepted negative")
 	}
 }
 
-func TestCookieSecureDefault(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_COOKIE_SECURE", "")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-
-	cfg := Load()
-	if cfg.CookieSecure != CookieSecureAuto {
-		t.Fatalf("CookieSecure = %q, want auto", cfg.CookieSecure)
-	}
-}
-
-func TestCookieSecureEnvOverride(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_COOKIE_SECURE", "always")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-
-	cfg := Load()
-	if cfg.CookieSecure != "always" {
-		t.Fatalf("CookieSecure = %q, want always", cfg.CookieSecure)
-	}
-}
-
-func TestCookieSecureInvalidFallback(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_COOKIE_SECURE", "bogus")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-
-	cfg := Load()
-	if cfg.CookieSecure != CookieSecureAuto {
-		t.Fatalf("CookieSecure = %q, want auto (fallback)", cfg.CookieSecure)
-	}
-}
-
-func TestCookieSecureFromFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[server]
-cookie_secure = "never"
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_COOKIE_SECURE", "")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-
-	cfg := Load()
-	if cfg.CookieSecure != "never" {
-		t.Fatalf("CookieSecure = %q, want never from file", cfg.CookieSecure)
-	}
-}
-
-func TestAllowInsecureCookieDefault(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_ALLOW_INSECURE_COOKIE", "")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-	t.Setenv("SENTINEL_COOKIE_SECURE", "")
-
-	cfg := Load()
-	if cfg.AllowInsecureCookie {
-		t.Fatal("AllowInsecureCookie = true, want false by default")
-	}
-}
-
-func TestAllowInsecureCookieEnvOverride(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_ALLOW_INSECURE_COOKIE", "true")
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-	t.Setenv("SENTINEL_COOKIE_SECURE", "")
-
-	cfg := Load()
-	if !cfg.AllowInsecureCookie {
-		t.Fatal("AllowInsecureCookie = false, want true from env")
-	}
-}
-
-func TestLoadWatchtowerConfigFromSectionedFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[watchtower]
-enabled = false
-tick_interval = "2s"
-capture_lines = 120
-capture_timeout = "250ms"
-journal_rows = 7000
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
-	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
-	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "")
-
-	cfg := Load()
-	if cfg.Watchtower.Enabled {
-		t.Fatalf("watchtower enabled = true, want false from config file")
-	}
-	if cfg.Watchtower.TickInterval != 2*time.Second {
-		t.Fatalf("watchtower tick interval = %s, want 2s", cfg.Watchtower.TickInterval)
-	}
-	if cfg.Watchtower.CaptureLines != 120 {
-		t.Fatalf("watchtower capture lines = %d, want 120", cfg.Watchtower.CaptureLines)
-	}
-	if cfg.Watchtower.CaptureTimeout != 250*time.Millisecond {
-		t.Fatalf("watchtower capture timeout = %s, want 250ms", cfg.Watchtower.CaptureTimeout)
-	}
-	if cfg.Watchtower.JournalRows != 7000 {
-		t.Fatalf("watchtower journal rows = %d, want 7000", cfg.Watchtower.JournalRows)
-	}
-}
-
-func TestLoadWatchtowerConfigFromLegacyFlatFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `watchtower_enabled = false
-watchtower_tick_interval = "2s"
-watchtower_capture_lines = 120
-watchtower_capture_timeout = "250ms"
-watchtower_journal_rows = 7000
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
-	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
-	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "")
-
-	cfg := Load()
-	if cfg.Watchtower.Enabled {
-		t.Fatalf("watchtower enabled = true, want false from config file")
-	}
-	if cfg.Watchtower.TickInterval != 2*time.Second {
-		t.Fatalf("watchtower tick interval = %s, want 2s", cfg.Watchtower.TickInterval)
-	}
-	if cfg.Watchtower.CaptureLines != 120 {
-		t.Fatalf("watchtower capture lines = %d, want 120", cfg.Watchtower.CaptureLines)
-	}
-	if cfg.Watchtower.CaptureTimeout != 250*time.Millisecond {
-		t.Fatalf("watchtower capture timeout = %s, want 250ms", cfg.Watchtower.CaptureTimeout)
-	}
-	if cfg.Watchtower.JournalRows != 7000 {
-		t.Fatalf("watchtower journal rows = %d, want 7000", cfg.Watchtower.JournalRows)
-	}
-}
-
-func TestLoadWatchtowerEnvOverridesFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[watchtower]
-enabled = false
-tick_interval = "2s"
-capture_lines = 120
-capture_timeout = "250ms"
-journal_rows = 7000
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "true")
-	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "3s")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "160")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "300ms")
-	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "9000")
-
-	cfg := Load()
-	if !cfg.Watchtower.Enabled {
-		t.Fatalf("watchtower enabled = false, want true from env")
-	}
-	if cfg.Watchtower.TickInterval != 3*time.Second {
-		t.Fatalf("watchtower tick interval = %s, want 3s", cfg.Watchtower.TickInterval)
-	}
-	if cfg.Watchtower.CaptureLines != 160 {
-		t.Fatalf("watchtower capture lines = %d, want 160", cfg.Watchtower.CaptureLines)
-	}
-	if cfg.Watchtower.CaptureTimeout != 300*time.Millisecond {
-		t.Fatalf("watchtower capture timeout = %s, want 300ms", cfg.Watchtower.CaptureTimeout)
-	}
-	if cfg.Watchtower.JournalRows != 9000 {
-		t.Fatalf("watchtower journal rows = %d, want 9000", cfg.Watchtower.JournalRows)
-	}
-}
-
-func TestLoadAlertThresholdsFromSectionedFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[alerts]
-cpu_percent = 75.0
-mem_percent = 80.0
-disk_percent = 85.0
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_ALERT_CPU_PERCENT", "")
-	t.Setenv("SENTINEL_ALERT_MEM_PERCENT", "")
-	t.Setenv("SENTINEL_ALERT_DISK_PERCENT", "")
-
-	cfg := Load()
-	if cfg.AlertThresholds.CPUPercent != 75.0 {
-		t.Fatalf("CPUPercent = %f, want 75.0", cfg.AlertThresholds.CPUPercent)
-	}
-	if cfg.AlertThresholds.MemPercent != 80.0 {
-		t.Fatalf("MemPercent = %f, want 80.0", cfg.AlertThresholds.MemPercent)
-	}
-	if cfg.AlertThresholds.DiskPercent != 85.0 {
-		t.Fatalf("DiskPercent = %f, want 85.0", cfg.AlertThresholds.DiskPercent)
-	}
-}
-
-func TestRunbookMaxConcurrentDefault(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "")
-
-	cfg := Load()
-	if cfg.RunbookMaxConcurrent != 5 {
-		t.Fatalf("RunbookMaxConcurrent = %d, want 5", cfg.RunbookMaxConcurrent)
-	}
-}
-
-func TestRunbookMaxConcurrentEnvOverride(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "10")
-
-	cfg := Load()
-	if cfg.RunbookMaxConcurrent != 10 {
-		t.Fatalf("RunbookMaxConcurrent = %d, want 10", cfg.RunbookMaxConcurrent)
-	}
-}
-
-func TestRunbookMaxConcurrentFromSectionedFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[runbooks]
-max_concurrent = 3
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "")
-
-	cfg := Load()
-	if cfg.RunbookMaxConcurrent != 3 {
-		t.Fatalf("RunbookMaxConcurrent = %d, want 3", cfg.RunbookMaxConcurrent)
-	}
-}
-
-func TestRunbookMaxConcurrentFromLegacyFlatFile(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `runbook_max_concurrent = 3
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "")
-
-	cfg := Load()
-	if cfg.RunbookMaxConcurrent != 3 {
-		t.Fatalf("RunbookMaxConcurrent = %d, want 3", cfg.RunbookMaxConcurrent)
-	}
-}
-
-func TestRunbookMaxConcurrentInvalidFallsBack(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "not-a-number")
-
-	cfg := Load()
-	if cfg.RunbookMaxConcurrent != 5 {
-		t.Fatalf("RunbookMaxConcurrent = %d, want 5 (default fallback)", cfg.RunbookMaxConcurrent)
-	}
-}
-
-func TestLoadDefaultValuesWithEmptyConfig(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	// Write an empty file — all defaults should apply.
-	if err := os.WriteFile(configPath, []byte(""), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "")
-	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
-	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
-	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "")
-	t.Setenv("SENTINEL_ALERT_CPU_PERCENT", "")
-	t.Setenv("SENTINEL_ALERT_MEM_PERCENT", "")
-	t.Setenv("SENTINEL_ALERT_DISK_PERCENT", "")
-	t.Setenv("SENTINEL_COOKIE_SECURE", "")
-	t.Setenv("SENTINEL_ALLOW_INSECURE_COOKIE", "")
-
-	cfg := Load()
-
-	if cfg.ListenAddr != "127.0.0.1:4040" {
-		t.Errorf("ListenAddr = %q, want default", cfg.ListenAddr)
-	}
-	if cfg.Token != "" {
-		t.Errorf("Token = %q, want empty", cfg.Token)
-	}
-	if cfg.LogLevel != DefaultLogLevel {
-		t.Errorf("LogLevel = %q, want %s", cfg.LogLevel, DefaultLogLevel)
-	}
-	if cfg.CookieSecure != CookieSecureAuto {
-		t.Errorf("CookieSecure = %q, want auto", cfg.CookieSecure)
-	}
-	if cfg.AllowInsecureCookie {
-		t.Error("AllowInsecureCookie = true, want false")
-	}
-	if cfg.RunbookMaxConcurrent != 5 {
-		t.Errorf("RunbookMaxConcurrent = %d, want 5", cfg.RunbookMaxConcurrent)
-	}
-	if !cfg.Watchtower.Enabled {
-		t.Error("Watchtower.Enabled = false, want true")
-	}
-	if cfg.Watchtower.TickInterval != 1*time.Second {
-		t.Errorf("Watchtower.TickInterval = %s, want 1s", cfg.Watchtower.TickInterval)
-	}
-	if cfg.Watchtower.CaptureLines != 80 {
-		t.Errorf("Watchtower.CaptureLines = %d, want 80", cfg.Watchtower.CaptureLines)
-	}
-	if cfg.Watchtower.CaptureTimeout != 150*time.Millisecond {
-		t.Errorf("Watchtower.CaptureTimeout = %s, want 150ms", cfg.Watchtower.CaptureTimeout)
-	}
-	if cfg.Watchtower.JournalRows != 5000 {
-		t.Errorf("Watchtower.JournalRows = %d, want 5000", cfg.Watchtower.JournalRows)
-	}
-	if cfg.AlertThresholds.CPUPercent != 90.0 {
-		t.Errorf("AlertThresholds.CPUPercent = %f, want 90.0", cfg.AlertThresholds.CPUPercent)
-	}
-	if cfg.AlertThresholds.MemPercent != 90.0 {
-		t.Errorf("AlertThresholds.MemPercent = %f, want 90.0", cfg.AlertThresholds.MemPercent)
-	}
-	if cfg.AlertThresholds.DiskPercent != 95.0 {
-		t.Errorf("AlertThresholds.DiskPercent = %f, want 95.0", cfg.AlertThresholds.DiskPercent)
-	}
-}
-
-func TestLoadFullSectionedConfig(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.toml")
-	content := `[server]
-listen = "0.0.0.0:8080"
-token = "my-token"
-allowed_origins = "http://localhost:3000"
-cookie_secure = "always"
-allow_insecure_cookie = true
-log_level = "debug"
-timezone = "UTC"
-locale = "en-US"
-
-[alerts]
-cpu_percent = 75.0
-mem_percent = 80.0
-disk_percent = 85.0
-
-[watchtower]
-enabled = false
-tick_interval = "5s"
-capture_lines = 200
-capture_timeout = "500ms"
-journal_rows = 10000
-
-[runbooks]
-max_concurrent = 8
-`
-	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("SENTINEL_DATA_DIR", dir)
-	t.Setenv("SENTINEL_LISTEN", "")
-	t.Setenv("SENTINEL_TOKEN", "")
-	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
-	t.Setenv("SENTINEL_LOG_LEVEL", "")
-	t.Setenv("SENTINEL_COOKIE_SECURE", "")
-	t.Setenv("SENTINEL_ALLOW_INSECURE_COOKIE", "")
-	t.Setenv("SENTINEL_TIMEZONE", "")
-	t.Setenv("SENTINEL_LOCALE", "")
-	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "")
-	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
-	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
-	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "")
-	t.Setenv("SENTINEL_ALERT_CPU_PERCENT", "")
-	t.Setenv("SENTINEL_ALERT_MEM_PERCENT", "")
-	t.Setenv("SENTINEL_ALERT_DISK_PERCENT", "")
-
-	cfg := Load()
-
-	if cfg.ListenAddr != "0.0.0.0:8080" {
-		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, "0.0.0.0:8080")
-	}
-	if cfg.Token != "my-token" {
-		t.Errorf("Token = %q, want %q", cfg.Token, "my-token")
-	}
-	if len(cfg.AllowedOrigins) != 1 || cfg.AllowedOrigins[0] != "http://localhost:3000" {
-		t.Errorf("AllowedOrigins = %v, want [http://localhost:3000]", cfg.AllowedOrigins)
-	}
-	if cfg.CookieSecure != "always" {
-		t.Errorf("CookieSecure = %q, want always", cfg.CookieSecure)
-	}
-	if !cfg.AllowInsecureCookie {
-		t.Error("AllowInsecureCookie = false, want true")
-	}
-	if cfg.LogLevel != "debug" {
-		t.Errorf("LogLevel = %q, want debug", cfg.LogLevel)
-	}
-	if cfg.Timezone != "UTC" {
-		t.Errorf("Timezone = %q, want UTC", cfg.Timezone)
-	}
-	if cfg.Locale != "en-US" {
-		t.Errorf("Locale = %q, want en-US", cfg.Locale)
-	}
-	if cfg.RunbookMaxConcurrent != 8 {
-		t.Errorf("RunbookMaxConcurrent = %d, want 8", cfg.RunbookMaxConcurrent)
-	}
-	if cfg.Watchtower.Enabled {
-		t.Error("Watchtower.Enabled = true, want false")
-	}
-	if cfg.Watchtower.TickInterval != 5*time.Second {
-		t.Errorf("Watchtower.TickInterval = %s, want 5s", cfg.Watchtower.TickInterval)
-	}
-	if cfg.Watchtower.CaptureLines != 200 {
-		t.Errorf("Watchtower.CaptureLines = %d, want 200", cfg.Watchtower.CaptureLines)
-	}
-	if cfg.Watchtower.CaptureTimeout != 500*time.Millisecond {
-		t.Errorf("Watchtower.CaptureTimeout = %s, want 500ms", cfg.Watchtower.CaptureTimeout)
-	}
-	if cfg.Watchtower.JournalRows != 10000 {
-		t.Errorf("Watchtower.JournalRows = %d, want 10000", cfg.Watchtower.JournalRows)
-	}
-	if cfg.AlertThresholds.CPUPercent != 75.0 {
-		t.Errorf("AlertThresholds.CPUPercent = %f, want 75.0", cfg.AlertThresholds.CPUPercent)
-	}
-	if cfg.AlertThresholds.MemPercent != 80.0 {
-		t.Errorf("AlertThresholds.MemPercent = %f, want 80.0", cfg.AlertThresholds.MemPercent)
-	}
-	if cfg.AlertThresholds.DiskPercent != 85.0 {
-		t.Errorf("AlertThresholds.DiskPercent = %f, want 85.0", cfg.AlertThresholds.DiskPercent)
+func clearConfigEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"SENTINEL_SERVER_HOST",
+		"SENTINEL_SERVER_PORT",
+		"SENTINEL_SERVER_TOKEN",
+		"SENTINEL_SERVER_ALLOWED_ORIGINS",
+		"SENTINEL_SERVER_COOKIE_SECURE",
+		"SENTINEL_SERVER_ALLOW_INSECURE_COOKIE",
+		"SENTINEL_SERVER_TIMEZONE",
+		"SENTINEL_SERVER_LOCALE",
+		"SENTINEL_STORAGE_PATH",
+		"SENTINEL_LOG_LEVEL",
+		"SENTINEL_LOG_PATH",
+		"SENTINEL_ALERT_CPU_PERCENT",
+		"SENTINEL_ALERT_MEM_PERCENT",
+		"SENTINEL_ALERT_DISK_PERCENT",
+		"SENTINEL_ALERT_WEBHOOK_URL",
+		"SENTINEL_ALERT_WEBHOOK_EVENTS",
+		"SENTINEL_HEALTH_REPORT_WEBHOOK_URL",
+		"SENTINEL_HEALTH_REPORT_SCHEDULE",
+		"SENTINEL_WATCHTOWER_ENABLED",
+		"SENTINEL_WATCHTOWER_TICK_INTERVAL",
+		"SENTINEL_WATCHTOWER_CAPTURE_LINES",
+		"SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT",
+		"SENTINEL_WATCHTOWER_JOURNAL_ROWS",
+		"SENTINEL_RUNBOOK_MAX_CONCURRENT",
+		"SENTINEL_ALLOWED_USERS",
+		"SENTINEL_ALLOW_ROOT_TARGET",
+		"SENTINEL_USER_SWITCH_METHOD",
+	} {
+		t.Setenv(key, "")
 	}
 }

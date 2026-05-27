@@ -1,4 +1,4 @@
-import { formatBytes } from './opsUtils'
+import { formatBytes, formatDurationLong, formatPercentValue } from './format'
 
 export type MetricSeverity = 'ok' | 'warn' | 'critical' | 'unknown'
 
@@ -14,11 +14,6 @@ export function pressureSeverity(value: number): MetricSeverity {
   if (value >= 10) return 'critical'
   if (value >= 2) return 'warn'
   return 'ok'
-}
-
-export function formatPercentValue(value: number, digits = 1): string {
-  if (!Number.isFinite(value) || value < 0) return '-'
-  return `${value.toFixed(digits)}%`
 }
 
 export function computeByteRate(samples: Array<number>, timestamps: Array<number>): number {
@@ -37,14 +32,4 @@ export function formatByteRate(bytesPerSecond: number): string {
   return `${formatBytes(bytesPerSecond)}/s`
 }
 
-export function formatDurationLong(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.trunc(totalSeconds))
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-
-  if (days > 0) return `${days}d ${hours}h`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  if (minutes > 0) return `${minutes}m`
-  return `${seconds}s`
-}
+export { formatDurationLong, formatPercentValue }

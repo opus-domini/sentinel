@@ -1,12 +1,12 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestApplyMultiUserConfigFromEnvVars(t *testing.T) {
-	// Cannot be parallel because subtests use t.Setenv.
-
+func TestMultiUserConfigFromEnvVars(t *testing.T) {
 	tests := []struct {
 		name       string
 		envVars    map[string]string
@@ -16,9 +16,6 @@ func TestApplyMultiUserConfigFromEnvVars(t *testing.T) {
 	}{
 		{
 			name:       "defaults when nothing set",
-			envVars:    nil,
-			wantUsers:  nil,
-			wantRoot:   false,
 			wantMethod: defaultUserSwitchMethod(),
 		},
 		{
@@ -52,25 +49,20 @@ func TestApplyMultiUserConfigFromEnvVars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Cannot be parallel: uses t.Setenv.
-			file := make(map[string]string)
+			t.Setenv("SENTINEL_ALLOWED_USERS", "")
+			t.Setenv("SENTINEL_ALLOW_ROOT_TARGET", "")
+			t.Setenv("SENTINEL_USER_SWITCH_METHOD", "")
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}
 
-			cfg := &Config{}
-			applyMultiUserConfig(cfg, file)
-
-			if tt.wantUsers != nil {
-				if len(cfg.MultiUser.AllowedUsers) != len(tt.wantUsers) {
-					t.Fatalf("AllowedUsers = %v, want %v", cfg.MultiUser.AllowedUsers, tt.wantUsers)
-				}
-				for i, u := range tt.wantUsers {
-					if cfg.MultiUser.AllowedUsers[i] != u {
-						t.Errorf("AllowedUsers[%d] = %q, want %q", i, cfg.MultiUser.AllowedUsers[i], u)
-					}
-				}
+			cfg := Default()
+			applyEnv(&cfg)
+			if err := cfg.Resolve(); err != nil {
+				t.Fatalf("Resolve() error = %v", err)
 			}
+
+			assertStrings(t, cfg.MultiUser.AllowedUsers, tt.wantUsers)
 			if cfg.MultiUser.AllowRootTarget != tt.wantRoot {
 				t.Errorf("AllowRootTarget = %v, want %v", cfg.MultiUser.AllowRootTarget, tt.wantRoot)
 			}
@@ -81,34 +73,45 @@ func TestApplyMultiUserConfigFromEnvVars(t *testing.T) {
 	}
 }
 
-func TestApplyMultiUserConfigFromTOML(t *testing.T) {
+func TestMultiUserConfigFromTOML(t *testing.T) {
 	t.Parallel()
 
-	content := `[multi_user]
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(`[multi_user]
 allowed_users = ["postgres", "deploy"]
 allow_root_target = false
 user_switch_method = "sudo"
-`
-	file, err := decodeTOML(content)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, _, err := LoadPath(path)
 	if err != nil {
-		t.Fatalf("decodeTOML: %v", err)
+		t.Fatalf("LoadPath() error = %v", err)
 	}
-
-	cfg := &Config{}
-	applyMultiUserConfig(cfg, file)
-
-	if len(cfg.MultiUser.AllowedUsers) != 2 {
-		t.Fatalf("AllowedUsers = %v, want [postgres deploy]", cfg.MultiUser.AllowedUsers)
-	}
-	if cfg.MultiUser.AllowedUsers[0] != "postgres" || cfg.MultiUser.AllowedUsers[1] != "deploy" {
-		t.Errorf("AllowedUsers = %v, want [postgres deploy]", cfg.MultiUser.AllowedUsers)
-	}
+	assertStrings(t, cfg.MultiUser.AllowedUsers, []string{"postgres", "deploy"})
 	if cfg.MultiUser.AllowRootTarget {
 		t.Error("AllowRootTarget = true, want false")
 	}
 	if cfg.MultiUser.UserSwitchMethod != "sudo" {
 		t.Errorf("UserSwitchMethod = %q, want sudo", cfg.MultiUser.UserSwitchMethod)
 	}
+}
+
+func TestEnvVarsOverrideTOMLForMultiUser(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(`[multi_user]
+allowed_users = ["postgres"]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SENTINEL_ALLOWED_USERS", "deploy,www-data")
+
+	cfg, _, err := LoadPath(path)
+	if err != nil {
+		t.Fatalf("LoadPath() error = %v", err)
+	}
+	assertStrings(t, cfg.MultiUser.AllowedUsers, []string{"deploy", "www-data"})
 }
 
 func TestValidateMultiUserRemovesRootWhenNotAllowed(t *testing.T) {
@@ -162,47 +165,20 @@ func TestValidateMultiUserWarnsForMissingUsers(t *testing.T) {
 			AllowedUsers: []string{"nonexistent"},
 		},
 	}
-	// Should not panic -- just logs a warning.
 	ValidateMultiUser(cfg)
 }
 
 func TestValidateMultiUserNilConfig(t *testing.T) {
 	t.Parallel()
 
-	ValidateMultiUser(nil) // should not panic
+	ValidateMultiUser(nil)
 }
 
 func TestValidateMultiUserEmptyAllowedUsers(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		MultiUser: MultiUserConfig{
-			AllowedUsers: nil,
-		},
-	}
-	// Should not panic or log a warning -- empty means "any user allowed".
+	cfg := &Config{MultiUser: MultiUserConfig{AllowedUsers: nil}}
 	ValidateMultiUser(cfg)
-}
-
-func TestEnvVarsOverrideTOMLForMultiUser(t *testing.T) {
-	// Cannot be parallel: uses t.Setenv.
-
-	content := `[multi_user]
-allowed_users = ["postgres"]
-`
-	file, err := decodeTOML(content)
-	if err != nil {
-		t.Fatalf("decodeTOML: %v", err)
-	}
-
-	t.Setenv("SENTINEL_ALLOWED_USERS", "deploy,www-data")
-
-	cfg := &Config{}
-	applyMultiUserConfig(cfg, file)
-
-	if len(cfg.MultiUser.AllowedUsers) != 2 {
-		t.Fatalf("AllowedUsers = %v, want [deploy www-data]", cfg.MultiUser.AllowedUsers)
-	}
 }
 
 func TestValidateMultiUserCrossReferencesSystemUsers(t *testing.T) {
@@ -215,10 +191,8 @@ func TestValidateMultiUserCrossReferencesSystemUsers(t *testing.T) {
 		},
 	}
 
-	// Should not panic -- logs warning for "ghost" not being in SystemUsers.
 	ValidateMultiUser(cfg)
 
-	// AllowedUsers should be unchanged (warnings only, no removal).
 	if len(cfg.MultiUser.AllowedUsers) != 2 {
 		t.Fatalf("AllowedUsers = %v, want [deploy ghost]", cfg.MultiUser.AllowedUsers)
 	}
@@ -233,7 +207,17 @@ func TestValidateMultiUserNoSystemUsersSkipsCrossReference(t *testing.T) {
 			AllowedUsers: []string{"deploy"},
 		},
 	}
-
-	// Should not panic when SystemUsers is empty.
 	ValidateMultiUser(cfg)
+}
+
+func assertStrings(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("strings = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("strings[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
 }

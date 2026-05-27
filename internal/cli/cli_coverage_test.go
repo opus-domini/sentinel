@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
+	"github.com/opus-domini/sentinel/internal/humanize"
 	"github.com/opus-domini/sentinel/internal/updater"
 )
 
@@ -445,9 +445,9 @@ func TestFormatTime(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := formatTime(tc.input)
+			got := humanize.Time(tc.input)
 			if got != tc.want {
-				t.Fatalf("formatTime(%v) = %q, want %q", tc.input, got, tc.want)
+				t.Fatalf("humanize.Time(%v) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
 	}
@@ -471,9 +471,9 @@ func TestValueOrDash(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := valueOrDash(tc.input)
+			got := humanize.ValueOrDash(tc.input)
 			if got != tc.want {
-				t.Fatalf("valueOrDash(%q) = %q, want %q", tc.input, got, tc.want)
+				t.Fatalf("humanize.ValueOrDash(%q) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
 	}
@@ -766,7 +766,7 @@ func TestUpdateCheckFailure(t *testing.T) {
 		updateCheckFn = origCheck
 	})
 
-	loadConfigFn = func() config.Config { return config.Config{DataDir: "/tmp"} }
+	loadConfigFn = testLoadConfig("/tmp", "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 	updateCheckFn = func(_ context.Context, _ updater.CheckOptions) (updater.CheckResult, error) {
 		return updater.CheckResult{}, errors.New("network error")
@@ -819,7 +819,7 @@ func TestUpdateApplyFailure(t *testing.T) {
 		updateApplyFn = origApply
 	})
 
-	loadConfigFn = func() config.Config { return config.Config{DataDir: "/tmp"} }
+	loadConfigFn = testLoadConfig("/tmp", "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 	updateApplyFn = func(_ context.Context, _ updater.ApplyOptions) (updater.ApplyResult, error) {
 		return updater.ApplyResult{}, errors.New("apply failed")
@@ -846,7 +846,7 @@ func TestUpdateApplyAlreadyUpToDate(t *testing.T) {
 		updateApplyFn = origApply
 	})
 
-	loadConfigFn = func() config.Config { return config.Config{DataDir: "/tmp"} }
+	loadConfigFn = testLoadConfig("/tmp", "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 	updateApplyFn = func(_ context.Context, _ updater.ApplyOptions) (updater.ApplyResult, error) {
 		return updater.ApplyResult{
@@ -900,7 +900,7 @@ func TestUpdateStatusFailure(t *testing.T) {
 		updateStatusFn = origStatus
 	})
 
-	loadConfigFn = func() config.Config { return config.Config{DataDir: "/tmp"} }
+	loadConfigFn = testLoadConfig("/tmp", "")
 	updateStatusFn = func(_ string) (updater.State, error) {
 		return updater.State{}, errors.New("status failed")
 	}
@@ -976,12 +976,7 @@ func TestDoctorStatusError(t *testing.T) {
 		serviceStatusFn = origStatus
 	})
 
-	loadConfigFn = func() config.Config {
-		return config.Config{
-			ListenAddr: "127.0.0.1:4040",
-			DataDir:    "/tmp/.sentinel",
-		}
-	}
+	loadConfigFn = testLoadConfig("/tmp/.sentinel", "")
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return nil, errors.New("service not available")
 	}

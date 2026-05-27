@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/opus-domini/sentinel/internal/humanize"
 	"github.com/opus-domini/sentinel/internal/updater"
 )
 
@@ -44,25 +44,28 @@ func newUpdateCheckCmd(app *App) *cobra.Command {
 		Short: "Check whether a newer release is available",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg := loadConfigFn()
+			cfg, _, err := loadConfigFn()
+			if err != nil {
+				return failf(1, "update check failed: %w", err)
+			}
 			result, err := updateCheckFn(context.Background(), updater.CheckOptions{
 				CurrentVersion: currentVersionFn(),
 				Repo:           strings.TrimSpace(repo),
 				APIBaseURL:     strings.TrimSpace(apiBase),
 				OS:             strings.TrimSpace(targetOS),
 				Arch:           strings.TrimSpace(targetArch),
-				DataDir:        cfg.DataDir,
+				DataDir:        cfg.DataDir(),
 			})
 			if err != nil {
 				return failf(1, "update check failed: %w", err)
 			}
 			printRows(app.Stdout, []outputRow{
-				{Key: "current version", Value: valueOrDash(result.CurrentVersion)},
-				{Key: "latest version", Value: valueOrDash(result.LatestVersion)},
+				{Key: "current version", Value: humanize.ValueOrDash(result.CurrentVersion)},
+				{Key: "latest version", Value: humanize.ValueOrDash(result.LatestVersion)},
 				{Key: "up to date", Value: fmt.Sprintf("%t", result.UpToDate)},
-				{Key: "release", Value: valueOrDash(result.ReleaseURL)},
-				{Key: "asset", Value: valueOrDash(result.AssetName)},
-				{Key: "sha256", Value: valueOrDash(result.ExpectedSHA256)},
+				{Key: "release", Value: humanize.ValueOrDash(result.ReleaseURL)},
+				{Key: "asset", Value: humanize.ValueOrDash(result.AssetName)},
+				{Key: "sha256", Value: humanize.ValueOrDash(result.ExpectedSHA256)},
 			})
 			return nil
 		},
@@ -98,14 +101,17 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 				return failf(2, "invalid scope flags: %w", scopeErr)
 			}
 
-			cfg := loadConfigFn()
+			cfg, _, err := loadConfigFn()
+			if err != nil {
+				return failf(1, "update apply failed: %w", err)
+			}
 			result, err := updateApplyFn(context.Background(), updater.ApplyOptions{
 				CurrentVersion:  currentVersionFn(),
 				Repo:            strings.TrimSpace(repo),
 				APIBaseURL:      strings.TrimSpace(apiBase),
 				OS:              strings.TrimSpace(targetOS),
 				Arch:            strings.TrimSpace(targetArch),
-				DataDir:         cfg.DataDir,
+				DataDir:         cfg.DataDir(),
 				ExecPath:        strings.TrimSpace(execPath),
 				AllowDowngrade:  allowDowngrade,
 				AllowUnverified: allowUnverified,
@@ -119,17 +125,17 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 
 			if !result.Applied {
 				printRows(app.Stdout, []outputRow{
-					{Key: "already up to date", Value: valueOrDash(result.CurrentVersion)},
+					{Key: "already up to date", Value: humanize.ValueOrDash(result.CurrentVersion)},
 				})
 				return nil
 			}
 
 			printNotice(app.Stdout, "update applied successfully")
 			printRows(app.Stdout, []outputRow{
-				{Key: "updated from", Value: valueOrDash(result.CurrentVersion)},
-				{Key: "updated to", Value: valueOrDash(result.LatestVersion)},
-				{Key: "binary", Value: valueOrDash(result.BinaryPath)},
-				{Key: "backup", Value: valueOrDash(result.BackupPath)},
+				{Key: "updated from", Value: humanize.ValueOrDash(result.CurrentVersion)},
+				{Key: "updated to", Value: humanize.ValueOrDash(result.LatestVersion)},
+				{Key: "binary", Value: humanize.ValueOrDash(result.BinaryPath)},
+				{Key: "backup", Value: humanize.ValueOrDash(result.BackupPath)},
 			})
 			return nil
 		},
@@ -155,22 +161,25 @@ func newUpdateStatusCmd(app *App) *cobra.Command {
 		Short: "Show the last recorded update state",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg := loadConfigFn()
-			state, err := updateStatusFn(cfg.DataDir)
+			cfg, _, err := loadConfigFn()
+			if err != nil {
+				return failf(1, "update status failed: %w", err)
+			}
+			state, err := updateStatusFn(cfg.DataDir())
 			if err != nil {
 				return failf(1, "update status failed: %w", err)
 			}
 			printRows(app.Stdout, []outputRow{
-				{Key: "current version", Value: valueOrDash(state.CurrentVersion)},
-				{Key: "latest version", Value: valueOrDash(state.LatestVersion)},
+				{Key: "current version", Value: humanize.ValueOrDash(state.CurrentVersion)},
+				{Key: "latest version", Value: humanize.ValueOrDash(state.LatestVersion)},
 				{Key: "up to date", Value: fmt.Sprintf("%t", state.UpToDate)},
-				{Key: "last checked", Value: formatTime(state.LastCheckedAt)},
-				{Key: "last applied", Value: formatTime(state.LastAppliedAt)},
-				{Key: "release", Value: valueOrDash(state.LastReleaseURL)},
-				{Key: "binary", Value: valueOrDash(state.LastAppliedBinary)},
-				{Key: "backup", Value: valueOrDash(state.LastAppliedBackup)},
-				{Key: "sha256", Value: valueOrDash(state.LastExpectedSHA256)},
-				{Key: "last error", Value: valueOrDash(state.LastError)},
+				{Key: "last checked", Value: humanize.Time(state.LastCheckedAt)},
+				{Key: "last applied", Value: humanize.Time(state.LastAppliedAt)},
+				{Key: "release", Value: humanize.ValueOrDash(state.LastReleaseURL)},
+				{Key: "binary", Value: humanize.ValueOrDash(state.LastAppliedBinary)},
+				{Key: "backup", Value: humanize.ValueOrDash(state.LastAppliedBackup)},
+				{Key: "sha256", Value: humanize.ValueOrDash(state.LastExpectedSHA256)},
+				{Key: "last error", Value: humanize.ValueOrDash(state.LastError)},
 			})
 			return nil
 		},
@@ -194,18 +203,4 @@ func resolveRestartScopeFlag(scope, legacyScope string) (string, error) {
 	default:
 		return "", fmt.Errorf("--scope=%s conflicts with --systemd-scope=%s", primary, legacy)
 	}
-}
-
-func formatTime(value time.Time) string {
-	if value.IsZero() {
-		return "-"
-	}
-	return value.UTC().Format(time.RFC3339)
-}
-
-func valueOrDash(raw string) string {
-	if strings.TrimSpace(raw) == "" {
-		return "-"
-	}
-	return raw
 }
