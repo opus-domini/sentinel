@@ -251,7 +251,7 @@ type configShowAlertThresholds struct {
 func newConfigShowOutput(cfg config.Config) configShowOutput {
 	return configShowOutput{
 		ListenAddr:           cfg.ListenAddr,
-		Token:                cfg.Token,
+		Token:                redactConfigSecret(cfg.Token),
 		AllowedOrigins:       nonNilStrings(cfg.AllowedOrigins),
 		CookieSecure:         cfg.CookieSecure,
 		AllowInsecureCookie:  cfg.AllowInsecureCookie,
@@ -283,6 +283,13 @@ func newConfigShowOutput(cfg config.Config) configShowOutput {
 		HealthReportWebhookURL: cfg.HealthReportWebhookURL,
 		HealthReportSchedule:   cfg.HealthReportSchedule,
 	}
+}
+
+func redactConfigSecret(value string) string {
+	if value == "" {
+		return ""
+	}
+	return "******"
 }
 
 func nonNilStrings(values []string) []string {

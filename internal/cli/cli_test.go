@@ -160,6 +160,7 @@ func TestRunCLIConfigShowPrintsEffectiveConfig(t *testing.T) {
 	configPath := filepath.Join(dir, "config.toml")
 	content := `[server]
 listen = "127.0.0.1:5050"
+token = "super-secret"
 allowed_origins = "http://localhost:3000, http://127.0.0.1:3000"
 log_level = "debug"
 
@@ -191,6 +192,9 @@ capture_timeout = "250ms"
 	}
 	if got["log_level"] != "debug" {
 		t.Fatalf("log_level = %v", got["log_level"])
+	}
+	if got["token"] != "******" {
+		t.Fatalf("token = %v, want redacted", got["token"])
 	}
 	origins, ok := got["allowed_origins"].([]any)
 	if !ok || len(origins) != 2 || origins[0] != "http://localhost:3000" || origins[1] != "http://127.0.0.1:3000" {

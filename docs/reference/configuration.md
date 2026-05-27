@@ -28,7 +28,8 @@ sentinel db init
 `sentinel config init --force` overwrites an existing config file.
 `sentinel config edit` creates the file when missing, opens it with `$EDITOR`,
 `$VISUAL`, or `xdg-open`, and validates after blocking editors close.
-`sentinel config show` prints the effective runtime configuration as JSON.
+`sentinel config show` prints the effective runtime configuration as JSON with
+secret values redacted.
 `sentinel db init` ensures both the config file and SQLite database are ready.
 
 ## Core Keys

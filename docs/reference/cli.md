@@ -65,7 +65,7 @@ sentinel config show
 ```
 
 Prints the effective configuration as JSON after applying defaults, file values
-and environment overrides.
+and environment overrides. Secret values such as `token` are redacted.
 
 ## `sentinel db`
 
