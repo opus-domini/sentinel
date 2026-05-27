@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/opus-domini/sentinel/compare/v0.6.4...v0.7.0) (2026-05-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* Sentinel config now uses sectioned keys such as server.host, server.port, storage.path and log.path. Legacy flat keys like listen, token, timezone, locale and log_level are no longer accepted.
+
+### Features
+
+* restructure sentinel configuration ([3986179](https://github.com/opus-domini/sentinel/commit/39861794fbd43833f0944e5058ce3d1ef8525d3c))
+
 ## [0.6.4](https://github.com/opus-domini/sentinel/compare/v0.6.3...v0.6.4) (2026-05-27)
 
 
