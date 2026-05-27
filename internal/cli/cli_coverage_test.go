@@ -29,8 +29,8 @@ func TestSubcommandHelpRouting(t *testing.T) {
 		wantErr  string // fragment expected in stderr
 	}{
 		// Root help variants.
-		{name: "root help", args: []string{"help"}, wantCode: 0, wantOut: "SETUP COMMANDS"},
-		{name: "root --help", args: []string{"--help"}, wantCode: 0, wantOut: "SETUP COMMANDS"},
+		{name: "root help", args: []string{"help"}, wantCode: 0, wantOut: "SERVICE COMMANDS"},
+		{name: "root --help", args: []string{"--help"}, wantCode: 0, wantOut: "SERVICE COMMANDS"},
 
 		// Service subcommand routing.
 		{name: "service no args", args: []string{"service"}, wantCode: 0, wantOut: "sentinel service"},

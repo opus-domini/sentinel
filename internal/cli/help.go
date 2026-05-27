@@ -49,7 +49,7 @@ Run "{{.CommandPath}} [command] --help" for details on a command.{{end}}
 func applyHelpStyle(root *cobra.Command) {
 	root.AddGroup(
 		&cobra.Group{ID: groupSetup, Title: "SETUP COMMANDS"},
-		&cobra.Group{ID: groupCore, Title: "CORE COMMANDS"},
+		&cobra.Group{ID: groupCore, Title: "SERVICE COMMANDS"},
 		&cobra.Group{ID: groupExtra, Title: "ADDITIONAL COMMANDS"},
 	)
 	root.SetHelpCommandGroupID(groupExtra)
