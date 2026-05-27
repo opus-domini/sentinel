@@ -6,6 +6,7 @@
 ### Features
 
 * add config management commands ([42a4138](https://github.com/opus-domini/sentinel/commit/42a413853601a96dad79f4fa03484f2dd5b27ad9))
+* add config show command ([1767fbb](https://github.com/opus-domini/sentinel/commit/1767fbb19faefbf54078499953206ba6ed10ddff))
 * add db setup commands ([6da5e07](https://github.com/opus-domini/sentinel/commit/6da5e07e4d91bca8c0fd9cff790c8f6de2f59fd1))
 
 
