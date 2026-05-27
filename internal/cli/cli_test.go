@@ -959,9 +959,9 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 		"--exec", testSentinelPath,
 		"--allow-downgrade=true",
 		"--allow-unverified=true",
-		"--restart=true",
+		"--restart=false",
 		"--service", "sentinel",
-		"--scope", "user",
+		"--scope", testScopeSystem,
 	}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
@@ -978,15 +978,18 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 	if !got.AllowUnverified {
 		t.Fatal("AllowUnverified = false, want true")
 	}
-	if !got.Restart {
-		t.Fatal("Restart = false, want true")
+	if !got.SkipRestart {
+		t.Fatal("SkipRestart = false, want true")
+	}
+	if got.SystemdScope != testScopeSystem {
+		t.Fatalf("SystemdScope = %q, want %s", got.SystemdScope, testScopeSystem)
 	}
 	if !strings.Contains(out.String(), "updated from: 1.0.0") || !strings.Contains(out.String(), "updated to: 1.1.0") {
 		t.Fatalf("unexpected output: %s", out.String())
 	}
 }
 
-func TestRunCLIUpdateApplyParsesLegacySystemdScopeFlag(t *testing.T) {
+func TestRunCLIUpdateApplyRestartsByDefault(t *testing.T) {
 	origLoad := loadConfigFn
 	origVersion := currentVersionFn
 	origApply := updateApplyFn
@@ -1010,23 +1013,26 @@ func TestRunCLIUpdateApplyParsesLegacySystemdScopeFlag(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := Run([]string{"update", "apply", "--systemd-scope", "system"}, &out, &errOut)
+	code := Run([]string{"update", "apply"}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
-	if got.SystemdScope != testScopeSystem {
-		t.Fatalf("SystemdScope = %q, want %s", got.SystemdScope, testScopeSystem)
+	if got.SkipRestart {
+		t.Fatal("SkipRestart = true, want false by default")
+	}
+	if got.SystemdScope != "auto" {
+		t.Fatalf("SystemdScope = %q, want auto by default", got.SystemdScope)
 	}
 }
 
-func TestRunCLIUpdateApplyRejectsConflictingScopeFlags(t *testing.T) {
+func TestRunCLIUpdateApplyRejectsInvalidScope(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := Run([]string{"update", "apply", "--scope", testScopeUser, "--systemd-scope", testScopeSystem}, &out, &errOut)
-	if code != 2 {
-		t.Fatalf("exit code = %d, want 2", code)
+	code := Run([]string{"update", "apply", "--scope", "invalid"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if !strings.Contains(errOut.String(), "invalid scope flags") {
+	if !strings.Contains(errOut.String(), "unsupported update apply scope") {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }

@@ -43,11 +43,11 @@ func newDBInitCmd(app *App) *cobra.Command {
 func runDBInit(app *App) error {
 	cfg, configPath, err := config.Ensure()
 	if err != nil {
-		return failf(1, "db init failed: %w", err)
+		return failf("db init failed: %w", err)
 	}
 	st, dbPath, err := openDBStore(cfg)
 	if err != nil {
-		return failf(1, "db init failed: %w", err)
+		return failf("db init failed: %w", err)
 	}
 	defer func() { _ = st.Close() }()
 
@@ -74,17 +74,17 @@ func newDBStatusCmd(app *App) *cobra.Command {
 func runDBStatus(ctx context.Context, app *App) error {
 	cfg, err := loadValidatedConfig()
 	if err != nil {
-		return failf(1, "db status failed: %w", err)
+		return failf("db status failed: %w", err)
 	}
 	st, dbPath, err := openDBStore(cfg)
 	if err != nil {
-		return failf(1, "db status failed: %w", err)
+		return failf("db status failed: %w", err)
 	}
 	defer func() { _ = st.Close() }()
 
 	stats, err := st.GetStorageStats(ctx)
 	if err != nil {
-		return failf(1, "db status failed: %w", err)
+		return failf("db status failed: %w", err)
 	}
 	rows := []outputRow{
 		{Key: dbOutputKeyDatabase, Value: dbPath},
@@ -114,10 +114,10 @@ func newDBResetCmd(app *App) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !yes {
-				return failf(1, "refusing to reset storage without --yes")
+				return failf("refusing to reset storage without --yes")
 			}
 			if force && cmd.Flags().Changed("resource") {
-				return failf(1, "cannot combine --force with --resource")
+				return failf("cannot combine --force with --resource")
 			}
 			return runDBReset(cmd.Context(), app, resource, force)
 		},
@@ -138,21 +138,21 @@ func runDBReset(ctx context.Context, app *App, resource string, force bool) erro
 		resource = store.StorageResourceAll
 	}
 	if !store.IsStorageResource(resource) {
-		return failf(1, "invalid storage resource: %s", resource)
+		return failf("invalid storage resource: %s", resource)
 	}
 	cfg, err := loadValidatedConfig()
 	if err != nil {
-		return failf(1, "db reset failed: %w", err)
+		return failf("db reset failed: %w", err)
 	}
 	st, dbPath, err := openDBStore(cfg)
 	if err != nil {
-		return failf(1, "db reset failed: %w", err)
+		return failf("db reset failed: %w", err)
 	}
 	defer func() { _ = st.Close() }()
 
 	results, err := st.FlushStorageResource(ctx, resource)
 	if err != nil {
-		return failf(1, "db reset failed: %w", err)
+		return failf("db reset failed: %w", err)
 	}
 	rows := []outputRow{
 		{Key: dbOutputKeyDatabase, Value: dbPath},
@@ -173,16 +173,16 @@ func runDBReset(ctx context.Context, app *App, resource string, force bool) erro
 func runDBResetForce(app *App) error {
 	cfg, err := loadValidatedConfig()
 	if err != nil {
-		return failf(1, "db reset failed: %w", err)
+		return failf("db reset failed: %w", err)
 	}
 	dbPath := cfg.Storage.Path
 	removed, err := removeDBFiles(dbPath)
 	if err != nil {
-		return failf(1, "db reset failed: %w", err)
+		return failf("db reset failed: %w", err)
 	}
 	st, err := storeNewFn(dbPath)
 	if err != nil {
-		return failf(1, "db reset failed: %w", err)
+		return failf("db reset failed: %w", err)
 	}
 	defer func() { _ = st.Close() }()
 

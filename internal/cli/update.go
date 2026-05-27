@@ -46,7 +46,7 @@ func newUpdateCheckCmd(app *App) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			cfg, _, err := loadConfigFn()
 			if err != nil {
-				return failf(1, "update check failed: %w", err)
+				return failf("update check failed: %w", err)
 			}
 			result, err := updateCheckFn(context.Background(), updater.CheckOptions{
 				CurrentVersion: currentVersionFn(),
@@ -57,7 +57,7 @@ func newUpdateCheckCmd(app *App) *cobra.Command {
 				DataDir:        cfg.DataDir(),
 			})
 			if err != nil {
-				return failf(1, "update check failed: %w", err)
+				return failf("update check failed: %w", err)
 			}
 			printRows(app.Stdout, []outputRow{
 				{Key: "current version", Value: humanize.ValueOrDash(result.CurrentVersion)},
@@ -89,21 +89,20 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 		restart         bool
 		serviceUnit     string
 		scope           string
-		systemdScope    string
 	)
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Download and install the latest release",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			resolvedScope, scopeErr := resolveRestartScopeFlag(scope, systemdScope)
-			if scopeErr != nil {
-				return failf(2, "invalid scope flags: %w", scopeErr)
+			restartScope, err := normalizeUpdateApplyScope(scope)
+			if err != nil {
+				return failf("%w", err)
 			}
 
 			cfg, _, err := loadConfigFn()
 			if err != nil {
-				return failf(1, "update apply failed: %w", err)
+				return failf("update apply failed: %w", err)
 			}
 			result, err := updateApplyFn(context.Background(), updater.ApplyOptions{
 				CurrentVersion:  currentVersionFn(),
@@ -115,12 +114,12 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 				ExecPath:        strings.TrimSpace(execPath),
 				AllowDowngrade:  allowDowngrade,
 				AllowUnverified: allowUnverified,
-				Restart:         restart,
+				SkipRestart:     !restart,
 				ServiceUnit:     strings.TrimSpace(serviceUnit),
-				SystemdScope:    resolvedScope,
+				SystemdScope:    restartScope,
 			})
 			if err != nil {
-				return failf(1, "update apply failed: %w", err)
+				return failf("update apply failed: %w", err)
 			}
 
 			if !result.Applied {
@@ -147,12 +146,23 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&execPath, "exec", "", "path to the sentinel binary to replace (default: current executable)")
 	cmd.Flags().BoolVar(&allowDowngrade, "allow-downgrade", false, "allow installing an older release")
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow update when the checksum is unavailable")
-	cmd.Flags().BoolVar(&restart, "restart", false, "restart the managed service after a successful update")
+	cmd.Flags().BoolVar(&restart, "restart", true, "restart the managed service after a successful update")
 	cmd.Flags().StringVar(&serviceUnit, "service", "sentinel", "service unit/label to restart after the update")
-	cmd.Flags().StringVar(&scope, "scope", "", "restart scope: auto|user|system|launchd|none")
-	cmd.Flags().StringVar(&systemdScope, "systemd-scope", "", "deprecated alias for --scope")
-	_ = cmd.Flags().MarkDeprecated("systemd-scope", "use --scope instead")
+	cmd.Flags().StringVar(&scope, "scope", "auto", "restart manager scope: auto, user, or system")
 	return cmd
+}
+
+func normalizeUpdateApplyScope(raw string) (string, error) {
+	scope := strings.ToLower(strings.TrimSpace(raw))
+	if scope == "" {
+		return "auto", nil
+	}
+	switch scope {
+	case "auto", "user", "system":
+		return scope, nil
+	default:
+		return "", fmt.Errorf("unsupported update apply scope %q (valid: auto, user, system)", raw)
+	}
 }
 
 func newUpdateStatusCmd(app *App) *cobra.Command {
@@ -163,11 +173,11 @@ func newUpdateStatusCmd(app *App) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			cfg, _, err := loadConfigFn()
 			if err != nil {
-				return failf(1, "update status failed: %w", err)
+				return failf("update status failed: %w", err)
 			}
 			state, err := updateStatusFn(cfg.DataDir())
 			if err != nil {
-				return failf(1, "update status failed: %w", err)
+				return failf("update status failed: %w", err)
 			}
 			printRows(app.Stdout, []outputRow{
 				{Key: "current version", Value: humanize.ValueOrDash(state.CurrentVersion)},
@@ -183,24 +193,5 @@ func newUpdateStatusCmd(app *App) *cobra.Command {
 			})
 			return nil
 		},
-	}
-}
-
-// resolveRestartScopeFlag reconciles --scope with the deprecated
-// --systemd-scope alias, returning an error when they conflict.
-func resolveRestartScopeFlag(scope, legacyScope string) (string, error) {
-	primary := strings.TrimSpace(scope)
-	legacy := strings.TrimSpace(legacyScope)
-	switch {
-	case primary == "" && legacy == "":
-		return "", nil
-	case primary == "":
-		return legacy, nil
-	case legacy == "":
-		return primary, nil
-	case strings.EqualFold(primary, legacy):
-		return primary, nil
-	default:
-		return "", fmt.Errorf("--scope=%s conflicts with --systemd-scope=%s", primary, legacy)
 	}
 }

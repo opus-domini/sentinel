@@ -87,7 +87,7 @@ type ApplyOptions struct {
 	ExecPath        string
 	AllowDowngrade  bool
 	AllowUnverified bool
-	Restart         bool
+	SkipRestart     bool
 	ServiceUnit     string
 	SystemdScope    string // user, system, launchd, none
 	HTTPClient      *http.Client
@@ -411,7 +411,7 @@ func normalizeApplyOptions(opts ApplyOptions) ApplyOptions {
 }
 
 func (o ApplyOptions) buildRestartCommand() []string {
-	if !o.Restart {
+	if o.SkipRestart {
 		return nil
 	}
 	unit := strings.TrimSpace(o.ServiceUnit)
@@ -450,7 +450,7 @@ func (o ApplyOptions) buildRestartCommand() []string {
 // active after a restart. It returns nil when no reliable check is available
 // (launchd, or scope=none), in which case the restart result is trusted.
 func (o ApplyOptions) buildHealthCheckCommand() []string {
-	if !o.Restart {
+	if o.SkipRestart {
 		return nil
 	}
 	unit := strings.TrimSpace(o.ServiceUnit)

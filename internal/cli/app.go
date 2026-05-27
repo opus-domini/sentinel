@@ -91,8 +91,8 @@ func (e exitError) Error() string {
 func (e exitError) Unwrap() error { return e.err }
 
 // failf builds an exitError carrying a formatted message.
-func failf(code int, format string, a ...any) error {
-	return exitError{code: code, err: fmt.Errorf(format, a...)}
+func failf(format string, a ...any) error {
+	return exitError{code: 1, err: fmt.Errorf(format, a...)}
 }
 
 // exitCode maps a command error to a process exit code. An exitError carries

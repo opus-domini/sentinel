@@ -36,9 +36,9 @@ func newConfigInitCmd(app *App) *cobra.Command {
 			path, err := config.Init(force)
 			if err != nil {
 				if errors.Is(err, config.ErrConfigExists) {
-					return failf(1, "%v (use --force to overwrite)", err)
+					return failf("%v (use --force to overwrite)", err)
 				}
-				return failf(1, "config init failed: %w", err)
+				return failf("config init failed: %w", err)
 			}
 			reportHeader(app.Stdout, "config", "initialization")
 			if force {
@@ -84,15 +84,15 @@ func runConfigEdit(ctx context.Context, app *App) error {
 	path := config.Path()
 	editor, err := resolveConfigEditor()
 	if err != nil {
-		return failf(1, "config edit failed: %w", err)
+		return failf("config edit failed: %w", err)
 	}
 	if _, err := config.Init(false); err == nil {
 		done(app.Stdout, "wrote", path)
 	} else if !errors.Is(err, config.ErrConfigExists) {
-		return failf(1, "config init failed: %w", err)
+		return failf("config init failed: %w", err)
 	}
 	if err := runResolvedConfigEditor(ctx, app, editor, path); err != nil {
-		return failf(1, "config edit failed: %w", err)
+		return failf("config edit failed: %w", err)
 	}
 	if !editor.Waits {
 		done(app.Stdout, "opened", path)
@@ -100,7 +100,7 @@ func runConfigEdit(ctx context.Context, app *App) error {
 		return nil
 	}
 	if err := config.ValidateFile(path); err != nil {
-		return failf(1, "config validation failed: %w", err)
+		return failf("config validation failed: %w", err)
 	}
 	done(app.Stdout, "ok:", path+" - config valid")
 	return nil
@@ -166,7 +166,7 @@ func newConfigValidateCmd(app *App) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			path := config.Path()
 			if err := config.ValidateFile(path); err != nil {
-				return failf(1, "config validation failed: %w", err)
+				return failf("config validation failed: %w", err)
 			}
 			done(app.Stdout, "ok:", path+" - config valid")
 			return nil
@@ -183,12 +183,12 @@ func newConfigShowCmd(app *App) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			cfg, err := loadValidatedConfig()
 			if err != nil {
-				return failf(1, "config show failed: %w", err)
+				return failf("config show failed: %w", err)
 			}
 			enc := json.NewEncoder(app.Stdout)
 			enc.SetIndent("", "  ")
 			if err := enc.Encode(newConfigShowOutput(cfg)); err != nil {
-				return failf(1, "config show failed: %w", err)
+				return failf("config show failed: %w", err)
 			}
 			return nil
 		},

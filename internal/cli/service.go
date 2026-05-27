@@ -46,7 +46,7 @@ func newServiceLifecycleCmd(app *App, action, short, doneMsg string) *cobra.Comm
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := controlServiceFn(action); err != nil {
-				return failf(1, "service %s failed: %w", action, err)
+				return failf("service %s failed: %w", action, err)
 			}
 			writeln(app.Stdout, doneMsg)
 			return nil
@@ -80,7 +80,7 @@ func runServiceInstall(app *App, execPath string, enable, start bool) error {
 		Enable:   enable,
 		Start:    start,
 	}); err != nil {
-		return failf(1, "service install failed: %w", err)
+		return failf("service install failed: %w", err)
 	}
 
 	if path, err := daemon.UserServicePath(); err == nil {
@@ -142,7 +142,7 @@ func runServiceUninstall(app *App, disable, stop, removeUnit, purge bool) error 
 		Stop:       stop,
 		RemoveUnit: removeUnit,
 	}); err != nil {
-		return failf(1, "service uninstall failed: %w", err)
+		return failf("service uninstall failed: %w", err)
 	}
 	writeln(app.Stdout, "service uninstalled")
 
@@ -204,7 +204,7 @@ func newServiceStatusCmd(app *App) *cobra.Command {
 func runServiceStatus(app *App) error {
 	report, err := serviceStatusFn()
 	if err != nil {
-		return failf(1, "service status failed: %w", err)
+		return failf("service status failed: %w", err)
 	}
 	if len(report) == 0 {
 		writeln(app.Stdout, "no Sentinel service is installed (checked user and system scopes)")
@@ -248,7 +248,7 @@ func newServiceLogsCmd(app *App) *cobra.Command {
 				Stdout: app.Stdout,
 				Stderr: app.Stderr,
 			}); err != nil {
-				return failf(1, "service logs failed: %w", err)
+				return failf("service logs failed: %w", err)
 			}
 			return nil
 		},

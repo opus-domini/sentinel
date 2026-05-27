@@ -42,7 +42,7 @@ Sentinel seeds three runbooks on first startup:
 **Apply Update** (`ops.update.apply`)
 
 1. `run` — Check for updates (`sentinel update check`)
-2. `run` — Apply update and restart (`sentinel update apply --restart`)
+2. `run` — Apply update and restart (`sentinel update apply`)
 
 Built-in runbooks (IDs prefixed with `ops.`) cannot be deleted.
 

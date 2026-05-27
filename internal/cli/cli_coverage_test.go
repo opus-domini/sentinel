@@ -479,47 +479,6 @@ func TestValueOrDash(t *testing.T) {
 	}
 }
 
-// TestResolveRestartScopeFlag covers all branches of the scope resolution logic.
-func TestResolveRestartScopeFlag(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name    string
-		scope   string
-		legacy  string
-		want    string
-		wantErr bool
-	}{
-		{name: "both empty", scope: "", legacy: "", want: ""},
-		{name: "primary only", scope: "user", legacy: "", want: "user"},
-		{name: "legacy only", scope: "", legacy: "system", want: "system"},
-		{name: "same value", scope: "user", legacy: "user", want: "user"},
-		{name: "same case-insensitive", scope: "User", legacy: "user", want: "User"},
-		{name: "conflict", scope: "user", legacy: "system", wantErr: true},
-		{name: "whitespace trimmed", scope: "  user  ", legacy: "", want: "user"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := resolveRestartScopeFlag(tc.scope, tc.legacy)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.want {
-				t.Fatalf("resolveRestartScopeFlag(%q, %q) = %q, want %q", tc.scope, tc.legacy, got, tc.want)
-			}
-		})
-	}
-}
-
 // TestVersionCommandAliases tests all three version flag variants (-v, --version, version).
 func TestVersionCommandAliases(t *testing.T) {
 	origVersion := currentVersionFn

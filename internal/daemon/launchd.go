@@ -613,8 +613,8 @@ func renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath string) stri
 
 func renderLaunchdUserAutoUpdatePlist(
 	execPath,
-	serviceLabel,
-	restartScope string,
+	serviceLabel string,
+	scope string,
 	intervalSeconds int,
 	stdoutPath,
 	stderrPath string,
@@ -630,7 +630,6 @@ func renderLaunchdUserAutoUpdatePlist(
 		<string>%s</string>
 		<string>update</string>
 		<string>apply</string>
-		<string>-restart=true</string>
 		<string>-service=%s</string>
 		<string>-scope=%s</string>
 	</array>
@@ -642,7 +641,7 @@ func renderLaunchdUserAutoUpdatePlist(
 	<string>%s</string>
 </dict>
 </plist>
-`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(serviceLabel), xmlEscape(restartScope), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath))
+`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(serviceLabel), xmlEscape(scope), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath))
 }
 
 func xmlEscape(raw string) string {

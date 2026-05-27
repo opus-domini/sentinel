@@ -56,7 +56,7 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 				OnCalendar:      strings.TrimSpace(onCalendar),
 				RandomizedDelay: randomizedDelay,
 			}); err != nil {
-				return failf(1, "service autoupdate install failed: %w", err)
+				return failf("service autoupdate install failed: %w", err)
 			}
 
 			if timerPath, err := daemon.UserAutoUpdateTimerPathForScope(strings.TrimSpace(scope)); err == nil {
@@ -103,7 +103,7 @@ func newServiceAutoUpdateUninstallCmd(app *App) *cobra.Command {
 				RemoveUnit: removeUnit,
 				Scope:      strings.TrimSpace(scope),
 			}); err != nil {
-				return failf(1, "service autoupdate uninstall failed: %w", err)
+				return failf("service autoupdate uninstall failed: %w", err)
 			}
 			writeln(app.Stdout, "autoupdate timer uninstalled")
 			return nil
@@ -125,7 +125,7 @@ func newServiceAutoUpdateStatusCmd(app *App) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			status, err := userAutoUpdateStatusFn(strings.TrimSpace(scope))
 			if err != nil {
-				return failf(1, "service autoupdate status failed: %w", err)
+				return failf("service autoupdate status failed: %w", err)
 			}
 			managerLabel := runtimeServiceManagerLabel()
 			rows := []outputRow{

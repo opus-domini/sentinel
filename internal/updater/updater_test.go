@@ -84,7 +84,6 @@ func TestBuildRestartCommandLaunchd(t *testing.T) {
 	t.Parallel()
 
 	cmd := (ApplyOptions{
-		Restart:      true,
 		SystemdScope: "launchd",
 		ServiceUnit:  "",
 	}).buildRestartCommand()
@@ -109,7 +108,6 @@ func TestBuildRestartCommandSystemScope(t *testing.T) {
 	t.Parallel()
 
 	cmd := (ApplyOptions{
-		Restart:      true,
 		SystemdScope: "system",
 		ServiceUnit:  "sentinel",
 	}).buildRestartCommand()
@@ -286,7 +284,6 @@ func TestApplyReplacesBinaryAndWritesState(t *testing.T) {
 		Arch:           "amd64",
 		DataDir:        tmp,
 		ExecPath:       execPath,
-		Restart:        false,
 		SystemdScope:   "none",
 	})
 	if err != nil {
@@ -444,7 +441,6 @@ func TestApplyFailsOnChecksumMismatch(t *testing.T) {
 		Arch:           "amd64",
 		DataDir:        tmp,
 		ExecPath:       execPath,
-		Restart:        false,
 		SystemdScope:   "none",
 	})
 	if err == nil {

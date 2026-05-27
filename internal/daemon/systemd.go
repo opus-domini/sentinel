@@ -167,7 +167,6 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 		return installSystemAutoUpdateLinux(
 			cfg.execPath,
 			cfg.serviceUnit,
-			cfg.scope,
 			cfg.onCalendar,
 			cfg.randomizedDelay,
 			opts.Enable,
@@ -686,7 +685,7 @@ func userStatusSystemLinux() UserServiceStatus {
 	return st
 }
 
-func installSystemAutoUpdateLinux(execPath, serviceUnit, scope, onCalendar string, randomizedDelay time.Duration, enable, start bool) error {
+func installSystemAutoUpdateLinux(execPath, serviceUnit, onCalendar string, randomizedDelay time.Duration, enable, start bool) error {
 	if os.Geteuid() != 0 {
 		return errors.New("scope=system requires root privileges")
 	}
@@ -697,7 +696,7 @@ func installSystemAutoUpdateLinux(execPath, serviceUnit, scope, onCalendar strin
 		return fmt.Errorf("create systemd system directory: %w", err)
 	}
 
-	serviceUnitText := renderUserAutoUpdateUnit(execPath, serviceUnit, scope)
+	serviceUnitText := renderUserAutoUpdateUnit(execPath, serviceUnit, managerScopeSystem)
 	if err := os.WriteFile(servicePath, []byte(serviceUnitText), 0o600); err != nil {
 		return fmt.Errorf("write updater system service: %w", err)
 	}
@@ -897,7 +896,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%s update apply -restart=true -service=%s -scope=%s
+ExecStart=%s update apply -service=%s -scope=%s
 Environment=SENTINEL_LOG_LEVEL=info
 
 [Install]

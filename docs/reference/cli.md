@@ -246,10 +246,17 @@ sentinel update apply \
   --arch amd64 \
   --allow-downgrade=false \
   --allow-unverified=false \
-  --restart=false \
+  --restart=true \
   --service sentinel \
-  --scope auto|user|system|launchd|none
+  --scope auto|user|system
 ```
+
+Successful applies restart the managed service by default so the new binary is
+the running binary. Restart scope defaults to `auto`: root targets the system
+service, and a normal user targets the user service. Use `--scope user` or
+`--scope system` when you need to override that decision. Use `--restart=false`
+only when you intentionally want to install the binary now and restart Sentinel
+yourself later.
 
 ### Status
 

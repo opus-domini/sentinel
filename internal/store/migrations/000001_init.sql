@@ -397,7 +397,7 @@ INSERT OR IGNORE INTO ops_runbooks(
     'ops.update.apply',
     'Apply Update',
     'Check for updates, download and install the latest version, and restart the service.',
-    '[{"type":"run","title":"Check for updates","command":"sentinel update check"},{"type":"run","title":"Apply update and restart","command":"sentinel update apply --restart"}]',
+    '[{"type":"run","title":"Check for updates","command":"sentinel update check"},{"type":"run","title":"Apply update and restart","command":"sentinel update apply"}]',
     1,
     datetime('now'),
     datetime('now')

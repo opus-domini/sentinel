@@ -80,7 +80,12 @@ ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sen
 ## Update Lifecycle
 
 - Background autoupdate runs `sentinel update apply ...` on schedule.
-- Successful apply can restart managed service according to scope and manager.
+- Successful apply restarts the managed service with `--scope auto` by default:
+  root targets the system service, and a normal user targets the user service.
+- Manual `sentinel update apply --scope user|system` overrides the auto scope
+  decision when the update process needs to target a specific service manager.
+- Manual `sentinel update apply --restart=false` installs the binary without
+  restarting for maintenance-window edge cases.
 - Status can be inspected with:
 
 ```bash

@@ -22,12 +22,12 @@ func TestBuildHealthCheckCommand(t *testing.T) {
 		opts ApplyOptions
 		want []string
 	}{
-		{"restart disabled", "linux", ApplyOptions{Restart: false, SystemdScope: "user"}, nil},
-		{"scope none", "linux", ApplyOptions{Restart: true, SystemdScope: "none"}, nil},
-		{"scope launchd", "linux", ApplyOptions{Restart: true, SystemdScope: "launchd"}, nil},
-		{"darwin skips check", "darwin", ApplyOptions{Restart: true, SystemdScope: "system", ServiceUnit: "sentinel"}, nil},
-		{"linux system", "linux", ApplyOptions{Restart: true, SystemdScope: "system", ServiceUnit: "sentinel"}, []string{"systemctl", "is-active", "--quiet", "sentinel"}},
-		{"linux user", "linux", ApplyOptions{Restart: true, SystemdScope: "user", ServiceUnit: "sentinel"}, []string{"systemctl", "--user", "is-active", "--quiet", "sentinel"}},
+		{"restart disabled", "linux", ApplyOptions{SkipRestart: true, SystemdScope: "user"}, nil},
+		{"scope none", "linux", ApplyOptions{SystemdScope: "none"}, nil},
+		{"scope launchd", "linux", ApplyOptions{SystemdScope: "launchd"}, nil},
+		{"darwin skips check", "darwin", ApplyOptions{SystemdScope: "system", ServiceUnit: "sentinel"}, nil},
+		{"linux system", "linux", ApplyOptions{SystemdScope: "system", ServiceUnit: "sentinel"}, []string{"systemctl", "is-active", "--quiet", "sentinel"}},
+		{"linux user", "linux", ApplyOptions{SystemdScope: "user", ServiceUnit: "sentinel"}, []string{"systemctl", "--user", "is-active", "--quiet", "sentinel"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,7 +71,7 @@ func TestRestartAfterApplyRollsBackOnFailedHealthCheck(t *testing.T) {
 		return &fakeCommand{out: nil, err: nil}
 	}
 
-	cfg := ApplyOptions{Restart: true, SystemdScope: "user", ServiceUnit: "sentinel"}
+	cfg := ApplyOptions{SystemdScope: "user", ServiceUnit: "sentinel"}
 	err := restartAfterApply(context.Background(), cfg, execPath, backupPath)
 	if err == nil {
 		t.Fatal("restartAfterApply = nil, want a health-check failure error")
@@ -328,21 +328,21 @@ func TestLoadStateNonexistentDir(t *testing.T) {
 	}
 }
 
-func TestBuildRestartCommandNoRestart(t *testing.T) {
-	t.Parallel()
-
-	cmd := (ApplyOptions{Restart: false}).buildRestartCommand()
-	if len(cmd) != 0 {
-		t.Fatalf("buildRestartCommand = %v, want empty", cmd)
-	}
-}
-
 func TestBuildRestartCommandNoneScope(t *testing.T) {
 	t.Parallel()
 
-	cmd := (ApplyOptions{Restart: true, SystemdScope: "none"}).buildRestartCommand()
+	cmd := (ApplyOptions{SystemdScope: "none"}).buildRestartCommand()
 	if len(cmd) != 0 {
 		t.Fatalf("buildRestartCommand = %v, want empty for scope=none", cmd)
+	}
+}
+
+func TestBuildRestartCommandSkipRestart(t *testing.T) {
+	t.Parallel()
+
+	cmd := (ApplyOptions{SkipRestart: true, SystemdScope: "user"}).buildRestartCommand()
+	if len(cmd) != 0 {
+		t.Fatalf("buildRestartCommand = %v, want empty when restart is skipped", cmd)
 	}
 }
 
@@ -476,7 +476,7 @@ func TestBuildRestartCommand(t *testing.T) {
 		t.Cleanup(func() { updaterRuntimeGOOS = origGOOS })
 		updaterRuntimeGOOS = hostOSLinux
 
-		cmd := (ApplyOptions{Restart: true, SystemdScope: "system"}).buildRestartCommand()
+		cmd := (ApplyOptions{SystemdScope: "system"}).buildRestartCommand()
 		if len(cmd) != 3 || cmd[0] != "systemctl" || cmd[1] != "restart" {
 			t.Fatalf("buildRestartCommand = %v, want systemctl restart", cmd)
 		}
@@ -487,7 +487,7 @@ func TestBuildRestartCommand(t *testing.T) {
 		t.Cleanup(func() { updaterRuntimeGOOS = origGOOS })
 		updaterRuntimeGOOS = hostOSLinux
 
-		cmd := (ApplyOptions{Restart: true, SystemdScope: "user"}).buildRestartCommand()
+		cmd := (ApplyOptions{SystemdScope: "user"}).buildRestartCommand()
 		if len(cmd) != 4 || cmd[0] != "systemctl" || cmd[1] != "--user" {
 			t.Fatalf("buildRestartCommand = %v, want systemctl --user restart", cmd)
 		}
@@ -498,7 +498,7 @@ func TestBuildRestartCommand(t *testing.T) {
 		t.Cleanup(func() { updaterRuntimeGOOS = origGOOS })
 		updaterRuntimeGOOS = hostOSDarwin
 
-		cmd := (ApplyOptions{Restart: true, SystemdScope: "system"}).buildRestartCommand()
+		cmd := (ApplyOptions{SystemdScope: "system"}).buildRestartCommand()
 		if len(cmd) == 0 || cmd[0] != "launchctl" {
 			t.Fatalf("buildRestartCommand on darwin = %v, want launchctl", cmd)
 		}
@@ -509,7 +509,7 @@ func TestBuildRestartCommand(t *testing.T) {
 		t.Cleanup(func() { updaterRuntimeGOOS = origGOOS })
 		updaterRuntimeGOOS = hostOSDarwin
 
-		cmd := (ApplyOptions{Restart: true, SystemdScope: "user"}).buildRestartCommand()
+		cmd := (ApplyOptions{SystemdScope: "user"}).buildRestartCommand()
 		if len(cmd) == 0 || cmd[0] != "launchctl" {
 			t.Fatalf("buildRestartCommand on darwin user = %v, want launchctl", cmd)
 		}
@@ -522,7 +522,7 @@ func TestBuildRestartCommand(t *testing.T) {
 		updaterRuntimeGOOS = hostOSLinux
 		updaterGeteuid = func() int { return 0 }
 
-		cmd := (ApplyOptions{Restart: true, SystemdScope: "launchd"}).buildRestartCommand()
+		cmd := (ApplyOptions{SystemdScope: "launchd"}).buildRestartCommand()
 		if len(cmd) == 0 || cmd[0] != "launchctl" {
 			t.Fatalf("buildRestartCommand launchd root = %v, want launchctl", cmd)
 		}
@@ -535,7 +535,7 @@ func TestBuildRestartCommand(t *testing.T) {
 		updaterRuntimeGOOS = hostOSLinux
 		updaterGeteuid = func() int { return 1000 }
 
-		cmd := (ApplyOptions{Restart: true, SystemdScope: "launchd"}).buildRestartCommand()
+		cmd := (ApplyOptions{SystemdScope: "launchd"}).buildRestartCommand()
 		if len(cmd) == 0 || cmd[0] != "launchctl" {
 			t.Fatalf("buildRestartCommand launchd non-root = %v, want launchctl", cmd)
 		}
@@ -546,7 +546,7 @@ func TestBuildRestartCommand(t *testing.T) {
 		t.Cleanup(func() { updaterRuntimeGOOS = origGOOS })
 		updaterRuntimeGOOS = hostOSLinux
 
-		cmd := (ApplyOptions{Restart: true, SystemdScope: "unknown"}).buildRestartCommand()
+		cmd := (ApplyOptions{SystemdScope: "unknown"}).buildRestartCommand()
 		if len(cmd) != 4 || cmd[0] != "systemctl" || cmd[1] != "--user" {
 			t.Fatalf("buildRestartCommand unknown scope = %v, want systemctl --user restart", cmd)
 		}

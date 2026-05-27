@@ -38,9 +38,8 @@ func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
 	for _, fragment := range []string{
 		"<string>update</string>",
 		"<string>apply</string>",
-		"<string>-restart=true</string>",
 		"<string>-service=" + launchdServiceLabel + "</string>",
-		"<string>-scope=" + managerScopeUser + "</string>",
+		"<string>-scope=user</string>",
 		"<integer>86400</integer>",
 	} {
 		if !strings.Contains(plist, fragment) {
@@ -566,7 +565,7 @@ func TestRenderLaunchdUserAutoUpdatePlistCustomInterval(t *testing.T) {
 		t.Fatalf("plist missing custom service label: %s", plist)
 	}
 	if !strings.Contains(plist, "<string>-scope=system</string>") {
-		t.Fatalf("plist missing system scope: %s", plist)
+		t.Fatalf("plist missing custom scope: %s", plist)
 	}
 }
 

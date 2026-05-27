@@ -40,7 +40,7 @@ func TestRenderUserUnitIncludesExecStart(t *testing.T) {
 func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserAutoUpdateUnit("/usr/local/bin/sentinel", "sentinel", "user")
+	unit := renderUserAutoUpdateUnit("/usr/local/bin/sentinel", "sentinel", managerScopeUser)
 	if !strings.Contains(unit, "ExecStart=/usr/local/bin/sentinel update apply") {
 		t.Fatalf("rendered updater unit missing ExecStart: %s", unit)
 	}
@@ -48,7 +48,7 @@ func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
 		t.Fatalf("rendered updater unit missing service target: %s", unit)
 	}
 	if !strings.Contains(unit, "-scope=user") {
-		t.Fatalf("rendered updater unit missing scope: %s", unit)
+		t.Fatalf("rendered updater unit missing restart scope: %s", unit)
 	}
 }
 
@@ -768,7 +768,7 @@ func TestRenderUserUnitEscapesSpacesInPath(t *testing.T) {
 func TestRenderUserAutoUpdateUnitSystemScope(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "myservice", "system")
+	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "myservice", managerScopeSystem)
 	if !strings.Contains(unit, "-service=myservice") {
 		t.Fatalf("unit missing custom service name: %s", unit)
 	}
@@ -1112,7 +1112,7 @@ func TestInstallSystemAutoUpdateLinuxNonRoot(t *testing.T) {
 		t.Skip("test requires non-root")
 	}
 
-	err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "sentinel", "system", "daily", time.Hour, false, false)
+	err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "sentinel", "daily", time.Hour, false, false)
 	if err == nil {
 		t.Fatal("expected error for non-root")
 	}
@@ -1213,7 +1213,7 @@ func TestInstallSystemAutoUpdateLinuxBadExecPath(t *testing.T) {
 	}
 
 	// Even with a valid exec path, non-root should fail with privilege error
-	err := installSystemAutoUpdateLinux("/usr/bin/sentinel\nevil", "sentinel", "system", "daily", time.Hour, false, false)
+	err := installSystemAutoUpdateLinux("/usr/bin/sentinel\nevil", "sentinel", "daily", time.Hour, false, false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1247,7 +1247,7 @@ func TestInstallSystemAutoUpdateLinuxEnableStartBranches(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "sentinel", "system", "daily", time.Hour, tc.enable, tc.start)
+			err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "sentinel", "daily", time.Hour, tc.enable, tc.start)
 			if err == nil {
 				t.Fatal("expected error for non-root")
 			}
