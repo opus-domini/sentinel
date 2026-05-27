@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/opus-domini/sentinel/compare/v0.6.3...v0.6.4) (2026-05-27)
+
+
+### Bug Fixes
+
+* redact config show token ([ee122d4](https://github.com/opus-domini/sentinel/commit/ee122d4be35044696f8b0173d886c881f56f99b5))
+
 ## [0.6.3](https://github.com/opus-domini/sentinel/compare/v0.6.2...v0.6.3) (2026-05-27)
 
 
