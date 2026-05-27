@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -328,5 +329,19 @@ func TestServeBootsAndShutsDown(t *testing.T) {
 
 	if code := Serve("test-version"); code != 1 {
 		t.Fatalf("Serve() = %d, want 1 for an invalid listen address", code)
+	}
+}
+
+func TestServeFailsOnInvalidConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"verbose\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := Serve("test-version"); code != 1 {
+		t.Fatalf("Serve() = %d, want 1 for invalid config", code)
 	}
 }

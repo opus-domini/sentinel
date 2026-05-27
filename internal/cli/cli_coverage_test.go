@@ -49,6 +49,12 @@ func TestSubcommandHelpRouting(t *testing.T) {
 		{name: "update -h", args: []string{"update", "-h"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update --help", args: []string{"update", "--help"}, wantCode: 0, wantOut: "sentinel update"},
 		{name: "update unknown", args: []string{"update", "bogus"}, wantCode: 2, wantErr: "unknown command"},
+
+		// Config subcommand routing.
+		{name: "config no args", args: []string{"config"}, wantCode: 0, wantOut: "sentinel config"},
+		{name: "config -h", args: []string{"config", "-h"}, wantCode: 0, wantOut: "sentinel config"},
+		{name: "config --help", args: []string{"config", "--help"}, wantCode: 0, wantOut: "sentinel config"},
+		{name: "config unknown", args: []string{"config", "bogus"}, wantCode: 2, wantErr: "unknown command"},
 	}
 
 	for _, tc := range cases {

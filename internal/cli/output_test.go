@@ -26,11 +26,11 @@ func TestPrintRowsPlainOutput(t *testing.T) {
 	}
 }
 
-func TestColorizeValueLeavesUnknownValuesUntouched(t *testing.T) {
+func TestValueStyleLeavesUnknownValuesPlain(t *testing.T) {
 	t.Parallel()
 
 	value := "custom-value"
-	if got := colorizeValue(value); got != value {
-		t.Fatalf("colorizeValue(%q) = %q, want %q", value, got, value)
+	if got := valueStyle(value); got != stylePlain {
+		t.Fatalf("valueStyle(%q) = %v, want %v", value, got, stylePlain)
 	}
 }

@@ -26,6 +26,7 @@ func newRootCmd(app *App) *cobra.Command {
 
 	applyHelpStyle(root)
 	addGrouped(root, groupCore,
+		newConfigCmd(app),
 		newDaemonCmd(app),
 		newServiceCmd(app),
 		newUpdateCmd(app),

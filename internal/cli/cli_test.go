@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +44,196 @@ func TestRunWithoutArgsPrintsHelp(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "USAGE") {
 		t.Fatalf("stdout missing root help: %s", out.String())
+	}
+}
+
+func TestRunCLIConfigInitCreatesConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "init"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	configPath := filepath.Join(dir, "config.toml")
+	if !strings.Contains(out.String(), "wrote "+configPath) {
+		t.Fatalf("unexpected stdout: %s", out.String())
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), "# Sentinel configuration") {
+		t.Fatalf("config missing default content:\n%s", string(data))
+	}
+}
+
+func TestRunCLIConfigInitRequiresForceForExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("stale = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "init"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(errOut.String(), "use --force to overwrite") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = Run([]string{"config", "init", "--force"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "overwrote "+configPath) {
+		t.Fatalf("unexpected stdout: %s", out.String())
+	}
+}
+
+func TestRunCLIConfigPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "path"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if got, want := strings.TrimSpace(out.String()), filepath.Join(dir, "config.toml"); got != want {
+		t.Fatalf("config path output = %q, want %q", got, want)
+	}
+}
+
+func TestRunCLIConfigValidate(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"info\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "validate"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "ok: "+configPath+" - config valid") {
+		t.Fatalf("unexpected stdout: %s", out.String())
+	}
+
+	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"verbose\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errOut.Reset()
+	code = Run([]string{"config", "validate"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(errOut.String(), "server.log_level") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestRunCLIConfigEditInitializesRunsEditorAndValidates(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	editorPath := filepath.Join(t.TempDir(), "editor.sh")
+	if err := os.WriteFile(editorPath, []byte("#!/bin/sh\nprintf '\\n# edited\\n' >> \"$1\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editorPath)
+	t.Setenv("VISUAL", "")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "edit"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	configPath := filepath.Join(dir, "config.toml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), "# edited") {
+		t.Fatalf("editor did not update config:\n%s", string(data))
+	}
+	if !strings.Contains(out.String(), "config valid") {
+		t.Fatalf("unexpected stdout: %s", out.String())
+	}
+}
+
+func TestRunCLIConfigEditXDGOpenFallbackSkipsValidation(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("EDITOR", "")
+	t.Setenv("VISUAL", "")
+
+	origLookup := lookupExec
+	origExec := execCommand
+	t.Cleanup(func() {
+		lookupExec = origLookup
+		execCommand = origExec
+	})
+	lookupExec = func(name string) (string, error) {
+		if name == "xdg-open" {
+			return "/usr/bin/xdg-open", nil
+		}
+		return "", os.ErrNotExist
+	}
+	var gotName string
+	var gotArgs []string
+	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotName = name
+		gotArgs = append([]string(nil), args...)
+		return exec.CommandContext(ctx, "/bin/true")
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "edit"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	configPath := filepath.Join(dir, "config.toml")
+	if gotName != "xdg-open" || len(gotArgs) != 1 || gotArgs[0] != configPath {
+		t.Fatalf("editor command = %s %v, want xdg-open [%s]", gotName, gotArgs, configPath)
+	}
+	if !strings.Contains(out.String(), "Run `sentinel config validate` after saving.") {
+		t.Fatalf("unexpected stdout: %s", out.String())
+	}
+}
+
+func TestRunCLIConfigEditRequiresEditor(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("EDITOR", "")
+	t.Setenv("VISUAL", "")
+
+	origLookup := lookupExec
+	t.Cleanup(func() { lookupExec = origLookup })
+	lookupExec = func(string) (string, error) { return "", os.ErrNotExist }
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "edit"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
+	}
+	if !strings.Contains(errOut.String(), "$EDITOR") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }
 

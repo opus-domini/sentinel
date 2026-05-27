@@ -33,6 +33,19 @@ import (
 // the process exit code. The Serve/run split keeps os.Exit out of any function
 // holding a defer (the exitAfterDefer lint issue): run returns the exit code.
 func Serve(version string) int {
+	configPath := config.Path()
+	if _, err := os.Stat(configPath); err == nil {
+		if err := config.ValidateFile(configPath); err != nil {
+			initLogger(config.DefaultLogLevel)
+			slog.Error("config validation failed", "err", err)
+			return 1
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		initLogger(config.DefaultLogLevel)
+		slog.Error("config path check failed", "err", err)
+		return 1
+	}
+
 	cfg := config.Load()
 	initLogger(cfg.LogLevel)
 
@@ -100,7 +113,6 @@ func Serve(version string) int {
 	opsManager := services.NewManager(time.Now(), st)
 
 	mux := http.NewServeMux()
-	configPath := filepath.Join(cfg.DataDir, "config.toml")
 	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configPath, cfg.Timezone, cfg.Locale, cfg.RunbookMaxConcurrent)
 
 	if err := ui.Register(mux, guard, st, eventHub, opsManager, apiHandler.SessionUser); err != nil {

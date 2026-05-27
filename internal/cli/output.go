@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func writef(w io.Writer, format string, args ...any) {
@@ -15,13 +17,15 @@ func writeln(w io.Writer, args ...any) {
 	_, _ = fmt.Fprintln(w, args...)
 }
 
+type textStyle int
+
 const (
-	ansiReset  = "\033[0m"
-	ansiBold   = "\033[1m"
-	ansiDim    = "\033[2m"
-	ansiGreen  = "\033[32m"
-	ansiYellow = "\033[33m"
-	ansiRed    = "\033[31m"
+	stylePlain textStyle = iota
+	styleBold
+	styleMuted
+	styleSuccess
+	styleWarning
+	styleDanger
 )
 
 type outputRow struct {
@@ -41,6 +45,28 @@ func shouldUsePrettyOutput(w io.Writer) bool {
 		return false
 	}
 	return isTerminal(fd)
+}
+
+func renderStyle(w io.Writer, kind textStyle, s string) string {
+	if kind == stylePlain || s == "" || !shouldUsePrettyOutput(w) {
+		return s
+	}
+	style := lipgloss.NewRenderer(w).NewStyle()
+	switch kind {
+	case stylePlain:
+		return s
+	case styleBold:
+		style = style.Bold(true)
+	case styleMuted:
+		style = style.Faint(true)
+	case styleSuccess:
+		style = style.Foreground(lipgloss.Color("42"))
+	case styleWarning:
+		style = style.Foreground(lipgloss.Color("214"))
+	case styleDanger:
+		style = style.Foreground(lipgloss.Color("203"))
+	}
+	return style.Render(s)
 }
 
 func fileDescriptor(w io.Writer) (uintptr, bool) {
@@ -69,36 +95,46 @@ func printRows(w io.Writer, rows []outputRow) {
 		}
 	}
 	for _, row := range rows {
-		writef(w, "%s%-*s%s  %s\n", ansiDim, maxKey, row.Key, ansiReset, colorizeValue(row.Value))
+		key := fmt.Sprintf("%-*s", maxKey, row.Key)
+		writef(w, "%s  %s\n", renderStyle(w, styleMuted, key), renderStyle(w, valueStyle(row.Value), row.Value))
 	}
 }
 
 func printHeading(w io.Writer, title string) {
-	if shouldUsePrettyOutput(w) {
-		writef(w, "%s%s%s\n", ansiBold, title, ansiReset)
-		return
-	}
-	writeln(w, title)
+	writeln(w, renderStyle(w, styleBold, title))
 }
 
 func printNotice(w io.Writer, message string) {
-	if shouldUsePrettyOutput(w) {
-		writef(w, "%s%s%s\n", ansiGreen, message, ansiReset)
-		return
-	}
-	writeln(w, message)
+	writeln(w, renderStyle(w, styleSuccess, message))
 }
 
-func colorizeValue(value string) string {
+func reportHeader(w io.Writer, title, detail string) {
+	if detail == "" {
+		writeln(w, renderStyle(w, styleBold, title))
+		writeln(w)
+		return
+	}
+	writef(w, "%s  %s\n\n", renderStyle(w, styleBold, title), renderStyle(w, styleMuted, detail))
+}
+
+func done(w io.Writer, verb, target string) {
+	writeln(w, renderStyle(w, styleSuccess, verb), target)
+}
+
+func empty(w io.Writer, msg string) {
+	writeln(w, renderStyle(w, styleMuted, msg))
+}
+
+func valueStyle(value string) textStyle {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
 	case "true", "active", "enabled", "loaded", "ok", "yes", "up":
-		return ansiGreen + value + ansiReset
+		return styleSuccess
 	case "false", "inactive", "disabled", "not-loaded", "unavailable", "not-found", "failed", "error", "down":
-		return ansiRed + value + ansiReset
+		return styleDanger
 	case "-", "unknown", "n/a":
-		return ansiYellow + value + ansiReset
+		return styleWarning
 	default:
-		return value
+		return stylePlain
 	}
 }

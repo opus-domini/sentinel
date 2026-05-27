@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/opus-domini/sentinel/internal/userswitch"
+	"github.com/opus-domini/sentinel/internal/validate"
 )
 
 const (
@@ -27,6 +29,8 @@ const (
 
 	// DefaultLogLevel is the fallback log level when config omits one.
 	DefaultLogLevel = "info"
+
+	configFileName = "config.toml"
 )
 
 // AlertThresholds represents alert thresholds data.
@@ -80,6 +84,9 @@ var (
 	osGeteuid     = os.Geteuid
 	osTempDir     = os.TempDir
 )
+
+// ErrConfigExists is returned when Init refuses to overwrite an existing file.
+var ErrConfigExists = errors.New("config file already exists")
 
 const defaultConfigContent = `# Sentinel configuration
 # All values shown are defaults. Uncomment and edit to customize.
@@ -218,16 +225,99 @@ func Load() Config {
 
 	cfg.Timezone = time.Now().Location().String()
 	cfg.DataDir = resolveDataDir()
-	configPath := filepath.Join(cfg.DataDir, "config.toml")
-	ensureDefaultConfig(configPath)
 
-	file := loadFile(configPath)
+	file := loadFile(filepath.Join(cfg.DataDir, configFileName))
 	applyCoreConfig(&cfg, file)
 	applyWatchtowerConfig(&cfg, file)
 	applyAlertThresholdsConfig(&cfg, file)
 	applyMultiUserConfig(&cfg, file)
 
 	return cfg
+}
+
+// Path returns the canonical config file path for the current environment.
+func Path() string {
+	return filepath.Join(resolveDataDir(), configFileName)
+}
+
+// Init creates the canonical config file. It refuses to overwrite existing
+// files unless force is true.
+func Init(force bool) (string, error) {
+	path := Path()
+	if !force {
+		if _, err := os.Stat(path); err == nil {
+			return path, fmt.Errorf("%w: %s", ErrConfigExists, path)
+		} else if !os.IsNotExist(err) {
+			return path, fmt.Errorf("stat config file: %w", err)
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return path, fmt.Errorf("create config dir: %w", err)
+	}
+
+	flag := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	if !force {
+		flag |= os.O_EXCL
+	}
+	file, err := os.OpenFile(path, flag, 0o600) //nolint:gosec // canonical user config file.
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return path, fmt.Errorf("%w: %s", ErrConfigExists, path)
+		}
+		return path, fmt.Errorf("create config file: %w", err)
+	}
+	if _, err := file.WriteString(defaultConfigContent); err != nil {
+		_ = file.Close()
+		return path, fmt.Errorf("write config file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return path, fmt.Errorf("close config file: %w", err)
+	}
+	return path, nil
+}
+
+// ValidateFile validates a Sentinel TOML config file.
+func ValidateFile(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		path = Path()
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("config file not found: %s", path)
+		}
+		return fmt.Errorf("stat config file: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("config path is a directory: %s", path)
+	}
+
+	var tc tomlConfig
+	meta, err := toml.DecodeFile(path, &tc)
+	if err != nil {
+		return fmt.Errorf("decode config: %w", err)
+	}
+
+	var issues []string
+	for _, key := range meta.Undecoded() {
+		issues = append(issues, "unknown key: "+strings.Join(key, "."))
+	}
+	issues = append(issues, validateFlattenedConfig(tc.flatten())...)
+	if len(issues) > 0 {
+		return configValidationError{Path: path, Issues: issues}
+	}
+	return nil
+}
+
+type configValidationError struct {
+	Path   string
+	Issues []string
+}
+
+func (e configValidationError) Error() string {
+	return fmt.Sprintf("invalid config %s: %s", e.Path, strings.Join(e.Issues, "; "))
 }
 
 func resolveDataDir() string {
@@ -239,12 +329,6 @@ func resolveDataDir() string {
 	}
 	// Last-resort fallback for restricted service environments.
 	return filepath.Join(osTempDir(), "sentinel")
-}
-
-func ensureDefaultConfig(configPath string) {
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		writeDefaultConfig(configPath)
-	}
 }
 
 func applyCoreConfig(cfg *Config, file map[string]string) {
@@ -388,6 +472,105 @@ func applyMultiUserConfig(cfg *Config, file map[string]string) {
 	if method := readRawEnvOrFile("SENTINEL_USER_SWITCH_METHOD", "user_switch_method", file); method != "" {
 		cfg.MultiUser.UserSwitchMethod = userswitch.NormalizeMethod(method, cfg.MultiUser.UserSwitchMethod)
 	}
+}
+
+func validateFlattenedConfig(file map[string]string) []string {
+	if len(file) == 0 {
+		return nil
+	}
+
+	var issues []string
+	if value := strings.TrimSpace(file["listen"]); value != "" {
+		if err := validateListenAddr(value); err != nil {
+			issues = append(issues, "server.listen must be a valid host:port address: "+err.Error())
+		}
+	}
+	if value := strings.TrimSpace(file["cookie_secure"]); value != "" {
+		switch strings.ToLower(value) {
+		case CookieSecureAuto, CookieSecureAlways, CookieSecureNever:
+		default:
+			issues = append(issues, `server.cookie_secure must be one of "auto", "always", or "never"`)
+		}
+	}
+	if value := strings.TrimSpace(file["log_level"]); value != "" {
+		switch strings.ToLower(value) {
+		case "debug", "info", "warn", "error":
+		default:
+			issues = append(issues, `server.log_level must be one of "debug", "info", "warn", or "error"`)
+		}
+	}
+	if value := strings.TrimSpace(file["timezone"]); value != "" {
+		if err := validate.Timezone(value); err != nil {
+			issues = append(issues, "server.timezone "+err.Error())
+		}
+	}
+	if value := strings.TrimSpace(file["runbook_max_concurrent"]); value != "" {
+		if _, ok := parsePositiveInt(value); !ok {
+			issues = append(issues, "runbooks.max_concurrent must be a positive integer")
+		}
+	}
+	if value := strings.TrimSpace(file["watchtower_tick_interval"]); value != "" {
+		if _, ok := parseDuration(value); !ok {
+			issues = append(issues, "watchtower.tick_interval must be a positive duration")
+		}
+	}
+	if value := strings.TrimSpace(file["watchtower_capture_lines"]); value != "" {
+		if _, ok := parsePositiveInt(value); !ok {
+			issues = append(issues, "watchtower.capture_lines must be a positive integer")
+		}
+	}
+	if value := strings.TrimSpace(file["watchtower_capture_timeout"]); value != "" {
+		if _, ok := parseDuration(value); !ok {
+			issues = append(issues, "watchtower.capture_timeout must be a positive duration")
+		}
+	}
+	if value := strings.TrimSpace(file["watchtower_journal_rows"]); value != "" {
+		if _, ok := parsePositiveInt(value); !ok {
+			issues = append(issues, "watchtower.journal_rows must be a positive integer")
+		}
+	}
+	for _, key := range []struct {
+		flat  string
+		label string
+	}{
+		{flat: "alert_cpu_percent", label: "alerts.cpu_percent"},
+		{flat: "alert_mem_percent", label: "alerts.mem_percent"},
+		{flat: "alert_disk_percent", label: "alerts.disk_percent"},
+	} {
+		if value := strings.TrimSpace(file[key.flat]); value != "" {
+			if _, ok := parsePositiveFloat(value); !ok {
+				issues = append(issues, key.label+" must be a positive number")
+			}
+		}
+	}
+	if value := strings.TrimSpace(file["health_report_schedule"]); value != "" {
+		if err := validate.CronExpression(value); err != nil {
+			issues = append(issues, "health_report.schedule "+err.Error())
+		}
+	}
+	if value := strings.TrimSpace(file["user_switch_method"]); value != "" {
+		switch strings.ToLower(value) {
+		case userswitch.MethodSudo, userswitch.MethodSystemdRun, "systemd":
+		default:
+			issues = append(issues, `multi_user.user_switch_method must be "systemd-run" or "sudo"`)
+		}
+	}
+	return issues
+}
+
+func validateListenAddr(addr string) error {
+	_, port, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil {
+		return err
+	}
+	value, err := strconv.Atoi(port)
+	if err != nil {
+		return fmt.Errorf("invalid port %q", port)
+	}
+	if value < 1 || value > 65535 {
+		return fmt.Errorf("port %d out of range", value)
+	}
+	return nil
 }
 
 func defaultUserSwitchMethod() string {
@@ -678,13 +861,6 @@ func decodeTOML(content string) (map[string]string, error) {
 		return nil, fmt.Errorf("decode toml: %w", err)
 	}
 	return tc.flatten(), nil
-}
-
-// writeDefaultConfig creates the config file with commented-out defaults.
-// Best-effort: errors are silently ignored.
-func writeDefaultConfig(path string) {
-	_ = os.MkdirAll(filepath.Dir(path), 0o700)
-	_ = os.WriteFile(path, []byte(defaultConfigContent), 0o600)
 }
 
 func splitCSV(s string) []string {

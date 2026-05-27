@@ -14,6 +14,19 @@ Configuration precedence:
 
 When running as root, defaults resolve under root home (for example `/root/.sentinel`).
 
+Use the CLI as the source of truth for config file location and initialization:
+
+```bash
+sentinel config path
+sentinel config init
+sentinel config edit
+sentinel config validate
+```
+
+`sentinel config init --force` overwrites an existing config file.
+`sentinel config edit` creates the file when missing, opens it with `$EDITOR`,
+`$VISUAL`, or `xdg-open`, and validates after blocking editors close.
+
 ## Core Keys
 
 ```toml

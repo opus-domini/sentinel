@@ -4,6 +4,7 @@
 
 ```bash
 sentinel daemon
+sentinel config <init|edit|path|validate>
 sentinel service <install|uninstall|status|logs|autoupdate>
 sentinel doctor
 sentinel update <check|apply|status>
@@ -14,6 +15,47 @@ sentinel --version | -v | version
 
 Running `sentinel` with no arguments prints this help; the server starts only
 via the explicit `daemon` command.
+
+## `sentinel config`
+
+### Init
+
+Create the canonical config file.
+
+```bash
+sentinel config init
+sentinel config init --force
+```
+
+The command writes `config.toml` under the active data dir. Existing files are
+kept intact unless `--force` is set.
+
+### Edit
+
+```bash
+sentinel config edit
+EDITOR="code --wait" sentinel config edit
+```
+
+Ensures `config.toml` exists, opens it with `$EDITOR`, `$VISUAL`, or `xdg-open`,
+and validates the file after blocking editors close. When `xdg-open` returns
+immediately, run `sentinel config validate` after saving.
+
+### Path
+
+```bash
+sentinel config path
+```
+
+Prints the canonical config file path.
+
+### Validate
+
+```bash
+sentinel config validate
+```
+
+Validates the config file before a service restart or daemon start.
 
 ## `sentinel daemon`
 

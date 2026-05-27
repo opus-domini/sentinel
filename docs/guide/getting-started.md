@@ -57,7 +57,16 @@ sentinel service status
 
 ## Configure Listen and Token
 
-Edit `~/.sentinel/config.toml` (or root data dir when running as root):
+Initialize and edit the config file:
+
+```bash
+sentinel config init
+sentinel config edit
+```
+
+`sentinel config edit` opens the canonical file from `sentinel config path`.
+Set `EDITOR="code --wait"` or another blocking editor command when you want
+automatic validation after saving.
 
 ```toml
 [server]
@@ -76,7 +85,11 @@ token = "replace-with-strong-token"
 allowed_origins = "https://sentinel.example.com"
 ```
 
-Restart service after config changes.
+Validate before restarting the service:
+
+```bash
+sentinel config validate
+```
 
 ## Enable Daily Autoupdate
 

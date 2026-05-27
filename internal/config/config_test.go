@@ -252,7 +252,16 @@ token = "file-token"
 	}
 }
 
-func TestLoadCreatesDefaultConfig(t *testing.T) {
+func TestPathUsesDataDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	if got, want := Path(), filepath.Join(dir, "config.toml"); got != want {
+		t.Fatalf("Path() = %q, want %q", got, want)
+	}
+}
+
+func TestLoadDoesNotCreateDefaultConfig(t *testing.T) {
 	dir := t.TempDir()
 
 	t.Setenv("SENTINEL_DATA_DIR", dir)
@@ -264,6 +273,34 @@ func TestLoadCreatesDefaultConfig(t *testing.T) {
 	cfg := Load()
 
 	configPath := filepath.Join(dir, "config.toml")
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("Load created config file: err=%v", err)
+	}
+
+	// Defaults should still apply when the config file does not exist.
+	if cfg.ListenAddr != "127.0.0.1:4040" {
+		t.Errorf("ListenAddr = %q, want default", cfg.ListenAddr)
+	}
+	if cfg.Token != "" {
+		t.Errorf("Token = %q, want empty", cfg.Token)
+	}
+	if cfg.LogLevel != DefaultLogLevel {
+		t.Errorf("LogLevel = %q, want %s", cfg.LogLevel, DefaultLogLevel)
+	}
+}
+
+func TestInitCreatesDefaultConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	configPath, err := Init(false)
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if configPath != filepath.Join(dir, "config.toml") {
+		t.Fatalf("Init() path = %q, want %q", configPath, filepath.Join(dir, "config.toml"))
+	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("expected config file to be created: %v", err)
@@ -283,16 +320,131 @@ func TestLoadCreatesDefaultConfig(t *testing.T) {
 	if !strings.Contains(content, "# token") {
 		t.Error("expected config file to contain '# token'")
 	}
+}
 
-	// All defaults should still apply (file is all comments).
-	if cfg.ListenAddr != "127.0.0.1:4040" {
-		t.Errorf("ListenAddr = %q, want default", cfg.ListenAddr)
+func TestInitRejectsExistingConfigWithoutForce(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	configPath := filepath.Join(dir, "config.toml")
+	original := "[server]\nlisten = \"127.0.0.1:5050\"\n"
+	if err := os.WriteFile(configPath, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if cfg.Token != "" {
-		t.Errorf("Token = %q, want empty", cfg.Token)
+
+	_, err := Init(false)
+	if !errors.Is(err, ErrConfigExists) {
+		t.Fatalf("Init(false) error = %v, want ErrConfigExists", err)
 	}
-	if cfg.LogLevel != DefaultLogLevel {
-		t.Errorf("LogLevel = %q, want %s", cfg.LogLevel, DefaultLogLevel)
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != original {
+		t.Fatalf("config was overwritten:\n%s", string(got))
+	}
+}
+
+func TestInitForceOverwritesExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("stale = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	gotPath, err := Init(true)
+	if err != nil {
+		t.Fatalf("Init(true) error = %v", err)
+	}
+	if gotPath != configPath {
+		t.Fatalf("Init(true) path = %q, want %q", gotPath, configPath)
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "stale = true") {
+		t.Fatalf("force init did not overwrite stale config:\n%s", string(got))
+	}
+	if !strings.Contains(string(got), "# Sentinel configuration") {
+		t.Fatalf("force init did not write default content:\n%s", string(got))
+	}
+}
+
+func TestValidateFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantErr string
+	}{
+		{
+			name: "valid config",
+			content: `[server]
+listen = "127.0.0.1:4040"
+log_level = "debug"
+timezone = "UTC"
+
+[watchtower]
+tick_interval = "1s"
+capture_lines = 80
+
+[health_report]
+schedule = "@daily"
+`,
+		},
+		{
+			name:    "invalid log level",
+			content: "[server]\nlog_level = \"verbose\"\n",
+			wantErr: "server.log_level",
+		},
+		{
+			name:    "invalid listen",
+			content: "[server]\nlisten = \"localhost:999999\"\n",
+			wantErr: "server.listen",
+		},
+		{
+			name:    "invalid schedule",
+			content: "[health_report]\nschedule = \"not cron\"\n",
+			wantErr: "health_report.schedule",
+		},
+		{
+			name:    "unknown key",
+			content: "[server]\nwat = true\n",
+			wantErr: "unknown key: server.wat",
+		},
+		{
+			name:    "bad toml",
+			content: "[server\n",
+			wantErr: "decode config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "config.toml")
+			if err := os.WriteFile(configPath, []byte(tt.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			err := ValidateFile(configPath)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateFile() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("ValidateFile() error = %v, want fragment %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateFileMissing(t *testing.T) {
+	err := ValidateFile(filepath.Join(t.TempDir(), "config.toml"))
+	if err == nil || !strings.Contains(err.Error(), "config file not found") {
+		t.Fatalf("ValidateFile() error = %v, want missing file error", err)
 	}
 }
 
