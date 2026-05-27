@@ -4,6 +4,7 @@ import "github.com/spf13/cobra"
 
 // Help command groups, in display order — a gh-CLI-style layout.
 const (
+	groupSetup = "setup"
 	groupCore  = "core"
 	groupExtra = "additional"
 )
@@ -47,6 +48,7 @@ Run "{{.CommandPath}} [command] --help" for details on a command.{{end}}
 // root command. Call it before addGrouped.
 func applyHelpStyle(root *cobra.Command) {
 	root.AddGroup(
+		&cobra.Group{ID: groupSetup, Title: "SETUP COMMANDS"},
 		&cobra.Group{ID: groupCore, Title: "CORE COMMANDS"},
 		&cobra.Group{ID: groupExtra, Title: "ADDITIONAL COMMANDS"},
 	)

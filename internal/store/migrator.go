@@ -57,7 +57,7 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 	if len(all) > 0 {
 		version = all[len(all)-1].version
 	}
-	slog.Info("database migrations complete",
+	slog.Debug("database migrations complete",
 		"schema_version", version,
 		"applied", count,
 		"elapsed", time.Since(start).Round(time.Millisecond),

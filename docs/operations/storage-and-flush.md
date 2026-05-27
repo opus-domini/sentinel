@@ -2,6 +2,15 @@
 
 Sentinel stores runtime and feature state in SQLite (`sentinel.db` + WAL/SHM).
 
+CLI helpers:
+
+```bash
+sentinel db init
+sentinel db status
+sentinel db reset --yes
+sentinel db reset --yes --force
+```
+
 ## Storage Stats
 
 Endpoint:
@@ -53,6 +62,8 @@ Response includes removed row counts per resource and flush timestamp.
 
 - Prefer targeted flush before full flush.
 - Use full flush (`all`) for hard reset/testing environments.
+- Use `sentinel db reset --yes --force` when the intended operation is a full
+  SQLite wipe and migration replay.
 - Flush triggers WAL checkpoint best-effort.
 
 ## UI Integration

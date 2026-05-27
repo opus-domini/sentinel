@@ -3,10 +3,11 @@
 ## Root Commands
 
 ```bash
-sentinel daemon
 sentinel config <init|edit|path|validate>
-sentinel service <install|uninstall|status|logs|autoupdate>
+sentinel db <init|status|reset>
 sentinel doctor
+sentinel daemon
+sentinel service <install|uninstall|status|logs|autoupdate>
 sentinel update <check|apply|status>
 sentinel completion <bash|zsh|fish>
 sentinel --help
@@ -56,6 +57,43 @@ sentinel config validate
 ```
 
 Validates the config file before a service restart or daemon start.
+
+## `sentinel db`
+
+### Init
+
+Create the canonical config file when missing, ensure the data directory exists,
+and initialize the SQLite database with migrations.
+
+```bash
+sentinel db init
+```
+
+### Status
+
+```bash
+sentinel db status
+```
+
+Prints the resolved database path, database/WAL/SHM file sizes, and row counts
+for flushable runtime storage resources.
+
+### Reset
+
+```bash
+sentinel db reset --yes
+sentinel db reset --yes --resource ops-alerts
+sentinel db reset --yes --force
+```
+
+Without `--force`, flushes derived runtime storage through the same resource
+model exposed in the Settings storage panel. This conservative reset preserves
+configuration, presets, runbooks, guardrail rules, schedules, custom services
+and other durable setup data.
+
+With `--force`, deletes `sentinel.db` and its SQLite sidecar files, then
+recreates the database by running migrations. This wipes all state stored in the
+database while leaving `config.toml` intact.
 
 ## `sentinel daemon`
 

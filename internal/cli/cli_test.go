@@ -13,6 +13,7 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
+	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/updater"
 )
 
@@ -233,6 +234,178 @@ func TestRunCLIConfigEditRequiresEditor(t *testing.T) {
 		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
 	}
 	if !strings.Contains(errOut.String(), "$EDITOR") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestRunCLIDBInitCreatesConfigAndDatabase(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"db", "init"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	configPath := filepath.Join(dir, "config.toml")
+	dbPath := filepath.Join(dir, "sentinel.db")
+	for _, path := range []string{configPath, dbPath} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+	}
+	for _, fragment := range []string{
+		"config: " + configPath,
+		"database: " + dbPath,
+		"status: ok",
+	} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("stdout missing %q: %s", fragment, out.String())
+		}
+	}
+}
+
+func TestRunCLIDBStatus(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"db", "status"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	for _, fragment := range []string{
+		"database: " + filepath.Join(dir, "sentinel.db"),
+		"total bytes:",
+		store.StorageResourceTimeline + ":",
+		store.StorageResourceOpsAlerts + ":",
+	} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("stdout missing %q: %s", fragment, out.String())
+		}
+	}
+}
+
+func TestRunCLIDBResetRequiresYes(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"db", "reset"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
+	}
+	if !strings.Contains(errOut.String(), "without --yes") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestRunCLIDBResetFlushesResource(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"db", "reset", "--yes", "--resource", store.StorageResourceOpsAlerts}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	for _, fragment := range []string{
+		"database: " + filepath.Join(dir, "sentinel.db"),
+		"mode: flush",
+		"resource: " + store.StorageResourceOpsAlerts,
+		store.StorageResourceOpsAlerts + ": 0 rows removed",
+	} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("stdout missing %q: %s", fragment, out.String())
+		}
+	}
+}
+
+func TestRunCLIDBResetForceWipesAndRecreatesDatabase(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	dbPath := filepath.Join(dir, "sentinel.db")
+
+	st, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	if err := st.UpsertSession(context.Background(), "keep", "hash", "content"); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	if err := os.WriteFile(dbPath+"-journal", []byte("stale"), 0o600); err != nil {
+		t.Fatalf("write journal sidecar: %v", err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"db", "reset", "--yes", "--force"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	for _, fragment := range []string{
+		"database: " + dbPath,
+		"mode: force",
+		"status: recreated",
+	} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("stdout missing %q: %s", fragment, out.String())
+		}
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("stat recreated database: %v", err)
+	}
+	if _, err := os.Stat(dbPath + "-journal"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("journal sidecar exists after force reset: %v", err)
+	}
+
+	st, err = store.New(dbPath)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	sessions, err := st.GetAll(context.Background())
+	if err != nil {
+		t.Fatalf("get sessions: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions after force reset = %v, want empty", sessions)
+	}
+}
+
+func TestRunCLIDBResetRejectsInvalidResource(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"db", "reset", "--yes", "--resource", "bogus"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
+	}
+	if !strings.Contains(errOut.String(), "invalid storage resource") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestRunCLIDBResetForceRejectsResource(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"db", "reset", "--yes", "--force", "--resource", store.StorageResourceOpsAlerts}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
+	}
+	if !strings.Contains(errOut.String(), "cannot combine --force with --resource") {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }

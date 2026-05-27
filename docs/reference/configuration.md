@@ -21,11 +21,13 @@ sentinel config path
 sentinel config init
 sentinel config edit
 sentinel config validate
+sentinel db init
 ```
 
 `sentinel config init --force` overwrites an existing config file.
 `sentinel config edit` creates the file when missing, opens it with `$EDITOR`,
 `$VISUAL`, or `xdg-open`, and validates after blocking editors close.
+`sentinel db init` ensures both the config file and SQLite database are ready.
 
 ## Core Keys
 

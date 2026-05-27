@@ -29,8 +29,8 @@ func TestSubcommandHelpRouting(t *testing.T) {
 		wantErr  string // fragment expected in stderr
 	}{
 		// Root help variants.
-		{name: "root help", args: []string{"help"}, wantCode: 0, wantOut: "CORE COMMANDS"},
-		{name: "root --help", args: []string{"--help"}, wantCode: 0, wantOut: "CORE COMMANDS"},
+		{name: "root help", args: []string{"help"}, wantCode: 0, wantOut: "SETUP COMMANDS"},
+		{name: "root --help", args: []string{"--help"}, wantCode: 0, wantOut: "SETUP COMMANDS"},
 
 		// Service subcommand routing.
 		{name: "service no args", args: []string{"service"}, wantCode: 0, wantOut: "sentinel service"},
@@ -55,6 +55,12 @@ func TestSubcommandHelpRouting(t *testing.T) {
 		{name: "config -h", args: []string{"config", "-h"}, wantCode: 0, wantOut: "sentinel config"},
 		{name: "config --help", args: []string{"config", "--help"}, wantCode: 0, wantOut: "sentinel config"},
 		{name: "config unknown", args: []string{"config", "bogus"}, wantCode: 2, wantErr: "unknown command"},
+
+		// DB subcommand routing.
+		{name: "db no args", args: []string{"db"}, wantCode: 0, wantOut: "sentinel db"},
+		{name: "db -h", args: []string{"db", "-h"}, wantCode: 0, wantOut: "sentinel db"},
+		{name: "db --help", args: []string{"db", "--help"}, wantCode: 0, wantOut: "sentinel db"},
+		{name: "db unknown", args: []string{"db", "bogus"}, wantCode: 2, wantErr: "unknown command"},
 	}
 
 	for _, tc := range cases {
