@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  ci-fast:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -30,52 +30,21 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci --prefix frontend
-      - run: npm --prefix frontend run lint
-      - run: npm --prefix frontend run typecheck
-      - run: npm --prefix frontend run test:unit
-      - run: npm --prefix frontend run build
 
-      - uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
-        with:
-          version: v2.12.2
+      - name: Install Go tools
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Verify go.mod is tidy
         run: go mod tidy && git diff --exit-code go.mod go.sum
 
-      - run: go test -race -coverprofile=coverage.txt -v ./...
-      - run: COVERAGE_MIN=80 ./scripts/coverage-check.sh coverage.txt
+      - run: make ci
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - run: go test -tags=contract -run '^TestContract' -v ./...
-      - run: ./scripts/docs-check.sh
-      - run: go build -trimpath -o /tmp/sentinel ./cmd/sentinel
-
-      - name: Run govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
-
-  ci-full:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: ci-fast
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - run: npm ci --prefix frontend
-      - run: npm --prefix frontend run test:e2e
-      - run: npm --prefix frontend run build
-      - run: go test -tags=integration -run '^TestIntegration' -v ./...
-      - run: go test -race ./...
-      - run: go test -run=^$ -bench=. -benchmem ./...
+      - run: govulncheck ./...
