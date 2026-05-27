@@ -3,7 +3,7 @@
 ## Root Commands
 
 ```bash
-sentinel config <init|edit|path|validate>
+sentinel config <init|edit|path|validate|show>
 sentinel db <init|status|reset>
 sentinel doctor
 sentinel daemon
@@ -57,6 +57,15 @@ sentinel config validate
 ```
 
 Validates the config file before a service restart or daemon start.
+
+### Show
+
+```bash
+sentinel config show
+```
+
+Prints the effective configuration as JSON after applying defaults, file values
+and environment overrides.
 
 ## `sentinel db`
 

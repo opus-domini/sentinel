@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -62,7 +63,7 @@ func newConfigCmd(app *App) *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(newConfigInitCmd(app), newConfigEditCmd(app), newConfigPathCmd(app), newConfigValidateCmd(app))
+	cmd.AddCommand(newConfigInitCmd(app), newConfigEditCmd(app), newConfigPathCmd(app), newConfigValidateCmd(app), newConfigShowCmd(app))
 	return cmd
 }
 
@@ -171,4 +172,122 @@ func newConfigValidateCmd(app *App) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newConfigShowCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "Show effective Sentinel config",
+		Long:  "Show the effective Sentinel config after applying defaults, file values and environment overrides.",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			cfg, err := loadValidatedConfig()
+			if err != nil {
+				return failf(1, "config show failed: %w", err)
+			}
+			enc := json.NewEncoder(app.Stdout)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(newConfigShowOutput(cfg)); err != nil {
+				return failf(1, "config show failed: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+func loadValidatedConfig() (config.Config, error) {
+	configPath := config.Path()
+	if _, err := os.Stat(configPath); err == nil {
+		if err := config.ValidateFile(configPath); err != nil {
+			return config.Config{}, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return config.Config{}, fmt.Errorf("stat config file: %w", err)
+	}
+	return config.Load(), nil
+}
+
+type configShowOutput struct {
+	ListenAddr             string                    `json:"listen_addr"`
+	Token                  string                    `json:"token"`
+	AllowedOrigins         []string                  `json:"allowed_origins"`
+	CookieSecure           string                    `json:"cookie_secure"`
+	AllowInsecureCookie    bool                      `json:"allow_insecure_cookie"`
+	DataDir                string                    `json:"data_dir"`
+	LogLevel               string                    `json:"log_level"`
+	Timezone               string                    `json:"timezone"`
+	Locale                 string                    `json:"locale"`
+	RunbookMaxConcurrent   int                       `json:"runbook_max_concurrent"`
+	MultiUser              configShowMultiUser       `json:"multi_user"`
+	SystemUsers            []string                  `json:"system_users"`
+	Watchtower             configShowWatchtower      `json:"watchtower"`
+	AlertThresholds        configShowAlertThresholds `json:"alert_thresholds"`
+	AlertWebhookURL        string                    `json:"alert_webhook_url"`
+	AlertWebhookEvents     []string                  `json:"alert_webhook_events"`
+	HealthReportWebhookURL string                    `json:"health_report_webhook_url"`
+	HealthReportSchedule   string                    `json:"health_report_schedule"`
+}
+
+type configShowMultiUser struct {
+	AllowedUsers     []string `json:"allowed_users"`
+	AllowRootTarget  bool     `json:"allow_root_target"`
+	UserSwitchMethod string   `json:"user_switch_method"`
+}
+
+type configShowWatchtower struct {
+	Enabled        bool   `json:"enabled"`
+	TickInterval   string `json:"tick_interval"`
+	CaptureLines   int    `json:"capture_lines"`
+	CaptureTimeout string `json:"capture_timeout"`
+	JournalRows    int    `json:"journal_rows"`
+}
+
+type configShowAlertThresholds struct {
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemPercent  float64 `json:"mem_percent"`
+	DiskPercent float64 `json:"disk_percent"`
+}
+
+func newConfigShowOutput(cfg config.Config) configShowOutput {
+	return configShowOutput{
+		ListenAddr:           cfg.ListenAddr,
+		Token:                cfg.Token,
+		AllowedOrigins:       nonNilStrings(cfg.AllowedOrigins),
+		CookieSecure:         cfg.CookieSecure,
+		AllowInsecureCookie:  cfg.AllowInsecureCookie,
+		DataDir:              cfg.DataDir,
+		LogLevel:             cfg.LogLevel,
+		Timezone:             cfg.Timezone,
+		Locale:               cfg.Locale,
+		RunbookMaxConcurrent: cfg.RunbookMaxConcurrent,
+		MultiUser: configShowMultiUser{
+			AllowedUsers:     nonNilStrings(cfg.MultiUser.AllowedUsers),
+			AllowRootTarget:  cfg.MultiUser.AllowRootTarget,
+			UserSwitchMethod: cfg.MultiUser.UserSwitchMethod,
+		},
+		SystemUsers: nonNilStrings(cfg.SystemUsers),
+		Watchtower: configShowWatchtower{
+			Enabled:        cfg.Watchtower.Enabled,
+			TickInterval:   cfg.Watchtower.TickInterval.String(),
+			CaptureLines:   cfg.Watchtower.CaptureLines,
+			CaptureTimeout: cfg.Watchtower.CaptureTimeout.String(),
+			JournalRows:    cfg.Watchtower.JournalRows,
+		},
+		AlertThresholds: configShowAlertThresholds{
+			CPUPercent:  cfg.AlertThresholds.CPUPercent,
+			MemPercent:  cfg.AlertThresholds.MemPercent,
+			DiskPercent: cfg.AlertThresholds.DiskPercent,
+		},
+		AlertWebhookURL:        cfg.AlertWebhookURL,
+		AlertWebhookEvents:     nonNilStrings(cfg.AlertWebhookEvents),
+		HealthReportWebhookURL: cfg.HealthReportWebhookURL,
+		HealthReportSchedule:   cfg.HealthReportSchedule,
+	}
+}
+
+func nonNilStrings(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }

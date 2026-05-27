@@ -78,7 +78,7 @@ func newDBStatusCmd(app *App) *cobra.Command {
 }
 
 func runDBStatus(ctx context.Context, app *App) error {
-	cfg, err := loadDBConfig()
+	cfg, err := loadValidatedConfig()
 	if err != nil {
 		return failf(1, "db status failed: %w", err)
 	}
@@ -146,7 +146,7 @@ func runDBReset(ctx context.Context, app *App, resource string, force bool) erro
 	if !store.IsStorageResource(resource) {
 		return failf(1, "invalid storage resource: %s", resource)
 	}
-	cfg, err := loadDBConfig()
+	cfg, err := loadValidatedConfig()
 	if err != nil {
 		return failf(1, "db reset failed: %w", err)
 	}
@@ -177,7 +177,7 @@ func runDBReset(ctx context.Context, app *App, resource string, force bool) erro
 }
 
 func runDBResetForce(app *App) error {
-	cfg, err := loadDBConfig()
+	cfg, err := loadValidatedConfig()
 	if err != nil {
 		return failf(1, "db reset failed: %w", err)
 	}
@@ -218,18 +218,6 @@ func removeDBFiles(dbPath string) ([]string, error) {
 		removed = append(removed, path)
 	}
 	return removed, nil
-}
-
-func loadDBConfig() (config.Config, error) {
-	configPath := config.Path()
-	if _, err := os.Stat(configPath); err == nil {
-		if err := config.ValidateFile(configPath); err != nil {
-			return config.Config{}, err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return config.Config{}, fmt.Errorf("stat config file: %w", err)
-	}
-	return config.Load(), nil
 }
 
 func openDBStore(cfg config.Config) (*store.Store, string, error) {

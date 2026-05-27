@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -141,6 +142,88 @@ func TestRunCLIConfigValidate(t *testing.T) {
 	code = Run([]string{"config", "validate"}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(errOut.String(), "server.log_level") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestRunCLIConfigShowPrintsEffectiveConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_LISTEN", "")
+	t.Setenv("SENTINEL_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_LOG_LEVEL", "")
+	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
+	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
+	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
+	configPath := filepath.Join(dir, "config.toml")
+	content := `[server]
+listen = "127.0.0.1:5050"
+allowed_origins = "http://localhost:3000, http://127.0.0.1:3000"
+log_level = "debug"
+
+[watchtower]
+enabled = false
+tick_interval = "2s"
+capture_timeout = "250ms"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "show"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("config show output is not JSON: %v\n%s", err, out.String())
+	}
+	if got["listen_addr"] != "127.0.0.1:5050" {
+		t.Fatalf("listen_addr = %v", got["listen_addr"])
+	}
+	if got["data_dir"] != dir {
+		t.Fatalf("data_dir = %v, want %s", got["data_dir"], dir)
+	}
+	if got["log_level"] != "debug" {
+		t.Fatalf("log_level = %v", got["log_level"])
+	}
+	origins, ok := got["allowed_origins"].([]any)
+	if !ok || len(origins) != 2 || origins[0] != "http://localhost:3000" || origins[1] != "http://127.0.0.1:3000" {
+		t.Fatalf("allowed_origins = %#v", got["allowed_origins"])
+	}
+	watchtower, ok := got["watchtower"].(map[string]any)
+	if !ok {
+		t.Fatalf("watchtower = %#v", got["watchtower"])
+	}
+	if watchtower["enabled"] != false {
+		t.Fatalf("watchtower.enabled = %v", watchtower["enabled"])
+	}
+	if watchtower["tick_interval"] != "2s" {
+		t.Fatalf("watchtower.tick_interval = %v", watchtower["tick_interval"])
+	}
+	if watchtower["capture_timeout"] != "250ms" {
+		t.Fatalf("watchtower.capture_timeout = %v", watchtower["capture_timeout"])
+	}
+}
+
+func TestRunCLIConfigShowValidatesExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENTINEL_DATA_DIR", dir)
+	configPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[server]\nlog_level = \"verbose\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"config", "show"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
 	}
 	if !strings.Contains(errOut.String(), "server.log_level") {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
