@@ -2,10 +2,12 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/store"
 )
@@ -154,6 +156,61 @@ func TestTick_NoDueSchedules(t *testing.T) {
 	}
 	if len(runs) != 0 {
 		t.Fatalf("expected 0 runs, got %d", len(runs))
+	}
+}
+
+type failingScheduleUpdateRepo struct {
+	updateCalls int
+}
+
+func (r *failingScheduleUpdateRepo) ListDueSchedules(context.Context, time.Time, int) ([]store.OpsSchedule, error) {
+	return nil, nil
+}
+
+func (r *failingScheduleUpdateRepo) CreateOpsRunbookRun(context.Context, string, time.Time) (store.OpsRunbookRun, error) {
+	return store.OpsRunbookRun{}, nil
+}
+
+func (r *failingScheduleUpdateRepo) UpdateScheduleAfterRun(context.Context, string, string, string, string, bool) error {
+	r.updateCalls++
+	return errors.New("update failed")
+}
+
+type schedulerRunbookRepo struct{}
+
+func (schedulerRunbookRepo) UpdateOpsRunbookRun(_ context.Context, update store.OpsRunbookRunUpdate) (store.OpsRunbookRun, error) {
+	return store.OpsRunbookRun{
+		ID:        update.RunID,
+		RunbookID: "runbook-1",
+		Status:    update.Status,
+	}, nil
+}
+
+func (schedulerRunbookRepo) GetOpsRunbook(_ context.Context, id string) (store.OpsRunbook, error) {
+	return store.OpsRunbook{ID: id, Name: "runbook", Enabled: true}, nil
+}
+
+func (schedulerRunbookRepo) GetOpsRunbookRun(_ context.Context, id string) (store.OpsRunbookRun, error) {
+	return store.OpsRunbookRun{ID: id, RunbookID: "runbook-1", Status: "succeeded"}, nil
+}
+
+func (schedulerRunbookRepo) InsertActivityEvent(_ context.Context, event activity.EventWrite) (activity.Event, error) {
+	return activity.Event{ID: 1, Source: event.Source}, nil
+}
+
+func TestExecuteRunbookHandlesScheduleUpdateError(t *testing.T) {
+	t.Parallel()
+
+	repo := &failingScheduleUpdateRepo{}
+	svc := New(repo, schedulerRunbookRepo{}, Options{})
+
+	svc.executeRunbook(context.Background(), store.OpsRunbookRun{
+		ID:        "job-1",
+		RunbookID: "runbook-1",
+	}, "schedule-1", "", false)
+
+	if repo.updateCalls != 1 {
+		t.Fatalf("UpdateScheduleAfterRun calls = %d, want 1", repo.updateCalls)
 	}
 }
 

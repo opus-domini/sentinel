@@ -3,8 +3,10 @@ NPM        ?= npm
 LINT        = golangci-lint
 BINARY      = build/sentinel
 ENTRY       = ./cmd/sentinel
-FRONTEND    = frontend
-DOCS_CHECK  = ./scripts/docs-check.sh
+FRONTEND       = frontend
+DOCS_CHECK     = ./scripts/docs-check.sh
+COVERAGE_CHECK = ./scripts/coverage-check.sh
+COVERAGE_MIN  ?= 80
 LINT_GOCACHE ?= /tmp/go-cache
 LINT_CACHE   ?= /tmp/golangci-lint-cache
 
@@ -91,6 +93,11 @@ smoke-frontend-terminal-soak: check-go check-npm ## Run heavier browser soak for
 .PHONY: test-coverage
 test-coverage: check-go ## Run tests with race detection and coverage
 	$(GOCMD) test -race -covermode=atomic -coverprofile=coverage.txt ./...
+	COVERAGE_MIN=$(COVERAGE_MIN) $(COVERAGE_CHECK) coverage.txt
+
+.PHONY: coverage-check
+coverage-check: check-go ## Validate coverage.txt against COVERAGE_MIN
+	COVERAGE_MIN=$(COVERAGE_MIN) $(COVERAGE_CHECK) coverage.txt
 
 .PHONY: benchmark
 benchmark: check-go ## Run Go benchmarks

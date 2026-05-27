@@ -416,6 +416,70 @@ func TestAttachWSIntegrationUsesRequestedTerminalSize(t *testing.T) {
 	}
 }
 
+func TestAttachWSClosesInternalOnControlError(t *testing.T) {
+	originalExists := tmuxSessionExistsFn
+	originalEnsureMouse := tmuxEnsureWebMouse
+	originalMouse := tmuxSetSessionMouse
+	originalStatus := tmuxSetSessionStatus
+	originalAttach := startTmuxAttachFn
+	t.Cleanup(func() {
+		tmuxSessionExistsFn = originalExists
+		tmuxEnsureWebMouse = originalEnsureMouse
+		tmuxSetSessionMouse = originalMouse
+		tmuxSetSessionStatus = originalStatus
+		startTmuxAttachFn = originalAttach
+	})
+	tmuxEnsureWebMouse = func(_ context.Context) error { return nil }
+	tmuxSessionExistsFn = func(_ context.Context, _ string) (bool, error) {
+		return true, nil
+	}
+	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error { return nil }
+	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error { return nil }
+	startTmuxAttachFn = func(ctx context.Context, _ string, cols, rows int) (*term.PTY, error) {
+		return term.StartShell(ctx, "/bin/sh", cols, rows)
+	}
+
+	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
+	srv := httptest.NewServer(http.HandlerFunc(h.attachWS))
+	defer srv.Close()
+
+	conn := dialWebSocketPath(t, srv.URL, "/ws/tmux?session="+testSessionName)
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	opcode, _, err := readServerFrame(conn)
+	if err != nil {
+		t.Fatalf("read status frame error = %v", err)
+	}
+	if opcode != ws.OpText {
+		t.Fatalf("status opcode = %d, want %d", opcode, ws.OpText)
+	}
+
+	if err := writeClientFrame(conn, ws.OpText, make([]byte, 9*1024)); err != nil {
+		t.Fatalf("write oversized control frame: %v", err)
+	}
+
+	for {
+		opcode, payload, err := readServerFrame(conn)
+		if err != nil {
+			t.Fatalf("read close frame error = %v", err)
+		}
+		if opcode != 0x8 {
+			continue
+		}
+		if len(payload) < 2 {
+			t.Fatalf("close payload too short: %d", len(payload))
+		}
+		if got := binary.BigEndian.Uint16(payload[:2]); got != ws.CloseInternal {
+			t.Fatalf("close code = %d, want %d", got, ws.CloseInternal)
+		}
+		if got := string(payload[2:]); got != "connection error" {
+			t.Fatalf("close reason = %q, want %q", got, "connection error")
+		}
+		return
+	}
+}
+
 func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
@@ -990,4 +1054,31 @@ func readServerFrame(r io.Reader) (byte, []byte, error) {
 		}
 	}
 	return opcode, payload, nil
+}
+
+func writeClientFrame(w io.Writer, opcode byte, payload []byte) error {
+	header := []byte{0x80 | (opcode & 0x0F)}
+	length := len(payload)
+	switch {
+	case length < 126:
+		header = append(header, 0x80|byte(length))
+	case length <= 0xFFFF:
+		header = append(header, 0x80|126, byte(length>>8), byte(length))
+	default:
+		header = append(header, 0x80|127)
+		for shift := 56; shift >= 0; shift -= 8 {
+			header = append(header, byte(uint64(length)>>shift))
+		}
+	}
+	mask := [4]byte{1, 2, 3, 4}
+	header = append(header, mask[:]...)
+	masked := make([]byte, len(payload))
+	for i, b := range payload {
+		masked[i] = b ^ mask[i%len(mask)]
+	}
+	if _, err := w.Write(header); err != nil {
+		return err
+	}
+	_, err := w.Write(masked)
+	return err
 }

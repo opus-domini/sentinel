@@ -43,6 +43,7 @@ jobs:
         run: go mod tidy && git diff --exit-code go.mod go.sum
 
       - run: go test -race -coverprofile=coverage.txt -v ./...
+      - run: COVERAGE_MIN=80 ./scripts/coverage-check.sh coverage.txt
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v6
         with:
