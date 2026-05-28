@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/opus-domini/sentinel/compare/v0.7.0...v0.8.0) (2026-05-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* update apply no longer supports the legacy --systemd-scope alias; use --scope auto, --scope user, or --scope system.
+
+### Features
+
+* restart on update apply by default ([4f6ea9f](https://github.com/opus-domini/sentinel/commit/4f6ea9f24c7f4e3571c690236fdd45c5c8623746))
+
 ## [0.7.0](https://github.com/opus-domini/sentinel/compare/v0.6.4...v0.7.0) (2026-05-27)
 
 
