@@ -19,8 +19,12 @@ type App struct {
 }
 
 // Shared command and output keys.
-const cmdStatus = "status"
-const cmdConfig = "config"
+const (
+	cmdStatus  = "status"
+	cmdConfig  = "config"
+	cmdInstall = "install"
+	optionAuto = "auto"
+)
 
 // Test indirections: swapped to fakes so command behaviour can be exercised
 // without touching the real service manager, updater or HTTP server.

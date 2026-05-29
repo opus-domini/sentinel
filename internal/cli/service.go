@@ -61,7 +61,7 @@ func newServiceInstallCmd(app *App) *cobra.Command {
 		start    bool
 	)
 	cmd := &cobra.Command{
-		Use:   "install",
+		Use:   cmdInstall,
 		Short: "Install the service unit and start it",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {

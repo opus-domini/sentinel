@@ -148,17 +148,17 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow update when the checksum is unavailable")
 	cmd.Flags().BoolVar(&restart, "restart", true, "restart the managed service after a successful update")
 	cmd.Flags().StringVar(&serviceUnit, "service", "sentinel", "service unit/label to restart after the update")
-	cmd.Flags().StringVar(&scope, "scope", "auto", "restart manager scope: auto, user, or system")
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "restart manager scope: auto, user, or system")
 	return cmd
 }
 
 func normalizeUpdateApplyScope(raw string) (string, error) {
 	scope := strings.ToLower(strings.TrimSpace(raw))
 	if scope == "" {
-		return "auto", nil
+		return optionAuto, nil
 	}
 	switch scope {
-	case "auto", "user", "system":
+	case optionAuto, "user", "system":
 		return scope, nil
 	default:
 		return "", fmt.Errorf("unsupported update apply scope %q (valid: auto, user, system)", raw)

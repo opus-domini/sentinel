@@ -12,7 +12,7 @@ import (
 
 // defaultAutoUpdateScope is the default restart-manager scope for the
 // autoupdate timer commands.
-const defaultAutoUpdateScope = "auto"
+const defaultAutoUpdateScope = optionAuto
 
 func newServiceAutoUpdateCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -43,7 +43,7 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 		randomizedDelay time.Duration
 	)
 	cmd := &cobra.Command{
-		Use:   "install",
+		Use:   cmdInstall,
 		Short: "Install the autoupdate timer and start it",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
