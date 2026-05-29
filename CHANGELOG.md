@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.1](https://github.com/opus-domini/sentinel/compare/v0.8.0...v0.8.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* address cli lint findings ([5b82fb3](https://github.com/opus-domini/sentinel/commit/5b82fb3e0747195d7c624b43c4ad2d78f64b5d1e))
+
+
+### CI
+
+* split fast and full workflow gates ([2bc6bb3](https://github.com/opus-domini/sentinel/commit/2bc6bb3556de38103efde98aef0c5b1d59682111))
+
 ## [0.8.0](https://github.com/opus-domini/sentinel/compare/v0.7.0...v0.8.0) (2026-05-27)
 
 
