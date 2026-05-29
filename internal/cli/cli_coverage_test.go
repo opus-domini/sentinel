@@ -255,12 +255,12 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 	t.Run("purge removes autoupdate, completion and binary", func(t *testing.T) {
 		origUninstall := uninstallUserSvcFn
 		origAutoUpdate := uninstallUserAutoUpdateFn
-		origCompletion := removeBashCompletionFn
+		origCompletion := removeShellCompletionsFn
 		origBinary := removeSentinelBinaryFn
 		t.Cleanup(func() {
 			uninstallUserSvcFn = origUninstall
 			uninstallUserAutoUpdateFn = origAutoUpdate
-			removeBashCompletionFn = origCompletion
+			removeShellCompletionsFn = origCompletion
 			removeSentinelBinaryFn = origBinary
 		})
 
@@ -270,9 +270,9 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 			autoUpdateCalled = true
 			return nil
 		}
-		removeBashCompletionFn = func() []string {
+		removeShellCompletionsFn = func() []string {
 			completionCalled = true
-			return []string{"/tmp/bash-completion/sentinel"}
+			return []string{"/tmp/shell-completion/sentinel"}
 		}
 		removeSentinelBinaryFn = func() (string, error) {
 			binaryCalled = true
@@ -950,30 +950,30 @@ func TestDoctorStatusError(t *testing.T) {
 	}
 }
 
-// TestCurrentVersionFallbackToDev tests that currentVersion returns "dev" when
-// buildVersion is "dev".
-func TestCurrentVersionFallbackToDev(t *testing.T) {
-	orig := buildVersion
-	t.Cleanup(func() { buildVersion = orig })
+// TestVersionFallbackToDev tests that Version returns a non-empty value when
+// version is "dev".
+func TestVersionFallbackToDev(t *testing.T) {
+	orig := version
+	t.Cleanup(func() { version = orig })
 
-	buildVersion = testBuildVersionDev
-	got := currentVersion()
+	version = testBuildVersionDev
+	got := Version()
 	// In test context, debug.ReadBuildInfo might return "(devel)", so we
 	// accept either "dev" or a non-empty version.
 	if got == "" {
-		t.Fatal("currentVersion() returned empty string")
+		t.Fatal("Version() returned empty string")
 	}
 }
 
-// TestCurrentVersionEmptyBuildVersion tests the (devel) fallback path.
-func TestCurrentVersionEmptyBuildVersion(t *testing.T) {
-	orig := buildVersion
-	t.Cleanup(func() { buildVersion = orig })
+// TestVersionEmptyBuildVersion tests the (devel) fallback path.
+func TestVersionEmptyBuildVersion(t *testing.T) {
+	orig := version
+	t.Cleanup(func() { version = orig })
 
-	buildVersion = ""
-	got := currentVersion()
+	version = ""
+	got := Version()
 	if got == "" {
-		t.Fatal("currentVersion() returned empty string")
+		t.Fatal("Version() returned empty string")
 	}
 }
 

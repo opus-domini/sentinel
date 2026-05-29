@@ -147,7 +147,7 @@ func runServiceUninstall(app *App, disable, stop, removeUnit, purge bool) error 
 	writeln(app.Stdout, "service uninstalled")
 
 	if purge {
-		for _, path := range removeBashCompletionFn() {
+		for _, path := range removeShellCompletionsFn() {
 			writef(app.Stdout, "removed %s\n", path)
 		}
 		if path, err := removeSentinelBinaryFn(); err != nil {
@@ -159,12 +159,18 @@ func runServiceUninstall(app *App, disable, stop, removeUnit, purge bool) error 
 	return nil
 }
 
-// removeBashCompletion deletes the installed bash completion script from the
-// user and system completion directories. It returns the paths it removed.
-func removeBashCompletion() []string {
+// removeShellCompletions deletes installed shell completion scripts. It returns
+// the paths it removed.
+func removeShellCompletions() []string {
 	paths := []string{}
 	if home, err := os.UserHomeDir(); err == nil {
 		paths = append(paths, filepath.Join(home, ".local", "share", "bash-completion", "completions", "sentinel"))
+		paths = append(paths, filepath.Join(home, ".local", "share", "zsh", "site-functions", "_sentinel"))
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			configHome = filepath.Join(home, ".config")
+		}
+		paths = append(paths, filepath.Join(configHome, "fish", "completions", "sentinel.fish"))
 	}
 	paths = append(paths, "/usr/share/bash-completion/completions/sentinel")
 

@@ -48,6 +48,7 @@ func newRootCmd(app *App) *cobra.Command {
 		newUpdateCmd(app),
 	)
 	addGrouped(root, groupExtra,
+		newCompletionCmd(app),
 		newVersionCmd(app),
 	)
 	return root

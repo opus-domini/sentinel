@@ -1095,12 +1095,12 @@ func TestRunCLIVersionFlag(t *testing.T) {
 	}
 }
 
-func TestCurrentVersionPrefersBuildVersion(t *testing.T) {
-	orig := buildVersion
-	t.Cleanup(func() { buildVersion = orig })
+func TestVersionPrefersBuildVersion(t *testing.T) {
+	orig := version
+	t.Cleanup(func() { version = orig })
 
-	buildVersion = "1.9.0"
-	if got := currentVersion(); got != "1.9.0" {
-		t.Fatalf("currentVersion() = %q, want 1.9.0", got)
+	version = "1.9.0"
+	if got := Version(); got != "1.9.0" {
+		t.Fatalf("Version() = %q, want 1.9.0", got)
 	}
 }

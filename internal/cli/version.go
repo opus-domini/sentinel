@@ -7,13 +7,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// buildVersion is injected by release workflows via -ldflags.
-var buildVersion = "dev"
+// version is overridden at release build time via -ldflags.
+var version = "dev"
 
-// currentVersion resolves the binary version from the ldflags value, falling
-// back to the Go build info and finally "dev".
-func currentVersion() string {
-	if value := strings.TrimSpace(buildVersion); value != "" && value != "dev" && value != "(devel)" {
+// Version resolves the binary version from the ldflags value, falling back to
+// the Go build info and finally "dev".
+func Version() string {
+	if value := strings.TrimSpace(version); value != "" && value != "dev" && value != "(devel)" {
 		return value
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {

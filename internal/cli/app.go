@@ -34,10 +34,10 @@ var (
 	installUserAutoUpdateFn   = daemon.InstallUserAutoUpdate
 	uninstallUserAutoUpdateFn = daemon.UninstallUserAutoUpdate
 	userAutoUpdateStatusFn    = daemon.UserAutoUpdateStatusForScope
-	removeBashCompletionFn    = removeBashCompletion
+	removeShellCompletionsFn  = removeShellCompletions
 	removeSentinelBinaryFn    = removeSentinelBinary
 	loadConfigFn              = config.Load
-	currentVersionFn          = currentVersion
+	currentVersionFn          = Version
 	updateCheckFn             = updater.Check
 	updateApplyFn             = updater.Apply
 	updateStatusFn            = updater.Status
