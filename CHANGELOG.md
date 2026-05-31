@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/opus-domini/sentinel/compare/v0.8.1...v0.8.2) (2026-05-31)
+
+
+### Refactors
+
+* **cli:** standardize command groups ([272fdee](https://github.com/opus-domini/sentinel/commit/272fdee5131c6101b92ca9892a58e552b8fea40c))
+
 ## [0.8.1](https://github.com/opus-domini/sentinel/compare/v0.8.0...v0.8.1) (2026-05-29)
 
 
