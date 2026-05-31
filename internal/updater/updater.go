@@ -11,7 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,6 +54,9 @@ const healthCheckDelay = 5 * time.Second
 
 // sleepFn is overridable in tests to avoid real delays.
 var sleepFn = time.Sleep
+
+// chmodFn is overridable in tests to exercise the chmod-failure rollback path.
+var chmodFn = os.Chmod
 
 // CheckOptions represents check options data.
 type CheckOptions struct {
@@ -372,9 +377,7 @@ func normalizeCheckOptions(opts CheckOptions) CheckOptions {
 	if cfg.Arch == "" {
 		cfg.Arch = runtime.GOARCH
 	}
-	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: 20 * time.Second}
-	}
+	cfg.HTTPClient = withSecureRedirect(cfg.HTTPClient, 20*time.Second)
 	return cfg
 }
 
@@ -404,10 +407,63 @@ func normalizeApplyOptions(opts ApplyOptions) ApplyOptions {
 	if cfg.ServiceUnit == "" {
 		cfg.ServiceUnit = defaultServiceUnit
 	}
-	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: 30 * time.Second}
-	}
+	cfg.HTTPClient = withSecureRedirect(cfg.HTTPClient, 30*time.Second)
 	return cfg
+}
+
+// withSecureRedirect returns an HTTP client whose redirects are gated by
+// secureRedirect, so an https request cannot be silently downgraded to http on
+// a 30x. A nil client gets the default timeout; an existing CheckRedirect is
+// left untouched.
+func withSecureRedirect(client *http.Client, timeout time.Duration) *http.Client {
+	if client == nil {
+		return &http.Client{Timeout: timeout, CheckRedirect: secureRedirect}
+	}
+	if client.CheckRedirect != nil {
+		return client
+	}
+	cloned := *client
+	cloned.CheckRedirect = secureRedirect
+	return &cloned
+}
+
+// requireSecureURL is the single scheme gate for every URL the updater
+// fetches. It requires https, with one exception: http to a loopback host,
+// which keeps local mirrors and httptest-based tests working without weakening
+// the production default.
+func requireSecureURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid url %q: %w", rawURL, err)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("refusing insecure url %q: https is required", rawURL)
+	default:
+		return fmt.Errorf("unsupported url scheme %q in %q", u.Scheme, rawURL)
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// secureRedirect is the CheckRedirect for the updater's HTTP clients: it
+// re-applies requireSecureURL to every redirect target.
+func secureRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	return requireSecureURL(req.URL.String())
 }
 
 func (o ApplyOptions) buildRestartCommand() []string {
@@ -605,6 +661,9 @@ func parseChecksums(raw string) map[string]string {
 }
 
 func fetchJSON(ctx context.Context, client *http.Client, url string, out any) error {
+	if err := requireSecureURL(url); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -630,6 +689,9 @@ func fetchJSON(ctx context.Context, client *http.Client, url string, out any) er
 }
 
 func downloadToString(ctx context.Context, client *http.Client, url string) (string, error) {
+	if err := requireSecureURL(url); err != nil {
+		return "", err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
@@ -654,6 +716,9 @@ func downloadToString(ctx context.Context, client *http.Client, url string) (str
 }
 
 func downloadToFile(ctx context.Context, client *http.Client, url, path string) error {
+	if err := requireSecureURL(url); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -676,8 +741,15 @@ func downloadToFile(ctx context.Context, client *http.Client, url, path string) 
 	}
 	defer func() { _ = file.Close() }()
 
-	if _, err := io.Copy(file, io.LimitReader(resp.Body, maxArchiveSize)); err != nil {
+	// LimitReader at maxArchiveSize+1 so a body that hits the cap is detected
+	// as oversized rather than silently truncated (which would only surface
+	// later as a confusing checksum/gzip failure).
+	written, err := io.Copy(file, io.LimitReader(resp.Body, maxArchiveSize+1))
+	if err != nil {
 		return err
+	}
+	if written > maxArchiveSize {
+		return fmt.Errorf("release archive exceeds maximum size (%d bytes)", maxArchiveSize)
 	}
 	return nil
 }
@@ -791,7 +863,10 @@ func installBinary(execPath, newPath, backupPath string) error {
 		_ = os.Rename(backupPath, execPath)
 		return fmt.Errorf("place new binary: %w", err)
 	}
-	if err := os.Chmod(execPath, 0o755); err != nil { //nolint:gosec // installed binary must be executable.
+	if err := chmodFn(execPath, 0o755); err != nil {
+		// Restore the original so a failed apply always leaves the previous
+		// binary in place, matching the rename-failure rollback above.
+		_ = os.Rename(backupPath, execPath)
 		return fmt.Errorf("chmod installed binary: %w", err)
 	}
 	return nil

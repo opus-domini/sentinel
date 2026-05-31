@@ -13,8 +13,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/updater"
 )
 
-const testBuildVersionDev = "dev"
-
 // TestSubcommandHelpRouting tests that every subcommand group (service, update,
 // service autoupdate) returns exit 0 for help variants and for no arguments,
 // and exit 2 for unknown subcommands.
@@ -947,33 +945,6 @@ func TestDoctorStatusError(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "unavailable") {
 		t.Fatalf("stdout missing unavailable label: %s", out.String())
-	}
-}
-
-// TestVersionFallbackToDev tests that Version returns a non-empty value when
-// version is "dev".
-func TestVersionFallbackToDev(t *testing.T) {
-	orig := version
-	t.Cleanup(func() { version = orig })
-
-	version = testBuildVersionDev
-	got := Version()
-	// In test context, debug.ReadBuildInfo might return "(devel)", so we
-	// accept either "dev" or a non-empty version.
-	if got == "" {
-		t.Fatal("Version() returned empty string")
-	}
-}
-
-// TestVersionEmptyBuildVersion tests the (devel) fallback path.
-func TestVersionEmptyBuildVersion(t *testing.T) {
-	orig := version
-	t.Cleanup(func() { version = orig })
-
-	version = ""
-	got := Version()
-	if got == "" {
-		t.Fatal("Version() returned empty string")
 	}
 }
 

@@ -92,14 +92,21 @@ type Handler struct {
 	store             uiStore
 	ops               OpsLogStreamer
 	sessionUserLookup SessionUserLookup
+	spa               *spa
 }
 
-// Register wires the package routes into the HTTP mux.
+// Register wires the package routes into the HTTP mux. A missing frontend
+// bundle (only the committed .gitkeep is embedded) is not a registration
+// error: the routes are wired and serve a 503 not-built response until the
+// bundle is compiled in.
 func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, eventsHub *events.Hub, ops OpsLogStreamer, sessionUserLookup SessionUserLookup) error {
-	h := &Handler{guard: guard, events: eventsHub, store: st, ops: ops, sessionUserLookup: sessionUserLookup}
-	if err := registerAssetRoutes(mux); err != nil {
+	app, err := newSPA(DistFS)
+	if err != nil && !errors.Is(err, errBundleMissing) {
 		return err
 	}
+
+	h := &Handler{guard: guard, events: eventsHub, store: st, ops: ops, sessionUserLookup: sessionUserLookup, spa: app}
+	app.registerAssets(mux)
 	mux.HandleFunc("GET /manifest.webmanifest", h.serveManifest)
 	mux.HandleFunc("GET /ws/tmux", h.attachWS)
 	mux.HandleFunc("GET /ws/events", h.attachEventsWS)
@@ -120,13 +127,21 @@ func (h *Handler) spaPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if urlPath != "" && serveDistPath(w, r, urlPath) {
+	if urlPath != "" && h.spa.servePath(w, r, urlPath) {
 		return
 	}
-	if serveDistPath(w, r, "index.html") {
+	if h.spa.servePath(w, r, "index.html") {
 		return
 	}
-	http.Error(w, "frontend bundle missing", http.StatusInternalServerError)
+	http.Error(w, "frontend bundle not built", http.StatusServiceUnavailable)
+}
+
+func (h *Handler) serveManifest(w http.ResponseWriter, r *http.Request) {
+	if err := h.guard.CheckOrigin(r); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	h.spa.serveManifest(w, r)
 }
 
 // requireWSAuth checks origin and authentication for WebSocket upgrade

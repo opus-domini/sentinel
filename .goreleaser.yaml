@@ -34,7 +34,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/opus-domini/sentinel/internal/cli.version={{ .Version }}
+      - -X github.com/opus-domini/sentinel/pkg/sentinel.version={{ .Version }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
@@ -60,7 +60,11 @@ sboms:
 # Keyless cosign signature over the checksums file. The checksums file
 # covers every archive and SBOM by SHA-256, so a single signature anchors
 # the whole release. The .bundle (signature + certificate + Rekor proof) is
-# uploaded alongside the checksums and can be verified independently.
+# uploaded alongside the checksums and can be verified with:
+#   cosign verify-blob --bundle sentinel-<version>-checksums.txt.bundle \
+#     --certificate-identity-regexp 'https://github.com/opus-domini/sentinel/.*' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     sentinel-<version>-checksums.txt
 signs:
   - id: checksums
     cmd: cosign

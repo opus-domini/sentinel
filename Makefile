@@ -3,22 +3,24 @@ NPM   ?= npm
 LINT   = golangci-lint
 
 APP      := sentinel
-BIN_DIR  := build
+BIN_DIR  := bin
 BIN      := $(BIN_DIR)/$(APP)
 ENTRY    := ./cmd/sentinel
 PKG_LIST := ./...
 FRONTEND := frontend
 DOCS_CHECK := ./scripts/docs-check.sh
+WEB_URL    := http://127.0.0.1:4040
 
-PREFIX        ?= $(HOME)/.local
+# System scope under root, user scope otherwise (see CLAUDE.md).
+PREFIX        ?= $(shell [ "$$(id -u)" -eq 0 ] && echo /usr/local || echo "$(HOME)/.local")
 BINDIR         = $(PREFIX)/bin
 INSTALLED_BIN  = $(BINDIR)/$(APP)
 XDG_CONFIG_HOME ?= $(HOME)/.config
 
 VERSION ?= dev
-LDFLAGS ?= -s -w -X github.com/opus-domini/sentinel/internal/cli.version=$(VERSION)
+LDFLAGS ?= -s -w -X github.com/opus-domini/sentinel/pkg/sentinel.version=$(VERSION)
 COVERAGE_PROFILE ?= coverage.txt
-COVERAGE_PKGS    ?= $(PKG_LIST)
+COVERAGE_PKGS    ?= ./...
 COVERAGE_CHECK    = ./scripts/coverage-check.sh
 COVERAGE_MIN     ?= 80
 LINT_GOCACHE     ?= /tmp/go-cache
@@ -59,8 +61,7 @@ build-server: check-go build-frontend ## Build the binary into $(BIN)
 	$(GOCMD) build -trimpath -ldflags="$(LDFLAGS)" -o "$(BIN)" $(ENTRY)
 
 .PHONY: build-frontend
-build-frontend: check-npm ## Build embedded frontend assets
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+build-frontend: frontend-install ## Build embedded frontend assets
 	$(NPM) --prefix "$(FRONTEND)" run build
 
 .PHONY: frontend-install
@@ -70,8 +71,8 @@ frontend-install: check-npm ## Install frontend dependencies reproducibly
 # --- Quality ---------------------------------------------------
 
 .PHONY: test
-test: check-go ## Run Go tests
-	$(GOCMD) test $(PKG_LIST)
+test: check-go ## Run Go tests with race detection and shuffle
+	$(GOCMD) test -race -shuffle=on $(PKG_LIST)
 
 .PHONY: test-unit
 test-unit: check-go check-npm ## Run fast unit test layer (Go + frontend)
@@ -89,7 +90,7 @@ test-integration: check-go ## Run integration tests
 
 .PHONY: test-coverage
 test-coverage: check-go ## Run tests with race detection and the coverage gate
-	$(GOCMD) test -race -covermode=atomic -coverprofile="$(COVERAGE_PROFILE)" $(COVERAGE_PKGS)
+	$(GOCMD) test -race -shuffle=on -covermode=atomic -coverpkg=$(COVERAGE_PKGS) -coverprofile="$(COVERAGE_PROFILE)" $(PKG_LIST)
 	COVERAGE_MIN=$(COVERAGE_MIN) $(COVERAGE_CHECK) "$(COVERAGE_PROFILE)"
 
 .PHONY: test-cover
@@ -175,10 +176,10 @@ smoke-frontend-terminal-soak: check-go check-npm ## Run heavier browser soak for
 	SENTINEL_SMOKE_INITIAL_LINES=4000 SENTINEL_SMOKE_LIVE_LINES=12000 ./scripts/frontend-terminal-smoke.sh
 
 .PHONY: ci-fast
-ci-fast: tidy-check fmt-check vet lint lint-frontend typecheck-frontend test-unit test-contract build-server docs-check ## Fast CI gate for pull requests
+ci-fast: tidy-check fmt-check vet lint lint-frontend typecheck-frontend test-coverage docs-check build ## Fast CI gate for pull requests
 
 .PHONY: ci-full
-ci-full: ci-fast test-integration test-e2e test-coverage test-perf ## Full CI gate for mainline
+ci-full: ci-fast test-frontend test-contract test-integration test-e2e test-perf vuln ## Full CI gate for mainline
 
 .PHONY: ci
 ci: ci-full ## Run the full CI pipeline
@@ -189,17 +190,17 @@ check: fmt tidy vet lint lint-frontend typecheck-frontend test-coverage test-fro
 # --- Install ---------------------------------------------------
 
 .PHONY: install
-install: install-binary install-service install-completion ## Install binary, service and shell completion
-	@echo
-	@echo "Sentinel installed:"
-	@echo "  binary:      $(INSTALLED_BIN)"
-	@echo "  service:     sentinel.service"
-	@echo "  completion:  shell completion (best effort)"
-	@echo
-	@echo "Next steps:"
-	@echo "  1. Run  sentinel service status    to verify the managed service."
-	@echo "  2. Run  sentinel doctor            to check the host environment."
-	@echo "  3. Open http://127.0.0.1:4040      to open the web UI."
+install: install-binary install-service install-completion ## Install binary, service and shell completion (user scope; system scope when run as root)
+	@printf '\n  \033[1;32m✓\033[0m \033[1m%s installed\033[0m\n\n' "$(APP)"
+	@printf '  \033[36m%-12s\033[0m %s\n' 'Binary' "$(INSTALLED_BIN)"
+	@printf '  \033[36m%-12s\033[0m %s\n' 'Service' "$(APP).service"
+	@printf '  \033[36m%-12s\033[0m %s\n' 'Completion' 'shell completion (best effort)'
+	@printf '  \033[36m%-12s\033[0m \033[1;36m%s\033[0m\n' 'Web UI' "$(WEB_URL)"
+	@printf '\n  \033[1mNext steps\033[0m\n'
+	@printf '    \033[2m1.\033[0m %-28s\033[2m%s\033[0m\n' "$(APP) doctor" 'verify the environment'
+	@printf '    \033[2m2.\033[0m %-28s\033[2m%s\033[0m\n' "$(APP) service status" 'check the service'
+	@printf '    \033[2m3.\033[0m %-28s\033[2m%s\033[0m\n' "open $(WEB_URL)" 'launch the web UI'
+	@printf '\n'
 
 .PHONY: install-binary
 install-binary: build ## Install the binary
@@ -212,7 +213,7 @@ install-completion: install-binary ## Install shell completion for the installed
 		&& echo "Shell completion installed (open a new shell to use it)" || true
 
 .PHONY: install-service
-install-service: install-binary ## Install and restart the service
+install-service: install-binary ## Install and restart the service (system scope when run as root)
 	"$(INSTALLED_BIN)" service install --exec "$(INSTALLED_BIN)"
 
 .PHONY: uninstall

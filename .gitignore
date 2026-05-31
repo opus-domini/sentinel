@@ -14,6 +14,7 @@
 !/Makefile
 !/.golangci.yml
 !/.goreleaser.yaml
+!/mise.toml
 !/go.mod
 !/go.sum
 !/install.sh
@@ -23,6 +24,8 @@
 !/cmd/**/*
 !/internal
 !/internal/**/*
+!/pkg
+!/pkg/**/*
 
 # Embedded web UI build output. The frontend build regenerates these files
 # before Go builds in Makefile, CI and GoReleaser; only the placeholder stays

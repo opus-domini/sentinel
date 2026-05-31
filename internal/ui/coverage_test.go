@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -947,37 +948,77 @@ func TestNewAttachErrChannelNonBlocking(t *testing.T) {
 	}
 }
 
+// newTestSPA builds an in-memory SPA bundle so the asset, manifest and routing
+// logic can be exercised without depending on a compiled frontend.
+func newTestSPA(t *testing.T) *spa {
+	t.Helper()
+	app, err := newSPA(fstest.MapFS{
+		"dist/index.html":           &fstest.MapFile{Data: []byte("<!doctype html><title>app</title>")},
+		"dist/assets/app.js":        &fstest.MapFile{Data: []byte("console.log('app')")},
+		"dist/manifest.webmanifest": &fstest.MapFile{Data: []byte(`{"name":"Sentinel","short_name":"Sentinel"}`)},
+		"dist/sub":                  &fstest.MapFile{Mode: fs.ModeDir},
+	})
+	if err != nil {
+		t.Fatalf("newSPA() error = %v", err)
+	}
+	return app
+}
+
 // ---------------------------------------------------------------------------
-// registerAssetRoutes — sets up file server routes from embedded FS
+// newSPA — bundle detection
 // ---------------------------------------------------------------------------
 
-func TestRegisterAssetRoutes(t *testing.T) {
+func TestNewSPADetectsMissingBundle(t *testing.T) {
 	t.Parallel()
 
-	mux := http.NewServeMux()
-	if err := registerAssetRoutes(mux); err != nil {
-		t.Fatalf("registerAssetRoutes() error = %v", err)
+	// Only .gitkeep present, mirroring an un-built checkout.
+	app, err := newSPA(fstest.MapFS{
+		"dist/.gitkeep": &fstest.MapFile{Data: nil},
+	})
+	if !errors.Is(err, errBundleMissing) {
+		t.Fatalf("newSPA() error = %v, want errBundleMissing", err)
 	}
+	if app.built() {
+		t.Fatal("built() = true for a bundle without index.html")
+	}
+}
 
-	// After registration distFS must be non-nil.
-	if distFS == nil {
-		t.Fatal("distFS is nil after registerAssetRoutes()")
+func TestNewSPADetectsBuiltBundle(t *testing.T) {
+	t.Parallel()
+
+	app := newTestSPA(t)
+	if !app.built() {
+		t.Fatal("built() = false for a bundle with index.html")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// serveDistPath — serves known files, rejects dirs and missing paths
+// spa.registerAssets — wires the /assets/ file server
 // ---------------------------------------------------------------------------
 
-func TestServeDistPath(t *testing.T) {
+func TestSPARegisterAssets(t *testing.T) {
 	t.Parallel()
 
-	// Ensure distFS is initialised by calling registerAssetRoutes first.
+	app := newTestSPA(t)
 	mux := http.NewServeMux()
-	if err := registerAssetRoutes(mux); err != nil {
-		t.Fatalf("registerAssetRoutes() error = %v", err)
-	}
+	app.registerAssets(mux)
 
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /assets/app.js status = %d, want 200", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// spa.servePath — serves known files, rejects dirs and missing paths
+// ---------------------------------------------------------------------------
+
+func TestSPAServePath(t *testing.T) {
+	t.Parallel()
+
+	app := newTestSPA(t)
 	tests := []struct {
 		name     string
 		path     string
@@ -987,24 +1028,35 @@ func TestServeDistPath(t *testing.T) {
 		{"dot_path", ".", false},
 		{"slash_only", "/", false},
 		{"nonexistent_file", "does-not-exist-xyz.html", false},
-	}
-	if embeddedDistFileExists("index.html") {
-		tests = append(tests, struct {
-			name     string
-			path     string
-			wantServ bool
-		}{"built_index_html", "index.html", true})
+		{"directory", "sub", false},
+		{"index_html", "index.html", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/"+tc.path, nil)
-			got := serveDistPath(rec, req, tc.path)
+			got := app.servePath(rec, req, tc.path)
 			if got != tc.wantServ {
-				t.Fatalf("serveDistPath(%q) = %v, want %v", tc.path, got, tc.wantServ)
+				t.Fatalf("servePath(%q) = %v, want %v", tc.path, got, tc.wantServ)
 			}
 		})
+	}
+}
+
+// TestSPANilSafety confirms the parameterized type tolerates a nil/empty bundle.
+func TestSPANilSafety(t *testing.T) {
+	t.Parallel()
+
+	var app *spa
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/index.html", nil)
+	if app.servePath(rec, req, "index.html") {
+		t.Fatal("servePath on nil spa returned true")
+	}
+	app.registerAssets(http.NewServeMux()) // must not panic
+	if app.built() {
+		t.Fatal("built() = true for nil spa")
 	}
 }
 
@@ -1137,18 +1189,9 @@ func TestRegisterServesBrandedManifest(t *testing.T) {
 
 func TestSpaPageServesIndexForUnknownPaths(t *testing.T) {
 	t.Parallel()
-	skipIfEmbeddedDistFileMissing(t, "index.html")
 
 	guard := security.New("", nil, security.CookieSecureNever)
-
-	// Register to populate distFS.
-	mux := http.NewServeMux()
-	st := newHTTPUIStore(t)
-	if err := Register(mux, guard, st, events.NewHub(), nil, nil); err != nil {
-		t.Fatalf("Register() error = %v", err)
-	}
-
-	h := &Handler{guard: guard}
+	h := &Handler{guard: guard, spa: newTestSPA(t)}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/some/client/route", nil)
@@ -1158,11 +1201,49 @@ func TestSpaPageServesIndexForUnknownPaths(t *testing.T) {
 	}
 }
 
+// TestSpaPageReturnsNotBuiltWhenBundleMissing confirms an un-built bundle
+// surfaces a 503 not-built response rather than a 500.
+func TestSpaPageReturnsNotBuiltWhenBundleMissing(t *testing.T) {
+	t.Parallel()
+
+	guard := security.New("", nil, security.CookieSecureNever)
+	app, err := newSPA(fstest.MapFS{"dist/.gitkeep": &fstest.MapFile{}})
+	if !errors.Is(err, errBundleMissing) {
+		t.Fatalf("newSPA() error = %v, want errBundleMissing", err)
+	}
+	h := &Handler{guard: guard, spa: app}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	h.spaPage(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("spaPage status = %d, want 503", rec.Code)
+	}
+}
+
+// TestServeManifestNotBuilt confirms the manifest endpoint returns 503 when the
+// bundle is missing.
+func TestServeManifestNotBuilt(t *testing.T) {
+	t.Parallel()
+
+	guard := security.New("", nil, security.CookieSecureNever)
+	app, _ := newSPA(fstest.MapFS{"dist/.gitkeep": &fstest.MapFile{}})
+	h := &Handler{guard: guard, spa: app}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
+	h.serveManifest(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("serveManifest status = %d, want 503", rec.Code)
+	}
+}
+
 func embeddedDistFileExists(name string) bool {
-	if ensureDistFS() != nil {
+	app, _ := newSPA(DistFS)
+	if app == nil || app.dist == nil {
 		return false
 	}
-	file, err := distFS.Open(name)
+	file, err := app.dist.Open(name)
 	if err != nil {
 		return false
 	}

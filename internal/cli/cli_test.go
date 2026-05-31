@@ -1094,13 +1094,3 @@ func TestRunCLIVersionFlag(t *testing.T) {
 		t.Fatalf("unexpected version output: %q", out.String())
 	}
 }
-
-func TestVersionPrefersBuildVersion(t *testing.T) {
-	orig := version
-	t.Cleanup(func() { version = orig })
-
-	version = "1.9.0"
-	if got := Version(); got != "1.9.0" {
-		t.Fatalf("Version() = %q, want 1.9.0", got)
-	}
-}

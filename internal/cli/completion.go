@@ -25,7 +25,7 @@ func newCompletionCmd(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch args[0] {
 			case shellBash:
-				return cmd.Root().GenBashCompletion(app.Stdout)
+				return cmd.Root().GenBashCompletionV2(app.Stdout, true)
 			case shellZsh:
 				return cmd.Root().GenZshCompletion(app.Stdout)
 			case shellFish:
@@ -72,7 +72,7 @@ func installCompletions(root *cobra.Command, app *App, shell string) error {
 		var genErr error
 		switch sh {
 		case shellBash:
-			genErr = root.GenBashCompletion(file)
+			genErr = root.GenBashCompletionV2(file, true)
 		case shellZsh:
 			genErr = root.GenZshCompletion(file)
 		case shellFish:
@@ -86,6 +86,9 @@ func installCompletions(root *cobra.Command, app *App, shell string) error {
 			return failf("write completion script: %w", closeErr)
 		}
 		writef(app.Stdout, "%s completion installed to %s\n", sh, path)
+		if sh == shellZsh {
+			writef(app.Stdout, "zsh note: ensure %s is in your fpath.\n", filepath.Dir(path))
+		}
 	}
 	return nil
 }

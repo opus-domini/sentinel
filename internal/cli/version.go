@@ -1,27 +1,16 @@
 package cli
 
 import (
-	"runtime/debug"
-	"strings"
+	"text/template"
 
 	"github.com/spf13/cobra"
+
+	"github.com/opus-domini/sentinel/pkg/sentinel"
 )
 
-// version is overridden at release build time via -ldflags.
-var version = "dev"
-
-// Version resolves the binary version from the ldflags value, falling back to
-// the Go build info and finally "dev".
+// Version returns the build version resolved by the shared sentinel package.
 func Version() string {
-	if value := strings.TrimSpace(version); value != "" && value != "dev" && value != "(devel)" {
-		return value
-	}
-	if bi, ok := debug.ReadBuildInfo(); ok {
-		if strings.TrimSpace(bi.Main.Version) != "" && bi.Main.Version != "(devel)" {
-			return bi.Main.Version
-		}
-	}
-	return "dev"
+	return sentinel.Version()
 }
 
 func newVersionCmd(app *App) *cobra.Command {
@@ -29,9 +18,16 @@ func newVersionCmd(app *App) *cobra.Command {
 		Use:   "version",
 		Short: "Print the version",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			writef(app.Stdout, "sentinel version %s\n", currentVersionFn())
-			return nil
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Render the root's version template (the same string the
+			// --version flag uses) so the `version` subcommand and the flag
+			// always produce identical output.
+			root := cmd.Root()
+			tmpl, err := template.New("version").Parse(root.VersionTemplate())
+			if err != nil {
+				return failf("parse version template: %w", err)
+			}
+			return tmpl.Execute(app.Stdout, root)
 		},
 	}
 }
