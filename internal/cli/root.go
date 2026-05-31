@@ -42,7 +42,7 @@ func newRootCmd(app *App) *cobra.Command {
 		newDBCmd(app),
 		newDoctorCmd(app),
 	)
-	addGrouped(root, groupCore,
+	addGrouped(root, groupService,
 		newDaemonCmd(app),
 		newServiceCmd(app),
 		newUpdateCmd(app),
