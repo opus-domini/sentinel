@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -105,7 +106,15 @@ type OpsRunbookRunUpdate struct {
 	StepResults    string
 	StartedAt      string
 	FinishedAt     string
+	// FromStatus, when non-empty, guards the UPDATE with `AND status = ?` so the
+	// transition is atomic. If no row matches (another request already changed
+	// the status) the update returns ErrOpsRunbookRunConflict.
+	FromStatus string
 }
+
+// ErrOpsRunbookRunConflict is returned by UpdateOpsRunbookRun when a guarded
+// transition (FromStatus set) matches no row because the run already moved on.
+var ErrOpsRunbookRunConflict = errors.New("ops runbook run status conflict")
 
 // ListOpsRunbooks lists ops runbooks.
 func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
@@ -491,7 +500,9 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 	stepResults := strings.TrimSpace(u.StepResults)
 	startedAt := strings.TrimSpace(u.StartedAt)
 	finishedAt := strings.TrimSpace(u.FinishedAt)
-	if _, err := s.db.ExecContext(ctx, `UPDATE ops_runbook_runs SET
+	fromStatus := strings.TrimSpace(u.FromStatus)
+
+	query := `UPDATE ops_runbook_runs SET
 		status = ?,
 		completed_steps = ?,
 		current_step = ?,
@@ -499,7 +510,8 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 		step_results = CASE WHEN ? != '' THEN ? ELSE step_results END,
 		started_at = CASE WHEN ? != '' THEN ? ELSE started_at END,
 		finished_at = CASE WHEN ? != '' THEN ? ELSE finished_at END
-	WHERE id = ?`,
+	WHERE id = ?`
+	args := []any{
 		strings.TrimSpace(u.Status),
 		u.CompletedSteps,
 		strings.TrimSpace(u.CurrentStep),
@@ -508,8 +520,24 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 		startedAt, startedAt,
 		finishedAt, finishedAt,
 		runID,
-	); err != nil {
+	}
+	if fromStatus != "" {
+		query += " AND status = ?"
+		args = append(args, fromStatus)
+	}
+
+	result, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
 		return OpsRunbookRun{}, err
+	}
+	if fromStatus != "" {
+		affected, affErr := result.RowsAffected()
+		if affErr != nil {
+			return OpsRunbookRun{}, affErr
+		}
+		if affected == 0 {
+			return OpsRunbookRun{}, ErrOpsRunbookRunConflict
+		}
 	}
 	return s.GetOpsRunbookRun(ctx, runID)
 }

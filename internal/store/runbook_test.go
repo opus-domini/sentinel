@@ -576,6 +576,62 @@ func TestUpdateOpsRunbookRun(t *testing.T) {
 	})
 }
 
+func TestUpdateOpsRunbookRunFromStatusGuard(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 2, 15, 14, 0, 0, 0, time.UTC)
+
+	if _, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID:      "guard.run.rb",
+		Name:    "Guard Run Runbook",
+		Steps:   []OpsRunbookStep{{Type: "run", Title: "Step", Command: "echo go"}},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+	run, err := s.CreateOpsRunbookRun(ctx, "guard.run.rb", now)
+	if err != nil {
+		t.Fatalf("CreateOpsRunbookRun: %v", err)
+	}
+
+	// Park the run in waiting_approval.
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:  run.ID,
+		Status: OpsRunbookStatusWaitingApproval,
+	}); err != nil {
+		t.Fatalf("seed waiting_approval: %v", err)
+	}
+
+	// First guarded transition wins.
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:      run.ID,
+		Status:     opsRunbookStatusRunning,
+		FromStatus: OpsRunbookStatusWaitingApproval,
+	}); err != nil {
+		t.Fatalf("first guarded transition: %v", err)
+	}
+
+	// Second guarded transition must conflict — the run already left
+	// waiting_approval, so a concurrent approve/reject cannot double-run it.
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:      run.ID,
+		Status:     opsRunbookStatusRunning,
+		FromStatus: OpsRunbookStatusWaitingApproval,
+	}); !errors.Is(err, ErrOpsRunbookRunConflict) {
+		t.Fatalf("second guarded transition err = %v, want ErrOpsRunbookRunConflict", err)
+	}
+
+	got, err := s.GetOpsRunbookRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbookRun: %v", err)
+	}
+	if got.Status != opsRunbookStatusRunning {
+		t.Fatalf("status = %q, want %q", got.Status, opsRunbookStatusRunning)
+	}
+}
+
 func TestDeleteOpsRunbookRun(t *testing.T) {
 	t.Parallel()
 

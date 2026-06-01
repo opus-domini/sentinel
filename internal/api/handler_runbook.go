@@ -477,9 +477,17 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		CompletedSteps: approvalStepIndex + 1,
 		CurrentStep:    job.CurrentStep,
 		StartedAt:      now.Format(time.RFC3339),
+		// Atomically claim the approval: only one concurrent approve can move
+		// the run out of waiting_approval, so the steps after approval never
+		// execute twice (TOCTOU between the check above and this update).
+		FromStatus: store.OpsRunbookStatusWaitingApproval,
 	})
 	if err != nil {
 		<-h.runSem
+		if errors.Is(err, store.ErrOpsRunbookRunConflict) {
+			writeError(w, http.StatusConflict, "INVALID_STATE", "run is no longer waiting for approval", nil)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to resume run", nil)
 		return
 	}
@@ -550,8 +558,15 @@ func (h *Handler) rejectOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		CurrentStep:    job.CurrentStep,
 		Error:          "approval rejected",
 		FinishedAt:     now.Format(time.RFC3339),
+		// Same atomic guard as approve: a concurrent approve/reject can only win
+		// once, so reject can't fail a run that already started running.
+		FromStatus: store.OpsRunbookStatusWaitingApproval,
 	})
 	if err != nil {
+		if errors.Is(err, store.ErrOpsRunbookRunConflict) {
+			writeError(w, http.StatusConflict, "INVALID_STATE", "run is no longer waiting for approval", nil)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to update run", nil)
 		return
 	}
