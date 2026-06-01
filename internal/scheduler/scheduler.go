@@ -60,6 +60,12 @@ type Service struct {
 	runCancel context.CancelFunc
 	sem       chan struct{}
 	wg        sync.WaitGroup
+
+	// inFlight guards against overlapping runs of the same schedule: a schedule
+	// stays claimed for the lifetime of its run, so a tick that sees it still
+	// due (cron interval shorter than the run) skips it instead of double-firing.
+	inFlightMu sync.Mutex
+	inFlight   map[string]struct{}
 }
 
 // New creates a scheduler service.
@@ -79,7 +85,27 @@ func New(r schedulerRepo, rr runbook.Repo, opts Options) *Service {
 		sem:         make(chan struct{}, maxConc),
 		runCtx:      runCtx,
 		runCancel:   runCancel,
+		inFlight:    make(map[string]struct{}),
 	}
+}
+
+// claimSchedule marks a schedule as running. It returns false when a run for
+// the same schedule is already in flight.
+func (s *Service) claimSchedule(id string) bool {
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+	if _, ok := s.inFlight[id]; ok {
+		return false
+	}
+	s.inFlight[id] = struct{}{}
+	return true
+}
+
+// releaseSchedule clears the in-flight marker for a schedule.
+func (s *Service) releaseSchedule(id string) {
+	s.inFlightMu.Lock()
+	delete(s.inFlight, id)
+	s.inFlightMu.Unlock()
 }
 
 // Start begins the scheduler tick loop in a background goroutine.
@@ -168,8 +194,15 @@ func (s *Service) tick(ctx context.Context) {
 }
 
 func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedule, now time.Time) {
+	if !s.claimSchedule(sched.ID) {
+		// A previous run for this schedule is still in flight; skip to avoid
+		// overlapping runs of a non-idempotent runbook (restart/deploy/cleanup).
+		return
+	}
+
 	job, err := s.repo.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
 	if err != nil {
+		s.releaseSchedule(sched.ID)
 		// Auto-heal: if the runbook no longer exists, disable the orphan
 		// schedule so it stops appearing as due on every tick.
 		if errors.Is(err, sql.ErrNoRows) {
@@ -215,6 +248,7 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer s.releaseSchedule(sched.ID)
 		// Acquire semaphore (backpressure).
 		select {
 		case s.sem <- struct{}{}:

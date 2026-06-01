@@ -264,6 +264,58 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 }
 
+func TestTick_SkipsScheduleAlreadyInFlight(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{EventHub: events.NewHub()})
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{Name: "overlap-test", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "overlap-schedule",
+		ScheduleType: "cron",
+		CronExpr:     "*/5 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    past.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a run still in flight for this schedule (e.g. cron interval
+	// shorter than the run). A tick must not create a second, overlapping run.
+	if !svc.claimSchedule(sched.ID) {
+		t.Fatal("first claim should succeed")
+	}
+	svc.tick(ctx)
+	runs, err := st.ListOpsRunbookRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no run while the schedule is in flight, got %d", len(runs))
+	}
+
+	// After the in-flight run finishes, the next tick may trigger again.
+	svc.releaseSchedule(sched.ID)
+	svc.tick(ctx)
+	runs, err = st.ListOpsRunbookRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected exactly one run after release, got %d", len(runs))
+	}
+
+	time.Sleep(300 * time.Millisecond)
+}
+
 func TestTick_FutureScheduleNotTriggered(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
