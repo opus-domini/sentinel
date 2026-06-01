@@ -242,6 +242,58 @@ func TestGetWatchtowerInspectorPatch(t *testing.T) {
 	}
 }
 
+func TestUpsertWatchtowerPaneClampsSeenRevision(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	base := WatchtowerPaneWrite{
+		PaneID:         "%1",
+		SessionName:    "dev",
+		Title:          "shell",
+		Active:         true,
+		TailHash:       "h",
+		TailPreview:    "x",
+		TailCapturedAt: now,
+		ChangedAt:      now,
+	}
+
+	// User marked the pane seen up to revision 5.
+	seen := base
+	seen.Revision = 5
+	seen.SeenRevision = 5
+	if err := s.UpsertWatchtowerPane(ctx, seen); err != nil {
+		t.Fatalf("upsert seen: %v", err)
+	}
+
+	// A later collection tick carries a stale, lower seen_revision (read before
+	// the mark-seen). The clamp must keep the higher value so the pane does not
+	// pop back as unread; other fields still update.
+	stale := base
+	stale.Revision = 6
+	stale.SeenRevision = 2
+	if err := s.UpsertWatchtowerPane(ctx, stale); err != nil {
+		t.Fatalf("upsert stale: %v", err)
+	}
+
+	panes, err := s.ListWatchtowerPanes(ctx, "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPanes: %v", err)
+	}
+	if len(panes) != 1 {
+		t.Fatalf("len(panes) = %d, want 1", len(panes))
+	}
+	if panes[0].SeenRevision != 5 {
+		t.Fatalf("seenRevision = %d, want 5 (clamp must not lower it)", panes[0].SeenRevision)
+	}
+	if panes[0].Revision != 6 {
+		t.Fatalf("revision = %d, want 6 (non-clamped fields still update)", panes[0].Revision)
+	}
+}
+
 func TestGetWatchtowerInspectorPatchUsesManagedRuntimeIdentity(t *testing.T) {
 	t.Parallel()
 
