@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"time"
 )
 
@@ -24,6 +25,24 @@ func requestLog(next http.Handler) http.Handler {
 
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
+		defer func() {
+			p := recover()
+			if p == nil {
+				return
+			}
+			// http.ErrAbortHandler is an intentional abort; net/http expects it
+			// to propagate so it can suppress the connection without logging.
+			if p == http.ErrAbortHandler { //nolint:errorlint // recover() value, sentinel identity compare matches net/http
+				panic(p)
+			}
+			slog.Error("request panic recovered", "method", r.Method, "path", r.URL.Path, "request_id", rid, "panic", p, "stack", string(debug.Stack()))
+			// Only emit a 500 if the response is still ours: after a Hijack
+			// (WebSocket) or a written header, the connection is no longer
+			// writable as an HTTP response.
+			if !rec.wroteHeader && !rec.hijacked {
+				rec.WriteHeader(http.StatusInternalServerError)
+			}
+		}()
 		rec.ServeHTTP(next, r)
 		slog.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "duration", time.Since(start).Truncate(time.Millisecond), "request_id", rid)
 	})
@@ -36,6 +55,7 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status      int
 	wroteHeader bool
+	hijacked    bool
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
@@ -64,7 +84,11 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
 // for WebSocket upgrade in internal/ws which uses a direct assertion.
 func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hj, ok := r.ResponseWriter.(http.Hijacker); ok {
-		return hj.Hijack()
+		conn, rw, err := hj.Hijack()
+		if err == nil {
+			r.hijacked = true
+		}
+		return conn, rw, err
 	}
 	return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
 }
