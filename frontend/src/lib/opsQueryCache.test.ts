@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   OPS_ALERTS_QUERY_KEY,
+  OPS_ACTIVITY_VISIBLE_LIMIT,
   OPS_GUARDRAILS_QUERY_KEY,
   OPS_METRICS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
@@ -85,6 +86,19 @@ describe('opsQueryCache', () => {
     expect(
       prependOpsActivityEvent([first, second], updatedFirst).map((item) => item.message),
     ).toEqual(['updated', 'event-2'])
+  })
+
+  it('caps activity events at the visible limit', () => {
+    const events = Array.from({ length: OPS_ACTIVITY_VISIBLE_LIMIT }, (_, index) =>
+      buildActivityEvent(index + 1),
+    )
+    const next = buildActivityEvent(999)
+
+    const result = prependOpsActivityEvent(events, next)
+
+    expect(result).toHaveLength(OPS_ACTIVITY_VISIBLE_LIMIT)
+    expect(result[0].id).toBe(999)
+    expect(result.at(-1)?.id).toBe(OPS_ACTIVITY_VISIBLE_LIMIT - 1)
   })
 
   it('upserts runbook jobs and keeps latest first', () => {

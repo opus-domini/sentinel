@@ -32,8 +32,8 @@ class MockWebSocket {
     this.onmessage?.(new MessageEvent('message', { data }))
   }
 
-  simulateClose() {
-    this.onclose?.(new CloseEvent('close'))
+  simulateClose(init?: CloseEventInit) {
+    this.onclose?.(new CloseEvent('close', init))
   }
 }
 
@@ -227,6 +227,93 @@ describe('useLogStream', () => {
 
     // A new socket was created after the reconnect delay
     expect(MockWebSocket.instances.length).toBe(countBefore + 1)
+  })
+
+  it('does not reconnect after permanent error message', () => {
+    const onLine = vi.fn()
+    const target = { kind: 'service' as const, name: 'test' }
+    const { result } = renderHook(() =>
+      useLogStream({ authenticated: true, tokenRequired: false, target, enabled: true, onLine }),
+    )
+
+    act(() => {
+      lastSocket().simulateMessage(
+        JSON.stringify({ type: 'error', message: 'stream start failed' }),
+      )
+      vi.advanceTimersByTime(5_000)
+    })
+
+    expect(result.current).toBe('error')
+    expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('does not reconnect for permanent close reasons or normal done', () => {
+    const onLine = vi.fn()
+    const target = { kind: 'service' as const, name: 'test' }
+    const { result } = renderHook(() =>
+      useLogStream({ authenticated: true, tokenRequired: false, target, enabled: true, onLine }),
+    )
+
+    act(() => {
+      lastSocket().simulateClose({ code: 1011, reason: 'stream start failed' })
+      vi.advanceTimersByTime(5_000)
+    })
+    expect(result.current).toBe('error')
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    const { result: doneResult } = renderHook(() =>
+      useLogStream({ authenticated: true, tokenRequired: false, target, enabled: true, onLine }),
+    )
+    act(() => {
+      lastSocket().simulateClose({ code: 1000, reason: 'done' })
+      vi.advanceTimersByTime(5_000)
+    })
+    expect(doneResult.current).toBe('disconnected')
+  })
+
+  it('keeps 1011 without permanent reason retryable', () => {
+    const onLine = vi.fn()
+    const target = { kind: 'service' as const, name: 'test' }
+    const initialCount = MockWebSocket.instances.length
+    renderHook(() =>
+      useLogStream({ authenticated: true, tokenRequired: false, target, enabled: true, onLine }),
+    )
+
+    act(() => {
+      lastSocket().simulateClose({ code: 1011, reason: 'temporary failure' })
+      vi.advanceTimersByTime(1_200)
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(initialCount + 2)
+  })
+
+  it('does not reconnect when rerendered with equivalent target object', () => {
+    const onLine = vi.fn()
+    const { rerender } = renderHook(
+      ({ target }) =>
+        useLogStream({ authenticated: true, tokenRequired: false, target, enabled: true, onLine }),
+      { initialProps: { target: { kind: 'service' as const, name: 'test' } } },
+    )
+    const socket = lastSocket()
+
+    rerender({ target: { kind: 'service' as const, name: 'test' } })
+
+    expect(lastSocket()).toBe(socket)
+    expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('reconnects when target key changes', () => {
+    const onLine = vi.fn()
+    const { rerender } = renderHook(
+      ({ target }) =>
+        useLogStream({ authenticated: true, tokenRequired: false, target, enabled: true, onLine }),
+      { initialProps: { target: { kind: 'service' as const, name: 'one' } } },
+    )
+
+    rerender({ target: { kind: 'service' as const, name: 'two' } })
+
+    expect(MockWebSocket.instances).toHaveLength(2)
+    expect(lastSocket().url).toContain('service=two')
   })
 
   it('closes socket on unmount', () => {

@@ -49,6 +49,7 @@ export function useSharedOpsEventsSocket(options: {
     if (disposedRef.current) return
     if (tokenRequired && !authenticated) return
     if (subscribersRef.current.size === 0) return
+    if (document.visibilityState === 'hidden') return
     clearRetry()
     setConnectionState('connecting')
 
@@ -96,6 +97,42 @@ export function useSharedOpsEventsSocket(options: {
       retryTimerRef.current = window.setTimeout(connect, reconnectRef.current.next())
     }
   }, [authenticated, clearRetry, tokenRequired])
+
+  const reconnectNow = useCallback(() => {
+    if (
+      disposedRef.current ||
+      subscribersRef.current.size === 0 ||
+      (tokenRequired && !authenticated) ||
+      document.visibilityState === 'hidden'
+    ) {
+      return
+    }
+    clearRetry()
+    reconnectRef.current.reset()
+    const sock = socketRef.current
+    socketRef.current = null
+    if (sock != null) {
+      try {
+        sock.close()
+      } catch {
+        // ignore
+      }
+    }
+    connect()
+  }, [authenticated, clearRetry, connect, tokenRequired])
+
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') reconnectNow()
+    }
+    const handleOnline = () => reconnectNow()
+    document.addEventListener('visibilitychange', handleVisible)
+    window.addEventListener('online', handleOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisible)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [reconnectNow])
 
   // Reconnect when auth changes while subscribers exist
   useEffect(() => {
@@ -147,7 +184,8 @@ export function useSharedOpsEventsSocket(options: {
     if (
       disposedRef.current ||
       subscribersRef.current.size === 0 ||
-      (tokenRequired && !authenticated)
+      (tokenRequired && !authenticated) ||
+      document.visibilityState === 'hidden'
     ) {
       setConnectionState('disconnected')
       return

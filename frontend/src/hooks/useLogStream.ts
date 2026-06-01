@@ -16,6 +16,37 @@ type UseLogStreamOptions = {
   onLine: (line: string) => void
 }
 
+function logStreamTargetKey(target: LogStreamTarget | null): string {
+  if (target == null) return ''
+  if (target.kind === 'service') return `service:${target.name}`
+  return `unit:${target.manager}:${target.scope}:${target.unit}`
+}
+
+function logStreamTargetQuery(target: LogStreamTarget | null): string {
+  if (target == null) return ''
+  const params = new URLSearchParams()
+  if (target.kind === 'service') {
+    params.set('service', target.name)
+  } else {
+    params.set('unit', target.unit)
+    params.set('scope', target.scope)
+    params.set('manager', target.manager)
+  }
+  return params.toString()
+}
+
+function isPermanentClose(event: CloseEvent): boolean {
+  const reason = event.reason.toLowerCase()
+  if (event.code === 1000 && reason === 'done') return true
+  return (
+    reason.includes('stream start failed') ||
+    reason.includes('auth') ||
+    reason.includes('unauthorized') ||
+    reason.includes('forbidden') ||
+    reason.includes('policy')
+  )
+}
+
 export function useLogStream({
   authenticated,
   tokenRequired,
@@ -24,6 +55,8 @@ export function useLogStream({
   onLine,
 }: UseLogStreamOptions): ConnectionState {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
+  const targetKey = logStreamTargetKey(target)
+  const targetQuery = logStreamTargetQuery(target)
 
   const onLineRef = useRef(onLine)
   useEffect(() => {
@@ -31,7 +64,7 @@ export function useLogStream({
   }, [onLine])
 
   useEffect(() => {
-    if (!enabled || target == null) {
+    if (!enabled || targetKey === '') {
       setConnectionState('disconnected')
       return
     }
@@ -57,16 +90,7 @@ export function useLogStream({
       clearRetry()
       setConnectionState('connecting')
 
-      const params = new URLSearchParams()
-      if (target.kind === 'service') {
-        params.set('service', target.name)
-      } else {
-        params.set('unit', target.unit)
-        params.set('scope', target.scope)
-        params.set('manager', target.manager)
-      }
-
-      const wsURL = new URL(`/ws/logs?${params.toString()}`, window.location.origin)
+      const wsURL = new URL(`/ws/logs?${targetQuery}`, window.location.origin)
       wsURL.protocol = wsURL.protocol === 'https:' ? 'wss:' : 'ws:'
 
       socket = new WebSocket(wsURL.toString(), buildWSProtocols())
@@ -86,9 +110,18 @@ export function useLogStream({
           return
         }
         if (typeof msg !== 'object' || msg === null) return
-        const typed = msg as { type?: string; line?: string }
+        const typed = msg as { type?: string; line?: string; message?: string }
         if (typed.type === 'log' && typeof typed.line === 'string') {
           onLineRef.current(typed.line)
+        } else if (typed.type === 'error' && typeof typed.message === 'string') {
+          disposed = true
+          setConnectionState('error')
+          clearRetry()
+          try {
+            socket?.close()
+          } catch {
+            // ignore close race
+          }
         }
       }
 
@@ -98,8 +131,14 @@ export function useLogStream({
         }
       }
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (disposed) return
+        if (isPermanentClose(event)) {
+          const done = event.code === 1000 && event.reason.toLowerCase() === 'done'
+          setConnectionState(done ? 'disconnected' : 'error')
+          clearRetry()
+          return
+        }
         setConnectionState('disconnected')
         clearRetry()
         retryTimer = window.setTimeout(connect, reconnect.next())
@@ -118,7 +157,7 @@ export function useLogStream({
         }
       }
     }
-  }, [authenticated, tokenRequired, target, enabled])
+  }, [authenticated, tokenRequired, targetKey, targetQuery, enabled])
 
   return connectionState
 }

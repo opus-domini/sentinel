@@ -9,6 +9,7 @@ export const OPS_METRICS_QUERY_KEY = ['ops', 'metrics'] as const
 export const OPS_GUARDRAILS_QUERY_KEY = ['ops', 'guardrails'] as const
 export const OPS_GUARDRAILS_AUDIT_QUERY_KEY = ['ops', 'guardrails-audit'] as const
 export const OPS_STORAGE_STATS_QUERY_KEY = ['ops', 'storage-stats'] as const
+export const OPS_ACTIVITY_VISIBLE_LIMIT = 500
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -28,7 +29,10 @@ export function prependOpsActivityEvent(
   events: Array<OpsActivityEvent>,
   next: OpsActivityEvent,
 ): Array<OpsActivityEvent> {
-  return [next, ...events.filter((item) => item.id !== next.id)]
+  return [next, ...events.filter((item) => item.id !== next.id)].slice(
+    0,
+    OPS_ACTIVITY_VISIBLE_LIMIT,
+  )
 }
 
 export function upsertOpsRunbookJob(

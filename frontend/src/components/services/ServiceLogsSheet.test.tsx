@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { OpsBrowsedService } from '@/types'
 import { ServiceLogsSheet } from './ServiceLogsSheet'
 
+const { useLogStreamMock } = vi.hoisted(() => ({
+  useLogStreamMock: vi.fn<
+    (options: { enabled: boolean; onLine: (line: string) => void }) => string
+  >(() => 'disconnected'),
+}))
+
 vi.mock('@/hooks/useLogStream', () => ({
-  useLogStream: vi.fn(() => 'disconnected'),
+  useLogStream: useLogStreamMock,
 }))
 
 type ServiceLogsAPI = <T>(url: string, init?: RequestInit) => Promise<T>
@@ -63,8 +69,21 @@ function renderSheet({
 }
 
 describe('ServiceLogsSheet', () => {
+  let rafCallbacks: Array<FrameRequestCallback> = []
+
+  beforeEach(() => {
+    rafCallbacks = []
+    useLogStreamMock.mockClear()
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      rafCallbacks.push(callback)
+      return rafCallbacks.length
+    })
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+  })
+
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
   it('shows formatted systemd unit names but requests logs with the raw unit name', async () => {
@@ -124,5 +143,33 @@ describe('ServiceLogsSheet', () => {
     )
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
+  })
+
+  it('batches streamed lines into a single animation-frame flush', async () => {
+    const { api, spy } = createAPI()
+
+    renderSheet({ api })
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+    const streamOptions = await waitFor(() => {
+      const enabledCall = useLogStreamMock.mock.calls.find((call) => call[0].enabled)
+      if (!enabledCall) throw new Error('stream not enabled')
+      return enabledCall[0]
+    })
+
+    act(() => {
+      streamOptions.onLine('stream-one')
+      streamOptions.onLine('stream-two')
+    })
+
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('stream-one')).toBeNull()
+
+    act(() => {
+      rafCallbacks.shift()?.(performance.now())
+    })
+
+    expect(await screen.findByText('stream-one')).toBeTruthy()
+    expect(await screen.findByText('stream-two')).toBeTruthy()
   })
 })

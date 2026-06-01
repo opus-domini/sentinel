@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSharedOpsEventsSocket } from './useSharedOpsEventsSocket'
@@ -30,14 +30,19 @@ class MockWebSocket {
 
 describe('useSharedOpsEventsSocket', () => {
   const originalWebSocket = globalThis.WebSocket
+  const setVisibility = (state: DocumentVisibilityState) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: state })
+  }
 
   beforeEach(() => {
     vi.useFakeTimers()
     MockWebSocket.instances = []
     globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+    setVisibility('visible')
   })
 
   afterEach(() => {
+    cleanup()
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
     globalThis.WebSocket = originalWebSocket
@@ -75,5 +80,65 @@ describe('useSharedOpsEventsSocket', () => {
     act(() => {
       unsubscribe()
     })
+  })
+
+  it('reconnects active subscribers when tab becomes visible', () => {
+    const { result } = renderHook(() =>
+      useSharedOpsEventsSocket({ authenticated: true, tokenRequired: false }),
+    )
+    act(() => {
+      result.current.subscribe(vi.fn())
+    })
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    act(() => {
+      setVisibility('visible')
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(2)
+  })
+
+  it('reconnects active subscribers when browser comes online', () => {
+    const { result } = renderHook(() =>
+      useSharedOpsEventsSocket({ authenticated: true, tokenRequired: false }),
+    )
+    act(() => {
+      result.current.subscribe(vi.fn())
+    })
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(2)
+  })
+
+  it('does not reconnect while hidden', () => {
+    const { result } = renderHook(() =>
+      useSharedOpsEventsSocket({ authenticated: true, tokenRequired: false }),
+    )
+    act(() => {
+      result.current.subscribe(vi.fn())
+    })
+
+    act(() => {
+      setVisibility('hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new Event('online'))
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('does not reconnect without subscribers', () => {
+    renderHook(() => useSharedOpsEventsSocket({ authenticated: true, tokenRequired: false }))
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new Event('online'))
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(0)
   })
 })

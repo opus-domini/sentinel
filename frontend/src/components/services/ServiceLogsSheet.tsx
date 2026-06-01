@@ -74,6 +74,30 @@ export function ServiceLogsSheet({
   const [streamEnabled, setStreamEnabled] = useState(false)
   const lineCounterRef = useRef(0)
   const serviceRef = useRef<ServiceLogTarget | null>(null)
+  const streamBufferRef = useRef<Array<ParsedLogLine>>([])
+  const flushFrameRef = useRef<number | null>(null)
+
+  const clearStreamBuffer = useCallback(() => {
+    streamBufferRef.current = []
+    if (flushFrameRef.current != null) {
+      window.cancelAnimationFrame(flushFrameRef.current)
+      flushFrameRef.current = null
+    }
+  }, [])
+
+  const flushStreamBuffer = useCallback(() => {
+    flushFrameRef.current = null
+    const buffered = streamBufferRef.current
+    if (buffered.length === 0) return
+    streamBufferRef.current = []
+    setLogLines((prev) => {
+      const next = [...prev, ...buffered]
+      if (next.length > LOG_BUFFER_MAX) {
+        return next.slice(next.length - LOG_BUFFER_MAX)
+      }
+      return next
+    })
+  }, [])
 
   const initialLogRequest = useMemo<ServiceLogRequest | null>(() => {
     if (!service || !open) return null
@@ -101,6 +125,7 @@ export function ServiceLogsSheet({
     setFollow(true)
     setStreamEnabled(false)
     lineCounterRef.current = 0
+    clearStreamBuffer()
 
     let cancelled = false
     const fetchLogs = async () => {
@@ -132,19 +157,21 @@ export function ServiceLogsSheet({
     return () => {
       cancelled = true
     }
-  }, [api, initialLogRequest])
+  }, [api, clearStreamBuffer, initialLogRequest])
 
-  const handleStreamLine = useCallback((line: string) => {
-    lineCounterRef.current += 1
-    const parsed = parseSingleLine(line, lineCounterRef.current)
-    setLogLines((prev) => {
-      const next = [...prev, parsed]
-      if (next.length > LOG_BUFFER_MAX) {
-        return next.slice(next.length - LOG_BUFFER_MAX)
+  const handleStreamLine = useCallback(
+    (line: string) => {
+      lineCounterRef.current += 1
+      const parsed = parseSingleLine(line, lineCounterRef.current)
+      streamBufferRef.current.push(parsed)
+      if (flushFrameRef.current == null) {
+        flushFrameRef.current = window.requestAnimationFrame(flushStreamBuffer)
       }
-      return next
-    })
-  }, [])
+    },
+    [flushStreamBuffer],
+  )
+
+  useEffect(() => clearStreamBuffer, [clearStreamBuffer])
 
   const streamTarget = useMemo(() => {
     if (!service || !open) return null
@@ -171,6 +198,7 @@ export function ServiceLogsSheet({
     const svc = serviceRef.current
     if (!svc) return
     setStreamEnabled(false)
+    clearStreamBuffer()
     try {
       const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(buildServiceLogURL(svc))
       const parsed = parseLogLines(data.output)
@@ -181,7 +209,7 @@ export function ServiceLogsSheet({
     } catch {
       // keep existing lines on refresh failure
     }
-  }, [api])
+  }, [api, clearStreamBuffer])
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -189,9 +217,10 @@ export function ServiceLogsSheet({
       if (!nextOpen) {
         setStreamEnabled(false)
         serviceRef.current = null
+        clearStreamBuffer()
       }
     },
-    [onOpenChange],
+    [clearStreamBuffer, onOpenChange],
   )
 
   return (
