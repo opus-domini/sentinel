@@ -56,6 +56,7 @@ type ServerConfig struct {
 	Port                int      `toml:"port" json:"port"`
 	Token               string   `toml:"token" json:"token,omitempty"`
 	AllowedOrigins      []string `toml:"allowed_origins" json:"allowed_origins"`
+	TrustedProxies      []string `toml:"trusted_proxies" json:"trusted_proxies"`
 	CookieSecure        string   `toml:"cookie_secure" json:"cookie_secure"`
 	AllowInsecureCookie bool     `toml:"allow_insecure_cookie" json:"allow_insecure_cookie"`
 	Timezone            string   `toml:"timezone" json:"timezone"`
@@ -351,6 +352,7 @@ func (c *Config) Resolve() error {
 	}
 	c.Server.CookieSecure = normalizeCookieSecure(c.Server.CookieSecure, defaults.Server.CookieSecure)
 	c.Server.AllowedOrigins = cleanStrings(c.Server.AllowedOrigins)
+	c.Server.TrustedProxies = cleanStrings(c.Server.TrustedProxies)
 	c.Server.Locale = strings.TrimSpace(c.Server.Locale)
 	c.Server.Timezone = strings.TrimSpace(c.Server.Timezone)
 	if c.Server.Timezone == "" {
@@ -486,9 +488,12 @@ func applyServerEnv(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_HOST")); v != "" {
 		cfg.Server.Host = v
 	}
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_PORT")); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil {
+	if raw, ok := os.LookupEnv("SENTINEL_SERVER_PORT"); ok {
+		v := strings.TrimSpace(raw)
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 1 && parsed <= 65535 {
 			cfg.Server.Port = parsed
+		} else if v != "" {
+			slog.Warn("ignoring invalid SENTINEL_SERVER_PORT", "value", raw)
 		}
 	}
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_TOKEN")); v != "" {
@@ -496,6 +501,9 @@ func applyServerEnv(cfg *Config) {
 	}
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_ALLOWED_ORIGINS")); v != "" {
 		cfg.Server.AllowedOrigins = splitCSV(v)
+	}
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_TRUSTED_PROXIES")); v != "" {
+		cfg.Server.TrustedProxies = splitCSV(v)
 	}
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_SERVER_COOKIE_SECURE")); v != "" {
 		cfg.Server.CookieSecure = v
@@ -632,6 +640,9 @@ func defaultConfigTOML(cfg Config) []byte {
 	writeConfigLine(&b, "  token = %q", cfg.Server.Token)
 	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_ALLOWED_ORIGINS")
 	writeConfigLine(&b, "  allowed_origins = [%s]", quoteStringList(cfg.Server.AllowedOrigins))
+	writeConfigLine(&b, "  # Trusted proxy IPs/CIDRs allowed to set X-Forwarded-Proto.")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_TRUSTED_PROXIES")
+	writeConfigLine(&b, "  trusted_proxies = [%s]", quoteStringList(cfg.Server.TrustedProxies))
 	writeConfigLine(&b, "  # Cookie Secure flag: auto, always, or never.")
 	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_COOKIE_SECURE")
 	writeConfigLine(&b, "  cookie_secure = %q", cfg.Server.CookieSecure)

@@ -41,6 +41,8 @@ func TestCheckOrigin(t *testing.T) {
 		host           string
 		tls            bool
 		forwarded      string
+		trustedProxies []string
+		remoteAddr     string
 		wantErr        error
 	}{
 		{
@@ -89,18 +91,31 @@ func TestCheckOrigin(t *testing.T) {
 			host:   "myhost:8080",
 		},
 		{
-			name:      "reverse proxy forwarded https",
-			origin:    "https://myhost.ts.net",
-			host:      "myhost.ts.net",
-			forwarded: "https",
+			name:           "reverse proxy forwarded https",
+			origin:         "https://myhost.ts.net",
+			host:           "myhost.ts.net",
+			forwarded:      "https",
+			trustedProxies: []string{"192.0.2.10"},
+			remoteAddr:     "192.0.2.10:1234",
+		},
+		{
+			name:       "untrusted forwarded https ignored",
+			origin:     "https://myhost.ts.net",
+			host:       "myhost.ts.net",
+			forwarded:  "https",
+			remoteAddr: "192.0.2.11:1234",
+			wantErr:    ErrOriginDenied,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			g := New("", tt.allowedOrigins, CookieSecureAuto)
+			g := NewWithOptions("", tt.allowedOrigins, CookieSecureAuto, MultiUserConfig{}, tt.trustedProxies)
 			r := httptest.NewRequest(http.MethodGet, "http://"+tt.host+"/", nil)
 			r.Host = tt.host
+			if tt.remoteAddr != "" {
+				r.RemoteAddr = tt.remoteAddr
+			}
 			if tt.origin != "" {
 				r.Header.Set("Origin", tt.origin)
 			}
@@ -252,7 +267,9 @@ func TestAuthCookieLifecycle(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
 		req.Header.Set("X-Forwarded-Proto", "https")
+		req.RemoteAddr = "192.0.2.10:1234"
 		rec := httptest.NewRecorder()
+		g := NewWithOptions("secret-token", nil, CookieSecureAuto, MultiUserConfig{}, []string{"192.0.2.10"})
 		g.SetAuthCookie(rec, req)
 
 		res := rec.Result()
@@ -312,24 +329,31 @@ func TestCookieSecurePolicy(t *testing.T) {
 		policy     CookieSecurePolicy
 		tls        bool
 		forwarded  string
+		trusted    bool
 		wantSecure bool
 	}{
-		{"always over http", CookieSecureAlways, false, "", true},
-		{"always over https", CookieSecureAlways, true, "", true},
-		{"never over http", CookieSecureNever, false, "", false},
-		{"never over https", CookieSecureNever, true, "", false},
-		{"never over forwarded https", CookieSecureNever, false, "https", false},
-		{"auto over http", CookieSecureAuto, false, "", false},
-		{"auto over https", CookieSecureAuto, true, "", true},
-		{"auto over forwarded https", CookieSecureAuto, false, "https", true},
+		{"always over http", CookieSecureAlways, false, "", false, true},
+		{"always over https", CookieSecureAlways, true, "", false, true},
+		{"never over http", CookieSecureNever, false, "", false, false},
+		{"never over https", CookieSecureNever, true, "", false, false},
+		{"never over forwarded https", CookieSecureNever, false, "https", true, false},
+		{"auto over http", CookieSecureAuto, false, "", false, false},
+		{"auto over https", CookieSecureAuto, true, "", false, true},
+		{"auto over forwarded https", CookieSecureAuto, false, "https", true, true},
+		{"auto ignores untrusted forwarded https", CookieSecureAuto, false, "https", false, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			g := New("secret", nil, tt.policy)
+			trusted := []string(nil)
+			if tt.trusted {
+				trusted = []string{"192.0.2.10"}
+			}
+			g := NewWithOptions("secret", nil, tt.policy, MultiUserConfig{}, trusted)
 
 			req := httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
+			req.RemoteAddr = "192.0.2.10:1234"
 			if tt.tls {
 				req.TLS = &tls.ConnectionState{}
 			}
@@ -385,6 +409,7 @@ func TestValidateRemoteExposure(t *testing.T) {
 		name       string
 		listenAddr string
 		token      string
+		origins    []string
 		wantErr    error
 	}{
 		{
@@ -410,9 +435,16 @@ func TestValidateRemoteExposure(t *testing.T) {
 			wantErr:    ErrRemoteToken,
 		},
 		{
-			name:       "remote with token only is valid",
+			name:       "remote with token requires allowed origin",
 			listenAddr: "0.0.0.0:4040",
 			token:      "secret",
+			wantErr:    ErrRemoteAllowedOrigin,
+		},
+		{
+			name:       "remote with token and allowed origin is valid",
+			listenAddr: "0.0.0.0:4040",
+			token:      "secret",
+			origins:    []string{"https://example.com"},
 		},
 	}
 
@@ -420,7 +452,7 @@ func TestValidateRemoteExposure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateRemoteExposure(tt.listenAddr, tt.token)
+			err := ValidateRemoteExposure(tt.listenAddr, tt.token, tt.origins)
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Fatalf("ValidateRemoteExposure() unexpected error = %v", err)
@@ -431,5 +463,15 @@ func TestValidateRemoteExposure(t *testing.T) {
 				t.Fatalf("ValidateRemoteExposure() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateRemoteExposureRequiresAllowedOriginWhenProvided(t *testing.T) {
+	t.Parallel()
+	if err := ValidateRemoteExposure("0.0.0.0:4040", "secret", nil); !errors.Is(err, ErrRemoteAllowedOrigin) {
+		t.Fatalf("ValidateRemoteExposure() error = %v, want %v", err, ErrRemoteAllowedOrigin)
+	}
+	if err := ValidateRemoteExposure("0.0.0.0:4040", "secret", []string{"https://example.com"}); err != nil {
+		t.Fatalf("ValidateRemoteExposure() unexpected error = %v", err)
 	}
 }

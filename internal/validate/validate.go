@@ -4,6 +4,7 @@ package validate
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -29,7 +30,16 @@ var paneTitleRE = regexp.MustCompile(`^.{1,128}$`)
 
 // PaneTitle reports whether title is a valid tmux pane title.
 func PaneTitle(title string) bool {
-	return paneTitleRE.MatchString(title)
+	return paneTitleRE.MatchString(title) && !hasControlOrANSI(title)
+}
+
+func hasControlOrANSI(s string) bool {
+	for _, r := range s {
+		if r == 0x1b || r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 var iconKeyRE = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
@@ -44,6 +54,11 @@ var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month 
 // CronExpression validates a 5-field cron expression (or @descriptor).
 // Returns nil when the expression is valid.
 func CronExpression(expr string) error {
+	trimmed := strings.TrimSpace(expr)
+	upper := strings.ToUpper(trimmed)
+	if strings.HasPrefix(trimmed, "@every") || strings.HasPrefix(upper, "TZ=") || strings.HasPrefix(upper, "CRON_TZ=") {
+		return fmt.Errorf("invalid cron expression: unsupported schedule prefix")
+	}
 	_, err := cronParser.Parse(expr)
 	if err != nil {
 		return fmt.Errorf("invalid cron expression: %w", err)

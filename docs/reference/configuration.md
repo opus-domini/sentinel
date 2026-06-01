@@ -40,6 +40,7 @@ host = "127.0.0.1"
 port = 4040
 token = ""
 allowed_origins = []
+trusted_proxies = []
 cookie_secure = "auto"
 allow_insecure_cookie = false
 timezone = "America/Sao_Paulo"
@@ -89,6 +90,7 @@ user_switch_method = "systemd-run"
 | `SENTINEL_SERVER_PORT` | `4040` | HTTP listen port |
 | `SENTINEL_SERVER_TOKEN` | empty | Auth token |
 | `SENTINEL_SERVER_ALLOWED_ORIGINS` | empty | Comma-separated allowed origins |
+| `SENTINEL_SERVER_TRUSTED_PROXIES` | empty | Comma-separated proxy IPs/CIDRs trusted for `X-Forwarded-Proto` |
 | `SENTINEL_SERVER_COOKIE_SECURE` | `auto` | Cookie secure flag: `auto`, `always`, `never` |
 | `SENTINEL_SERVER_ALLOW_INSECURE_COOKIE` | `false` | Allow auth cookie over plain HTTP |
 | `SENTINEL_SERVER_TIMEZONE` | system timezone | IANA timezone for displayed timestamps |
@@ -132,4 +134,6 @@ host = "0.0.0.0"
 port = 4040
 token = "strong-secret"
 allowed_origins = ["https://sentinel.example.com"]
+# Set only when a reverse proxy in front of Sentinel terminates TLS.
+trusted_proxies = ["127.0.0.1"]
 ```

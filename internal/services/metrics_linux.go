@@ -217,7 +217,14 @@ func collectProcessInfo(ctx context.Context) processSample {
 		_ = procRoot.Close()
 	}()
 
-	entries, err := os.ReadDir("/proc")
+	dir, err := procRoot.Open(".")
+	if err != nil {
+		return processSample{complete: true}
+	}
+	defer func() {
+		_ = dir.Close()
+	}()
+	entries, err := dir.ReadDir(-1)
 	if err != nil {
 		return processSample{complete: true}
 	}

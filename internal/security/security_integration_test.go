@@ -14,6 +14,7 @@ func TestIntegrationRemoteExposureBaseline(t *testing.T) {
 		name       string
 		listenAddr string
 		token      string
+		origins    []string
 		wantErr    error
 	}{
 		{
@@ -26,9 +27,16 @@ func TestIntegrationRemoteExposureBaseline(t *testing.T) {
 			wantErr:    ErrRemoteToken,
 		},
 		{
-			name:       "public bind with token only is valid",
+			name:       "public bind with token only fails without allowed origin",
 			listenAddr: "0.0.0.0:4040",
 			token:      "secret",
+			wantErr:    ErrRemoteAllowedOrigin,
+		},
+		{
+			name:       "public bind with token and allowed origin is valid",
+			listenAddr: "0.0.0.0:4040",
+			token:      "secret",
+			origins:    []string{"https://example.com"},
 		},
 	}
 
@@ -36,7 +44,7 @@ func TestIntegrationRemoteExposureBaseline(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateRemoteExposure(tc.listenAddr, tc.token)
+			err := ValidateRemoteExposure(tc.listenAddr, tc.token, tc.origins)
 			if tc.wantErr == nil {
 				if err != nil {
 					t.Fatalf("ValidateRemoteExposure(%q) unexpected error: %v", tc.listenAddr, err)

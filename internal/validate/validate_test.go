@@ -138,6 +138,8 @@ func TestPaneTitle(t *testing.T) {
 
 		{"empty", "", false},
 		{"too_long_129", strings.Repeat("t", 129), false},
+		{"control_newline", "bad\n", false},
+		{"ansi_escape", "\x1b[31mbad", false},
 	}
 
 	for _, tt := range tests {

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -191,172 +190,6 @@ func TestActSystemdUpdater(t *testing.T) {
 	}
 }
 
-func TestActSystemdUpdaterStartBootstrapsWhenMissing(t *testing.T) {
-	t.Parallel()
-
-	installed := false
-	var installOpts daemon.InstallUserAutoUpdateOptions
-	var calls [][]string
-
-	// The updater probe returns "not-found" until bootstrap installs it.
-	updaterProbeResponse := "UnitFileState=not-found\nActiveState=inactive\nLoadState=not-found\n"
-	m := &Manager{
-		nowFn:          time.Now,
-		uidFn:          func() int { return 1000 },
-		goos:           "linux",
-		hostname:       func() (string, error) { return testHostname, nil },
-		customServices: builtinServicesRepo("linux"),
-		installAutoUpdate: func(opts daemon.InstallUserAutoUpdateOptions) error {
-			installOpts = opts
-			installed = true
-			// After bootstrap, probe will return loaded.
-			updaterProbeResponse = probeActiveResponse
-			return nil
-		},
-		commandRunner: func(_ context.Context, name string, args ...string) (string, error) {
-			// Handle probe calls (systemctl show).
-			if name == cmdSystemctl && slices.Contains(args, "show") {
-				if slices.Contains(args, updaterSystemdUnit) {
-					return updaterProbeResponse, nil
-				}
-				return probeActiveResponse, nil
-			}
-			row := append([]string{name}, args...)
-			calls = append(calls, row)
-			return "", nil
-		},
-	}
-
-	status, err := m.Act(context.Background(), ServiceNameUpdater, ActionStart)
-	if err != nil {
-		t.Fatalf("Act: %v", err)
-	}
-	if !installed {
-		t.Fatal("expected updater bootstrap install to run")
-	}
-	if installOpts.SystemdScope != scopeUser {
-		t.Fatalf("scope = %q, want %q", installOpts.SystemdScope, scopeUser)
-	}
-	if !installOpts.Enable || !installOpts.Start {
-		t.Fatalf("install opts should enable and start updater: %+v", installOpts)
-	}
-	if installOpts.ServiceUnit != ServiceNameSentinel {
-		t.Fatalf("service unit = %q, want %q", installOpts.ServiceUnit, ServiceNameSentinel)
-	}
-	want := []string{"systemctl", "--user", "start", updaterSystemdUnit}
-	if len(calls) == 0 || !reflect.DeepEqual(calls[0], want) {
-		t.Fatalf("first call = %v, want %v", calls, want)
-	}
-	if !status.Exists {
-		t.Fatalf("status.Exists = false, want true")
-	}
-}
-
-func TestActSystemdUpdaterRetriesAfterUnitNotFound(t *testing.T) {
-	t.Parallel()
-
-	startAttempt := 0
-	installed := false
-	var startCalls [][]string
-	m := &Manager{
-		nowFn:          time.Now,
-		uidFn:          func() int { return 1000 },
-		goos:           "linux",
-		hostname:       func() (string, error) { return testHostname, nil },
-		customServices: builtinServicesRepo("linux"),
-		installAutoUpdate: func(opts daemon.InstallUserAutoUpdateOptions) error {
-			_ = opts
-			installed = true
-			return nil
-		},
-		commandRunner: func(_ context.Context, name string, args ...string) (string, error) {
-			// Handle probe calls (systemctl show).
-			if name == cmdSystemctl && slices.Contains(args, "show") {
-				return "UnitFileState=enabled\nActiveState=inactive\nLoadState=loaded\n", nil
-			}
-			row := append([]string{name}, args...)
-			startCalls = append(startCalls, row)
-			startAttempt++
-			if startAttempt == 1 {
-				return "", errors.New("systemctl --user start sentinel-updater.timer failed: unit sentinel-updater.timer not found")
-			}
-			return "", nil
-		},
-	}
-
-	_, err := m.Act(context.Background(), ServiceNameUpdater, ActionStart)
-	if err != nil {
-		t.Fatalf("Act: %v", err)
-	}
-	if !installed {
-		t.Fatal("expected updater bootstrap install to run after unit-not-found error")
-	}
-	if len(startCalls) != 2 {
-		t.Fatalf("command attempts = %d, want 2", len(startCalls))
-	}
-}
-
-func TestActLaunchdStartBootstrapsWhenMissing(t *testing.T) {
-	t.Parallel()
-
-	var calls [][]string
-	m := &Manager{
-		nowFn:          time.Now,
-		uidFn:          func() int { return 1000 },
-		goos:           "darwin",
-		hostname:       func() (string, error) { return testHostname, nil },
-		customServices: builtinServicesRepo("darwin"),
-		userServicePathFn: func() (string, error) {
-			return "/Users/dev/Library/LaunchAgents/io.opusdomini.sentinel.plist", nil
-		},
-		autoServicePathFn: func(string) (string, error) {
-			return "/Users/dev/Library/LaunchAgents/io.opusdomini.sentinel.updater.plist", nil
-		},
-		commandRunner: func(_ context.Context, name string, args ...string) (string, error) {
-			row := append([]string{name}, args...)
-			calls = append(calls, row)
-			if len(args) > 0 && args[0] == argPrint {
-				return "", errors.New("launchctl print failed: Could not find service")
-			}
-			return "", nil
-		},
-	}
-
-	_, err := m.Act(context.Background(), ServiceNameSentinel, ActionStart)
-	if err != nil {
-		t.Fatalf("Act: %v", err)
-	}
-	// First two calls are probes for sentinel and updater (both return "not found").
-	// Then the action calls: print (check loaded) → bootstrap → kickstart.
-	expected := [][]string{
-		{"launchctl", "print", "gui/1000/" + sentinelLaunchdLabel},
-		{"launchctl", "bootstrap", "gui/1000", "/Users/dev/Library/LaunchAgents/io.opusdomini.sentinel.plist"},
-		{"launchctl", "kickstart", "-k", "gui/1000/" + sentinelLaunchdLabel},
-	}
-	// Skip the initial probe calls (2 probes for list services before and after act).
-	actionCalls := calls[2:] // first 2 are probes for ListServices
-	// Filter to action calls: find the first "print" that's the loaded check
-	found := false
-	for i := range actionCalls {
-		if len(actionCalls) >= i+len(expected) {
-			match := true
-			for j := range expected {
-				if !reflect.DeepEqual(actionCalls[i+j], expected[j]) {
-					match = false
-					break
-				}
-			}
-			if match {
-				found = true
-				break
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("expected action sequence %v within calls %v", expected, calls)
-	}
-}
-
 func TestInspectSystemdService(t *testing.T) {
 	t.Parallel()
 
@@ -489,7 +322,6 @@ const (
 	cmdLaunchctl = "launchctl"
 	argPrint     = "print"
 	argUser      = "--user"
-	argBootout   = "bootout"
 )
 
 // newTestManager creates a Manager with sensible defaults for testing.
@@ -591,12 +423,36 @@ func TestProbeCustomServiceLaunchd(t *testing.T) {
 		wantActive string
 	}{
 		{
-			name: "launchd service found",
+			name: "launchd service running",
+			runner: func(_ context.Context, _ string, _ ...string) (string, error) {
+				return "state = running\nlast exit code = 0", nil
+			},
+			wantExists: true,
+			wantActive: stateRunning,
+		},
+		{
+			name: "launchd inactive exit zero",
+			runner: func(_ context.Context, _ string, _ ...string) (string, error) {
+				return "state = waiting\nlast exit code = 0", nil
+			},
+			wantExists: true,
+			wantActive: stateInactive,
+		},
+		{
+			name: "launchd failed nonzero",
+			runner: func(_ context.Context, _ string, _ ...string) (string, error) {
+				return "state = exited\nlast exit code = 2", nil
+			},
+			wantExists: true,
+			wantActive: "failed",
+		},
+		{
+			name: "launchd unexpected output",
 			runner: func(_ context.Context, _ string, _ ...string) (string, error) {
 				return "loaded service info", nil
 			},
 			wantExists: true,
-			wantActive: stateRunning,
+			wantActive: stateInactive,
 		},
 		{
 			name: "launchd service not found",
@@ -701,16 +557,16 @@ func TestActLaunchdStop(t *testing.T) {
 	if len(calls) == 0 {
 		t.Fatal("expected at least one command call")
 	}
-	// One of the calls should be bootout for stop.
-	foundBootout := false
+	// One of the calls should be launchctl kill for stop.
+	foundKill := false
 	for _, c := range calls {
-		if c[0] == "launchctl" && len(c) > 1 && c[1] == "bootout" {
-			foundBootout = true
+		if reflect.DeepEqual(c, []string{"launchctl", "kill", "SIGTERM", "gui/1000/" + sentinelLaunchdLabel}) {
+			foundKill = true
 			break
 		}
 	}
-	if !foundBootout {
-		t.Fatalf("expected launchctl bootout among calls: %v", calls)
+	if !foundKill {
+		t.Fatalf("expected launchctl kill among calls: %v", calls)
 	}
 }
 
@@ -718,7 +574,7 @@ func TestActLaunchdStopMissingJobIgnored(t *testing.T) {
 	t.Parallel()
 
 	m := newTestManager("darwin", func(_ context.Context, name string, args ...string) (string, error) {
-		if name == cmdLaunchctl && len(args) > 0 && args[0] == argBootout {
+		if name == cmdLaunchctl && len(args) > 0 && args[0] == "kill" {
 			return "", errors.New("Could not find service")
 		}
 		return "", nil
@@ -1074,7 +930,7 @@ func TestActByUnit(t *testing.T) {
 			manager: "launchd",
 			action:  "stop",
 			runner: func(_ context.Context, _ string, args ...string) (string, error) {
-				if len(args) > 0 && args[0] == argBootout {
+				if len(args) > 0 && args[0] == "kill" {
 					return "", errors.New("Could not find service")
 				}
 				return "", nil
@@ -1371,43 +1227,6 @@ func TestBrowseUnitType(t *testing.T) {
 	}
 }
 
-func TestIsLaunchdAlreadyLoadedError(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{
-			name: "nil error",
-			err:  nil,
-			want: false,
-		},
-		{
-			name: "already loaded",
-			err:  errors.New("launchctl bootstrap failed: Service already loaded"),
-			want: true,
-		},
-		{
-			name: "other error",
-			err:  errors.New("permission denied"),
-			want: false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := isLaunchdAlreadyLoadedError(tc.err)
-			if got != tc.want {
-				t.Fatalf("isLaunchdAlreadyLoadedError = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestParseSystemdShow(t *testing.T) {
 	t.Parallel()
 
@@ -1462,6 +1281,34 @@ func TestParseSystemdShow(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUnitValidationRejectsUnsafeValuesBeforeExec(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{
+		nowFn: time.Now,
+		commandRunner: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("commandRunner should not be called for invalid unit")
+			return "", nil
+		},
+	}
+	ctx := context.Background()
+
+	for _, unit := range []string{"", "-bad.service", "bad service.service", "bad/service.service"} {
+		if err := m.ActByUnit(ctx, unit, scopeUser, managerSystemd, ActionStart); !errors.Is(err, ErrInvalidUnit) {
+			t.Fatalf("ActByUnit(%q) error = %v, want ErrInvalidUnit", unit, err)
+		}
+		if _, err := m.InspectByUnit(ctx, unit, scopeUser, managerSystemd); !errors.Is(err, ErrInvalidUnit) {
+			t.Fatalf("InspectByUnit(%q) error = %v, want ErrInvalidUnit", unit, err)
+		}
+		if _, err := m.LogsByUnit(ctx, unit, scopeUser, managerSystemd, 10); !errors.Is(err, ErrInvalidUnit) {
+			t.Fatalf("LogsByUnit(%q) error = %v, want ErrInvalidUnit", unit, err)
+		}
+		if _, err := m.StreamLogsByUnit(ctx, unit, scopeUser, managerSystemd); !errors.Is(err, ErrInvalidUnit) {
+			t.Fatalf("StreamLogsByUnit(%q) error = %v, want ErrInvalidUnit", unit, err)
+		}
 	}
 }
 

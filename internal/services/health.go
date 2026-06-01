@@ -131,10 +131,11 @@ func (hc *HealthChecker) Start(ctx context.Context) {
 // Stop gracefully stops the health checker. It accepts a context for
 // timeout control so it does not block shutdown indefinitely.
 func (hc *HealthChecker) Stop(ctx context.Context) {
+	if hc.stopFn == nil {
+		return
+	}
 	hc.stopOnce.Do(func() {
-		if hc.stopFn != nil {
-			hc.stopFn()
-		}
+		hc.stopFn()
 		select {
 		case <-hc.doneCh:
 		case <-ctx.Done():
@@ -216,7 +217,7 @@ func (hc *HealthChecker) checkServices(ctx context.Context) {
 		dedupeKey := fmt.Sprintf("health:service:%s:failed", svc.Name)
 
 		switch state {
-		case "failed":
+		case stateFailed:
 			hc.raiseAlert(ctx, alerts.AlertWrite{
 				DedupeKey: dedupeKey,
 				Source:    alertSourceHealth,

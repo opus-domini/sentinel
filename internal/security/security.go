@@ -19,6 +19,8 @@ var (
 	ErrOriginDenied = errors.New("origin denied")
 	// ErrRemoteToken is returned when remote access has no token configured.
 	ErrRemoteToken = errors.New("token is required for non-loopback listen address")
+	// ErrRemoteAllowedOrigin is returned when remote access has no allowed origin configured.
+	ErrRemoteAllowedOrigin = errors.New("allowed_origin is required for non-loopback listen address")
 	// ErrRootNotAllowed is returned when root is rejected as a target user.
 	ErrRootNotAllowed = errors.New("root user is not allowed as a target")
 	// ErrUserNotAllowlist is returned when a target user is outside the allowlist.
@@ -69,6 +71,12 @@ type Guard struct {
 	allowedOrigins map[string]struct{}
 	cookieSecure   CookieSecurePolicy
 	multiUser      MultiUserConfig
+	trustedProxies []trustedProxy
+}
+
+type trustedProxy struct {
+	ip   net.IP
+	cidr *net.IPNet
 }
 
 // New creates a new service value.
@@ -78,6 +86,11 @@ func New(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy)
 
 // NewWithMultiUser creates with multi user.
 func NewWithMultiUser(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy, mu MultiUserConfig) *Guard {
+	return NewWithOptions(token, allowedOrigins, cookieSecure, mu, nil)
+}
+
+// NewWithOptions creates a Guard with multi-user and trusted proxy settings.
+func NewWithOptions(token string, allowedOrigins []string, cookieSecure CookieSecurePolicy, mu MultiUserConfig, trustedProxies []string) *Guard {
 	g := &Guard{
 		token:          strings.TrimSpace(token),
 		allowedOrigins: make(map[string]struct{}),
@@ -91,6 +104,7 @@ func NewWithMultiUser(token string, allowedOrigins []string, cookieSecure Cookie
 		}
 		g.allowedOrigins[trimmed] = struct{}{}
 	}
+	g.trustedProxies = parseTrustedProxies(trustedProxies)
 	return g
 }
 
@@ -186,7 +200,7 @@ func (g *Guard) CheckOrigin(r *http.Request) error {
 	}
 
 	scheme := "http"
-	if requestUsesTLS(r) {
+	if g.requestUsesTLS(r) {
 		scheme = "https"
 	}
 	if parsed.Scheme != scheme || parsed.Host != r.Host {
@@ -240,9 +254,42 @@ func (g *Guard) resolveSecure(r *http.Request) bool {
 	case CookieSecureNever:
 		return false
 	case CookieSecureAuto:
-		return requestUsesTLS(r)
+		return g.requestUsesTLS(r)
 	}
-	return requestUsesTLS(r)
+	return g.requestUsesTLS(r)
+}
+
+func (g *Guard) requestUsesTLS(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+		return false
+	}
+	return g.trustsRemote(r.RemoteAddr)
+}
+
+func (g *Guard) trustsRemote(remoteAddr string) bool {
+	if len(g.trustedProxies) == 0 {
+		return false
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(remoteAddr)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, p := range g.trustedProxies {
+		if p.ip != nil && p.ip.Equal(ip) || p.cidr != nil && p.cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // TokenMatches reports whether a token matches value.
@@ -281,24 +328,35 @@ func encodeBase64URL(s string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(s))
 }
 
-func requestUsesTLS(r *http.Request) bool {
-	if r == nil {
-		return false
+func parseTrustedProxies(values []string) []trustedProxy {
+	out := make([]trustedProxy, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if ip := net.ParseIP(value); ip != nil {
+			out = append(out, trustedProxy{ip: ip})
+			continue
+		}
+		if _, cidr, err := net.ParseCIDR(value); err == nil {
+			out = append(out, trustedProxy{cidr: cidr})
+		}
 	}
-	if r.TLS != nil {
-		return true
-	}
-	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+	return out
 }
 
 // ValidateRemoteExposure enforces the minimum security baseline when Sentinel is
 // configured to listen on a non-loopback address.
-func ValidateRemoteExposure(listenAddr, token string) error {
+func ValidateRemoteExposure(listenAddr, token string, allowedOrigins []string) error {
 	if !ExposesBeyondLoopback(listenAddr) {
 		return nil
 	}
 	if strings.TrimSpace(token) == "" {
 		return ErrRemoteToken
+	}
+	if !HasAllowedOrigins(allowedOrigins) {
+		return ErrRemoteAllowedOrigin
 	}
 	return nil
 }

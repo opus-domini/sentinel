@@ -52,12 +52,9 @@ func Serve(version string) int {
 	defer closeLogger()
 
 	listenAddr := cfg.Address()
-	if err := security.ValidateRemoteExposure(listenAddr, cfg.Server.Token); err != nil {
-		slog.Error("security: token is required for remote listen address", "listen", listenAddr)
+	if err := security.ValidateRemoteExposure(listenAddr, cfg.Server.Token, cfg.Server.AllowedOrigins); err != nil {
+		slog.Error("security: remote listen address requires token and allowed_origins", "listen", listenAddr, "err", err)
 		return 1
-	}
-	if security.ExposesBeyondLoopback(listenAddr) && !security.HasAllowedOrigins(cfg.Server.AllowedOrigins) {
-		slog.Warn("consider setting allowed_origins to restrict cross-origin access", "listen", listenAddr)
 	}
 
 	cfg.SystemUsers = config.ReadSystemUsers()
@@ -73,11 +70,11 @@ func Serve(version string) int {
 	term.UserSwitchMethod = cfg.MultiUser.UserSwitchMethod
 	slog.Info("multi-user switching configured", "method", cfg.MultiUser.UserSwitchMethod)
 	cookiePolicy := security.ParseCookieSecurePolicy(cfg.Server.CookieSecure)
-	guard := security.NewWithMultiUser(cfg.Server.Token, cfg.Server.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
+	guard := security.NewWithOptions(cfg.Server.Token, cfg.Server.AllowedOrigins, cookiePolicy, security.MultiUserConfig{
 		AllowedUsers:    cfg.MultiUser.AllowedUsers,
 		AllowRootTarget: cfg.MultiUser.AllowRootTarget,
 		SystemUsers:     cfg.SystemUsers,
-	})
+	}, cfg.Server.TrustedProxies)
 
 	if security.ExposesBeyondLoopback(listenAddr) && cfg.Server.Token != "" && cookiePolicy == security.CookieSecureNever {
 		if cfg.Server.AllowInsecureCookie {

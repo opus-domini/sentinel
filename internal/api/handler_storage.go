@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -35,8 +36,36 @@ func (h *Handler) opsConfig(w http.ResponseWriter, _ *http.Request) {
 	}
 	writeData(w, http.StatusOK, map[string]any{
 		"path":    h.configPath,
-		"content": string(content),
+		"content": redactServerToken(string(content)),
 	})
+}
+
+var tomlTableRE = regexp.MustCompile(`^\s*\[([^\]]+)\]`)
+
+func redactServerToken(content string) string {
+	lines := strings.SplitAfter(content, "\n")
+	inServer := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(strings.TrimSuffix(line, "\n"))
+		if m := tomlTableRE.FindStringSubmatch(trimmed); m != nil {
+			inServer = strings.TrimSpace(m[1]) == "server"
+			continue
+		}
+		if !inServer || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		prefix := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		body := strings.TrimLeft(line, " \t")
+		rest, ok := strings.CutPrefix(body, "token")
+		if ok && strings.HasPrefix(strings.TrimSpace(rest), "=") {
+			newline := ""
+			if strings.HasSuffix(line, "\n") {
+				newline = "\n"
+			}
+			lines[i] = prefix + `token = "[REDACTED]"` + newline
+		}
+	}
+	return strings.Join(lines, "")
 }
 
 func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {

@@ -29,12 +29,25 @@ WS connections authenticate via the same `sentinel_auth` HttpOnly cookie. The br
 
 ## Origin Validation
 
-`allowed_origins` can be explicitly configured. If omitted, same-host origin checks apply.
+`allowed_origins` can be explicitly configured. If omitted, same-host origin checks apply on loopback binds.
+For non-loopback binds, Sentinel requires at least one explicit allowed origin at startup.
 
 Recommendations:
 
 - Set explicit origins when using reverse proxies.
 - Keep token required for any non-local binding.
+
+## Trusted Proxies
+
+Sentinel only trusts `X-Forwarded-Proto` from IPs or CIDRs listed in `trusted_proxies`.
+Leave it empty unless Sentinel is behind a reverse proxy that terminates TLS.
+
+```toml
+[server]
+trusted_proxies = ["127.0.0.1", "10.0.0.0/8"]
+```
+
+Requests from untrusted remotes cannot force HTTPS origin/cookie decisions with forwarded headers.
 
 ## Remote Exposure Baseline
 
@@ -43,7 +56,7 @@ If `server.host = "0.0.0.0"`:
 - Always set `token`.
 - Always set `allowed_origins`.
 - Sentinel refuses startup when `token` is missing on non-loopback binds.
-- Missing `allowed_origins` now emits a startup warning (recommended to configure).
+- Sentinel refuses startup when `allowed_origins` is missing on non-loopback binds.
 - Prefer private network overlay (VPN/Tailscale) or authenticated tunnel.
 - Avoid direct public exposure without additional network controls.
 

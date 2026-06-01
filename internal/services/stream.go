@@ -62,6 +62,9 @@ func (m *Manager) StreamLogs(ctx context.Context, name string) (io.ReadCloser, e
 // unit/scope/manager directly, without requiring the service to be tracked.
 // Only systemd is supported; launchd returns ErrStreamingUnsupported.
 func (m *Manager) StreamLogsByUnit(ctx context.Context, unit, scope, manager string) (io.ReadCloser, error) {
+	if !IsValidUnit(unit) {
+		return nil, ErrInvalidUnit
+	}
 	if manager != managerSystemd {
 		return nil, ErrStreamingUnsupported
 	}

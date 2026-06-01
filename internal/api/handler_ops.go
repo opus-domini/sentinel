@@ -420,6 +420,10 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is required", nil)
 		return
 	}
+	if !validOpsUnitLabel(req.Unit) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is invalid", nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -468,6 +472,14 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		keyServices:  services,
 		keyGlobalRev: globalRev,
 	})
+}
+
+func validOpsUnitLabel(unit string) bool {
+	unit = strings.TrimSpace(unit)
+	if unit == "" || strings.HasPrefix(unit, "-") || strings.ContainsAny(unit, "\x00\n\r\t") {
+		return false
+	}
+	return true
 }
 
 func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {

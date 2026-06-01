@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -57,6 +56,7 @@ const (
 	stateActive   = "active"
 	stateRunning  = "running"
 	stateInactive = "inactive"
+	stateFailed   = "failed"
 	stateUnknown  = "unknown"
 )
 
@@ -65,6 +65,8 @@ var (
 	ErrServiceNotFound = errors.New("ops service not found")
 	// ErrInvalidAction is returned when an ops service action is not supported.
 	ErrInvalidAction = errors.New("ops invalid action")
+	// ErrInvalidUnit is returned when a service unit or launchd label is unsafe.
+	ErrInvalidUnit = errors.New("ops invalid unit")
 
 	systemdBrowseUnitTypes = []string{
 		unitTypeService,
@@ -146,10 +148,7 @@ type Manager struct {
 	metricsMu      sync.Mutex
 	metrics        *metricsCollector
 
-	installAutoUpdate func(opts daemon.InstallUserAutoUpdateOptions) error
-	userServicePathFn func() (string, error)
-	autoServicePathFn func(scope string) (string, error)
-	commandRunner     commandRunner
+	commandRunner commandRunner
 }
 
 // NewManager creates manager.
@@ -159,17 +158,14 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 		startedAt = now
 	}
 	return &Manager{
-		startedAt:         startedAt,
-		nowFn:             time.Now,
-		hostname:          os.Hostname,
-		uidFn:             os.Getuid,
-		goos:              runtime.GOOS,
-		customServices:    csRepo,
-		metrics:           newMetricsCollector(),
-		installAutoUpdate: daemon.InstallUserAutoUpdate,
-		userServicePathFn: daemon.UserServicePath,
-		autoServicePathFn: daemon.UserAutoUpdateServicePathForScope,
-		commandRunner:     runCommand,
+		startedAt:      startedAt,
+		nowFn:          time.Now,
+		hostname:       os.Hostname,
+		uidFn:          os.Getuid,
+		goos:           runtime.GOOS,
+		customServices: csRepo,
+		metrics:        newMetricsCollector(),
+		commandRunner:  runCommand,
 	}
 }
 
@@ -224,7 +220,7 @@ func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 		switch strings.ToLower(strings.TrimSpace(item.ActiveState)) {
 		case stateActive, stateRunning:
 			out.Services.Active++
-		case "failed":
+		case stateFailed:
 			out.Services.Failed++
 		}
 	}
@@ -243,6 +239,9 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
 			return nil, err
 		}
 		for _, cs := range custom {
+			if !IsValidUnit(cs.Unit) {
+				continue
+			}
 			svc := ServiceStatus{
 				Name:        cs.Name,
 				DisplayName: cs.DisplayName,
@@ -281,8 +280,14 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 		svc.EnabledState = normalizeState(props["UnitFileState"])
 	case managerLaunchd:
 		label := svc.Unit
+		if !IsValidUnit(label) {
+			svc.Exists = false
+			svc.ActiveState = stateUnknown
+			svc.EnabledState = stateUnknown
+			return
+		}
 		target := launchdTarget(svc.Scope, m.uidFn, label)
-		_, err := m.commandRunner(ctx, "launchctl", "print", target)
+		out, err := m.commandRunner(ctx, "launchctl", "print", target)
 		if err != nil {
 			svc.Exists = false
 			svc.ActiveState = stateInactive
@@ -290,7 +295,7 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 			return
 		}
 		svc.Exists = true
-		svc.ActiveState = stateRunning
+		svc.ActiveState = launchdActiveState(out)
 		svc.EnabledState = "enabled"
 	default:
 		svc.Exists = false
@@ -318,31 +323,21 @@ func (m *Manager) Act(ctx context.Context, name, action string) (ServiceStatus, 
 	if !ok {
 		return ServiceStatus{}, ErrServiceNotFound
 	}
-	if err := m.ensureServiceActionReady(target, action); err != nil {
-		return ServiceStatus{}, err
-	}
-
 	switch target.Manager {
 	case managerSystemd:
-		if err := m.actSystemd(ctx, target.Scope, serviceName, action); err != nil {
+		if err := m.actSystemd(ctx, target.Scope, target.Unit, action); err != nil {
 			return ServiceStatus{}, err
 		}
 	case managerLaunchd:
-		if err := m.actLaunchd(ctx, target.Scope, serviceName, action); err != nil {
+		if err := m.actLaunchd(ctx, target.Scope, target.Unit, action); err != nil {
 			return ServiceStatus{}, err
 		}
 	default:
 		return ServiceStatus{}, fmt.Errorf("unsupported service manager: %s", target.Manager)
 	}
 
-	updated, err := m.ListServices(ctx)
-	if err != nil {
-		return ServiceStatus{}, err
-	}
-	if next, found := findServiceStatus(updated, serviceName); found {
-		return next, nil
-	}
-	return ServiceStatus{}, ErrServiceNotFound
+	m.probeCustomService(ctx, &target)
+	return target, nil
 }
 
 // Inspect inspects value.
@@ -391,14 +386,10 @@ func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, err
 	return inspect, nil
 }
 
-func (m *Manager) actSystemd(ctx context.Context, scope, serviceName, action string) error {
-	unit := unitForService(managerSystemd, serviceName)
-
-	// Enable/disable only change the unit file state, not the runtime state.
-	if action == ActionEnable || action == ActionDisable {
-		return m.actSystemdUnit(ctx, scope, unit, action)
+func (m *Manager) actSystemd(ctx context.Context, scope, unit, action string) error {
+	if !IsValidUnit(unit) {
+		return ErrInvalidUnit
 	}
-
 	args := make([]string, 0, 4)
 	if strings.EqualFold(scope, scopeUser) {
 		args = append(args, "--user")
@@ -406,17 +397,6 @@ func (m *Manager) actSystemd(ctx context.Context, scope, serviceName, action str
 	args = append(args, action, unit)
 	_, err := m.commandRunner(ctx, "systemctl", args...)
 	if err != nil {
-		if serviceName == ServiceNameUpdater &&
-			(action == ActionStart || action == ActionRestart) &&
-			isSystemdUnitNotFoundError(err) {
-			if bootstrapErr := m.bootstrapUpdater(scope); bootstrapErr != nil {
-				return bootstrapErr
-			}
-			if _, retryErr := m.commandRunner(ctx, "systemctl", args...); retryErr != nil {
-				return fmt.Errorf("systemd action failed after autoupdate bootstrap: %w", retryErr)
-			}
-			return nil
-		}
 		return fmt.Errorf("systemd action failed: %w", err)
 	}
 	return nil
@@ -442,69 +422,32 @@ func (m *Manager) inspectSystemd(ctx context.Context, target ServiceStatus) (map
 }
 
 func (m *Manager) inspectLaunchd(ctx context.Context, target ServiceStatus) (string, error) {
-	label := unitForService(managerLaunchd, target.Name)
-	out, err := m.commandRunner(ctx, "launchctl", "print", launchdTarget(target.Scope, m.uidFn, label))
+	if !IsValidUnit(target.Unit) {
+		return "", ErrInvalidUnit
+	}
+	out, err := m.commandRunner(ctx, "launchctl", "print", launchdTarget(target.Scope, m.uidFn, target.Unit))
 	if err != nil {
 		return "", fmt.Errorf("launchd inspect failed: %w", err)
 	}
 	return out, nil
 }
 
-func (m *Manager) ensureServiceActionReady(target ServiceStatus, action string) error {
-	if target.Name != ServiceNameUpdater {
-		return nil
+func (m *Manager) actLaunchd(ctx context.Context, scope, label, action string) error {
+	if !IsValidUnit(label) {
+		return ErrInvalidUnit
 	}
-	if action != ActionStart && action != ActionRestart {
-		return nil
-	}
-	if target.Exists {
-		return nil
-	}
-	return m.bootstrapUpdater(target.Scope)
-}
-
-func (m *Manager) bootstrapUpdater(scope string) error {
-	installFn := m.installAutoUpdate
-	if installFn == nil {
-		installFn = daemon.InstallUserAutoUpdate
-	}
-	if err := installFn(daemon.InstallUserAutoUpdateOptions{
-		Enable:          true,
-		Start:           true,
-		ServiceUnit:     ServiceNameSentinel,
-		SystemdScope:    scope,
-		OnCalendar:      "daily",
-		RandomizedDelay: time.Hour,
-	}); err != nil {
-		return fmt.Errorf("autoupdate bootstrap failed: %w", err)
-	}
-	return nil
-}
-
-func (m *Manager) actLaunchd(ctx context.Context, scope, serviceName, action string) error {
-	label := unitForService(managerLaunchd, serviceName)
 	target := launchdTarget(scope, m.uidFn, label)
-	domain := launchdDomain(scope, m.uidFn)
 
 	switch action {
 	case ActionStop:
-		_, err := m.commandRunner(ctx, "launchctl", "bootout", target)
+		_, err := m.commandRunner(ctx, "launchctl", "kill", "SIGTERM", target)
 		if err != nil && !isLaunchdMissingJobError(err) {
 			return fmt.Errorf("launchd stop failed: %w", err)
 		}
 		return nil
 	case ActionStart, ActionRestart:
 		if loaded, _ := m.isLaunchdLoaded(ctx, target); !loaded {
-			plistPath, pathErr := m.plistPathForService(serviceName, scope)
-			if pathErr != nil {
-				return pathErr
-			}
-			if strings.TrimSpace(plistPath) == "" {
-				return fmt.Errorf("launchd plist path unavailable for %s", serviceName)
-			}
-			if _, err := m.commandRunner(ctx, "launchctl", "bootstrap", domain, plistPath); err != nil && !isLaunchdAlreadyLoadedError(err) {
-				return fmt.Errorf("launchd bootstrap failed: %w", err)
-			}
+			return fmt.Errorf("launchd service %s is not loaded", label)
 		}
 		_, err := m.commandRunner(ctx, "launchctl", "kickstart", "-k", target)
 		if err != nil {
@@ -537,17 +480,6 @@ func (m *Manager) isLaunchdLoaded(ctx context.Context, target string) (bool, err
 		return false, err
 	}
 	return true, nil
-}
-
-func (m *Manager) plistPathForService(serviceName, scope string) (string, error) {
-	switch serviceName {
-	case ServiceNameSentinel:
-		return m.userServicePathFn()
-	case ServiceNameUpdater:
-		return m.autoServicePathFn(scope)
-	default:
-		return "", ErrServiceNotFound
-	}
 }
 
 func runCommand(ctx context.Context, name string, args ...string) (string, error) {
@@ -620,19 +552,60 @@ func unitForService(manager, serviceName string) string {
 
 func normalizeServiceName(raw string) (string, bool) {
 	name := strings.TrimSpace(raw)
-	lower := strings.ToLower(name)
-	switch lower {
-	case ServiceNameSentinel, "sentinel.service":
-		return ServiceNameSentinel, true
-	case ServiceNameUpdater, "sentinel-updater.service", "sentinel-updater.timer", "updater":
-		return ServiceNameUpdater, true
-	default:
-		// Accept custom service names (non-empty).
-		if name != "" {
-			return name, true
-		}
-		return "", false
+	if name != "" {
+		return name, true
 	}
+	return "", false
+}
+
+// IsValidUnit reports whether a systemd unit or launchd label is safe to pass to commands.
+func IsValidUnit(unit string) bool {
+	unit = strings.TrimSpace(unit)
+	if unit == "" || strings.HasPrefix(unit, "-") {
+		return false
+	}
+	for _, r := range unit {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || strings.ContainsRune("._@:-", r) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func launchdActiveState(raw string) string {
+	props := parseLaunchdPrint(raw)
+	state := strings.ToLower(strings.TrimSpace(props["state"]))
+	exit := strings.TrimSpace(props["last exit code"])
+	switch state {
+	case stateRunning, stateActive:
+		return stateRunning
+	case "", stateInactive, "waiting", "exited", "stopped", "not running":
+		if exit != "" && exit != "0" {
+			return stateFailed
+		}
+		return stateInactive
+	default:
+		if exit != "" && exit != "0" {
+			return stateFailed
+		}
+		return stateUnknown
+	}
+}
+
+func parseLaunchdPrint(raw string) map[string]string {
+	props := make(map[string]string)
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, ";"))
+		idx := strings.Index(line, "=")
+		if idx <= 0 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(line[:idx]))
+		value := strings.Trim(strings.TrimSpace(line[idx+1:]), `"`)
+		props[key] = value
+	}
+	return props
 }
 
 func findServiceStatus(list []ServiceStatus, name string) (ServiceStatus, bool) {
@@ -642,6 +615,10 @@ func findServiceStatus(list []ServiceStatus, name string) (ServiceStatus, bool) 
 		}
 	}
 	return ServiceStatus{}, false
+}
+
+func serviceKey(manager, scope, unit string) string {
+	return strings.ToLower(strings.TrimSpace(manager)) + "\x00" + strings.ToLower(strings.TrimSpace(scope)) + "\x00" + strings.ToLower(strings.TrimSpace(unit))
 }
 
 func isValidAction(action string) bool {
@@ -676,24 +653,6 @@ func isLaunchdMissingJobError(err error) bool {
 	return strings.Contains(msg, "could not find service") ||
 		strings.Contains(msg, "no such process") ||
 		strings.Contains(msg, "service is disabled")
-}
-
-func isLaunchdAlreadyLoadedError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "service already loaded")
-}
-
-func isSystemdUnitNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(strings.TrimSpace(err.Error()))
-	return strings.Contains(msg, "unit sentinel-updater.timer not found") ||
-		strings.Contains(msg, "could not be found") ||
-		strings.Contains(msg, "no such file or directory")
 }
 
 func parseSystemdShow(raw string) map[string]string {
@@ -738,7 +697,7 @@ func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, err
 	}
 	trackedUnits := make(map[string]bool, len(tracked))
 	for _, s := range tracked {
-		trackedUnits[strings.ToLower(s.Unit)] = true
+		trackedUnits[serviceKey(s.Manager, s.Scope, s.Unit)] = true
 	}
 
 	manager := detectManager(m.goos)
@@ -752,7 +711,7 @@ func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, err
 				slog.Warn("service discovery failed", "manager", "systemd", "scope", scope, "err", err)
 			}
 			for _, u := range units {
-				if trackedUnits[strings.ToLower(u.Unit)] {
+				if trackedUnits[serviceKey(managerSystemd, scope, u.Unit)] {
 					continue
 				}
 				u.Manager = managerSystemd
@@ -766,11 +725,15 @@ func (m *Manager) DiscoverServices(ctx context.Context) ([]AvailableService, err
 			slog.Warn("service discovery failed", "manager", "launchd", "err", err)
 		}
 		for _, u := range units {
-			if trackedUnits[strings.ToLower(u.Unit)] {
+			scope := scopeUser
+			if m.uidFn != nil && m.uidFn() == 0 {
+				scope = scopeSystem
+			}
+			if trackedUnits[serviceKey(managerLaunchd, scope, u.Unit)] {
 				continue
 			}
 			u.Manager = managerLaunchd
-			u.Scope = scopeUser
+			u.Scope = scope
 			out = append(out, u)
 		}
 	}
@@ -942,7 +905,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 	type trackedInfo struct{ Name string }
 	trackedMap := make(map[string]trackedInfo, len(tracked))
 	for _, s := range tracked {
-		key := strings.ToLower(s.Unit) + "\x00" + strings.ToLower(s.Scope)
+		key := serviceKey(s.Manager, s.Scope, s.Unit)
 		trackedMap[key] = trackedInfo{Name: s.Name}
 	}
 
@@ -958,7 +921,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 				slog.Warn("service discovery failed", "manager", "systemd", "scope", scope, "err", err)
 			}
 			for _, u := range units {
-				key := strings.ToLower(u.Unit) + "\x00" + strings.ToLower(scope)
+				key := serviceKey(managerSystemd, scope, u.Unit)
 				if seen[key] {
 					continue
 				}
@@ -985,7 +948,11 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 			slog.Warn("service discovery failed", "manager", "launchd", "err", err)
 		}
 		for _, u := range units {
-			key := strings.ToLower(u.Unit) + "\x00" + strings.ToLower(scopeUser)
+			scope := scopeUser
+			if m.uidFn != nil && m.uidFn() == 0 {
+				scope = scopeSystem
+			}
+			key := serviceKey(managerLaunchd, scope, u.Unit)
 			if seen[key] {
 				continue
 			}
@@ -997,7 +964,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 				ActiveState:  u.ActiveState,
 				EnabledState: u.EnabledState,
 				Manager:      managerLaunchd,
-				Scope:        scopeUser,
+				Scope:        scope,
 			}
 			if info, ok := trackedMap[key]; ok {
 				bs.Tracked = true
@@ -1009,7 +976,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 
 	// Inject tracked services that were not returned by discover (e.g. built-ins).
 	for _, s := range tracked {
-		key := strings.ToLower(s.Unit) + "\x00" + strings.ToLower(s.Scope)
+		key := serviceKey(s.Manager, s.Scope, s.Unit)
 		if seen[key] {
 			continue
 		}
@@ -1033,6 +1000,9 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 // ActByUnit performs a service action using unit/scope/manager directly,
 // without requiring the service to be tracked in the store.
 func (m *Manager) ActByUnit(ctx context.Context, unit, scope, manager, action string) error {
+	if !IsValidUnit(unit) {
+		return ErrInvalidUnit
+	}
 	action = strings.ToLower(strings.TrimSpace(action))
 	if !isValidAction(action) {
 		return ErrInvalidAction
@@ -1066,7 +1036,7 @@ func (m *Manager) actLaunchdUnit(ctx context.Context, scope, unit, action string
 
 	switch action {
 	case ActionStop:
-		_, err := m.commandRunner(ctx, "launchctl", "bootout", target)
+		_, err := m.commandRunner(ctx, "launchctl", "kill", "SIGTERM", target)
 		if err != nil && !isLaunchdMissingJobError(err) {
 			return fmt.Errorf("launchd stop failed: %w", err)
 		}
@@ -1100,6 +1070,9 @@ func (m *Manager) actLaunchdUnit(ctx context.Context, scope, unit, action string
 // InspectByUnit inspects a service identified by unit/scope/manager directly,
 // without requiring the service to be tracked in the store.
 func (m *Manager) InspectByUnit(ctx context.Context, unit, scope, manager string) (ServiceInspect, error) {
+	if !IsValidUnit(unit) {
+		return ServiceInspect{}, ErrInvalidUnit
+	}
 	target := ServiceStatus{
 		Unit:    unit,
 		Scope:   scope,

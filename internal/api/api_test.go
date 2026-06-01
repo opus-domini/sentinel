@@ -4957,6 +4957,31 @@ func TestOpsConfigHandler(t *testing.T) {
 	}
 }
 
+func TestOpsConfigRedactsServerToken(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHandler(t, nil)
+	h.configPath = filepath.Join(t.TempDir(), "config.toml")
+	content := "[server] # comment\n  token = \"secret\" # keep hidden\nport = 4040\n[alerts]\ntoken = \"public\"\n"
+	if err := os.WriteFile(h.configPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
+	h.opsConfig(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	body := jsonBody(t, w)
+	data := body["data"].(map[string]any)
+	got := data["content"].(string)
+	if strings.Contains(got, "secret") {
+		t.Fatalf("content leaked token: %q", got)
+	}
+	if !strings.Contains(got, `token = "[REDACTED]"`) || !strings.Contains(got, "[alerts]\ntoken = \"public\"") {
+		t.Fatalf("content = %q", got)
+	}
+}
+
 func TestOpsConfigNoPath(t *testing.T) {
 	t.Parallel()
 

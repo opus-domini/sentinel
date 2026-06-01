@@ -65,6 +65,9 @@ func (m *Manager) logsSystemd(ctx context.Context, target ServiceStatus, lines i
 // LogsByUnit retrieves recent log output for a service identified by
 // unit/scope/manager directly, without requiring the service to be tracked.
 func (m *Manager) LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error) {
+	if !IsValidUnit(unit) {
+		return "", ErrInvalidUnit
+	}
 	if lines <= 0 {
 		lines = defaultLogLines
 	}
@@ -105,7 +108,10 @@ func (m *Manager) logsLaunchdUnit(ctx context.Context, label string, lines int) 
 }
 
 func (m *Manager) logsLaunchd(ctx context.Context, target ServiceStatus, lines int) (string, error) {
-	label := unitForService(managerLaunchd, target.Name)
+	label := target.Unit
+	if !IsValidUnit(label) {
+		return "", ErrInvalidUnit
+	}
 	out, err := m.commandRunner(ctx, "log", "show",
 		"--predicate", fmt.Sprintf(`senderImagePath CONTAINS "%s" OR subsystem == "%s"`, label, label),
 		"--style", "compact",

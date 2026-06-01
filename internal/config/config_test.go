@@ -262,6 +262,59 @@ path = "`+filepath.Join(dir, "file.db")+`"
 	}
 }
 
+func TestServerPortEnvInvalidPreservesConfig(t *testing.T) {
+	for _, value := range []string{"-1", "999999", "0"} {
+		t.Run(value, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte("[server]\nport = 5050\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("SENTINEL_SERVER_PORT", value)
+			cfg, _, err := LoadPath(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Server.Port != 5050 {
+				t.Fatalf("port = %d, want 5050", cfg.Server.Port)
+			}
+		})
+	}
+}
+
+func TestServerPortEnvInvalidPreservesDefault(t *testing.T) {
+	for _, value := range []string{"", "0"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("SENTINEL_SERVER_PORT", value)
+			cfg, _, err := LoadPath(filepath.Join(t.TempDir(), "missing.toml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Server.Port != defaultPort {
+				t.Fatalf("port = %d, want %d", cfg.Server.Port, defaultPort)
+			}
+		})
+	}
+}
+
+func TestCSVEnvReplacesLists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[server]\nallowed_origins = [\"http://old\"]\n[multi_user]\nallowed_users = [\"old\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SENTINEL_SERVER_ALLOWED_ORIGINS", "https://a.example, https://b.example")
+	t.Setenv("SENTINEL_ALLOWED_USERS", "alice,bob")
+	cfg, _, err := LoadPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(cfg.Server.AllowedOrigins, ","); got != "https://a.example,https://b.example" {
+		t.Fatalf("origins = %v", cfg.Server.AllowedOrigins)
+	}
+	if got := strings.Join(cfg.MultiUser.AllowedUsers, ","); got != "alice,bob" {
+		t.Fatalf("users = %v", cfg.MultiUser.AllowedUsers)
+	}
+}
+
 func TestValidateFile(t *testing.T) {
 	tests := []struct {
 		name    string

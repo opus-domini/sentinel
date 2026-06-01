@@ -211,6 +211,17 @@ func TestRegisterOpsServiceErrorPaths(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects flag-like unit", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHandler(t, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{"name":"api","unit":"--user"}`))
+		h.registerOpsService(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
 	t.Run("rejects duplicate registration", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHandler(t, nil)
