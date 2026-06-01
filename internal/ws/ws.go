@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -42,6 +43,17 @@ const (
 const (
 	maxControlFramePayload = 125
 	defaultMaxFramePayload = 64 * 1024
+)
+
+const (
+	// readTimeout bounds how long a peer may go without sending any frame
+	// before the read fails. It must exceed the server ping interval (20s) so a
+	// live client's automatic pong renews it; an idle or wedged peer that stops
+	// answering pings then tears down instead of leaking goroutine+PTY+conn.
+	readTimeout = 60 * time.Second
+	// writeTimeout bounds a single frame write so a slow/stuck reader cannot
+	// block writeMu (and thus the ping loop and every other writer) forever.
+	writeTimeout = 10 * time.Second
 )
 
 var (
@@ -149,7 +161,7 @@ func (c *Conn) ReadMessage() (byte, []byte, error) {
 				_ = c.WriteClose(ferr.closeCode, ferr.Error())
 				return 0, nil, err
 			}
-			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) {
 				return 0, nil, ErrClosed
 			}
 			return 0, nil, err
@@ -252,6 +264,9 @@ func (c *Conn) writeFrame(opcode byte, payload []byte) error {
 
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	if err := c.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+		return err
+	}
 	if _, err := c.writer.Write(header); err != nil {
 		return err
 	}
@@ -264,6 +279,12 @@ func (c *Conn) writeFrame(opcode byte, payload []byte) error {
 }
 
 func (c *Conn) readFrame(maxPayload int64) (byte, []byte, error) {
+	// Renew the read deadline per frame: any frame (data, ping or pong) keeps
+	// the connection alive, while a peer that goes silent past readTimeout fails
+	// the read so the attach loop can tear down instead of leaking forever.
+	if err := c.conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
+		return 0, nil, err
+	}
 	var header [2]byte
 	if _, err := io.ReadFull(c.reader, header[:]); err != nil {
 		return 0, nil, err
