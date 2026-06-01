@@ -193,7 +193,7 @@ function RootComponent() {
 
   const setToken = useCallback(
     (token: string) => {
-      void updateAuthCookie(queryClient, token)
+      return updateAuthCookie(queryClient, token)
     },
     [queryClient],
   )

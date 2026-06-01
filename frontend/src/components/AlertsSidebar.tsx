@@ -19,7 +19,7 @@ type AlertsSidebarProps = {
   overview: OpsOverview | null
   selectedSeverity: string
   onSeverityChange: (value: string) => void
-  onTokenChange: (value: string) => void
+  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
 }
 
 const severities = ['all', 'warn', 'error'] as const

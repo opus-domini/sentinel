@@ -62,4 +62,37 @@ describe('RunbookRunDialog', () => {
 
     expect(onConfirm).toHaveBeenCalledWith({})
   })
+
+  it('renders required and invalid parameter errors as alerts with ARIA on labelled controls', () => {
+    const onConfirm = vi.fn()
+
+    render(
+      <RunbookRunDialog
+        open
+        runbook={runbook({
+          parameters: [
+            { name: 'branch', label: 'Branch', type: 'string', default: '', required: true },
+            { name: 'retries', label: 'Retries', type: 'number', default: 'many', required: false },
+          ],
+        })}
+        onConfirm={onConfirm}
+        onCancel={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    const branch = screen.getByLabelText(/Branch/)
+    const retries = screen.getByLabelText('Retries')
+    const branchError = screen.getByText('Branch is required')
+    const retriesError = screen.getByText('Must be a number')
+
+    expect(branchError.getAttribute('role')).toBe('alert')
+    expect(retriesError.getAttribute('role')).toBe('alert')
+    expect(branch.getAttribute('aria-invalid')).toBe('true')
+    expect(branch.getAttribute('aria-describedby')).toBe(branchError.id)
+    expect(retries.getAttribute('aria-invalid')).toBe('true')
+    expect(retries.getAttribute('aria-describedby')).toBe(retriesError.id)
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
 })

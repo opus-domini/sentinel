@@ -14,14 +14,12 @@ export default function ToastViewport({ toasts, onDismiss }: ToastViewportProps)
   }
 
   return (
-    <div
-      aria-live="polite"
-      role="status"
-      className="pointer-events-none fixed bottom-3 right-3 z-50 grid w-[min(420px,calc(100vw-24px))] gap-2"
-    >
+    <div className="pointer-events-none fixed bottom-3 right-3 z-50 grid w-[min(420px,calc(100vw-24px))] gap-2">
       {toasts.map((toast) => (
         <article
           key={toast.id}
+          role={toast.level === 'error' ? 'alert' : 'status'}
+          aria-live={toast.level === 'error' ? 'assertive' : 'polite'}
           className={cn(
             'pointer-events-auto rounded-lg border bg-surface-raised p-3 shadow-[0_10px_30px_rgba(0,0,0,.35)]',
             toast.level === 'success' && 'border-ok/45',

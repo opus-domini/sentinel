@@ -1,18 +1,9 @@
-import {
-  Activity,
-  Bell,
-  Blocks,
-  ChevronsLeft,
-  ChevronsRight,
-  Clock,
-  ScrollText,
-  Settings,
-  SquareTerminal,
-} from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Settings } from 'lucide-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useLayoutContext } from '@/contexts/LayoutContext'
+import { PRIMARY_NAV_ITEMS } from '@/lib/primaryNav'
 import { cn } from '@/lib/utils'
 
 type SideRailProps = {
@@ -31,13 +22,6 @@ export default function SideRail({
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
-  const tmuxActive = pathname === '/tmux'
-  const servicesActive = pathname === '/services'
-  const runbooksActive = pathname === '/runbooks'
-  const alertsActive = pathname === '/alerts'
-  const activitiesActive = pathname === '/activities'
-  const metricsActive = pathname === '/metrics'
-
   const navItemClass = (isActive: boolean) =>
     cn(
       'relative flex h-9 w-full items-center justify-center rounded-md no-underline',
@@ -46,60 +30,24 @@ export default function SideRail({
         : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
     )
 
-  const navItems = [
-    {
-      to: '/tmux' as const,
-      label: 'Tmux',
-      active: tmuxActive,
-      Icon: SquareTerminal,
-    },
-    {
-      to: '/metrics' as const,
-      label: 'Metrics',
-      active: metricsActive,
-      Icon: Activity,
-    },
-    {
-      to: '/services' as const,
-      label: 'Services',
-      active: servicesActive,
-      Icon: Blocks,
-    },
-    {
-      to: '/alerts' as const,
-      label: 'Alerts',
-      active: alertsActive,
-      Icon: Bell,
-    },
-    {
-      to: '/runbooks' as const,
-      label: 'Runbooks',
-      active: runbooksActive,
-      Icon: ScrollText,
-    },
-    {
-      to: '/activities' as const,
-      label: 'Activities',
-      active: activitiesActive,
-      Icon: Clock,
-    },
-  ]
-
   return (
     <aside className="hidden w-12 flex-col gap-1 border-r border-border-subtle bg-surface-raised px-1 py-2 md:flex">
       <nav aria-label="Main navigation" className="flex flex-col gap-1">
-        {navItems.map(({ to, label, active, Icon }) => (
-          <TooltipHelper key={to} content={label} side="right">
-            <Link
-              className={navItemClass(active)}
-              to={to}
-              aria-label={label}
-              aria-current={active ? 'page' : undefined}
-            >
-              <Icon className="size-4" />
-            </Link>
-          </TooltipHelper>
-        ))}
+        {PRIMARY_NAV_ITEMS.map(({ to, label, Icon }) => {
+          const active = pathname === to
+          return (
+            <TooltipHelper key={to} content={label} side="right">
+              <Link
+                className={navItemClass(active)}
+                to={to}
+                aria-label={label}
+                aria-current={active ? 'page' : undefined}
+              >
+                <Icon className="size-4" />
+              </Link>
+            </TooltipHelper>
+          )
+        })}
       </nav>
       <div className="flex-1" />
       <hr className="w-full border-t border-border-subtle" />

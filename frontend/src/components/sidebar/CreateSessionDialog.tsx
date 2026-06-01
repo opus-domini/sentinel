@@ -28,7 +28,7 @@ type CreateSessionDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultCwd: string
-  onCreate: (name: string, cwd: string, user?: string) => void | Promise<void>
+  onCreate: (name: string, cwd: string, user?: string) => Promise<void>
 }
 
 type DirectorySuggestionsResponse = {
@@ -43,6 +43,10 @@ export default function CreateSessionDialog({
 }: CreateSessionDialogProps) {
   const meta = useMetaContext()
   const id = useId()
+  const nameId = `${id}-name`
+  const cwdId = `${id}-cwd`
+  const cwdListboxId = `${id}-cwd-listbox`
+  const errorId = `${id}-error`
   const runAsUserLabelId = `${id}-run-as-user-label`
   const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
   const [name, setName] = useState('')
@@ -52,6 +56,7 @@ export default function CreateSessionDialog({
   const [cwdFocused, setCwdFocused] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const [frequentDirs, setFrequentDirs] = useState<Array<string>>([])
   const frequentDirsFetched = useRef(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -65,6 +70,7 @@ export default function CreateSessionDialog({
     setCwdFocused(false)
     setActiveSuggestion(-1)
     setSaving(false)
+    setError('')
     setAdvancedOpen(false)
     setUser('')
   }, [normalizedDefaultCwd])
@@ -176,6 +182,7 @@ export default function CreateSessionDialog({
     setCwd(path)
     setCwdSuggestions([])
     setActiveSuggestion(-1)
+    setError('')
   }
 
   function selectSuggestion(value: string) {
@@ -183,10 +190,12 @@ export default function CreateSessionDialog({
     setCwdSuggestions([])
     setActiveSuggestion(-1)
     setCwdFocused(true)
+    setError('')
   }
 
   function handleOpenChange(next: boolean) {
     if (!next) {
+      if (saving) return
       resetForm()
     }
     onOpenChange(next)
@@ -197,12 +206,15 @@ export default function CreateSessionDialog({
     const trimmed = name.trim()
     if (!trimmed || saving) return
     setSaving(true)
+    setError('')
     try {
       const trimmedUser = user.trim()
       await onCreate(trimmed, cwd.trim(), trimmedUser || undefined)
-    } finally {
       resetForm()
       onOpenChange(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create session')
+      setSaving(false)
     }
   }
 
@@ -216,13 +228,20 @@ export default function CreateSessionDialog({
         <form onSubmit={handleSubmit}>
           <div className="grid gap-2">
             <Input
+              id={nameId}
               aria-label="Session name"
               placeholder="session name"
               value={name}
-              onChange={(e) => setName(slugifyTmuxName(e.target.value))}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? errorId : undefined}
+              onChange={(e) => {
+                setName(slugifyTmuxName(e.target.value))
+                setError('')
+              }}
             />
             <div className="relative">
               <Input
+                id={cwdId}
                 aria-label="Working directory"
                 placeholder="working directory"
                 value={cwd}
@@ -230,10 +249,16 @@ export default function CreateSessionDialog({
                 tabIndex={0}
                 aria-expanded={cwdFocused && (cwdLoading || cwdSuggestions.length > 0)}
                 aria-autocomplete="list"
-                aria-controls="cwd-listbox"
+                aria-controls={cwdListboxId}
+                aria-activedescendant={
+                  activeSuggestion >= 0 && activeSuggestion < cwdSuggestions.length
+                    ? `${cwdListboxId}-option-${activeSuggestion}`
+                    : undefined
+                }
                 onChange={(e) => {
                   setCwd(e.target.value)
                   setActiveSuggestion(-1)
+                  setError('')
                 }}
                 onFocus={() => setCwdFocused(true)}
                 onBlur={() => {
@@ -277,7 +302,7 @@ export default function CreateSessionDialog({
 
               {open && cwdFocused && (cwdLoading || cwdSuggestions.length > 0) && (
                 <div
-                  id="cwd-listbox"
+                  id={cwdListboxId}
                   role="listbox"
                   className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
                 >
@@ -290,6 +315,7 @@ export default function CreateSessionDialog({
                     cwdSuggestions.map((item, idx) => (
                       <button
                         key={item}
+                        id={`${cwdListboxId}-option-${idx}`}
                         type="button"
                         role="option"
                         aria-selected={idx === activeSuggestion}
@@ -322,6 +348,12 @@ export default function CreateSessionDialog({
                   </button>
                 ))}
               </div>
+            )}
+
+            {error !== '' && (
+              <p id={errorId} role="alert" className="text-xs text-destructive-foreground">
+                {error}
+              </p>
             )}
 
             {meta.canSwitchUser && (
@@ -374,7 +406,9 @@ export default function CreateSessionDialog({
           </div>
           <DialogFooter className="mt-4">
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline" disabled={saving}>
+                Cancel
+              </Button>
             </DialogClose>
             <Button type="submit" disabled={!name.trim() || saving}>
               Create

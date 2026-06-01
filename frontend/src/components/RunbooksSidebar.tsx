@@ -32,7 +32,7 @@ type RunbooksSidebarProps = {
   jobs: Array<OpsRunbookRun>
   schedules: Array<OpsSchedule>
   selectedRunbookId: string | null
-  onTokenChange: (value: string) => void
+  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
   onSelectRunbook: (id: string | null) => void
   onCreateRunbook?: () => void
 }

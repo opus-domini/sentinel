@@ -7,6 +7,7 @@ import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import AlertsSidebar from '@/components/AlertsSidebar'
 import ConnectionBadge from '@/components/ConnectionBadge'
+import DismissAlertDialog from '@/components/alerts/DismissAlertDialog'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -79,15 +80,9 @@ function AlertsPage() {
   const [selectedSeverity, setSelectedSeverity] = useState('all')
   const [showResolved, setShowResolved] = useState(false)
   const [showAcked, setShowAcked] = useState(false)
-  const [confirmDismissId, setConfirmDismissId] = useState<number | null>(null)
+  const [dismissTarget, setDismissTarget] = useState<OpsAlert | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkAcking, setBulkAcking] = useState(false)
-
-  useEffect(() => {
-    if (confirmDismissId == null) return
-    const timer = setTimeout(() => setConfirmDismissId(null), 3000)
-    return () => clearTimeout(timer)
-  }, [confirmDismissId])
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -498,32 +493,19 @@ function AlertsPage() {
                           >
                             {alert.status}
                           </span>
-                          {alert.status === 'resolved' &&
-                            (confirmDismissId === alert.id ? (
+                          {alert.status === 'resolved' && (
+                            <TooltipHelper content="Dismiss">
                               <Button
                                 variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5 text-[10px] text-destructive-foreground"
-                                onClick={() => {
-                                  setConfirmDismissId(null)
-                                  void dismissAlert(alert.id)
-                                }}
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground"
+                                onClick={() => setDismissTarget(alert)}
+                                aria-label={`Dismiss alert ${alert.title}`}
                               >
-                                Confirm?
+                                <Trash2 className="h-3 w-3" />
                               </Button>
-                            ) : (
-                              <TooltipHelper content="Dismiss">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 text-muted-foreground"
-                                  onClick={() => setConfirmDismissId(alert.id)}
-                                  aria-label="Dismiss alert"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </TooltipHelper>
-                            ))}
+                            </TooltipHelper>
+                          )}
                         </div>
                       </div>
                       <p className="text-[11px] text-muted-foreground">{alert.message}</p>
@@ -573,6 +555,19 @@ function AlertsPage() {
           <span className="shrink-0 whitespace-nowrap">{footerCadence}</span>
         </footer>
       </main>
+      <DismissAlertDialog
+        alertTitle={dismissTarget?.title ?? null}
+        open={dismissTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDismissTarget(null)
+        }}
+        onConfirm={() => {
+          if (dismissTarget == null) return
+          const alertID = dismissTarget.id
+          setDismissTarget(null)
+          void dismissAlert(alertID)
+        }}
+      />
     </AppShell>
   )
 }

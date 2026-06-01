@@ -30,7 +30,7 @@ type ActivitiesSidebarProps = {
   onActivitySeverityChange: (value: string) => void
   activitySource: string
   onActivitySourceChange: (value: string) => void
-  onTokenChange: (value: string) => void
+  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
 }
 
 export default function ActivitiesSidebar({

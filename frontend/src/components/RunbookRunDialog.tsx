@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Play } from 'lucide-react'
 import type { OpsRunbook, RunbookParameter } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -53,6 +53,7 @@ function validateParams(
 }
 
 export function RunbookRunDialog({ open, runbook, onConfirm, onCancel }: RunbookRunDialogProps) {
+  const id = useId()
   const params = useMemo(() => runbook?.parameters ?? [], [runbook])
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -98,62 +99,86 @@ export function RunbookRunDialog({ open, runbook, onConfirm, onCancel }: Runbook
 
         {params.length > 0 && (
           <div className="grid gap-3 py-1">
-            {params.map((p) => (
-              <div key={p.name}>
-                <label className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                  {p.label || p.name}
-                  {p.required && <span className="ml-0.5 text-destructive-foreground">*</span>}
-                </label>
+            {params.map((p, index) => {
+              const fieldId = `${id}-param-${index}`
+              const errorId = `${fieldId}-error`
+              const error = errors[p.name]
 
-                {p.type === 'boolean' ? (
-                  <select
-                    value={values[p.name] ?? ''}
-                    onChange={(e) => setValue(p.name, e.target.value)}
-                    className={cn(
-                      'mt-0.5 h-8 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]',
-                      errors[p.name] && 'border-destructive',
-                    )}
+              return (
+                <div key={p.name}>
+                  <label
+                    htmlFor={fieldId}
+                    className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
                   >
-                    <option value="false">false</option>
-                    <option value="true">true</option>
-                  </select>
-                ) : p.type === 'select' && p.options && p.options.length > 0 ? (
-                  <Select value={values[p.name] ?? ''} onValueChange={(v) => setValue(p.name, v)}>
-                    <SelectTrigger
+                    {p.label || p.name}
+                    {p.required && <span className="ml-0.5 text-destructive-foreground">*</span>}
+                  </label>
+
+                  {p.type === 'boolean' ? (
+                    <select
+                      id={fieldId}
+                      value={values[p.name] ?? ''}
+                      aria-invalid={error ? true : undefined}
+                      aria-describedby={error ? errorId : undefined}
+                      onChange={(e) => setValue(p.name, e.target.value)}
                       className={cn(
-                        'mt-0.5 h-8 w-full bg-surface-overlay text-[12px]',
-                        errors[p.name] && 'border-destructive',
+                        'mt-0.5 h-8 w-full rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px]',
+                        error && 'border-destructive',
                       )}
                     >
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {p.options.map((opt) => (
-                        <SelectItem key={opt} value={opt}>
-                          {opt}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    className={cn(
-                      'mt-0.5 h-8 bg-surface-overlay text-[12px]',
-                      errors[p.name] && 'border-destructive',
-                    )}
-                    type={p.type === 'number' ? 'text' : 'text'}
-                    inputMode={p.type === 'number' ? 'numeric' : undefined}
-                    placeholder={p.default || ''}
-                    value={values[p.name] ?? ''}
-                    onChange={(e) => setValue(p.name, e.target.value)}
-                  />
-                )}
+                      <option value="false">false</option>
+                      <option value="true">true</option>
+                    </select>
+                  ) : p.type === 'select' && p.options && p.options.length > 0 ? (
+                    <Select value={values[p.name] ?? ''} onValueChange={(v) => setValue(p.name, v)}>
+                      <SelectTrigger
+                        id={fieldId}
+                        aria-invalid={error ? true : undefined}
+                        aria-describedby={error ? errorId : undefined}
+                        className={cn(
+                          'mt-0.5 h-8 w-full bg-surface-overlay text-[12px]',
+                          error && 'border-destructive',
+                        )}
+                      >
+                        <SelectValue placeholder="Select..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {p.options.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id={fieldId}
+                      className={cn(
+                        'mt-0.5 h-8 bg-surface-overlay text-[12px]',
+                        error && 'border-destructive',
+                      )}
+                      type={p.type === 'number' ? 'text' : 'text'}
+                      inputMode={p.type === 'number' ? 'numeric' : undefined}
+                      placeholder={p.default || ''}
+                      value={values[p.name] ?? ''}
+                      aria-invalid={error ? true : undefined}
+                      aria-describedby={error ? errorId : undefined}
+                      onChange={(e) => setValue(p.name, e.target.value)}
+                    />
+                  )}
 
-                {errors[p.name] && (
-                  <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors[p.name]}</p>
-                )}
-              </div>
-            ))}
+                  {error && (
+                    <p
+                      id={errorId}
+                      role="alert"
+                      className="mt-0.5 text-[10px] text-destructive-foreground"
+                    >
+                      {error}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

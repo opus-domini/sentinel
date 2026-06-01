@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,23 +18,42 @@ type RenameDialogProps = {
   description: string
   value: string
   onValueChange: (value: string) => void
-  onSubmit: () => void | Promise<void>
+  onSubmit: () => Promise<void>
   onClose?: () => void
 }
 
 export default function RenameDialog(props: RenameDialogProps) {
   const { open, onOpenChange, title, description, value, onValueChange, onSubmit, onClose } = props
+  const id = useId()
+  const inputId = `${id}-name`
+  const errorId = `${id}-error`
+  const inputRef = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setError('')
+    window.setTimeout(() => inputRef.current?.focus(), 0)
+  }, [open])
+
+  function closeDialog() {
+    onOpenChange(false)
+    setSaving(false)
+    setError('')
+    if (onClose) onClose()
+  }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        onOpenChange(nextOpen)
-        if (!nextOpen) {
-          setSaving(false)
-          if (onClose) onClose()
+        if (nextOpen) {
+          onOpenChange(true)
+          return
         }
+        if (saving) return
+        closeDialog()
       }}
     >
       <DialogContent>
@@ -45,21 +64,48 @@ export default function RenameDialog(props: RenameDialogProps) {
         <form
           onSubmit={async (e) => {
             e.preventDefault()
-            if (saving) return
+            if (saving || value.trim() === '') return
             setSaving(true)
+            setError('')
             try {
               await onSubmit()
-            } finally {
+              closeDialog()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Rename failed')
               setSaving(false)
             }
           }}
         >
-          <Input value={value} onChange={(e) => onValueChange(e.target.value)} />
+          <label
+            htmlFor={inputId}
+            className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+          >
+            New name
+          </label>
+          <Input
+            id={inputId}
+            ref={inputRef}
+            value={value}
+            disabled={saving}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+            onChange={(e) => {
+              onValueChange(e.target.value)
+              setError('')
+            }}
+          />
+          {error !== '' && (
+            <p id={errorId} role="alert" className="mt-2 text-xs text-destructive-foreground">
+              {error}
+            </p>
+          )}
           <DialogFooter className="mt-4">
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline" disabled={saving}>
+                Cancel
+              </Button>
             </DialogClose>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || value.trim() === ''}>
               Rename
             </Button>
           </DialogFooter>

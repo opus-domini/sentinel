@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,7 +15,7 @@ type TokenDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   authenticated: boolean
-  onTokenChange: (value: string) => void
+  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
   tokenRequired: boolean
 }
 
@@ -26,19 +26,65 @@ export default function TokenDialog({
   onTokenChange,
   tokenRequired,
 }: TokenDialogProps) {
+  const id = useId()
+  const inputId = `${id}-token`
+  const errorId = `${id}-error`
+  const inputRef = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open || authenticated) return
+    window.setTimeout(() => inputRef.current?.focus(), 0)
+  }, [authenticated, open])
 
   function handleOpenChange(next: boolean) {
+    if (!next && submitting) return
     if (next) {
       setDraft('')
+      setError('')
     }
     onOpenChange(next)
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    onTokenChange(draft)
-    onOpenChange(false)
+    const token = draft.trim()
+    if (token === '' || submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      const result = await onTokenChange(token)
+      if (result.ok) {
+        setDraft('')
+        onOpenChange(false)
+        return
+      }
+      setError(result.status === 401 ? 'Invalid token.' : 'Unable to validate token right now.')
+    } catch {
+      setError('Unable to validate token right now.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleClearToken() {
+    if (submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      const result = await onTokenChange('')
+      if (result.ok) {
+        onOpenChange(false)
+        return
+      }
+      setError('Unable to clear token right now.')
+    } catch {
+      setError('Unable to clear token right now.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -59,29 +105,51 @@ export default function TokenDialog({
             </p>
           )}
           {!authenticated && (
-            <Input
-              placeholder={tokenRequired ? 'token (required)' : 'token'}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
+            <div>
+              <label
+                htmlFor={inputId}
+                className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
+                Authentication token
+              </label>
+              <Input
+                id={inputId}
+                ref={inputRef}
+                name="auth-token"
+                placeholder={tokenRequired ? 'token (required)' : 'token'}
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  setError('')
+                }}
+                disabled={submitting}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errorId : undefined}
+              />
+            </div>
+          )}
+          {error !== '' && (
+            <p id={errorId} role="alert" className="mt-2 text-xs text-destructive-foreground">
+              {error}
+            </p>
           )}
           <DialogFooter className="mt-4">
             <DialogClose asChild>
-              <Button variant="outline">{authenticated ? 'Close' : 'Cancel'}</Button>
+              <Button variant="outline" disabled={submitting}>
+                {authenticated ? 'Close' : 'Cancel'}
+              </Button>
             </DialogClose>
             {authenticated ? (
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  onTokenChange('')
-                  onOpenChange(false)
-                }}
+                disabled={submitting}
+                onClick={() => void handleClearToken()}
               >
                 Clear cookie
               </Button>
             ) : (
-              <Button type="submit" disabled={!draft.trim()}>
+              <Button type="submit" disabled={!draft.trim() || submitting}>
                 Save
               </Button>
             )}

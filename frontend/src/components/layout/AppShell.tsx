@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { Link, useRouterState } from '@tanstack/react-router'
 import SideRail from '@/components/SideRail'
 import type { KeyboardEvent, ReactNode } from 'react'
 import SettingsDialog from '@/components/settings/SettingsDialog'
@@ -6,6 +7,7 @@ import SettingsDialog from '@/components/settings/SettingsDialog'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useEdgeSwipe } from '@/hooks/useEdgeSwipe'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { PRIMARY_NAV_ITEMS } from '@/lib/primaryNav'
 import { cn } from '@/lib/utils'
 
 type AppShellProps = {
@@ -74,7 +76,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
   })
 
   return (
-    <div className="h-dvh overflow-hidden bg-background text-foreground">
+    <div className="h-dvh overflow-hidden bg-background pb-16 text-foreground md:pb-0">
       <div className={gridClass} style={shellStyle}>
         <SideRail
           sidebarCollapsed={sidebarCollapsed}
@@ -103,6 +105,8 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
         {children}
       </div>
 
+      <MobilePrimaryNav />
+
       <button
         type="button"
         aria-label="Close sidebar"
@@ -114,5 +118,39 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
       />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
+  )
+}
+
+function MobilePrimaryNav() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+
+  return (
+    <nav
+      aria-label="Mobile primary navigation"
+      className="fixed inset-x-2 bottom-2 z-10 grid grid-cols-6 gap-1 rounded-2xl border border-border-subtle bg-surface-raised/95 p-1 shadow-2xl shadow-black/30 backdrop-blur md:hidden"
+    >
+      {PRIMARY_NAV_ITEMS.map(({ to, label, Icon }) => {
+        const active = pathname === to
+        return (
+          <Link
+            key={to}
+            to={to}
+            aria-label={label}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
+              'grid min-w-0 place-items-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] no-underline transition-colors',
+              active
+                ? 'bg-primary/15 text-primary-text-bright ring-1 ring-primary/30'
+                : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
+            )}
+          >
+            <Icon className="size-4" aria-hidden="true" />
+            <span className="max-w-full truncate">{label}</span>
+          </Link>
+        )
+      })}
+    </nav>
   )
 }

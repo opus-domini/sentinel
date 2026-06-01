@@ -28,8 +28,8 @@ type SessionControlsProps = {
   tmuxUnavailable: boolean
   filter: string
   onFilterChange: (value: string) => void
-  onTokenChange: (value: string) => void
-  onCreate: (name: string, cwd: string, user?: string) => void
+  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
+  onCreate: (name: string, cwd: string, user?: string) => Promise<void>
   onLaunchLauncher: (id: string) => void
   onSaveLauncher: (input: {
     id: string

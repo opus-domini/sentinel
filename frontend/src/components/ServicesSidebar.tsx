@@ -22,7 +22,7 @@ type ServicesSidebarProps = {
   loading: boolean
   error: string
   services: Array<OpsServiceStatus>
-  onTokenChange: (value: string) => void
+  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
   onRemoveService: (name: string) => Promise<void>
   onNavigateToService: (unit: string) => void
 }

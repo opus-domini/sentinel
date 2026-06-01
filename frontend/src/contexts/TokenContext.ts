@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 
 type TokenContextValue = {
   authenticated: boolean
-  setToken: (token: string) => void
+  setToken: (token: string) => Promise<{ ok: boolean; status: number }>
 }
 
 export const TokenContext = createContext<TokenContextValue | null>(null)

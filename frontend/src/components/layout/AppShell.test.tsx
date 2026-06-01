@@ -4,6 +4,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import AppShell from './AppShell'
 import { LayoutContext } from '@/contexts/LayoutContext'
+import type { ReactNode } from 'react'
+
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children, to, ...rest }: { children: ReactNode; to: string }) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) =>
+    select({ location: { pathname: '/alerts' } }),
+}))
 
 vi.mock('@/components/SideRail', () => ({
   default: () => <nav aria-label="side rail" />,
@@ -93,5 +104,32 @@ describe('AppShell', () => {
 
     expect(layout.resizeSidebarBy).not.toHaveBeenCalled()
     expect(layout.resizeSidebarTo).not.toHaveBeenCalled()
+  })
+
+  it('renders persistent mobile primary navigation in shared order with active page state', () => {
+    renderShell()
+
+    const nav = screen.getByRole('navigation', {
+      name: 'Mobile primary navigation',
+    })
+    const links = Array.from(nav.querySelectorAll('a'))
+
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/tmux',
+      '/metrics',
+      '/services',
+      '/alerts',
+      '/runbooks',
+      '/activities',
+    ])
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Tmux',
+      'Metrics',
+      'Services',
+      'Alerts',
+      'Runbooks',
+      'Activities',
+    ])
+    expect(screen.getByRole('link', { name: 'Alerts' }).getAttribute('aria-current')).toBe('page')
   })
 })

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import TokenDialog from './TokenDialog'
@@ -9,9 +9,9 @@ afterEach(() => {
 })
 
 describe('TokenDialog', () => {
-  it('shows only action buttons when already authenticated', () => {
+  it('awaits clearing the authenticated cookie before closing', async () => {
     const onOpenChange = vi.fn()
-    const onTokenChange = vi.fn()
+    const onTokenChange = vi.fn().mockResolvedValue({ ok: true, status: 204 })
 
     render(
       <TokenDialog
@@ -32,12 +32,12 @@ describe('TokenDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear cookie' }))
 
     expect(onTokenChange).toHaveBeenCalledWith('')
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
 
-  it('shows token input and save action when unauthenticated', () => {
+  it('closes only after token save succeeds', async () => {
     const onOpenChange = vi.fn()
-    const onTokenChange = vi.fn()
+    const onTokenChange = vi.fn().mockResolvedValue({ ok: true, status: 204 })
 
     render(
       <TokenDialog
@@ -62,6 +62,30 @@ describe('TokenDialog', () => {
     fireEvent.click(saveButton)
 
     expect(onTokenChange).toHaveBeenCalledWith('secret-token')
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+  })
+
+  it('stays open and shows an inline error when token is rejected', async () => {
+    const onOpenChange = vi.fn()
+    const onTokenChange = vi.fn().mockResolvedValue({ ok: false, status: 401 })
+
+    render(
+      <TokenDialog
+        open
+        onOpenChange={onOpenChange}
+        authenticated={false}
+        tokenRequired
+        onTokenChange={onTokenChange}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText('token (required)')
+    fireEvent.change(input, { target: { value: 'bad-token' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Invalid token.')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.getAttribute('aria-describedby')).toBe(screen.getByText('Invalid token.').id)
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
 })

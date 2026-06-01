@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useEffect, useId, useMemo } from 'react'
 import { ArrowLeft, Plus, Save } from 'lucide-react'
 import type { RunbookParameterType } from '@/types'
 import type { RunbookParameterDraft } from '@/components/RunbookParameterEditor'
@@ -70,9 +70,46 @@ export function RunbookEditor({
   const isCreating = draft.id === null
   const id = useId()
   const nameId = `${id}-name`
+  const nameErrorId = `${id}-name-error`
   const descriptionId = `${id}-description`
   const enabledId = `${id}-enabled`
   const webhookURLId = `${id}-webhook-url`
+  const webhookURLErrorId = `${id}-webhook-url-error`
+  const parametersId = `${id}-parameters`
+  const parametersErrorId = `${id}-parameters-error`
+  const stepsId = `${id}-steps`
+  const stepsErrorId = `${id}-steps-error`
+
+  const errorKeys = useMemo(() => Object.keys(errors), [errors])
+  const hasParameterErrors =
+    errors.parameters !== undefined || errorKeys.some((key) => key.startsWith('param.'))
+  const hasStepErrors =
+    errors.steps !== undefined || errorKeys.some((key) => key.startsWith('step.'))
+
+  const firstInvalidId = useMemo(() => {
+    if (errors.name) return nameId
+    if (errors.webhookURL) return webhookURLId
+    if (hasParameterErrors) return parametersId
+    if (hasStepErrors) return stepsId
+    return null
+  }, [
+    errors.name,
+    errors.webhookURL,
+    hasParameterErrors,
+    hasStepErrors,
+    nameId,
+    parametersId,
+    stepsId,
+    webhookURLId,
+  ])
+
+  useEffect(() => {
+    if (firstInvalidId === null) return
+    const element = document.getElementById(firstInvalidId)
+    if (!element) return
+    element.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+    element.focus({ preventScroll: true })
+  }, [firstInvalidId])
 
   const addStep = () => {
     onDraftChange({
@@ -169,10 +206,18 @@ export function RunbookEditor({
                 )}
                 placeholder="Runbook name"
                 value={draft.name}
+                aria-invalid={errors.name ? true : undefined}
+                aria-describedby={errors.name ? nameErrorId : undefined}
                 onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
               />
               {errors.name && (
-                <p className="mt-0.5 text-[10px] text-destructive-foreground">{errors.name}</p>
+                <p
+                  id={nameErrorId}
+                  role="alert"
+                  className="mt-0.5 text-[10px] text-destructive-foreground"
+                >
+                  {errors.name}
+                </p>
               )}
             </div>
             <div>
@@ -216,17 +261,29 @@ export function RunbookEditor({
                 )}
                 placeholder="https://hooks.example.com/..."
                 value={draft.webhookURL}
+                aria-invalid={errors.webhookURL ? true : undefined}
+                aria-describedby={errors.webhookURL ? webhookURLErrorId : undefined}
                 onChange={(e) => onDraftChange({ ...draft, webhookURL: e.target.value })}
               />
               {errors.webhookURL && (
-                <p className="mt-0.5 text-[10px] text-destructive-foreground">
+                <p
+                  id={webhookURLErrorId}
+                  role="alert"
+                  className="mt-0.5 text-[10px] text-destructive-foreground"
+                >
                   {errors.webhookURL}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="grid gap-2">
+          <div
+            id={parametersId}
+            tabIndex={-1}
+            aria-invalid={hasParameterErrors ? true : undefined}
+            aria-describedby={errors.parameters ? parametersErrorId : undefined}
+            className="grid gap-2"
+          >
             <div className="flex items-center justify-between px-1">
               <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Parameters ({draft.parameters.length})
@@ -242,7 +299,13 @@ export function RunbookEditor({
               </Button>
             </div>
             {errors.parameters && (
-              <p className="px-1 text-[10px] text-destructive-foreground">{errors.parameters}</p>
+              <p
+                id={parametersErrorId}
+                role="alert"
+                className="px-1 text-[10px] text-destructive-foreground"
+              >
+                {errors.parameters}
+              </p>
             )}
             {draft.parameters.map((param, i) => (
               <RunbookParameterEditor
@@ -269,7 +332,13 @@ export function RunbookEditor({
             )}
           </div>
 
-          <div className="grid gap-2">
+          <div
+            id={stepsId}
+            tabIndex={-1}
+            aria-invalid={hasStepErrors ? true : undefined}
+            aria-describedby={errors.steps ? stepsErrorId : undefined}
+            className="grid gap-2"
+          >
             <div className="flex items-center justify-between px-1">
               <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Steps ({draft.steps.length})
@@ -285,7 +354,13 @@ export function RunbookEditor({
               </Button>
             </div>
             {errors.steps && (
-              <p className="px-1 text-[10px] text-destructive-foreground">{errors.steps}</p>
+              <p
+                id={stepsErrorId}
+                role="alert"
+                className="px-1 text-[10px] text-destructive-foreground"
+              >
+                {errors.steps}
+              </p>
             )}
             {draft.steps.map((step, i) => (
               <RunbookStepEditor

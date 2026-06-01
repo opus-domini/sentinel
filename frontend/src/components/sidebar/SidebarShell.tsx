@@ -1,19 +1,11 @@
 import { FocusScope } from '@radix-ui/react-focus-scope'
 import { Link, useRouterState } from '@tanstack/react-router'
-import {
-  Activity,
-  Bell,
-  Blocks,
-  Clock,
-  ScrollText,
-  Settings,
-  SquareTerminal,
-  X,
-} from 'lucide-react'
+import { Settings, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { PRIMARY_NAV_ITEMS } from '@/lib/primaryNav'
 import { cn } from '@/lib/utils'
 
 type SidebarShellProps = {
@@ -22,15 +14,6 @@ type SidebarShellProps = {
   children: ReactNode
   widthClassName?: string
 }
-
-const mobileNavItems = [
-  { to: '/tmux', label: 'Tmux', icon: SquareTerminal },
-  { to: '/metrics', label: 'Metrics', icon: Activity },
-  { to: '/services', label: 'Services', icon: Blocks },
-  { to: '/alerts', label: 'Alerts', icon: Bell },
-  { to: '/runbooks', label: 'Runbooks', icon: ScrollText },
-  { to: '/activities', label: 'Activities', icon: Clock },
-] as const
 
 function MobileNav() {
   const { setSidebarOpen, setSettingsOpen } = useLayoutContext()
@@ -51,7 +34,7 @@ function MobileNav() {
   return (
     <div className="flex items-center justify-between border-b border-border pb-2 md:hidden">
       <div className="flex items-center gap-1">
-        {mobileNavItems.map(({ to, label, icon: Icon }) => (
+        {PRIMARY_NAV_ITEMS.map(({ to, label, Icon }) => (
           <Link
             key={to}
             className={navItemClass(pathname === to)}
