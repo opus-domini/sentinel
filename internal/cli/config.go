@@ -201,16 +201,16 @@ func loadValidatedConfig() (config.Config, error) {
 }
 
 type configShowOutput struct {
-	Version      int                       `json:"version"`
-	Server       configShowServer          `json:"server"`
-	Storage      config.StorageConfig      `json:"storage"`
-	Log          config.LogConfig          `json:"log"`
-	Alerts       configShowAlerts          `json:"alerts"`
-	HealthReport config.HealthReportConfig `json:"health_report"`
-	Watchtower   configShowWatchtower      `json:"watchtower"`
-	Runbooks     config.RunbooksConfig     `json:"runbooks"`
-	MultiUser    configShowMultiUser       `json:"multi_user"`
-	SystemUsers  []string                  `json:"system_users"`
+	Version      int                    `json:"version"`
+	Server       configShowServer       `json:"server"`
+	Storage      config.StorageConfig   `json:"storage"`
+	Log          config.LogConfig       `json:"log"`
+	Alerts       configShowAlerts       `json:"alerts"`
+	HealthReport configShowHealthReport `json:"health_report"`
+	Watchtower   configShowWatchtower   `json:"watchtower"`
+	Runbooks     config.RunbooksConfig  `json:"runbooks"`
+	MultiUser    configShowMultiUser    `json:"multi_user"`
+	SystemUsers  []string               `json:"system_users"`
 }
 
 type configShowServer struct {
@@ -246,6 +246,13 @@ type configShowAlerts struct {
 	WebhookEvents []string `json:"webhook_events"`
 }
 
+// configShowHealthReport mirrors config.HealthReportConfig but redacts the
+// webhook URL, whose path embeds the Slack/Discord secret.
+type configShowHealthReport struct {
+	WebhookURL string `json:"webhook_url"`
+	Schedule   string `json:"schedule"`
+}
+
 func newConfigShowOutput(cfg config.Config) configShowOutput {
 	return configShowOutput{
 		Version: cfg.Version,
@@ -259,10 +266,13 @@ func newConfigShowOutput(cfg config.Config) configShowOutput {
 			Timezone:            cfg.Server.Timezone,
 			Locale:              cfg.Server.Locale,
 		},
-		Storage:      cfg.Storage,
-		Log:          cfg.Log,
-		HealthReport: cfg.HealthReport,
-		Runbooks:     cfg.Runbooks,
+		Storage: cfg.Storage,
+		Log:     cfg.Log,
+		HealthReport: configShowHealthReport{
+			WebhookURL: redactConfigSecret(cfg.HealthReport.WebhookURL),
+			Schedule:   cfg.HealthReport.Schedule,
+		},
+		Runbooks: cfg.Runbooks,
 		MultiUser: configShowMultiUser{
 			AllowedUsers:     nonNilStrings(cfg.MultiUser.AllowedUsers),
 			AllowRootTarget:  cfg.MultiUser.AllowRootTarget,
@@ -280,7 +290,7 @@ func newConfigShowOutput(cfg config.Config) configShowOutput {
 			CPUPercent:    cfg.Alerts.CPUPercent,
 			MemPercent:    cfg.Alerts.MemPercent,
 			DiskPercent:   cfg.Alerts.DiskPercent,
-			WebhookURL:    cfg.Alerts.WebhookURL,
+			WebhookURL:    redactConfigSecret(cfg.Alerts.WebhookURL),
 			WebhookEvents: nonNilStrings(cfg.Alerts.WebhookEvents),
 		},
 	}
