@@ -251,6 +251,7 @@ type Handler struct {
 	locale           string
 	userSwitchMethod string
 	mu               sync.Mutex // protects mutable settings (timezone, locale)
+	configMu         sync.Mutex // serializes config-file read-modify-write
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).

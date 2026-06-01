@@ -29,7 +29,9 @@ func (h *Handler) opsConfig(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "CONFIG_UNAVAILABLE", "config path not set", nil)
 		return
 	}
+	h.configMu.Lock()
 	content, err := os.ReadFile(h.configPath)
+	h.configMu.Unlock()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CONFIG_READ_FAILED", "failed to read config file", nil)
 		return
@@ -84,7 +86,10 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "content is required", nil)
 		return
 	}
-	if err := os.WriteFile(h.configPath, []byte(req.Content), 0o600); err != nil {
+	h.configMu.Lock()
+	err := os.WriteFile(h.configPath, []byte(req.Content), 0o600)
+	h.configMu.Unlock()
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to write config file", nil)
 		return
 	}
@@ -177,7 +182,10 @@ func (h *Handler) patchTimezone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.configPath != "" {
-		if err := upsertConfigString(h.configPath, "server", "timezone", tz); err != nil {
+		h.configMu.Lock()
+		err := upsertConfigString(h.configPath, "server", "timezone", tz)
+		h.configMu.Unlock()
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist timezone", nil)
 			return
 		}
@@ -204,7 +212,10 @@ func (h *Handler) patchLocale(w http.ResponseWriter, r *http.Request) {
 	// Empty locale is valid — means "use browser default".
 
 	if h.configPath != "" {
-		if err := upsertConfigString(h.configPath, "server", "locale", loc); err != nil {
+		h.configMu.Lock()
+		err := upsertConfigString(h.configPath, "server", "locale", loc)
+		h.configMu.Unlock()
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist locale", nil)
 			return
 		}
@@ -278,14 +289,18 @@ func (h *Handler) patchWebhookSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(cleanEvents)
 
-	// Persist to config file.
+	// Persist to config file. Both keys are written under one configMu hold so a
+	// concurrent settings write cannot interleave between them or with another
+	// section's read-modify-write.
 	if h.configPath != "" {
-		if err := upsertConfigString(h.configPath, "alerts", "webhook_url", webhookURL); err != nil {
-			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook_url", nil)
-			return
+		h.configMu.Lock()
+		err := upsertConfigString(h.configPath, "alerts", "webhook_url", webhookURL)
+		if err == nil {
+			err = upsertConfigStringList(h.configPath, "alerts", "webhook_events", cleanEvents)
 		}
-		if err := upsertConfigStringList(h.configPath, "alerts", "webhook_events", cleanEvents); err != nil {
-			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook_events", nil)
+		h.configMu.Unlock()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook settings", nil)
 			return
 		}
 	}
