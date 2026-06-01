@@ -35,17 +35,18 @@ describe('SessionTabs', () => {
     expect(screen.getByRole('button', { name: 'Close worker tab' })).toBeTruthy()
   })
 
-  it('selects and closes tabs from the keyboard', () => {
+  it('selects tabs from the keyboard without closing on delete keys', () => {
     const props = renderTabs()
     const workerTab = screen.getByRole('tab', { name: 'worker' })
 
     fireEvent.keyDown(workerTab, { key: 'Enter' })
     fireEvent.keyDown(workerTab, { key: ' ' })
     fireEvent.keyDown(workerTab, { key: 'Delete' })
+    fireEvent.keyDown(workerTab, { key: 'Backspace' })
 
     expect(props.onSelect).toHaveBeenNthCalledWith(1, 'worker')
     expect(props.onSelect).toHaveBeenNthCalledWith(2, 'worker')
-    expect(props.onClose).toHaveBeenCalledWith('worker')
+    expect(props.onClose).not.toHaveBeenCalled()
   })
 
   it('keeps the close button from selecting the tab underneath', () => {

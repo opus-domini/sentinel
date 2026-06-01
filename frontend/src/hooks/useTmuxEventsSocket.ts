@@ -300,6 +300,8 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       socketRef.current = socket
 
       socket.onopen = () => {
+        if (socketRef.current !== socket) return
+        lastEventIDRef.current = 0
         runtimeMetricsRef.current.wsOpenCount += 1
         wsReconnectAttemptsRef.current = 0
         presenceSocketRef.current = socket
@@ -311,6 +313,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       }
 
       socket.onmessage = (event) => {
+        if (socketRef.current !== socket) return
         runtimeMetricsRef.current.wsMessages += 1
         if (typeof event.data !== 'string') return
         try {
@@ -331,6 +334,9 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
 
           const messageEventID = parseEventID(msg.eventId)
           const previousEventID = lastEventIDRef.current
+          if (messageEventID > 0 && messageEventID <= previousEventID) {
+            return
+          }
           if (messageEventID > lastEventIDRef.current) {
             lastEventIDRef.current = messageEventID
           }
@@ -475,6 +481,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       }
 
       socket.onclose = () => {
+        if (socketRef.current !== socket) return
         runtimeMetricsRef.current.wsCloseCount += 1
         settlePendingSeenAcks(false)
         presenceSocketRef.current = null

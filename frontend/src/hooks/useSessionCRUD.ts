@@ -295,7 +295,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       const shouldPreserveConnectingActiveSession =
         currentActiveSession !== '' &&
         activeSessionRecord !== null &&
-        connectionState === 'connecting' &&
+        connectionStateRef.current === 'connecting' &&
         !merged.sessionNamesForSync.includes(currentActiveSession)
 
       const nextSessions = shouldPreserveConnectingActiveSession
@@ -347,7 +347,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     markPendingSessionCreateConverged,
     clearPendingSessionRenamesForName,
     closeCurrentSocket,
-    connectionState,
     dispatchTabs,
     pendingCreateSessionsRef,
     pendingKillSessionsRef,
@@ -375,9 +374,10 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     async (name: string, cwd: string, icon: string, guardrailConfirmed: boolean, user?: string) => {
       const sessionName = name.trim()
       if (!sessionName) {
-        setConnection('error', 'session name required')
-        pushErrorToast('Create Session', 'session name required')
-        return
+        const msg = 'session name required'
+        setConnection('error', msg)
+        pushErrorToast('Create Session', msg)
+        throw new Error(msg)
       }
 
       pendingKillSessionsRef.current.delete(sessionName)
@@ -499,11 +499,12 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
             error.decision.message,
             () => void createSessionWithConfirm(sessionName, cwd, icon, true, user),
           )
-          return
+          throw new Error(error.decision.message)
         }
 
         const msg = error instanceof Error ? error.message : 'failed to create session'
         rollbackPendingSessionCreate(operationId, msg)
+        throw new Error(msg)
       }
     },
     [
@@ -711,8 +712,9 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     async (targetSession: string, newName: string) => {
       const active = targetSession.trim()
       if (!active) {
-        setConnection('error', 'no active session')
-        return
+        const msg = 'no active session'
+        setConnection('error', msg)
+        throw new Error(msg)
       }
       const sanitized = slugifyTmuxName(newName).trim()
       if (!sanitized || sanitized === active) return
@@ -720,7 +722,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         const msg = `session "${sanitized}" already exists`
         setConnection('error', msg)
         pushErrorToast('Rename Session', msg)
-        return
+        throw new Error(msg)
       }
       const changedAt = new Date().toISOString()
       clearPendingSessionRenamesForName(active)
@@ -753,6 +755,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         const msg = error instanceof Error ? error.message : 'failed to rename session'
         setConnection('error', msg)
         pushErrorToast('Rename Session', msg)
+        throw new Error(msg)
       }
     },
     [
@@ -808,12 +811,11 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     [setConnection],
   )
 
-  const handleSubmitRename = useCallback(() => {
+  const handleSubmitRename = useCallback(async () => {
     const target = renameSessionTarget?.trim() ?? ''
-    if (!target) return
-    setRenameDialogOpen(false)
+    if (!target) throw new Error('no active session')
+    await renameActive(target, renameValue)
     setRenameSessionTarget(null)
-    void renameActive(target, renameValue)
   }, [renameActive, renameSessionTarget, renameValue])
 
   const closeTab = useCallback(

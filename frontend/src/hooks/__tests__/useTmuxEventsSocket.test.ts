@@ -974,6 +974,152 @@ describe('useTmuxEventsSocket', () => {
       expect(applyInspectorProjectionPatches).toHaveBeenCalledWith(inspectorPatches)
     })
 
+    it('discards stale positive event ids before side effects', () => {
+      const pushErrorToast = vi.fn()
+      const applySessionActivityPatches = vi.fn(() => NO_PATCHES)
+      const applyInspectorProjectionPatches = vi.fn(() => false)
+      const setToken = vi.fn()
+      const settlePendingSeenAcks = vi.fn()
+      const opts = makeOptions({
+        pushErrorToast,
+        applySessionActivityPatches,
+        applyInspectorProjectionPatches,
+        setToken,
+        settlePendingSeenAcks,
+        tokenRequired: true,
+      })
+      renderEventsHook(opts)
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.guardrail.blocked',
+          eventId: 2,
+          payload: { decision: { message: 'blocked' } },
+        })
+      })
+      expect(pushErrorToast).toHaveBeenCalledTimes(1)
+      pushErrorToast.mockClear()
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.guardrail.blocked',
+          eventId: 2,
+          payload: { decision: { message: 'duplicate' } },
+        })
+        lastSocket().emitMessage({
+          type: 'tmux.auth.expired',
+          eventId: 1,
+        })
+      })
+
+      expect(pushErrorToast).not.toHaveBeenCalled()
+      expect(setToken).not.toHaveBeenCalled()
+      expect(settlePendingSeenAcks).not.toHaveBeenCalledWith(false)
+      expect(applySessionActivityPatches).not.toHaveBeenCalled()
+      expect(applyInspectorProjectionPatches).not.toHaveBeenCalled()
+    })
+
+    it('resets event-id ordering for a new socket stream and ignores stale sockets', () => {
+      const pushErrorToast = vi.fn()
+      const opts = makeOptions({ pushErrorToast })
+      const { result } = renderEventsHook(opts)
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+      const firstSocket = lastSocket()
+
+      act(() => {
+        firstSocket.emitMessage({
+          type: 'tmux.guardrail.blocked',
+          eventId: 100,
+          payload: { decision: { message: 'before restart' } },
+        })
+      })
+      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'before restart')
+      pushErrorToast.mockClear()
+
+      act(() => {
+        result.current.forceReconnect()
+      })
+      const secondSocket = lastSocket()
+      expect(secondSocket).not.toBe(firstSocket)
+
+      act(() => {
+        secondSocket.emitOpen()
+        secondSocket.emitMessage({
+          type: 'tmux.guardrail.blocked',
+          eventId: 1,
+          payload: { decision: { message: 'after restart' } },
+        })
+        firstSocket.emitMessage({
+          type: 'tmux.guardrail.blocked',
+          eventId: 101,
+          payload: { decision: { message: 'stale old socket' } },
+        })
+      })
+
+      expect(pushErrorToast).toHaveBeenCalledTimes(1)
+      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'after restart')
+    })
+
+    it('ignores stale socket close events after reconnecting', async () => {
+      vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(0)
+      const pushErrorToast = vi.fn()
+      const opts = makeOptions({ pushErrorToast })
+      renderEventsHook(opts)
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+      const firstSocket = lastSocket()
+
+      act(() => {
+        firstSocket.emitClose()
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+      const secondSocket = lastSocket()
+      expect(secondSocket).not.toBe(firstSocket)
+
+      act(() => {
+        secondSocket.emitOpen()
+        firstSocket.emitClose()
+        secondSocket.emitMessage({
+          type: 'tmux.guardrail.blocked',
+          eventId: 1,
+          payload: { decision: { message: 'new stream still current' } },
+        })
+      })
+
+      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'new stream still current')
+    })
+
+    it('keeps processing messages without event ids', () => {
+      const pushErrorToast = vi.fn()
+      const opts = makeOptions({ pushErrorToast })
+      renderEventsHook(opts)
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.guardrail.blocked',
+          payload: { decision: { message: 'no id' } },
+        })
+      })
+
+      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'no id')
+    })
+
     it('ignores non-string WebSocket messages', () => {
       const opts = makeOptions()
       renderEventsHook(opts)

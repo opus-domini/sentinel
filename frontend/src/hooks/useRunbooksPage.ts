@@ -184,7 +184,8 @@ export function useRunbooksPage() {
   const { pushToast } = useToastContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
-  const jobPollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+  const jobPollTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const jobPollGenerationsRef = useRef<Map<string, number>>(new Map())
 
   const [selectedRunbookId, setSelectedRunbookId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState<RunbookDraft | null>(null)
@@ -221,40 +222,84 @@ export function useRunbooksPage() {
     return queryClient.getQueryData<OpsRunbooksResponse>(OPS_RUNBOOKS_QUERY_KEY)
   }, [queryClient])
 
-  const scheduleJobPoll = useCallback((callback: () => void, delay: number) => {
-    const timeout = setTimeout(() => {
-      jobPollTimeoutsRef.current.delete(timeout)
-      callback()
-    }, delay)
-    jobPollTimeoutsRef.current.add(timeout)
+  const clearScheduledJobPoll = useCallback((jobId: string) => {
+    const timeout = jobPollTimeoutsRef.current.get(jobId)
+    if (timeout == null) return
+    clearTimeout(timeout)
+    jobPollTimeoutsRef.current.delete(jobId)
   }, [])
+
+  const bumpJobPollGeneration = useCallback((jobId: string) => {
+    const next = (jobPollGenerationsRef.current.get(jobId) ?? 0) + 1
+    jobPollGenerationsRef.current.set(jobId, next)
+    return next
+  }, [])
+
+  const cancelJobPoll = useCallback(
+    (jobId: string) => {
+      clearScheduledJobPoll(jobId)
+      bumpJobPollGeneration(jobId)
+    },
+    [bumpJobPollGeneration, clearScheduledJobPoll],
+  )
+
+  const scheduleJobPoll = useCallback(
+    (jobId: string, generation: number, callback: () => void, delay: number) => {
+      const timeout = setTimeout(() => {
+        if (jobPollGenerationsRef.current.get(jobId) !== generation) return
+        if (jobPollTimeoutsRef.current.get(jobId) === timeout) {
+          jobPollTimeoutsRef.current.delete(jobId)
+        }
+        callback()
+      }, delay)
+      jobPollTimeoutsRef.current.set(jobId, timeout)
+    },
+    [],
+  )
 
   useEffect(() => {
     const jobPollTimeouts = jobPollTimeoutsRef.current
+    const jobPollGenerations = jobPollGenerationsRef.current
     return () => {
       jobPollTimeouts.forEach((timeout) => clearTimeout(timeout))
       jobPollTimeouts.clear()
+      jobPollGenerations.clear()
     }
   }, [])
 
   const trackJobUntilSettled = useCallback(
     (jobId: string) => {
+      clearScheduledJobPoll(jobId)
+      const generation = bumpJobPollGeneration(jobId)
+
       const poll = async (attempt: number) => {
+        if (jobPollGenerationsRef.current.get(jobId) !== generation) return
         const data = await refreshRunbooks()
+        if (jobPollGenerationsRef.current.get(jobId) !== generation) return
         const job = data?.jobs.find((candidate) => candidate.id === jobId)
         if (job == null || !isActiveRunbookJob(job)) return
         const nextAttempt = attempt + 1
         if (nextAttempt >= runbookJobRefreshDelays.length) return
-        scheduleJobPoll(() => {
-          void poll(nextAttempt)
-        }, runbookJobRefreshDelays[nextAttempt])
+        scheduleJobPoll(
+          jobId,
+          generation,
+          () => {
+            void poll(nextAttempt)
+          },
+          runbookJobRefreshDelays[nextAttempt],
+        )
       }
 
-      scheduleJobPoll(() => {
-        void poll(0)
-      }, runbookJobRefreshDelays[0])
+      scheduleJobPoll(
+        jobId,
+        generation,
+        () => {
+          void poll(0)
+        },
+        runbookJobRefreshDelays[0],
+      )
     },
-    [refreshRunbooks, scheduleJobPoll],
+    [bumpJobPollGeneration, clearScheduledJobPoll, refreshRunbooks, scheduleJobPoll],
   )
 
   const handleWSMessage = useCallback(
@@ -270,6 +315,9 @@ export function useRunbooksPage() {
               jobs: upsertOpsRunbookJob(previous.jobs, job),
             }
           })
+          if (!isActiveRunbookJob(job)) {
+            cancelJobPoll(job.id)
+          }
           break
         }
         case 'ops.schedule.updated':
@@ -279,7 +327,7 @@ export function useRunbooksPage() {
           break
       }
     },
-    [queryClient, refreshRunbooks],
+    [cancelJobPoll, queryClient, refreshRunbooks],
   )
 
   const connectionState = useOpsEvents(handleWSMessage)

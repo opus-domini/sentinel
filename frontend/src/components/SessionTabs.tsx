@@ -73,9 +73,6 @@ function SortableTab({
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onSelect()
-    } else if (event.key === 'Backspace' || event.key === 'Delete') {
-      event.preventDefault()
-      onClose()
     }
   }
 

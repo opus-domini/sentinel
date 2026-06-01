@@ -103,6 +103,17 @@ describe('useTmuxApi', () => {
     expect(call[1].body).toBe('{"name":"new"}')
   })
 
+  it('passes AbortSignal from init to fetch', async () => {
+    mockFetch(200, { data: {} })
+    const controller = new AbortController()
+
+    const { result } = renderHook(() => useTmuxApi())
+    await result.current('/api/test', { signal: controller.signal })
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(call[1].signal).toBe(controller.signal)
+  })
+
   it('handles non-JSON error response gracefully', async () => {
     ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,

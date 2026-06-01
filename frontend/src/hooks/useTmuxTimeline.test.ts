@@ -202,4 +202,88 @@ describe('useTmuxTimeline', () => {
     )
     expect(allScopeCache).toBeUndefined()
   })
+
+  it('does not auto-load again when the effective key is unchanged', async () => {
+    vi.useFakeTimers()
+
+    const apiMock = vi.fn((path: string) => {
+      const url = new URL(path, 'http://localhost')
+      const session = url.searchParams.get('session') ?? ''
+      return Promise.resolve(buildTimelineResponse(session))
+    })
+    const api = apiMock as unknown as ApiFunction
+
+    let activeSession = 'alpha'
+    const { result, rerender } = renderHook(
+      () =>
+        useTmuxTimeline({
+          api,
+          activeSession,
+        }),
+      { wrapper },
+    )
+
+    act(() => {
+      result.current.setTimelineOpen(true)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120)
+    })
+    expect(apiMock).toHaveBeenCalledTimes(1)
+
+    rerender()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(240)
+    })
+    expect(apiMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await result.current.loadTimeline({ quiet: true })
+    })
+    expect(apiMock).toHaveBeenCalledTimes(2)
+
+    activeSession = 'beta'
+    rerender()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120)
+    })
+    expect(apiMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps a pending auto-load when rerender keeps the effective key unchanged', async () => {
+    vi.useFakeTimers()
+
+    const apiMock = vi.fn((path: string) => {
+      const url = new URL(path, 'http://localhost')
+      const session = url.searchParams.get('session') ?? ''
+      return Promise.resolve(buildTimelineResponse(session))
+    })
+    const api = apiMock as unknown as ApiFunction
+
+    let activeSession = 'alpha'
+    const { result, rerender } = renderHook(
+      () =>
+        useTmuxTimeline({
+          api,
+          activeSession,
+        }),
+      { wrapper },
+    )
+
+    act(() => {
+      result.current.setTimelineSessionFilter('all')
+      result.current.setTimelineOpen(true)
+    })
+
+    activeSession = 'beta'
+    rerender()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120)
+    })
+
+    expect(apiMock).toHaveBeenCalledTimes(1)
+    expect(String(apiMock.mock.calls[0][0])).not.toContain('session=')
+  })
 })

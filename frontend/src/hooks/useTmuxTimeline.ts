@@ -51,9 +51,17 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
 
   const timelineOpenRef = useRef(false)
   const timelineSessionFilterRef = useRef('active')
+  const autoLoadKeyRef = useRef('')
+  const autoLoadTimeoutRef = useRef<number | null>(null)
   const loadTimelineRef = useRef<(options?: { quiet?: boolean }) => void>(() => {
     return
   })
+
+  const clearAutoLoadTimeout = useCallback(() => {
+    if (autoLoadTimeoutRef.current === null) return
+    window.clearTimeout(autoLoadTimeoutRef.current)
+    autoLoadTimeoutRef.current = null
+  }, [])
 
   useEffect(() => {
     timelineOpenRef.current = timelineOpen
@@ -138,35 +146,42 @@ export function useTmuxTimeline(options: UseTmuxTimelineOptions) {
     }
   }, [loadTimeline])
 
+  useEffect(() => clearAutoLoadTimeout, [clearAutoLoadTimeout])
+
   // Auto-load timeline when dialog opens or filters change
   useEffect(() => {
     if (!timelineOpen) {
+      clearAutoLoadTimeout()
+      autoLoadKeyRef.current = ''
       return
     }
     const session = resolveTimelineSessionScope(timelineSessionFilter)
-    const cached = queryClient.getQueryData<TmuxTimelineCache>(
-      tmuxTimelineQueryKey({
-        session,
-        query: debouncedTimelineQuery,
-        severity: timelineSeverity,
-        eventType: timelineEventType,
-        limit: 180,
-      }),
-    )
+    const queryKey = tmuxTimelineQueryKey({
+      session,
+      query: debouncedTimelineQuery,
+      severity: timelineSeverity,
+      eventType: timelineEventType,
+      limit: 180,
+    })
+    const autoLoadKey = JSON.stringify(queryKey)
+    if (autoLoadKeyRef.current === autoLoadKey) {
+      return
+    }
+    clearAutoLoadTimeout()
+    autoLoadKeyRef.current = autoLoadKey
+    const cached = queryClient.getQueryData<TmuxTimelineCache>(queryKey)
     if (cached != null) {
       setTimelineEvents(cached.events)
       setTimelineHasMore(cached.hasMore)
       setTimelineError('')
       setTimelineLoading(false)
     }
-    const timeoutID = window.setTimeout(() => {
-      void loadTimeline()
+    autoLoadTimeoutRef.current = window.setTimeout(() => {
+      autoLoadTimeoutRef.current = null
+      loadTimelineRef.current()
     }, 120)
-    return () => {
-      window.clearTimeout(timeoutID)
-    }
   }, [
-    loadTimeline,
+    clearAutoLoadTimeout,
     queryClient,
     resolveTimelineSessionScope,
     timelineOpen,

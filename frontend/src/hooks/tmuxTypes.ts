@@ -198,9 +198,9 @@ export type InspectorActions = {
   splitPane: (direction: 'vertical' | 'horizontal') => void
   closePane: (paneID: string) => void
   handleOpenRenameWindow: (windowInfo: WindowInfo) => void
-  handleSubmitRenameWindow: () => void
+  handleSubmitRenameWindow: () => Promise<void>
   handleOpenRenamePane: (paneInfo: PaneInfo) => void
-  handleSubmitRenamePane: () => void
+  handleSubmitRenamePane: () => Promise<void>
   renameWindowDialogOpen: boolean
   renameWindowValue: string
   setRenameWindowValue: (value: string) => void

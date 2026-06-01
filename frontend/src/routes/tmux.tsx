@@ -998,9 +998,7 @@ function TmuxPage() {
           tmuxUnavailable={tmuxUnavailable}
           onFilterChange={setFilter}
           onTokenChange={setToken}
-          onCreate={(name, cwd, user) => {
-            void sessionCRUD.createSession(name, cwd, '', user)
-          }}
+          onCreate={(name, cwd, user) => sessionCRUD.createSession(name, cwd, '', user)}
           onSaveLauncher={saveSessionLauncher}
           onDeleteLauncher={deleteSessionLauncher}
           onLaunchLauncher={(id) => {
@@ -1104,9 +1102,7 @@ function TmuxPage() {
             open={createSessionOpen}
             onOpenChange={setCreateSessionOpen}
             defaultCwd={defaultCwd}
-            onCreate={(name, cwd, user) => {
-              void sessionCRUD.createSession(name, cwd, '', user)
-            }}
+            onCreate={(name, cwd, user) => sessionCRUD.createSession(name, cwd, '', user)}
           />
         )}
 

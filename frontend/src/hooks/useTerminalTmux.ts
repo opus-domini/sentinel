@@ -26,6 +26,7 @@ const TERMINAL_WRITE_BATCH_MAX_BYTES = 1_048_576
 const TERMINAL_WRITE_FLUSH_FALLBACK_MS = 50
 const TERMINAL_WRITE_IN_FLIGHT_TIMEOUT_MS = 5_000
 const TERMINAL_WRITE_QUEUE_MAX_BYTES = 16 * 1_048_576
+const SELECTION_CLIPBOARD_DEBOUNCE_MS = 120
 const TERMINAL_FONT_FAMILY = [
   'JetBrains Mono Variable',
   'JetBrains Mono',
@@ -90,6 +91,8 @@ type SessionRuntime = {
   writeFlushTimeoutId: number | null
   writeInFlightGeneration: number | null
   writeInFlightTimeoutId: number | null
+  selectionClipboardTimer: number | null
+  selectionEndDispose: Disposable
 }
 
 type UseTerminalTmuxArgs = {
@@ -329,7 +332,7 @@ export function useTerminalTmux({
   }, [])
 
   const fitRuntime = useCallback(
-    (runtime: SessionRuntime) => {
+    (runtime: SessionRuntime, options?: { forceRefresh?: boolean }) => {
       if (!runtime.terminal.element) {
         return
       }
@@ -340,7 +343,7 @@ export function useTerminalTmux({
       runtime.rows = runtime.terminal.rows
       const sizeChanged = runtime.cols !== previousCols || runtime.rows !== previousRows
       sendResize(runtime, runtime.cols, runtime.rows)
-      if (sizeChanged) {
+      if (sizeChanged || options?.forceRefresh === true) {
         refreshRuntimeRenderer(runtime)
       }
 
@@ -893,6 +896,8 @@ export function useTerminalTmux({
         writeFlushTimeoutId: null,
         writeInFlightGeneration: null,
         writeInFlightTimeoutId: null,
+        selectionClipboardTimer: null,
+        selectionEndDispose: { dispose: () => undefined },
       }
 
       runtime.onDataDispose = terminal.onData((data) => {
@@ -916,12 +921,46 @@ export function useTerminalTmux({
       })
 
       // Copy xterm.js native selection (Shift+drag) to the system clipboard.
-      runtime.onSelectionDispose = terminal.onSelectionChange(() => {
+      // Async Clipboard can be debounced; the textarea fallback must run during
+      // a real user event, so non-secure contexts flush on pointer/key end.
+      const hasAsyncClipboard = () => (navigator.clipboard as Clipboard | undefined) != null
+      const clearSelectionClipboardTimer = () => {
+        if (runtime.selectionClipboardTimer === null) return
+        window.clearTimeout(runtime.selectionClipboardTimer)
+        runtime.selectionClipboardTimer = null
+      }
+      const writeCurrentSelection = () => {
+        clearSelectionClipboardTimer()
         const text = terminal.getSelection()
         if (text) {
           writeClipboardText(text)
         }
+      }
+      runtime.onSelectionDispose = terminal.onSelectionChange(() => {
+        if (!hasAsyncClipboard()) return
+        clearSelectionClipboardTimer()
+        runtime.selectionClipboardTimer = window.setTimeout(() => {
+          runtime.selectionClipboardTimer = null
+          writeCurrentSelection()
+        }, SELECTION_CLIPBOARD_DEBOUNCE_MS)
       })
+      const writeSelectionOnUserEnd = () => {
+        if (hasAsyncClipboard()) return
+        if (activeSessionRef.current !== runtime.session) return
+        writeCurrentSelection()
+      }
+      document.addEventListener('pointerup', writeSelectionOnUserEnd, true)
+      document.addEventListener('mouseup', writeSelectionOnUserEnd, true)
+      document.addEventListener('touchend', writeSelectionOnUserEnd, true)
+      document.addEventListener('keyup', writeSelectionOnUserEnd, true)
+      runtime.selectionEndDispose = {
+        dispose: () => {
+          document.removeEventListener('pointerup', writeSelectionOnUserEnd, true)
+          document.removeEventListener('mouseup', writeSelectionOnUserEnd, true)
+          document.removeEventListener('touchend', writeSelectionOnUserEnd, true)
+          document.removeEventListener('keyup', writeSelectionOnUserEnd, true)
+        },
+      }
 
       runtimesRef.current.set(session, runtime)
 
@@ -950,6 +989,11 @@ export function useTerminalTmux({
       runtime.onDataDispose.dispose()
       runtime.onResizeDispose.dispose()
       runtime.onSelectionDispose.dispose()
+      runtime.selectionEndDispose.dispose()
+      if (runtime.selectionClipboardTimer !== null) {
+        window.clearTimeout(runtime.selectionClipboardTimer)
+        runtime.selectionClipboardTimer = null
+      }
       runtime.contextMenuDispose.dispose()
       runtime.touchWheelDispose.dispose()
       clearRuntimeWriteQueue(runtime)
@@ -1097,22 +1141,12 @@ export function useTerminalTmux({
       localStorage.setItem(FONT_SIZE_KEY, String(size))
       for (const runtime of runtimesRef.current.values()) {
         runtime.terminal.options.fontSize = size
-        if (runtime.terminal.element) {
-          refreshRuntime(runtime)
-          runtime.fitAddon.fit()
-          runtime.cols = runtime.terminal.cols
-          runtime.rows = runtime.terminal.rows
-          sendResize(runtime, runtime.cols, runtime.rows)
+        if (runtime.session === activeSessionRef.current.trim() && runtime.terminal.element) {
+          fitRuntime(runtime, { forceRefresh: true })
         }
       }
-
-      const activeRuntime = runtimesRef.current.get(activeSessionRef.current.trim())
-      if (activeRuntime && isMountedRef.current) {
-        setTermCols(activeRuntime.cols)
-        setTermRows(activeRuntime.rows)
-      }
     },
-    [refreshRuntime, sendResize],
+    [fitRuntime],
   )
 
   const zoomIn = useCallback(() => {

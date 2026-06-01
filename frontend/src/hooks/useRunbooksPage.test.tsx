@@ -2,7 +2,7 @@
 import { createElement } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useRunbooksPage } from './useRunbooksPage'
 import type { ReactNode } from 'react'
@@ -11,6 +11,7 @@ import type { OpsRunbook, OpsRunbookRun, OpsRunbooksResponse } from '@/types'
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   pushToast: vi.fn(),
+  opsHandler: undefined as ((message: unknown) => void) | undefined,
 }))
 
 vi.mock('@/hooks/useTmuxApi', () => ({
@@ -22,7 +23,10 @@ vi.mock('@/contexts/ToastContext', () => ({
 }))
 
 vi.mock('@/hooks/useOpsEvents', () => ({
-  useOpsEvents: () => 'connected',
+  useOpsEvents: (handler: (message: unknown) => void) => {
+    mocks.opsHandler = handler
+    return 'connected'
+  },
 }))
 
 function makeRunbook(overrides: Partial<OpsRunbook> = {}): OpsRunbook {
@@ -77,6 +81,12 @@ describe('useRunbooksPage', () => {
   beforeEach(() => {
     mocks.api.mockReset()
     mocks.pushToast.mockReset()
+    mocks.opsHandler = undefined
+    vi.useRealTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('refreshes an approved job until the resumed run settles', async () => {
@@ -131,5 +141,95 @@ describe('useRunbooksPage', () => {
         title: 'Approval accepted',
       }),
     )
+  })
+
+  it('deduplicates polling when the same job is tracked more than once', async () => {
+    const waitingJob = makeJob('waiting_approval')
+    const runningJob = makeJob('running', { currentStep: 'Finish' })
+    let getCount = 0
+
+    mocks.api.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/ops/runbooks') {
+        getCount += 1
+        return Promise.resolve(makeResponse(getCount === 1 ? waitingJob : runningJob))
+      }
+      if (url === '/api/ops/runs/job-1/approve' && init?.method === 'POST') {
+        return Promise.resolve({ job: runningJob })
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { result } = renderHook(() => useRunbooksPage(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(result.current.jobs[0]?.status).toBe('waiting_approval')
+    })
+
+    vi.useFakeTimers()
+
+    await act(async () => {
+      await result.current.approveJob('job-1')
+      await result.current.approveJob('job-1')
+    })
+
+    expect(getCount).toBe(3)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250)
+    })
+
+    expect(getCount).toBe(4)
+  })
+
+  it('cancels scheduled polling when a websocket job update is terminal', async () => {
+    const waitingJob = makeJob('waiting_approval')
+    const runningJob = makeJob('running', { currentStep: 'Finish' })
+    const succeededJob = makeJob('succeeded')
+    let getCount = 0
+
+    mocks.api.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/ops/runbooks') {
+        getCount += 1
+        return Promise.resolve(makeResponse(getCount === 1 ? waitingJob : runningJob))
+      }
+      if (url === '/api/ops/runs/job-1/approve' && init?.method === 'POST') {
+        return Promise.resolve({ job: runningJob })
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { result } = renderHook(() => useRunbooksPage(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(result.current.jobs[0]?.status).toBe('waiting_approval')
+    })
+
+    vi.useFakeTimers()
+
+    await act(async () => {
+      await result.current.approveJob('job-1')
+    })
+    expect(getCount).toBe(2)
+
+    act(() => {
+      mocks.opsHandler?.({ type: 'ops.job.updated', payload: { job: succeededJob } })
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250)
+    })
+
+    expect(getCount).toBe(2)
+    expect(result.current.jobs[0]?.status).toBe('succeeded')
   })
 })

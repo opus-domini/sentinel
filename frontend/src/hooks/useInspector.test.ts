@@ -494,6 +494,9 @@ describe('useInspector – window presentation stability', () => {
               title: undefined,
               active: true,
               tty: '/dev/pts/1',
+              currentPath: '/workspace',
+              currentCommand: 'vim',
+              startCommand: 'bash',
             },
             {
               session: 'dev',
@@ -526,7 +529,45 @@ describe('useInspector – window presentation stability', () => {
     expect(result.current.panes[0]).toMatchObject({
       paneId: '%1',
       title: '',
+      currentPath: '/workspace',
+      currentCommand: 'vim',
+      startCommand: 'bash',
     })
+  })
+
+  it('aborts an in-flight inspector refresh when the active session changes', async () => {
+    let firstSignal: AbortSignal | undefined
+    let windowsFetchCount = 0
+    const api = vi.fn((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        windowsFetchCount += 1
+        if (windowsFetchCount === 1) {
+          firstSignal = init?.signal ?? undefined
+          return new Promise(() => {})
+        }
+        return Promise.resolve({ windows: [makeWindow({ session: 'ops', index: 0 })] })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({ panes: [makePane({ session: 'ops', paneId: '%9' })] })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { rerender } = renderHook(
+      ({ activeSession }) => useInspector({ ...opts, activeSession }),
+      { wrapper, initialProps: { activeSession: 'dev' } },
+    )
+
+    await waitFor(() => expect(firstSignal).toBeDefined())
+
+    act(() => {
+      opts.tabsStateRef.current.activeSession = 'ops'
+      rerender({ activeSession: 'ops' })
+    })
+
+    await waitFor(() => expect(firstSignal?.aborted).toBe(true))
   })
 
   it('keeps the last valid snapshot during a transient refresh failure', async () => {
@@ -1223,8 +1264,14 @@ describe('useInspector – closeWindow', () => {
       expect(result.current.windows.length).toBe(1)
     })
 
-    act(() => {
+    await act(async () => {
       result.current.closeWindow(0)
+      await waitFor(() => {
+        expect(opts.dispatchTabs).toHaveBeenCalledWith({
+          type: 'close',
+          session: 'dev',
+        })
+      })
     })
 
     expect(result.current.windows).toEqual([])
@@ -1234,11 +1281,50 @@ describe('useInspector – closeWindow', () => {
     expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(true)
     expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last window closed')
     expect(opts.resetTerminal).toHaveBeenCalled()
-    expect(opts.dispatchTabs).toHaveBeenCalledWith({
-      type: 'close',
-      session: 'dev',
-    })
     expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last window closed')
+  })
+
+  it('keeps the session recoverable when closing the last window fails', async () => {
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({ windows: [makeWindow({ index: 0, active: true })] })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/kill-window')) {
+        return Promise.reject(new Error('tmux kill-window failed'))
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+    const opts = createMockOptions({
+      api,
+      windows: [makeWindow({ index: 0, active: true })],
+      panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+    })
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(1)
+    })
+
+    await act(async () => {
+      result.current.closeWindow(0)
+      await waitFor(() => {
+        expect(opts.pushErrorToast).toHaveBeenCalledWith('Kill Window', 'tmux kill-window failed')
+      })
+    })
+
+    expect(result.current.windows).toHaveLength(1)
+    expect(result.current.panes).toHaveLength(1)
+    expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(false)
+    expect(opts.closeCurrentSocket).not.toHaveBeenCalledWith('last window closed')
+    expect(opts.resetTerminal).not.toHaveBeenCalled()
+    expect(opts.dispatchTabs).not.toHaveBeenCalledWith({ type: 'close', session: 'dev' })
   })
 
   it('keeps focus on the session when a non-final window is closed', async () => {

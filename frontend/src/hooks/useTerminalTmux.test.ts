@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, fireEvent, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useTerminalTmux } from './useTerminalTmux'
@@ -112,7 +112,12 @@ vi.mock('@/lib/clipboardProvider', () => ({
     readText: () => Promise.resolve(''),
     writeText: () => Promise.resolve(),
   }),
-  writeClipboardText: () => undefined,
+  writeClipboardText: (text: string) =>
+    (
+      globalThis as typeof globalThis & {
+        __SENTINEL_WRITE_CLIPBOARD_TEXT?: (text: string) => void
+      }
+    ).__SENTINEL_WRITE_CLIPBOARD_TEXT?.(text),
 }))
 vi.mock('@/lib/touchWheelBridge', () => ({
   attachTouchWheelBridge: () => ({ dispose: () => undefined }),
@@ -192,6 +197,11 @@ function setupEnvironment() {
       __SENTINEL_IS_MOBILE_LAYOUT?: boolean
     }
   ).__SENTINEL_IS_MOBILE_LAYOUT = false
+  ;(
+    globalThis as typeof globalThis & {
+      __SENTINEL_WRITE_CLIPBOARD_TEXT?: (text: string) => void
+    }
+  ).__SENTINEL_WRITE_CLIPBOARD_TEXT = vi.fn()
   globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
   document.documentElement.style.setProperty('--surface-inset', '#112233')
   document.documentElement.style.setProperty('--foreground', '#ddeeff')
@@ -229,6 +239,8 @@ type MockTerminalInstance = {
   options: Record<string, unknown>
   cols: number
   rows: number
+  onSelectionChange: ReturnType<typeof vi.fn>
+  getSelection: ReturnType<typeof vi.fn>
   loadAddon: ReturnType<typeof vi.fn>
   reset: ReturnType<typeof vi.fn>
   write: ReturnType<typeof vi.fn>
@@ -1012,6 +1024,125 @@ describe('useTerminalTmux – visibilitychange reconnection', () => {
 
     hostA.remove()
     hostB.remove()
+  })
+
+  it('updates font size for all runtimes but only refits the active runtime', async () => {
+    const { result } = renderTerminalHook({
+      openTabs: ['session-a', 'session-b'],
+      activeSession: 'session-a',
+    })
+    const hostA = document.createElement('div')
+    const hostB = document.createElement('div')
+    document.body.append(hostA, hostB)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('session-a')(hostA)
+      result.current.getTerminalHostRef('session-b')(hostB)
+      await Promise.resolve()
+    })
+
+    const [activeTerminal, backgroundTerminal] = terminalInstances()
+    activeTerminal.refresh.mockClear()
+    backgroundTerminal.refresh.mockClear()
+
+    const nextFontSize = Number(activeTerminal.options.fontSize) + 1
+
+    act(() => {
+      result.current.zoomIn()
+    })
+
+    expect(activeTerminal.options.fontSize).toBe(nextFontSize)
+    expect(backgroundTerminal.options.fontSize).toBe(nextFontSize)
+    expect(activeTerminal.refresh).toHaveBeenCalled()
+    expect(backgroundTerminal.refresh).not.toHaveBeenCalled()
+
+    hostA.remove()
+    hostB.remove()
+  })
+
+  it('debounces clipboard writes from terminal selection changes', async () => {
+    vi.useFakeTimers()
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: vi.fn() },
+        configurable: true,
+      })
+      const writeClipboard = vi.fn()
+      ;(
+        globalThis as typeof globalThis & {
+          __SENTINEL_WRITE_CLIPBOARD_TEXT?: (text: string) => void
+        }
+      ).__SENTINEL_WRITE_CLIPBOARD_TEXT = writeClipboard
+      const { result } = renderTerminalHook()
+      const host = document.createElement('div')
+      document.body.appendChild(host)
+
+      await act(async () => {
+        result.current.getTerminalHostRef('test-session')(host)
+        await Promise.resolve()
+      })
+
+      const terminal = latestTerminal()
+      terminal?.getSelection.mockReturnValue('selected text')
+      const onSelection = terminal?.onSelectionChange.mock.calls[0]?.[0] as (() => void) | undefined
+
+      act(() => {
+        onSelection?.()
+        onSelection?.()
+        onSelection?.()
+      })
+      expect(writeClipboard).not.toHaveBeenCalled()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(119)
+      })
+      expect(writeClipboard).not.toHaveBeenCalled()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(writeClipboard).toHaveBeenCalledTimes(1)
+      expect(writeClipboard).toHaveBeenCalledWith('selected text')
+
+      host.remove()
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+      vi.useRealTimers()
+    }
+  })
+
+  it('flushes selection clipboard fallback on user selection end', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    const writeClipboard = vi.fn()
+    ;(
+      globalThis as typeof globalThis & {
+        __SENTINEL_WRITE_CLIPBOARD_TEXT?: (text: string) => void
+      }
+    ).__SENTINEL_WRITE_CLIPBOARD_TEXT = writeClipboard
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+
+    const terminal = latestTerminal()
+    terminal?.getSelection.mockReturnValue('fallback selection')
+    const onSelection = terminal?.onSelectionChange.mock.calls[0]?.[0] as (() => void) | undefined
+
+    act(() => {
+      onSelection?.()
+    })
+    expect(writeClipboard).not.toHaveBeenCalled()
+
+    fireEvent.mouseUp(document)
+
+    expect(writeClipboard).toHaveBeenCalledTimes(1)
+    expect(writeClipboard).toHaveBeenCalledWith('fallback selection')
+
+    host.remove()
   })
 
   it('only refreshes the active session renderer on the periodic refresh', async () => {
