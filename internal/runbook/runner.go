@@ -61,6 +61,10 @@ type RunParams struct {
 	// AlertRepo is an optional alert repository. When non-nil, failed runs
 	// raise alerts and successful runs resolve them.
 	AlertRepo AlertRepo
+
+	// Guardrail, when non-nil, is evaluated against each run/script command
+	// before execution; a non-nil result blocks that step.
+	Guardrail GuardrailFunc
 }
 
 const (
@@ -139,6 +143,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 		stepTimeout = 30 * time.Second
 	}
 	executor := NewExecutor(nil, stepTimeout, params.Parameters)
+	executor.SetGuardrail(params.Guardrail)
 	var accumulated []store.OpsRunbookStepResult
 
 	// beforeStep writes a preliminary step result to the DB before execution.
@@ -509,6 +514,7 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		stepTimeout = 30 * time.Second
 	}
 	executor := NewExecutor(nil, stepTimeout, params.Parameters)
+	executor.SetGuardrail(params.Guardrail)
 
 	// Recover previous step results from the run record.
 	existingRun, err := repo.GetOpsRunbookRun(ctx, job.ID)

@@ -185,7 +185,18 @@ func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookR
 		Parameters:    params,
 		ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
 		AlertRepo:     h.repo,
+		Guardrail:     h.guardrails.EvaluateCommand,
 	})
+}
+
+// RunbookGuardrail returns the unattended-command guardrail evaluator so the
+// scheduler can gate scheduled runbook steps with the same policy as manual
+// runs. Safe to call on a nil handler / nil guardrail service (no-op).
+func (h *Handler) RunbookGuardrail() runbook.GuardrailFunc {
+	if h == nil {
+		return nil
+	}
+	return h.guardrails.EvaluateCommand
 }
 
 func (h *Handler) emitEvent(eventType string, payload map[string]any) {
@@ -512,6 +523,7 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 			Parameters:    resolved,
 			ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
 			AlertRepo:     h.repo,
+			Guardrail:     h.guardrails.EvaluateCommand,
 		}, approvalStepIndex)
 	}()
 

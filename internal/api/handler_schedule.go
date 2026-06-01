@@ -303,6 +303,7 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 			StepTimeout:   30 * time.Second,
 			ExtraMetadata: map[string]string{keyScheduleID: scheduleID},
 			AlertRepo:     h.repo,
+			Guardrail:     h.guardrails.EvaluateCommand,
 			OnFinish: func(ctx context.Context, status string) {
 				finished := time.Now().UTC()
 				if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, finalNextRunAt, finalEnabled); err != nil {

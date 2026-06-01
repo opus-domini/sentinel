@@ -171,6 +171,7 @@ func Serve(version string) int {
 		TickInterval: 5 * time.Second,
 		EventHub:     eventHub,
 		AlertRepo:    st,
+		Guardrail:    apiHandler.RunbookGuardrail(),
 	})
 	schedulerService.Start(context.Background())
 

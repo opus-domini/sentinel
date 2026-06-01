@@ -39,6 +39,9 @@ type Options struct {
 	MaxConcurrent int
 	EventHub      *events.Hub
 	AlertRepo     runbook.AlertRepo
+	// Guardrail, when non-nil, is evaluated against each scheduled runbook
+	// command before execution (unattended runs are guarded like manual ones).
+	Guardrail runbook.GuardrailFunc
 }
 
 // Service runs scheduled runbook executions on a tick loop.
@@ -229,6 +232,7 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 		Source:      "scheduler",
 		StepTimeout: stepTimeout,
 		AlertRepo:   s.opts.AlertRepo,
+		Guardrail:   s.opts.Guardrail,
 		ExtraMetadata: map[string]string{
 			"scheduleId": scheduleID,
 		},
