@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.3](https://github.com/opus-domini/sentinel/compare/v0.8.2...v0.8.3) (2026-06-01)
+
+
+### Bug Fixes
+
+* harden services and server config ([98f1225](https://github.com/opus-domini/sentinel/commit/98f12250fe9936b87354dea5d5d497c40e7f65b5))
+* improve frontend accessibility and recovery UX ([113c2bc](https://github.com/opus-domini/sentinel/commit/113c2bce93719becc234927a312cab0941642e5a))
+* stabilize ops streams and service actions ([efaf796](https://github.com/opus-domini/sentinel/commit/efaf796ae76383c3648aaf34647ca0ac6414f681))
+* stabilize tmux state and runbook polling ([c18c31b](https://github.com/opus-domini/sentinel/commit/c18c31bb608e38ee9833f6ca6e967435e6201b6a))
+
 ## [0.8.2](https://github.com/opus-domini/sentinel/compare/v0.8.1...v0.8.2) (2026-05-31)
 
 
