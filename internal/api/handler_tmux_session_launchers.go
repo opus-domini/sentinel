@@ -225,7 +225,7 @@ func decodeSessionLauncherWrite(r *http.Request) (store.SessionLauncherWrite, er
 		req.Icon = defaultSessionPresetIcon
 	}
 	if !validate.SessionName(req.Name) {
-		return store.SessionLauncherWrite{}, errors.New("name must match ^[A-Za-z0-9._-]{1,64}$")
+		return store.SessionLauncherWrite{}, errors.New("name must match ^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$")
 	}
 	if req.Cwd == "" {
 		return store.SessionLauncherWrite{}, errors.New("cwd is required")

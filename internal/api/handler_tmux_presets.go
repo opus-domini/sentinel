@@ -250,7 +250,7 @@ func decodeSessionPresetWrite(r *http.Request) (store.SessionPresetWrite, error)
 
 	switch {
 	case !validate.SessionName(req.Name):
-		return store.SessionPresetWrite{}, errors.New("name must match ^[A-Za-z0-9._-]{1,64}$")
+		return store.SessionPresetWrite{}, errors.New("name must match ^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$")
 	case req.Cwd == "":
 		return store.SessionPresetWrite{}, errors.New("cwd is required")
 	case !filepath.IsAbs(req.Cwd):

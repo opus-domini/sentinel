@@ -33,6 +33,9 @@ func TestSessionName(t *testing.T) {
 		{"with_colon", "has:colon", false},
 		{"with_newline", "has\nnewline", false},
 		{"with_at", "has@sign", false},
+		{"leading_hyphen_flag_injection", "-d", false},
+		{"leading_hyphen_word", "-session", false},
+		{"double_dash", "--", false},
 	}
 
 	for _, tt := range tests {
@@ -108,6 +111,8 @@ func TestWindowName(t *testing.T) {
 		{"with_semicolon", "win;dow", false},
 		{"with_colon", "win:dow", false},
 		{"with_at", "win@dow", false},
+		{"leading_hyphen_flag_injection", "-d", false},
+		{"leading_space", " window", false},
 	}
 
 	for _, tt := range tests {

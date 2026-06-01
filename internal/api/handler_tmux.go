@@ -40,7 +40,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		req.Cwd = defaultSessionCWD()
 	}
 	if !validate.SessionName(req.Name) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "name must match ^[A-Za-z0-9._-]{1,64}$", nil)
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "name must match ^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$", nil)
 		return
 	}
 	if req.Cwd != "" && !filepath.IsAbs(req.Cwd) {
@@ -143,17 +143,19 @@ func (h *Handler) tmuxForUser(user string) tmuxService {
 // commands are wrapped with the configured user switching method.
 // When the session is not in the registry, it probes known multi-user
 // tmux servers as a fallback (the registry can be lost on restart).
-func (h *Handler) tmuxForSession(session string) tmuxService {
+func (h *Handler) tmuxForSession(ctx context.Context, session string) tmuxService {
 	if user, ok := h.sessionUsers.Load(session); ok {
 		if u, _ := user.(string); u != "" {
 			return tmux.Service{User: u}
 		}
 	}
 
-	// Fallback: probe known users' tmux servers for this session.
+	// Fallback: probe known users' tmux servers for this session. Use the
+	// request context so the probe honors the request timeout/cancellation
+	// instead of running unbounded on every mutating handler.
 	for _, user := range h.knownSessionUsers() {
 		svc := tmux.Service{User: user}
-		if svc.HasSession(context.Background(), session) {
+		if svc.HasSession(ctx, session) {
 			h.registerSessionUser(session, user)
 			return svc
 		}
@@ -244,14 +246,14 @@ func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
 	}
 	req.NewName = strings.TrimSpace(req.NewName)
 	if !validate.SessionName(req.NewName) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "newName must match ^[A-Za-z0-9._-]{1,64}$", nil)
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "newName must match ^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$", nil)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	svc := h.tmuxForSession(session)
+	svc := h.tmuxForSession(ctx, session)
 	if err := svc.RenameSession(ctx, session, req.NewName); err != nil {
 		writeTmuxError(w, err)
 		return
@@ -328,7 +330,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.tmuxForSession(session).KillSession(ctx, session); err != nil &&
+	if err := h.tmuxForSession(ctx, session).KillSession(ctx, session); err != nil &&
 		!tmux.IsKind(err, tmux.ErrKindSessionNotFound) &&
 		!tmux.IsKind(err, tmux.ErrKindServerNotRunning) {
 		writeTmuxError(w, err)
