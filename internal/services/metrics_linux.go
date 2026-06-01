@@ -68,7 +68,7 @@ func readCPUStat() (idle, total uint64, err error) {
 	return 0, 0, fmt.Errorf("cpu line not found in /proc/stat")
 }
 
-func collectMemInfo() memorySample {
+func collectMemInfo(_ context.Context) memorySample {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return memorySample{}
@@ -133,7 +133,7 @@ func collectMemInfo() memorySample {
 	}
 }
 
-func collectLoadAvg() (avg1, avg5, avg15 float64) {
+func collectLoadAvg(_ context.Context) (avg1, avg5, avg15 float64) {
 	data, err := os.ReadFile("/proc/loadavg")
 	if err != nil {
 		return -1, -1, -1

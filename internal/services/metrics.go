@@ -105,8 +105,8 @@ type metricsCollectionIntervals struct {
 
 type metricCollectors struct {
 	cpuPercent   func(context.Context) float64
-	memInfo      func() memorySample
-	loadAvg      func() (float64, float64, float64)
+	memInfo      func(context.Context) memorySample
+	loadAvg      func(context.Context) (float64, float64, float64)
 	diskUsage    func(string) diskSample
 	networkIO    func() networkIOSample
 	processInfo  func(context.Context) processSample
@@ -184,8 +184,8 @@ func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMet
 
 	cpuCount := c.collectors.numCPU()
 	cpuPct := c.collectors.cpuPercent(ctx)
-	mem := c.collectors.memInfo()
-	avg1, avg5, avg15 := c.collectors.loadAvg()
+	mem := c.collectors.memInfo(ctx)
+	avg1, avg5, avg15 := c.collectors.loadAvg(ctx)
 	disk := c.diskLocked(diskPath, now)
 	net := c.collectors.networkIO()
 	processes := c.processLocked(ctx, now)

@@ -212,10 +212,10 @@ func fakeMetricCollectors(processInfo func(context.Context) processSample, cpuPe
 		cpuPercent: func(context.Context) float64 {
 			return cpuPercent()
 		},
-		memInfo: func() memorySample {
+		memInfo: func(context.Context) memorySample {
 			return memorySample{usedBytes: 25, totalBytes: 100, availableBytes: 75}
 		},
-		loadAvg: func() (float64, float64, float64) {
+		loadAvg: func(context.Context) (float64, float64, float64) {
 			return 1, 2, 3
 		},
 		diskUsage: func(string) diskSample {
