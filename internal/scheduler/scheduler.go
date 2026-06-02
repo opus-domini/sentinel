@@ -246,6 +246,17 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		return
 	}
 
+	// Advance next_run_at (and mark running) BEFORE creating the run so a crash
+	// between the two can't leave the schedule still 'due' and re-fire a
+	// duplicate run on restart. If the create below fails the schedule simply
+	// skips this cycle, which is safer than a double run.
+	nextRunAt, enabled := s.computeNextRun(sched)
+	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, now.Format(time.RFC3339), "running", nextRunAt, enabled); err != nil {
+		s.releaseSchedule(sched.ID)
+		slog.Warn("scheduler advance schedule failed", "schedule", sched.ID, "err", err)
+		return
+	}
+
 	job, err := s.repo.CreateOpsRunbookRunWithParams(ctx, sched.RunbookID, now, params)
 	if err != nil {
 		s.releaseSchedule(sched.ID)
@@ -267,13 +278,6 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		CreatedAt: now,
 	}); err != nil {
 		slog.Warn("scheduler: record runbook.started event", "job", job.ID, "err", err)
-	}
-
-	// Compute next run and whether to disable.
-	nextRunAt, enabled := s.computeNextRun(sched)
-
-	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, now.Format(time.RFC3339), "running", nextRunAt, enabled); err != nil {
-		slog.Warn("scheduler update after run failed", "schedule", sched.ID, "err", err)
 	}
 
 	s.publish(events.TypeScheduleUpdated, map[string]any{
