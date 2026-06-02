@@ -150,6 +150,17 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 			keyGlobalRev: globalRev,
 			keyAlerts:    firedAlerts,
 		})
+		// Deliver alert.created webhooks for alerts a service action raised, the
+		// same as the periodic health checker does for the alerts it fires.
+		host, _ := os.Hostname()
+		for _, alert := range firedAlerts {
+			h.notifier.SendAsync(notify.AlertWebhookPayload{
+				Event:     activity.EventAlertCreated,
+				Alert:     alert,
+				Host:      host,
+				Timestamp: now,
+			})
+		}
 	}
 
 	response := map[string]any{
@@ -693,6 +704,21 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 			keyGlobalRev: globalRev,
 			keyEvent:     timelineEvent,
 		})
+	}
+	if len(firedAlerts) > 0 {
+		h.emit(events.TypeOpsAlerts, map[string]any{
+			keyGlobalRev: globalRev,
+			keyAlerts:    firedAlerts,
+		})
+		host, _ := os.Hostname()
+		for _, alert := range firedAlerts {
+			h.notifier.SendAsync(notify.AlertWebhookPayload{
+				Event:     activity.EventAlertCreated,
+				Alert:     alert,
+				Host:      host,
+				Timestamp: now,
+			})
+		}
 	}
 
 	response := map[string]any{
