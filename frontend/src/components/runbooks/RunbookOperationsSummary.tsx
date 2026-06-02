@@ -125,7 +125,10 @@ export function RunbookOperationsSummary({
   ]
 
   return (
-    <section className="grid min-w-0 grid-cols-5 gap-1.5" aria-label="Runbook operations summary">
+    <section
+      className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-5"
+      aria-label="Runbook operations summary"
+    >
       {items.map((item) => {
         const Icon = item.icon
         const isActionable = item.targetRunbookId != null
