@@ -475,3 +475,23 @@ func TestValidateRemoteExposureRequiresAllowedOriginWhenProvided(t *testing.T) {
 		t.Fatalf("ValidateRemoteExposure() unexpected error = %v", err)
 	}
 }
+
+func TestNilGuardFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	var g *Guard // nil receiver: every auth method must deny / not panic
+	if g.TokenRequired() {
+		t.Fatal("nil guard TokenRequired() = true, want false")
+	}
+	if g.TokenMatches("anything") {
+		t.Fatal("nil guard TokenMatches() = true, want false (fail closed)")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	if err := g.RequireAuth(req); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("nil guard RequireAuth() = %v, want ErrUnauthorized", err)
+	}
+	req.Header.Set("Origin", "https://evil.example")
+	if err := g.CheckOrigin(req); !errors.Is(err, ErrOriginDenied) {
+		t.Fatalf("nil guard CheckOrigin() = %v, want ErrOriginDenied", err)
+	}
+}

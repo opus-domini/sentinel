@@ -64,8 +64,23 @@ type Service struct {
 	// inFlight guards against overlapping runs of the same schedule: a schedule
 	// stays claimed for the lifetime of its run, so a tick that sees it still
 	// due (cron interval shorter than the run) skips it instead of double-firing.
+	// stopping (under the same lock) makes wg.Add and Stop's wg.Wait mutually
+	// exclusive, so a tick cannot register a new run after Stop began waiting.
 	inFlightMu sync.Mutex
 	inFlight   map[string]struct{}
+	stopping   bool
+}
+
+// beginRun registers a run goroutine with the wait group unless the scheduler
+// is stopping. It must wrap the matching wg.Done in the spawned goroutine.
+func (s *Service) beginRun() bool {
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+	if s.stopping {
+		return false
+	}
+	s.wg.Add(1)
+	return true
 }
 
 // New creates a scheduler service.
@@ -154,6 +169,10 @@ func (s *Service) Stop(ctx context.Context) {
 		if s.runCancel != nil {
 			s.runCancel()
 		}
+		// Reject any further run registrations so wg.Add cannot race wg.Wait.
+		s.inFlightMu.Lock()
+		s.stopping = true
+		s.inFlightMu.Unlock()
 		if s.doneCh == nil {
 			return
 		}
@@ -245,7 +264,10 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		keyJobID:   job.ID,
 	})
 
-	s.wg.Add(1)
+	if !s.beginRun() {
+		s.releaseSchedule(sched.ID)
+		return
+	}
 	go func() {
 		defer s.wg.Done()
 		defer s.releaseSchedule(sched.ID)

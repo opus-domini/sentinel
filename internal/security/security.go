@@ -181,11 +181,17 @@ func (g *Guard) ValidateTargetUser(targetUser string) error {
 
 // TokenRequired reports whether a token is required for value.
 func (g *Guard) TokenRequired() bool {
+	if g == nil {
+		return false
+	}
 	return g.token != ""
 }
 
-// CheckOrigin checks origin.
+// CheckOrigin checks origin. A nil guard fails closed (denies).
 func (g *Guard) CheckOrigin(r *http.Request) error {
+	if g == nil {
+		return ErrOriginDenied
+	}
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
 		return nil
@@ -209,8 +215,11 @@ func (g *Guard) CheckOrigin(r *http.Request) error {
 	return nil
 }
 
-// RequireAuth requires auth.
+// RequireAuth requires auth. A nil guard fails closed (denies).
 func (g *Guard) RequireAuth(r *http.Request) error {
+	if g == nil {
+		return ErrUnauthorized
+	}
 	if !g.TokenMatches(cookieToken(r)) {
 		return ErrUnauthorized
 	}
@@ -292,8 +301,11 @@ func (g *Guard) trustsRemote(remoteAddr string) bool {
 	return false
 }
 
-// TokenMatches reports whether a token matches value.
+// TokenMatches reports whether a token matches value. A nil guard fails closed.
 func (g *Guard) TokenMatches(token string) bool {
+	if g == nil {
+		return false
+	}
 	if !g.TokenRequired() {
 		return true
 	}
