@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.9.0](https://github.com/opus-domini/sentinel/compare/v0.8.3...v0.9.0) (2026-06-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* alerts, guardrails, tmux timeline/markers, the global activity feed, related storage tables/migrations, and alert webhook settings are removed. Existing local databases/configs with legacy tables or [alerts] config should be reset or cleaned; run/restart Sentinel after migration, and use sentinel db reset if you can discard local operational history.
+
+### Features
+
+* hard-cut alerts, guardrails, timeline, and activity feed ([55458a2](https://github.com/opus-domini/sentinel/commit/55458a2d313986c9d67dc46bd0c060a5ca04869f))
+
+
+### Bug Fixes
+
+* **alerts:** drop the full-height bordered box from the empty state ([2e3c493](https://github.com/opus-domini/sentinel/commit/2e3c4939f8d2c0cfbea7c93267cce6dd36252b43))
+* **api,store:** make runbook approval transition atomic ([45a8d09](https://github.com/opus-domini/sentinel/commit/45a8d093f202c296c8324f8c6363253365054ff4))
+* **api,validate:** block tmux flag injection and probe with request context ([76ce189](https://github.com/opus-domini/sentinel/commit/76ce189ef6df7a236b3fb264834c1abd982c72cf))
+* **api:** deliver alert.created webhooks for service-action alerts ([106aa2e](https://github.com/opus-domini/sentinel/commit/106aa2ece82c63089da2a1a8b82b3134c20fbdc3))
+* **api:** don't clobber session owner when preset session already exists ([5d700bc](https://github.com/opus-domini/sentinel/commit/5d700bc60c334ea6486a72b771295704a318deb4))
+* **api:** serialize config-file writes under a dedicated mutex ([1336c04](https://github.com/opus-domini/sentinel/commit/1336c04bba9e31127858a313b02a0e447617021a))
+* **cli:** redact webhook URLs in config show output ([40203d8](https://github.com/opus-domini/sentinel/commit/40203d8dcc1e06bc3d1a69549ae37e6e4effe845))
+* **events:** deliver and close subscriber channels under one lock ([5067647](https://github.com/opus-domini/sentinel/commit/5067647661d5707f9153b95a9c8470ba1e5fb583))
+* **mobile:** collapse the bottom-nav gap when the keyboard opens ([524dbb3](https://github.com/opus-domini/sentinel/commit/524dbb34eb629b9251f1ffa14e01da407cd82aee))
+* **mobile:** flatten bottom navigation ([c5136dd](https://github.com/opus-domini/sentinel/commit/c5136ddd7c733fd9ac66c3cf54a7b6bf8facad84))
+* **mobile:** full-width the orphaned runbook summary card ([8d4a905](https://github.com/opus-domini/sentinel/commit/8d4a905428206431434d23ea3313fe4da2914c4e))
+* **mobile:** let the runbook detail scroll and reveal it on select ([4a455de](https://github.com/opus-domini/sentinel/commit/4a455decf30bd599cf07ec29ebf7cdcee583f765))
+* **mobile:** open sidebar from active bottom nav item ([8e2e1da](https://github.com/opus-domini/sentinel/commit/8e2e1dae3540abaf367e83649abf91c9363f4c91))
+* **mobile:** tighten the services screen so more units fit ([cb7aa34](https://github.com/opus-domini/sentinel/commit/cb7aa347f83150573b4c8d91d35388f6025d39b7))
+* **nav:** de-duplicate mobile navigation and stop truncating Activities ([dfbdfa2](https://github.com/opus-domini/sentinel/commit/dfbdfa21aa04f4ee4ab5ad1ef39cfa0f99893d43))
+* **runbook,guardrails:** enforce guardrails on runbook execution ([9004706](https://github.com/opus-domini/sentinel/commit/9004706c0613f0d1805b5a2df075d7ad21f97a34))
+* **runbook:** per-attempt step timeout, preserve results on resume, no orphan runs ([e3f6bfd](https://github.com/opus-domini/sentinel/commit/e3f6bfd20f1eae4a4bdb92a1cb4914dee4e0b715))
+* **runbooks:** stack the operations summary into two columns on mobile ([b6e1b3c](https://github.com/opus-domini/sentinel/commit/b6e1b3cf81c342b1a153f14e557b25f5b825644f))
+* **scheduler,report,security:** harden shutdown races and nil guards ([479cd27](https://github.com/opus-domini/sentinel/commit/479cd27320b4a8d0f702badcfb034b894999fc22))
+* **scheduler:** advance next_run_at before creating the run ([022c45a](https://github.com/opus-domini/sentinel/commit/022c45a037fc2199bf8f2cee1c32886905bdfe6c))
+* **scheduler:** on run completion update only last-run, not next_run_at ([5319c35](https://github.com/opus-domini/sentinel/commit/5319c35d42f5f1644c47cbb8dc90c6ceca42c229))
+* **scheduler:** prevent overlapping runs of the same schedule ([d04116b](https://github.com/opus-domini/sentinel/commit/d04116b529111910536189b209cfabefe0b95087))
+* **scheduler:** substitute runbook parameters on scheduled runs ([a1849d7](https://github.com/opus-domini/sentinel/commit/a1849d74e0d05225a54a57c8536c40e7a24b33b2))
+* **security:** compare Origin host case-insensitively in CheckOrigin ([0f0a1fa](https://github.com/opus-domini/sentinel/commit/0f0a1fa243d91f0b27e9c7655c16145e6a0306de))
+* **server,ui:** recover panics in request and WS/PTY goroutines ([77b2c9f](https://github.com/opus-domini/sentinel/commit/77b2c9f941687478d5cdd93c3b90e3a7591247e9))
+* **services:** collapse mobile unit actions into a primary + overflow menu ([ccbf879](https://github.com/opus-domini/sentinel/commit/ccbf8793efe8a74103f1ca6c9eab094ac07fc18a))
+* **services:** honor context in darwin metric collectors ([7defc56](https://github.com/opus-domini/sentinel/commit/7defc56a8ab2e6fb65d5eb5b800ef7ae3c37f139))
+* **services:** sample CPU outside the metrics lock ([13b5ddd](https://github.com/opus-domini/sentinel/commit/13b5ddd65b3bdbf8f37e08fe25f33e4f3a32d765))
+* **store:** clamp watchtower seen_revision so mark-seen is not lost ([fdca054](https://github.com/opus-domini/sentinel/commit/fdca0548bc0ffe23ebfbb08cd5b0111898282b49))
+* **store:** close managed-window cursor on scan error ([09a1c4e](https://github.com/opus-domini/sentinel/commit/09a1c4e1701026668e5a98dbabeed86253ed5059))
+* **store:** exclude already-resolved alerts from BulkAck re-fetch ([f022bb5](https://github.com/opus-domini/sentinel/commit/f022bb53d385de387b03c020de3a96395846a9d3))
+* **terminal:** don't hijack typing in inputs outside the terminal ([8f23638](https://github.com/opus-domini/sentinel/commit/8f2363870faa8bb616db7a370d7496f7da2a9298))
+* **tmux,runbooks:** mobile-aware empty states and idle terminal controls ([4d3ab3b](https://github.com/opus-domini/sentinel/commit/4d3ab3b42e77219cec3fccdd3912b847ac2375d0))
+* **tmux:** propagate context cancellation through classifyError and CapturePane ([cedd041](https://github.com/opus-domini/sentinel/commit/cedd041288fde3263b7a97c603ceb2a2fc78322f))
+* **tmux:** surface session activity in collapsed tabs ([ee4d440](https://github.com/opus-domini/sentinel/commit/ee4d4401785310ae0d9ead026683d22f503c1bd6))
+* **ui:** add baseline security headers to SPA and asset responses ([57a94d4](https://github.com/opus-domini/sentinel/commit/57a94d43583a85b80566f5db2ce68b918d951ff3))
+* **updater:** fsync binaries and use exclusive open for durability/TOCTOU ([3280b57](https://github.com/opus-domini/sentinel/commit/3280b57a2b376d691bbcadd138198b6880ee18e4))
+* **ws,guardrails,daemon:** close broken WS writes, normalize rule mode, harden unit handling ([6e52ac1](https://github.com/opus-domini/sentinel/commit/6e52ac13f29c9cbf66ad6392809bcab91a8fa168))
+* **ws:** bound idle and slow peers with read/write deadlines ([f729245](https://github.com/opus-domini/sentinel/commit/f729245707a514b79f25b7139a43d7bb196333dc))
+
+
+### Performance
+
+* **logs:** virtualize the LogViewer line list ([e30c729](https://github.com/opus-domini/sentinel/commit/e30c729ee64ad7b89d085c4aa5cf1805eee58b10))
+* **watchtower:** batch per-tick metric writes into one transaction ([8e4a844](https://github.com/opus-domini/sentinel/commit/8e4a8442bd9bf9e4f9226e4310b496b36a43cd59))
+
 ## [0.8.3](https://github.com/opus-domini/sentinel/compare/v0.8.2...v0.8.3) (2026-06-01)
 
 ### Bug Fixes
