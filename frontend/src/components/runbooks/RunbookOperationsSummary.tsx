@@ -126,7 +126,7 @@ export function RunbookOperationsSummary({
 
   return (
     <section
-      className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-5"
+      className="grid min-w-0 grid-cols-2 gap-1.5 [&>*:last-child]:col-span-2 sm:grid-cols-5 sm:[&>*:last-child]:col-span-1"
       aria-label="Runbook operations summary"
     >
       {items.map((item) => {
