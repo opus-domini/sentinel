@@ -14,18 +14,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/services"
-	"github.com/opus-domini/sentinel/internal/store"
 )
-
-func newTestStore(t *testing.T) *store.Store {
-	t.Helper()
-	st, err := store.New(filepath.Join(t.TempDir(), "server-test.db"))
-	if err != nil {
-		t.Fatalf("store.New: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
-}
 
 func TestRequestLogSetsRequestIDAndCapturesStatus(t *testing.T) {
 	t.Parallel()
@@ -170,13 +159,10 @@ func TestStartMetricsTickerStopsOnCancel(t *testing.T) {
 func TestStartStoreTickersStopOnCancel(t *testing.T) {
 	t.Parallel()
 
-	st := newTestStore(t)
-	hub := events.NewHub()
-
 	tickers := map[string]func(context.Context) <-chan struct{}{
-		"alerts":   func(c context.Context) <-chan struct{} { return startAlertsTicker(c, st, hub) },
-		"activity": func(c context.Context) <-chan struct{} { return startActivityTicker(c, st, hub) },
-		"prune":    func(c context.Context) <-chan struct{} { return startOpsPruneTicker(c, st) },
+		"metrics": func(c context.Context) <-chan struct{} {
+			return startMetricsTicker(c, services.NewManager(time.Now(), nil), events.NewHub())
+		},
 	}
 	for name, start := range tickers {
 		t.Run(name, func(t *testing.T) {
@@ -233,85 +219,13 @@ func TestPublishMetrics(t *testing.T) {
 	}
 }
 
-func TestPublishAlertsIfChanged(t *testing.T) {
-	t.Parallel()
-
-	st := newTestStore(t)
-	hub := events.NewHub()
-	ch, unsub := hub.Subscribe(4)
-	defer unsub()
-	ctx := context.Background()
-
-	// A lastRev that cannot match the real revision forces a publish.
-	rev := publishAlertsIfChanged(ctx, st, hub, -1)
-	select {
-	case ev := <-ch:
-		if ev.Type != events.TypeOpsAlerts {
-			t.Fatalf("event type = %q, want %q", ev.Type, events.TypeOpsAlerts)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("no alerts event published on revision change")
-	}
-
-	// Passing the now-current revision must not publish again.
-	if got := publishAlertsIfChanged(ctx, st, hub, rev); got != rev {
-		t.Fatalf("unchanged revision returned %d, want %d", got, rev)
-	}
-	select {
-	case ev := <-ch:
-		t.Fatalf("unexpected event published for unchanged revision: %q", ev.Type)
-	case <-time.After(100 * time.Millisecond):
-	}
-}
-
-func TestPublishActivityIfChanged(t *testing.T) {
-	t.Parallel()
-
-	st := newTestStore(t)
-	hub := events.NewHub()
-	ch, unsub := hub.Subscribe(4)
-	defer unsub()
-	ctx := context.Background()
-
-	rev := publishActivityIfChanged(ctx, st, hub, -1)
-	select {
-	case ev := <-ch:
-		if ev.Type != events.TypeOpsActivity {
-			t.Fatalf("event type = %q, want %q", ev.Type, events.TypeOpsActivity)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("no activity event published on revision change")
-	}
-
-	if got := publishActivityIfChanged(ctx, st, hub, rev); got != rev {
-		t.Fatalf("unchanged revision returned %d, want %d", got, rev)
-	}
-}
-
-func TestPruneOpsActivity(t *testing.T) {
-	t.Parallel()
-
-	pruneOpsActivity(context.Background(), newTestStore(t))
-}
-
 func TestTickHandlersWithClosedStore(t *testing.T) {
 	t.Parallel()
 
-	st, err := store.New(filepath.Join(t.TempDir(), "closed.db"))
-	if err != nil {
-		t.Fatalf("store.New: %v", err)
-	}
-	_ = st.Close()
 	hub := events.NewHub()
 	ctx := context.Background()
 
-	if got := publishAlertsIfChanged(ctx, st, hub, 7); got != 7 {
-		t.Fatalf("closed-store alerts returned %d, want lastRev 7", got)
-	}
-	if got := publishActivityIfChanged(ctx, st, hub, 9); got != 9 {
-		t.Fatalf("closed-store activity returned %d, want lastRev 9", got)
-	}
-	pruneOpsActivity(ctx, st)
+	publishMetrics(ctx, services.NewManager(time.Now(), nil), hub)
 }
 
 func TestRunFailsOnInvalidListenAddr(t *testing.T) {

@@ -22,7 +22,7 @@ describe('RunbookEditor', () => {
 
   afterEach(() => cleanup())
 
-  it('renders field errors as alerts with invalid ARIA and focuses the first invalid field', async () => {
+  it('renders field errors with invalid ARIA and focuses the first invalid field', async () => {
     render(
       <RunbookEditor
         draft={draft}

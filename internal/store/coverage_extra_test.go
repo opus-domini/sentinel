@@ -1,47 +1,11 @@
+// Package store persists Sentinel state in SQLite.
 package store
 
 import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/opus-domini/sentinel/internal/activity"
 )
-
-func TestCountActivityEventsBySource(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	defer func() { _ = s.Close() }()
-	ctx := context.Background()
-	now := time.Now().UTC()
-
-	events := []activity.EventWrite{
-		{Source: "service", EventType: "service.action", Message: "started", CreatedAt: now},
-		{Source: "service", EventType: "service.action", Message: "stopped", CreatedAt: now},
-		{Source: "alert", EventType: "alert.created", Message: "alert", CreatedAt: now},
-		{Source: "old", EventType: "old.event", Message: "old", CreatedAt: now.Add(-48 * time.Hour)},
-	}
-	for _, event := range events {
-		if _, err := s.InsertActivityEvent(ctx, event); err != nil {
-			t.Fatalf("InsertActivityEvent(%s): %v", event.Source, err)
-		}
-	}
-
-	counts, err := s.CountActivityEventsBySource(ctx, now.Add(-time.Hour))
-	if err != nil {
-		t.Fatalf("CountActivityEventsBySource: %v", err)
-	}
-	if counts["service"] != 2 {
-		t.Fatalf("service count = %d, want 2", counts["service"])
-	}
-	if counts["alert"] != 1 {
-		t.Fatalf("alert count = %d, want 1", counts["alert"])
-	}
-	if _, ok := counts["old"]; ok {
-		t.Fatalf("old source should be outside the since window: %#v", counts)
-	}
-}
 
 func TestGetSessionIcon(t *testing.T) {
 	t.Parallel()

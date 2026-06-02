@@ -17,11 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/activity"
-	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/guardrails"
-	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
@@ -109,7 +105,6 @@ type presenceRepo interface {
 	UpsertWatchtowerPresence(ctx context.Context, row store.WatchtowerPresenceWrite) error
 	ListWatchtowerJournalSince(ctx context.Context, sinceRev int64, limit int) ([]store.WatchtowerJournal, error)
 	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
-	SearchWatchtowerTimelineEvents(ctx context.Context, query store.WatchtowerTimelineQuery) (store.WatchtowerTimelineResult, error)
 }
 
 type opsRunbookRepo interface {
@@ -117,7 +112,6 @@ type opsRunbookRepo interface {
 	InsertOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
 	UpdateOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
 	DeleteOpsRunbook(ctx context.Context, id string) error
-	SuggestRunbooksForMarker(ctx context.Context, marker, sessionName string) ([]store.OpsRunbook, error)
 	// GetOpsRunbook is provided by runbook.Repo (embedded in handlerRepo).
 }
 
@@ -139,13 +133,12 @@ type opsScheduleRepo interface {
 	UpdateScheduleLastRun(ctx context.Context, id, lastRunAt, lastRunStatus string) error
 }
 
-type alertsActivityRepo interface {
-	ListAlerts(ctx context.Context, limit int, status string) ([]alerts.Alert, error)
-	DeleteAlert(ctx context.Context, id int64) error
-	UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error)
-	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
-	BulkAckAlerts(ctx context.Context, ids []int64, at time.Time) ([]alerts.Alert, error)
-	SearchActivityEvents(ctx context.Context, query activity.Query) (activity.Result, error)
+type customServicesRepo interface {
+	InsertCustomService(ctx context.Context, svc store.CustomServiceWrite) (store.CustomService, error)
+	DeleteCustomService(ctx context.Context, name string) error
+}
+
+type storageRepo interface {
 	GetStorageStats(ctx context.Context) (store.StorageStats, error)
 	FlushStorageResource(ctx context.Context, resource string) ([]store.StorageFlushResult, error)
 }
@@ -196,15 +189,8 @@ type managedTmuxWindowRepo interface {
 	DeleteManagedTmuxWindowsMissingRuntime(ctx context.Context, sessionName string, liveWindowIDs []string) error
 }
 
-type markerPatternsRepo interface {
-	ListMarkerPatterns(ctx context.Context) ([]store.MarkerPattern, error)
-	UpsertMarkerPattern(ctx context.Context, row store.MarkerPatternWrite) error
-	DeleteMarkerPattern(ctx context.Context, id string) error
-}
-
 // handlerRepo is the composite repository interface used by Handler.
-// It embeds runbook.Repo for async runbook execution (which provides
-// UpdateOpsRunbookRun, GetOpsRunbook, GetOpsRunbookRun, InsertActivityEvent).
+// It embeds runbook.Repo for async runbook execution.
 type sessionUserRepo interface {
 	SetSessionUser(ctx context.Context, session, user string) error
 	DeleteSessionUser(ctx context.Context, session string) error
@@ -222,14 +208,14 @@ type handlerRepo interface {
 	opsRunbookRepo
 	opsJobRepo
 	opsScheduleRepo
-	alertsActivityRepo
+	customServicesRepo
+	storageRepo
 	sessionDirectoryRepo
 	sessionPresetRepo
 	sessionLauncherRepo
 	tmuxLauncherReadRepo
 	tmuxLauncherWriteRepo
 	managedTmuxWindowRepo
-	markerPatternsRepo
 	sessionUserRepo
 }
 
@@ -243,9 +229,6 @@ type Handler struct {
 	ops              opsControlPlane
 	events           *events.Hub
 	repo             handlerRepo
-	orch             *opsOrchestrator
-	guardrails       *guardrails.Service
-	notifier         *notify.Notifier
 	version          string
 	configPath       string
 	timezone         string
@@ -322,8 +305,6 @@ func Register(
 		ops:              ops,
 		events:           eventsHub,
 		repo:             st,
-		orch:             &opsOrchestrator{repo: st},
-		guardrails:       guardrails.New(st),
 		version:          strings.TrimSpace(version),
 		configPath:       configPath,
 		timezone:         timezone,
@@ -337,22 +318,10 @@ func Register(
 	h.registerTmuxRoutes(mux)
 	h.registerServicesRoutes(mux)
 	h.registerRunbooksRoutes(mux)
-	h.registerAlertsRoutes(mux)
-	h.registerActivityRoutes(mux)
 	h.registerMetricsRoutes(mux)
-	h.registerGuardrailsRoutes(mux)
-	h.registerMarkersRoutes(mux)
 	h.registerSettingsRoutes(mux)
 	h.populateSessionUsersFromPresets(context.Background())
 	return h
-}
-
-// SetNotifier sets an optional webhook notifier for alert events.
-func (h *Handler) SetNotifier(n *notify.Notifier) {
-	if h == nil {
-		return
-	}
-	h.notifier = n
 }
 
 // Shutdown cancels in-flight runbook goroutines and waits for them.
@@ -648,20 +617,6 @@ type enrichedPane struct {
 	SeenRevision   int64  `json:"seenRevision"`
 	HasUnread      bool   `json:"hasUnread"`
 	ChangedAt      string `json:"changedAt,omitempty"`
-}
-
-func parseActivityLimitParam(raw string, fallback int) (int, error) {
-	if raw == "" {
-		return fallback, nil
-	}
-	parsed, err := strconv.Atoi(raw)
-	if err != nil || parsed <= 0 {
-		return 0, errors.New("limit must be > 0")
-	}
-	if parsed > 500 {
-		parsed = 500
-	}
-	return parsed, nil
 }
 
 func decodeJSON(r *http.Request, dst any) error {

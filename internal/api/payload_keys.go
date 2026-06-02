@@ -6,13 +6,8 @@ package api
 // across every handler.
 const (
 	keyAction        = "action"
-	keyAlert         = "alert"
-	keyAlertID       = "alertId"
-	keyAlerts        = "alerts"
 	keyAuthenticated = "authenticated"
 	keyCreated       = "created"
-	keyDecision      = "decision"
-	keyDedupeKey     = "dedupeKey"
 	keyDeleted       = "deleted"
 	keyDirs          = "dirs"
 	keyEvent         = "event"
@@ -26,9 +21,7 @@ const (
 	keyName          = "name"
 	keyOverview      = "overview"
 	keyPaneID        = "paneId"
-	keyPatterns      = "patterns"
 	keyRemoved       = "removed"
-	keyRules         = "rules"
 	keyRun           = "run"
 	keyRunbook       = "runbook"
 	keyRunbookID     = "runbookId"

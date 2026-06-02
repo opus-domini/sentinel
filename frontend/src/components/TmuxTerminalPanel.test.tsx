@@ -80,8 +80,6 @@ const baseProps = {
   onSelectTab: () => {},
   onCloseTab: () => {},
   onReorderTabs: () => {},
-  onOpenGuardrails: () => {},
-  onOpenTimeline: () => {},
   onOpenCreateSession: () => {},
   onResync: () => {},
 }

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/validate"
@@ -554,14 +553,6 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "window.create",
-		SessionName: session,
-		WindowIndex: -1,
-	}); !ok {
-		return
-	}
-
 	svc := h.tmuxForSession(ctx, session)
 	createdWindow, err := svc.NewWindow(ctx, session)
 	if err != nil {
@@ -640,14 +631,6 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("failed to resolve managed tmux window before delete", keySession, session, keyIndex, req.Index, "err", managedErr)
 	}
 
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "window.kill",
-		SessionName: session,
-		WindowIndex: req.Index,
-	}); !ok {
-		return
-	}
-
 	if err := h.tmuxForSession(ctx, session).KillWindow(ctx, session, req.Index); err != nil {
 		writeTmuxError(w, err)
 		return
@@ -697,15 +680,6 @@ func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
 		return
 	}
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "pane.kill",
-		SessionName: session,
-		WindowIndex: -1,
-		PaneID:      req.PaneID,
-	}); !ok {
-		return
-	}
-
 	if err := h.tmuxForSession(ctx, session).KillPane(ctx, req.PaneID); err != nil {
 		writeTmuxError(w, err)
 		return
@@ -758,15 +732,6 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
 		return
 	}
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "pane.split",
-		SessionName: session,
-		WindowIndex: -1,
-		PaneID:      req.PaneID,
-	}); !ok {
-		return
-	}
-
 	svc := h.tmuxForSession(ctx, session)
 	createdPaneID, err := svc.SplitPane(ctx, req.PaneID, req.Direction)
 	if err != nil {

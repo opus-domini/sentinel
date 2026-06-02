@@ -90,11 +90,11 @@ The sidebar shows a user badge on sessions owned by a different user than the Se
 
 Session-user mappings are stored in the `session_users` SQLite table:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `session_name` | TEXT | Primary key, matches the tmux session name |
-| `user` | TEXT | OS username that owns the session |
-| `updated_at` | DATETIME | Last modification timestamp |
+| Column         | Type     | Description                                |
+| -------------- | -------- | ------------------------------------------ |
+| `session_name` | TEXT     | Primary key, matches the tmux session name |
+| `user`         | TEXT     | OS username that owns the session          |
+| `updated_at`   | DATETIME | Last modification timestamp                |
 
 Mappings are created on session creation, migrated on session rename, and deleted on session kill. The `ListSessionUsers` query provides the full map for Watchtower and the session list API.
 

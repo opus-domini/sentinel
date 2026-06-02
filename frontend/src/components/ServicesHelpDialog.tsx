@@ -52,8 +52,8 @@ export default function ServicesHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Actions</h3>
               <p>
-                Start, stop, and restart services directly from the detail view. Actions are
-                executed through the ops control plane and recorded in the timeline.
+                Start, stop, and restart services directly from the detail view through the ops
+                control plane.
               </p>
             </section>
             <section>

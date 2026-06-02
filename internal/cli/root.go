@@ -14,7 +14,7 @@ func newRootCmd(app *App) *cobra.Command {
 		Use:   "sentinel",
 		Short: "Sentinel command-line interface",
 		Long: "Sentinel is a host operations platform: a single binary serving a\n" +
-			"browser UI for tmux sessions, service monitoring, alerts and recovery.\n" +
+			"browser UI for tmux sessions, service monitoring, metrics and runbooks.\n" +
 			"This is its CLI — start the server with `sentinel daemon`, manage the\n" +
 			"local service, run diagnostics and apply binary updates.",
 		Version:       currentVersionFn(),

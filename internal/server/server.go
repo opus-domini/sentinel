@@ -150,36 +150,17 @@ func Serve(version string) int {
 		watchtowerService.Start(context.Background())
 	}
 
-	alertNotifier := notify.New(cfg.Alerts.WebhookURL, cfg.Alerts.WebhookEvents)
-	if alertNotifier != nil {
-		slog.Info("alert webhook enabled", "url", cfg.Alerts.WebhookURL)
-	}
-
-	healthChecker := services.NewHealthChecker(opsManager, st, func(eventType string, payload map[string]any) {
-		eventHub.Publish(events.NewEvent(eventType, payload))
-	}, 0, services.AlertThresholds{
-		CPUPercent:  cfg.Alerts.CPUPercent,
-		MemPercent:  cfg.Alerts.MemPercent,
-		DiskPercent: cfg.Alerts.DiskPercent,
-	})
-	healthChecker.SetActivityRepo(st)
-	healthChecker.SetNotifier(alertNotifier)
-	healthChecker.SetUpdaterStateDir(cfg.DataDir())
-	healthChecker.Start(context.Background())
-
 	schedulerService := scheduler.New(st, st, scheduler.Options{
 		TickInterval: 5 * time.Second,
 		EventHub:     eventHub,
-		AlertRepo:    st,
-		Guardrail:    apiHandler.RunbookGuardrail(),
 	})
 	schedulerService.Start(context.Background())
 
 	// Health report generator (optional: requires webhook URL + schedule).
 	var reportGen *report.Generator
 	if cfg.HealthReport.WebhookURL != "" {
-		reportNotifier := notify.New(cfg.HealthReport.WebhookURL, nil)
-		reportGen = report.New(st, opsManager, reportNotifier)
+		reportNotifier := notify.New(cfg.HealthReport.WebhookURL)
+		reportGen = report.New(opsManager, reportNotifier)
 		if cfg.HealthReport.Schedule != "" {
 			if err := reportGen.StartSchedule(context.Background(), cfg.HealthReport.Schedule, cfg.Server.Timezone); err != nil {
 				slog.Warn("health report schedule failed to start", "error", err)
@@ -192,17 +173,6 @@ func Serve(version string) int {
 	metricsCtx, stopMetrics := context.WithCancel(context.Background())
 	metricsDone := startMetricsTicker(metricsCtx, opsManager, eventHub)
 
-	alertsCtx, stopAlerts := context.WithCancel(context.Background())
-	alertsDone := startAlertsTicker(alertsCtx, st, eventHub)
-
-	activityCtx, stopActivity := context.WithCancel(context.Background())
-	activityDone := startActivityTicker(activityCtx, st, eventHub)
-
-	pruneCtx, stopPrune := context.WithCancel(context.Background())
-	pruneDone := startOpsPruneTicker(pruneCtx, st)
-
-	apiHandler.SetNotifier(alertNotifier)
-
 	exitCode := run(version, cfg, mux)
 
 	// Shutdown in LIFO order: API handler first (drains in-flight requests),
@@ -212,13 +182,7 @@ func Serve(version string) int {
 	apiHandler.Shutdown(apiShutdownCtx)
 	cancelAPI()
 
-	stopPrune()
-	stopActivity()
-	stopAlerts()
 	stopMetrics()
-	<-pruneDone
-	<-activityDone
-	<-alertsDone
 	<-metricsDone
 
 	stopReportCtx, cancelReport := context.WithTimeout(context.Background(), 2*time.Second)
@@ -228,10 +192,6 @@ func Serve(version string) int {
 	stopSchedulerCtx, cancelScheduler := context.WithTimeout(context.Background(), 2*time.Second)
 	schedulerService.Stop(stopSchedulerCtx)
 	cancelScheduler()
-
-	stopHealthCtx, cancelHealth := context.WithTimeout(context.Background(), 2*time.Second)
-	healthChecker.Stop(stopHealthCtx)
-	cancelHealth()
 
 	if cfg.Watchtower.Enabled {
 		stopWatchtowerCtx, cancelWatchtower := context.WithTimeout(context.Background(), 2*time.Second)

@@ -13,16 +13,12 @@ func TestIsStorageResource(t *testing.T) {
 		input string
 		want  bool
 	}{
-		{"timeline", StorageResourceTimeline, true},
 		{"activity_log", StorageResourceActivityLog, true},
-		{"guardrail_log", StorageResourceGuardrailLog, true},
-		{"ops_activity", StorageResourceOpsActivity, true},
-		{"ops_alerts", StorageResourceOpsAlerts, true},
 		{"ops_jobs", StorageResourceOpsJobs, true},
 		{"all", StorageResourceAll, true},
-		{"uppercase_timeline", "TIMELINE", true},
-		{"mixed_case", "Timeline", true},
-		{"with_spaces", "  timeline  ", true},
+		{"uppercase_activity_log", "ACTIVITY-JOURNAL", true},
+		{"mixed_case", "Activity-Journal", true},
+		{"with_spaces", "  activity-journal  ", true},
 
 		{"empty", "", false},
 		{"unknown", "unknown-resource", false},
@@ -47,7 +43,7 @@ func TestNormalizeStorageResource(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"Timeline", "timeline"},
+		{"Activity-Journal", "activity-journal"},
 		{"  ACTIVITY-JOURNAL  ", "activity-journal"},
 		{"all", "all"},
 		{"", ""},
@@ -72,15 +68,15 @@ func TestFlushSingleResource(t *testing.T) {
 	ctx := context.Background()
 
 	// Flush a single resource (should succeed even when empty).
-	results, err := s.FlushStorageResource(ctx, StorageResourceTimeline)
+	results, err := s.FlushStorageResource(ctx, StorageResourceActivityLog)
 	if err != nil {
-		t.Fatalf("FlushStorageResource(timeline): %v", err)
+		t.Fatalf("FlushStorageResource(activity-journal): %v", err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("len(results) = %d, want 1", len(results))
 	}
-	if results[0].Resource != StorageResourceTimeline {
-		t.Fatalf("resource = %q, want %q", results[0].Resource, StorageResourceTimeline)
+	if results[0].Resource != StorageResourceActivityLog {
+		t.Fatalf("resource = %q, want %q", results[0].Resource, StorageResourceActivityLog)
 	}
 }
 

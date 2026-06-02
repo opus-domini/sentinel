@@ -3,7 +3,6 @@ package watchtower
 import (
 	"context"
 	"log/slog"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +20,6 @@ const (
 	defaultCaptureLines   = 80
 	defaultCaptureTimeout = 150 * time.Millisecond
 	defaultJournalRows    = 5000
-	defaultTimelineRows   = 20000
 
 	runtimeGlobalRevKey          = "global_rev"
 	runtimeCollectTotalKey       = "collect_total"
@@ -61,25 +59,11 @@ type paneRepo interface {
 	DeleteManagedTmuxWindowsMissingRuntime(ctx context.Context, sessionName string, liveWindowIDs []string) error
 }
 
-// paneRuntimeRepo covers pane runtime tracking.
-type paneRuntimeRepo interface {
-	UpsertWatchtowerPaneRuntime(ctx context.Context, row store.WatchtowerPaneRuntimeWrite) error
-	ListWatchtowerPaneRuntimeBySession(ctx context.Context, sessionName string) ([]store.WatchtowerPaneRuntime, error)
-	PurgeWatchtowerPaneRuntime(ctx context.Context, sessionName string, activePaneIDs []string) error
-}
-
-// journalRepo covers journal/timeline insert, prune, and timeline events.
+// journalRepo covers journal insert and prune operations.
 type journalRepo interface {
 	InsertWatchtowerJournal(ctx context.Context, row store.WatchtowerJournalWrite) (int64, error)
-	InsertWatchtowerTimelineEvent(ctx context.Context, row store.WatchtowerTimelineEventWrite) (int64, error)
 	PruneWatchtowerJournalRows(ctx context.Context, maxRows int) (int64, error)
-	PruneWatchtowerTimelineRows(ctx context.Context, maxRows int) (int64, error)
 	PruneWatchtowerPresence(ctx context.Context, now time.Time) (int64, error)
-}
-
-// markerRepo covers marker pattern access for the pane content scanner.
-type markerRepo interface {
-	ListMarkerPatterns(ctx context.Context) ([]store.MarkerPattern, error)
 }
 
 // runtimeRepo covers key-value runtime state.
@@ -93,10 +77,8 @@ type runtimeRepo interface {
 type watchtowerStore interface {
 	projectionRepo
 	paneRepo
-	paneRuntimeRepo
 	journalRepo
 	runtimeRepo
-	markerRepo
 }
 
 // Compile-time check: *store.Store satisfies watchtowerStore.
@@ -111,7 +93,6 @@ type Options struct {
 	CaptureLines   int
 	CaptureTimeout time.Duration
 	JournalRows    int
-	TimelineRows   int
 	Collect        CollectFunc
 	Publish        func(eventType string, payload map[string]any)
 
@@ -132,13 +113,6 @@ type Service struct {
 
 	stopFn context.CancelFunc
 	doneCh chan struct{}
-
-	// markerCache holds the last loaded marker patterns and the time they
-	// were refreshed. Access is guarded by markerMu.
-	markerMu       sync.Mutex
-	markerCache    []store.MarkerPattern
-	markerCacheAt  time.Time
-	markerCacheTTL time.Duration
 
 	// userCache holds the last resolved multi-user list with a TTL.
 	userCache     []string
@@ -190,14 +164,10 @@ func New(st watchtowerStore, tm tmuxClient, options Options) *Service {
 	if options.JournalRows <= 0 {
 		options.JournalRows = defaultJournalRows
 	}
-	if options.TimelineRows <= 0 {
-		options.TimelineRows = defaultTimelineRows
-	}
 	return &Service{
-		store:          st,
-		tmux:           tm,
-		options:        options,
-		markerCacheTTL: 30 * time.Second,
+		store:   st,
+		tmux:    tm,
+		options: options,
 	}
 }
 
@@ -273,7 +243,6 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 		s.recordCollectMetrics(ctx, startedAt, sessionsCount, changedCount, err)
 	}()
 
-	s.refreshMarkerCache(ctx)
 	s.prunePresenceBestEffort(ctx)
 
 	tagged, proceed, err := s.listCollectSessions(ctx)
@@ -305,7 +274,6 @@ type collectSummary struct {
 	activeSessions              []string
 	changedSessions             []string
 	activeWindowChangedSessions []string
-	timelineChangedSessions     map[string]struct{}
 }
 
 func (s *Service) prunePresenceBestEffort(ctx context.Context) {
@@ -356,12 +324,11 @@ func (s *Service) listCollectSessions(ctx context.Context) ([]taggedSession, boo
 
 func (s *Service) collectSessionsProjection(ctx context.Context, sessions []taggedSession) collectSummary {
 	summary := collectSummary{
-		activeSessions:          make([]string, 0, len(sessions)),
-		changedSessions:         make([]string, 0, len(sessions)),
-		timelineChangedSessions: make(map[string]struct{}, len(sessions)),
+		activeSessions:  make([]string, 0, len(sessions)),
+		changedSessions: make([]string, 0, len(sessions)),
 	}
 	for _, ts := range sessions {
-		keep, changed, timelineChanged, activeWindowSwitched, collectErr := s.collectSession(ctx, ts)
+		keep, changed, activeWindowSwitched, collectErr := s.collectSession(ctx, ts)
 		if collectErr != nil {
 			slog.Warn("watchtower collect session failed", "session", ts.Name, "user", ts.user, "err", collectErr)
 		}
@@ -374,9 +341,6 @@ func (s *Service) collectSessionsProjection(ctx context.Context, sessions []tagg
 		}
 		if activeWindowSwitched {
 			summary.activeWindowChangedSessions = append(summary.activeWindowChangedSessions, ts.Name)
-		}
-		if timelineChanged {
-			summary.timelineChangedSessions[ts.Name] = struct{}{}
 		}
 	}
 	return summary
@@ -415,9 +379,6 @@ func (s *Service) pruneRetentionBestEffort(ctx context.Context) {
 	if _, err := s.store.PruneWatchtowerJournalRows(ctx, s.options.JournalRows); err != nil {
 		slog.Warn("watchtower prune journal failed", "err", err)
 	}
-	if _, err := s.store.PruneWatchtowerTimelineRows(ctx, s.options.TimelineRows); err != nil {
-		slog.Warn("watchtower prune timeline failed", "err", err)
-	}
 }
 
 func (s *Service) publishCollectEvents(ctx context.Context, summary collectSummary, globalRev int64) {
@@ -451,30 +412,6 @@ func (s *Service) publishCollectEvents(ctx context.Context, summary collectSumma
 			"action":  "active-window-changed",
 		})
 	}
-
-	sessionsPayload := sortedNonEmptySessionNames(summary.timelineChangedSessions)
-	if len(sessionsPayload) == 0 {
-		return
-	}
-	s.options.Publish(events.TypeTmuxTimeline, map[string]any{
-		keySessions: sessionsPayload,
-	})
-}
-
-func sortedNonEmptySessionNames(values map[string]struct{}) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(values))
-	for sessionName := range values {
-		trimmed := strings.TrimSpace(sessionName)
-		if trimmed == "" {
-			continue
-		}
-		out = append(out, trimmed)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func (s *Service) buildSessionActivityPatches(ctx context.Context, sessionNames []string) []map[string]any {
@@ -529,20 +466,20 @@ func (s *Service) buildInspectorActivityPatches(ctx context.Context, sessionName
 	return patches
 }
 
-// collectSession returns (keep, changed, timelineChanged, activeWindowSwitched, err).
-func (s *Service) collectSession(ctx context.Context, ts taggedSession) (bool, bool, bool, bool, error) {
+// collectSession returns (keep, changed, activeWindowSwitched, err).
+func (s *Service) collectSession(ctx context.Context, ts taggedSession) (bool, bool, bool, error) {
 	state, keep, err := s.prepareCollectSessionState(ctx, ts)
 	if err != nil {
-		return keep, false, false, false, err
+		return keep, false, false, err
 	}
 	if !keep {
-		return false, false, false, false, nil
+		return false, false, false, nil
 	}
 	sessionChanged, err := state.collect()
 	if err != nil {
-		return true, false, false, false, err
+		return true, false, false, err
 	}
-	return true, sessionChanged, state.timelineChanged, state.activeWindowSwitched, nil
+	return true, sessionChanged, state.activeWindowSwitched, nil
 }
 
 func (s *Service) currentGlobalRev(ctx context.Context) (int64, error) {

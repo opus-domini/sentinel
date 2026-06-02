@@ -1,11 +1,10 @@
-import { Activity, Bell, Blocks, Clock, ScrollText, SquareTerminal } from 'lucide-react'
+import { Activity, Blocks, ScrollText, SquareTerminal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export type PrimaryNavItem = {
-  to: '/tmux' | '/metrics' | '/services' | '/alerts' | '/runbooks' | '/activities'
+  to: '/tmux' | '/metrics' | '/services' | '/runbooks'
   label: string
-  // shortLabel is used in width-constrained nav (the mobile bottom bar) so long
-  // names like "Activities" do not truncate to "Activit…". Falls back to label.
+  // shortLabel is used in width-constrained nav (the mobile bottom bar). Falls back to label.
   shortLabel?: string
   Icon: LucideIcon
 }
@@ -17,19 +16,9 @@ export const PRIMARY_NAV_ITEMS: Array<PrimaryNavItem> = [
     Icon: SquareTerminal,
   },
   {
-    to: '/metrics',
-    label: 'Metrics',
-    Icon: Activity,
-  },
-  {
     to: '/services',
     label: 'Services',
     Icon: Blocks,
-  },
-  {
-    to: '/alerts',
-    label: 'Alerts',
-    Icon: Bell,
   },
   {
     to: '/runbooks',
@@ -37,9 +26,8 @@ export const PRIMARY_NAV_ITEMS: Array<PrimaryNavItem> = [
     Icon: ScrollText,
   },
   {
-    to: '/activities',
-    label: 'Activities',
-    shortLabel: 'Activity',
-    Icon: Clock,
+    to: '/metrics',
+    label: 'Metrics',
+    Icon: Activity,
   },
 ]

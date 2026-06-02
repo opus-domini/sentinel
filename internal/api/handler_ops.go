@@ -6,16 +6,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/activity"
-	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/notify"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 )
@@ -122,12 +118,6 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	timelineEvent, timelineRecorded, firedAlerts, err := h.orch.RecordServiceAction(ctx, serviceStatus, req.Action, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist ops action", nil)
-		return
-	}
-
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
 		keyGlobalRev: globalRev,
@@ -139,39 +129,12 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 		keyGlobalRev: globalRev,
 		keyOverview:  overview,
 	})
-	if timelineRecorded {
-		h.emit(events.TypeOpsActivity, map[string]any{
-			keyGlobalRev: globalRev,
-			keyEvent:     timelineEvent,
-		})
-	}
-	if len(firedAlerts) > 0 {
-		h.emit(events.TypeOpsAlerts, map[string]any{
-			keyGlobalRev: globalRev,
-			keyAlerts:    firedAlerts,
-		})
-		// Deliver alert.created webhooks for alerts a service action raised, the
-		// same as the periodic health checker does for the alerts it fires.
-		host, _ := os.Hostname()
-		for _, alert := range firedAlerts {
-			h.notifier.SendAsync(notify.AlertWebhookPayload{
-				Event:     activity.EventAlertCreated,
-				Alert:     alert,
-				Host:      host,
-				Timestamp: now,
-			})
-		}
-	}
 
 	response := map[string]any{
 		keyService:   serviceStatus,
 		keyServices:  services,
 		keyOverview:  overview,
-		keyAlerts:    firedAlerts,
 		keyGlobalRev: globalRev,
-	}
-	if timelineRecorded {
-		response["timelineEvent"] = timelineEvent
 	}
 	writeData(w, http.StatusOK, response)
 }
@@ -207,210 +170,6 @@ func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) opsAlerts(w http.ResponseWriter, r *http.Request) {
-	if h.repo == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
-		return
-	}
-	limit, err := parseActivityLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-	status := strings.TrimSpace(r.URL.Query().Get(keyStatus))
-
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	alertsList, err := h.repo.ListAlerts(ctx, limit, status)
-	if err != nil {
-		if errors.Is(err, alerts.ErrInvalidFilter) {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load alerts", nil)
-		return
-	}
-	writeData(w, http.StatusOK, map[string]any{
-		keyAlerts: alertsList,
-	})
-}
-
-func (h *Handler) ackOpsAlert(w http.ResponseWriter, r *http.Request) {
-	alertRaw := strings.TrimSpace(r.PathValue(keyAlert))
-	alertID, err := strconv.ParseInt(alertRaw, 10, 64)
-	if err != nil || alertID <= 0 {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "alert must be a positive integer", nil)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
-	defer cancel()
-
-	now := time.Now().UTC()
-	alert, timelineEvent, timelineRecorded, err := h.orch.AckAlert(ctx, alertID, now)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "OPS_ALERT_NOT_FOUND", "alert not found", nil)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to ack alert", nil)
-		return
-	}
-
-	globalRev := now.UnixMilli()
-	h.emit(events.TypeOpsAlerts, map[string]any{
-		keyGlobalRev: globalRev,
-		keyAlert:     alert,
-		keyAction:    "ack",
-	})
-	if timelineRecorded {
-		h.emit(events.TypeOpsActivity, map[string]any{
-			keyGlobalRev: globalRev,
-			keyEvent:     timelineEvent,
-		})
-	}
-
-	host, _ := os.Hostname()
-	h.notifier.SendAsync(notify.AlertWebhookPayload{
-		Event:     activity.EventAlertAcked,
-		Alert:     alert,
-		Host:      host,
-		Timestamp: now,
-	})
-
-	writeData(w, http.StatusOK, map[string]any{
-		keyAlert:        alert,
-		"timelineEvent": timelineEvent,
-		keyGlobalRev:    globalRev,
-	})
-}
-
-func (h *Handler) bulkAckOpsAlerts(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		IDs []int64 `json:"ids"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-	if len(req.IDs) == 0 {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "ids must not be empty", nil)
-		return
-	}
-	if len(req.IDs) > 100 {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "ids must contain at most 100 items", nil)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	now := time.Now().UTC()
-	acked, err := h.repo.BulkAckAlerts(ctx, req.IDs, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to bulk ack alerts", nil)
-		return
-	}
-
-	for _, alert := range acked {
-		h.orch.RecordAlertAcked(ctx, alert, now)
-	}
-
-	globalRev := now.UnixMilli()
-	h.emit(events.TypeOpsAlerts, map[string]any{
-		keyGlobalRev: globalRev,
-		keyAlerts:    acked,
-		keyAction:    "bulk-ack",
-	})
-
-	host, _ := os.Hostname()
-	for _, alert := range acked {
-		h.notifier.SendAsync(notify.AlertWebhookPayload{
-			Event:     activity.EventAlertAcked,
-			Alert:     alert,
-			Host:      host,
-			Timestamp: now,
-		})
-	}
-
-	writeData(w, http.StatusOK, map[string]any{
-		"acked":      acked,
-		keyGlobalRev: globalRev,
-	})
-}
-
-func (h *Handler) deleteOpsAlert(w http.ResponseWriter, r *http.Request) {
-	alertRaw := strings.TrimSpace(r.PathValue(keyAlert))
-	alertID, err := strconv.ParseInt(alertRaw, 10, 64)
-	if err != nil || alertID <= 0 {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "alert must be a positive integer", nil)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
-	defer cancel()
-
-	if err := h.repo.DeleteAlert(ctx, alertID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "OPS_ALERT_NOT_FOUND", "alert not found or not resolved", nil)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete alert", nil)
-		return
-	}
-
-	now := time.Now().UTC()
-	h.orch.RecordAlertDeleted(ctx, alertID, now)
-
-	globalRev := now.UnixMilli()
-	h.emit(events.TypeOpsAlerts, map[string]any{
-		keyGlobalRev: globalRev,
-		keyAlertID:   alertID,
-		keyAction:    keyDeleted,
-	})
-
-	writeData(w, http.StatusOK, map[string]any{
-		keyDeleted:   alertID,
-		keyGlobalRev: globalRev,
-	})
-}
-
-func (h *Handler) opsActivity(w http.ResponseWriter, r *http.Request) {
-	if h.repo == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
-		return
-	}
-	limit, err := parseActivityLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), 100)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-	query := activity.Query{
-		Query:    strings.TrimSpace(r.URL.Query().Get("q")),
-		Severity: strings.TrimSpace(r.URL.Query().Get("severity")),
-		Source:   strings.TrimSpace(r.URL.Query().Get("source")),
-		Limit:    limit,
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	result, err := h.repo.SearchActivityEvents(ctx, query)
-	if err != nil {
-		if errors.Is(err, activity.ErrInvalidFilter) {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to query ops activity", nil)
-		return
-	}
-	writeData(w, http.StatusOK, map[string]any{
-		keyEvents: result.Events,
-		"hasMore": result.HasMore,
-	})
-}
-
 func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
@@ -439,15 +198,13 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	now := time.Now().UTC()
-	te, err := h.orch.RegisterService(ctx, store.CustomServiceWrite{
+	if _, err := h.repo.InsertCustomService(ctx, store.CustomServiceWrite{
 		Name:        req.Name,
 		DisplayName: req.DisplayName,
 		Manager:     req.Manager,
 		Unit:        req.Unit,
 		Scope:       req.Scope,
-	}, now)
-	if err != nil {
+	}); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			writeError(w, http.StatusConflict, "OPS_SERVICE_EXISTS", "service already registered", nil)
 		} else {
@@ -466,13 +223,7 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		services = []opsplane.ServiceStatus{}
 	}
 
-	globalRev := now.UnixMilli()
-	if te.ID > 0 {
-		h.emit(events.TypeOpsActivity, map[string]any{
-			keyGlobalRev: globalRev,
-			keyEvent:     te,
-		})
-	}
+	globalRev := time.Now().UTC().UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
 		keyGlobalRev: globalRev,
 		keyAction:    "registered",
@@ -503,9 +254,7 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	now := time.Now().UTC()
-	te, err := h.orch.UnregisterService(ctx, serviceName, now)
-	if err != nil {
+	if err := h.repo.DeleteCustomService(ctx, serviceName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "custom service not found", nil)
 			return
@@ -514,13 +263,7 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	globalRev := now.UnixMilli()
-	if te.ID > 0 {
-		h.emit(events.TypeOpsActivity, map[string]any{
-			keyGlobalRev: globalRev,
-			keyEvent:     te,
-		})
-	}
+	globalRev := time.Now().UTC().UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
 		keyGlobalRev: globalRev,
 		keyAction:    "unregistered",
@@ -668,28 +411,13 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC()
-	serviceStatus := opsplane.ServiceStatus{
-		Name:        req.Unit,
-		DisplayName: req.Unit,
-		Unit:        req.Unit,
-		Scope:       req.Scope,
-		Manager:     req.Manager,
-	}
-
-	timelineEvent, timelineRecorded, firedAlerts, err := h.orch.RecordServiceAction(ctx, serviceStatus, req.Action, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist ops action", nil)
-		return
-	}
-
 	overview, err := h.ops.Overview(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to refresh ops overview", nil)
 		return
 	}
 
-	globalRev := now.UnixMilli()
+	globalRev := time.Now().UTC().UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
 		keyGlobalRev: globalRev,
 		keyService:   req.Unit,
@@ -699,35 +427,9 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 		keyGlobalRev: globalRev,
 		keyOverview:  overview,
 	})
-	if timelineRecorded {
-		h.emit(events.TypeOpsActivity, map[string]any{
-			keyGlobalRev: globalRev,
-			keyEvent:     timelineEvent,
-		})
-	}
-	if len(firedAlerts) > 0 {
-		h.emit(events.TypeOpsAlerts, map[string]any{
-			keyGlobalRev: globalRev,
-			keyAlerts:    firedAlerts,
-		})
-		host, _ := os.Hostname()
-		for _, alert := range firedAlerts {
-			h.notifier.SendAsync(notify.AlertWebhookPayload{
-				Event:     activity.EventAlertCreated,
-				Alert:     alert,
-				Host:      host,
-				Timestamp: now,
-			})
-		}
-	}
-
 	response := map[string]any{
 		keyOverview:  overview,
-		keyAlerts:    firedAlerts,
 		keyGlobalRev: globalRev,
-	}
-	if timelineRecorded {
-		response["timelineEvent"] = timelineEvent
 	}
 	writeData(w, http.StatusOK, response)
 }

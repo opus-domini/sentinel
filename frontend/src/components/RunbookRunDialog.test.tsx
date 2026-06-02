@@ -63,7 +63,7 @@ describe('RunbookRunDialog', () => {
     expect(onConfirm).toHaveBeenCalledWith({})
   })
 
-  it('renders required and invalid parameter errors as alerts with ARIA on labelled controls', () => {
+  it('renders required and invalid parameter errors with ARIA on labelled controls', () => {
     const onConfirm = vi.fn()
 
     render(

@@ -4,14 +4,11 @@ package scheduler
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -40,10 +37,6 @@ type Options struct {
 	TickInterval  time.Duration
 	MaxConcurrent int
 	EventHub      *events.Hub
-	AlertRepo     runbook.AlertRepo
-	// Guardrail, when non-nil, is evaluated against each scheduled runbook
-	// command before execution (unattended runs are guarded like manual ones).
-	Guardrail runbook.GuardrailFunc
 }
 
 // Service runs scheduled runbook executions on a tick loop.
@@ -266,20 +259,6 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 
 	slog.Info("scheduler triggered run", "schedule", sched.ID, "runbook", sched.RunbookID, "job", job.ID)
 
-	// Record the "runbook.started" activity event (same as manual runs).
-	if _, err := s.runbookRepo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "runbook",
-		EventType: "runbook.started",
-		Severity:  "info",
-		Resource:  job.RunbookID,
-		Message:   fmt.Sprintf("Runbook started: %s", job.RunbookName),
-		Details:   fmt.Sprintf("job=%s steps=%d source=scheduler schedule=%s", job.ID, job.TotalSteps, sched.ID),
-		Metadata:  marshalStartedMetadata(job.ID, job.RunbookID, sched.ID),
-		CreatedAt: now,
-	}); err != nil {
-		slog.Warn("scheduler: record runbook.started event", "job", job.ID, "err", err)
-	}
-
 	s.publish(events.TypeScheduleUpdated, map[string]any{
 		"action":   "triggered",
 		"schedule": sched.ID,
@@ -310,11 +289,6 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 		Source:      "scheduler",
 		StepTimeout: stepTimeout,
 		Parameters:  params,
-		AlertRepo:   s.opts.AlertRepo,
-		Guardrail:   s.opts.Guardrail,
-		ExtraMetadata: map[string]string{
-			"scheduleId": scheduleID,
-		},
 		OnFinish: func(ctx context.Context, status string) {
 			finished := time.Now().UTC()
 			// Update only last_run_*; next_run_at/enabled were set at dispatch and
@@ -410,17 +384,4 @@ func (s *Service) publish(eventType string, payload map[string]any) {
 		return
 	}
 	s.opts.EventHub.Publish(events.NewEvent(eventType, payload))
-}
-
-func marshalStartedMetadata(jobID, runbookID, scheduleID string) string {
-	b, err := json.Marshal(map[string]string{
-		keyJobID:     jobID,
-		"runbookId":  runbookID,
-		"scheduleId": scheduleID,
-		"status":     "queued",
-	})
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
 }

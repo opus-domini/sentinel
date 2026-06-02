@@ -64,7 +64,7 @@ describe('SideRail', () => {
     expect(desktopSettingsButton).not.toBeNull()
   })
 
-  it('keeps metrics immediately after tmux in the desktop rail', () => {
+  it('uses the shared primary nav order in the desktop rail', () => {
     const { container } = render(
       <LayoutContext.Provider value={layoutValue}>
         <SideRail sidebarCollapsed={false} onToggleSidebarCollapsed={() => {}} />
@@ -75,6 +75,6 @@ describe('SideRail', () => {
       link.getAttribute('aria-label'),
     )
 
-    expect(links).toEqual(['Tmux', 'Metrics', 'Services', 'Alerts', 'Runbooks', 'Activities'])
+    expect(links).toEqual(['Tmux', 'Services', 'Runbooks', 'Metrics'])
   })
 })

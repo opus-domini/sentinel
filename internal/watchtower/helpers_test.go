@@ -2,130 +2,14 @@ package watchtower
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
-
-func TestNormalizeRuntimeCommand(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		current string
-		start   string
-		want    string
-	}{
-		{
-			name:    "prefers current command",
-			current: "  npm run dev  ",
-			start:   "bash",
-			want:    "npm run dev",
-		},
-		{
-			name:    "falls back to start command",
-			current: "   ",
-			start:   "  zsh  ",
-			want:    "zsh",
-		},
-		{
-			name:    "treats dash as empty",
-			current: "-",
-			start:   "bash",
-			want:    "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := normalizeRuntimeCommand(tt.current, tt.start); got != tt.want {
-				t.Fatalf("normalizeRuntimeCommand(%q, %q) = %q, want %q", tt.current, tt.start, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsShellLikeCommand(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		command string
-		want    bool
-	}{
-		{command: "", want: true},
-		{command: " bash ", want: true},
-		{command: "ZSH", want: true},
-		{command: "tmux", want: true},
-		{command: "python", want: false},
-		{command: "npm run dev", want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(strings.TrimSpace(tt.command), func(t *testing.T) {
-			t.Parallel()
-
-			if got := isShellLikeCommand(tt.command); got != tt.want {
-				t.Fatalf("isShellLikeCommand(%q) = %v, want %v", tt.command, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTimelineLastLine(t *testing.T) {
-	t.Parallel()
-
-	if got := timelineLastLine(" \nline one\n  final line  \n"); got != "final line" {
-		t.Fatalf("timelineLastLine returned %q, want %q", got, "final line")
-	}
-
-	longLine := strings.Repeat("x", 300)
-	got := timelineLastLine("first\n" + longLine)
-	if len(got) != 240 {
-		t.Fatalf("timelineLastLine length = %d, want 240", len(got))
-	}
-	if got != longLine[:240] {
-		t.Fatalf("timelineLastLine truncated value mismatch")
-	}
-}
-
-func TestTimelineMetadataJSON(t *testing.T) {
-	t.Parallel()
-
-	if got := string(timelineMetadataJSON(nil)); got != "{}" {
-		t.Fatalf("timelineMetadataJSON(nil) = %q, want {}", got)
-	}
-
-	payload := timelineMetadataJSON(map[string]any{
-		"pane":     "%1",
-		"exitCode": 1,
-	})
-	if !json.Valid(payload) {
-		t.Fatalf("timelineMetadataJSON returned invalid JSON: %s", string(payload))
-	}
-
-	var decoded map[string]any
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-	if decoded["pane"] != "%1" || decoded["exitCode"] != float64(1) {
-		t.Fatalf("decoded metadata = %#v", decoded)
-	}
-
-	fallback := timelineMetadataJSON(map[string]any{
-		"bad": make(chan int),
-	})
-	if string(fallback) != "{}" {
-		t.Fatalf("timelineMetadataJSON fallback = %q, want {}", string(fallback))
-	}
-}
 
 func TestManagedWindowRuntimeMap(t *testing.T) {
 	t.Parallel()
@@ -164,21 +48,6 @@ func TestWindowNamesByIndex(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("windowNamesByIndex = %#v, want %#v", got, want)
-	}
-}
-
-func TestSortedNonEmptySessionNames(t *testing.T) {
-	t.Parallel()
-
-	got := sortedNonEmptySessionNames(map[string]struct{}{
-		" beta ": {},
-		"":       {},
-		"alpha":  {},
-		"   ":    {},
-	})
-	want := []string{"alpha", "beta"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("sortedNonEmptySessionNames = %#v, want %#v", got, want)
 	}
 }
 

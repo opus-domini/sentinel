@@ -54,7 +54,6 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "tmux-panes", method: http.MethodGet, path: "/api/tmux/sessions/dev/panes"},
 		{name: "tmux-activity-delta", method: http.MethodGet, path: "/api/tmux/activity/delta"},
 		{name: "tmux-activity-stats", method: http.MethodGet, path: "/api/tmux/activity/stats"},
-		{name: "tmux-timeline", method: http.MethodGet, path: "/api/tmux/timeline"},
 		{name: "tmux-mark-seen", method: http.MethodPost, path: "/api/tmux/sessions/dev/seen", body: `{"scope":"session"}`},
 
 		{name: "ops-overview", method: http.MethodGet, path: "/api/ops/overview"},
@@ -67,13 +66,8 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "ops-unit-logs", method: http.MethodGet, path: "/api/ops/services/unit/logs?unit=ssh.service&scope=system&manager=systemd"},
 		{name: "ops-unit-action", method: http.MethodPost, path: "/api/ops/services/unit/action", body: `{"unit":"ssh.service","scope":"system","manager":"systemd","action":"restart"}`},
 
-		{name: "alerts-list", method: http.MethodGet, path: "/api/ops/alerts"},
-		{name: "alerts-ack", method: http.MethodPost, path: "/api/ops/alerts/1/ack"},
-		{name: "alerts-delete", method: http.MethodDelete, path: "/api/ops/alerts/1"},
-		{name: "activity", method: http.MethodGet, path: "/api/ops/activity"},
 		{name: "metrics", method: http.MethodGet, path: "/api/ops/metrics"},
 
-		{name: "runbooks-suggest", method: http.MethodGet, path: "/api/ops/runbooks/suggest?marker=error&session=dev"},
 		{name: "runbooks-list", method: http.MethodGet, path: "/api/ops/runbooks"},
 		{name: "runbooks-create", method: http.MethodPost, path: "/api/ops/runbooks", body: `{"id":"noop","name":"Noop","description":"noop","steps":[{"type":"run","title":"echo","command":"echo ok"}]}`},
 		{name: "runbooks-update", method: http.MethodPut, path: "/api/ops/runbooks/noop", body: `{"name":"Noop","description":"noop","steps":[{"type":"run","title":"echo","command":"echo ok"}]}`},
@@ -93,18 +87,8 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "config-patch", method: http.MethodPatch, path: "/api/ops/config", body: `{"logLevel":"info"}`},
 		{name: "settings-timezone", method: http.MethodPatch, path: "/api/ops/settings/timezone", body: `{"timezone":"UTC"}`},
 		{name: "settings-locale", method: http.MethodPatch, path: "/api/ops/settings/locale", body: `{"locale":"en-US"}`},
-		{name: "settings-webhook-get", method: http.MethodGet, path: "/api/ops/settings/webhook"},
-		{name: "settings-webhook-patch", method: http.MethodPatch, path: "/api/ops/settings/webhook", body: `{"url":"","events":[]}`},
-		{name: "webhook-test", method: http.MethodPost, path: "/api/ops/webhook/test", body: `{"url":"http://localhost:9999/hook"}`},
 		{name: "storage-stats", method: http.MethodGet, path: "/api/ops/storage/stats"},
-		{name: "storage-flush", method: http.MethodPost, path: "/api/ops/storage/flush", body: `{"resource":"timeline"}`},
-
-		{name: "guardrails-rules", method: http.MethodGet, path: "/api/ops/guardrails/rules"},
-		{name: "guardrails-create", method: http.MethodPost, path: "/api/ops/guardrails/rules", body: `{"pattern":"^test$","enabled":true}`},
-		{name: "guardrails-update", method: http.MethodPatch, path: "/api/ops/guardrails/rules/delete-session", body: `{"enabled":true}`},
-		{name: "guardrails-delete", method: http.MethodDelete, path: "/api/ops/guardrails/rules/delete-session"},
-		{name: "guardrails-audit", method: http.MethodGet, path: "/api/ops/guardrails/audit"},
-		{name: "guardrails-evaluate", method: http.MethodPost, path: "/api/ops/guardrails/evaluate", body: `{"action":"kill-session","args":{"session":"dev"}}`},
+		{name: "storage-flush", method: http.MethodPost, path: "/api/ops/storage/flush", body: `{"resource":"activity-journal"}`},
 	}
 
 	for _, tc := range routes {

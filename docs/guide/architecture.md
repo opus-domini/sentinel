@@ -8,17 +8,13 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/cli`: command parsing, help, completion, and formatted output.
 - `internal/server`: HTTP server bootstrap, background tickers, pinned-session restore.
 - `internal/ui`: SPA delivery, embedded frontend assets and WebSocket endpoints.
-- `internal/api`: authenticated HTTP API for tmux, recovery, operations, and metadata.
+- `internal/api`: authenticated HTTP API for tmux, operations, and metadata.
 - `internal/tmux`: tmux command adapter and behavior patches.
 - `internal/watchtower`: activity collector and unread projection engine.
-- `internal/recovery`: periodic snapshot and restore orchestration.
-- `internal/store`: SQLite schema and persistence (sessions metadata, watchtower, recovery, guardrails, marker patterns).
-- `internal/activity`: operations activity log and timeline projection.
-- `internal/alerts`: alert ingestion, state tracking, and notification rules.
-- `internal/notify`: webhook delivery with retry/backoff for alert and health report notifications.
+- `internal/store`: SQLite schema and persistence (sessions metadata, watchtower activity, runbooks, schedules, and services).
+- `internal/notify`: webhook delivery with retry/backoff for runbook and health report notifications.
 - `internal/report`: scheduled health report generation and webhook dispatch.
 - `internal/runbook`: runbook definition parsing, step execution (run/script/approval), shell validation, and webhook dispatch.
-- `internal/guardrails`: action-scope safety rules for destructive terminal commands.
 - `internal/scheduler`: cron-based job scheduling and execution engine.
 - `internal/term`: terminal abstraction and PTY lifecycle management.
 - `internal/updater`: binary self-update checks and apply logic.
@@ -26,19 +22,19 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/config`: TOML configuration loading with environment variable overrides (`SENTINEL_*`).
 - `internal/security`: bearer token authentication and CORS origin validation.
 - `internal/daemon`: systemd/launchd service install and lifecycle management.
-- `frontend`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/ops`, `/runbooks`, `/alerts`, `/activities`, `/metrics`.
+- `frontend`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/ops`, `/runbooks`, `/metrics`.
 
 ## Runtime Flow
 
 1. Server starts and loads config.
 2. Security guard applies token/origin policy.
-3. Watchtower and recovery services start (if enabled).
+3. Watchtower and operations services start.
 4. Frontend connects:
    - REST for initial snapshot (`/api/...`)
    - WebSocket for realtime updates (`/ws/events`)
    - PTY stream (`/ws/tmux`)
 5. UI uses optimistic mutations and reconciles with events/patches.
-6. UI routes provide dedicated pages: terminal workspace (`/tmux`), service management (`/services`), operations dashboard (`/ops`), runbook execution (`/runbooks`), alert monitoring (`/alerts`), operations activity (`/activities`), and system metrics (`/metrics`).
+6. UI routes provide dedicated pages: terminal workspace (`/tmux`), service management (`/services`), operations dashboard (`/ops`), runbook execution (`/runbooks`), and system metrics (`/metrics`).
 
 ## Data Model (Operational)
 
@@ -48,14 +44,8 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
   - window unread flags
   - pane revision/seen revision
   - journal revisions (`global_rev`) for delta sync
-  - timeline events
   - live presence
-- Recovery snapshots and restore jobs
-- Guardrail rules and audit logs
-- Ops alerts with deduplication and lifecycle (open → acked → resolved)
 - Ops runbooks, runs, schedules, and parameters
-- Marker patterns for terminal output detection
-- Ops revision tracking for delta-based broadcasts
 - Session directory frequency tracking
 - Session users registry (`session_users`)
 - Tmux launchers with user targeting (`tmux_launchers`)
@@ -68,17 +58,11 @@ Primary path is WS events:
 - `tmux.sessions.updated`
 - `tmux.inspector.updated`
 - `tmux.activity.updated`
-- `tmux.timeline.updated`
 - `ops.overview.updated`
 - `ops.services.updated`
-- `ops.alerts.updated`
-- `ops.activity.updated`
 - `ops.metrics.updated`
 - `ops.schedule.updated`
 - `ops.job.updated`
-- `tmux.guardrail.blocked`
-- `recovery.overview.updated`
-- `recovery.job.updated`
 
 Fallback HTTP polling is used only when events channel is disconnected.
 
@@ -88,5 +72,4 @@ Fallback HTTP polling is used only when events channel is disconnected.
 - No cloud relay by default.
 - Optimistic frontend interactions for responsiveness.
 - Server remains source of truth through projections and event patches.
-- Feature gates via config for watchtower and recovery subsystems.
 - Dedicated pages per concern: each operational feature has its own route, sidebar, and help dialog for focused workflows.

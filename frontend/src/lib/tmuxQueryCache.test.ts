@@ -4,7 +4,6 @@ import {
   TMUX_SESSIONS_QUERY_KEY,
   shouldCacheActiveInspectorSnapshot,
   tmuxInspectorQueryKey,
-  tmuxTimelineQueryKey,
 } from './tmuxQueryCache'
 import type { PaneInfo, WindowInfo } from '@/types'
 
@@ -35,15 +34,6 @@ describe('tmuxQueryCache', () => {
   it('builds stable query keys', () => {
     expect(TMUX_SESSIONS_QUERY_KEY).toEqual(['tmux', 'sessions'])
     expect(tmuxInspectorQueryKey(' alpha ')).toEqual(['tmux', 'inspector', 'alpha'])
-    expect(
-      tmuxTimelineQueryKey({
-        session: ' alpha ',
-        query: ' error ',
-        severity: ' WARN ',
-        eventType: ' COMMAND ',
-        limit: 180.9,
-      }),
-    ).toEqual(['tmux', 'timeline', 'alpha', 'error', 'warn', 'command', 180])
   })
 
   it('persists inspector snapshot only when current data belongs to active session', () => {

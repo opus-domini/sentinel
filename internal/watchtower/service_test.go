@@ -2,7 +2,6 @@ package watchtower
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -222,7 +221,7 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 		},
 	}
 
-	asserter := newActivityEventAsserter(t, sessionName)
+	asserter := newJournalPublishAsserter(t, sessionName)
 	svc := New(st, fake, Options{
 		Publish: asserter.Handle,
 	})
@@ -238,19 +237,19 @@ func TestCollectPublishesSessionsEventOnActivity(t *testing.T) {
 	asserter.AssertCounts(t, 1, 1, "second collect")
 }
 
-type activityEventAsserter struct {
+type journalPublishAsserter struct {
 	t           *testing.T
 	sessionName string
 	publish     atomic.Int32
 	activity    atomic.Int32
 }
 
-func newActivityEventAsserter(t *testing.T, sessionName string) *activityEventAsserter {
+func newJournalPublishAsserter(t *testing.T, sessionName string) *journalPublishAsserter {
 	t.Helper()
-	return &activityEventAsserter{t: t, sessionName: sessionName}
+	return &journalPublishAsserter{t: t, sessionName: sessionName}
 }
 
-func (a *activityEventAsserter) Handle(eventType string, payload map[string]any) {
+func (a *journalPublishAsserter) Handle(eventType string, payload map[string]any) {
 	a.t.Helper()
 	a.assertSessionAndInspectorPatches(payload)
 	switch eventType {
@@ -272,7 +271,7 @@ func (a *activityEventAsserter) Handle(eventType string, payload map[string]any)
 	}
 }
 
-func (a *activityEventAsserter) assertSessionAndInspectorPatches(payload map[string]any) {
+func (a *journalPublishAsserter) assertSessionAndInspectorPatches(payload map[string]any) {
 	a.t.Helper()
 	patches := mustSessionPatches(a.t, payload)
 	if len(patches) != 1 {
@@ -326,13 +325,13 @@ func mustInspectorPatch(t *testing.T, payload map[string]any, sessionName string
 	return inspector
 }
 
-func (a *activityEventAsserter) AssertCounts(t *testing.T, wantPublish, wantActivity int32, stage string) {
+func (a *journalPublishAsserter) AssertCounts(t *testing.T, wantPublish, wantActivity int32, stage string) {
 	t.Helper()
 	if got := a.publish.Load(); got != wantPublish {
 		t.Fatalf("publish count after %s = %d, want %d", stage, got, wantPublish)
 	}
 	if got := a.activity.Load(); got != wantActivity {
-		t.Fatalf("activity event count after %s = %d, want %d", stage, got, wantActivity)
+		t.Fatalf("journal update count after %s = %d, want %d", stage, got, wantActivity)
 	}
 }
 
@@ -583,188 +582,6 @@ func TestCollectIncrementsRevisionOnOutputChange(t *testing.T) {
 	}
 	if panes[0].TailPreview != "second" {
 		t.Fatalf("pane tail preview = %q, want second", panes[0].TailPreview)
-	}
-}
-
-func TestCollectWritesTimelineForCommandLifecycleAndMarkers(t *testing.T) {
-	t.Parallel()
-
-	st := newWatchtowerTestStore(t)
-	defer func() { _ = st.Close() }()
-
-	now := time.Now().UTC().Truncate(time.Second)
-	var collectCount atomic.Int32
-	fake := newTimelineLifecycleFakeTmux(now, &collectCount)
-
-	svc := New(st, fake, Options{})
-	if err := svc.collect(context.Background()); err != nil {
-		t.Fatalf("collect #1: %v", err)
-	}
-	collectCount.Store(1)
-	if err := svc.collect(context.Background()); err != nil {
-		t.Fatalf("collect #2: %v", err)
-	}
-	assertTimelineLifecycleRows(t, st)
-}
-
-func newTimelineLifecycleFakeTmux(now time.Time, collectCount *atomic.Int32) fakeTmux {
-	return fakeTmux{
-		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
-			return []tmux.Session{{
-				Name:       "dev",
-				Windows:    1,
-				Attached:   1,
-				CreatedAt:  now,
-				ActivityAt: now,
-			}}, nil
-		},
-		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
-			return []tmux.Window{{
-				Session: "dev",
-				Index:   0,
-				Name:    "main",
-				Active:  true,
-				Panes:   1,
-				Layout:  "layout",
-			}}, nil
-		},
-		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
-			currentCommand := shellCommand
-			if collectCount.Load() == 0 {
-				currentCommand = "htop"
-			}
-			return []tmux.Pane{{
-				Session:        "dev",
-				WindowIndex:    0,
-				PaneIndex:      0,
-				PaneID:         "%1",
-				Title:          "main",
-				Active:         true,
-				CurrentPath:    "/repo",
-				StartCommand:   shellCommand,
-				CurrentCommand: currentCommand,
-			}}, nil
-		},
-		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
-			if collectCount.Load() == 0 {
-				return "ok", nil
-			}
-			return "panic: boom", nil
-		},
-	}
-}
-
-func assertTimelineLifecycleRows(t *testing.T, st *store.Store) {
-	t.Helper()
-	timeline, err := st.SearchWatchtowerTimelineEvents(context.Background(), store.WatchtowerTimelineQuery{
-		Session: "dev",
-		Limit:   20,
-	})
-	if err != nil {
-		t.Fatalf("SearchWatchtowerTimelineEvents: %v", err)
-	}
-	if len(timeline.Events) < 3 {
-		t.Fatalf("timeline len = %d, want at least 3", len(timeline.Events))
-	}
-
-	seen := map[string]bool{}
-	for _, event := range timeline.Events {
-		seen[event.EventType] = true
-	}
-	for _, want := range []string{"command.started", "command.finished", "output.marker"} {
-		if !seen[want] {
-			t.Fatalf("missing timeline event type %q in %+v", want, timeline.Events)
-		}
-	}
-	markerMetadata := map[string]any{}
-	for _, event := range timeline.Events {
-		if event.EventType != "output.marker" {
-			continue
-		}
-		if err := json.Unmarshal(event.Metadata, &markerMetadata); err != nil {
-			t.Fatalf("unmarshal marker metadata: %v", err)
-		}
-		break
-	}
-	if markerMetadata["windowName"] != "main" {
-		t.Fatalf("marker metadata windowName = %v, want main", markerMetadata["windowName"])
-	}
-	if markerMetadata["paneTitle"] != "main" {
-		t.Fatalf("marker metadata paneTitle = %v, want main", markerMetadata["paneTitle"])
-	}
-
-	runtimeRows, err := st.ListWatchtowerPaneRuntimeBySession(context.Background(), "dev")
-	if err != nil {
-		t.Fatalf("ListWatchtowerPaneRuntimeBySession(dev): %v", err)
-	}
-	if len(runtimeRows) != 1 {
-		t.Fatalf("runtime rows len = %d, want 1", len(runtimeRows))
-	}
-	if runtimeRows[0].CurrentCommand != shellCommand {
-		t.Fatalf("runtime current command = %q, want zsh", runtimeRows[0].CurrentCommand)
-	}
-}
-
-func TestCollectPublishesTimelineUpdatedEvent(t *testing.T) {
-	t.Parallel()
-
-	st := newWatchtowerTestStore(t)
-	defer func() { _ = st.Close() }()
-
-	now := time.Now().UTC().Truncate(time.Second)
-	fake := fakeTmux{
-		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
-			return []tmux.Session{{
-				Name:       "dev",
-				Windows:    1,
-				Attached:   1,
-				CreatedAt:  now,
-				ActivityAt: now,
-			}}, nil
-		},
-		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
-			return []tmux.Window{{Session: "dev", Index: 0, Name: "main", Active: true, Panes: 1, Layout: "layout"}}, nil
-		},
-		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
-			return []tmux.Pane{{
-				Session:        "dev",
-				WindowIndex:    0,
-				PaneIndex:      0,
-				PaneID:         "%1",
-				Title:          "main",
-				Active:         true,
-				CurrentPath:    "/repo",
-				StartCommand:   shellCommand,
-				CurrentCommand: shellCommand,
-			}}, nil
-		},
-		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
-			return "warning: deprecated", nil
-		},
-	}
-
-	var timelineEvents atomic.Int32
-	svc := New(st, fake, Options{
-		Publish: func(eventType string, payload map[string]any) {
-			if eventType != "tmux.timeline.updated" {
-				return
-			}
-			rawSessions, ok := payload["sessions"].([]string)
-			if !ok {
-				t.Fatalf("timeline payload sessions type = %T", payload["sessions"])
-			}
-			if len(rawSessions) != 1 || rawSessions[0] != "dev" {
-				t.Fatalf("timeline sessions payload = %+v, want [dev]", rawSessions)
-			}
-			timelineEvents.Add(1)
-		},
-	})
-
-	if err := svc.collect(context.Background()); err != nil {
-		t.Fatalf("collect: %v", err)
-	}
-	if got := timelineEvents.Load(); got != 1 {
-		t.Fatalf("timeline events published = %d, want 1", got)
 	}
 }
 

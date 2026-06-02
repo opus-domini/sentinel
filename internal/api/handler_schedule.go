@@ -94,8 +94,6 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.orch.RecordScheduleCreated(ctx, schedule, time.Now().UTC())
-
 	h.emit(events.TypeScheduleUpdated, map[string]any{
 		keyAction:   keyCreated,
 		keySchedule: schedule,
@@ -209,8 +207,6 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.orch.RecordScheduleDeleted(ctx, scheduleID, time.Now().UTC())
-
 	h.emit(events.TypeScheduleUpdated, map[string]any{
 		keyAction:  keyDeleted,
 		keyRemoved: scheduleID,
@@ -292,18 +288,13 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("trigger schedule: update after run failed", keySchedule, scheduleID, "err", err)
 	}
 
-	h.orch.RecordScheduleTriggered(ctx, scheduleID, sched.RunbookID, job.ID, now)
-
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
 		runbook.Run(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
-			Job:           job,
-			Source:        keySchedule,
-			StepTimeout:   30 * time.Second,
-			ExtraMetadata: map[string]string{keyScheduleID: scheduleID},
-			AlertRepo:     h.repo,
-			Guardrail:     h.guardrails.EvaluateCommand,
+			Job:         job,
+			Source:      keySchedule,
+			StepTimeout: 30 * time.Second,
 			OnFinish: func(ctx context.Context, status string) {
 				finished := time.Now().UTC()
 				// Update only last_run_*; next_run_at/enabled were set at dispatch

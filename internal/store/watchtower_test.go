@@ -21,12 +21,10 @@ func TestWatchtowerSchemaCreated(t *testing.T) {
 
 	wantTables := []string{
 		"wt_journal",
-		"wt_pane_runtime",
 		"wt_panes",
 		"wt_presence",
 		"wt_runtime",
 		"wt_sessions",
-		"wt_timeline_events",
 		"wt_windows",
 	}
 

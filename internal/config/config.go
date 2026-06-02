@@ -42,7 +42,6 @@ type Config struct {
 	Server       ServerConfig       `toml:"server" json:"server"`
 	Storage      StorageConfig      `toml:"storage" json:"storage"`
 	Log          LogConfig          `toml:"log" json:"log"`
-	Alerts       AlertsConfig       `toml:"alerts" json:"alerts"`
 	HealthReport HealthReportConfig `toml:"health_report" json:"health_report"`
 	Watchtower   WatchtowerConfig   `toml:"watchtower" json:"watchtower"`
 	Runbooks     RunbooksConfig     `toml:"runbooks" json:"runbooks"`
@@ -72,15 +71,6 @@ type StorageConfig struct {
 type LogConfig struct {
 	Level string `toml:"level" json:"level"`
 	Path  string `toml:"path" json:"path"`
-}
-
-// AlertsConfig controls metric thresholds and alert notifications.
-type AlertsConfig struct {
-	CPUPercent    float64  `toml:"cpu_percent" json:"cpu_percent"`
-	MemPercent    float64  `toml:"mem_percent" json:"mem_percent"`
-	DiskPercent   float64  `toml:"disk_percent" json:"disk_percent"`
-	WebhookURL    string   `toml:"webhook_url" json:"webhook_url"`
-	WebhookEvents []string `toml:"webhook_events" json:"webhook_events"`
 }
 
 // HealthReportConfig controls scheduled health report delivery.
@@ -133,11 +123,6 @@ func Default() Config {
 		},
 		Storage: StorageConfig{Path: filepath.Join(dataRoot, "sentinel.db")},
 		Log:     LogConfig{Level: DefaultLogLevel, Path: filepath.Join(dataRoot, "logs", "sentinel.log")},
-		Alerts: AlertsConfig{
-			CPUPercent:  90.0,
-			MemPercent:  90.0,
-			DiskPercent: 95.0,
-		},
 		Watchtower: WatchtowerConfig{
 			Enabled:        true,
 			TickInterval:   1 * time.Second,
@@ -383,16 +368,6 @@ func (c *Config) Resolve() error {
 	if c.Watchtower.JournalRows == 0 {
 		c.Watchtower.JournalRows = defaults.Watchtower.JournalRows
 	}
-	if c.Alerts.CPUPercent == 0 {
-		c.Alerts.CPUPercent = defaults.Alerts.CPUPercent
-	}
-	if c.Alerts.MemPercent == 0 {
-		c.Alerts.MemPercent = defaults.Alerts.MemPercent
-	}
-	if c.Alerts.DiskPercent == 0 {
-		c.Alerts.DiskPercent = defaults.Alerts.DiskPercent
-	}
-	c.Alerts.WebhookEvents = cleanStrings(c.Alerts.WebhookEvents)
 	c.MultiUser.AllowedUsers = cleanStrings(c.MultiUser.AllowedUsers)
 	if strings.TrimSpace(c.MultiUser.UserSwitchMethod) == "" {
 		c.MultiUser.UserSwitchMethod = defaults.MultiUser.UserSwitchMethod
@@ -447,18 +422,6 @@ func validateConfig(cfg Config) error {
 	if cfg.Watchtower.JournalRows <= 0 {
 		issues = append(issues, "watchtower.journal_rows must be a positive integer")
 	}
-	for _, item := range []struct {
-		label string
-		value float64
-	}{
-		{label: "alerts.cpu_percent", value: cfg.Alerts.CPUPercent},
-		{label: "alerts.mem_percent", value: cfg.Alerts.MemPercent},
-		{label: "alerts.disk_percent", value: cfg.Alerts.DiskPercent},
-	} {
-		if item.value <= 0 {
-			issues = append(issues, item.label+" must be a positive number")
-		}
-	}
 	if strings.TrimSpace(cfg.HealthReport.Schedule) != "" {
 		if err := validate.CronExpression(cfg.HealthReport.Schedule); err != nil {
 			issues = append(issues, "health_report.schedule "+err.Error())
@@ -477,7 +440,6 @@ func applyEnv(cfg *Config) {
 	applyServerEnv(cfg)
 	applyStorageEnv(cfg)
 	applyLogEnv(cfg)
-	applyAlertsEnv(cfg)
 	applyHealthReportEnv(cfg)
 	applyWatchtowerEnv(cfg)
 	applyRunbooksEnv(cfg)
@@ -533,30 +495,6 @@ func applyLogEnv(cfg *Config) {
 	}
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_LOG_PATH")); v != "" {
 		cfg.Log.Path = v
-	}
-}
-
-func applyAlertsEnv(cfg *Config) {
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_CPU_PERCENT")); v != "" {
-		if parsed, ok := parsePositiveFloat(v); ok {
-			cfg.Alerts.CPUPercent = parsed
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_MEM_PERCENT")); v != "" {
-		if parsed, ok := parsePositiveFloat(v); ok {
-			cfg.Alerts.MemPercent = parsed
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_DISK_PERCENT")); v != "" {
-		if parsed, ok := parsePositiveFloat(v); ok {
-			cfg.Alerts.DiskPercent = parsed
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_WEBHOOK_URL")); v != "" {
-		cfg.Alerts.WebhookURL = v
-	}
-	if v := strings.TrimSpace(os.Getenv("SENTINEL_ALERT_WEBHOOK_EVENTS")); v != "" {
-		cfg.Alerts.WebhookEvents = splitCSV(v)
 	}
 }
 
@@ -666,20 +604,6 @@ func defaultConfigTOML(cfg Config) []byte {
 	writeConfigLine(&b, "  level = %q", cfg.Log.Level)
 	writeConfigLine(&b, "  # Environment variable: SENTINEL_LOG_PATH")
 	writeConfigLine(&b, "  path = %q", cfg.Log.Path)
-	writeConfigLine(&b, "")
-	writeConfigLine(&b, "# Metric alerting and lifecycle webhooks.")
-	writeConfigLine(&b, "[alerts]")
-	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_CPU_PERCENT")
-	writeConfigLine(&b, "  cpu_percent = %.1f", cfg.Alerts.CPUPercent)
-	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_MEM_PERCENT")
-	writeConfigLine(&b, "  mem_percent = %.1f", cfg.Alerts.MemPercent)
-	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_DISK_PERCENT")
-	writeConfigLine(&b, "  disk_percent = %.1f", cfg.Alerts.DiskPercent)
-	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_WEBHOOK_URL")
-	writeConfigLine(&b, "  webhook_url = %q", cfg.Alerts.WebhookURL)
-	writeConfigLine(&b, "  # Supported: alert.created, alert.resolved, alert.acked.")
-	writeConfigLine(&b, "  # Environment variable: SENTINEL_ALERT_WEBHOOK_EVENTS")
-	writeConfigLine(&b, "  webhook_events = [%s]", quoteStringList(cfg.Alerts.WebhookEvents))
 	writeConfigLine(&b, "")
 	writeConfigLine(&b, "# Scheduled health report delivery.")
 	writeConfigLine(&b, "[health_report]")
@@ -826,14 +750,6 @@ func parseDuration(raw string) (time.Duration, bool) {
 
 func parsePositiveInt(raw string) (int, bool) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || value <= 0 {
-		return 0, false
-	}
-	return value, true
-}
-
-func parsePositiveFloat(raw string) (float64, bool) {
-	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
 	if err != nil || value <= 0 {
 		return 0, false
 	}

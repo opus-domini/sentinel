@@ -10,7 +10,6 @@ import type {
 import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import { act, renderHook } from '@testing-library/react'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
-import { shouldRefreshTimelineFromEvent } from '@/lib/tmuxTimeline'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useTmuxEventsSocket } from '@/hooks/useTmuxEventsSocket'
@@ -25,16 +24,11 @@ vi.mock('@/lib/tmuxSessionEvents', () => ({
   })),
 }))
 
-vi.mock('@/lib/tmuxTimeline', () => ({
-  shouldRefreshTimelineFromEvent: vi.fn(() => false),
-}))
-
 vi.mock('@/lib/wsAuth', () => ({
   buildWSProtocols: () => ['sentinel.v1'],
 }))
 
 const mockedShouldRefreshSessions = vi.mocked(shouldRefreshSessionsFromEvent)
-const mockedShouldRefreshTimeline = vi.mocked(shouldRefreshTimelineFromEvent)
 
 // ---------------------------------------------------------------------------
 // Mock WebSocket
@@ -161,9 +155,6 @@ function makeOptions(overrides?: Partial<Options>): Options {
     applyInspectorProjectionPatches: vi.fn(() => false),
     settlePendingSeenAcks: vi.fn(),
     seenAckWaitersRef: makeRef(new Map<string, (ok: boolean) => void>()),
-    timelineOpenRef: makeRef(false),
-    timelineSessionFilterRef: makeRef('all'),
-    loadTimelineRef: makeRef(vi.fn()),
     handleTmuxSessionsEvent: vi.fn(() => false),
     handleTmuxInspectorEvent: vi.fn(() => false),
     ...overrides,
@@ -182,7 +173,6 @@ describe('useTmuxEventsSocket', () => {
     MockWebSocket.instances = []
     globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
     mockedShouldRefreshSessions.mockReturnValue({ refresh: false })
-    mockedShouldRefreshTimeline.mockReturnValue(false)
   })
 
   afterEach(() => {
@@ -743,175 +733,6 @@ describe('useTmuxEventsSocket', () => {
       expect(inspectorCallsAfterOpen).toHaveLength(0)
     })
 
-    it('handles tmux.timeline.updated when timeline is open', () => {
-      mockedShouldRefreshTimeline.mockReturnValue(true)
-
-      const loadTimeline = vi.fn()
-      const opts = makeOptions({
-        timelineOpenRef: makeRef(true),
-        timelineSessionFilterRef: makeRef('all'),
-        loadTimelineRef: makeRef(loadTimeline),
-      })
-      renderEventsHook(opts)
-
-      act(() => {
-        lastSocket().emitOpen()
-      })
-
-      act(() => {
-        lastSocket().emitMessage({
-          type: 'tmux.timeline.updated',
-          eventId: 1,
-          payload: {
-            sessions: ['main'],
-          },
-        })
-      })
-
-      act(() => {
-        vi.advanceTimersByTime(200)
-      })
-
-      expect(loadTimeline).toHaveBeenCalledWith({ quiet: true })
-    })
-
-    it('skips timeline refresh when timeline is closed', () => {
-      const loadTimeline = vi.fn()
-      const opts = makeOptions({
-        timelineOpenRef: makeRef(false),
-        loadTimelineRef: makeRef(loadTimeline),
-      })
-      renderEventsHook(opts)
-
-      act(() => {
-        lastSocket().emitOpen()
-      })
-
-      act(() => {
-        lastSocket().emitMessage({
-          type: 'tmux.timeline.updated',
-          eventId: 1,
-          payload: {
-            sessions: ['main'],
-          },
-        })
-      })
-
-      act(() => {
-        vi.advanceTimersByTime(500)
-      })
-
-      expect(loadTimeline).not.toHaveBeenCalled()
-    })
-
-    it('handles tmux.timeline.updated with session filter "active"', () => {
-      mockedShouldRefreshTimeline.mockReturnValue(true)
-      const loadTimeline = vi.fn()
-      const opts = makeOptions({
-        timelineOpenRef: makeRef(true),
-        timelineSessionFilterRef: makeRef('active'),
-        tabsStateRef: makeRef({
-          openTabs: ['dev'],
-          activeSession: 'dev',
-          activeEpoch: 0,
-        }),
-        loadTimelineRef: makeRef(loadTimeline),
-      })
-      renderEventsHook(opts)
-
-      act(() => {
-        lastSocket().emitOpen()
-      })
-
-      act(() => {
-        lastSocket().emitMessage({
-          type: 'tmux.timeline.updated',
-          eventId: 1,
-          payload: {
-            sessions: ['dev'],
-          },
-        })
-      })
-
-      // shouldRefreshTimelineFromEvent is called with sessions and the
-      // resolved active session ('dev')
-      expect(mockedShouldRefreshTimeline).toHaveBeenCalledWith(['dev'], 'dev')
-    })
-
-    it('handles tmux.timeline.updated with specific session filter', () => {
-      mockedShouldRefreshTimeline.mockReturnValue(true)
-      const loadTimeline = vi.fn()
-      const opts = makeOptions({
-        timelineOpenRef: makeRef(true),
-        timelineSessionFilterRef: makeRef('prod'),
-        loadTimelineRef: makeRef(loadTimeline),
-      })
-      renderEventsHook(opts)
-
-      act(() => {
-        lastSocket().emitOpen()
-      })
-
-      act(() => {
-        lastSocket().emitMessage({
-          type: 'tmux.timeline.updated',
-          eventId: 1,
-          payload: {
-            sessions: ['prod'],
-          },
-        })
-      })
-
-      expect(mockedShouldRefreshTimeline).toHaveBeenCalledWith(['prod'], 'prod')
-    })
-
-    it('handles tmux.guardrail.blocked and shows error toast', () => {
-      const pushErrorToast = vi.fn()
-      const opts = makeOptions({ pushErrorToast })
-      renderEventsHook(opts)
-
-      act(() => {
-        lastSocket().emitOpen()
-      })
-
-      act(() => {
-        lastSocket().emitMessage({
-          type: 'tmux.guardrail.blocked',
-          eventId: 1,
-          payload: {
-            decision: {
-              message: 'rm -rf blocked by policy',
-            },
-          },
-        })
-      })
-
-      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'rm -rf blocked by policy')
-    })
-
-    it('uses default guardrail message when decision.message is missing', () => {
-      const pushErrorToast = vi.fn()
-      const opts = makeOptions({ pushErrorToast })
-      renderEventsHook(opts)
-
-      act(() => {
-        lastSocket().emitOpen()
-      })
-
-      act(() => {
-        lastSocket().emitMessage({
-          type: 'tmux.guardrail.blocked',
-          eventId: 1,
-          payload: {},
-        })
-      })
-
-      expect(pushErrorToast).toHaveBeenCalledWith(
-        'Guardrail',
-        'Operation blocked by guardrail policy',
-      )
-    })
-
     it('handles tmux.auth.expired: clears token and closes socket', () => {
       const setToken = vi.fn()
       const settlePendingSeenAcks = vi.fn()
@@ -995,20 +816,16 @@ describe('useTmuxEventsSocket', () => {
       })
 
       act(() => {
-        lastSocket().emitMessage({
-          type: 'tmux.guardrail.blocked',
-          eventId: 2,
-          payload: { decision: { message: 'blocked' } },
-        })
+        lastSocket().emitMessage({ type: 'tmux.auth.expired', eventId: 2 })
       })
-      expect(pushErrorToast).toHaveBeenCalledTimes(1)
-      pushErrorToast.mockClear()
+      expect(setToken).toHaveBeenCalledWith('')
+      setToken.mockClear()
+      settlePendingSeenAcks.mockClear()
 
       act(() => {
         lastSocket().emitMessage({
-          type: 'tmux.guardrail.blocked',
+          type: 'tmux.auth.expired',
           eventId: 2,
-          payload: { decision: { message: 'duplicate' } },
         })
         lastSocket().emitMessage({
           type: 'tmux.auth.expired',
@@ -1024,8 +841,8 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('resets event-id ordering for a new socket stream and ignores stale sockets', () => {
-      const pushErrorToast = vi.fn()
-      const opts = makeOptions({ pushErrorToast })
+      const setToken = vi.fn()
+      const opts = makeOptions({ setToken, tokenRequired: true })
       const { result } = renderEventsHook(opts)
 
       act(() => {
@@ -1035,13 +852,12 @@ describe('useTmuxEventsSocket', () => {
 
       act(() => {
         firstSocket.emitMessage({
-          type: 'tmux.guardrail.blocked',
+          type: 'tmux.auth.expired',
           eventId: 100,
-          payload: { decision: { message: 'before restart' } },
         })
       })
-      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'before restart')
-      pushErrorToast.mockClear()
+      expect(setToken).toHaveBeenCalledWith('')
+      setToken.mockClear()
 
       act(() => {
         result.current.forceReconnect()
@@ -1052,26 +868,24 @@ describe('useTmuxEventsSocket', () => {
       act(() => {
         secondSocket.emitOpen()
         secondSocket.emitMessage({
-          type: 'tmux.guardrail.blocked',
+          type: 'tmux.auth.expired',
           eventId: 1,
-          payload: { decision: { message: 'after restart' } },
         })
         firstSocket.emitMessage({
-          type: 'tmux.guardrail.blocked',
+          type: 'tmux.auth.expired',
           eventId: 101,
-          payload: { decision: { message: 'stale old socket' } },
         })
       })
 
-      expect(pushErrorToast).toHaveBeenCalledTimes(1)
-      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'after restart')
+      expect(setToken).toHaveBeenCalledTimes(1)
+      expect(setToken).toHaveBeenCalledWith('')
     })
 
     it('ignores stale socket close events after reconnecting', async () => {
       vi.useFakeTimers()
       vi.spyOn(Math, 'random').mockReturnValue(0)
-      const pushErrorToast = vi.fn()
-      const opts = makeOptions({ pushErrorToast })
+      const setToken = vi.fn()
+      const opts = makeOptions({ setToken, tokenRequired: true })
       renderEventsHook(opts)
 
       act(() => {
@@ -1092,18 +906,17 @@ describe('useTmuxEventsSocket', () => {
         secondSocket.emitOpen()
         firstSocket.emitClose()
         secondSocket.emitMessage({
-          type: 'tmux.guardrail.blocked',
+          type: 'tmux.auth.expired',
           eventId: 1,
-          payload: { decision: { message: 'new stream still current' } },
         })
       })
 
-      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'new stream still current')
+      expect(setToken).toHaveBeenCalledWith('')
     })
 
     it('keeps processing messages without event ids', () => {
-      const pushErrorToast = vi.fn()
-      const opts = makeOptions({ pushErrorToast })
+      const setToken = vi.fn()
+      const opts = makeOptions({ setToken, tokenRequired: true })
       renderEventsHook(opts)
 
       act(() => {
@@ -1112,12 +925,11 @@ describe('useTmuxEventsSocket', () => {
 
       act(() => {
         lastSocket().emitMessage({
-          type: 'tmux.guardrail.blocked',
-          payload: { decision: { message: 'no id' } },
+          type: 'tmux.auth.expired',
         })
       })
 
-      expect(pushErrorToast).toHaveBeenCalledWith('Guardrail', 'no id')
+      expect(setToken).toHaveBeenCalledWith('')
     })
 
     it('ignores non-string WebSocket messages', () => {
@@ -1769,7 +1581,7 @@ describe('useTmuxEventsSocket', () => {
   // -------------------------------------------------------------------------
 
   describe('event gap handling', () => {
-    it('triggers delta sync on event ID gap for activity events', async () => {
+    it('triggers delta sync on event ID gap for tmux journal updates', async () => {
       const api = vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction
       const opts = makeOptions({ api })
       renderEventsHook(opts)

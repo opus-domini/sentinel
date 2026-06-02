@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/store"
 )
@@ -201,10 +200,6 @@ func (schedulerRunbookRepo) GetOpsRunbook(_ context.Context, id string) (store.O
 
 func (schedulerRunbookRepo) GetOpsRunbookRun(_ context.Context, id string) (store.OpsRunbookRun, error) {
 	return store.OpsRunbookRun{ID: id, RunbookID: "runbook-1", Status: "succeeded"}, nil
-}
-
-func (schedulerRunbookRepo) InsertActivityEvent(_ context.Context, event activity.EventWrite) (activity.Event, error) {
-	return activity.Event{ID: 1, Source: event.Source}, nil
 }
 
 func TestExecuteRunbookHandlesScheduleUpdateError(t *testing.T) {

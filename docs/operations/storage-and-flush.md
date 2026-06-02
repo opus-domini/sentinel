@@ -25,12 +25,7 @@ Returns:
 
 Resources tracked:
 
-- `timeline`
 - `activity-journal`
-- `guardrail-audit`
-- `recovery-history`
-- `ops-activity`
-- `ops-alerts`
 - `ops-jobs`
 
 ## Flush Resource Data
@@ -47,12 +42,7 @@ Payload:
 
 Allowed values:
 
-- `timeline`
 - `activity-journal`
-- `guardrail-audit`
-- `recovery-history`
-- `ops-activity`
-- `ops-alerts`
 - `ops-jobs`
 - `all`
 
@@ -74,4 +64,4 @@ Settings includes:
 - Per-resource flush actions
 - Global flush action
 
-Use this to keep timeline/history growth under control in long-running deployments.
+Use this to keep runtime history growth under control in long-running deployments.

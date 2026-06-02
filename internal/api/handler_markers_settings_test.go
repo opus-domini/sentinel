@@ -2,91 +2,16 @@ package api
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 	"github.com/opus-domini/sentinel/internal/events"
 )
-
-func TestMarkerPatternHandlers(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-
-	listEmptyW := httptest.NewRecorder()
-	h.listMarkerPatterns(listEmptyW, httptest.NewRequest(http.MethodGet, "/api/ops/markers", nil))
-	if listEmptyW.Code != http.StatusOK {
-		t.Fatalf("list empty status = %d, want 200; body=%s", listEmptyW.Code, listEmptyW.Body.String())
-	}
-
-	upsertW := httptest.NewRecorder()
-	upsertR := httptest.NewRequest(http.MethodPut, "/api/ops/markers/build-failed", strings.NewReader(`{
-		"pattern":"build failed",
-		"severity":"error",
-		"label":"Build failed",
-		"enabled":true,
-		"priority":10
-	}`))
-	upsertR.SetPathValue("pattern", "build-failed")
-	h.upsertMarkerPattern(upsertW, upsertR)
-	if upsertW.Code != http.StatusOK {
-		t.Fatalf("upsert status = %d, want 200; body=%s", upsertW.Code, upsertW.Body.String())
-	}
-
-	listW := httptest.NewRecorder()
-	h.listMarkerPatterns(listW, httptest.NewRequest(http.MethodGet, "/api/ops/markers", nil))
-	body := jsonBody(t, listW)
-	data, _ := body["data"].(map[string]any)
-	patterns, _ := data["patterns"].([]any)
-	found := false
-	for _, item := range patterns {
-		pattern, _ := item.(map[string]any)
-		if pattern["id"] == "build-failed" && pattern["pattern"] == "build failed" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("custom pattern not found; body=%s", listW.Body.String())
-	}
-
-	deleteW := httptest.NewRecorder()
-	deleteR := httptest.NewRequest(http.MethodDelete, "/api/ops/markers/build-failed", nil)
-	deleteR.SetPathValue("pattern", "build-failed")
-	h.deleteMarkerPattern(deleteW, deleteR)
-	if deleteW.Code != http.StatusOK {
-		t.Fatalf("delete status = %d, want 200; body=%s", deleteW.Code, deleteW.Body.String())
-	}
-}
-
-func TestMarkerPatternHandlersValidateInput(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPut, "/api/ops/markers/bad", strings.NewReader(`{"pattern":"","enabled":true}`))
-	r.SetPathValue("pattern", "bad")
-	h.upsertMarkerPattern(w, r)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("missing pattern status = %d, want 400", w.Code)
-	}
-
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPut, "/api/ops/markers/bad", strings.NewReader(`{"pattern":"error"}`))
-	r.SetPathValue("pattern", "bad")
-	h.upsertMarkerPattern(w, r)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("missing enabled status = %d, want 400", w.Code)
-	}
-}
 
 func TestSettingsHandlersPersistConfig(t *testing.T) {
 	t.Parallel()
@@ -137,7 +62,7 @@ func TestSettingsHandlersSerializeConcurrentWrites(t *testing.T) {
 	h, _ := newTestHandler(t, nil)
 	h.events = events.NewHub()
 	configPath := t.TempDir() + "/config.toml"
-	if err := os.WriteFile(configPath, []byte("[server]\nlocale = \"en-US\"\n\n[alerts]\nwebhook_url = \"\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("[server]\nlocale = \"en-US\"\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	h.configPath = configPath
@@ -153,10 +78,9 @@ func TestSettingsHandlersSerializeConcurrentWrites(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(2)
 	go fire(&wg, "/api/ops/settings/timezone", `{"timezone":"America/Sao_Paulo"}`, h.patchTimezone)
 	go fire(&wg, "/api/ops/settings/locale", `{"locale":"pt-BR"}`, h.patchLocale)
-	go fire(&wg, "/api/ops/settings/webhook", `{"url":"https://example.com/hook","events":["alert.created"]}`, h.patchWebhookSettings)
 	wg.Wait()
 
 	// Without configMu serialization the interleaved read-modify-write cycles
@@ -169,49 +93,12 @@ func TestSettingsHandlersSerializeConcurrentWrites(t *testing.T) {
 	if err := toml.Unmarshal(content, &cfg); err != nil {
 		t.Fatalf("config corrupted by concurrent writes: %v\n%s", err, content)
 	}
-	for _, want := range []string{`timezone = "America/Sao_Paulo"`, `locale = "pt-BR"`, `webhook_url = "https://example.com/hook"`} {
+	for _, want := range []string{`timezone = "America/Sao_Paulo"`, `locale = "pt-BR"`} {
 		if !strings.Contains(string(content), want) {
 			t.Fatalf("config missing %q after concurrent writes:\n%s", want, content)
 		}
 	}
 }
-
-func TestWebhookSettingsHandlers(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	configPath := t.TempDir() + "/config.toml"
-	if err := os.WriteFile(configPath, []byte("[alerts]\nwebhook_url = \"\"\n"), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	h.configPath = configPath
-
-	patchW := httptest.NewRecorder()
-	patchR := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/webhook", strings.NewReader(`{
-		"url":"https://example.com/hook",
-		"events":["alert.acked","alert.created","alert.acked"]
-	}`))
-	h.patchWebhookSettings(patchW, patchR)
-	if patchW.Code != http.StatusOK {
-		t.Fatalf("patchWebhookSettings status = %d, want 200; body=%s", patchW.Code, patchW.Body.String())
-	}
-
-	getW := httptest.NewRecorder()
-	h.getWebhookSettings(getW, httptest.NewRequest(http.MethodGet, "/api/ops/settings/webhook", nil))
-	if getW.Code != http.StatusOK {
-		t.Fatalf("getWebhookSettings status = %d, want 200; body=%s", getW.Code, getW.Body.String())
-	}
-	body := jsonBody(t, getW)
-	data, _ := body["data"].(map[string]any)
-	if data["url"] != "https://example.com/hook" {
-		t.Fatalf("webhook url = %#v, want configured URL", data["url"])
-	}
-	events, _ := data["events"].([]any)
-	if len(events) != 2 {
-		t.Fatalf("events len = %d, want deduped 2; body=%s", len(events), getW.Body.String())
-	}
-}
-
 func TestUpsertConfigKeyQuotesValues(t *testing.T) {
 	t.Parallel()
 
@@ -242,79 +129,6 @@ func TestPatchTimezoneRejectsInvalidTimezone(t *testing.T) {
 		t.Fatalf("patchTimezone invalid status = %d, want 400", w.Code)
 	}
 }
-
-func TestGetWebhookSettingsWithNilNotifier(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	w := httptest.NewRecorder()
-	h.getWebhookSettings(w, httptest.NewRequest(http.MethodGet, "/api/ops/settings/webhook", nil))
-	if w.Code != http.StatusOK {
-		t.Fatalf("getWebhookSettings status = %d, want 200; body=%s", w.Code, w.Body.String())
-	}
-	body := jsonBody(t, w)
-	data, _ := body["data"].(map[string]any)
-	if data["url"] != "" {
-		t.Fatalf("nil notifier url = %#v, want empty", data["url"])
-	}
-}
-
-func TestTestWebhookDeliversPayload(t *testing.T) {
-	t.Parallel()
-
-	var received atomic.Bool
-	var receivedBody atomic.Value
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		receivedBody.Store(string(body))
-		received.Store(true)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	h, _ := newTestHandler(t, nil)
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/api/ops/settings/webhook/test", strings.NewReader(`{"url":"`+server.URL+`"}`))
-	h.testWebhook(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("testWebhook status = %d, want 200; body=%s", w.Code, w.Body.String())
-	}
-	if !received.Load() {
-		t.Fatal("test webhook server did not receive payload")
-	}
-	body, _ := receivedBody.Load().(string)
-	if !strings.Contains(body, "alert.test") {
-		t.Fatalf("test webhook body = %s, want alert.test", body)
-	}
-}
-
-func TestMarkerPatternGeneratedID(t *testing.T) {
-	t.Parallel()
-
-	h, st := newTestHandler(t, nil)
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPut, "/api/ops/markers", strings.NewReader(`{"pattern":"panic","enabled":true}`))
-	h.upsertMarkerPattern(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("upsert generated id status = %d, want 200; body=%s", w.Code, w.Body.String())
-	}
-	patterns, err := st.ListMarkerPatterns(context.Background())
-	if err != nil {
-		t.Fatalf("ListMarkerPatterns: %v", err)
-	}
-	found := false
-	for _, pattern := range patterns {
-		if !strings.HasPrefix(pattern.ID, "builtin.") && pattern.Pattern == "panic" && pattern.ID != "" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("patterns = %#v, want one generated custom id", patterns)
-	}
-}
-
 func TestFrequentDirectories(t *testing.T) {
 	t.Parallel()
 

@@ -5,45 +5,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/store"
 )
-
-func (h *Handler) suggestRunbooksForMarker(w http.ResponseWriter, r *http.Request) {
-	if h.repo == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
-		return
-	}
-
-	marker := strings.TrimSpace(r.URL.Query().Get("marker"))
-	session := strings.TrimSpace(r.URL.Query().Get(keySession))
-	if marker == "" && session == "" {
-		writeData(w, http.StatusOK, map[string]any{
-			keyRunbooks: []store.OpsRunbook{},
-		})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	runbooks, err := h.repo.SuggestRunbooksForMarker(ctx, marker, session)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to suggest runbooks", nil)
-		return
-	}
-	writeData(w, http.StatusOK, map[string]any{
-		keyRunbooks: runbooks,
-	})
-}
 
 func (h *Handler) opsRunbooks(w http.ResponseWriter, r *http.Request) {
 	if h.repo == nil {
@@ -146,13 +116,6 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Best effort: the run record already exists and will execute; a failed
-	// timeline insert must not abort here and leave the run orphaned in "queued".
-	timelineEvent, timelineErr := h.orch.RecordRunbookStarted(ctx, job, now)
-	if timelineErr != nil {
-		slog.Warn("failed to record runbook.started timeline", keyJob, job.ID, "err", timelineErr)
-	}
-
 	// Launch async execution.
 	h.wg.Add(1)
 	go func() {
@@ -166,40 +129,20 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		keyGlobalRev: globalRev,
 		keyJob:       job,
 	})
-	if timelineErr == nil {
-		h.emit(events.TypeOpsActivity, map[string]any{
-			keyGlobalRev: globalRev,
-			keyEvent:     timelineEvent,
-		})
-	}
 
 	writeData(w, http.StatusAccepted, map[string]any{
-		keyJob:          job,
-		"timelineEvent": timelineEvent,
-		keyGlobalRev:    globalRev,
+		keyJob:       job,
+		keyGlobalRev: globalRev,
 	})
 }
 
 func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookRun, params map[string]string) {
 	runbook.Run(ctx, h.repo, h.emitEvent, runbook.RunParams{
-		Job:           job,
-		Source:        activity.SourceRunbook,
-		StepTimeout:   30 * time.Second,
-		Parameters:    params,
-		ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
-		AlertRepo:     h.repo,
-		Guardrail:     h.guardrails.EvaluateCommand,
+		Job:         job,
+		Source:      "runbook",
+		StepTimeout: 30 * time.Second,
+		Parameters:  params,
 	})
-}
-
-// RunbookGuardrail returns the unattended-command guardrail evaluator so the
-// scheduler can gate scheduled runbook steps with the same policy as manual
-// runs. Safe to call on a nil handler / nil guardrail service (no-op).
-func (h *Handler) RunbookGuardrail() runbook.GuardrailFunc {
-	if h == nil {
-		return nil
-	}
-	return h.guardrails.EvaluateCommand
 }
 
 func (h *Handler) emitEvent(eventType string, payload map[string]any) {
@@ -520,13 +463,10 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		defer h.wg.Done()
 		defer func() { <-h.runSem }()
 		runbook.ResumeRun(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
-			Job:           runningJob,
-			Source:        activity.SourceRunbook,
-			StepTimeout:   30 * time.Second,
-			Parameters:    resolved,
-			ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
-			AlertRepo:     h.repo,
-			Guardrail:     h.guardrails.EvaluateCommand,
+			Job:         runningJob,
+			Source:      "runbook",
+			StepTimeout: 30 * time.Second,
+			Parameters:  resolved,
 		}, approvalStepIndex)
 	}()
 

@@ -72,17 +72,6 @@ If layout drifts:
 - confirm latest frontend assets are served
 - test PWA mode for more stable viewport behavior
 
-## Recovery restore fails
-
-Use:
-
-```bash
-sentinel recovery list
-sentinel recovery restore --snapshot <id> --wait=true
-```
-
-If restore conflicts, adjust `--conflict rename|replace|skip` and `--mode`.
-
 ## `403 USER_NOT_ALLOWED` on session create
 
 Cause:

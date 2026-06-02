@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { GuardrailConfirmError } from './useTmuxApi'
 import { isTmuxBinaryMissingMessage } from './tmuxTypes'
 import type { ConnectionState, Session, SessionsResponse } from '@/types'
 import type {
@@ -37,7 +36,6 @@ type UseSessionCRUDOptions = {
   pushSuccessToast: (title: string, message: string) => void
   pendingCreateSessionsRef: React.MutableRefObject<Map<string, string>>
   pendingKillSessionsRef: React.MutableRefObject<Set<string>>
-  requestGuardrailConfirm: (ruleName: string, message: string, onConfirm: () => void) => void
   refreshSessionPresets: () => Promise<void> | void
 }
 
@@ -72,7 +70,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     pushSuccessToast,
     pendingCreateSessionsRef,
     pendingKillSessionsRef,
-    requestGuardrailConfirm,
     refreshSessionPresets,
   } = options
 
@@ -371,7 +368,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   )
 
   const createSessionWithConfirm = useCallback(
-    async (name: string, cwd: string, icon: string, guardrailConfirmed: boolean, user?: string) => {
+    async (name: string, cwd: string, icon: string, user?: string) => {
       const sessionName = name.trim()
       if (!sessionName) {
         const msg = 'session name required'
@@ -409,10 +406,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       }
 
       try {
-        const headers: Record<string, string> = {}
-        if (guardrailConfirmed) {
-          headers['X-Sentinel-Guardrail-Confirm'] = 'true'
-        }
         const body: Record<string, string> = {
           name: sessionName,
           cwd,
@@ -423,7 +416,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         const result = await api<{ name: string }>('/api/tmux/sessions', {
           method: 'POST',
           body: JSON.stringify(body),
-          headers,
         })
 
         // The server may return a suffixed name (e.g., "dev-1") if the
@@ -470,38 +462,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         armPendingSessionCreateTimeout(operationId)
         settlePendingSessionCreateIfReady(operationId)
       } catch (error) {
-        if (error instanceof GuardrailConfirmError) {
-          pendingSessionCreateOpsRef.current.delete(operationId)
-          if (operation.optimisticSessionName !== null) {
-            pendingCreateSessionsRef.current.delete(operation.sessionName)
-            setSessions((prev) =>
-              prev.filter((item) => item.name !== operation.optimisticSessionName),
-            )
-            dispatchTabs({
-              type: 'close',
-              session: operation.optimisticSessionName,
-            })
-            const currentActiveSession = tabsStateRef.current.activeSession
-            if (
-              currentActiveSession === operation.optimisticSessionName &&
-              previousActiveSession !== '' &&
-              previousActiveSession !== operation.optimisticSessionName
-            ) {
-              dispatchTabs({
-                type: 'activate',
-                session: previousActiveSession,
-              })
-            }
-          }
-          const rules = error.decision.matchedRules
-          requestGuardrailConfirm(
-            rules[0]?.name ?? '',
-            error.decision.message,
-            () => void createSessionWithConfirm(sessionName, cwd, icon, true, user),
-          )
-          throw new Error(error.decision.message)
-        }
-
         const msg = error instanceof Error ? error.message : 'failed to create session'
         rollbackPendingSessionCreate(operationId, msg)
         throw new Error(msg)
@@ -519,7 +479,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       rollbackPendingSessionCreate,
       settlePendingSessionCreateIfReady,
       pushErrorToast,
-      requestGuardrailConfirm,
       sessionsRef,
       setConnection,
       setSessions,
@@ -529,7 +488,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
 
   const createSession = useCallback(
     async (name: string, cwd: string, icon = '', user?: string) => {
-      await createSessionWithConfirm(name, cwd, icon, false, user)
+      await createSessionWithConfirm(name, cwd, icon, user)
     },
     [createSessionWithConfirm],
   )
@@ -625,7 +584,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   )
 
   const killSessionWithConfirm = useCallback(
-    async (name: string, guardrailConfirmed: boolean) => {
+    async (name: string) => {
       const sessionName = name.trim()
       if (sessionName === '') {
         return
@@ -634,50 +593,23 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       const activeBeforeKill = tabsStateRef.current.activeSession
       const hadSession = sessionsRef.current.some((item) => item.name === sessionName)
 
-      // Apply optimistic UI only when confirmed (or when guardrails
-      // won't intervene). On the initial attempt we wait for the API
-      // response so a guardrail rejection doesn't cause a flash.
-      if (guardrailConfirmed) {
-        applyKillOptimisticUI(sessionName)
-      }
-
       try {
         const killURL = `/api/tmux/sessions/${encodeURIComponent(sessionName)}`
-        const headers: Record<string, string> = {}
-        if (guardrailConfirmed) {
-          headers['X-Sentinel-Guardrail-Confirm'] = 'true'
-        }
         await api<void>(killURL, {
           method: 'DELETE',
-          headers,
         })
 
-        // API succeeded — apply optimistic UI now if we deferred it.
-        if (!guardrailConfirmed) {
-          applyKillOptimisticUI(sessionName)
-        }
+        applyKillOptimisticUI(sessionName)
         void refreshSessions()
         void refreshSessionPresets()
         pushSuccessToast('Kill Session', `session "${sessionName}" killed`)
       } catch (error) {
-        if (error instanceof GuardrailConfirmError) {
-          const rules = error.decision.matchedRules
-          requestGuardrailConfirm(
-            rules[0]?.name ?? '',
-            error.decision.message,
-            () => void killSessionWithConfirm(sessionName, true),
-          )
-          return
-        }
-
         pendingKillSessionsRef.current.delete(sessionName)
-        if (guardrailConfirmed) {
-          if (hadSession) {
-            void refreshSessions()
-          }
-          if (activeBeforeKill !== '') {
-            dispatchTabs({ type: 'activate', session: activeBeforeKill })
-          }
+        if (hadSession) {
+          void refreshSessions()
+        }
+        if (activeBeforeKill !== '') {
+          dispatchTabs({ type: 'activate', session: activeBeforeKill })
         }
 
         const msg = error instanceof Error ? error.message : 'failed to kill session'
@@ -693,7 +625,6 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       pushSuccessToast,
       refreshSessionPresets,
       refreshSessions,
-      requestGuardrailConfirm,
       pendingKillSessionsRef,
       sessionsRef,
       setConnection,
@@ -703,7 +634,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
 
   const killSession = useCallback(
     async (name: string) => {
-      await killSessionWithConfirm(name, false)
+      await killSessionWithConfirm(name)
     },
     [killSessionWithConfirm],
   )

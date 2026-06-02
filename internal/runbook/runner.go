@@ -2,17 +2,13 @@ package runbook
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	fastshot "github.com/opus-domini/fast-shot"
 
-	"github.com/opus-domini/sentinel/internal/activity"
-	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -21,24 +17,17 @@ type Repo interface {
 	UpdateOpsRunbookRun(ctx context.Context, update store.OpsRunbookRunUpdate) (store.OpsRunbookRun, error)
 	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
 	GetOpsRunbookRun(ctx context.Context, id string) (store.OpsRunbookRun, error)
-	InsertActivityEvent(ctx context.Context, event activity.EventWrite) (activity.Event, error)
 }
 
 // EmitFunc publishes a real-time event to connected clients.
 type EmitFunc func(eventType string, payload map[string]any)
-
-// AlertRepo is an optional interface for raising/resolving alerts on run completion.
-type AlertRepo interface {
-	UpsertAlert(ctx context.Context, write alerts.AlertWrite) (alerts.Alert, error)
-	ResolveAlert(ctx context.Context, dedupeKey string, at time.Time) (alerts.Alert, error)
-}
 
 // RunParams configures a single runbook execution.
 type RunParams struct {
 	// Job is the run record created before calling Run.
 	Job store.OpsRunbookRun
 
-	// Source identifies the caller for timeline events ("runbook", "scheduler").
+	// Source identifies the caller for notifications ("runbook", "scheduler").
 	Source string
 
 	// StepTimeout is the per-step execution timeout.
@@ -52,19 +41,8 @@ type RunParams struct {
 	// step commands before execution.
 	Parameters map[string]string
 
-	// ExtraMetadata is merged into timeline event metadata on completion.
-	ExtraMetadata map[string]string
-
 	// OnFinish is called after the run is persisted with the final status.
 	OnFinish func(ctx context.Context, status string)
-
-	// AlertRepo is an optional alert repository. When non-nil, failed runs
-	// raise alerts and successful runs resolve them.
-	AlertRepo AlertRepo
-
-	// Guardrail, when non-nil, is evaluated against each run/script command
-	// before execution; a non-nil result blocks that step.
-	Guardrail GuardrailFunc
 }
 
 const (
@@ -83,7 +61,7 @@ const defaultRunTimeout = 5 * time.Minute
 
 // Run executes a runbook run to completion. It marks the run as running,
 // fetches steps, executes them with progress updates, and records the
-// final result including a timeline event.
+// final result.
 //
 // The provided ctx controls cancellation — when the caller cancels (e.g.
 // on server shutdown), in-flight execution is aborted. A run-level timeout
@@ -143,7 +121,6 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 		stepTimeout = 30 * time.Second
 	}
 	executor := NewExecutor(nil, stepTimeout, params.Parameters)
-	executor.SetGuardrail(params.Guardrail)
 	var accumulated []store.OpsRunbookStepResult
 
 	// beforeStep writes a preliminary step result to the DB before execution.
@@ -292,67 +269,6 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		keyGlobalRev: globalRev,
 		keyJob:       updatedJob,
 	})
-
-	severity := "info"
-	if status == runnerStatusFailed {
-		severity = "error"
-	}
-
-	metadata := make(map[string]string)
-	metadata["jobId"] = params.Job.ID
-	metadata["status"] = status
-	for k, v := range params.ExtraMetadata {
-		metadata[k] = v
-	}
-	metaJSON, metaErr := json.Marshal(metadata)
-	if metaErr != nil {
-		slog.Warn("runbook runner: failed to marshal timeline metadata", "err", metaErr)
-	}
-
-	te, teErr := repo.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    params.Source,
-		EventType: "runbook." + status,
-		Severity:  severity,
-		Resource:  params.Job.ID,
-		Message:   fmt.Sprintf("Runbook run %s", status),
-		Details:   errMsg,
-		Metadata:  string(metaJSON),
-		CreatedAt: finished,
-	})
-	if teErr != nil {
-		slog.Warn("runbook runner: failed to insert timeline event", "err", teErr)
-	}
-	if te.ID > 0 {
-		emit("ops.activity.updated", map[string]any{
-			keyGlobalRev: globalRev,
-			"event":      te,
-		})
-	}
-
-	if params.AlertRepo != nil {
-		dedupeKey := fmt.Sprintf("runbook:%s:failed", params.Job.RunbookID)
-		switch status {
-		case runnerStatusFailed:
-			if _, alertErr := params.AlertRepo.UpsertAlert(ctx, alerts.AlertWrite{
-				DedupeKey: dedupeKey,
-				Source:    "runbook",
-				Resource:  params.Job.RunbookName,
-				Title:     fmt.Sprintf("Runbook %s failed", params.Job.RunbookName),
-				Message:   errMsg,
-				Severity:  "error",
-				CreatedAt: finished,
-			}); alertErr != nil {
-				slog.Warn("runbook runner: failed to upsert alert", "err", alertErr)
-			}
-		case runnerStatusSucceeded:
-			if _, alertErr := params.AlertRepo.ResolveAlert(ctx, dedupeKey, finished); alertErr != nil {
-				// sql.ErrNoRows is expected when no prior alert exists.
-				if !errors.Is(alertErr, sql.ErrNoRows) {
-					slog.Warn("runbook runner: failed to resolve alert", "err", alertErr)
-				}
-			}
-		}
-	}
 
 	if webhookURL != "" {
 		fireWebhook(ctx, webhookURL, buildWebhookPayload(params, updatedJob))
@@ -514,7 +430,6 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		stepTimeout = 30 * time.Second
 	}
 	executor := NewExecutor(nil, stepTimeout, params.Parameters)
-	executor.SetGuardrail(params.Guardrail)
 
 	// Recover previous step results from the run record. If this read fails,
 	// continuing would start from an empty set and overwrite the pre-approval

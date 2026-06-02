@@ -143,67 +143,6 @@ export type PanesResponse = {
   panes: Array<PaneInfo>
 }
 
-export type TimelineSeverity = 'info' | 'warn' | 'error' | ''
-
-export type TimelineEvent = {
-  id: number
-  session: string
-  windowIndex: number
-  paneId: string
-  eventType: string
-  severity: TimelineSeverity
-  command: string
-  cwd: string
-  durationMs: number
-  summary: string
-  details: string
-  marker: string
-  metadata: Record<string, unknown> | null
-  createdAt: string
-}
-
-export type TimelineResponse = {
-  events: Array<TimelineEvent>
-  hasMore: boolean
-}
-
-export type GuardrailRule = {
-  id: string
-  name: string
-  scope: 'action'
-  pattern: string
-  mode: 'allow' | 'warn' | 'confirm' | 'block'
-  severity: 'info' | 'warn' | 'error'
-  message: string
-  enabled: boolean
-  priority: number
-  createdAt: string
-  updatedAt: string
-}
-
-export type GuardrailRulesResponse = {
-  rules: Array<GuardrailRule>
-}
-
-export type GuardrailAudit = {
-  id: number
-  ruleId: string
-  decision: string
-  action: string
-  command: string
-  sessionName: string
-  windowIndex: number
-  paneId: string
-  override: boolean
-  reason: string
-  metadata: string
-  createdAt: string
-}
-
-export type GuardrailAuditResponse = {
-  audit: Array<GuardrailAudit>
-}
-
 export type StorageResourceStat = {
   resource: string
   label: string
@@ -253,37 +192,6 @@ export type OpsServiceInspect = {
   checkedAt: string
 }
 
-export type OpsAlertStatus = 'open' | 'acked' | 'resolved'
-
-export type OpsAlert = {
-  id: number
-  dedupeKey: string
-  source: string
-  resource: string
-  title: string
-  message: string
-  severity: string
-  status: OpsAlertStatus
-  occurrences: number
-  metadata: string
-  firstSeenAt: string
-  lastSeenAt: string
-  ackedAt?: string
-  resolvedAt?: string
-}
-
-export type OpsActivityEvent = {
-  id: number
-  source: string
-  eventType: string
-  severity: string
-  resource: string
-  message: string
-  details: string
-  metadata: string
-  createdAt: string
-}
-
 export type OpsOverview = {
   host: {
     hostname: string
@@ -310,15 +218,6 @@ export type OpsOverviewResponse = {
 
 export type OpsServicesResponse = {
   services: Array<OpsServiceStatus>
-}
-
-export type OpsAlertsResponse = {
-  alerts: Array<OpsAlert>
-}
-
-export type OpsActivityResponse = {
-  events: Array<OpsActivityEvent>
-  hasMore: boolean
 }
 
 export type OpsRunbookStepType = 'run' | 'script' | 'approval'
@@ -411,7 +310,6 @@ export type SuggestedRunbooksResponse = {
 
 export type OpsRunbookRunResponse = {
   job: OpsRunbookRun
-  timelineEvent?: OpsActivityEvent
   globalRev?: number
 }
 
@@ -419,8 +317,6 @@ export type OpsServiceActionResponse = {
   service: OpsServiceStatus
   services: Array<OpsServiceStatus>
   overview: OpsOverview
-  timelineEvent?: OpsActivityEvent
-  alerts?: Array<OpsAlert>
   globalRev: number
 }
 
@@ -518,8 +414,6 @@ export type OpsBrowseServicesResponse = {
 
 export type OpsUnitActionResponse = {
   overview: OpsOverview
-  timelineEvent?: OpsActivityEvent
-  alerts?: Array<OpsAlert>
   globalRev: number
 }
 
@@ -544,14 +438,6 @@ export type OpsWsMessage =
   | {
       type: 'ops.services.updated'
       payload: { services: Array<OpsServiceStatus> }
-    }
-  | { type: 'ops.alerts.updated'; payload: { alerts: Array<OpsAlert> } }
-  | {
-      type: 'ops.activity.updated'
-      payload: {
-        event?: OpsActivityEvent
-        events?: Array<OpsActivityEvent>
-      }
     }
   | { type: 'ops.metrics.updated'; payload: { metrics: OpsHostMetrics } }
   | { type: 'ops.job.updated'; payload: { job: OpsRunbookRun } }

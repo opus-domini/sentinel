@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) =>
-    select({ location: { pathname: '/alerts' } }),
+    select({ location: { pathname: '/services' } }),
 }))
 
 vi.mock('@/components/SideRail', () => ({
@@ -114,22 +114,19 @@ describe('AppShell', () => {
     })
     const links = Array.from(nav.querySelectorAll('a'))
 
+    expect(nav.className).toContain('grid-cols-4')
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/tmux',
-      '/metrics',
       '/services',
-      '/alerts',
       '/runbooks',
-      '/activities',
+      '/metrics',
     ])
     expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Tmux',
-      'Metrics',
       'Services',
-      'Alerts',
       'Runbooks',
-      'Activities',
+      'Metrics',
     ])
-    expect(screen.getByRole('link', { name: 'Alerts' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'Services' }).getAttribute('aria-current')).toBe('page')
   })
 })

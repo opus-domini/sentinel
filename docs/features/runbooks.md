@@ -79,9 +79,25 @@ POST /api/ops/runbooks
   ],
   "steps": [
     { "type": "run", "title": "Check service", "command": "systemctl status {{SERVICE}}" },
-    { "type": "script", "title": "Gather logs", "script": "#!/usr/bin/env bash\njournalctl -u {{SERVICE}} --no-pager -n 50" },
-    { "type": "approval", "title": "Confirm restart", "description": "Review output before restarting." },
-    { "type": "run", "title": "Restart", "command": "systemctl restart {{SERVICE}}", "continueOnError": true, "timeout": 60, "retries": 2, "retryDelay": 5 }
+    {
+      "type": "script",
+      "title": "Gather logs",
+      "script": "#!/usr/bin/env bash\njournalctl -u {{SERVICE}} --no-pager -n 50"
+    },
+    {
+      "type": "approval",
+      "title": "Confirm restart",
+      "description": "Review output before restarting."
+    },
+    {
+      "type": "run",
+      "title": "Restart",
+      "command": "systemctl restart {{SERVICE}}",
+      "continueOnError": true,
+      "timeout": 60,
+      "retries": 2,
+      "retryDelay": 5
+    }
   ]
 }
 ```
@@ -146,30 +162,18 @@ Runs paused at `waiting_approval` are persisted decision points. They remain pen
 
 At each step completion, the job is updated in the store and an `ops.job.updated` event is emitted with the full job object including accumulated step results.
 
-Timeline events are created at runbook start (`runbook.started`) and completion (`runbook.succeeded` or `runbook.failed`).
-
 ## Shell Validation
 
 On create and update, Sentinel validates shell syntax for all `run` and `script` steps using `mvdan.cc/sh`. Warnings are returned in the response as a `shellWarnings` array:
 
 ```json
 {
-  "runbook": { "..." : "..." },
-  "shellWarnings": [
-    { "step": 0, "line": 1, "column": 12, "message": "unexpected token" }
-  ]
+  "runbook": { "...": "..." },
+  "shellWarnings": [{ "step": 0, "line": 1, "column": 12, "message": "unexpected token" }]
 }
 ```
 
 Shell warnings are advisory — they do not block saving the runbook.
-
-## Runbook Suggestions
-
-```
-GET /api/ops/runbooks/suggest?marker={marker}&session={session}
-```
-
-Returns up to 5 enabled runbooks whose name or description matches the given marker or session name. Results are ranked by relevance (name matches above description-only matches). Useful for suggesting relevant runbooks based on alert context.
 
 ## Webhooks
 
@@ -283,7 +287,6 @@ When a schedule is created, updated, or deleted, an `ops.schedule.updated` event
 
 - `ops.job.updated` — emitted on each state change (queued, running, per-step progress, waiting_approval, completion)
 - Each event payload includes `{ globalRev, job }` with the full job object and accumulated `stepResults`
-- `ops.activity.updated` — emitted for runbook start and completion timeline entries
 - `ops.schedule.updated` — emitted when a schedule is created, modified, or removed
 
 ## Frontend
@@ -301,7 +304,6 @@ The dedicated `/runbooks` route provides a standalone page for runbook execution
 ## API Endpoints
 
 - `GET /api/ops/runbooks` — list runbooks and recent jobs
-- `GET /api/ops/runbooks/suggest` — suggest runbooks for a marker/session
 - `POST /api/ops/runbooks` — create custom runbook
 - `PUT /api/ops/runbooks/{runbook}` — update runbook
 - `DELETE /api/ops/runbooks/{runbook}` — delete runbook

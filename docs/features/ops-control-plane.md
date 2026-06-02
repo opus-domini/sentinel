@@ -1,18 +1,16 @@
 # Ops Control Plane
 
-![Desktop alerts](assets/images/desktop-alerts.png)
+![Desktop services](assets/images/desktop-services.png)
 
-The ops control plane is Sentinel's host operations management layer. It provides visibility into system services, operational procedures, alerts, activity timelines, and runtime metrics through a set of dedicated pages accessible from the side rail.
+The ops control plane is Sentinel's host operations management layer. It provides visibility into system services, operational procedures, and runtime metrics through dedicated pages accessible from the side rail.
 
 ## Pages
 
-| Route | Feature | Description | Documentation |
-|---|---|---|---|
-| `/services` | Service Management | Monitor, start/stop/restart, browse and register systemd/launchd services | [Services](/features/services.md) |
-| `/runbooks` | Runbook Execution | Executable operational procedures with step-level output tracking and job history | [Runbooks](/features/runbooks.md) |
-| `/alerts` | Alert Monitoring | Deduplicated alert feed with acknowledge action | [Alerts](/features/alerts.md) |
-| `/activities` | Operations Timeline | Searchable operational audit log filtered by severity and text | [Timeline and Watchtower](/features/timeline-watchtower.md) |
-| `/metrics` | System Metrics | System and runtime metrics dashboard | [Metrics](/features/metrics.md) |
+| Route         | Feature             | Description                                                                       | Documentation                                               |
+| ------------- | ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `/services`   | Service Management  | Monitor, start/stop/restart, browse and register systemd/launchd services         | [Services](/features/services.md)                           |
+| `/runbooks`   | Runbook Execution   | Executable operational procedures with step-level output tracking and job history | [Runbooks](/features/runbooks.md)                           |
+| `/metrics`    | System Metrics      | System and runtime metrics dashboard                                              | [Metrics](/features/metrics.md)                             |
 
 ## Shared Infrastructure
 
@@ -23,8 +21,6 @@ The ops control plane is Sentinel's host operations management layer. It provide
 - Primary events:
   - `ops.overview.updated`
   - `ops.services.updated`
-  - `ops.alerts.updated`
-  - `ops.activity.updated`
   - `ops.job.updated`
   - `ops.schedule.updated`
   - `ops.metrics.updated`
@@ -36,17 +32,6 @@ Overview and configuration:
 - `GET /api/ops/overview`
 - `GET /api/ops/config`
 - `PATCH /api/ops/config`
-
-Alerts (see [Alerts](/features/alerts.md)):
-
-- `GET /api/ops/alerts`
-- `POST /api/ops/alerts/{alert}/ack`
-- `POST /api/ops/alerts/bulk-ack`
-- `DELETE /api/ops/alerts/{alert}`
-
-Timeline (see [Timeline and Watchtower](/features/timeline-watchtower.md)):
-
-- `GET /api/ops/activity`
 
 Metrics (see [Metrics](/features/metrics.md)):
 
@@ -66,15 +51,8 @@ Services (see [Services](/features/services.md)):
 - `GET /api/ops/services/unit/status`
 - `GET /api/ops/services/unit/logs`
 
-Markers:
-
-- `GET /api/ops/markers`
-- `PUT /api/ops/markers/{pattern}`
-- `DELETE /api/ops/markers/{pattern}`
-
 Runbooks (see [Runbooks](/features/runbooks.md)):
 
-- `GET /api/ops/runbooks/suggest`
 - `GET /api/ops/runbooks`
 - `POST /api/ops/runbooks`
 - `PUT /api/ops/runbooks/{runbook}`
@@ -95,4 +73,4 @@ Schedules (see [Runbooks](/features/runbooks.md)):
 
 ## Navigation
 
-The `/ops` path redirects to `/alerts` for backward compatibility.
+Use `/services`, `/metrics`, and `/runbooks` for the active operations workflows.

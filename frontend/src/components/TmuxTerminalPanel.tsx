@@ -1,4 +1,4 @@
-import { History, Loader2, Menu, Minus, Plus, ShieldCheck } from 'lucide-react'
+import { Loader2, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import AppSectionTitle from './layout/AppSectionTitle'
 import ConnectionBadge from './ConnectionBadge'
@@ -57,8 +57,6 @@ type TmuxTerminalPanelProps = {
   onFocusTerminal?: () => void
   onZoomIn?: () => void
   onZoomOut?: () => void
-  onOpenGuardrails?: () => void
-  onOpenTimeline?: () => void
   onOpenCreateSession?: () => void
   onResync?: () => void
 }
@@ -105,8 +103,6 @@ export default function TmuxTerminalPanel({
   onFocusTerminal,
   onZoomIn,
   onZoomOut,
-  onOpenGuardrails,
-  onOpenTimeline,
   onOpenCreateSession,
   onResync,
 }: TmuxTerminalPanelProps) {
@@ -398,32 +394,6 @@ export default function TmuxTerminalPanel({
           <AppSectionTitle hostname={hostname} section="tmux" />
         </div>
         <div className="flex items-center gap-1">
-          <TooltipHelper content="Timeline">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 cursor-pointer"
-              onClick={onOpenTimeline}
-              disabled={!onOpenTimeline}
-              aria-label="Timeline"
-            >
-              <History className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipHelper>
-          <TooltipHelper content="Guardrails">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 cursor-pointer"
-              onClick={onOpenGuardrails}
-              disabled={!onOpenGuardrails}
-              aria-label="Guardrails"
-            >
-              <ShieldCheck className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipHelper>
           <ConnectionBadge state={connectionState} detail={statusDetail} onClick={onResync} />
         </div>
       </header>

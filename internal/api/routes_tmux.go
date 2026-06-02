@@ -44,6 +44,5 @@ func (h *Handler) registerTmuxRoutes(mux *http.ServeMux) {
 		{pattern: "GET /api/tmux/frequent-dirs", handler: h.frequentDirectories},
 		{pattern: "GET /api/tmux/activity/delta", handler: h.activityDelta},
 		{pattern: "GET /api/tmux/activity/stats", handler: h.activityStats},
-		{pattern: "GET /api/tmux/timeline", handler: h.timelineSearch},
 	})
 }

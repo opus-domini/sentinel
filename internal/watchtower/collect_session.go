@@ -29,7 +29,6 @@ type collectSessionState struct {
 	existingPaneByID   map[string]store.WatchtowerPane
 	existingWindowByID map[int]store.WatchtowerWindow
 	focusedPanes       map[string]bool
-	runtimeByPaneID    map[string]store.WatchtowerPaneRuntime
 	windowNameByIndex  map[int]string
 
 	windowAgg map[int]*windowAggregate
@@ -46,7 +45,6 @@ type collectSessionState struct {
 	anyPaneChanged       bool
 	anyWindowChanged     bool
 	activeWindowSwitched bool
-	timelineChanged      bool
 }
 
 type paneTailSnapshot struct {
@@ -114,10 +112,6 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, ts taggedSessi
 	if err != nil {
 		return nil, true, err
 	}
-	runtimeByPaneID, err := s.loadPaneRuntimeByID(ctx, name)
-	if err != nil {
-		return nil, true, err
-	}
 	managedWindows, err := s.reconcileManagedTmuxWindows(ctx, name, windows)
 	if err != nil {
 		return nil, true, err
@@ -141,7 +135,6 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, ts taggedSessi
 		existingPaneByID:   existingPaneByID,
 		existingWindowByID: existingWindowByID,
 		focusedPanes:       focusedPanes,
-		runtimeByPaneID:    runtimeByPaneID,
 		windowNameByIndex:  windowNamesByIndex(windows, managedByRuntime),
 
 		windowAgg: make(map[int]*windowAggregate),
@@ -213,22 +206,6 @@ func (s *Service) loadFocusedPanes(ctx context.Context, sessionName string, now 
 	return focused, nil
 }
 
-func (s *Service) loadPaneRuntimeByID(ctx context.Context, sessionName string) (map[string]store.WatchtowerPaneRuntime, error) {
-	rows, err := s.store.ListWatchtowerPaneRuntimeBySession(ctx, sessionName)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[string]store.WatchtowerPaneRuntime, len(rows))
-	for _, row := range rows {
-		paneID := strings.TrimSpace(row.PaneID)
-		if paneID == "" {
-			continue
-		}
-		byID[paneID] = row
-	}
-	return byID, nil
-}
-
 func (c *collectSessionState) collect() (bool, error) {
 	if err := c.collectPanes(); err != nil {
 		return false, err
@@ -260,11 +237,6 @@ func (c *collectSessionState) collectPane(pane tmux.Pane) error {
 
 	c.paneIDs = append(c.paneIDs, qualifiedID)
 
-	command := normalizeRuntimeCommand(pane.CurrentCommand, pane.StartCommand)
-	paneTitle := strings.TrimSpace(pane.Title)
-	windowName := c.resolveWindowName(pane.WindowIndex)
-	metadata := paneTimelineMetadata(pane.PaneIndex, paneTitle, windowName)
-
 	prev, hadPrev := c.existingPaneByID[qualifiedID]
 	tail := c.capturePaneTail(rawPaneID, prev, hadPrev)
 	revision := c.computePaneRevision(qualifiedID, prev, hadPrev, tail)
@@ -272,13 +244,6 @@ func (c *collectSessionState) collectPane(pane tmux.Pane) error {
 	// Use qualified pane ID for store writes, raw for tmux calls.
 	qualifiedPane := pane
 	qualifiedPane.PaneID = qualifiedID
-
-	if err := c.recordOutputMarker(qualifiedPane, command, metadata, tail.preview, revision); err != nil {
-		return err
-	}
-	if err := c.updatePaneRuntime(qualifiedPane, command, metadata); err != nil {
-		return err
-	}
 
 	c.updateWindowAggregate(pane.WindowIndex, revision)
 	c.updateBestPreview(qualifiedID, tail.preview, revision.changedAt)
@@ -302,31 +267,6 @@ func (c *collectSessionState) collectPane(pane tmux.Pane) error {
 		ChangedAt:      revision.changedAt,
 		UpdatedAt:      c.now,
 	})
-}
-
-func (c *collectSessionState) resolveWindowName(windowIndex int) string {
-	windowName := strings.TrimSpace(c.windowNameByIndex[windowIndex])
-	if windowName != "" {
-		return windowName
-	}
-	if previousWindow, ok := c.existingWindowByID[windowIndex]; ok {
-		return strings.TrimSpace(previousWindow.Name)
-	}
-	return ""
-}
-
-func paneTimelineMetadata(paneIndex int, paneTitle, windowName string) map[string]any {
-	metadata := map[string]any{
-		"paneIndex": paneIndex,
-		"title":     paneTitle,
-	}
-	if paneTitle != "" {
-		metadata["paneTitle"] = paneTitle
-	}
-	if windowName != "" {
-		metadata["windowName"] = windowName
-	}
-	return metadata
 }
 
 func (c *collectSessionState) capturePaneTail(paneID string, prev store.WatchtowerPane, hadPrev bool) paneTailSnapshot {
@@ -379,152 +319,6 @@ func (c *collectSessionState) computePaneRevision(paneID string, prev store.Watc
 	return revision
 }
 
-func (c *collectSessionState) recordOutputMarker(
-	pane tmux.Pane,
-	command string,
-	metadata map[string]any,
-	tailPreview string,
-	revision paneRevisionSnapshot,
-) error {
-	if !revision.changed || strings.TrimSpace(tailPreview) == "" {
-		return nil
-	}
-
-	marker, severity, matched := detectTimelineMarker(tailPreview, c.service.cachedMarkerPatterns())
-	if !matched {
-		return nil
-	}
-
-	summary := timelineLastLine(tailPreview)
-	if summary == "" {
-		summary = "output marker detected"
-	}
-
-	outputMetadata := make(map[string]any, len(metadata)+1)
-	for key, value := range metadata {
-		outputMetadata[key] = value
-	}
-	outputMetadata["revision"] = revision.revision
-
-	return c.appendTimeline(store.WatchtowerTimelineEventWrite{
-		Session:   c.name,
-		WindowIdx: pane.WindowIndex,
-		PaneID:    pane.PaneID,
-		EventType: "output.marker",
-		Severity:  severity,
-		Command:   command,
-		Cwd:       pane.CurrentPath,
-		Summary:   summary,
-		Details:   tailPreview,
-		Marker:    marker,
-		Metadata:  timelineMetadataJSON(outputMetadata),
-		CreatedAt: c.now,
-	})
-}
-
-func (c *collectSessionState) appendTimeline(event store.WatchtowerTimelineEventWrite) error {
-	if _, err := c.service.store.InsertWatchtowerTimelineEvent(c.ctx, event); err != nil {
-		return err
-	}
-	c.timelineChanged = true
-	return nil
-}
-
-func (c *collectSessionState) updatePaneRuntime(pane tmux.Pane, command string, metadata map[string]any) error {
-	runtime, hadRuntime := c.runtimeByPaneID[pane.PaneID]
-	nextStartedAt, err := c.nextRuntimeStartedAt(pane, command, runtime, hadRuntime, metadata)
-	if err != nil {
-		return err
-	}
-
-	return c.service.store.UpsertWatchtowerPaneRuntime(c.ctx, store.WatchtowerPaneRuntimeWrite{
-		PaneID:         pane.PaneID,
-		SessionName:    c.name,
-		WindowIdx:      pane.WindowIndex,
-		CurrentCommand: command,
-		StartedAt:      nextStartedAt,
-		UpdatedAt:      c.now,
-	})
-}
-
-func (c *collectSessionState) nextRuntimeStartedAt(
-	pane tmux.Pane,
-	command string,
-	runtime store.WatchtowerPaneRuntime,
-	hadRuntime bool,
-	metadata map[string]any,
-) (time.Time, error) {
-	startedAt := runtime.StartedAt
-	if startedAt.IsZero() {
-		startedAt = c.now
-	}
-	prevCommand := strings.TrimSpace(runtime.CurrentCommand)
-
-	if !hadRuntime {
-		if err := c.recordCommandStarted(pane, command, metadata); err != nil {
-			return time.Time{}, err
-		}
-		return c.now, nil
-	}
-	if command == prevCommand {
-		return startedAt, nil
-	}
-
-	if err := c.recordCommandFinished(pane, prevCommand, metadata, startedAt); err != nil {
-		return time.Time{}, err
-	}
-	if err := c.recordCommandStarted(pane, command, metadata); err != nil {
-		return time.Time{}, err
-	}
-	return c.now, nil
-}
-
-func (c *collectSessionState) recordCommandStarted(pane tmux.Pane, command string, metadata map[string]any) error {
-	if command == "" || isShellLikeCommand(command) {
-		return nil
-	}
-	return c.appendTimeline(store.WatchtowerTimelineEventWrite{
-		Session:   c.name,
-		WindowIdx: pane.WindowIndex,
-		PaneID:    pane.PaneID,
-		EventType: "command.started",
-		Severity:  "info",
-		Command:   command,
-		Cwd:       pane.CurrentPath,
-		Summary:   "command started: " + command,
-		Metadata:  timelineMetadataJSON(metadata),
-		CreatedAt: c.now,
-	})
-}
-
-func (c *collectSessionState) recordCommandFinished(
-	pane tmux.Pane,
-	command string,
-	metadata map[string]any,
-	startedAt time.Time,
-) error {
-	if command == "" || isShellLikeCommand(command) {
-		return nil
-	}
-	durationMS := c.now.Sub(startedAt).Milliseconds()
-	if durationMS < 0 {
-		durationMS = 0
-	}
-	return c.appendTimeline(store.WatchtowerTimelineEventWrite{
-		Session:    c.name,
-		WindowIdx:  pane.WindowIndex,
-		PaneID:     pane.PaneID,
-		EventType:  "command.finished",
-		Severity:   "info",
-		Command:    command,
-		Cwd:        pane.CurrentPath,
-		DurationMS: durationMS,
-		Summary:    "command finished: " + command,
-		Metadata:   timelineMetadataJSON(metadata),
-		CreatedAt:  c.now,
-	})
-}
-
 func (c *collectSessionState) updateWindowAggregate(windowIndex int, revision paneRevisionSnapshot) {
 	agg := c.windowAgg[windowIndex]
 	if agg == nil {
@@ -552,10 +346,7 @@ func (c *collectSessionState) updateBestPreview(paneID, tailPreview string, chan
 }
 
 func (c *collectSessionState) purgePanes() error {
-	if err := c.service.store.PurgeWatchtowerPanes(c.ctx, c.name, c.paneIDs); err != nil {
-		return err
-	}
-	return c.service.store.PurgeWatchtowerPaneRuntime(c.ctx, c.name, c.paneIDs)
+	return c.service.store.PurgeWatchtowerPanes(c.ctx, c.name, c.paneIDs)
 }
 
 func (c *collectSessionState) collectWindows() error {

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
@@ -326,124 +325,7 @@ func TestRunOpsRunbookSuccessWithParameters(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// guardrail / marker list flows with seeded data
-// ---------------------------------------------------------------------------
-
-func TestListGuardrailRulesWithData(t *testing.T) {
-	t.Parallel()
-
-	h, st := newTestHandler(t, nil)
-	h.guardrails = guardrails.New(st)
-	if err := st.UpsertGuardrailRule(context.Background(), store.GuardrailRuleWrite{
-		ID:      "rule-1",
-		Name:    "Block rm -rf",
-		Pattern: "rm -rf",
-		Mode:    store.GuardrailModeBlock,
-		Enabled: true,
-	}); err != nil {
-		t.Fatalf("UpsertGuardrailRule: %v", err)
-	}
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails", nil)
-	h.listGuardrailRules(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
-	}
-	body := jsonBody(t, w)
-	data, _ := body["data"].(map[string]any)
-	rules, _ := data["rules"].([]any)
-	found := false
-	for _, item := range rules {
-		rule, _ := item.(map[string]any)
-		if rule["id"] == "rule-1" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("rules = %#v, want seeded rule-1", rules)
-	}
-}
-
-func TestListGuardrailRulesNilGuardrails(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	h.guardrails = nil
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/guardrails", nil)
-	h.listGuardrailRules(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-}
-
-func TestListMarkerPatternsNilRepo(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	h.repo = nil
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/markers", nil)
-	h.listMarkerPatterns(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-}
-
-func TestCreateGuardrailRuleSuccess(t *testing.T) {
-	t.Parallel()
-
-	h, st := newTestHandler(t, nil)
-	h.guardrails = guardrails.New(st)
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/api/ops/guardrails", strings.NewReader(
-		`{"id":"r1","name":"block","pattern":"rm -rf","mode":"block","enabled":true}`))
-	h.createGuardrailRule(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201; body=%s", w.Code, w.Body.String())
-	}
-
-	rules, err := st.ListGuardrailRules(context.Background())
-	if err != nil {
-		t.Fatalf("ListGuardrailRules: %v", err)
-	}
-	found := false
-	for _, rule := range rules {
-		if rule.ID == "r1" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("rules = %#v, want rule r1", rules)
-	}
-}
-
-func TestDeleteGuardrailRuleSuccess(t *testing.T) {
-	t.Parallel()
-
-	h, st := newTestHandler(t, nil)
-	h.guardrails = guardrails.New(st)
-	if err := st.UpsertGuardrailRule(context.Background(), store.GuardrailRuleWrite{
-		ID:      "del-me",
-		Pattern: "danger",
-		Mode:    store.GuardrailModeWarn,
-		Enabled: true,
-	}); err != nil {
-		t.Fatalf("UpsertGuardrailRule: %v", err)
-	}
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodDelete, "/api/ops/guardrails/del-me", nil)
-	r.SetPathValue("rule", "del-me")
-	h.deleteGuardrailRule(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
-	}
-}
-
-// ---------------------------------------------------------------------------
-// activity stats / timeline search success paths
+// activity stats success paths
 // ---------------------------------------------------------------------------
 
 func TestActivityStatsNilRepo(t *testing.T) {
@@ -452,23 +334,10 @@ func TestActivityStatsNilRepo(t *testing.T) {
 	h, _ := newTestHandler(t, nil)
 	h.repo = nil
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/activity/stats", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/tmux/activity/stats", nil)
 	h.activityStats(w, r)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", w.Code)
-	}
-}
-
-func TestTimelineSearchSuccess(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/timeline/search?limit=10&since="+
-		time.Now().Add(-time.Hour).UTC().Format(time.RFC3339), nil)
-	h.timelineSearch(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
 	}
 }
 

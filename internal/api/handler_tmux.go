@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
@@ -58,14 +57,6 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      actionSessionCreate,
-		SessionName: req.Name,
-		WindowIndex: -1,
-	}); !ok {
-		return
-	}
 
 	tmuxSvc := h.tmuxForUser(req.User)
 	finalName, err := createSessionWithAvailableName(ctx, tmuxSvc, req.Name, req.Cwd)
@@ -321,14 +312,6 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "session.kill",
-		SessionName: session,
-		WindowIndex: -1,
-	}); !ok {
-		return
-	}
 
 	if err := h.tmuxForSession(ctx, session).KillSession(ctx, session); err != nil &&
 		!tmux.IsKind(err, tmux.ErrKindSessionNotFound) &&

@@ -32,7 +32,7 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	}
 
 	// Spot-check that a few tables exist.
-	for _, table := range []string{"sessions", "session_presets", "session_launchers", "tmux_launchers", "managed_tmux_windows", "wt_sessions", "guardrail_rules", "ops_runbooks", "ops_schedules", "marker_patterns"} {
+	for _, table := range []string{"sessions", "session_presets", "session_launchers", "tmux_launchers", "managed_tmux_windows", "wt_sessions", "ops_runbooks", "ops_schedules"} {
 		var n int
 		if err := db.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
@@ -64,8 +64,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 15 {
-		t.Fatalf("schema_migrations rows = %d, want 15", count)
+	if count != 13 {
+		t.Fatalf("schema_migrations rows = %d, want 13", count)
 	}
 }
 
@@ -77,24 +77,6 @@ func TestRunMigrationsSeedData(t *testing.T) {
 
 	if err := runMigrations(ctx, db); err != nil {
 		t.Fatalf("runMigrations: %v", err)
-	}
-
-	// Guardrail default rules.
-	var guardrailCount int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM guardrail_rules").Scan(&guardrailCount); err != nil {
-		t.Fatalf("count guardrail_rules: %v", err)
-	}
-	if guardrailCount != 2 {
-		t.Fatalf("guardrail_rules count = %d, want 2", guardrailCount)
-	}
-
-	// All guardrail rules have scope='action'.
-	var legacyCount int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM guardrail_rules WHERE scope != 'action'").Scan(&legacyCount); err != nil {
-		t.Fatalf("count legacy scope: %v", err)
-	}
-	if legacyCount != 0 {
-		t.Fatalf("legacy scope rules = %d, want 0", legacyCount)
 	}
 
 	// Default runbooks.
@@ -119,15 +101,6 @@ func TestRunMigrationsSeedData(t *testing.T) {
 	}
 	if globalRev != "0" {
 		t.Fatalf("global_rev = %q, want %q", globalRev, "0")
-	}
-
-	// Marker pattern seeds.
-	var markerCount int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM marker_patterns").Scan(&markerCount); err != nil {
-		t.Fatalf("count marker_patterns: %v", err)
-	}
-	if markerCount < 8 {
-		t.Fatalf("marker_patterns count = %d, want >= 8", markerCount)
 	}
 }
 

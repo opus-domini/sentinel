@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/userswitch"
@@ -163,14 +162,6 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load tmux launcher", nil)
-		return
-	}
-
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      "window.create",
-		SessionName: session,
-		WindowIndex: -1,
-	}); !ok {
 		return
 	}
 

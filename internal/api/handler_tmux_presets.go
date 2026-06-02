@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/guardrails"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/validate"
@@ -128,14 +127,6 @@ func (h *Handler) launchSessionPreset(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.guard.ValidateTargetUser(preset.User); err != nil {
 		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
-		return
-	}
-
-	if ok := h.enforceGuardrail(w, r, guardrails.Input{
-		Action:      actionSessionCreate,
-		SessionName: preset.Name,
-		WindowIndex: -1,
-	}); !ok {
 		return
 	}
 

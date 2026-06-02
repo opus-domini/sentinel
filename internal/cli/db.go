@@ -124,7 +124,7 @@ func newDBResetCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm flushing local runtime storage")
 	cmd.Flags().BoolVar(&force, "force", false, "delete and recreate the SQLite database")
-	cmd.Flags().StringVar(&resource, "resource", store.StorageResourceAll, "resource to flush: timeline, activity-journal, guardrail-audit, ops-activity, ops-alerts, ops-jobs, or all")
+	cmd.Flags().StringVar(&resource, "resource", store.StorageResourceAll, "resource to flush: activity-journal, ops-jobs, or all")
 	return cmd
 }
 

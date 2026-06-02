@@ -2,7 +2,6 @@ package runbook
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/activity"
-	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -26,7 +23,6 @@ type mockRepo struct {
 
 	updatedRuns []store.OpsRunbookRunUpdate
 	gotRunIDs   []string
-	insertedTL  []activity.EventWrite
 
 	// getRunbookErr, if set, is returned by GetOpsRunbook.
 	getRunbookErr error
@@ -58,13 +54,6 @@ func (m *mockRepo) GetOpsRunbookRun(_ context.Context, id string) (store.OpsRunb
 	return store.OpsRunbookRun{ID: id}, nil
 }
 
-func (m *mockRepo) InsertActivityEvent(_ context.Context, event activity.EventWrite) (activity.Event, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.insertedTL = append(m.insertedTL, event)
-	return activity.Event{ID: 1, Source: event.Source}, nil
-}
-
 func (m *mockRepo) lastUpdate() store.OpsRunbookRunUpdate {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -72,12 +61,6 @@ func (m *mockRepo) lastUpdate() store.OpsRunbookRunUpdate {
 		return store.OpsRunbookRunUpdate{}
 	}
 	return m.updatedRuns[len(m.updatedRuns)-1]
-}
-
-func (m *mockRepo) timelineCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.insertedTL)
 }
 
 func TestRunPersistsTerminalStateOnCancelledContext(t *testing.T) {
@@ -119,11 +102,6 @@ func TestRunPersistsTerminalStateOnCancelledContext(t *testing.T) {
 	if last.FinishedAt == "" {
 		t.Error("last update FinishedAt is empty, want non-empty timestamp")
 	}
-
-	// Timeline event must have been inserted despite cancelled context.
-	if repo.timelineCount() == 0 {
-		t.Error("no timeline events inserted, want at least 1")
-	}
 }
 
 func TestRunPersistsTerminalStateOnTimeout(t *testing.T) {
@@ -156,9 +134,6 @@ func TestRunPersistsTerminalStateOnTimeout(t *testing.T) {
 	}
 	if last.FinishedAt == "" {
 		t.Error("last update FinishedAt is empty, want non-empty timestamp")
-	}
-	if repo.timelineCount() == 0 {
-		t.Error("no timeline events inserted, want at least 1")
 	}
 }
 
@@ -245,9 +220,6 @@ func TestRunSuccessfulEndToEnd(t *testing.T) {
 	if last.CurrentStep != "step-1" {
 		t.Errorf("last update CurrentStep = %q, want %q", last.CurrentStep, "step-1")
 	}
-	if repo.timelineCount() == 0 {
-		t.Error("no timeline events inserted, want at least 1")
-	}
 	if onFinishStatus != runnerStatusSucceeded {
 		t.Errorf("OnFinish status = %q, want %q", onFinishStatus, runnerStatusSucceeded)
 	}
@@ -278,150 +250,6 @@ func TestRunGetRunbookError(t *testing.T) {
 	}
 	if !strings.Contains(last.Error, "db connection lost") {
 		t.Errorf("error = %q, want it to contain 'db connection lost'", last.Error)
-	}
-}
-
-func TestRunWithExtraMetadata(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockRepo{
-		runbookOK: true,
-		runbook: store.OpsRunbook{
-			ID:   "rb-meta",
-			Name: "meta-runbook",
-			Steps: []store.OpsRunbookStep{
-				{Type: "approval", Title: "done", Description: "ok"},
-			},
-		},
-	}
-
-	emit := func(_ string, _ map[string]any) {}
-
-	Run(context.Background(), repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-meta", RunbookID: "rb-meta"},
-		Source:      "scheduler",
-		StepTimeout: 1 * time.Second,
-		RunTimeout:  5 * time.Second,
-		ExtraMetadata: map[string]string{
-			"scheduleId": "sched-123",
-		},
-	})
-
-	// Approval step pauses execution — no timeline event or finish.
-	// The last update should be waiting_approval.
-	last := repo.lastUpdate()
-	if last.Status != runnerStatusWaitingApproval {
-		t.Errorf("status = %q, want %q", last.Status, runnerStatusWaitingApproval)
-	}
-}
-
-// mockAlertRepo implements AlertRepo for testing.
-type mockAlertRepo struct {
-	mu           sync.Mutex
-	upserted     []alerts.AlertWrite
-	resolvedKeys []string
-	upsertErr    error
-	resolveErr   error
-}
-
-func (m *mockAlertRepo) UpsertAlert(_ context.Context, write alerts.AlertWrite) (alerts.Alert, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.upserted = append(m.upserted, write)
-	return alerts.Alert{ID: 1}, m.upsertErr
-}
-
-func (m *mockAlertRepo) ResolveAlert(_ context.Context, dedupeKey string, _ time.Time) (alerts.Alert, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.resolvedKeys = append(m.resolvedKeys, dedupeKey)
-	return alerts.Alert{}, m.resolveErr
-}
-
-func TestRunAlertRepoUpsertOnFailure(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockRepo{
-		runbookOK: true,
-		runbook: store.OpsRunbook{
-			ID:   "rb-alert-fail",
-			Name: "failing-runbook",
-			Steps: []store.OpsRunbookStep{
-				{Type: "run", Title: "bad step", Command: "sleep 60"},
-			},
-		},
-	}
-
-	alertRepo := &mockAlertRepo{}
-	emit := func(_ string, _ map[string]any) {}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	Run(ctx, repo, emit, RunParams{
-		Job: store.OpsRunbookRun{
-			ID:          "run-alert",
-			RunbookID:   "rb-alert-fail",
-			RunbookName: "failing-runbook",
-		},
-		Source:      "test",
-		StepTimeout: 1 * time.Second,
-		RunTimeout:  1 * time.Second,
-		AlertRepo:   alertRepo,
-	})
-
-	alertRepo.mu.Lock()
-	defer alertRepo.mu.Unlock()
-	if len(alertRepo.upserted) != 1 {
-		t.Fatalf("upserted alerts = %d, want 1", len(alertRepo.upserted))
-	}
-	if alertRepo.upserted[0].Severity != "error" {
-		t.Errorf("alert severity = %q, want %q", alertRepo.upserted[0].Severity, "error")
-	}
-	if !strings.Contains(alertRepo.upserted[0].Title, "failing-runbook") {
-		t.Errorf("alert title = %q, want it to contain runbook name", alertRepo.upserted[0].Title)
-	}
-}
-
-func TestRunAlertRepoResolveOnSuccess(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockRepo{
-		runbookOK: true,
-		runbook: store.OpsRunbook{
-			ID:   "rb-alert-ok",
-			Name: "ok-runbook",
-			Steps: []store.OpsRunbookStep{
-				{Type: "run", Title: "ok", Command: "echo done"},
-			},
-		},
-	}
-
-	alertRepo := &mockAlertRepo{
-		resolveErr: sql.ErrNoRows, // No prior alert — should be silently ignored.
-	}
-	emit := func(_ string, _ map[string]any) {}
-
-	Run(context.Background(), repo, emit, RunParams{
-		Job: store.OpsRunbookRun{
-			ID:          "run-resolve",
-			RunbookID:   "rb-alert-ok",
-			RunbookName: "ok-runbook",
-		},
-		Source:      "test",
-		StepTimeout: 1 * time.Second,
-		RunTimeout:  5 * time.Second,
-		AlertRepo:   alertRepo,
-	})
-
-	alertRepo.mu.Lock()
-	defer alertRepo.mu.Unlock()
-	if len(alertRepo.resolvedKeys) != 1 {
-		t.Fatalf("resolved keys = %d, want 1", len(alertRepo.resolvedKeys))
-	}
-	wantKey := "runbook:rb-alert-ok:failed"
-	if alertRepo.resolvedKeys[0] != wantKey {
-		t.Errorf("resolved key = %q, want %q", alertRepo.resolvedKeys[0], wantKey)
 	}
 }
 
@@ -662,9 +490,6 @@ func TestResumeRunCompletesAfterApproval(t *testing.T) {
 	if last.CompletedSteps != 1 {
 		t.Fatalf("completed steps = %d, want 1", last.CompletedSteps)
 	}
-	if repo.timelineCount() == 0 {
-		t.Fatal("expected timeline event for resumed run")
-	}
 	if len(emitted) == 0 {
 		t.Fatal("expected emitted events")
 	}
@@ -814,9 +639,5 @@ func TestRunApprovalStepPauses(t *testing.T) {
 	last := repo.lastUpdate()
 	if last.Status != runnerStatusWaitingApproval {
 		t.Errorf("last update status = %q, want %q", last.Status, runnerStatusWaitingApproval)
-	}
-	// No timeline event should be inserted for a paused run.
-	if repo.timelineCount() != 0 {
-		t.Errorf("timeline events = %d, want 0 (paused run)", repo.timelineCount())
 	}
 }

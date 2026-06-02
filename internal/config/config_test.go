@@ -160,13 +160,6 @@ path = "` + dbPath + `"
 level = "debug"
 path = "` + logPath + `"
 
-[alerts]
-cpu_percent = 75.0
-mem_percent = 80.0
-disk_percent = 85.0
-webhook_url = "https://example.com/hook"
-webhook_events = ["alert.created", "alert.acked"]
-
 [health_report]
 webhook_url = "https://example.com/report"
 schedule = "@daily"
@@ -213,9 +206,6 @@ user_switch_method = "sudo"
 	}
 	if cfg.Log.Level != "debug" {
 		t.Fatalf("Log.Level = %q", cfg.Log.Level)
-	}
-	if cfg.Alerts.CPUPercent != 75 || cfg.Alerts.MemPercent != 80 || cfg.Alerts.DiskPercent != 85 {
-		t.Fatalf("Alerts = %+v", cfg.Alerts)
 	}
 	if cfg.Watchtower.TickInterval != 5*time.Second || cfg.Watchtower.CaptureTimeout != 500*time.Millisecond {
 		t.Fatalf("Watchtower = %+v", cfg.Watchtower)
@@ -474,12 +464,6 @@ func TestLoadFallsBackToTempDirWhenHomeUnavailable(t *testing.T) {
 }
 
 func TestParseHelpers(t *testing.T) {
-	if v, ok := parsePositiveFloat("90.5"); !ok || v != 90.5 {
-		t.Fatalf("parsePositiveFloat = %f, %t", v, ok)
-	}
-	if _, ok := parsePositiveFloat("0"); ok {
-		t.Fatal("parsePositiveFloat accepted zero")
-	}
 	if v, ok := parseBool("yes"); !ok || !v {
 		t.Fatalf("parseBool yes = %t, %t", v, ok)
 	}
@@ -514,11 +498,6 @@ func clearConfigEnv(t *testing.T) {
 		"SENTINEL_STORAGE_PATH",
 		"SENTINEL_LOG_LEVEL",
 		"SENTINEL_LOG_PATH",
-		"SENTINEL_ALERT_CPU_PERCENT",
-		"SENTINEL_ALERT_MEM_PERCENT",
-		"SENTINEL_ALERT_DISK_PERCENT",
-		"SENTINEL_ALERT_WEBHOOK_URL",
-		"SENTINEL_ALERT_WEBHOOK_EVENTS",
 		"SENTINEL_HEALTH_REPORT_WEBHOOK_URL",
 		"SENTINEL_HEALTH_REPORT_SCHEDULE",
 		"SENTINEL_WATCHTOWER_ENABLED",

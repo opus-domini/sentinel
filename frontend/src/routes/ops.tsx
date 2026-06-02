@@ -1,7 +1,7 @@
 import { Navigate, createFileRoute } from '@tanstack/react-router'
 
 function OpsRedirect() {
-  return <Navigate to="/alerts" replace />
+  return <Navigate to="/services" replace />
 }
 
 export const Route = createFileRoute('/ops')({

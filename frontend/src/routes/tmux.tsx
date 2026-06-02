@@ -28,7 +28,6 @@ import type { LauncherDraft } from '@/components/tmux/LaunchersDialog'
 import AppShell from '@/components/layout/AppShell'
 import SessionSidebar from '@/components/SessionSidebar'
 import TmuxTerminalPanel from '@/components/TmuxTerminalPanel'
-import GuardrailConfirmDialog from '@/components/GuardrailConfirmDialog'
 import RenameDialog from '@/components/tmux/RenameDialog'
 import CreateSessionDialog from '@/components/sidebar/CreateSessionDialog'
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -39,7 +38,6 @@ import { useTerminalTmux } from '@/hooks/useTerminalTmux'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { usePresence } from '@/hooks/usePresence'
 import { useSeenTracking } from '@/hooks/useSeenTracking'
-import { useTmuxTimeline } from '@/hooks/useTmuxTimeline'
 import { useInspector } from '@/hooks/useInspector'
 import { useSessionCRUD } from '@/hooks/useSessionCRUD'
 import { useTmuxEventsSocket } from '@/hooks/useTmuxEventsSocket'
@@ -49,9 +47,7 @@ import { applySidebarOrder, moveSidebarItem, sortBySidebarOrder } from '@/lib/se
 import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName, slugifyTmuxName } from '@/lib/tmuxName'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
-const GuardrailsDialog = lazy(() => import('@/components/tmux/GuardrailsDialog'))
 const LaunchersDialog = lazy(() => import('@/components/tmux/LaunchersDialog'))
-const TimelineDialog = lazy(() => import('@/components/tmux/TimelineDialog'))
 
 function asText(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -132,27 +128,11 @@ function TmuxPage() {
   const layout = useLayoutContext()
   const queryClient = useQueryClient()
 
-  // ---- Guardrails dialog state ----
-  const [guardrailsOpen, setGuardrailsOpen] = useState(false)
   const [launchersOpen, setLaunchersOpen] = useState(false)
   const [createSessionOpen, setCreateSessionOpen] = useState(false)
   const [launchers, setLaunchers] = useState<Array<TmuxLauncher>>([])
   const [sessionLaunchers, setSessionLaunchers] = useState<Array<SessionLauncher>>([])
   const [sessionPresets, setSessionPresets] = useState<Array<SessionPreset>>([])
-
-  // ---- Guardrail confirm state (shared across session CRUD + inspector) ----
-  const [guardrailConfirm, setGuardrailConfirm] = useState<{
-    ruleName: string
-    message: string
-    onConfirm: () => void
-  } | null>(null)
-
-  const requestGuardrailConfirm = useCallback(
-    (ruleName: string, message: string, onConfirm: () => void) => {
-      setGuardrailConfirm({ ruleName, message, onConfirm })
-    },
-    [],
-  )
 
   // ---- Tabs state ----
   const [tabsState, dispatchTabs] = useReducer(tabsReducer, undefined, loadPersistedTabs)
@@ -347,7 +327,6 @@ function TmuxPage() {
     dispatchTabs,
     closeCurrentSocket,
     resetTerminal,
-    requestGuardrailConfirm,
   })
 
   // ---- Session CRUD hook ----
@@ -369,7 +348,6 @@ function TmuxPage() {
     pushSuccessToast,
     pendingCreateSessionsRef: inspector.pendingCreateSessionsRef,
     pendingKillSessionsRef: inspector.pendingKillSessionsRef,
-    requestGuardrailConfirm,
     refreshSessionPresets,
   })
 
@@ -745,12 +723,6 @@ function TmuxPage() {
     ],
   )
 
-  // ---- Timeline hook ----
-  const timeline = useTmuxTimeline({
-    api,
-    activeSession: tabsState.activeSession,
-  })
-
   // ---- Derived active window/pane ----
   const activeWindowIndex = useMemo(() => {
     if (inspector.activeWindowIndexOverride !== null) return inspector.activeWindowIndexOverride
@@ -804,9 +776,6 @@ function TmuxPage() {
     applyInspectorProjectionPatches: inspector.applyInspectorProjectionPatches,
     settlePendingSeenAcks: seen.settlePendingSeenAcks,
     seenAckWaitersRef: seen.seenAckWaitersRef,
-    timelineOpenRef: timeline.timelineOpenRef,
-    timelineSessionFilterRef: timeline.timelineSessionFilterRef,
-    loadTimelineRef: timeline.loadTimelineRef,
     handleTmuxSessionsEvent: sessionCRUD.handleTmuxSessionsEvent,
     handleTmuxInspectorEvent: inspector.handleTmuxInspectorEvent,
   })
@@ -831,26 +800,6 @@ function TmuxPage() {
     reconnectActiveSession,
     pushSuccessToast,
   ])
-
-  // ---- Runbook run from timeline ----
-  const handleRunRunbookFromTimeline = useCallback(
-    (runbookId: string) => {
-      void (async () => {
-        try {
-          await api(`/api/ops/runbooks/${encodeURIComponent(runbookId)}/run`, {
-            method: 'POST',
-          })
-          pushSuccessToast('Runbook started', 'Runbook execution has been queued.')
-        } catch (error) {
-          pushErrorToast(
-            'Runbook failed',
-            error instanceof Error ? error.message : 'Failed to run runbook',
-          )
-        }
-      })()
-    },
-    [api, pushErrorToast, pushSuccessToast],
-  )
 
   // ---- Derived state ----
   const orderedSessions = useMemo(() => {
@@ -883,11 +832,6 @@ function TmuxPage() {
     if (!query) return orderedSessions
     return orderedSessions.filter((s) => s.name.toLowerCase().includes(query))
   }, [debouncedFilter, orderedSessions])
-
-  const timelineSessionOptions = useMemo(
-    () => orderedSessions.map((item) => item.name),
-    [orderedSessions],
-  )
 
   const reorderPinnedSessions = useCallback(
     async (activeName: string, overName: string) => {
@@ -1070,20 +1014,11 @@ function TmuxPage() {
         onFocusTerminal={focusTerminal}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
-        onOpenGuardrails={() => setGuardrailsOpen(true)}
-        onOpenTimeline={() => {
-          timeline.setTimelineOpen(true)
-          void timeline.loadTimeline({ quiet: true })
-        }}
         onOpenCreateSession={() => setCreateSessionOpen(true)}
         onResync={handleResync}
       />
 
       <Suspense fallback={null}>
-        {guardrailsOpen && (
-          <GuardrailsDialog open={guardrailsOpen} onOpenChange={setGuardrailsOpen} />
-        )}
-
         {launchersOpen && (
           <LaunchersDialog
             open={launchersOpen}
@@ -1105,42 +1040,7 @@ function TmuxPage() {
             onCreate={(name, cwd, user) => sessionCRUD.createSession(name, cwd, '', user)}
           />
         )}
-
-        {timeline.timelineOpen && (
-          <TimelineDialog
-            open={timeline.timelineOpen}
-            onOpenChange={timeline.setTimelineOpen}
-            loading={timeline.timelineLoading}
-            error={timeline.timelineError}
-            events={timeline.timelineEvents}
-            hasMore={timeline.timelineHasMore}
-            query={timeline.timelineQuery}
-            severity={timeline.timelineSeverity}
-            eventType={timeline.timelineEventType}
-            sessionFilter={timeline.timelineSessionFilter}
-            sessionOptions={timelineSessionOptions}
-            onQueryChange={timeline.setTimelineQuery}
-            onSeverityChange={timeline.setTimelineSeverity}
-            onEventTypeChange={timeline.setTimelineEventType}
-            onSessionFilterChange={timeline.setTimelineSessionFilter}
-            onRefresh={() => {
-              void timeline.loadTimeline()
-            }}
-            onRunRunbook={handleRunRunbookFromTimeline}
-          />
-        )}
       </Suspense>
-
-      <GuardrailConfirmDialog
-        open={guardrailConfirm !== null}
-        ruleName={guardrailConfirm?.ruleName ?? ''}
-        message={guardrailConfirm?.message ?? ''}
-        onOpenChange={() => setGuardrailConfirm(null)}
-        onConfirm={() => {
-          guardrailConfirm?.onConfirm()
-          setGuardrailConfirm(null)
-        }}
-      />
 
       <RenameDialog
         open={sessionCRUD.renameDialogOpen}

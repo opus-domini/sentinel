@@ -5,9 +5,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/opus-domini/sentinel/internal/activity"
-	"github.com/opus-domini/sentinel/internal/alerts"
 )
 
 func TestStorageStatsAndFlush(t *testing.T) {
@@ -24,8 +21,8 @@ func TestStorageStatsAndFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetStorageStats: %v", err)
 	}
-	if len(stats.Resources) != 6 {
-		t.Fatalf("len(resources) = %d, want 6", len(stats.Resources))
+	if len(stats.Resources) != 2 {
+		t.Fatalf("len(resources) = %d, want 2", len(stats.Resources))
 	}
 
 	rowsByResource := make(map[string]int64, len(stats.Resources))
@@ -33,11 +30,7 @@ func TestStorageStatsAndFlush(t *testing.T) {
 		rowsByResource[item.Resource] = item.Rows
 	}
 	for _, resource := range []string{
-		StorageResourceTimeline,
 		StorageResourceActivityLog,
-		StorageResourceGuardrailLog,
-		StorageResourceOpsActivity,
-		StorageResourceOpsAlerts,
 		StorageResourceOpsJobs,
 	} {
 		if rowsByResource[resource] < 1 {
@@ -49,8 +42,8 @@ func TestStorageStatsAndFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FlushStorageResource(all): %v", err)
 	}
-	if len(results) != 6 {
-		t.Fatalf("len(results) = %d, want 6", len(results))
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d, want 2", len(results))
 	}
 
 	after, err := s.GetStorageStats(ctx)
@@ -66,18 +59,6 @@ func TestStorageStatsAndFlush(t *testing.T) {
 
 func seedStorageStatsData(ctx context.Context, t *testing.T, s *Store, base time.Time) {
 	t.Helper()
-	if _, err := s.InsertWatchtowerTimelineEvent(ctx, WatchtowerTimelineEventWrite{
-		Session:   "dev",
-		WindowIdx: 0,
-		PaneID:    "%1",
-		EventType: "output.marker",
-		Severity:  "warn",
-		Summary:   "warning marker",
-		Details:   "deprecated warning",
-		CreatedAt: base,
-	}); err != nil {
-		t.Fatalf("InsertWatchtowerTimelineEvent: %v", err)
-	}
 	if _, err := s.InsertWatchtowerJournal(ctx, WatchtowerJournalWrite{
 		GlobalRev:  1,
 		EntityType: "pane",
@@ -88,44 +69,6 @@ func seedStorageStatsData(ctx context.Context, t *testing.T, s *Store, base time
 		ChangedAt:  base,
 	}); err != nil {
 		t.Fatalf("InsertWatchtowerJournal: %v", err)
-	}
-	if _, err := s.InsertGuardrailAudit(ctx, GuardrailAuditWrite{
-		RuleID:      "rule.test",
-		Decision:    "warn",
-		Action:      "session.kill",
-		Command:     "tmux kill-session -t dev",
-		SessionName: "dev",
-		WindowIndex: 0,
-		PaneID:      "%1",
-		Reason:      "test",
-		MetadataRaw: `{"source":"test"}`,
-		CreatedAt:   base,
-	}); err != nil {
-		t.Fatalf("InsertGuardrailAudit: %v", err)
-	}
-	if _, err := s.InsertActivityEvent(ctx, activity.EventWrite{
-		Source:    "service",
-		EventType: "service.action",
-		Severity:  "info",
-		Resource:  "sentinel",
-		Message:   "service restarted",
-		Details:   "test",
-		Metadata:  `{"source":"test"}`,
-		CreatedAt: base,
-	}); err != nil {
-		t.Fatalf("InsertActivityEvent: %v", err)
-	}
-	if _, err := s.UpsertAlert(ctx, alerts.AlertWrite{
-		DedupeKey: "service:sentinel:failed",
-		Source:    "service",
-		Resource:  "sentinel",
-		Title:     "Sentinel failed",
-		Message:   "service entered failed state",
-		Severity:  "error",
-		Metadata:  `{"source":"test"}`,
-		CreatedAt: base,
-	}); err != nil {
-		t.Fatalf("UpsertAlert: %v", err)
 	}
 	runbooks, err := s.ListOpsRunbooks(ctx)
 	if err != nil {

@@ -53,13 +53,6 @@ path = "~/.sentinel/sentinel.db"
 level = "info"
 path = "~/.sentinel/logs/sentinel.log"
 
-[alerts]
-cpu_percent = 90.0
-mem_percent = 90.0
-disk_percent = 95.0
-webhook_url = ""
-webhook_events = ["alert.created", "alert.resolved", "alert.acked"]
-
 [health_report]
 webhook_url = ""
 schedule = ""
@@ -82,38 +75,33 @@ user_switch_method = "systemd-run"
 
 ## Environment Variables
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `SENTINEL_CONFIG` | `<data-dir>/config.toml` | Config file path |
-| `SENTINEL_DATA_DIR` | `~/.sentinel` | Default data root |
-| `SENTINEL_SERVER_HOST` | `127.0.0.1` | HTTP listen host |
-| `SENTINEL_SERVER_PORT` | `4040` | HTTP listen port |
-| `SENTINEL_SERVER_TOKEN` | empty | Auth token |
-| `SENTINEL_SERVER_ALLOWED_ORIGINS` | empty | Comma-separated allowed origins |
-| `SENTINEL_SERVER_TRUSTED_PROXIES` | empty | Comma-separated proxy IPs/CIDRs trusted for `X-Forwarded-Proto` |
-| `SENTINEL_SERVER_COOKIE_SECURE` | `auto` | Cookie secure flag: `auto`, `always`, `never` |
-| `SENTINEL_SERVER_ALLOW_INSECURE_COOKIE` | `false` | Allow auth cookie over plain HTTP |
-| `SENTINEL_SERVER_TIMEZONE` | system timezone | IANA timezone for displayed timestamps |
-| `SENTINEL_SERVER_LOCALE` | empty | BCP 47 locale for date/number formatting |
-| `SENTINEL_STORAGE_PATH` | `~/.sentinel/sentinel.db` | SQLite database path |
-| `SENTINEL_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `SENTINEL_LOG_PATH` | `~/.sentinel/logs/sentinel.log` | Daemon log file path |
-| `SENTINEL_ALERT_CPU_PERCENT` | `90` | CPU usage alert threshold |
-| `SENTINEL_ALERT_MEM_PERCENT` | `90` | Memory usage alert threshold |
-| `SENTINEL_ALERT_DISK_PERCENT` | `95` | Disk usage alert threshold |
-| `SENTINEL_ALERT_WEBHOOK_URL` | empty | Webhook URL for alert notifications |
-| `SENTINEL_ALERT_WEBHOOK_EVENTS` | `alert.created,alert.resolved` | Comma-separated alert webhook events |
-| `SENTINEL_HEALTH_REPORT_WEBHOOK_URL` | empty | Webhook URL for health report delivery |
-| `SENTINEL_HEALTH_REPORT_SCHEDULE` | empty | Cron schedule for health reports |
-| `SENTINEL_WATCHTOWER_ENABLED` | `true` | Enable watchtower service |
-| `SENTINEL_WATCHTOWER_TICK_INTERVAL` | `1s` | Watchtower collect interval |
-| `SENTINEL_WATCHTOWER_CAPTURE_LINES` | `80` | Pane tail capture lines |
-| `SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT` | `150ms` | Per-pane capture timeout |
-| `SENTINEL_WATCHTOWER_JOURNAL_ROWS` | `5000` | Activity journal retention |
-| `SENTINEL_RUNBOOK_MAX_CONCURRENT` | `5` | Max concurrent manual runbook executions |
-| `SENTINEL_ALLOWED_USERS` | empty | Comma-separated OS users allowed as session targets |
-| `SENTINEL_ALLOW_ROOT_TARGET` | `false` | Whether to allow targeting root |
-| `SENTINEL_USER_SWITCH_METHOD` | `systemd-run` on Linux, `sudo` elsewhere | User switch method |
+| Variable                                | Default                                  | Description                                                     |
+| --------------------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
+| `SENTINEL_CONFIG`                       | `<data-dir>/config.toml`                 | Config file path                                                |
+| `SENTINEL_DATA_DIR`                     | `~/.sentinel`                            | Default data root                                               |
+| `SENTINEL_SERVER_HOST`                  | `127.0.0.1`                              | HTTP listen host                                                |
+| `SENTINEL_SERVER_PORT`                  | `4040`                                   | HTTP listen port                                                |
+| `SENTINEL_SERVER_TOKEN`                 | empty                                    | Auth token                                                      |
+| `SENTINEL_SERVER_ALLOWED_ORIGINS`       | empty                                    | Comma-separated allowed origins                                 |
+| `SENTINEL_SERVER_TRUSTED_PROXIES`       | empty                                    | Comma-separated proxy IPs/CIDRs trusted for `X-Forwarded-Proto` |
+| `SENTINEL_SERVER_COOKIE_SECURE`         | `auto`                                   | Cookie secure flag: `auto`, `always`, `never`                   |
+| `SENTINEL_SERVER_ALLOW_INSECURE_COOKIE` | `false`                                  | Allow auth cookie over plain HTTP                               |
+| `SENTINEL_SERVER_TIMEZONE`              | system timezone                          | IANA timezone for displayed timestamps                          |
+| `SENTINEL_SERVER_LOCALE`                | empty                                    | BCP 47 locale for date/number formatting                        |
+| `SENTINEL_STORAGE_PATH`                 | `~/.sentinel/sentinel.db`                | SQLite database path                                            |
+| `SENTINEL_LOG_LEVEL`                    | `info`                                   | `debug`, `info`, `warn`, `error`                                |
+| `SENTINEL_LOG_PATH`                     | `~/.sentinel/logs/sentinel.log`          | Daemon log file path                                            |
+| `SENTINEL_HEALTH_REPORT_WEBHOOK_URL`    | empty                                    | Webhook URL for health report delivery                          |
+| `SENTINEL_HEALTH_REPORT_SCHEDULE`       | empty                                    | Cron schedule for health reports                                |
+| `SENTINEL_WATCHTOWER_ENABLED`           | `true`                                   | Enable watchtower service                                       |
+| `SENTINEL_WATCHTOWER_TICK_INTERVAL`     | `1s`                                     | Watchtower collect interval                                     |
+| `SENTINEL_WATCHTOWER_CAPTURE_LINES`     | `80`                                     | Pane tail capture lines                                         |
+| `SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT`   | `150ms`                                  | Per-pane capture timeout                                        |
+| `SENTINEL_WATCHTOWER_JOURNAL_ROWS`      | `5000`                                   | Tmux activity retention                                         |
+| `SENTINEL_RUNBOOK_MAX_CONCURRENT`       | `5`                                      | Max concurrent manual runbook executions                        |
+| `SENTINEL_ALLOWED_USERS`                | empty                                    | Comma-separated OS users allowed as session targets             |
+| `SENTINEL_ALLOW_ROOT_TARGET`            | `false`                                  | Whether to allow targeting root                                 |
+| `SENTINEL_USER_SWITCH_METHOD`           | `systemd-run` on Linux, `sudo` elsewhere | User switch method                                              |
 
 ## Recommended Profiles
 

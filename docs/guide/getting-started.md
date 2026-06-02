@@ -51,7 +51,7 @@ sentinel service status
 
 - Sentinel version
 - Token/auth state
-- Storage and guardrail tabs
+- Storage settings
 
 ![Desktop settings token](assets/images/desktop-settings-token.png)
 
@@ -117,5 +117,5 @@ sentinel service autoupdate install --scope system
 sentinel --help
 sentinel --version
 sentinel update check
-sentinel recovery list
+sentinel db status
 ```

@@ -18,18 +18,10 @@ const (
 	TypeTmuxInspector = "tmux.inspector.updated"
 	// TypeTmuxActivity announces that tmux activity stats changed.
 	TypeTmuxActivity = "tmux.activity.updated"
-	// TypeTmuxTimeline announces that the tmux timeline changed.
-	TypeTmuxTimeline = "tmux.timeline.updated"
-	// TypeTmuxGuardrail announces that a tmux guardrail blocked an action.
-	TypeTmuxGuardrail = "tmux.guardrail.blocked"
 	// TypeOpsOverview announces that the ops overview changed.
 	TypeOpsOverview = "ops.overview.updated"
 	// TypeOpsServices announces that ops service state changed.
 	TypeOpsServices = "ops.services.updated"
-	// TypeOpsAlerts announces that ops alerts changed.
-	TypeOpsAlerts = "ops.alerts.updated"
-	// TypeOpsActivity announces that ops activity changed.
-	TypeOpsActivity = "ops.activity.updated"
 	// TypeOpsJob announces that an ops job changed.
 	TypeOpsJob = "ops.job.updated"
 	// TypeOpsMetrics announces that ops metrics changed.

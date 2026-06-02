@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -231,97 +230,4 @@ func (h *Handler) activityStats(w http.ResponseWriter, r *http.Request) {
 		"lastCollectError":      runtime["last_collect_error"],
 		"runtime":               runtime,
 	})
-}
-
-func (h *Handler) timelineSearch(w http.ResponseWriter, r *http.Request) {
-	if h.repo == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "store is unavailable", nil)
-		return
-	}
-
-	query, err := parseTimelineSearchQuery(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	result, err := h.repo.SearchWatchtowerTimelineEvents(ctx, query)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to query timeline", nil)
-		return
-	}
-	writeData(w, http.StatusOK, map[string]any{
-		keyEvents: result.Events,
-		"hasMore": result.HasMore,
-	})
-}
-
-func parseTimelineSearchQuery(r *http.Request) (store.WatchtowerTimelineQuery, error) {
-	query := store.WatchtowerTimelineQuery{
-		Session:   strings.TrimSpace(r.URL.Query().Get(keySession)),
-		PaneID:    strings.TrimSpace(r.URL.Query().Get(keyPaneID)),
-		Query:     strings.TrimSpace(r.URL.Query().Get("q")),
-		Severity:  strings.TrimSpace(r.URL.Query().Get("severity")),
-		EventType: strings.TrimSpace(r.URL.Query().Get("eventType")),
-		Limit:     100,
-	}
-	if err := validateTimelineScope(query.Session, query.PaneID); err != nil {
-		return store.WatchtowerTimelineQuery{}, err
-	}
-	windowIdx, err := parseTimelineWindowIndexParam(strings.TrimSpace(r.URL.Query().Get("windowIndex")))
-	if err != nil {
-		return store.WatchtowerTimelineQuery{}, err
-	}
-	since, err := parseTimelineRFC3339Param(strings.TrimSpace(r.URL.Query().Get("since")), "since")
-	if err != nil {
-		return store.WatchtowerTimelineQuery{}, err
-	}
-	until, err := parseTimelineRFC3339Param(strings.TrimSpace(r.URL.Query().Get("until")), "until")
-	if err != nil {
-		return store.WatchtowerTimelineQuery{}, err
-	}
-	limit, err := parseActivityLimitParam(strings.TrimSpace(r.URL.Query().Get("limit")), query.Limit)
-	if err != nil {
-		return store.WatchtowerTimelineQuery{}, err
-	}
-	query.WindowIdx = windowIdx
-	query.Since = since
-	query.Until = until
-	query.Limit = limit
-	return query, nil
-}
-
-func validateTimelineScope(session, paneID string) error {
-	if session != "" && !validate.SessionName(session) {
-		return errors.New("invalid session name")
-	}
-	if paneID != "" && !strings.HasPrefix(paneID, "%") {
-		return errors.New("paneId must start with %")
-	}
-	return nil
-}
-
-func parseTimelineWindowIndexParam(raw string) (*int, error) {
-	if raw == "" {
-		return nil, nil
-	}
-	parsed, err := strconv.Atoi(raw)
-	if err != nil || parsed < 0 {
-		return nil, errors.New("windowIndex must be >= 0")
-	}
-	return &parsed, nil
-}
-
-func parseTimelineRFC3339Param(raw, field string) (time.Time, error) {
-	if raw == "" {
-		return time.Time{}, nil
-	}
-	parsed, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("%s must be RFC3339", field)
-	}
-	return parsed.UTC(), nil
 }

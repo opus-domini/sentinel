@@ -5,13 +5,13 @@
 </div>
 
 Sentinel is a host operations platform delivered as a single binary.
-It provides tmux session control, reusable session and window launchers, service monitoring, alerts, metrics, runbooks, and recovery workflows in a realtime browser UI.
+It provides tmux session control, reusable session and window launchers, service monitoring, metrics, and runbooks in a realtime browser UI.
 
 ## What You Will Find Here
 
 - Installation and first-run flow.
 - Architecture and security model.
-- Deep feature guides for tmux, services, runbooks, alerts, timeline, metrics, recovery, and guardrails.
+- Deep feature guides for tmux, services, metrics, runbooks, and multi-user sessions.
 - Full CLI and API reference.
 - Operations runbooks for services, autoupdate, and storage management.
 - Mobile/PWA behavior and known troubleshooting patterns.
@@ -75,17 +75,9 @@ Tip: click any image to zoom.
 
 ![Desktop services](assets/images/desktop-services.png)
 
-> **Alerts:** Catch failures early with deduplicated alerts from watchtower and service health checks.
-
-![Desktop alerts](assets/images/desktop-alerts.png)
-
 > **Metrics:** CPU, memory, disk, and runtime stats at a glance — no external agents needed.
 
 ![Desktop metrics](assets/images/desktop-metrics.png)
-
-> **Timeline:** Searchable audit log of every operation, alert, and service event on your host.
-
-![Desktop timeline](assets/images/desktop-timeline.png)
 
 > **Runbooks:** Executable step-by-step procedures with job tracking and per-step output history.
 
@@ -93,7 +85,7 @@ Tip: click any image to zoom.
 
 ### Settings
 
-> Theme, token auth, storage management, and guardrails — all configurable from the UI.
+> Theme, token auth, and storage management — all configurable from the UI.
 
 ![Desktop settings theme](assets/images/desktop-settings-theme.png)
 

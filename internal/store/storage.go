@@ -11,25 +11,13 @@ import (
 )
 
 const (
-	// StorageResourceTimeline identifies timeline event storage.
-	StorageResourceTimeline = "timeline"
 	// StorageResourceActivityLog identifies watchtower activity journal storage.
 	StorageResourceActivityLog = "activity-journal"
-	// StorageResourceGuardrailLog identifies guardrail audit storage.
-	StorageResourceGuardrailLog = "guardrail-audit"
-	// StorageResourceOpsActivity identifies ops activity storage.
-	StorageResourceOpsActivity = "ops-activity"
-	// StorageResourceOpsAlerts identifies ops alert storage.
-	StorageResourceOpsAlerts = "ops-alerts"
 	// StorageResourceOpsJobs identifies ops runbook job storage.
 	StorageResourceOpsJobs = "ops-jobs"
 	// StorageResourceAll targets every flushable storage resource.
 	StorageResourceAll           = "all"
-	storageResourceTimelineLabel = "Timeline events"
 	storageResourceActivityLabel = "Activity journal"
-	storageResourceGuardrailLbl  = "Guardrail audit"
-	storageResourceOpsActivityLb = "Ops activity"
-	storageResourceOpsAlertsLbl  = "Ops alerts"
 	storageResourceOpsJobsLbl    = "Ops runbook jobs"
 )
 
@@ -68,11 +56,7 @@ func NormalizeStorageResource(raw string) string {
 // IsStorageResource reports whether storage resource.
 func IsStorageResource(raw string) bool {
 	switch NormalizeStorageResource(raw) {
-	case StorageResourceTimeline,
-		StorageResourceActivityLog,
-		StorageResourceGuardrailLog,
-		StorageResourceOpsActivity,
-		StorageResourceOpsAlerts,
+	case StorageResourceActivityLog,
 		StorageResourceOpsJobs,
 		StorageResourceAll:
 		return true
@@ -84,7 +68,7 @@ func IsStorageResource(raw string) bool {
 // GetStorageStats returns storage stats.
 func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 	stats := StorageStats{
-		Resources:   make([]StorageResourceStat, 0, 6),
+		Resources:   make([]StorageResourceStat, 0, 2),
 		CollectedAt: time.Now().UTC(),
 	}
 
@@ -106,12 +90,7 @@ func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 	stats.TotalBytes = dbBytes + walBytes + shmBytes
 
 	for _, resource := range []string{
-		StorageResourceTimeline,
 		StorageResourceActivityLog,
-		StorageResourceGuardrailLog,
-
-		StorageResourceOpsActivity,
-		StorageResourceOpsAlerts,
 		StorageResourceOpsJobs,
 	} {
 		item, err := s.resourceStorageStats(ctx, resource)
@@ -128,13 +107,9 @@ func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 func (s *Store) FlushStorageResource(ctx context.Context, resource string) ([]StorageFlushResult, error) {
 	resource = NormalizeStorageResource(resource)
 	if resource == StorageResourceAll {
-		results := make([]StorageFlushResult, 0, 6)
+		results := make([]StorageFlushResult, 0, 2)
 		for _, key := range []string{
-			StorageResourceTimeline,
 			StorageResourceActivityLog,
-			StorageResourceGuardrailLog,
-			StorageResourceOpsActivity,
-			StorageResourceOpsAlerts,
 			StorageResourceOpsJobs,
 		} {
 			item, err := s.flushStorageResourceSingle(ctx, key)
@@ -157,32 +132,8 @@ func (s *Store) FlushStorageResource(ctx context.Context, resource string) ([]St
 
 func (s *Store) flushStorageResourceSingle(ctx context.Context, resource string) (StorageFlushResult, error) {
 	switch resource {
-	case StorageResourceTimeline:
-		removed, err := deleteRows(ctx, s.db, "DELETE FROM wt_timeline_events")
-		if err != nil {
-			return StorageFlushResult{}, err
-		}
-		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
 	case StorageResourceActivityLog:
 		removed, err := deleteRows(ctx, s.db, "DELETE FROM wt_journal")
-		if err != nil {
-			return StorageFlushResult{}, err
-		}
-		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
-	case StorageResourceGuardrailLog:
-		removed, err := deleteRows(ctx, s.db, "DELETE FROM guardrail_audit")
-		if err != nil {
-			return StorageFlushResult{}, err
-		}
-		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
-	case StorageResourceOpsActivity:
-		removed, err := deleteRows(ctx, s.db, "DELETE FROM ops_timeline_events")
-		if err != nil {
-			return StorageFlushResult{}, err
-		}
-		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
-	case StorageResourceOpsAlerts:
-		removed, err := deleteRows(ctx, s.db, "DELETE FROM ops_alerts")
 		if err != nil {
 			return StorageFlushResult{}, err
 		}
@@ -200,24 +151,6 @@ func (s *Store) flushStorageResourceSingle(ctx context.Context, resource string)
 
 func (s *Store) resourceStorageStats(ctx context.Context, resource string) (StorageResourceStat, error) {
 	switch resource {
-	case StorageResourceTimeline:
-		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
-			COUNT(*),
-			COALESCE(SUM(
-				length(session_name) + length(pane_id) + length(event_type) +
-				length(severity) + length(command) + length(cwd) + length(summary) +
-				length(details) + length(marker) + length(metadata_json) + length(created_at)
-			), 0)
-		FROM wt_timeline_events`)
-		if err != nil {
-			return StorageResourceStat{}, err
-		}
-		return StorageResourceStat{
-			Resource:    resource,
-			Label:       storageResourceTimelineLabel,
-			Rows:        rows,
-			ApproxBytes: approxBytes,
-		}, nil
 	case StorageResourceActivityLog:
 		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
 			COUNT(*),
@@ -232,59 +165,6 @@ func (s *Store) resourceStorageStats(ctx context.Context, resource string) (Stor
 		return StorageResourceStat{
 			Resource:    resource,
 			Label:       storageResourceActivityLabel,
-			Rows:        rows,
-			ApproxBytes: approxBytes,
-		}, nil
-	case StorageResourceGuardrailLog:
-		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
-			COUNT(*),
-			COALESCE(SUM(
-				length(rule_id) + length(decision) + length(action) + length(command) +
-				length(session_name) + length(pane_id) + length(reason) +
-				length(metadata) + length(created_at)
-			), 0)
-		FROM guardrail_audit`)
-		if err != nil {
-			return StorageResourceStat{}, err
-		}
-		return StorageResourceStat{
-			Resource:    resource,
-			Label:       storageResourceGuardrailLbl,
-			Rows:        rows,
-			ApproxBytes: approxBytes,
-		}, nil
-	case StorageResourceOpsActivity:
-		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
-			COUNT(*),
-			COALESCE(SUM(
-				length(source) + length(event_type) + length(severity) + length(resource) +
-				length(message) + length(details) + length(metadata) + length(created_at)
-			), 0)
-		FROM ops_timeline_events`)
-		if err != nil {
-			return StorageResourceStat{}, err
-		}
-		return StorageResourceStat{
-			Resource:    resource,
-			Label:       storageResourceOpsActivityLb,
-			Rows:        rows,
-			ApproxBytes: approxBytes,
-		}, nil
-	case StorageResourceOpsAlerts:
-		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
-			COUNT(*),
-			COALESCE(SUM(
-				length(dedupe_key) + length(source) + length(resource) + length(title) +
-				length(message) + length(severity) + length(status) + length(metadata) +
-				length(first_seen_at) + length(last_seen_at) + length(acked_at) + length(resolved_at)
-			), 0)
-		FROM ops_alerts`)
-		if err != nil {
-			return StorageResourceStat{}, err
-		}
-		return StorageResourceStat{
-			Resource:    resource,
-			Label:       storageResourceOpsAlertsLbl,
 			Rows:        rows,
 			ApproxBytes: approxBytes,
 		}, nil

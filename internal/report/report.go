@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/alerts"
 	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/validate"
@@ -29,19 +28,6 @@ type SystemMetrics struct {
 	LoadAvg15      float64 `json:"loadAvg15"`
 }
 
-// AlertSummary counts alerts by status.
-type AlertSummary struct {
-	Open     int `json:"open"`
-	Acked    int `json:"acked"`
-	Resolved int `json:"resolved"`
-}
-
-// EventSummary groups timeline event counts by source.
-type EventSummary struct {
-	Source string `json:"source"`
-	Count  int    `json:"count"`
-}
-
 // ServiceStat captures the status of a tracked service.
 type ServiceStat struct {
 	Name         string `json:"name"`
@@ -52,19 +38,11 @@ type ServiceStat struct {
 
 // HealthReport is the periodic health report payload sent via webhook.
 type HealthReport struct {
-	Event         string         `json:"event"`
-	Host          string         `json:"host"`
-	GeneratedAt   time.Time      `json:"generatedAt"`
-	Metrics       SystemMetrics  `json:"metrics"`
-	AlertSummary  AlertSummary   `json:"alertSummary"`
-	RecentEvents  []EventSummary `json:"recentEvents"`
-	ServiceStatus []ServiceStat  `json:"serviceStatus"`
-}
-
-// reportStore defines the data-fetching operations consumed by Generator.
-type reportStore interface {
-	ListAlerts(ctx context.Context, limit int, status string) ([]alerts.Alert, error)
-	CountActivityEventsBySource(ctx context.Context, since time.Time) (map[string]int, error)
+	Event         string        `json:"event"`
+	Host          string        `json:"host"`
+	GeneratedAt   time.Time     `json:"generatedAt"`
+	Metrics       SystemMetrics `json:"metrics"`
+	ServiceStatus []ServiceStat `json:"serviceStatus"`
 }
 
 // metricsCollector abstracts system metrics collection.
@@ -76,7 +54,6 @@ type metricsCollector interface {
 // Generator produces health reports and delivers them via webhook.
 // A nil *Generator is safe — all methods are no-ops.
 type Generator struct {
-	store    reportStore
 	metrics  metricsCollector
 	notifier *notify.Notifier
 
@@ -88,9 +65,8 @@ type Generator struct {
 
 // New creates a Generator. If notifier is nil the generator can still produce
 // reports but GenerateAndSend will be a no-op.
-func New(store reportStore, metrics metricsCollector, notifier *notify.Notifier) *Generator {
+func New(metrics metricsCollector, notifier *notify.Notifier) *Generator {
 	return &Generator{
-		store:    store,
 		metrics:  metrics,
 		notifier: notifier,
 		doneCh:   make(chan struct{}),
@@ -127,39 +103,6 @@ func (g *Generator) Generate(ctx context.Context) (*HealthReport, error) {
 		}
 	}
 
-	// Collect alert counts by status.
-	if g.store != nil {
-		for _, status := range []string{alerts.StatusOpen, alerts.StatusAcked, alerts.StatusResolved} {
-			items, err := g.store.ListAlerts(ctx, 500, status)
-			if err != nil {
-				slog.Warn("health report: list alerts failed", "status", status, "error", err)
-				continue
-			}
-			switch status {
-			case alerts.StatusOpen:
-				report.AlertSummary.Open = len(items)
-			case alerts.StatusAcked:
-				report.AlertSummary.Acked = len(items)
-			case alerts.StatusResolved:
-				report.AlertSummary.Resolved = len(items)
-			}
-		}
-
-		// Collect timeline event counts by source (last 24h).
-		since := time.Now().UTC().Add(-24 * time.Hour)
-		counts, err := g.store.CountActivityEventsBySource(ctx, since)
-		if err != nil {
-			slog.Warn("health report: count activity events failed", "error", err)
-		} else {
-			for source, count := range counts {
-				report.RecentEvents = append(report.RecentEvents, EventSummary{
-					Source: source,
-					Count:  count,
-				})
-			}
-		}
-	}
-
 	// Collect service statuses.
 	if g.metrics != nil {
 		svcs, err := g.metrics.ListServices(ctx)
@@ -190,6 +133,10 @@ func (g *Generator) GenerateAndSend(ctx context.Context) error {
 	report, err := g.Generate(ctx)
 	if err != nil {
 		return fmt.Errorf("generate health report: %w", err)
+	}
+
+	if g.notifier == nil {
+		return nil
 	}
 
 	if err := g.notifier.SendJSON(ctx, report); err != nil {

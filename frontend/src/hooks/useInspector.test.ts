@@ -124,7 +124,6 @@ function createMockOptions(overrides: MockOptions = {}) {
     dispatchTabs: vi.fn(),
     closeCurrentSocket: vi.fn(),
     resetTerminal: vi.fn(),
-    requestGuardrailConfirm: vi.fn(),
   }
 }
 

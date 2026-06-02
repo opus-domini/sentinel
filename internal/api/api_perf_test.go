@@ -26,9 +26,9 @@ func BenchmarkPerfRouteMeta(b *testing.B) {
 	}
 }
 
-func BenchmarkPerfRouteOpsAlerts(b *testing.B) {
+func BenchmarkPerfRouteOpsMetrics(b *testing.B) {
 	mux := newPerfMux(b)
-	req := httptest.NewRequest(http.MethodGet, "/api/ops/alerts?limit=20", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ops/metrics", nil)
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -36,7 +36,7 @@ func BenchmarkPerfRouteOpsAlerts(b *testing.B) {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 		if rec.Code == http.StatusNotFound {
-			b.Fatalf("alerts route is not mounted")
+			b.Fatalf("metrics route is not mounted")
 		}
 	}
 }

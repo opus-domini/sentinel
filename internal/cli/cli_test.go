@@ -170,9 +170,6 @@ func TestRunCLIConfigShowPrintsEffectiveConfig(t *testing.T) {
 	t.Setenv("SENTINEL_SERVER_PORT", "")
 	t.Setenv("SENTINEL_SERVER_ALLOWED_ORIGINS", "")
 	t.Setenv("SENTINEL_LOG_LEVEL", "")
-	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "")
-	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "")
-	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "")
 	configPath := filepath.Join(dir, "config.toml")
 	content := `version = 1
 
@@ -189,9 +186,6 @@ level = "debug"
 enabled = false
 tick_interval = "2s"
 capture_timeout = "250ms"
-
-[alerts]
-webhook_url = "https://hooks.slack.com/services/T00/B00/secret"
 
 [health_report]
 webhook_url = "https://discord.com/api/webhooks/123/secret"
@@ -243,12 +237,8 @@ schedule = "0 9 * * *"
 	if watchtower["capture_timeout"] != "250ms" {
 		t.Fatalf("watchtower.capture_timeout = %v", watchtower["capture_timeout"])
 	}
-	// Webhook URLs embed the Slack/Discord secret in their path and must be
+	// Webhook URLs embed secrets in their path and must be
 	// redacted like the token (config show is pasted into logs/support/screens).
-	alertsCfg, ok := got["alerts"].(map[string]any)
-	if !ok || alertsCfg["webhook_url"] != "******" {
-		t.Fatalf("alerts.webhook_url = %v, want redacted", got["alerts"])
-	}
 	healthCfg, ok := got["health_report"].(map[string]any)
 	if !ok || healthCfg["webhook_url"] != "******" {
 		t.Fatalf("health_report.webhook_url = %v, want redacted", got["health_report"])
@@ -410,8 +400,8 @@ func TestRunCLIDBStatus(t *testing.T) {
 	for _, fragment := range []string{
 		"database: " + filepath.Join(dir, "sentinel.db"),
 		"total size:",
-		store.StorageResourceTimeline + ":",
-		store.StorageResourceOpsAlerts + ":",
+		store.StorageResourceActivityLog + ":",
+		store.StorageResourceOpsJobs + ":",
 	} {
 		if !strings.Contains(out.String(), fragment) {
 			t.Fatalf("stdout missing %q: %s", fragment, out.String())
@@ -440,15 +430,15 @@ func TestRunCLIDBResetFlushesResource(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := Run([]string{"db", "reset", "--yes", "--resource", store.StorageResourceOpsAlerts}, &out, &errOut)
+	code := Run([]string{"db", "reset", "--yes", "--resource", store.StorageResourceOpsJobs}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
 	}
 	for _, fragment := range []string{
 		"database: " + filepath.Join(dir, "sentinel.db"),
 		"mode: flush",
-		"resource: " + store.StorageResourceOpsAlerts,
-		store.StorageResourceOpsAlerts + ": 0 rows removed",
+		"resource: " + store.StorageResourceOpsJobs,
+		store.StorageResourceOpsJobs + ": 0 rows removed",
 	} {
 		if !strings.Contains(out.String(), fragment) {
 			t.Fatalf("stdout missing %q: %s", fragment, out.String())
@@ -532,7 +522,7 @@ func TestRunCLIDBResetForceRejectsResource(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := Run([]string{"db", "reset", "--yes", "--force", "--resource", store.StorageResourceOpsAlerts}, &out, &errOut)
+	code := Run([]string{"db", "reset", "--yes", "--force", "--resource", store.StorageResourceOpsJobs}, &out, &errOut)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1 (stdout: %s)", code, out.String())
 	}

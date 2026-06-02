@@ -205,7 +205,6 @@ type configShowOutput struct {
 	Server       configShowServer       `json:"server"`
 	Storage      config.StorageConfig   `json:"storage"`
 	Log          config.LogConfig       `json:"log"`
-	Alerts       configShowAlerts       `json:"alerts"`
 	HealthReport configShowHealthReport `json:"health_report"`
 	Watchtower   configShowWatchtower   `json:"watchtower"`
 	Runbooks     config.RunbooksConfig  `json:"runbooks"`
@@ -236,14 +235,6 @@ type configShowWatchtower struct {
 	CaptureLines   int    `json:"capture_lines"`
 	CaptureTimeout string `json:"capture_timeout"`
 	JournalRows    int    `json:"journal_rows"`
-}
-
-type configShowAlerts struct {
-	CPUPercent    float64  `json:"cpu_percent"`
-	MemPercent    float64  `json:"mem_percent"`
-	DiskPercent   float64  `json:"disk_percent"`
-	WebhookURL    string   `json:"webhook_url"`
-	WebhookEvents []string `json:"webhook_events"`
 }
 
 // configShowHealthReport mirrors config.HealthReportConfig but redacts the
@@ -285,13 +276,6 @@ func newConfigShowOutput(cfg config.Config) configShowOutput {
 			CaptureLines:   cfg.Watchtower.CaptureLines,
 			CaptureTimeout: cfg.Watchtower.CaptureTimeout.String(),
 			JournalRows:    cfg.Watchtower.JournalRows,
-		},
-		Alerts: configShowAlerts{
-			CPUPercent:    cfg.Alerts.CPUPercent,
-			MemPercent:    cfg.Alerts.MemPercent,
-			DiskPercent:   cfg.Alerts.DiskPercent,
-			WebhookURL:    redactConfigSecret(cfg.Alerts.WebhookURL),
-			WebhookEvents: nonNilStrings(cfg.Alerts.WebhookEvents),
 		},
 	}
 }

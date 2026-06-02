@@ -1,3 +1,4 @@
+// Package services manages host services and metrics.
 package services
 
 import (
@@ -11,8 +12,7 @@ const (
 	maxLogLines     = 1000
 )
 
-// Logs returns value.
-// ServiceLogs retrieves recent log output for a managed service.
+// Logs retrieves recent log output for a managed service.
 func (m *Manager) Logs(ctx context.Context, name string, lines int) (string, error) {
 	serviceName, ok := normalizeServiceName(name)
 	if !ok {

@@ -1,5 +1,5 @@
 import type { MutableRefObject } from 'react'
-import type { PaneInfo, Session, TimelineEvent, WindowInfo } from '@/types'
+import type { PaneInfo, Session, WindowInfo } from '@/types'
 import type { MergePendingInspectorResult } from '@/lib/tmuxInspectorOptimistic'
 import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import type { TabsAction, TabsState } from '@/tabsReducer'
@@ -115,11 +115,6 @@ export type ActivityDeltaResponse = {
   inspectorPatches?: Array<InspectorSessionPatch>
 }
 
-export type TmuxTimelineCache = {
-  events: Array<TimelineEvent>
-  hasMore: boolean
-}
-
 // ---------------------------------------------------------------------------
 // Runtime metrics
 // ---------------------------------------------------------------------------
@@ -154,27 +149,6 @@ export type ApiFunction = <T>(path: string, init?: RequestInit) => Promise<T>
 // ---------------------------------------------------------------------------
 // Shared hook return types
 // ---------------------------------------------------------------------------
-
-export type TimelineState = {
-  timelineOpen: boolean
-  timelineEvents: Array<TimelineEvent>
-  timelineHasMore: boolean
-  timelineLoading: boolean
-  timelineError: string
-  timelineQuery: string
-  timelineSeverity: string
-  timelineEventType: string
-  timelineSessionFilter: string
-}
-
-export type TimelineActions = {
-  setTimelineOpen: (open: boolean) => void
-  setTimelineQuery: (query: string) => void
-  setTimelineSeverity: (severity: string) => void
-  setTimelineEventType: (eventType: string) => void
-  setTimelineSessionFilter: (filter: string) => void
-  loadTimeline: (options?: { quiet?: boolean }) => Promise<void>
-}
 
 export type InspectorState = {
   windows: Array<WindowInfo>

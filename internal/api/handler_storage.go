@@ -5,21 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
-	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/opus-domini/sentinel/internal/activity"
 	"github.com/opus-domini/sentinel/internal/config"
-	"github.com/opus-domini/sentinel/internal/events"
-	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
@@ -92,15 +85,6 @@ func (h *Handler) patchOpsConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to write config file", nil)
 		return
-	}
-
-	now := time.Now().UTC()
-	te, _ := h.orch.RecordConfigUpdated(r.Context(), now)
-	if te.ID > 0 {
-		h.emit(events.TypeOpsActivity, map[string]any{
-			keyGlobalRev: now.UnixMilli(),
-			keyEvent:     te,
-		})
 	}
 
 	writeData(w, http.StatusOK, map[string]any{
@@ -230,158 +214,8 @@ func (h *Handler) patchLocale(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Webhook notification settings
-// ---------------------------------------------------------------------------
-
-var validWebhookEvents = []string{activity.EventAlertCreated, activity.EventAlertResolved, activity.EventAlertAcked}
-
-func (h *Handler) getWebhookSettings(w http.ResponseWriter, _ *http.Request) {
-	h.mu.Lock()
-	n := h.notifier
-	h.mu.Unlock()
-
-	webhookURL := n.URL()
-	evts := n.Events()
-	sort.Strings(evts)
-
-	writeData(w, http.StatusOK, map[string]any{
-		"url":     webhookURL,
-		keyEvents: evts,
-	})
-}
-
-func (h *Handler) patchWebhookSettings(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		URL    string   `json:"url"`
-		Events []string `json:"events"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-
-	webhookURL := strings.TrimSpace(req.URL)
-	if webhookURL != "" {
-		parsed, err := url.ParseRequestURI(webhookURL)
-		if err != nil || !isHTTPOrHTTPSScheme(parsed.Scheme) {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url must be a valid http or https URL", nil)
-			return
-		}
-	}
-
-	// Validate and deduplicate events.
-	var cleanEvents []string
-	seen := make(map[string]bool, len(req.Events))
-	for _, e := range req.Events {
-		e = strings.TrimSpace(e)
-		if e == "" {
-			continue
-		}
-		if !slices.Contains(validWebhookEvents, e) {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unsupported event: "+e, nil)
-			return
-		}
-		if !seen[e] {
-			seen[e] = true
-			cleanEvents = append(cleanEvents, e)
-		}
-	}
-	sort.Strings(cleanEvents)
-
-	// Persist to config file. Both keys are written under one configMu hold so a
-	// concurrent settings write cannot interleave between them or with another
-	// section's read-modify-write.
-	if h.configPath != "" {
-		h.configMu.Lock()
-		err := upsertConfigString(h.configPath, "alerts", "webhook_url", webhookURL)
-		if err == nil {
-			err = upsertConfigStringList(h.configPath, "alerts", "webhook_events", cleanEvents)
-		}
-		h.configMu.Unlock()
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist webhook settings", nil)
-			return
-		}
-	}
-
-	// Hot-swap the notifier in memory.
-	newNotifier := notify.New(webhookURL, cleanEvents)
-	h.mu.Lock()
-	h.notifier = newNotifier
-	h.mu.Unlock()
-
-	slog.Info("webhook settings updated", "url", webhookURL, keyEvents, cleanEvents)
-
-	writeData(w, http.StatusOK, map[string]any{
-		"url":     webhookURL,
-		keyEvents: cleanEvents,
-	})
-}
-
-func (h *Handler) testWebhook(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		URL string `json:"url"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-
-	webhookURL := strings.TrimSpace(req.URL)
-	if webhookURL == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url is required", nil)
-		return
-	}
-	parsed, err := url.ParseRequestURI(webhookURL)
-	if err != nil || !isHTTPOrHTTPSScheme(parsed.Scheme) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "url must be a valid http or https URL", nil)
-		return
-	}
-
-	// Create a one-shot notifier with all events enabled for the test.
-	testNotifier := notify.New(webhookURL, []string{"alert.test"})
-	if testNotifier == nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "failed to create test notifier", nil)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	hostname, _ := os.Hostname()
-	payload := notify.AlertWebhookPayload{
-		Event: "alert.test",
-		Alert: map[string]any{
-			"title":    "Sentinel webhook test",
-			keyMessage: "If you see this, your webhook is working correctly.",
-		},
-		Host:      hostname,
-		Timestamp: time.Now().UTC(),
-	}
-
-	if err := testNotifier.Send(ctx, payload); err != nil {
-		slog.Warn("webhook test failed", "url", webhookURL, "error", err)
-		writeError(w, http.StatusBadGateway, "WEBHOOK_TEST_FAILED", "webhook delivery failed: "+err.Error(), nil)
-		return
-	}
-
-	writeData(w, http.StatusOK, map[string]any{
-		"success":  true,
-		keyMessage: "test payload delivered successfully",
-	})
-}
-
 func upsertConfigString(path, section, key, value string) error {
 	return upsertConfigValue(path, section, key, strconv.Quote(value))
-}
-
-func upsertConfigStringList(path, section, key string, values []string) error {
-	quoted := make([]string, 0, len(values))
-	for _, value := range values {
-		quoted = append(quoted, strconv.Quote(value))
-	}
-	return upsertConfigValue(path, section, key, "["+strings.Join(quoted, ", ")+"]")
 }
 
 // upsertConfigValue updates or inserts a sectioned key in the config file.

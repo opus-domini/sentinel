@@ -55,25 +55,11 @@ type ExecuteResult struct {
 	CtxErr        error // non-nil when execution was aborted by context cancellation/timeout
 }
 
-// GuardrailFunc evaluates a fully-substituted runbook command or script before
-// it runs. A non-nil error blocks the step, which is reported as a step failure
-// (the command is never executed).
-type GuardrailFunc func(ctx context.Context, command string) error
-
 // Executor runs a sequence of runbook steps.
 type Executor struct {
 	runner      CommandRunner
 	stepTimeout time.Duration
 	params      map[string]string // substituted into commands before execution
-	guardrail   GuardrailFunc     // optional; blocks a step when it returns an error
-}
-
-// SetGuardrail installs a guardrail evaluated before each run/script step.
-func (e *Executor) SetGuardrail(fn GuardrailFunc) {
-	if e == nil {
-		return
-	}
-	e.guardrail = fn
 }
 
 const (
@@ -243,10 +229,6 @@ func (e *Executor) executeStep(ctx context.Context, index int, step Step) StepRe
 	switch step.Type {
 	case stepTypeRun:
 		cmd := SubstituteParams(step.Command, e.params)
-		if err := e.checkGuardrail(ctx, cmd); err != nil {
-			result.Error = err.Error()
-			return result
-		}
 		output, err := e.runner(ctx, "sh", "-c", cmd)
 		result.Output = output
 		if err != nil {
@@ -267,20 +249,8 @@ func (e *Executor) executeStep(ctx context.Context, index int, step Step) StepRe
 
 	return result
 }
-
-// checkGuardrail evaluates the command against the installed guardrail, if any.
-func (e *Executor) checkGuardrail(ctx context.Context, command string) error {
-	if e.guardrail == nil {
-		return nil
-	}
-	return e.guardrail(ctx, command)
-}
-
 func (e *Executor) executeScript(ctx context.Context, step Step) (string, error) {
 	script := SubstituteParams(step.Script, e.params)
-	if err := e.checkGuardrail(ctx, script); err != nil {
-		return "", err
-	}
 
 	tmpFile, err := os.CreateTemp("", "sentinel-step-*.sh")
 	if err != nil {

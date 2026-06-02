@@ -12,7 +12,7 @@
 </div>
 
 Sentinel is a host operations platform delivered as a single binary.
-It gives you a realtime browser interface to manage tmux sessions and reusable launchers, monitor services, track alerts, run operational procedures, and recover from failures — all on your own machine.
+It gives you a realtime browser interface to manage tmux sessions and reusable launchers, monitor services and host metrics, and run operational procedures — all on your own machine.
 
 No Electron. No cloud relay. Just your host and your shell.
 
@@ -27,10 +27,8 @@ No Electron. No cloud relay. Just your host and your shell.
 - One binary, fast setup, low operational overhead.
 - Realtime tmux control with session, window, and pane visibility.
 - Service monitoring and control for systemd and launchd.
-- Alerts, timeline, and metrics for host-level observability.
+- Services and metrics for host-level observability.
 - Runbooks for executable operational procedures with job tracking.
-- Recovery snapshots and restore workflows.
-- Guardrails for safer destructive terminal actions.
 - Multi-user session support for shared hosts and team environments.
 - Optimistic and responsive UI tuned for desktop and mobile.
 
@@ -39,12 +37,8 @@ No Electron. No cloud relay. Just your host and your shell.
 - **Tmux** — Interactive PTY in the browser with tmux workspace management, window launchers, and reusable session launchers.
 - **Multi-user sessions** — Run tmux sessions as different OS users with a security allowlist and systemd-aware user switching on Linux.
 - **Services** — Monitor and control systemd/launchd units from `/services`.
-- **Alerts** — Deduplicated alert feed from watchtower and service health at `/alerts`.
-- **Timeline** — Searchable operational audit log at `/timeline`.
 - **Metrics** — System and runtime resource dashboard at `/metrics`.
 - **Runbooks** — Step-by-step operational procedures with job history at `/runbooks`.
-- **Recovery** — Session snapshots and restore workflows.
-- **Guardrails** — Safety rules for destructive terminal actions.
 - Event-driven updates over WebSocket (`/ws/events`).
 - Service mode and daily autoupdate (Linux/macOS).
 - Optional token auth and origin allowlist.
@@ -114,17 +108,9 @@ If you expose Sentinel outside localhost (`0.0.0.0`), always configure:
 
 ![Desktop services](docs/assets/images/desktop-services.png)
 
-> **Alerts:** Catch failures early with deduplicated alerts from watchtower and service health checks.
-
-![Desktop alerts](docs/assets/images/desktop-alerts.png)
-
 > **Metrics:** CPU, memory, disk, and runtime stats at a glance — no external agents needed.
 
 ![Desktop metrics](docs/assets/images/desktop-metrics.png)
-
-> **Timeline:** Searchable audit log of every operation, alert, and service event on your host.
-
-![Desktop timeline](docs/assets/images/desktop-timeline.png)
 
 > **Runbooks:** Executable step-by-step procedures with job tracking and per-step output history.
 
@@ -132,7 +118,7 @@ If you expose Sentinel outside localhost (`0.0.0.0`), always configure:
 
 ### Settings
 
-> Theme, token auth, storage management, and guardrails — all configurable from the UI.
+> Theme, token auth, and storage management — all configurable from the UI.
 
 ![Desktop settings theme](docs/assets/images/desktop-settings-theme.png)
 

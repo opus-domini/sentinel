@@ -12,7 +12,6 @@ import type {
 } from './tmuxTypes'
 import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
-import { shouldRefreshTimelineFromEvent } from '@/lib/tmuxTimeline'
 import { buildWSProtocols } from '@/lib/wsAuth'
 
 type UseTmuxEventsSocketOptions = {
@@ -38,9 +37,6 @@ type UseTmuxEventsSocketOptions = {
   applyInspectorProjectionPatches: (rawPatches: Array<InspectorSessionPatch> | undefined) => boolean
   settlePendingSeenAcks: (ok: boolean) => void
   seenAckWaitersRef: React.MutableRefObject<Map<string, (ok: boolean) => void>>
-  timelineOpenRef: React.MutableRefObject<boolean>
-  timelineSessionFilterRef: React.MutableRefObject<string>
-  loadTimelineRef: React.MutableRefObject<(options?: { quiet?: boolean }) => void>
   handleTmuxSessionsEvent?: (payload: TmuxSessionsUpdatedPayload | undefined) => boolean
   handleTmuxInspectorEvent?: (payload: TmuxInspectorUpdatedPayload | undefined) => boolean
 }
@@ -64,9 +60,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     applyInspectorProjectionPatches,
     settlePendingSeenAcks,
     seenAckWaitersRef,
-    timelineOpenRef,
-    timelineSessionFilterRef,
-    loadTimelineRef,
     handleTmuxSessionsEvent,
     handleTmuxInspectorEvent,
   } = options
@@ -83,8 +76,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
   const refreshTimerRef = useRef<{
     sessions: number | null
     inspector: number | null
-    timeline: number | null
-  }>({ sessions: null, inspector: null, timeline: null })
+  }>({ sessions: null, inspector: null })
 
   useEffect(() => {
     eventsSocketConnectedRef.current = eventsSocketConnected
@@ -264,10 +256,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
       return Math.trunc(value)
     }
 
-    const schedule = (
-      kind: 'sessions' | 'inspector' | 'timeline',
-      scheduleOptions?: { minGapMs?: number },
-    ) => {
+    const schedule = (kind: 'sessions' | 'inspector', scheduleOptions?: { minGapMs?: number }) => {
       if (refreshTimerRef.current[kind] !== null) return
       let delay = 180
       if (kind === 'sessions' && (scheduleOptions?.minGapMs ?? 0) > 0) {
@@ -290,7 +279,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
           }
           return
         }
-        loadTimelineRef.current({ quiet: true })
       }, delay)
     }
 
@@ -433,31 +421,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
               }
               break
             }
-            case 'tmux.timeline.updated': {
-              if (!timelineOpenRef.current) {
-                break
-              }
-              let trackedSession = ''
-              const rawScope = timelineSessionFilterRef.current.trim()
-              if (rawScope === '' || rawScope === 'all') {
-                trackedSession = 'all'
-              } else if (rawScope === 'active') {
-                const active = tabsStateRef.current.activeSession.trim()
-                trackedSession = active === '' ? 'all' : active
-              } else {
-                trackedSession = rawScope
-              }
-              if (shouldRefreshTimelineFromEvent(msg.payload?.sessions, trackedSession)) {
-                schedule('timeline')
-              }
-              break
-            }
-            case 'tmux.guardrail.blocked': {
-              const message =
-                msg.payload?.decision?.message ?? 'Operation blocked by guardrail policy'
-              pushErrorToast('Guardrail', message)
-              break
-            }
             case 'tmux.auth.expired': {
               settlePendingSeenAcks(false)
               if (tokenRequired) {
@@ -514,7 +477,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
         window.clearTimeout(retryTimerRef.current)
         retryTimerRef.current = 0
       }
-      for (const key of ['sessions', 'inspector', 'timeline'] as const) {
+      for (const key of ['sessions', 'inspector'] as const) {
         const id = refreshTimers[key]
         if (id !== null) {
           window.clearTimeout(id)
@@ -531,7 +494,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     applyInspectorProjectionPatches,
     applySessionActivityPatches,
     lastSessionsRefreshAtRef,
-    loadTimelineRef,
     presenceSocketRef,
     pushErrorToast,
     reconnectEpoch,
@@ -546,8 +508,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     settlePendingSeenAcks,
     syncActivityDelta,
     tabsStateRef,
-    timelineOpenRef,
-    timelineSessionFilterRef,
     authenticated,
     tokenRequired,
   ])

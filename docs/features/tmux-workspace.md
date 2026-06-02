@@ -27,7 +27,7 @@ The UI and API are built to keep this hierarchy consistent with realtime updates
 ## Realtime Interaction
 
 - `/ws/tmux?session=<name>` streams the active tmux PTY.
-- `/ws/events` carries projection updates for lists, unread state, and recovery status.
+- `/ws/events` carries projection updates for lists, unread state, and pane activity.
 
 Mouse stability in browser terminals is enforced server-side by tmux binding patches and mouse-mode enablement.
 

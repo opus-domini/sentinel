@@ -4,11 +4,11 @@ Sentinel exposes three WS endpoints.
 
 ## Endpoints
 
-| Endpoint | Purpose |
-| --- | --- |
-| `/ws/tmux?session=<name>` | Attach to tmux session PTY |
-| `/ws/events` | Realtime state/event channel |
-| `/ws/logs?service=<name>` | Service log streaming |
+| Endpoint                  | Purpose                      |
+| ------------------------- | ---------------------------- |
+| `/ws/tmux?session=<name>` | Attach to tmux session PTY   |
+| `/ws/events`              | Realtime state/event channel |
+| `/ws/logs?service=<name>` | Service log streaming        |
 
 ## Authentication
 
@@ -59,17 +59,11 @@ Server sends:
 - `tmux.sessions.updated`
 - `tmux.inspector.updated`
 - `tmux.activity.updated`
-- `tmux.timeline.updated`
-- `tmux.guardrail.blocked`
 - `ops.overview.updated`
 - `ops.services.updated`
-- `ops.alerts.updated`
-- `ops.activity.updated`
 - `ops.metrics.updated`
 - `ops.schedule.updated`
 - `ops.job.updated`
-- `recovery.overview.updated`
-- `recovery.job.updated`
 
 ### Client messages to `/ws/events`
 
@@ -105,5 +99,5 @@ Seen ack response (`type: tmux.seen.ack`) includes `acked`, `globalRev`, and opt
 ## Reconciliation Strategy
 
 - Primary sync: WS events.
-- Gap/reconnect fallback: `GET /api/tmux/activity/delta`.
+- Gap/reconnect fallback: reload the relevant HTTP resource.
 - Full fallback polling is used only when events WS is disconnected.

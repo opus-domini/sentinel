@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  OpsActivityEvent,
   OpsRunbook,
   OpsRunbookRunResponse,
   OpsRunbooksResponse,
@@ -17,12 +16,7 @@ import { createBlankStep } from '@/components/RunbookEditor'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useOpsEvents } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
-import {
-  OPS_RUNBOOKS_QUERY_KEY,
-  opsActivityQueryKey,
-  prependOpsActivityEvent,
-  upsertOpsRunbookJob,
-} from '@/lib/opsQueryCache'
+import { OPS_RUNBOOKS_QUERY_KEY, upsertOpsRunbookJob } from '@/lib/opsQueryCache'
 import { isActiveRunbookJob } from '@/lib/runbookPresentation'
 import { randomId } from '@/lib/utils'
 
@@ -356,13 +350,6 @@ export function useRunbooksPage() {
             jobs: upsertOpsRunbookJob(previous.jobs, job),
           }
         })
-        if (data.timelineEvent != null) {
-          queryClient.setQueryData<Array<OpsActivityEvent>>(
-            opsActivityQueryKey('', 'all'),
-            (current = []) =>
-              prependOpsActivityEvent(current, data.timelineEvent as OpsActivityEvent),
-          )
-        }
         trackJobUntilSettled(job.id)
         pushToast({
           level: 'success',

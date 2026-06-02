@@ -87,7 +87,4 @@ Common API auth/origin responses:
 - `403 ORIGIN_DENIED`
 - `403 USER_NOT_ALLOWED`
 
-Guardrail enforcement can also block dangerous actions:
-
-- `409 GUARDRAIL_BLOCKED`
-- `428 GUARDRAIL_CONFIRM_REQUIRED`
+Authorization failures are returned before protected HTTP and WebSocket handlers run.

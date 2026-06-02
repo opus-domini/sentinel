@@ -95,13 +95,13 @@ for flushable runtime storage resources.
 
 ```bash
 sentinel db reset --yes
-sentinel db reset --yes --resource ops-alerts
+sentinel db reset --yes --resource ops-jobs
 sentinel db reset --yes --force
 ```
 
 Without `--force`, flushes derived runtime storage through the same resource
 model exposed in the Settings storage panel. This conservative reset preserves
-configuration, presets, runbooks, guardrail rules, schedules, custom services
+configuration, presets, runbooks, schedules, custom services
 and other durable setup data.
 
 With `--force`, deletes `sentinel.db` and its SQLite sidecar files, then

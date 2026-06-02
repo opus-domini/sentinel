@@ -195,7 +195,7 @@ func TestCollectMultiUserPaneIDNamespacing(t *testing.T) {
 		user:   "alice",
 	}
 
-	keep, _, _, _, err := svc.collectSession(context.Background(), ts)
+	keep, _, _, err := svc.collectSession(context.Background(), ts)
 	if err != nil {
 		t.Fatalf("collectSession: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestCollectMultiUserCapturePaneUsesRawID(t *testing.T) {
 		user:   "bob",
 	}
 
-	_, _, _, _, err := svc.collectSession(context.Background(), ts)
+	_, _, _, err := svc.collectSession(context.Background(), ts)
 	if err != nil {
 		t.Fatalf("collectSession: %v", err)
 	}

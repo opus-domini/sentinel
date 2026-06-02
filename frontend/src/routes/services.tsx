@@ -12,7 +12,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu, RefreshCw, Search, X } from 'lucide-react'
 import type {
-  OpsActivityEvent,
   OpsBrowseServicesResponse,
   OpsBrowsedService,
   OpsOverviewResponse,
@@ -56,13 +55,10 @@ import {
 } from '@/lib/opsServices'
 import type { OpsServiceStateFilter, OpsServiceTrackFilter } from '@/lib/opsServices'
 import {
-  OPS_ALERTS_QUERY_KEY,
   OPS_BROWSE_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
   OPS_SERVICES_QUERY_KEY,
   isOpsWsMessage,
-  opsActivityQueryKey,
-  prependOpsActivityEvent,
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
@@ -491,16 +487,6 @@ function ServicesPage() {
           )
         }
         queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
-        if (Array.isArray(data.alerts)) {
-          queryClient.setQueryData(OPS_ALERTS_QUERY_KEY, data.alerts)
-        }
-        if (data.timelineEvent != null) {
-          queryClient.setQueryData<Array<OpsActivityEvent>>(
-            opsActivityQueryKey('', 'all'),
-            (current = []) =>
-              prependOpsActivityEvent(current, data.timelineEvent as OpsActivityEvent),
-          )
-        }
         pushToast({
           level: 'success',
           title: `${previous.displayName}`,
@@ -578,13 +564,6 @@ function ServicesPage() {
             }),
           })
           queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
-          if (data.timelineEvent != null) {
-            queryClient.setQueryData<Array<OpsActivityEvent>>(
-              opsActivityQueryKey('', 'all'),
-              (current = []) =>
-                prependOpsActivityEvent(current, data.timelineEvent as OpsActivityEvent),
-            )
-          }
           pushToast({
             level: 'success',
             title: svc.unit,
