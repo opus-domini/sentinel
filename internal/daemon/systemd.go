@@ -8,11 +8,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// serviceUnitNameRE bounds an installed unit name to systemd-safe characters.
+// In particular it forbids '%', which systemd treats as a specifier, and any
+// path/whitespace characters that could break the generated unit file.
+var serviceUnitNameRE = regexp.MustCompile(`^[A-Za-z0-9:_.@-]{1,128}$`)
 
 const (
 	userUnitName              = "sentinel.service"
@@ -194,7 +200,7 @@ func resolveInstallUserAutoUpdateConfig(opts InstallUserAutoUpdateOptions) (inst
 	if serviceUnit == "" {
 		serviceUnit = "sentinel"
 	}
-	if strings.ContainsAny(serviceUnit, "\n\r\t ") {
+	if !serviceUnitNameRE.MatchString(serviceUnit) {
 		return installUserAutoUpdateConfig{}, errors.New("invalid service unit name")
 	}
 

@@ -264,18 +264,27 @@ func (c *Conn) writeFrame(opcode byte, payload []byte) error {
 
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	if err := c.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-		return err
-	}
-	if _, err := c.writer.Write(header); err != nil {
-		return err
-	}
-	if len(payload) > 0 {
-		if _, err := c.writer.Write(payload); err != nil {
+	write := func() error {
+		if err := c.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 			return err
 		}
+		if _, err := c.writer.Write(header); err != nil {
+			return err
+		}
+		if len(payload) > 0 {
+			if _, err := c.writer.Write(payload); err != nil {
+				return err
+			}
+		}
+		return c.writer.Flush()
 	}
-	return c.writer.Flush()
+	if err := write(); err != nil {
+		// A broken or timed-out write leaves the framing mid-stream; invalidate
+		// the connection so later writes short-circuit instead of corrupting it.
+		_ = c.Close()
+		return err
+	}
+	return nil
 }
 
 func (c *Conn) readFrame(maxPayload int64) (byte, []byte, error) {

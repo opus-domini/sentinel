@@ -178,7 +178,9 @@ func evaluateRuleMatch(rule store.GuardrailRule, action string, compiled map[str
 		return "", false
 	}
 
-	mode := strings.TrimSpace(rule.Mode)
+	// Normalize so a rule stored as "Block"/"BLOCK" still matches the canonical
+	// lowercase mode constants used everywhere else.
+	mode := strings.ToLower(strings.TrimSpace(rule.Mode))
 	if mode == "" {
 		mode = store.GuardrailModeWarn
 	}
