@@ -52,7 +52,7 @@ describe('ServiceBrowseRow', () => {
     expect(screen.queryByText('app-gnome\\x2dkeyring.service')).toBeNull()
   })
 
-  it('keeps row actions compact and accessible', () => {
+  it('keeps the desktop action row accessible by label', () => {
     const onAction = vi.fn()
     const onInspect = vi.fn()
     const onLogs = vi.fn()
@@ -67,27 +67,35 @@ describe('ServiceBrowseRow', () => {
       onLogs,
     })
 
-    const startButton = screen.getByRole('button', { name: 'Start service' })
-
-    fireEvent.click(startButton)
-    fireEvent.click(screen.getByRole('button', { name: 'Enable service' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect service status' }))
-    fireEvent.click(screen.getByRole('button', { name: 'View service logs' }))
+    const desktop = within(screen.getByTestId('service-actions-desktop'))
+    fireEvent.click(desktop.getByRole('button', { name: 'Start' }))
+    fireEvent.click(desktop.getByRole('button', { name: 'Enable' }))
+    fireEvent.click(desktop.getByRole('button', { name: 'Inspect status' }))
+    fireEvent.click(desktop.getByRole('button', { name: 'View logs' }))
 
     expect(onAction).toHaveBeenCalledWith(expect.any(Object), 'start')
     expect(onAction).toHaveBeenCalledWith(expect.any(Object), 'enable')
     expect(onInspect).toHaveBeenCalledOnce()
     expect(onLogs).toHaveBeenCalledOnce()
-    expect(startButton.className).toContain('h-8')
-    expect(startButton.className).toContain('sm:h-6')
-    expect(screen.queryByText('Start')).toBeNull()
-    expect(screen.queryByText('Restart')).toBeNull()
+  })
+
+  it('collapses actions into a primary action plus overflow on mobile', () => {
+    renderRow({
+      service: service({ activeState: 'inactive', enabledState: 'disabled' }),
+    })
+
+    // The eight desktop icons collapse to just the inline primary action and a
+    // single "More actions" overflow trigger, keeping each card short.
+    const mobile = within(screen.getByTestId('service-actions-mobile'))
+    expect(mobile.getByRole('button', { name: 'Start' })).toBeTruthy()
+    expect(mobile.getByRole('button', { name: 'More actions' })).toBeTruthy()
+    expect(mobile.getAllByRole('button')).toHaveLength(2)
   })
 
   it.each([
-    ['Stop service', 'stop'],
-    ['Restart service', 'restart'],
-    ['Disable service', 'disable'],
+    ['Stop', 'stop'],
+    ['Restart', 'restart'],
+    ['Disable', 'disable'],
   ] as const)('confirms system %s action before calling onAction', (buttonName, action) => {
     const onAction = vi.fn()
     const svc = service({
@@ -101,7 +109,8 @@ describe('ServiceBrowseRow', () => {
 
     renderRow({ service: svc, onAction })
 
-    fireEvent.click(screen.getByRole('button', { name: buttonName }))
+    const desktop = within(screen.getByTestId('service-actions-desktop'))
+    fireEvent.click(desktop.getByRole('button', { name: buttonName }))
 
     expect(onAction).not.toHaveBeenCalled()
 
