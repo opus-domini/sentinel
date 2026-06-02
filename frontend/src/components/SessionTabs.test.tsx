@@ -8,13 +8,15 @@ vi.mock('@/hooks/useIsMobileLayout', () => ({
   useIsMobileLayout: () => false,
 }))
 
-function renderTabs() {
+function renderTabs(overrides = {}) {
   const props = {
     openTabs: ['api', 'worker'],
     activeSession: 'api',
+    activitySessions: undefined as ReadonlySet<string> | undefined,
     onSelect: vi.fn(),
     onClose: vi.fn(),
     onReorder: vi.fn(),
+    ...overrides,
   }
 
   render(<SessionTabs {...props} />)
@@ -33,6 +35,21 @@ describe('SessionTabs', () => {
     expect(screen.getByRole('tab', { name: 'api' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole('tab', { name: 'worker' }).getAttribute('aria-selected')).toBe('false')
     expect(screen.getByRole('button', { name: 'Close worker tab' })).toBeTruthy()
+  })
+
+  it('colors inactive tabs with activity using the primary menu tint', () => {
+    renderTabs({ activitySessions: new Set(['api', 'worker']) })
+
+    const activeTab = screen.getByRole('tab', { name: 'api' })
+    const inactiveTab = screen.getByRole('tab', { name: 'worker' })
+    const activeLabel = screen.getByText('api')
+    const inactiveLabel = screen.getByText('worker')
+
+    expect(activeTab.className).toContain('text-foreground')
+    expect(activeLabel.className).not.toContain('text-primary/60')
+    expect(inactiveTab.className).toContain('text-secondary-foreground')
+    expect(inactiveLabel.className).toContain('text-primary/60')
+    expect(inactiveTab.className).not.toContain('border-primary')
   })
 
   it('selects tabs from the keyboard without closing on delete keys', () => {

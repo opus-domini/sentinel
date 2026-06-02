@@ -922,6 +922,16 @@ function TmuxPage() {
     [sessions, tabsState.activeSession],
   )
 
+  const activitySessions = useMemo(
+    () =>
+      new Set(
+        sessions
+          .filter((session) => (session.unreadPanes ?? 0) > 0 || (session.unreadWindows ?? 0) > 0)
+          .map((session) => session.name),
+      ),
+    [sessions],
+  )
+
   // ---- JSX ----
   return (
     <AppShell
@@ -975,6 +985,7 @@ function TmuxPage() {
         sidebarCollapsed={layout.sidebarCollapsed}
         openTabs={tabsState.openTabs}
         activeSession={tabsState.activeSession}
+        activitySessions={activitySessions}
         sessionUser={activeSessionUser}
         inspectorLoading={inspector.inspectorLoading}
         inspectorError={inspector.inspectorError}

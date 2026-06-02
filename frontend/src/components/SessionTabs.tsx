@@ -32,6 +32,7 @@ import { hapticFeedback } from '@/lib/device'
 type SessionTabsProps = {
   openTabs: Array<string>
   activeSession: string
+  activitySessions?: ReadonlySet<string>
   onSelect: (session: string) => void
   onClose: (session: string) => void
   onRename?: (session: string) => void
@@ -43,6 +44,7 @@ type SessionTabsProps = {
 function SortableTab({
   tabName,
   isActive,
+  hasActivity,
   dragEnabled,
   onSelect,
   onClose,
@@ -51,6 +53,7 @@ function SortableTab({
 }: {
   tabName: string
   isActive: boolean
+  hasActivity: boolean
   dragEnabled: boolean
   onSelect: () => void
   onClose: () => void
@@ -81,7 +84,7 @@ function SortableTab({
       ref={setNodeRef}
       style={style}
       className={cn(
-        'inline-flex h-[30px] min-w-[110px] max-w-[220px] cursor-pointer items-center border-r border-border-subtle px-2 text-[12px]',
+        'group inline-flex h-[30px] min-w-[110px] max-w-[220px] cursor-pointer items-center border-r border-border-subtle px-2 text-[12px]',
         isActive
           ? 'bg-surface-active text-foreground'
           : 'bg-surface-elevated text-secondary-foreground hover:bg-surface-active',
@@ -95,7 +98,14 @@ function SortableTab({
       aria-label={tabName}
       tabIndex={0}
     >
-      <span className="min-w-0 truncate pr-2">{tabName}</span>
+      <span
+        className={cn(
+          'min-w-0 truncate pr-2',
+          !isActive && hasActivity && 'text-primary/60 group-hover:text-primary/70',
+        )}
+      >
+        {tabName}
+      </span>
       <Button
         variant="ghost"
         size="icon-xs"
@@ -149,6 +159,7 @@ function SortableTab({
 export default function SessionTabs({
   openTabs,
   activeSession,
+  activitySessions,
   onSelect,
   onClose,
   onRename,
@@ -202,6 +213,7 @@ export default function SessionTabs({
                 key={tabName}
                 tabName={tabName}
                 isActive={tabName === activeSession}
+                hasActivity={tabName !== activeSession && (activitySessions?.has(tabName) ?? false)}
                 dragEnabled={dragEnabled}
                 onSelect={() => onSelect(tabName)}
                 onClose={() => onClose(tabName)}
