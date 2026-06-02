@@ -341,7 +341,7 @@ func TestServeBootsAndShutsDown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reserve port: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	host, port, err := net.SplitHostPort(ln.Addr().String())
 	if err != nil {
