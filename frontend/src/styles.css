@@ -303,20 +303,26 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* The mobile shell reserves space for the floating bottom nav. When the
-   on-screen keyboard is up the nav is hidden behind it, so collapse the reserve
-   (and hide the nav) — otherwise the freed strip shows as an empty black gap
-   above the keyboard. */
+/* The mobile shell reserves only the flat bottom nav height. On iOS/PWA, the
+   nav extends through the safe-area inset so no empty strip appears below it.
+   When the on-screen keyboard is up the nav is hidden behind it, so collapse
+   the reserve too. */
 @media (max-width: 767px) {
   .app-shell {
-    padding-bottom: 4rem;
+    padding-bottom: 2.5rem;
+  }
+
+  .mobile-primary-nav {
+    bottom: calc(env(safe-area-inset-bottom, 0px) * -1);
+    min-height: 2.5rem;
+    padding-bottom: calc(0.125rem + env(safe-area-inset-bottom, 0px));
   }
 
   .keyboard-visible .app-shell {
     padding-bottom: 0;
   }
 
-  .keyboard-visible nav[aria-label='Mobile primary navigation'] {
+  .keyboard-visible .mobile-primary-nav {
     display: none;
   }
 }

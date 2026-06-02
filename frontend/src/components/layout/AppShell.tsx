@@ -129,7 +129,7 @@ function MobilePrimaryNav() {
   return (
     <nav
       aria-label="Mobile primary navigation"
-      className="fixed inset-x-2 bottom-2 z-10 grid grid-cols-4 gap-1 rounded-2xl border border-border-subtle bg-surface-raised/95 p-1 shadow-2xl shadow-black/30 backdrop-blur md:hidden"
+      className="mobile-primary-nav fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-border bg-background/95 px-1 pt-1 pb-0.5 backdrop-blur md:hidden"
     >
       {PRIMARY_NAV_ITEMS.map(({ to, label, shortLabel, Icon }) => {
         const active = pathname === to
@@ -140,13 +140,13 @@ function MobilePrimaryNav() {
             aria-label={label}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'grid min-w-0 place-items-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] no-underline transition-colors',
+              'grid min-w-0 place-items-center gap-0 px-1 py-0.5 text-[9px] no-underline transition-colors',
               active
-                ? 'bg-primary/15 text-primary-text-bright ring-1 ring-primary/30'
+                ? 'text-primary/60 hover:text-primary/70'
                 : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
             )}
           >
-            <Icon className="size-4" aria-hidden="true" />
+            <Icon className="size-3.5 transition-colors" aria-hidden="true" />
             <span className="max-w-full truncate">{shortLabel ?? label}</span>
           </Link>
         )

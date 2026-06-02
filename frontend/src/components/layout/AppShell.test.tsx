@@ -115,6 +115,12 @@ describe('AppShell', () => {
     const links = Array.from(nav.querySelectorAll('a'))
 
     expect(nav.className).toContain('grid-cols-4')
+    expect(nav.className).toContain('inset-x-0')
+    expect(nav.className).toContain('bottom-0')
+    expect(nav.className).toContain('mobile-primary-nav')
+    expect(nav.className).toContain('border-t')
+    expect(nav.className).not.toContain('rounded-2xl')
+    expect(nav.className).not.toContain('shadow-2xl')
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/tmux',
       '/services',
@@ -127,6 +133,15 @@ describe('AppShell', () => {
       'Runbooks',
       'Metrics',
     ])
-    expect(screen.getByRole('link', { name: 'Services' }).getAttribute('aria-current')).toBe('page')
+    const activeLink = screen.getByRole('link', { name: 'Services' })
+    const activeIcon = activeLink.querySelector('svg')
+
+    expect(activeLink.getAttribute('aria-current')).toBe('page')
+    expect(activeLink.className).toContain('text-primary/60')
+    expect(activeLink.className).not.toContain('bg-primary')
+    expect(activeLink.className).not.toContain('ring-primary')
+    expect(activeLink.className).toContain('py-0.5')
+    expect(activeIcon?.getAttribute('class')).not.toContain('text-primary-text-bright')
+    expect(activeIcon?.getAttribute('class')).toContain('size-3.5')
   })
 })
