@@ -69,6 +69,16 @@ function RunbooksPage() {
     void refreshRunbooks()
   }, [forceReconnectOpsEvents, refreshRunbooks])
 
+  // Picking a runbook from the mobile drawer should reveal the detail, so close
+  // the drawer on select (matches the services navigation behavior).
+  const handleSelectRunbook = useCallback(
+    (id: string | null) => {
+      selectRunbook(id)
+      layout.setSidebarOpen(false)
+    },
+    [selectRunbook, layout],
+  )
+
   const showEditor = editingDraft != null
   const showDetail = !showEditor && selectedRunbook != null
 
@@ -86,7 +96,7 @@ function RunbooksPage() {
           schedules={schedules}
           selectedRunbookId={selectedRunbookId}
           onTokenChange={setToken}
-          onSelectRunbook={selectRunbook}
+          onSelectRunbook={handleSelectRunbook}
           onCreateRunbook={startCreate}
         />
       }
@@ -110,7 +120,7 @@ function RunbooksPage() {
           </div>
         </header>
 
-        <div className="min-h-0 overflow-hidden p-3">
+        <div className="min-h-0 overflow-y-auto p-3 md:overflow-hidden">
           {showEditor && (
             <RunbookEditor
               draft={editingDraft}
@@ -123,17 +133,17 @@ function RunbooksPage() {
           )}
 
           {!showEditor && (
-            <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden">
+            <div className="flex flex-col gap-3 md:grid md:h-full md:min-h-0 md:grid-rows-[auto_1fr] md:overflow-hidden">
               <RunbookOperationsSummary
                 runbooks={runbooks}
                 jobs={jobs}
                 schedules={schedules}
                 selectedRunbookId={selectedRunbookId}
-                onSelectRunbook={selectRunbook}
+                onSelectRunbook={handleSelectRunbook}
               />
 
               {showDetail ? (
-                <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-3 overflow-hidden">
+                <div className="flex flex-col gap-3 md:grid md:h-full md:min-h-0 md:grid-rows-[auto_1fr] md:overflow-hidden">
                   <RunbookDetailPanel
                     runbook={selectedRunbook}
                     lastJob={selectedJobs[0] ?? null}
@@ -158,7 +168,7 @@ function RunbooksPage() {
                   />
                 </div>
               ) : (
-                <div className="flex h-full items-center justify-center">
+                <div className="flex min-h-[50vh] items-center justify-center md:h-full md:min-h-0">
                   <div className="text-center">
                     <p className="text-[13px] text-muted-foreground">
                       {runbooks.length > 0 ? (
