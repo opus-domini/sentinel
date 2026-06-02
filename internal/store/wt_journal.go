@@ -118,6 +118,38 @@ func (s *Store) SetWatchtowerRuntimeValue(ctx context.Context, key, value string
 	return err
 }
 
+// SetWatchtowerRuntimeValues upserts several runtime key/values in a single
+// transaction (one fsync) instead of one auto-committed write per key, cutting
+// the per-tick metric write amplification on the single SQLite connection.
+func (s *Store) SetWatchtowerRuntimeValues(ctx context.Context, values map[string]string) error {
+	if len(values) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.PrepareContext(ctx,
+		`INSERT INTO wt_runtime (key, value, updated_at)
+		 VALUES (?, ?, datetime('now'))
+		 ON CONFLICT(key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = excluded.updated_at`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for key, value := range values {
+		if _, err := stmt.ExecContext(ctx, strings.TrimSpace(key), value); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // GetWatchtowerRuntimeValue returns watchtower runtime value.
 func (s *Store) GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error) {
 	var value string
