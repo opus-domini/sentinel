@@ -171,6 +171,10 @@ func (r *failingScheduleUpdateRepo) CreateOpsRunbookRun(context.Context, string,
 	return store.OpsRunbookRun{}, nil
 }
 
+func (r *failingScheduleUpdateRepo) CreateOpsRunbookRunWithParams(context.Context, string, time.Time, map[string]string) (store.OpsRunbookRun, error) {
+	return store.OpsRunbookRun{}, nil
+}
+
 func (r *failingScheduleUpdateRepo) UpdateScheduleAfterRun(context.Context, string, string, string, string, bool) error {
 	r.updateCalls++
 	return errors.New("update failed")
@@ -212,7 +216,7 @@ func TestExecuteRunbookHandlesScheduleUpdateError(t *testing.T) {
 	svc.executeRunbook(context.Background(), store.OpsRunbookRun{
 		ID:        "job-1",
 		RunbookID: "runbook-1",
-	}, "schedule-1")
+	}, "schedule-1", nil)
 
 	if repo.updateCalls != 1 {
 		t.Fatalf("UpdateScheduleLastRun calls = %d, want 1", repo.updateCalls)

@@ -30,6 +30,7 @@ const (
 type schedulerRepo interface {
 	ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]store.OpsSchedule, error)
 	CreateOpsRunbookRun(ctx context.Context, runbookID string, now time.Time) (store.OpsRunbookRun, error)
+	CreateOpsRunbookRunWithParams(ctx context.Context, runbookID string, now time.Time, params map[string]string) (store.OpsRunbookRun, error)
 	UpdateScheduleAfterRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
 	UpdateScheduleLastRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus string) error
 }
@@ -220,18 +221,34 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		return
 	}
 
-	job, err := s.repo.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
-	if err != nil {
+	// Resolve the runbook's parameter defaults so scheduled runs substitute
+	// {{PARAM}} placeholders just like manual runs (which were running with the
+	// raw placeholders before).
+	rb, rbErr := s.runbookRepo.GetOpsRunbook(ctx, sched.RunbookID)
+	if rbErr != nil {
 		s.releaseSchedule(sched.ID)
-		// Auto-heal: if the runbook no longer exists, disable the orphan
-		// schedule so it stops appearing as due on every tick.
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(rbErr, sql.ErrNoRows) {
 			slog.Warn("scheduler auto-heal: disabling orphan schedule", "schedule", sched.ID, "runbook", sched.RunbookID)
 			if healErr := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); healErr != nil {
 				slog.Warn("scheduler auto-heal: update failed", "schedule", sched.ID, "err", healErr)
 			}
 			return
 		}
+		slog.Warn("scheduler load runbook failed", "schedule", sched.ID, "runbook", sched.RunbookID, "err", rbErr)
+		return
+	}
+	params := runbook.ResolveParams(rb.Parameters, nil)
+	if err := runbook.ValidateParams(rb.Parameters, params); err != nil {
+		// A required parameter has no default; running with placeholders would be
+		// worse than skipping. Surface it instead of executing.
+		s.releaseSchedule(sched.ID)
+		slog.Warn("scheduler skipping run: unmet required parameters", "schedule", sched.ID, "runbook", sched.RunbookID, "err", err)
+		return
+	}
+
+	job, err := s.repo.CreateOpsRunbookRunWithParams(ctx, sched.RunbookID, now, params)
+	if err != nil {
+		s.releaseSchedule(sched.ID)
 		slog.Warn("scheduler create run failed", "schedule", sched.ID, "runbook", sched.RunbookID, "err", err)
 		return
 	}
@@ -279,15 +296,16 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		case <-s.runCtx.Done():
 			return
 		}
-		s.executeRunbook(s.runCtx, job, sched.ID)
+		s.executeRunbook(s.runCtx, job, sched.ID, params)
 	}()
 }
 
-func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string) {
+func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string, params map[string]string) {
 	runbook.Run(ctx, s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
 		Source:      "scheduler",
 		StepTimeout: stepTimeout,
+		Parameters:  params,
 		AlertRepo:   s.opts.AlertRepo,
 		Guardrail:   s.opts.Guardrail,
 		ExtraMetadata: map[string]string{
