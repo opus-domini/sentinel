@@ -4,6 +4,9 @@ import type { LucideIcon } from 'lucide-react'
 export type PrimaryNavItem = {
   to: '/tmux' | '/metrics' | '/services' | '/alerts' | '/runbooks' | '/activities'
   label: string
+  // shortLabel is used in width-constrained nav (the mobile bottom bar) so long
+  // names like "Activities" do not truncate to "Activit…". Falls back to label.
+  shortLabel?: string
   Icon: LucideIcon
 }
 
@@ -36,6 +39,7 @@ export const PRIMARY_NAV_ITEMS: Array<PrimaryNavItem> = [
   {
     to: '/activities',
     label: 'Activities',
+    shortLabel: 'Activity',
     Icon: Clock,
   },
 ]

@@ -131,7 +131,7 @@ function MobilePrimaryNav() {
       aria-label="Mobile primary navigation"
       className="fixed inset-x-2 bottom-2 z-10 grid grid-cols-6 gap-1 rounded-2xl border border-border-subtle bg-surface-raised/95 p-1 shadow-2xl shadow-black/30 backdrop-blur md:hidden"
     >
-      {PRIMARY_NAV_ITEMS.map(({ to, label, Icon }) => {
+      {PRIMARY_NAV_ITEMS.map(({ to, label, shortLabel, Icon }) => {
         const active = pathname === to
         return (
           <Link
@@ -147,7 +147,7 @@ function MobilePrimaryNav() {
             )}
           >
             <Icon className="size-4" aria-hidden="true" />
-            <span className="max-w-full truncate">{label}</span>
+            <span className="max-w-full truncate">{shortLabel ?? label}</span>
           </Link>
         )
       })}
