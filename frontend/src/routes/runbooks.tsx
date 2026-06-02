@@ -161,18 +161,37 @@ function RunbooksPage() {
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
                     <p className="text-[13px] text-muted-foreground">
-                      {runbooks.length > 0
-                        ? 'Select a runbook from the sidebar'
-                        : 'No runbooks yet'}
+                      {runbooks.length > 0 ? (
+                        <>
+                          <span className="md:hidden">Open the menu to pick a runbook</span>
+                          <span className="hidden md:inline">
+                            Select a runbook from the sidebar
+                          </span>
+                        </>
+                      ) : (
+                        'No runbooks yet'
+                      )}
                     </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 h-7 cursor-pointer text-[11px]"
-                      onClick={startCreate}
-                    >
-                      Create new runbook
-                    </Button>
+                    <div className="mt-3 flex items-center justify-center gap-2">
+                      {runbooks.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 cursor-pointer text-[11px] md:hidden"
+                          onClick={() => layout.setSidebarOpen(true)}
+                        >
+                          Open menu
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 cursor-pointer text-[11px]"
+                        onClick={startCreate}
+                      >
+                        Create new runbook
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}

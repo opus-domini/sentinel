@@ -492,16 +492,27 @@ export default function TmuxTerminalPanel({
         ) : (
           <div className="text-center">
             <p className="text-[13px] text-muted-foreground">
-              Attach to a session from the sidebar
+              <span className="md:hidden">Open the menu to attach a session</span>
+              <span className="hidden md:inline">Attach to a session from the sidebar</span>
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3 h-7 cursor-pointer text-[11px]"
-              onClick={onOpenCreateSession}
-            >
-              Create new session
-            </Button>
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 cursor-pointer text-[11px] md:hidden"
+                onClick={onToggleSidebarOpen}
+              >
+                Open menu
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 cursor-pointer text-[11px]"
+                onClick={onOpenCreateSession}
+              >
+                Create new session
+              </Button>
+            </div>
           </div>
         )}
       </section>
@@ -538,33 +549,33 @@ export default function TmuxTerminalPanel({
             onSplitPaneHorizontal={onSplitPaneHorizontal}
           />
         </div>
-        <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
-          <TooltipHelper content="Zoom out">
-            <button
-              type="button"
-              className="inline-flex h-7 w-7 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
-              onClick={onZoomOut}
-              disabled={!hasActiveSession}
-              aria-label="Decrease font size"
-            >
-              <Minus className="h-3 w-3" />
-            </button>
-          </TooltipHelper>
-          <TooltipHelper content="Zoom in">
-            <button
-              type="button"
-              className="inline-flex h-7 w-7 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
-              onClick={onZoomIn}
-              disabled={!hasActiveSession}
-              aria-label="Increase font size"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
-          </TooltipHelper>
-          <span className="ml-0.5">
-            cols {termCols} rows {termRows}
-          </span>
-        </div>
+        {hasActiveSession && (
+          <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+            <TooltipHelper content="Zoom out">
+              <button
+                type="button"
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
+                onClick={onZoomOut}
+                aria-label="Decrease font size"
+              >
+                <Minus className="h-3 w-3" />
+              </button>
+            </TooltipHelper>
+            <TooltipHelper content="Zoom in">
+              <button
+                type="button"
+                className="inline-flex h-7 w-7 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
+                onClick={onZoomIn}
+                aria-label="Increase font size"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </TooltipHelper>
+            <span className="ml-0.5">
+              cols {termCols} rows {termRows}
+            </span>
+          </div>
+        )}
       </footer>
     </main>
   )
