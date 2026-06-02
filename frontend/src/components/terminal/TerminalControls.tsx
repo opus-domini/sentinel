@@ -387,19 +387,32 @@ export default function TerminalControls({
       return true
     }
 
+    // The xterm input is itself a textarea, so only bail for editable targets
+    // OUTSIDE the terminal surface — otherwise a locked modifier would hijack
+    // typing in dialogs, the session filter, etc.
+    const isForeignEditable = (target: EventTarget | null): boolean => {
+      const el = target as HTMLElement | null
+      if (el == null) return false
+      const editable = el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable
+      return editable && el.closest('.xterm') == null
+    }
+
     const onKd = (e: KeyboardEvent) => {
+      if (isForeignEditable(e.target)) return
       if (e.key.length === 1 && consume(e.key)) {
         e.preventDefault()
         e.stopPropagation()
       }
     }
     const onBi = (e: InputEvent) => {
+      if (isForeignEditable(e.target)) return
       if (e.data?.length === 1 && consume(e.data)) {
         e.preventDefault()
         e.stopPropagation()
       }
     }
     const onIn = (e: Event) => {
+      if (isForeignEditable(e.target)) return
       const ie = e as InputEvent
       if (ie.data?.length === 1 && consume(ie.data)) {
         ie.preventDefault()
