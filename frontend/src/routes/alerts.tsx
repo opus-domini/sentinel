@@ -407,38 +407,38 @@ function AlertsPage() {
         </header>
 
         <section className="grid min-h-0 grid-rows-[1fr] overflow-hidden p-3">
-          <div className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
-            {!alertsLoading && filteredAlerts.length === 0 && alertsError === '' ? (
-              <div className="grid h-full place-items-center">
-                <div className="text-center">
-                  <p className="text-[13px] text-muted-foreground">
-                    {selectedSeverity === 'all'
-                      ? 'No active alerts.'
-                      : `No ${selectedSeverity} alerts.`}
-                  </p>
-                  <div className="mt-3 flex flex-wrap justify-center gap-2">
-                    {selectedSeverity !== 'all' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[11px]"
-                        onClick={() => setSelectedSeverity('all')}
-                      >
-                        Show all severities
-                      </Button>
-                    )}
+          {!alertsLoading && filteredAlerts.length === 0 && alertsError === '' ? (
+            <div className="grid h-full place-items-center">
+              <div className="text-center">
+                <p className="text-[13px] text-muted-foreground">
+                  {selectedSeverity === 'all'
+                    ? 'No active alerts.'
+                    : `No ${selectedSeverity} alerts.`}
+                </p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  {selectedSeverity !== 'all' && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-7 text-[11px]"
-                      onClick={refreshPage}
+                      onClick={() => setSelectedSeverity('all')}
                     >
-                      Refresh alerts
+                      Show all severities
                     </Button>
-                  </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    onClick={refreshPage}
+                  >
+                    Refresh alerts
+                  </Button>
                 </div>
               </div>
-            ) : (
+            </div>
+          ) : (
+            <div className="grid min-h-0 grid-rows-[1fr] overflow-hidden rounded-lg border border-border-subtle bg-secondary">
               <ScrollArea className="h-full min-h-0">
                 <div className="grid gap-1.5 p-2">
                   {alertsLoading &&
@@ -543,8 +543,8 @@ function AlertsPage() {
                   )}
                 </div>
               </ScrollArea>
-            )}
-          </div>
+            </div>
+          )}
         </section>
 
         <footer
