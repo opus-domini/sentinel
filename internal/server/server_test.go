@@ -330,12 +330,30 @@ func TestRunFailsOnInvalidListenAddr(t *testing.T) {
 // listen address makes the embedded HTTP server fail fast so Serve returns
 // without needing a shutdown signal.
 func TestServeBootsAndShutsDown(t *testing.T) {
-	t.Setenv("SENTINEL_SERVER_HOST", "localhost")
-	t.Setenv("SENTINEL_SERVER_PORT", "999999")
+	// Reserve an ephemeral port and point Serve() at it so the listen step is
+	// guaranteed to fail with "address already in use", exercising the
+	// error-return path deterministically. The previous fixture used an
+	// out-of-range port (999999), but config sanitizes that back to the
+	// default port — so the server actually booted and Serve() blocked forever
+	// whenever the default port happened to be free (e.g. on CI), only passing
+	// locally because a real instance already held the default port.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port: %v", err)
+	}
+	defer ln.Close()
+
+	host, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split addr: %v", err)
+	}
+
+	t.Setenv("SENTINEL_SERVER_HOST", host)
+	t.Setenv("SENTINEL_SERVER_PORT", port)
 	t.Setenv("SENTINEL_DATA_DIR", t.TempDir())
 
 	if code := Serve("test-version"); code != 1 {
-		t.Fatalf("Serve() = %d, want 1 for an invalid listen address", code)
+		t.Fatalf("Serve() = %d, want 1 when the listen address is already in use", code)
 	}
 }
 
