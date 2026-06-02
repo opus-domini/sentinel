@@ -209,7 +209,7 @@ func (g *Guard) CheckOrigin(r *http.Request) error {
 	if g.requestUsesTLS(r) {
 		scheme = "https"
 	}
-	if parsed.Scheme != scheme || parsed.Host != r.Host {
+	if parsed.Scheme != scheme || !strings.EqualFold(parsed.Host, r.Host) {
 		return fmt.Errorf("%w: expected %s://%s, got %s", ErrOriginDenied, scheme, r.Host, origin)
 	}
 	return nil
