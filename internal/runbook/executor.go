@@ -141,11 +141,11 @@ func (e *Executor) ExecuteFrom(ctx context.Context, steps []Step, startFrom int,
 			timeout = time.Duration(step.Timeout) * time.Second
 		}
 
-		stepCtx, cancel := context.WithTimeout(ctx, timeout)
 		start := time.Now()
-		result := e.executeStepWithRetries(stepCtx, i, step)
+		// Each attempt gets its own timeout (applied inside); retry delays run
+		// on the parent ctx so they don't eat into a single shared deadline.
+		result := e.executeStepWithRetries(ctx, timeout, i, step)
 		result.Duration = time.Since(start)
-		cancel()
 
 		results = append(results, result)
 
@@ -193,8 +193,14 @@ func (r ExecuteResult) Err() error {
 	return nil
 }
 
-func (e *Executor) executeStepWithRetries(ctx context.Context, index int, step Step) StepResult {
-	result := e.executeStep(ctx, index, step)
+func (e *Executor) executeStepWithRetries(ctx context.Context, timeout time.Duration, index int, step Step) StepResult {
+	attempt := func() StepResult {
+		stepCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return e.executeStep(stepCtx, index, step)
+	}
+
+	result := attempt()
 
 	retries := step.Retries
 	if retries <= 0 || result.Error == "" || step.Type == stepTypeApproval {
@@ -206,18 +212,18 @@ func (e *Executor) executeStepWithRetries(ctx context.Context, index int, step S
 		delay = time.Duration(step.RetryDelay) * time.Second
 	}
 
-	for attempt := 1; attempt <= retries; attempt++ {
-		slog.Info("retrying step", "step", index, "title", step.Title, "attempt", attempt, "maxRetries", retries)
+	for n := 1; n <= retries; n++ {
+		slog.Info("retrying step", "step", index, "title", step.Title, "attempt", n, "maxRetries", retries)
 
 		select {
 		case <-ctx.Done():
-			result.Retries = attempt
+			result.Retries = n
 			return result
 		case <-time.After(delay):
 		}
 
-		result = e.executeStep(ctx, index, step)
-		result.Retries = attempt
+		result = attempt()
+		result.Retries = n
 
 		if result.Error == "" {
 			return result

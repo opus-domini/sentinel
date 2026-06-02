@@ -516,10 +516,16 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 	executor := NewExecutor(nil, stepTimeout, params.Parameters)
 	executor.SetGuardrail(params.Guardrail)
 
-	// Recover previous step results from the run record.
+	// Recover previous step results from the run record. If this read fails,
+	// continuing would start from an empty set and overwrite the pre-approval
+	// results, so fail the run instead — passing an empty step-results payload
+	// keeps the existing ones (the store preserves step_results on "").
 	existingRun, err := repo.GetOpsRunbookRun(ctx, job.ID)
 	if err != nil {
-		slog.Warn("runbook runner: failed to get existing run for resume", "err", err)
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer finCancel()
+		finishRun(finCtx, repo, emit, params, resumeFromStep+1, "", fmt.Sprintf("resume failed: %v", err), "", "")
+		return
 	}
 	accumulated := make([]store.OpsRunbookStepResult, len(existingRun.StepResults))
 	copy(accumulated, existingRun.StepResults)

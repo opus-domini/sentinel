@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -145,11 +146,11 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best effort: the run record already exists and will execute; a failed
+	// timeline insert must not abort here and leave the run orphaned in "queued".
 	timelineEvent, timelineErr := h.orch.RecordRunbookStarted(ctx, job, now)
 	if timelineErr != nil {
-		<-h.runSem // release on early return
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist runbook timeline", nil)
-		return
+		slog.Warn("failed to record runbook.started timeline", keyJob, job.ID, "err", timelineErr)
 	}
 
 	// Launch async execution.
@@ -165,10 +166,12 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		keyGlobalRev: globalRev,
 		keyJob:       job,
 	})
-	h.emit(events.TypeOpsActivity, map[string]any{
-		keyGlobalRev: globalRev,
-		keyEvent:     timelineEvent,
-	})
+	if timelineErr == nil {
+		h.emit(events.TypeOpsActivity, map[string]any{
+			keyGlobalRev: globalRev,
+			keyEvent:     timelineEvent,
+		})
+	}
 
 	writeData(w, http.StatusAccepted, map[string]any{
 		keyJob:          job,
