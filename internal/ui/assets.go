@@ -52,13 +52,32 @@ func (s *spa) built() bool {
 	return err == nil
 }
 
+// setSecurityHeaders applies baseline security headers to SPA/asset responses.
+// It intentionally avoids a restrictive resource CSP (the terminal renderer
+// relies on inline styles); frame-ancestors/X-Frame-Options stop framing and
+// nosniff stops MIME sniffing.
+func setSecurityHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "same-origin")
+	h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setSecurityHeaders(w)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // registerAssets wires the /assets/ static file route into the mux.
 func (s *spa) registerAssets(mux *http.ServeMux) {
 	if s == nil || s.dist == nil {
 		return
 	}
 	if assetsFS, err := fs.Sub(s.dist, "assets"); err == nil {
-		mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
+		mux.Handle("GET /assets/", securityHeaders(http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS)))))
 	}
 }
 
@@ -80,6 +99,7 @@ func (s *spa) servePath(w http.ResponseWriter, r *http.Request, filePath string)
 		return false
 	}
 
+	setSecurityHeaders(w)
 	http.ServeFileFS(w, r, s.dist, clean)
 	return true
 }
