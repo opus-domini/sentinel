@@ -150,6 +150,19 @@ func (s *Store) UpdateScheduleAfterRun(ctx context.Context, id, lastRunAt, lastR
 	return err
 }
 
+// UpdateScheduleLastRun records only the last-run outcome, leaving next_run_at
+// and enabled untouched. Used on run completion so a concurrent edit made during
+// the run (changing the cron or disabling it) is not clobbered by the
+// next_run_at/enabled snapshot taken when the run was dispatched.
+func (s *Store) UpdateScheduleLastRun(ctx context.Context, id, lastRunAt, lastRunStatus string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE ops_schedules SET
+		 last_run_at = ?, last_run_status = ?, updated_at = datetime('now')
+		 WHERE id = ?`,
+		lastRunAt, lastRunStatus, id)
+	return err
+}
+
 // DeleteSchedulesByRunbook removes all schedules for a runbook.
 func (s *Store) DeleteSchedulesByRunbook(ctx context.Context, runbookID string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM ops_schedules WHERE runbook_id = ?", runbookID)

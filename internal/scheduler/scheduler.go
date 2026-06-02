@@ -31,6 +31,7 @@ type schedulerRepo interface {
 	ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]store.OpsSchedule, error)
 	CreateOpsRunbookRun(ctx context.Context, runbookID string, now time.Time) (store.OpsRunbookRun, error)
 	UpdateScheduleAfterRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
+	UpdateScheduleLastRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus string) error
 }
 
 // Options configures the scheduler service.
@@ -278,11 +279,11 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		case <-s.runCtx.Done():
 			return
 		}
-		s.executeRunbook(s.runCtx, job, sched.ID, nextRunAt, enabled)
+		s.executeRunbook(s.runCtx, job, sched.ID)
 	}()
 }
 
-func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID, finalNextRunAt string, finalEnabled bool) {
+func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string) {
 	runbook.Run(ctx, s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
 		Source:      "scheduler",
@@ -294,7 +295,9 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 		},
 		OnFinish: func(ctx context.Context, status string) {
 			finished := time.Now().UTC()
-			if err := s.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, finalNextRunAt, finalEnabled); err != nil {
+			// Update only last_run_*; next_run_at/enabled were set at dispatch and
+			// may have been edited during the run.
+			if err := s.repo.UpdateScheduleLastRun(ctx, scheduleID, finished.Format(time.RFC3339), status); err != nil {
 				slog.Warn("scheduler: update schedule after run", "err", err)
 			}
 			s.publish(events.TypeScheduleUpdated, map[string]any{

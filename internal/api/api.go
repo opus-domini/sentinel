@@ -136,6 +136,7 @@ type opsScheduleRepo interface {
 	DeleteOpsSchedule(ctx context.Context, id string) error
 	DeleteSchedulesByRunbook(ctx context.Context, runbookID string) error
 	UpdateScheduleAfterRun(ctx context.Context, id, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
+	UpdateScheduleLastRun(ctx context.Context, id, lastRunAt, lastRunStatus string) error
 }
 
 type alertsActivityRepo interface {
