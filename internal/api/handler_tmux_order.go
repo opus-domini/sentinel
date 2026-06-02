@@ -63,7 +63,7 @@ func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	svc := h.tmuxForSession(session)
+	svc := h.tmuxForSession(ctx, session)
 	liveWindows, err := svc.ListWindows(ctx, session)
 	if err != nil {
 		writeTmuxError(w, err)
@@ -120,7 +120,7 @@ func decodeSessionOrderNames(r *http.Request) ([]string, error) {
 	seen := make(map[string]struct{}, len(req.Names))
 	for _, name := range req.Names {
 		if !validate.SessionName(name) {
-			return nil, errors.New("names must match ^[A-Za-z0-9._-]{1,64}$")
+			return nil, errors.New("names must match ^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$")
 		}
 		if _, ok := seen[name]; ok {
 			return nil, errors.New("names must be unique")

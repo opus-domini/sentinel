@@ -185,7 +185,7 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		windowName = launcher.Name
 	}
 
-	svc := h.tmuxForSession(session)
+	svc := h.tmuxForSession(ctx, session)
 	createdWindow, err := svc.NewWindowWithOptions(ctx, session, windowName, cwd)
 	if err != nil {
 		writeTmuxError(w, err)
@@ -275,7 +275,7 @@ func (h *Handler) resolveTmuxLauncherCwd(ctx context.Context, session string, la
 	case store.TmuxLauncherCwdModeFixed:
 		return launcher.CwdValue, nil
 	case store.TmuxLauncherCwdModeActivePane:
-		panes, err := h.tmuxForSession(session).ListPanes(ctx, session)
+		panes, err := h.tmuxForSession(ctx, session).ListPanes(ctx, session)
 		if err != nil {
 			return "", err
 		}
@@ -337,13 +337,13 @@ func decodeTmuxLauncherWrite(r *http.Request) (store.TmuxLauncherWrite, error) {
 	req.UserValue = strings.TrimSpace(req.UserValue)
 
 	if !validate.WindowName(req.Name) {
-		return store.TmuxLauncherWrite{}, errors.New("tmux launcher name must match ^[A-Za-z0-9._\\- ]{1,64}$")
+		return store.TmuxLauncherWrite{}, errors.New("tmux launcher name must match ^[A-Za-z0-9._][A-Za-z0-9._\\- ]{0,63}$")
 	}
 	if !validate.IconKey(req.Icon) {
 		return store.TmuxLauncherWrite{}, errors.New("icon must match ^[a-z0-9-]{1,32}$")
 	}
 	if req.WindowName != "" && !validate.WindowName(req.WindowName) {
-		return store.TmuxLauncherWrite{}, errors.New("windowName must match ^[A-Za-z0-9._\\- ]{1,64}$")
+		return store.TmuxLauncherWrite{}, errors.New("windowName must match ^[A-Za-z0-9._][A-Za-z0-9._\\- ]{0,63}$")
 	}
 	if req.CwdMode == store.TmuxLauncherCwdModeFixed && req.CwdValue != "" && !filepath.IsAbs(req.CwdValue) {
 		return store.TmuxLauncherWrite{}, errors.New("cwdValue must be an absolute path")

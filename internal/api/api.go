@@ -136,6 +136,7 @@ type opsScheduleRepo interface {
 	DeleteOpsSchedule(ctx context.Context, id string) error
 	DeleteSchedulesByRunbook(ctx context.Context, runbookID string) error
 	UpdateScheduleAfterRun(ctx context.Context, id, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
+	UpdateScheduleLastRun(ctx context.Context, id, lastRunAt, lastRunStatus string) error
 }
 
 type alertsActivityRepo interface {
@@ -251,6 +252,7 @@ type Handler struct {
 	locale           string
 	userSwitchMethod string
 	mu               sync.Mutex // protects mutable settings (timezone, locale)
+	configMu         sync.Mutex // serializes config-file read-modify-write
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).

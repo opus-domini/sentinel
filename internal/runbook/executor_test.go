@@ -3,6 +3,7 @@ package runbook
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -137,6 +138,65 @@ func TestRunStepFailureStopsExecution(t *testing.T) {
 
 	if got := mock.callCount(); got != 2 {
 		t.Errorf("runner called %d times, want 2 (third step should not run)", got)
+	}
+}
+
+func TestGuardrailBlocksStep(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockRunner{results: []mockResult{{output: "ok\n"}}}
+	exec := NewExecutor(mock.run, time.Minute)
+	exec.SetGuardrail(func(_ context.Context, command string) error {
+		if strings.Contains(command, "rm -rf") {
+			return fmt.Errorf("blocked by guardrail: %s", command)
+		}
+		return nil
+	})
+
+	steps := []Step{
+		{Type: "run", Title: "Dangerous", Command: "rm -rf /data"},
+		{Type: "run", Title: "Safe", Command: "echo hi"},
+	}
+
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
+	if err == nil {
+		t.Fatal("expected execution to fail on the guardrail-blocked step")
+	}
+	if len(results) == 0 || results[0].Error == "" {
+		t.Fatalf("blocked step should report an error: %+v", results)
+	}
+	if !strings.Contains(results[0].Error, "guardrail") {
+		t.Fatalf("blocked step error = %q, want guardrail mention", results[0].Error)
+	}
+	// The dangerous command must never reach the runner, and execution stops
+	// before the safe step.
+	if mock.callCount() != 0 {
+		t.Fatalf("runner called %d times; a blocked command must not execute", mock.callCount())
+	}
+}
+
+func TestGuardrailBlocksScriptStep(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockRunner{}
+	exec := NewExecutor(mock.run, time.Minute)
+	exec.SetGuardrail(func(_ context.Context, command string) error {
+		if strings.Contains(command, "systemctl stop") {
+			return fmt.Errorf("blocked by guardrail")
+		}
+		return nil
+	})
+
+	steps := []Step{{Type: "script", Title: "Stop", Script: "#!/bin/sh\nsystemctl stop sshd"}}
+	results, err := exec.Execute(context.Background(), steps, nil, nil)
+	if err == nil {
+		t.Fatal("expected script execution to be blocked")
+	}
+	if len(results) != 1 || results[0].Error == "" {
+		t.Fatalf("blocked script should report an error: %+v", results)
+	}
+	if mock.callCount() != 0 {
+		t.Fatalf("runner called %d times; the blocked script must not execute", mock.callCount())
 	}
 }
 

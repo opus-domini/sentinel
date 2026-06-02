@@ -80,6 +80,14 @@ func controlUserLaunchd(action string) error {
 	case actionStop:
 		return launchdBootout(scope, launchdServiceLabel)
 	case actionRestart:
+		servicePath, err := userServicePathLaunchdForScope(scope)
+		if err != nil {
+			return err
+		}
+		// Bootstrap if the job isn't loaded (best effort: an already-loaded job
+		// errors here, which kickstart then handles), so restart also works on a
+		// stopped/unloaded service instead of failing in kickstart.
+		_ = launchdBootstrap(scope, servicePath, launchdServiceLabel)
 		return launchdKickstart(scope, launchdServiceLabel)
 	case actionEnable:
 		return runLaunchctl(actionEnable, launchdJobTarget(scope, launchdServiceLabel))

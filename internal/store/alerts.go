@@ -261,16 +261,20 @@ func (s *Store) BulkAckAlerts(ctx context.Context, ids []int64, ackAt time.Time)
 		return nil, fmt.Errorf("bump alerts revision: %w", err)
 	}
 
-	// Fetch updated alerts.
+	// Fetch only the alerts this call actually acked. The status guard mirrors
+	// the UPDATE's `status != Resolved` filter: without it, already-resolved ids
+	// in a mixed batch would be returned as freshly acked and emit spurious
+	// alert.acked webhooks, timeline entries and WS broadcasts.
 	//nolint:gosec // G201: placeholders are literal "?" strings
 	selectQuery := fmt.Sprintf(`SELECT
 		id, dedupe_key, source, resource, title, message, severity, status, occurrences,
 		metadata, first_seen_at, last_seen_at, acked_at, resolved_at
-	FROM ops_alerts WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	selectArgs := make([]any, len(ids))
-	for i, id := range ids {
-		selectArgs[i] = id
+	FROM ops_alerts WHERE id IN (%s) AND status = ?`, strings.Join(placeholders, ","))
+	selectArgs := make([]any, 0, len(ids)+1)
+	for _, id := range ids {
+		selectArgs = append(selectArgs, id)
 	}
+	selectArgs = append(selectArgs, alerts.StatusAcked)
 	rows, err := s.db.QueryContext(ctx, selectQuery, selectArgs...)
 	if err != nil {
 		return nil, err

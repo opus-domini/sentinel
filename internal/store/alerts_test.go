@@ -485,6 +485,51 @@ func TestBulkAckAlerts(t *testing.T) {
 			t.Fatalf("len(acked) = %d, want 0 (resolved should be skipped)", len(acked))
 		}
 	})
+
+	t.Run("mixed batch excludes resolved", func(t *testing.T) {
+		open, err := s.UpsertAlert(ctx, alerts.AlertWrite{
+			DedupeKey: "bulk:mixed-open",
+			Source:    "test",
+			Title:     "Mixed Open",
+			Severity:  "error",
+			CreatedAt: base,
+		})
+		if err != nil {
+			t.Fatalf("UpsertAlert(open): %v", err)
+		}
+		resolved, err := s.UpsertAlert(ctx, alerts.AlertWrite{
+			DedupeKey: "bulk:mixed-resolved",
+			Source:    "test",
+			Title:     "Mixed Resolved",
+			Severity:  "error",
+			CreatedAt: base,
+		})
+		if err != nil {
+			t.Fatalf("UpsertAlert(resolved): %v", err)
+		}
+		if _, err := s.ResolveAlert(ctx, "bulk:mixed-resolved", base.Add(time.Minute)); err != nil {
+			t.Fatalf("ResolveAlert: %v", err)
+		}
+
+		// Ack a batch containing one ackable id and one already-resolved id. The
+		// UPDATE acks only the open one (affected > 0, so the early return is
+		// skipped); the re-fetch must return only that alert. Before the status
+		// guard on the SELECT, the resolved id leaked back as "acked" and the
+		// caller emitted spurious alert.acked webhooks/events for it.
+		acked, err := s.BulkAckAlerts(ctx, []int64{open.ID, resolved.ID}, base.Add(2*time.Minute))
+		if err != nil {
+			t.Fatalf("BulkAckAlerts: %v", err)
+		}
+		if len(acked) != 1 {
+			t.Fatalf("len(acked) = %d, want 1 (only the non-resolved alert)", len(acked))
+		}
+		if acked[0].ID != open.ID {
+			t.Fatalf("acked[0].ID = %d, want %d (the open alert)", acked[0].ID, open.ID)
+		}
+		if acked[0].Status != alerts.StatusAcked {
+			t.Fatalf("acked[0].Status = %q, want acked", acked[0].Status)
+		}
+	})
 }
 
 func TestResolveOpsAlertAcked(t *testing.T) {

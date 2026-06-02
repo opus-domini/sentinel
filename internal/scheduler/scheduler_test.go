@@ -171,7 +171,16 @@ func (r *failingScheduleUpdateRepo) CreateOpsRunbookRun(context.Context, string,
 	return store.OpsRunbookRun{}, nil
 }
 
+func (r *failingScheduleUpdateRepo) CreateOpsRunbookRunWithParams(context.Context, string, time.Time, map[string]string) (store.OpsRunbookRun, error) {
+	return store.OpsRunbookRun{}, nil
+}
+
 func (r *failingScheduleUpdateRepo) UpdateScheduleAfterRun(context.Context, string, string, string, string, bool) error {
+	r.updateCalls++
+	return errors.New("update failed")
+}
+
+func (r *failingScheduleUpdateRepo) UpdateScheduleLastRun(context.Context, string, string, string) error {
 	r.updateCalls++
 	return errors.New("update failed")
 }
@@ -207,10 +216,10 @@ func TestExecuteRunbookHandlesScheduleUpdateError(t *testing.T) {
 	svc.executeRunbook(context.Background(), store.OpsRunbookRun{
 		ID:        "job-1",
 		RunbookID: "runbook-1",
-	}, "schedule-1", "", false)
+	}, "schedule-1", nil)
 
 	if repo.updateCalls != 1 {
-		t.Fatalf("UpdateScheduleAfterRun calls = %d, want 1", repo.updateCalls)
+		t.Fatalf("UpdateScheduleLastRun calls = %d, want 1", repo.updateCalls)
 	}
 }
 
@@ -261,6 +270,58 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 	}
 
 	// Wait for the async goroutine to complete so the store can close cleanly.
+	time.Sleep(300 * time.Millisecond)
+}
+
+func TestTick_SkipsScheduleAlreadyInFlight(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{EventHub: events.NewHub()})
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{Name: "overlap-test", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "overlap-schedule",
+		ScheduleType: "cron",
+		CronExpr:     "*/5 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    past.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a run still in flight for this schedule (e.g. cron interval
+	// shorter than the run). A tick must not create a second, overlapping run.
+	if !svc.claimSchedule(sched.ID) {
+		t.Fatal("first claim should succeed")
+	}
+	svc.tick(ctx)
+	runs, err := st.ListOpsRunbookRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no run while the schedule is in flight, got %d", len(runs))
+	}
+
+	// After the in-flight run finishes, the next tick may trigger again.
+	svc.releaseSchedule(sched.ID)
+	svc.tick(ctx)
+	runs, err = st.ListOpsRunbookRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected exactly one run after release, got %d", len(runs))
+	}
+
 	time.Sleep(300 * time.Millisecond)
 }
 

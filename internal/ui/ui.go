@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -331,6 +333,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 	errCh, sendErr := newAttachErrChannel()
 
 	go func() {
+		defer recoverWSGoroutine("logsStream", sendErr)
 		scanner := bufio.NewScanner(stream)
 		scanner.Buffer(make([]byte, 64*1024), 64*1024)
 		for scanner.Scan() {
@@ -349,6 +352,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	go func() {
+		defer recoverWSGoroutine("logsRead", sendErr)
 		for {
 			_, _, readErr := wsConn.ReadMessage()
 			if readErr != nil {
@@ -398,6 +402,7 @@ func startEventsWSReader(wsConn *ws.Conn, handleMessage func([]byte) []byte) <-c
 		}
 	}
 	go func() {
+		defer recoverWSGoroutine("eventsRead", sendReadErr)
 		for {
 			opcode, payload, readErr := wsConn.ReadMessage()
 			if readErr != nil {
@@ -772,8 +777,22 @@ func newAttachErrChannel() (chan error, func(error)) {
 	return errCh, sendErr
 }
 
+// recoverWSGoroutine converts a panic in a long-lived WebSocket/PTY goroutine
+// into a teardown signal plus a structured log, instead of letting it crash the
+// whole process (which would drop every other session). Deferred at the top of
+// each spawned loop.
+func recoverWSGoroutine(label string, sendErr func(error)) {
+	if p := recover(); p != nil {
+		slog.Error("ws goroutine panic recovered", "label", label, "panic", p, "stack", string(debug.Stack()))
+		if sendErr != nil {
+			sendErr(fmt.Errorf("%s panic: %v", label, p))
+		}
+	}
+}
+
 func startPTYReadLoop(pty *term.PTY, wsConn *ws.Conn, sendErr func(error)) {
 	go func() {
+		defer recoverWSGoroutine("ptyRead", sendErr)
 		buf := make([]byte, 32768)
 		for {
 			n, readErr := pty.Read(buf)
@@ -795,6 +814,7 @@ func startPTYReadLoop(pty *term.PTY, wsConn *ws.Conn, sendErr func(error)) {
 
 func startWSReadLoop(wsConn *ws.Conn, pty *term.PTY, sendErr func(error)) {
 	go func() {
+		defer recoverWSGoroutine("wsRead", sendErr)
 		for {
 			opcode, payload, readErr := wsConn.ReadMessage()
 			if readErr != nil {
@@ -819,6 +839,7 @@ func startWSReadLoop(wsConn *ws.Conn, pty *term.PTY, sendErr func(error)) {
 
 func startPTYWaitLoop(pty *term.PTY, sendErr func(error)) {
 	go func() {
+		defer recoverWSGoroutine("ptyWait", sendErr)
 		waitErr := pty.Wait()
 		if waitErr != nil {
 			sendErr(waitErr)
@@ -829,6 +850,7 @@ func startPTYWaitLoop(pty *term.PTY, sendErr func(error)) {
 }
 
 func runPingLoop(ctx context.Context, conn pingWriter, ticks <-chan time.Time, sendErr func(error)) {
+	defer recoverWSGoroutine("pingLoop", sendErr)
 	for {
 		select {
 		case <-ctx.Done():

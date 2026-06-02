@@ -61,6 +61,10 @@ type RunParams struct {
 	// AlertRepo is an optional alert repository. When non-nil, failed runs
 	// raise alerts and successful runs resolve them.
 	AlertRepo AlertRepo
+
+	// Guardrail, when non-nil, is evaluated against each run/script command
+	// before execution; a non-nil result blocks that step.
+	Guardrail GuardrailFunc
 }
 
 const (
@@ -139,6 +143,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 		stepTimeout = 30 * time.Second
 	}
 	executor := NewExecutor(nil, stepTimeout, params.Parameters)
+	executor.SetGuardrail(params.Guardrail)
 	var accumulated []store.OpsRunbookStepResult
 
 	// beforeStep writes a preliminary step result to the DB before execution.
@@ -509,11 +514,18 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		stepTimeout = 30 * time.Second
 	}
 	executor := NewExecutor(nil, stepTimeout, params.Parameters)
+	executor.SetGuardrail(params.Guardrail)
 
-	// Recover previous step results from the run record.
+	// Recover previous step results from the run record. If this read fails,
+	// continuing would start from an empty set and overwrite the pre-approval
+	// results, so fail the run instead — passing an empty step-results payload
+	// keeps the existing ones (the store preserves step_results on "").
 	existingRun, err := repo.GetOpsRunbookRun(ctx, job.ID)
 	if err != nil {
-		slog.Warn("runbook runner: failed to get existing run for resume", "err", err)
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer finCancel()
+		finishRun(finCtx, repo, emit, params, resumeFromStep+1, "", fmt.Sprintf("resume failed: %v", err), "", "")
+		return
 	}
 	accumulated := make([]store.OpsRunbookStepResult, len(existingRun.StepResults))
 	copy(accumulated, existingRun.StepResults)

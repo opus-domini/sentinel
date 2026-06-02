@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -145,11 +146,11 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best effort: the run record already exists and will execute; a failed
+	// timeline insert must not abort here and leave the run orphaned in "queued".
 	timelineEvent, timelineErr := h.orch.RecordRunbookStarted(ctx, job, now)
 	if timelineErr != nil {
-		<-h.runSem // release on early return
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist runbook timeline", nil)
-		return
+		slog.Warn("failed to record runbook.started timeline", keyJob, job.ID, "err", timelineErr)
 	}
 
 	// Launch async execution.
@@ -165,10 +166,12 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 		keyGlobalRev: globalRev,
 		keyJob:       job,
 	})
-	h.emit(events.TypeOpsActivity, map[string]any{
-		keyGlobalRev: globalRev,
-		keyEvent:     timelineEvent,
-	})
+	if timelineErr == nil {
+		h.emit(events.TypeOpsActivity, map[string]any{
+			keyGlobalRev: globalRev,
+			keyEvent:     timelineEvent,
+		})
+	}
 
 	writeData(w, http.StatusAccepted, map[string]any{
 		keyJob:          job,
@@ -185,7 +188,18 @@ func (h *Handler) executeRunbookAsync(ctx context.Context, job store.OpsRunbookR
 		Parameters:    params,
 		ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
 		AlertRepo:     h.repo,
+		Guardrail:     h.guardrails.EvaluateCommand,
 	})
+}
+
+// RunbookGuardrail returns the unattended-command guardrail evaluator so the
+// scheduler can gate scheduled runbook steps with the same policy as manual
+// runs. Safe to call on a nil handler / nil guardrail service (no-op).
+func (h *Handler) RunbookGuardrail() runbook.GuardrailFunc {
+	if h == nil {
+		return nil
+	}
+	return h.guardrails.EvaluateCommand
 }
 
 func (h *Handler) emitEvent(eventType string, payload map[string]any) {
@@ -477,9 +491,17 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		CompletedSteps: approvalStepIndex + 1,
 		CurrentStep:    job.CurrentStep,
 		StartedAt:      now.Format(time.RFC3339),
+		// Atomically claim the approval: only one concurrent approve can move
+		// the run out of waiting_approval, so the steps after approval never
+		// execute twice (TOCTOU between the check above and this update).
+		FromStatus: store.OpsRunbookStatusWaitingApproval,
 	})
 	if err != nil {
 		<-h.runSem
+		if errors.Is(err, store.ErrOpsRunbookRunConflict) {
+			writeError(w, http.StatusConflict, "INVALID_STATE", "run is no longer waiting for approval", nil)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to resume run", nil)
 		return
 	}
@@ -504,6 +526,7 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 			Parameters:    resolved,
 			ExtraMetadata: map[string]string{keyRunbookID: job.RunbookID},
 			AlertRepo:     h.repo,
+			Guardrail:     h.guardrails.EvaluateCommand,
 		}, approvalStepIndex)
 	}()
 
@@ -550,8 +573,15 @@ func (h *Handler) rejectOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 		CurrentStep:    job.CurrentStep,
 		Error:          "approval rejected",
 		FinishedAt:     now.Format(time.RFC3339),
+		// Same atomic guard as approve: a concurrent approve/reject can only win
+		// once, so reject can't fail a run that already started running.
+		FromStatus: store.OpsRunbookStatusWaitingApproval,
 	})
 	if err != nil {
+		if errors.Is(err, store.ErrOpsRunbookRunConflict) {
+			writeError(w, http.StatusConflict, "INVALID_STATE", "run is no longer waiting for approval", nil)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to update run", nil)
 		return
 	}

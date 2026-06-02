@@ -74,6 +74,19 @@ describe('ServiceLogsSheet', () => {
   beforeEach(() => {
     rafCallbacks = []
     useLogStreamMock.mockClear()
+    // LogViewer virtualizes its rows via @tanstack/react-virtual, which sizes the
+    // scroll viewport and rows from offsetHeight and needs ResizeObserver —
+    // neither of which jsdom provides. Stub both so virtualized rows render.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    )
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600)
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800)
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
       rafCallbacks.push(callback)
       return rafCallbacks.length
@@ -84,6 +97,7 @@ describe('ServiceLogsSheet', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('shows formatted systemd unit names but requests logs with the raw unit name', async () => {
@@ -156,6 +170,12 @@ describe('ServiceLogsSheet', () => {
       if (!enabledCall) throw new Error('stream not enabled')
       return enabledCall[0]
     })
+
+    // Radix primitives (Sheet, tooltips) may schedule their own frames during
+    // mount. Discard those so the assertion measures only the batching of the
+    // two streamed lines below, independent of machine load.
+    rafCallbacks.length = 0
+    vi.mocked(window.requestAnimationFrame).mockClear()
 
     act(() => {
       streamOptions.onLine('stream-one')

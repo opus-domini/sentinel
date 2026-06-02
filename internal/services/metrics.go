@@ -105,8 +105,8 @@ type metricsCollectionIntervals struct {
 
 type metricCollectors struct {
 	cpuPercent   func(context.Context) float64
-	memInfo      func() memorySample
-	loadAvg      func() (float64, float64, float64)
+	memInfo      func(context.Context) memorySample
+	loadAvg      func(context.Context) (float64, float64, float64)
 	diskUsage    func(string) diskSample
 	networkIO    func() networkIOSample
 	processInfo  func(context.Context) processSample
@@ -176,16 +176,27 @@ func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMet
 	now := c.nowFn().UTC()
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.hasSnapshot && reusableAt(now, c.snapshotAt, c.intervals.snapshotReuse) {
+		snap := c.snapshot
+		c.mu.Unlock()
+		return snap
+	}
+	c.mu.Unlock()
 
+	// CPU sampling sleeps ~100ms on Linux; sample it without the lock so a
+	// concurrent Collect isn't blocked for the whole duration of the sample.
+	cpuPct := c.collectors.cpuPercent(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Another collector may have refreshed the snapshot while we were sampling.
 	if c.hasSnapshot && reusableAt(now, c.snapshotAt, c.intervals.snapshotReuse) {
 		return c.snapshot
 	}
 
 	cpuCount := c.collectors.numCPU()
-	cpuPct := c.collectors.cpuPercent(ctx)
-	mem := c.collectors.memInfo()
-	avg1, avg5, avg15 := c.collectors.loadAvg()
+	mem := c.collectors.memInfo(ctx)
+	avg1, avg5, avg15 := c.collectors.loadAvg(ctx)
 	disk := c.diskLocked(diskPath, now)
 	net := c.collectors.networkIO()
 	processes := c.processLocked(ctx, now)

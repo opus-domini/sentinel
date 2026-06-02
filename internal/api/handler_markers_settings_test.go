@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
+	"github.com/BurntSushi/toml"
 	"github.com/opus-domini/sentinel/internal/events"
 )
 
@@ -125,6 +127,51 @@ func TestSettingsHandlersPersistConfig(t *testing.T) {
 	for _, want := range []string{`timezone = "America/Sao_Paulo"`, `locale = "pt-BR"`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("config missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestSettingsHandlersSerializeConcurrentWrites(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil)
+	h.events = events.NewHub()
+	configPath := t.TempDir() + "/config.toml"
+	if err := os.WriteFile(configPath, []byte("[server]\nlocale = \"en-US\"\n\n[alerts]\nwebhook_url = \"\"\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	h.configPath = configPath
+
+	const rounds = 25
+	fire := func(wg *sync.WaitGroup, path, body string, fn func(http.ResponseWriter, *http.Request)) {
+		defer wg.Done()
+		for range rounds {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(body))
+			fn(rec, req)
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go fire(&wg, "/api/ops/settings/timezone", `{"timezone":"America/Sao_Paulo"}`, h.patchTimezone)
+	go fire(&wg, "/api/ops/settings/locale", `{"locale":"pt-BR"}`, h.patchLocale)
+	go fire(&wg, "/api/ops/settings/webhook", `{"url":"https://example.com/hook","events":["alert.created"]}`, h.patchWebhookSettings)
+	wg.Wait()
+
+	// Without configMu serialization the interleaved read-modify-write cycles
+	// produce a torn config.toml. It must still parse and reflect every writer.
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := toml.Unmarshal(content, &cfg); err != nil {
+		t.Fatalf("config corrupted by concurrent writes: %v\n%s", err, content)
+	}
+	for _, want := range []string{`timezone = "America/Sao_Paulo"`, `locale = "pt-BR"`, `webhook_url = "https://example.com/hook"`} {
+		if !strings.Contains(string(content), want) {
+			t.Fatalf("config missing %q after concurrent writes:\n%s", want, content)
 		}
 	}
 }

@@ -55,11 +55,25 @@ type ExecuteResult struct {
 	CtxErr        error // non-nil when execution was aborted by context cancellation/timeout
 }
 
+// GuardrailFunc evaluates a fully-substituted runbook command or script before
+// it runs. A non-nil error blocks the step, which is reported as a step failure
+// (the command is never executed).
+type GuardrailFunc func(ctx context.Context, command string) error
+
 // Executor runs a sequence of runbook steps.
 type Executor struct {
 	runner      CommandRunner
 	stepTimeout time.Duration
 	params      map[string]string // substituted into commands before execution
+	guardrail   GuardrailFunc     // optional; blocks a step when it returns an error
+}
+
+// SetGuardrail installs a guardrail evaluated before each run/script step.
+func (e *Executor) SetGuardrail(fn GuardrailFunc) {
+	if e == nil {
+		return
+	}
+	e.guardrail = fn
 }
 
 const (
@@ -127,11 +141,11 @@ func (e *Executor) ExecuteFrom(ctx context.Context, steps []Step, startFrom int,
 			timeout = time.Duration(step.Timeout) * time.Second
 		}
 
-		stepCtx, cancel := context.WithTimeout(ctx, timeout)
 		start := time.Now()
-		result := e.executeStepWithRetries(stepCtx, i, step)
+		// Each attempt gets its own timeout (applied inside); retry delays run
+		// on the parent ctx so they don't eat into a single shared deadline.
+		result := e.executeStepWithRetries(ctx, timeout, i, step)
 		result.Duration = time.Since(start)
-		cancel()
 
 		results = append(results, result)
 
@@ -179,8 +193,14 @@ func (r ExecuteResult) Err() error {
 	return nil
 }
 
-func (e *Executor) executeStepWithRetries(ctx context.Context, index int, step Step) StepResult {
-	result := e.executeStep(ctx, index, step)
+func (e *Executor) executeStepWithRetries(ctx context.Context, timeout time.Duration, index int, step Step) StepResult {
+	attempt := func() StepResult {
+		stepCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return e.executeStep(stepCtx, index, step)
+	}
+
+	result := attempt()
 
 	retries := step.Retries
 	if retries <= 0 || result.Error == "" || step.Type == stepTypeApproval {
@@ -192,18 +212,18 @@ func (e *Executor) executeStepWithRetries(ctx context.Context, index int, step S
 		delay = time.Duration(step.RetryDelay) * time.Second
 	}
 
-	for attempt := 1; attempt <= retries; attempt++ {
-		slog.Info("retrying step", "step", index, "title", step.Title, "attempt", attempt, "maxRetries", retries)
+	for n := 1; n <= retries; n++ {
+		slog.Info("retrying step", "step", index, "title", step.Title, "attempt", n, "maxRetries", retries)
 
 		select {
 		case <-ctx.Done():
-			result.Retries = attempt
+			result.Retries = n
 			return result
 		case <-time.After(delay):
 		}
 
-		result = e.executeStep(ctx, index, step)
-		result.Retries = attempt
+		result = attempt()
+		result.Retries = n
 
 		if result.Error == "" {
 			return result
@@ -223,6 +243,10 @@ func (e *Executor) executeStep(ctx context.Context, index int, step Step) StepRe
 	switch step.Type {
 	case stepTypeRun:
 		cmd := SubstituteParams(step.Command, e.params)
+		if err := e.checkGuardrail(ctx, cmd); err != nil {
+			result.Error = err.Error()
+			return result
+		}
 		output, err := e.runner(ctx, "sh", "-c", cmd)
 		result.Output = output
 		if err != nil {
@@ -244,8 +268,19 @@ func (e *Executor) executeStep(ctx context.Context, index int, step Step) StepRe
 	return result
 }
 
+// checkGuardrail evaluates the command against the installed guardrail, if any.
+func (e *Executor) checkGuardrail(ctx context.Context, command string) error {
+	if e.guardrail == nil {
+		return nil
+	}
+	return e.guardrail(ctx, command)
+}
+
 func (e *Executor) executeScript(ctx context.Context, step Step) (string, error) {
 	script := SubstituteParams(step.Script, e.params)
+	if err := e.checkGuardrail(ctx, script); err != nil {
+		return "", err
+	}
 
 	tmpFile, err := os.CreateTemp("", "sentinel-step-*.sh")
 	if err != nil {

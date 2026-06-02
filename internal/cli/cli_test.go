@@ -189,6 +189,13 @@ level = "debug"
 enabled = false
 tick_interval = "2s"
 capture_timeout = "250ms"
+
+[alerts]
+webhook_url = "https://hooks.slack.com/services/T00/B00/secret"
+
+[health_report]
+webhook_url = "https://discord.com/api/webhooks/123/secret"
+schedule = "0 9 * * *"
 `
 	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
@@ -235,6 +242,19 @@ capture_timeout = "250ms"
 	}
 	if watchtower["capture_timeout"] != "250ms" {
 		t.Fatalf("watchtower.capture_timeout = %v", watchtower["capture_timeout"])
+	}
+	// Webhook URLs embed the Slack/Discord secret in their path and must be
+	// redacted like the token (config show is pasted into logs/support/screens).
+	alertsCfg, ok := got["alerts"].(map[string]any)
+	if !ok || alertsCfg["webhook_url"] != "******" {
+		t.Fatalf("alerts.webhook_url = %v, want redacted", got["alerts"])
+	}
+	healthCfg, ok := got["health_report"].(map[string]any)
+	if !ok || healthCfg["webhook_url"] != "******" {
+		t.Fatalf("health_report.webhook_url = %v, want redacted", got["health_report"])
+	}
+	if healthCfg["schedule"] != "0 9 * * *" {
+		t.Fatalf("health_report.schedule = %v, want preserved", healthCfg["schedule"])
 	}
 }
 

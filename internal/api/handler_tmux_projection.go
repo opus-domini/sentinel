@@ -169,7 +169,7 @@ func paneBelongsToSession(panes []tmux.Pane, paneID string) bool {
 }
 
 func (h *Handler) ensureSessionPane(ctx context.Context, session, paneID string) error {
-	panes, err := h.tmuxForSession(session).ListPanes(ctx, session)
+	panes, err := h.tmuxForSession(ctx, session).ListPanes(ctx, session)
 	if err != nil {
 		return err
 	}
@@ -415,7 +415,7 @@ func sortSessionsByStoredOrder(sessions []enrichedSession) {
 
 func (h *Handler) resolveSessionLastContent(ctx context.Context, sessionName, fallback string) string {
 	lastContent := strings.TrimSpace(fallback)
-	captured, err := h.tmuxForSession(sessionName).CapturePane(ctx, sessionName)
+	captured, err := h.tmuxForSession(ctx, sessionName).CapturePane(ctx, sessionName)
 	if err != nil {
 		return lastContent
 	}
@@ -430,7 +430,7 @@ func (h *Handler) resolveSessionPaneCount(ctx context.Context, sessionName strin
 	if projectedPanes > 0 {
 		return projectedPanes
 	}
-	paneList, err := h.tmuxForSession(sessionName).ListPanes(ctx, sessionName)
+	paneList, err := h.tmuxForSession(ctx, sessionName).ListPanes(ctx, sessionName)
 	if err != nil {
 		return windowFallback
 	}

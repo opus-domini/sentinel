@@ -751,6 +751,11 @@ func downloadToFile(ctx context.Context, client *http.Client, url, path string) 
 	if written > maxArchiveSize {
 		return fmt.Errorf("release archive exceeds maximum size (%d bytes)", maxArchiveSize)
 	}
+	// Flush to disk so a power loss between download and install can't leave a
+	// truncated archive that later fails checksum verification confusingly.
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync downloaded archive: %w", err)
+	}
 	return nil
 }
 
@@ -790,16 +795,28 @@ func extractBinaryFromArchive(archivePath, outputPath string) error {
 			return fmt.Errorf("archive sentinel binary exceeds max size (%d bytes)", maxExtractedBinSize)
 		}
 
-		out, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o700) //nolint:gosec // output path is internal updater path.
+		// Remove any orphan and open exclusively so a pre-existing path or
+		// symlink (TOCTOU) can't redirect the write to an attacker-chosen target.
+		_ = os.Remove(outputPath)
+		out, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700) //nolint:gosec // output path is internal updater path.
 		if err != nil {
 			return err
 		}
 
 		limited := io.LimitReader(tr, header.Size)
 		written, copyErr := io.Copy(out, limited)
+		var syncErr error
+		if copyErr == nil {
+			// fsync the new binary before the install rename so a crash can't
+			// leave a half-written executable in place.
+			syncErr = out.Sync()
+		}
 		closeErr := out.Close()
 		if copyErr != nil {
 			return copyErr
+		}
+		if syncErr != nil {
+			return fmt.Errorf("sync extracted binary: %w", syncErr)
 		}
 		if closeErr != nil {
 			return closeErr
@@ -868,6 +885,12 @@ func installBinary(execPath, newPath, backupPath string) error {
 		// binary in place, matching the rename-failure rollback above.
 		_ = os.Rename(backupPath, execPath)
 		return fmt.Errorf("chmod installed binary: %w", err)
+	}
+	// fsync the parent directory so the rename survives a power loss right after
+	// the replacement (best effort; the binary itself was already fsync'd).
+	if dir, err := os.Open(filepath.Dir(execPath)); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
 	}
 	return nil
 }

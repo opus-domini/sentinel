@@ -139,17 +139,21 @@ func (h *Handler) launchSessionPreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.registerSessionUser(preset.Name, preset.User)
 	tmuxSvc := h.tmuxForUser(preset.User)
 	created := true
 	if err := tmuxSvc.CreateSession(ctx, preset.Name, preset.Cwd); err != nil {
 		if tmux.IsKind(err, tmux.ErrKindSessionExists) {
 			created = false
 		} else {
-			h.sessionUsers.Delete(preset.Name)
 			writeTmuxError(w, err)
 			return
 		}
+	}
+	// Claim ownership only for a session we actually created; if it already
+	// existed, leave the real owner's registration intact instead of clobbering
+	// it with preset.User.
+	if created {
+		h.registerSessionUser(preset.Name, preset.User)
 	}
 	if preset.User != "" {
 		slog.Warn("multi-user session created",
@@ -250,7 +254,7 @@ func decodeSessionPresetWrite(r *http.Request) (store.SessionPresetWrite, error)
 
 	switch {
 	case !validate.SessionName(req.Name):
-		return store.SessionPresetWrite{}, errors.New("name must match ^[A-Za-z0-9._-]{1,64}$")
+		return store.SessionPresetWrite{}, errors.New("name must match ^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$")
 	case req.Cwd == "":
 		return store.SessionPresetWrite{}, errors.New("cwd is required")
 	case !filepath.IsAbs(req.Cwd):

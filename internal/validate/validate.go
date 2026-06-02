@@ -10,15 +10,21 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-var sessionNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+// sessionNameRE requires an alphanumeric/dot/underscore first character so a
+// name can never start with '-'. Otherwise tmux parses it as an option flag
+// (e.g. rename-session passes the name as a bare positional), letting a crafted
+// name like "-d" inject flags into the command.
+var sessionNameRE = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$`)
 
 // SessionName reports whether name is a valid tmux session name.
 func SessionName(name string) bool {
 	return sessionNameRE.MatchString(name)
 }
 
-// windowNameRE allows letters, digits, dots, hyphens, underscores, and spaces.
-var windowNameRE = regexp.MustCompile(`^[A-Za-z0-9._\- ]{1,64}$`)
+// windowNameRE allows letters, digits, dots, hyphens, underscores, and spaces,
+// but (like sessionNameRE) forbids a leading '-' or ' ' so the name cannot be
+// parsed as a tmux option flag.
+var windowNameRE = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._\- ]{0,63}$`)
 
 // WindowName reports whether name is a valid tmux window name.
 func WindowName(name string) bool {

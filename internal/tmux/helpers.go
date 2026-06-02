@@ -3,6 +3,7 @@ package tmux
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -45,6 +46,9 @@ func parseActivePaneCommandsOutput(out string) map[string]PaneSnapshot {
 func capturePane(ctx context.Context, runFn runnerFunc, session string) (string, error) {
 	out, err := runFn(ctx, "capture-pane", "-t", session+":", "-p", "-S", "-3")
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return "", err
+		}
 		return "", nil
 	}
 	lines := strings.Split(out, "\n")

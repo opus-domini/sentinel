@@ -4,6 +4,7 @@ package guardrails
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -87,6 +88,34 @@ func (s *Service) Evaluate(ctx context.Context, input Input) (Decision, error) {
 	return decision, nil
 }
 
+// EvaluateCommand checks a raw command string against the guardrail policy for
+// UNATTENDED execution (runbook steps, scheduled runs). The command text is
+// matched against rule patterns (via Input.Action). It fails closed when the
+// policy cannot be evaluated, and treats both "block" and "confirm" rules as
+// blocking, since automation cannot satisfy a confirmation prompt. Blocked
+// commands are audited. A nil return means the command may run.
+func (s *Service) EvaluateCommand(ctx context.Context, command string) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	input := Input{Action: command, WindowIndex: -1}
+	decision, err := s.Evaluate(ctx, input)
+	if err != nil {
+		return fmt.Errorf("guardrail policy could not be evaluated; blocked for safety: %w", err)
+	}
+	if decision.Allowed && !decision.RequireConfirm {
+		return nil
+	}
+	if auditErr := s.RecordAudit(ctx, input, decision, false, "unattended command blocked"); auditErr != nil {
+		slog.Warn("guardrail audit write failed", "err", auditErr)
+	}
+	msg := strings.TrimSpace(decision.Message)
+	if msg == "" {
+		msg = "command blocked by guardrail policy"
+	}
+	return fmt.Errorf("blocked by guardrail: %s", msg)
+}
+
 // compileRulePatterns pre-compiles regex patterns for all rules.
 // Rules with invalid patterns are skipped with a warning log.
 func compileRulePatterns(rules []store.GuardrailRule) map[string]*regexp.Regexp {
@@ -149,7 +178,9 @@ func evaluateRuleMatch(rule store.GuardrailRule, action string, compiled map[str
 		return "", false
 	}
 
-	mode := strings.TrimSpace(rule.Mode)
+	// Normalize so a rule stored as "Block"/"BLOCK" still matches the canonical
+	// lowercase mode constants used everywhere else.
+	mode := strings.ToLower(strings.TrimSpace(rule.Mode))
 	if mode == "" {
 		mode = store.GuardrailModeWarn
 	}

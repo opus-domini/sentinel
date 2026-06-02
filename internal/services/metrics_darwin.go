@@ -10,10 +10,12 @@ import (
 	"syscall"
 )
 
-func collectCPUPercent(_ context.Context) float64 {
+func collectCPUPercent(ctx context.Context) float64 {
 	// macOS does not have /proc/stat. Use top -l 1 to get a snapshot of
-	// CPU usage, parsing the idle percentage from its summary line.
-	out, err := exec.Command("top", "-l", "1", "-n", "0", "-s", "0").Output()
+	// CPU usage, parsing the idle percentage from its summary line. Bound it to
+	// the request context so a wedged `top` cannot hang the collector (and, via
+	// c.mu, every later collection) forever.
+	out, err := exec.CommandContext(ctx, "top", "-l", "1", "-n", "0", "-s", "0").Output()
 	if err != nil {
 		return -1
 	}
@@ -41,9 +43,9 @@ func collectCPUPercent(_ context.Context) float64 {
 	return -1
 }
 
-func collectMemInfo() memorySample {
+func collectMemInfo(ctx context.Context) memorySample {
 	// Use sysctl to get physical memory size.
-	out, err := exec.Command("sysctl", "-n", "hw.memsize").Output()
+	out, err := exec.CommandContext(ctx, "sysctl", "-n", "hw.memsize").Output()
 	if err != nil {
 		return memorySample{}
 	}
@@ -53,7 +55,7 @@ func collectMemInfo() memorySample {
 	}
 
 	// Get page size and VM stats for used memory approximation.
-	pageOut, err := exec.Command("sysctl", "-n", "hw.pagesize").Output()
+	pageOut, err := exec.CommandContext(ctx, "sysctl", "-n", "hw.pagesize").Output()
 	if err != nil {
 		return memorySample{totalBytes: total}
 	}
@@ -62,7 +64,7 @@ func collectMemInfo() memorySample {
 		return memorySample{totalBytes: total}
 	}
 
-	vmOut, err := exec.Command("vm_stat").Output()
+	vmOut, err := exec.CommandContext(ctx, "vm_stat").Output()
 	if err != nil {
 		return memorySample{totalBytes: total}
 	}
@@ -101,8 +103,8 @@ func collectMemInfo() memorySample {
 	}
 }
 
-func collectLoadAvg() (avg1, avg5, avg15 float64) {
-	out, err := exec.Command("sysctl", "-n", "vm.loadavg").Output()
+func collectLoadAvg(ctx context.Context) (avg1, avg5, avg15 float64) {
+	out, err := exec.CommandContext(ctx, "sysctl", "-n", "vm.loadavg").Output()
 	if err != nil {
 		return -1, -1, -1
 	}

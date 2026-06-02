@@ -263,6 +263,11 @@ func (g *Generator) Stop(ctx context.Context) {
 		if g.stopFn != nil {
 			g.stopFn()
 		}
+		// Never started (e.g. empty/invalid schedule): no loop to wait for, so
+		// don't block the shutdown deadline on a nil channel.
+		if g.doneCh == nil {
+			return
+		}
 		select {
 		case <-g.doneCh:
 		case <-ctx.Done():

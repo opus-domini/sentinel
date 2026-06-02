@@ -1,11 +1,9 @@
 import { FocusScope } from '@radix-ui/react-focus-scope'
-import { Link, useRouterState } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
-import { PRIMARY_NAV_ITEMS } from '@/lib/primaryNav'
 import { cn } from '@/lib/utils'
 
 type SidebarShellProps = {
@@ -17,55 +15,29 @@ type SidebarShellProps = {
 
 function MobileNav() {
   const { setSidebarOpen, setSettingsOpen } = useLayoutContext()
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
-  })
 
-  const navItemClass = (isActive: boolean) =>
-    cn(
-      'relative grid size-8 place-items-center rounded-md no-underline',
-      isActive
-        ? 'bg-primary/10 text-primary-text-bright before:absolute before:inset-x-1 before:-bottom-2 before:h-0.5 before:rounded-full before:bg-primary'
-        : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
-    )
-
-  const handleNav = () => setSidebarOpen(false)
-
+  // Section navigation lives in the bottom tab bar; the drawer is just the
+  // master list, so it only needs Settings and Close here (no duplicate nav).
   return (
-    <div className="flex items-center justify-between border-b border-border pb-2 md:hidden">
-      <div className="flex items-center gap-1">
-        {PRIMARY_NAV_ITEMS.map(({ to, label, Icon }) => (
-          <Link
-            key={to}
-            className={navItemClass(pathname === to)}
-            to={to}
-            onClick={handleNav}
-            aria-label={label}
-          >
-            <Icon className="size-4" />
-          </Link>
-        ))}
-      </div>
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-secondary-foreground hover:text-foreground"
-          onClick={() => setSettingsOpen(true)}
-          aria-label="Settings"
-        >
-          <Settings className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-secondary-foreground hover:text-foreground"
-          onClick={() => setSidebarOpen(false)}
-          aria-label="Close menu"
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
+    <div className="flex items-center justify-end gap-1 border-b border-border pb-2 md:hidden">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-secondary-foreground hover:text-foreground"
+        onClick={() => setSettingsOpen(true)}
+        aria-label="Settings"
+      >
+        <Settings className="size-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-secondary-foreground hover:text-foreground"
+        onClick={() => setSidebarOpen(false)}
+        aria-label="Close menu"
+      >
+        <X className="size-4" />
+      </Button>
     </div>
   )
 }

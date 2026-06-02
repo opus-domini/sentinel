@@ -26,7 +26,7 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	svc := h.tmuxForSession(session)
+	svc := h.tmuxForSession(ctx, session)
 	windows, err := svc.ListWindows(ctx, session)
 	if err != nil {
 		projectedWindows, projectedPanes, ok := h.listProjectedWindows(ctx, session)
@@ -105,7 +105,7 @@ func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	panes, err := h.tmuxForSession(session).ListPanes(ctx, session)
+	panes, err := h.tmuxForSession(ctx, session).ListPanes(ctx, session)
 	if err != nil {
 		projectedPanes, ok := h.listProjectedPanes(ctx, session)
 		if ok {
@@ -338,7 +338,7 @@ func (h *Handler) selectWindow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.tmuxForSession(session).SelectWindow(ctx, session, req.Index); err != nil {
+	if err := h.tmuxForSession(ctx, session).SelectWindow(ctx, session, req.Index); err != nil {
 		writeTmuxError(w, err)
 		return
 	}
@@ -381,7 +381,7 @@ func (h *Handler) selectPane(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
 		return
 	}
-	if err := h.tmuxForSession(session).SelectPane(ctx, req.PaneID); err != nil {
+	if err := h.tmuxForSession(ctx, session).SelectPane(ctx, req.PaneID); err != nil {
 		writeTmuxError(w, err)
 		return
 	}
@@ -421,7 +421,7 @@ func (h *Handler) renameWindow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.tmuxForSession(session).RenameWindow(ctx, session, req.Index, req.Name); err != nil {
+	if err := h.tmuxForSession(ctx, session).RenameWindow(ctx, session, req.Index, req.Name); err != nil {
 		writeTmuxError(w, err)
 		return
 	}
@@ -478,7 +478,7 @@ func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
 		return
 	}
-	if err := h.tmuxForSession(session).RenamePane(ctx, req.PaneID, req.Title); err != nil {
+	if err := h.tmuxForSession(ctx, session).RenamePane(ctx, req.PaneID, req.Title); err != nil {
 		writeTmuxError(w, err)
 		return
 	}
@@ -562,7 +562,7 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc := h.tmuxForSession(session)
+	svc := h.tmuxForSession(ctx, session)
 	createdWindow, err := svc.NewWindow(ctx, session)
 	if err != nil {
 		writeTmuxError(w, err)
@@ -648,7 +648,7 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.tmuxForSession(session).KillWindow(ctx, session, req.Index); err != nil {
+	if err := h.tmuxForSession(ctx, session).KillWindow(ctx, session, req.Index); err != nil {
 		writeTmuxError(w, err)
 		return
 	}
@@ -706,7 +706,7 @@ func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.tmuxForSession(session).KillPane(ctx, req.PaneID); err != nil {
+	if err := h.tmuxForSession(ctx, session).KillPane(ctx, req.PaneID); err != nil {
 		writeTmuxError(w, err)
 		return
 	}
@@ -767,7 +767,7 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc := h.tmuxForSession(session)
+	svc := h.tmuxForSession(ctx, session)
 	createdPaneID, err := svc.SplitPane(ctx, req.PaneID, req.Direction)
 	if err != nil {
 		writeTmuxError(w, err)

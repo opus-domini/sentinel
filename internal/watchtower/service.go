@@ -86,6 +86,7 @@ type markerRepo interface {
 type runtimeRepo interface {
 	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
 	SetWatchtowerRuntimeValue(ctx context.Context, key, value string) error
+	SetWatchtowerRuntimeValues(ctx context.Context, values map[string]string) error
 }
 
 // watchtowerStore is the composite data-access interface used by Service.
@@ -566,42 +567,43 @@ func (s *Service) recordCollectMetrics(ctx context.Context, startedAt time.Time,
 	}
 
 	durationMS := time.Since(startedAt).Milliseconds()
-	s.setRuntimeValueBestEffort(ctx, runtimeLastCollectAtKey, startedAt.Format(time.RFC3339))
-	s.setRuntimeValueBestEffort(ctx, runtimeLastCollectMSKey, strconv.FormatInt(durationMS, 10))
-	s.setRuntimeValueBestEffort(ctx, runtimeLastCollectSessKey, strconv.Itoa(sessionsCount))
-	s.setRuntimeValueBestEffort(ctx, runtimeLastCollectChangedKey, strconv.Itoa(changedCount))
+	errStr := ""
 	if collectErr != nil {
-		s.setRuntimeValueBestEffort(ctx, runtimeLastCollectErrorKey, collectErr.Error())
-	} else {
-		s.setRuntimeValueBestEffort(ctx, runtimeLastCollectErrorKey, "")
+		errStr = collectErr.Error()
 	}
 
-	s.bumpRuntimeCounterBestEffort(ctx, runtimeCollectTotalKey)
+	// Batch every per-tick metric write into one transaction (one fsync) rather
+	// than ~8-10 auto-committed writes on the single SQLite connection.
+	values := map[string]string{
+		runtimeLastCollectAtKey:      startedAt.Format(time.RFC3339),
+		runtimeLastCollectMSKey:      strconv.FormatInt(durationMS, 10),
+		runtimeLastCollectSessKey:    strconv.Itoa(sessionsCount),
+		runtimeLastCollectChangedKey: strconv.Itoa(changedCount),
+		runtimeLastCollectErrorKey:   errStr,
+		runtimeCollectTotalKey:       strconv.FormatInt(s.readRuntimeCounter(ctx, runtimeCollectTotalKey)+1, 10),
+	}
 	if collectErr != nil {
-		s.bumpRuntimeCounterBestEffort(ctx, runtimeCollectErrorsTotalKey)
+		values[runtimeCollectErrorsTotalKey] = strconv.FormatInt(s.readRuntimeCounter(ctx, runtimeCollectErrorsTotalKey)+1, 10)
+	}
+
+	if err := s.store.SetWatchtowerRuntimeValues(ctx, values); err != nil {
+		slog.Warn("watchtower metric batch write failed", "err", err)
 	}
 }
 
-func (s *Service) setRuntimeValueBestEffort(ctx context.Context, key, value string) {
-	if err := s.store.SetWatchtowerRuntimeValue(ctx, key, value); err != nil {
-		slog.Warn("watchtower runtime metric write failed", "key", key, "err", err)
-	}
-}
-
-func (s *Service) bumpRuntimeCounterBestEffort(ctx context.Context, key string) {
+func (s *Service) readRuntimeCounter(ctx context.Context, key string) int64 {
 	raw, err := s.store.GetWatchtowerRuntimeValue(ctx, key)
 	if err != nil {
 		slog.Warn("watchtower runtime metric read failed", "key", key, "err", err)
-		return
+		return 0
 	}
-	current := int64(0)
 	raw = strings.TrimSpace(raw)
-	if raw != "" {
-		if parsed, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil {
-			current = parsed
-		}
+	if raw == "" {
+		return 0
 	}
-	if err := s.store.SetWatchtowerRuntimeValue(ctx, key, strconv.FormatInt(current+1, 10)); err != nil {
-		slog.Warn("watchtower runtime metric increment failed", "key", key, "err", err)
+	parsed, parseErr := strconv.ParseInt(raw, 10, 64)
+	if parseErr != nil {
+		return 0
 	}
+	return parsed
 }

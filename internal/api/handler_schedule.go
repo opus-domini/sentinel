@@ -303,9 +303,12 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 			StepTimeout:   30 * time.Second,
 			ExtraMetadata: map[string]string{keyScheduleID: scheduleID},
 			AlertRepo:     h.repo,
+			Guardrail:     h.guardrails.EvaluateCommand,
 			OnFinish: func(ctx context.Context, status string) {
 				finished := time.Now().UTC()
-				if err := h.repo.UpdateScheduleAfterRun(ctx, scheduleID, finished.Format(time.RFC3339), status, finalNextRunAt, finalEnabled); err != nil {
+				// Update only last_run_*; next_run_at/enabled were set at dispatch
+				// and may have been edited during the run.
+				if err := h.repo.UpdateScheduleLastRun(ctx, scheduleID, finished.Format(time.RFC3339), status); err != nil {
 					slog.Warn("trigger schedule: update after completion", keySchedule, scheduleID, "err", err)
 				}
 				h.emit(events.TypeScheduleUpdated, map[string]any{

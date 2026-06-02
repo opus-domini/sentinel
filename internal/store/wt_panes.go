@@ -74,7 +74,11 @@ func (s *Store) UpsertWatchtowerPane(ctx context.Context, row WatchtowerPaneWrit
 			tail_preview = excluded.tail_preview,
 			tail_captured_at = excluded.tail_captured_at,
 			revision = excluded.revision,
-			seen_revision = excluded.seen_revision,
+			-- seen_revision only ever moves forward: a collection upsert carries
+			-- the value it read at the start of the tick, so without this clamp a
+			-- concurrent "mark seen" (which raises seen_revision) would be lost and
+			-- the pane would pop back as unread. max() keeps the highest seen.
+			seen_revision = max(seen_revision, excluded.seen_revision),
 			changed_at = excluded.changed_at,
 			updated_at = excluded.updated_at`,
 		paneID,

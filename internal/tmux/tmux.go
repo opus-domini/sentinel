@@ -231,6 +231,11 @@ func inferCommand(raw string) string {
 func CapturePane(ctx context.Context, session string) (string, error) {
 	out, err := run(ctx, "capture-pane", "-t", session+":", "-p", "-S", "-3")
 	if err != nil {
+		// A missing session legitimately yields an empty preview, but context
+		// cancellation/timeout must propagate so callers can stop work.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return "", err
+		}
 		return "", nil
 	}
 	lines := strings.Split(out, "\n")
@@ -871,6 +876,11 @@ var run = func(ctx context.Context, args ...string) (string, error) { // var ena
 }
 
 func classifyError(err error, stderr string, args []string) error {
+	// Let context cancellation/timeout propagate idiomatically instead of being
+	// flattened into a generic "tmux ... failed" error.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
 	if errors.Is(err, exec.ErrNotFound) {
 		return &Error{
 			Kind: ErrKindNotFound,

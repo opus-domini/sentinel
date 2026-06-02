@@ -252,6 +252,9 @@ func (s *Store) DeleteManagedTmuxWindowsMissingRuntime(ctx context.Context, sess
 			tmuxWindowID string
 		)
 		if err := rows.Scan(&id, &tmuxWindowID); err != nil {
+			// Close before returning: with SetMaxOpenConns(1) a leaked cursor
+			// holds the only connection and deadlocks every later query.
+			_ = rows.Close()
 			return err
 		}
 		if _, ok := liveSet[tmuxWindowID]; ok {

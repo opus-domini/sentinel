@@ -89,15 +89,15 @@ func (h *Hub) Subscribe(buffer int) (<-chan Event, func()) {
 	h.mu.Unlock()
 
 	unsubscribe := func() {
+		// Close while holding the lock so Publish (which delivers under the same
+		// lock) can never observe a half-removed subscriber and send on a closed
+		// channel.
 		h.mu.Lock()
-		current, ok := h.subscribers[id]
-		if ok {
+		if current, ok := h.subscribers[id]; ok {
 			delete(h.subscribers, id)
-		}
-		h.mu.Unlock()
-		if ok {
 			close(current)
 		}
+		h.mu.Unlock()
 	}
 	return ch, unsubscribe
 }
@@ -109,6 +109,7 @@ func (h *Hub) Publish(event Event) {
 	}
 
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if event.EventID <= 0 {
 		h.nextEventID++
 		event.EventID = h.nextEventID
@@ -116,13 +117,12 @@ func (h *Hub) Publish(event Event) {
 	if event.Timestamp == "" {
 		event.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
-	subs := make([]chan Event, 0, len(h.subscribers))
+	// Deliver while still holding the lock that unsubscribe uses to close
+	// channels. This makes send and close mutually exclusive, so a subscriber
+	// channel can never be closed mid-send and the non-blocking send below
+	// cannot panic with "send on closed channel". Sends stay non-blocking via
+	// the default case, so holding the lock here is bounded.
 	for _, sub := range h.subscribers {
-		subs = append(subs, sub)
-	}
-	h.mu.Unlock()
-
-	for _, sub := range subs {
 		select {
 		case sub <- event:
 		default:

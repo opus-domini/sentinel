@@ -226,12 +226,12 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
   }, [debouncedSearchDraft, onSearchChange])
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle p-2">
+    <div className="flex flex-nowrap items-center gap-2 border-b border-border-subtle p-2 md:flex-wrap">
       <select
         name="services-scope"
         value={scopeValue}
         onChange={(e) => onScopeChange(e.target.value)}
-        className="h-9 flex-1 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
+        className="h-9 shrink-0 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8"
         aria-label="Filter by scope"
       >
         <option value="all">All scopes</option>
@@ -242,14 +242,14 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
         name="services-tracking"
         value={trackValue}
         onChange={(e) => onTrackChange(e.target.value as OpsServiceTrackFilter)}
-        className="h-9 flex-1 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:h-8 md:flex-none"
+        className="hidden h-9 shrink-0 cursor-pointer rounded-md border border-border-subtle bg-surface-overlay px-2 text-[12px] md:block md:h-8"
         aria-label="Filter by tracking"
       >
         <option value="all">All pins</option>
         <option value="tracked">Pinned</option>
         <option value="untracked">Unpinned</option>
       </select>
-      <div className="flex w-full items-center gap-2 md:w-auto md:min-w-44 md:flex-1">
+      <div className="flex min-w-0 flex-1 items-center gap-2 md:min-w-44">
         <div className="relative min-w-0 flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground md:top-2" />
           <input
@@ -812,11 +812,11 @@ function ServicesPage() {
         <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2 overflow-hidden p-2 md:gap-3 md:p-3">
           <section className="grid gap-2">
             {browseUnitTypes.length > 0 && (
-              <div className="flex min-w-0 flex-wrap items-center justify-center gap-1 rounded-lg border border-border-subtle bg-surface-elevated px-2 py-1.5">
+              <div className="no-scrollbar flex min-w-0 flex-nowrap items-center justify-start gap-1 overflow-x-auto rounded-lg border border-border-subtle bg-surface-elevated px-2 py-1.5 md:flex-wrap md:justify-center">
                 <button
                   type="button"
                   className={cn(
-                    'h-7 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
+                    'h-7 shrink-0 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
                     allBrowseUnitTypesSelected
                       ? 'border-selection-border/50 bg-selection-surface text-selection-foreground'
                       : 'border-border-subtle text-muted-foreground hover:text-foreground',
@@ -833,7 +833,7 @@ function ServicesPage() {
                       key={unitType}
                       type="button"
                       className={cn(
-                        'h-7 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
+                        'h-7 shrink-0 cursor-pointer rounded-full border px-2 text-[11px] capitalize transition-colors md:h-6',
                         selected
                           ? 'border-selection-border/50 bg-selection-surface text-selection-foreground'
                           : 'border-border-subtle text-muted-foreground hover:text-foreground',
