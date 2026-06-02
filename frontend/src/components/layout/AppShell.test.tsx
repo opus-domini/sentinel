@@ -107,7 +107,7 @@ describe('AppShell', () => {
   })
 
   it('renders persistent mobile primary navigation in shared order with active page state', () => {
-    renderShell()
+    const layout = renderShell()
 
     const nav = screen.getByRole('navigation', {
       name: 'Mobile primary navigation',
@@ -143,5 +143,8 @@ describe('AppShell', () => {
     expect(activeLink.className).toContain('py-0.5')
     expect(activeIcon?.getAttribute('class')).not.toContain('text-primary-text-bright')
     expect(activeIcon?.getAttribute('class')).toContain('size-3.5')
+
+    fireEvent.click(activeLink)
+    expect(layout.setSidebarOpen).toHaveBeenCalledWith(true)
   })
 })

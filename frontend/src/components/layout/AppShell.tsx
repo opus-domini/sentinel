@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import SideRail from '@/components/SideRail'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import SettingsDialog from '@/components/settings/SettingsDialog'
 
 import { useLayoutContext } from '@/contexts/LayoutContext'
@@ -44,6 +44,12 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
   const handleSwipeOpen = useCallback(() => {
     setSidebarOpen(true)
   }, [setSidebarOpen])
+
+  const handleActivePrimaryNavClick = useCallback(() => {
+    if (hasSidebar) {
+      setSidebarOpen(true)
+    }
+  }, [hasSidebar, setSidebarOpen])
 
   const handleSidebarResizeKeyDown = useCallback(
     (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -105,7 +111,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
         {children}
       </div>
 
-      <MobilePrimaryNav />
+      <MobilePrimaryNav onActiveItemClick={hasSidebar ? handleActivePrimaryNavClick : undefined} />
 
       <button
         type="button"
@@ -121,10 +127,23 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
   )
 }
 
-function MobilePrimaryNav() {
+type MobilePrimaryNavProps = {
+  onActiveItemClick?: () => void
+}
+
+function MobilePrimaryNav({ onActiveItemClick }: MobilePrimaryNavProps) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
+
+  const handleLinkClick = (event: MouseEvent<HTMLAnchorElement>, active: boolean) => {
+    if (!active || !onActiveItemClick) {
+      return
+    }
+
+    event.preventDefault()
+    onActiveItemClick()
+  }
 
   return (
     <nav
@@ -139,6 +158,7 @@ function MobilePrimaryNav() {
             to={to}
             aria-label={label}
             aria-current={active ? 'page' : undefined}
+            onClick={(event) => handleLinkClick(event, active)}
             className={cn(
               'grid min-w-0 place-items-center gap-0 px-1 py-0.5 text-[9px] no-underline transition-colors',
               active
