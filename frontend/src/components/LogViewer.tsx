@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 import type { LogLevel, ParsedLogLine } from '@/lib/log-parser'
 import { cn } from '@/lib/utils'
@@ -117,12 +118,21 @@ export function LogViewer({
     return lines.filter((l) => l.raw.toLowerCase().includes(q))
   }, [lines, searchQuery])
 
+  // Virtualize the list so the DOM node count stays bounded regardless of the
+  // up-to-5000-line buffer. Lines can wrap (wordWrap), so rows are measured.
+  const rowVirtualizer = useVirtualizer({
+    count: filteredLines.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 16,
+    overscan: 24,
+  })
+
   // Auto-scroll to bottom when follow is enabled and new lines arrive
   useEffect(() => {
-    if (follow && scrollRef.current && !isUserScrolling.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    if (follow && scrollRef.current && !isUserScrolling.current && filteredLines.length > 0) {
+      rowVirtualizer.scrollToIndex(filteredLines.length - 1, { align: 'end' })
     }
-  }, [follow, filteredLines.length])
+  }, [follow, filteredLines.length, rowVirtualizer])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -166,16 +176,30 @@ export function LogViewer({
         className,
       )}
     >
-      <div className="p-2 font-mono text-[11px]" role="log">
-        {filteredLines.map((line) => (
-          <LogLine
-            key={line.lineNumber}
-            line={line}
-            gutterWidth={gutterWidth}
-            searchRegex={searchRegex}
-            wordWrap={wordWrap}
-          />
-        ))}
+      <div
+        className="relative font-mono text-[11px]"
+        role="log"
+        style={{ height: rowVirtualizer.getTotalSize() }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const line = filteredLines[virtualRow.index]
+          return (
+            <div
+              key={line.lineNumber}
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              className="absolute left-0 top-0 w-full px-2"
+              style={{ transform: `translateY(${virtualRow.start}px)` }}
+            >
+              <LogLine
+                line={line}
+                gutterWidth={gutterWidth}
+                searchRegex={searchRegex}
+                wordWrap={wordWrap}
+              />
+            </div>
+          )
+        })}
       </div>
     </div>
   )
