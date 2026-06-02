@@ -176,21 +176,21 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
             className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', browsedServiceDot(svc.activeState))}
           />
           <div className="min-w-0 flex-1">
-            <div className="grid min-w-0 gap-1 sm:flex sm:items-center sm:gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <p
                 className="min-w-0 flex-1 truncate text-[12px] font-medium"
                 title={unitLabel === svc.unit ? undefined : svc.unit}
               >
                 {unitLabel}
               </p>
-              <div className="flex min-w-0 flex-wrap items-center gap-1 sm:shrink-0">
+              <div className="flex shrink-0 items-center gap-1">
                 <TooltipHelper content="Unit type discovered on the host">
-                  <span className="cursor-default rounded border border-border-subtle px-1 text-[9px] text-muted-foreground">
+                  <span className="hidden cursor-default rounded border border-border-subtle px-1 text-[9px] text-muted-foreground sm:inline-block">
                     {svc.unitType}
                   </span>
                 </TooltipHelper>
                 <TooltipHelper content="Unit scope (user or system)">
-                  <span className="cursor-default rounded border border-border-subtle px-1 text-[9px] text-muted-foreground">
+                  <span className="hidden cursor-default rounded border border-border-subtle px-1 text-[9px] text-muted-foreground sm:inline-block">
                     {svc.scope}
                   </span>
                 </TooltipHelper>
