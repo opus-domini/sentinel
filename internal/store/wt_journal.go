@@ -174,5 +174,9 @@ func (s *Store) WatchtowerGlobalRevision(ctx context.Context) (int64, error) {
 	if raw == "" {
 		return 0, nil
 	}
-	return strconv.ParseInt(raw, 10, 64)
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, nil
+	}
+	return parsed, nil
 }

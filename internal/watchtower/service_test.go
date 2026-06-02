@@ -585,6 +585,150 @@ func TestCollectIncrementsRevisionOnOutputChange(t *testing.T) {
 	}
 }
 
+func TestCollectPreservesPreviousTailOnCaptureError(t *testing.T) {
+	t.Parallel()
+
+	st := newWatchtowerTestStore(t)
+	defer func() { _ = st.Close() }()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	previous := "previous output"
+	if err := st.UpsertWatchtowerSession(ctx, store.WatchtowerSessionWrite{
+		SessionName:       "dev",
+		Attached:          1,
+		Windows:           1,
+		Panes:             1,
+		ActivityAt:        now,
+		LastPreview:       previous,
+		LastPreviewAt:     now,
+		LastPreviewPaneID: "%1",
+		Rev:               7,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerSession: %v", err)
+	}
+	if err := st.UpsertWatchtowerWindow(ctx, store.WatchtowerWindowWrite{
+		SessionName:      "dev",
+		TmuxWindowID:     "@1",
+		WindowIndex:      0,
+		Name:             "main",
+		Active:           true,
+		Layout:           "layout",
+		WindowActivityAt: now,
+		Rev:              3,
+		UpdatedAt:        now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerWindow: %v", err)
+	}
+	if err := st.UpsertWatchtowerPane(ctx, store.WatchtowerPaneWrite{
+		PaneID:         "%1",
+		SessionName:    "dev",
+		WindowIndex:    0,
+		PaneIndex:      0,
+		Title:          "shell",
+		Active:         true,
+		CurrentCommand: shellCommand,
+		TailHash:       hashPaneTail(previous),
+		TailPreview:    previous,
+		TailCapturedAt: now,
+		Revision:       5,
+		SeenRevision:   5,
+		ChangedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane: %v", err)
+	}
+
+	fake := fakeTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{{Name: "dev", Windows: 1, Attached: 1, ActivityAt: now}}, nil
+		},
+		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
+			return []tmux.Window{{ID: "@1", Session: "dev", Index: 0, Name: "main", Active: true, Panes: 1, Layout: "layout"}}, nil
+		},
+		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
+			return []tmux.Pane{{Session: "dev", WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Title: "shell", Active: true, CurrentCommand: shellCommand}}, nil
+		},
+		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
+			return "", &tmux.Error{Kind: tmux.ErrKindCommandFailed, Msg: "capture failed"}
+		},
+	}
+
+	svc := New(st, fake, Options{CaptureLines: 80})
+	if err := svc.collect(ctx); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+
+	panes, err := st.ListWatchtowerPanes(ctx, "dev")
+	if err != nil {
+		t.Fatalf("ListWatchtowerPanes(dev): %v", err)
+	}
+	if len(panes) != 1 {
+		t.Fatalf("panes len = %d, want 1", len(panes))
+	}
+	if panes[0].Revision != 5 || panes[0].SeenRevision != 5 || panes[0].TailPreview != previous {
+		t.Fatalf("pane should preserve previous tail on capture error: %+v", panes[0])
+	}
+	session, err := st.GetWatchtowerSession(ctx, "dev")
+	if err != nil {
+		t.Fatalf("GetWatchtowerSession(dev): %v", err)
+	}
+	if session.Rev != 7 || session.LastPreview != previous {
+		t.Fatalf("session should remain unchanged on capture error: %+v", session)
+	}
+}
+
+func TestPersistActivityJournalAdvancesGlobalRevision(t *testing.T) {
+	t.Parallel()
+
+	st := newWatchtowerTestStore(t)
+	defer func() { _ = st.Close() }()
+	ctx := context.Background()
+	svc := New(st, fakeTmux{}, Options{})
+
+	rev, err := svc.persistActivityJournal(ctx, nil)
+	if err != nil {
+		t.Fatalf("persistActivityJournal(empty): %v", err)
+	}
+	if rev != 0 {
+		t.Fatalf("empty revision = %d, want 0", rev)
+	}
+
+	if err := st.SetWatchtowerRuntimeValue(ctx, runtimeGlobalRevKey, "4"); err != nil {
+		t.Fatalf("SetWatchtowerRuntimeValue: %v", err)
+	}
+	rev, err = svc.persistActivityJournal(ctx, []string{"dev", "prod"})
+	if err != nil {
+		t.Fatalf("persistActivityJournal: %v", err)
+	}
+	if rev != 6 {
+		t.Fatalf("revision = %d, want 6", rev)
+	}
+	runtimeRev, err := st.GetWatchtowerRuntimeValue(ctx, runtimeGlobalRevKey)
+	if err != nil {
+		t.Fatalf("GetWatchtowerRuntimeValue(%s): %v", runtimeGlobalRevKey, err)
+	}
+	if runtimeRev != "6" {
+		t.Fatalf("runtime revision = %q, want 6", runtimeRev)
+	}
+
+	rows, err := st.ListWatchtowerJournalSince(ctx, 4, 10)
+	if err != nil {
+		t.Fatalf("ListWatchtowerJournalSince: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("journal len = %d, want 2", len(rows))
+	}
+	for i, row := range rows {
+		wantRev := int64(5 + i)
+		wantSession := []string{"dev", "prod"}[i]
+		if row.GlobalRev != wantRev || row.Session != wantSession || row.EntityType != "session" || row.ChangeKind != "activity" || row.WindowIdx != -1 {
+			t.Fatalf("journal row %d = %+v", i, row)
+		}
+	}
+}
+
 func TestCollectPurgesRemovedSessions(t *testing.T) {
 	t.Parallel()
 
