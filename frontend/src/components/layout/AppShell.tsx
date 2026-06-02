@@ -76,7 +76,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
   })
 
   return (
-    <div className="h-dvh overflow-hidden bg-background pb-16 text-foreground md:pb-0">
+    <div className="app-shell h-full overflow-hidden bg-background text-foreground">
       <div className={gridClass} style={shellStyle}>
         <SideRail
           sidebarCollapsed={sidebarCollapsed}

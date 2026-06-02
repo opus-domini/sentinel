@@ -303,6 +303,24 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* The mobile shell reserves space for the floating bottom nav. When the
+   on-screen keyboard is up the nav is hidden behind it, so collapse the reserve
+   (and hide the nav) — otherwise the freed strip shows as an empty black gap
+   above the keyboard. */
+@media (max-width: 767px) {
+  .app-shell {
+    padding-bottom: 4rem;
+  }
+
+  .keyboard-visible .app-shell {
+    padding-bottom: 0;
+  }
+
+  .keyboard-visible nav[aria-label='Mobile primary navigation'] {
+    display: none;
+  }
+}
+
 /* Sidebar drawer backdrop */
 @media (max-width: 767px) {
   .sidebar-drawer-backdrop {
