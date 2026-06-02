@@ -176,14 +176,25 @@ func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMet
 	now := c.nowFn().UTC()
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.hasSnapshot && reusableAt(now, c.snapshotAt, c.intervals.snapshotReuse) {
+		snap := c.snapshot
+		c.mu.Unlock()
+		return snap
+	}
+	c.mu.Unlock()
 
+	// CPU sampling sleeps ~100ms on Linux; sample it without the lock so a
+	// concurrent Collect isn't blocked for the whole duration of the sample.
+	cpuPct := c.collectors.cpuPercent(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Another collector may have refreshed the snapshot while we were sampling.
 	if c.hasSnapshot && reusableAt(now, c.snapshotAt, c.intervals.snapshotReuse) {
 		return c.snapshot
 	}
 
 	cpuCount := c.collectors.numCPU()
-	cpuPct := c.collectors.cpuPercent(ctx)
 	mem := c.collectors.memInfo(ctx)
 	avg1, avg5, avg15 := c.collectors.loadAvg(ctx)
 	disk := c.diskLocked(diskPath, now)
