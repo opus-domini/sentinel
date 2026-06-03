@@ -20,9 +20,15 @@ export const initialTabsState: TabsState = {
   activeEpoch: 0,
 }
 
+// Open tabs are persisted in localStorage (not sessionStorage) so the set of
+// open sessions survives the tab/PWA being fully closed and reopened — closing
+// the installed PWA on mobile ends the page session, which would wipe
+// sessionStorage. The persisted tabs are reconciled against the live
+// server-side sessions on the next sessions refresh (the 'sync' action), so
+// tabs for sessions that no longer exist are dropped on restore.
 export function loadPersistedTabs(): TabsState {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return initialTabsState
     const parsed = JSON.parse(raw) as {
       openTabs?: Array<string>
@@ -41,7 +47,7 @@ export function loadPersistedTabs(): TabsState {
 
 export function persistTabs(state: TabsState): void {
   try {
-    sessionStorage.setItem(
+    localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
         openTabs: state.openTabs,
@@ -49,7 +55,7 @@ export function persistTabs(state: TabsState): void {
       }),
     )
   } catch {
-    // sessionStorage full or unavailable — ignore.
+    // localStorage full or unavailable — ignore.
   }
 }
 

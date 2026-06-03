@@ -1,7 +1,27 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { initialTabsState, tabsReducer } from './tabsReducer'
+import { initialTabsState, loadPersistedTabs, persistTabs, tabsReducer } from './tabsReducer'
 import type { TabsState } from './tabsReducer'
+
+function createLocalStorageMock(): Storage {
+  const store = new Map<string, string>()
+  return {
+    getItem: (key) => (store.has(key) ? (store.get(key) as string) : null),
+    setItem: (key, value) => {
+      store.set(key, String(value))
+    },
+    removeItem: (key) => {
+      store.delete(key)
+    },
+    clear: () => {
+      store.clear()
+    },
+    key: (index) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size
+    },
+  }
+}
 
 function state(partial: Partial<TabsState> = {}): TabsState {
   return { ...initialTabsState, ...partial }
@@ -267,5 +287,54 @@ describe('tabsReducer', () => {
       const result = tabsReducer(initialTabsState, { type: 'bogus' })
       expect(result).toBe(initialTabsState)
     })
+  })
+})
+
+describe('tab persistence', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', createLocalStorageMock())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('round-trips open tabs and active session through localStorage', () => {
+    persistTabs(state({ openTabs: ['dev', 'prod'], activeSession: 'prod', activeEpoch: 7 }))
+
+    const loaded = loadPersistedTabs()
+    expect(loaded.openTabs).toEqual(['dev', 'prod'])
+    expect(loaded.activeSession).toBe('prod')
+    // The epoch is intentionally not persisted; it resets on load.
+    expect(loaded.activeEpoch).toBe(0)
+  })
+
+  it('survives a simulated PWA reopen — the value persists across loads', () => {
+    persistTabs(state({ openTabs: ['a', 'b'], activeSession: 'b' }))
+
+    // A fresh initializer call (as on PWA reopen) still sees the saved tabs.
+    const reopened = loadPersistedTabs()
+    expect(reopened.openTabs).toEqual(['a', 'b'])
+    expect(reopened.activeSession).toBe('b')
+  })
+
+  it('returns the initial state when nothing is stored', () => {
+    expect(loadPersistedTabs()).toEqual(initialTabsState)
+  })
+
+  it('drops empty and non-string tab names on load', () => {
+    localStorage.setItem(
+      'sentinel_tabs',
+      JSON.stringify({ openTabs: ['dev', '', 123, 'prod'], activeSession: 'dev' }),
+    )
+
+    const loaded = loadPersistedTabs()
+    expect(loaded.openTabs).toEqual(['dev', 'prod'])
+    expect(loaded.activeSession).toBe('dev')
+  })
+
+  it('falls back to the initial state on malformed JSON', () => {
+    localStorage.setItem('sentinel_tabs', '{not valid json')
+    expect(loadPersistedTabs()).toEqual(initialTabsState)
   })
 })
