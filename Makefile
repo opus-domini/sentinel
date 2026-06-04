@@ -23,8 +23,6 @@ COVERAGE_PROFILE ?= coverage.txt
 COVERAGE_PKGS    ?= ./...
 COVERAGE_CHECK    = ./scripts/coverage-check.sh
 COVERAGE_MIN     ?= 80
-LINT_GOCACHE     ?= /tmp/go-cache
-LINT_CACHE       ?= /tmp/golangci-lint-cache
 
 .DEFAULT_GOAL := help
 
@@ -119,7 +117,7 @@ test-perf: benchmark ## Run performance benchmark suite
 
 .PHONY: fmt
 fmt: check-go check-lint ## Format Go code
-	GOCACHE=$(LINT_GOCACHE) GOLANGCI_LINT_CACHE=$(LINT_CACHE) $(LINT) fmt
+	$(LINT) fmt
 
 .PHONY: fmt-check
 fmt-check: check-go ## Verify Go files are gofmt-clean
@@ -136,7 +134,7 @@ vet: check-go ## Run go vet
 
 .PHONY: lint
 lint: check-go check-lint ## Run golangci-lint
-	GOCACHE=$(LINT_GOCACHE) GOLANGCI_LINT_CACHE=$(LINT_CACHE) $(LINT) run
+	$(LINT) run
 
 .PHONY: lint-frontend
 lint-frontend: check-npm ## Lint frontend code

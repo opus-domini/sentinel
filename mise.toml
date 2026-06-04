@@ -1,3 +1,7 @@
 [tools]
 go = "1.26.4"
 node = "24"
+
+# Keep in sync with .github/workflows/ci.yml
+golangci-lint = "2.12.2"                          # GOLANGCI_LINT_VERSION
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.1.4"  # GOVULNCHECK_VERSION
