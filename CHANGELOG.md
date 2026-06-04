@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/opus-domini/sentinel/compare/v0.9.0...v0.9.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **security:** bump Go to 1.26.4 to patch two stdlib CVEs ([c0e9a6b](https://github.com/opus-domini/sentinel/commit/c0e9a6b5f8ceb4471f01f6a4b010b39b9d32f92c))
+* **tmux:** persist open session tabs across a PWA close/reopen ([ed52d94](https://github.com/opus-domini/sentinel/commit/ed52d94abbbde215203735a6e00bd3ca64d90bfb))
+
 ## [0.9.0](https://github.com/opus-domini/sentinel/compare/v0.8.3...v0.9.0) (2026-06-02)
 
 
