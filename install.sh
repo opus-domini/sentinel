@@ -204,8 +204,13 @@ fi
 VERSION="${VERSION:-}"
 if [ -z "$VERSION" ]; then
   info "Fetching latest ${PROJECT} release..."
-  VERSION=$(curl -fsSL --retry 3 --retry-delay 2 "https://api.github.com/repos/${REPO}/releases/latest" \
-    | awk -F'"' '/"tag_name"/ { print $4; exit }')
+  if ! VERSION=$(curl -fsSL --retry 3 --retry-delay 2 "https://api.github.com/repos/${REPO}/releases/latest" \
+    | awk -F'"' '
+      /"tag_name"/ && tag == "" { tag = $4 }
+      END { if (tag != "") print tag }
+    '); then
+    fail "could not fetch latest release metadata; set VERSION=vX.Y.Z"
+  fi
 fi
 [ -n "$VERSION" ] || fail "could not determine latest release; set VERSION=vX.Y.Z"
 VERSION=$(normalize_version "$VERSION")
