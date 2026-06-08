@@ -55,7 +55,7 @@ const baseProps = {
   filter: '',
   tmuxUnavailable: false,
   onFilterChange: () => {},
-  onTokenChange: async () => ({ ok: true, status: 200 }),
+  onTokenChange: async () => ({ ok: true, status: 200, code: '', message: '' }),
   onCreate: async () => {},
   onSaveLauncher: async () => '',
   onDeleteLauncher: async () => true,

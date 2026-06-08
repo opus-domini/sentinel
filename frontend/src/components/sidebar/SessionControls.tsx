@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import type { AuthCookieUpdateResult } from '@/lib/authToken'
 import { getTmuxIcon } from '@/lib/tmuxIcons'
 
 type SessionControlsProps = {
@@ -28,7 +29,7 @@ type SessionControlsProps = {
   tmuxUnavailable: boolean
   filter: string
   onFilterChange: (value: string) => void
-  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
+  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   onCreate: (name: string, cwd: string, user?: string) => Promise<void>
   onLaunchLauncher: (id: string) => void
   onSaveLauncher: (input: {

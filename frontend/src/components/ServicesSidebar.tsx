@@ -11,6 +11,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import type { AuthCookieUpdateResult } from '@/lib/authToken'
 import { cn } from '@/lib/utils'
 import { filterOpsServicesByQuery } from '@/lib/opsServices'
 
@@ -22,7 +23,7 @@ type ServicesSidebarProps = {
   loading: boolean
   error: string
   services: Array<OpsServiceStatus>
-  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
+  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   onRemoveService: (name: string) => Promise<void>
   onNavigateToService: (unit: string) => void
 }

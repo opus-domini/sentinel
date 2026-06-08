@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useDateFormat } from '@/hooks/useDateFormat'
+import type { AuthCookieUpdateResult } from '@/lib/authToken'
 import { cn } from '@/lib/utils'
 import {
   formatRunbookDuration,
@@ -32,7 +33,7 @@ type RunbooksSidebarProps = {
   jobs: Array<OpsRunbookRun>
   schedules: Array<OpsSchedule>
   selectedRunbookId: string | null
-  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
+  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   onSelectRunbook: (id: string | null) => void
   onCreateRunbook?: () => void
 }

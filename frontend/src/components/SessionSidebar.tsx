@@ -4,6 +4,7 @@ import SessionControls from './sidebar/SessionControls'
 import SessionListPanel from './sidebar/SessionListPanel'
 import type { Session, SessionLauncher, SessionPreset } from '@/types'
 import { useLayoutContext } from '@/contexts/LayoutContext'
+import type { AuthCookieUpdateResult } from '@/lib/authToken'
 
 type SessionSidebarProps = {
   sessions: Array<Session>
@@ -20,7 +21,7 @@ type SessionSidebarProps = {
   filter: string
   tmuxUnavailable: boolean
   onFilterChange: (value: string) => void
-  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
+  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   onCreate: (name: string, cwd: string, user?: string) => Promise<void>
   onSaveLauncher: (input: {
     id: string

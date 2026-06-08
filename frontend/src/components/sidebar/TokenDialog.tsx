@@ -10,12 +10,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { authCookieUpdateErrorMessage } from '@/lib/authToken'
+import type { AuthCookieUpdateResult } from '@/lib/authToken'
 
 type TokenDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   authenticated: boolean
-  onTokenChange: (value: string) => Promise<{ ok: boolean; status: number }>
+  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   tokenRequired: boolean
 }
 
@@ -61,7 +63,7 @@ export default function TokenDialog({
         onOpenChange(false)
         return
       }
-      setError(result.status === 401 ? 'Invalid token.' : 'Unable to validate token right now.')
+      setError(authCookieUpdateErrorMessage(result))
     } catch {
       setError('Unable to validate token right now.')
     } finally {
@@ -79,7 +81,7 @@ export default function TokenDialog({
         onOpenChange(false)
         return
       }
-      setError('Unable to clear token right now.')
+      setError(authCookieUpdateErrorMessage(result, { action: 'clear' }))
     } catch {
       setError('Unable to clear token right now.')
     } finally {

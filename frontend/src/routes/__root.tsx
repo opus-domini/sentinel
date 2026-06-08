@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
-import type { QueryClient } from '@tanstack/react-query'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ServerOfflineBanner } from '@/components/ServerOfflineBanner'
 import ToastViewport from '@/components/toast/ToastViewport'
@@ -29,50 +28,8 @@ import { useShellLayout } from '@/hooks/useShellLayout'
 import { useToasts } from '@/hooks/useToasts'
 import { useVisualViewport } from '@/hooks/useVisualViewport'
 import { applyDocumentAppBrand } from '@/lib/appBrand'
-
-type AuthCookieUpdateResult = {
-  ok: boolean
-  status: number
-}
-
-async function updateAuthCookie(
-  queryClient: QueryClient,
-  rawToken: string,
-): Promise<AuthCookieUpdateResult> {
-  const token = rawToken.trim()
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  const request: RequestInit = {
-    method: token === '' ? 'DELETE' : 'PUT',
-    credentials: 'same-origin',
-    headers,
-  }
-  if (token !== '') {
-    headers['Content-Type'] = 'application/json'
-    request.body = JSON.stringify({ token })
-  }
-
-  let response: Response | null = null
-  try {
-    response = await fetch('/api/auth/token', request)
-  } catch {
-    response = null
-  }
-
-  await queryClient.invalidateQueries({
-    queryKey: ['meta'],
-    exact: true,
-  })
-  await queryClient.refetchQueries({
-    queryKey: ['meta'],
-    exact: true,
-    type: 'active',
-  })
-
-  return {
-    ok: response?.ok === true,
-    status: response?.status ?? 0,
-  }
-}
+import { authCookieUpdateErrorMessage, updateAuthCookie } from '@/lib/authToken'
+import type { AuthCookieUpdateResult } from '@/lib/authToken'
 
 function TokenGateDialog({
   onSubmit,
@@ -109,11 +66,7 @@ function TokenGateDialog({
                   setDraft('')
                   return
                 }
-                if (result.status === 401) {
-                  setError('Invalid token.')
-                  return
-                }
-                setError('Unable to validate token right now.')
+                setError(authCookieUpdateErrorMessage(result))
               })
               .finally(() => {
                 setSubmitting(false)

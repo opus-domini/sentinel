@@ -1,8 +1,9 @@
 import { createContext, useContext } from 'react'
+import type { AuthCookieUpdateResult } from '@/lib/authToken'
 
 type TokenContextValue = {
   authenticated: boolean
-  setToken: (token: string) => Promise<{ ok: boolean; status: number }>
+  setToken: (token: string) => Promise<AuthCookieUpdateResult>
 }
 
 export const TokenContext = createContext<TokenContextValue | null>(null)

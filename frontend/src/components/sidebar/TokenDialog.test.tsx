@@ -88,4 +88,34 @@ describe('TokenDialog', () => {
     expect(input.getAttribute('aria-describedby')).toBe(screen.getByText('Invalid token.').id)
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
+
+  it('shows an origin-specific error when the token endpoint is blocked by origin policy', async () => {
+    const onOpenChange = vi.fn()
+    const onTokenChange = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      code: 'ORIGIN_DENIED',
+      message: 'request origin is not allowed',
+    })
+
+    render(
+      <TokenDialog
+        open
+        onOpenChange={onOpenChange}
+        authenticated={false}
+        tokenRequired
+        onTokenChange={onTokenChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('token (required)'), {
+      target: { value: 'correct-token' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Request origin is not allowed.',
+    )
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
 })
