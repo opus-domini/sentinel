@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.2](https://github.com/opus-domini/sentinel/compare/v0.9.1...v0.9.2) (2026-06-16)
+
+
+### Bug Fixes
+
+* avoid broken pipe when resolving installer release ([0fe1c88](https://github.com/opus-domini/sentinel/commit/0fe1c88d4ee6bc42b836f223b8cc9c44818d7cd2))
+* surface token auth endpoint errors ([bed22a7](https://github.com/opus-domini/sentinel/commit/bed22a7b61f605a3d6a58927d270fed5213eb836))
+
+
+### CI
+
+* **deps:** bump github-actions to latest ([770a2e9](https://github.com/opus-domini/sentinel/commit/770a2e9c6a0fd02bbf47218a3542e41782e8bdcc))
+
 ## [0.9.1](https://github.com/opus-domini/sentinel/compare/v0.9.0...v0.9.1) (2026-06-03)
 
 
