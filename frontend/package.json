@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.9.1",
   "type": "module",
-  "packageManager": "npm@11.16.0",
+  "packageManager": "npm@11.17.0",
   "engines": {
     "node": ">=24 <27",
     "npm": ">=10"
@@ -28,10 +28,10 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "@tailwindcss/vite": "^4.3.0",
-    "@tanstack/react-query": "^5.100.14",
-    "@tanstack/react-router": "^1.170.10",
-    "@tanstack/react-virtual": "^3.14.1",
+    "@tailwindcss/vite": "^4.3.1",
+    "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-router": "^1.170.15",
+    "@tanstack/react-virtual": "^3.14.3",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
@@ -43,26 +43,26 @@
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
     "cronstrue": "^3.14.0",
-    "lucide-react": "^1.17.0",
-    "radix-ui": "^1.4.3",
+    "lucide-react": "^1.20.0",
+    "radix-ui": "^1.6.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwind-merge": "^3.6.0",
-    "tailwindcss": "^4.3.0"
+    "tailwindcss": "^4.3.1"
   },
   "devDependencies": {
-    "@tanstack/router-plugin": "^1.168.13",
+    "@tanstack/router-plugin": "^1.168.18",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
-    "@types/node": "^25.9.1",
-    "@types/react": "^19.2.16",
+    "@types/node": "^25.9.3",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "jsdom": "^29.1.1",
-    "oxfmt": "^0.53.0",
-    "oxlint": "^1.68.0",
+    "oxfmt": "^0.55.0",
+    "oxlint": "^1.70.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   }
 }
