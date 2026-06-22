@@ -8,7 +8,7 @@ require (
 	github.com/opus-domini/fast-shot v1.3.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
-	modernc.org/sqlite v1.52.0
+	modernc.org/sqlite v1.53.0
 	mvdan.cc/sh/v3 v3.13.1
 )
 
