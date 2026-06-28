@@ -139,14 +139,17 @@ export default function SessionControls({
             <>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Last used</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => onLaunchLauncher(recentLauncher.id)}>
+              <DropdownMenuItem
+                className="items-start"
+                onSelect={() => onLaunchLauncher(recentLauncher.id)}
+              >
                 {(() => {
                   const Icon = getTmuxIcon(recentLauncher.icon)
-                  return <Icon className="h-3.5 w-3.5" />
+                  return <Icon className="mt-0.5 h-3.5 w-3.5" />
                 })()}
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="truncate">{recentLauncher.name}</span>
-                  <span className="truncate text-[10px] text-muted-foreground">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate leading-tight">{recentLauncher.name}</span>
+                  <span className="truncate text-[10px] leading-tight text-muted-foreground">
                     {describeSessionLauncher(recentLauncher)}
                   </span>
                 </span>
@@ -162,12 +165,13 @@ export default function SessionControls({
                 return (
                   <DropdownMenuItem
                     key={launcher.id}
+                    className="items-start"
                     onSelect={() => onLaunchLauncher(launcher.id)}
                   >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="truncate">{launcher.name}</span>
-                      <span className="truncate text-[10px] text-muted-foreground">
+                    <Icon className="mt-0.5 h-3.5 w-3.5" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate leading-tight">{launcher.name}</span>
+                      <span className="truncate text-[10px] leading-tight text-muted-foreground">
                         {describeSessionLauncher(launcher)}
                       </span>
                     </span>
