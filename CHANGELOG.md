@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/opus-domini/sentinel/compare/v0.9.2...v0.9.3) (2026-06-28)
+
+
+### Bug Fixes
+
+* **tmux:** refine launcher dropdown and dialog UX ([#210](https://github.com/opus-domini/sentinel/issues/210)) ([d71a4a8](https://github.com/opus-domini/sentinel/commit/d71a4a862734614b84b8b3da17ec5cf916d4a6f2))
+
 ## [0.9.2](https://github.com/opus-domini/sentinel/compare/v0.9.1...v0.9.2) (2026-06-16)
 
 
