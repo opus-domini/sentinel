@@ -127,6 +127,7 @@ function SortableSessionLauncherItem({
   return (
     <li
       ref={setNodeRef}
+      className="min-w-0 shrink-0"
       style={{
         transform: dragEnabled ? CSS.Transform.toString(transform) : undefined,
         transition: dragEnabled ? transition : undefined,
@@ -154,7 +155,6 @@ function SortableSessionLauncherItem({
             {describeSessionLauncher(launcher)}
           </span>
         </span>
-        {!launcher.lastUsedAt && <span className="text-[10px] text-muted-foreground">New</span>}
       </button>
     </li>
   )
@@ -334,7 +334,7 @@ export default function SessionLaunchersDialog({
 
         <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto md:overflow-hidden">
           <div className="grid gap-4 md:h-full md:grid-cols-[15rem_minmax(0,1fr)]">
-            <section className="grid min-h-0 content-start gap-3 md:grid-rows-[auto_minmax(0,1fr)]">
+            <section className="grid min-h-0 min-w-0 content-start gap-3 md:grid-rows-[auto_minmax(0,1fr)]">
               <Button
                 type="button"
                 variant="outline"
@@ -361,7 +361,7 @@ export default function SessionLaunchersDialog({
                     items={launchers.map((launcher) => launcher.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <ul className="grid min-h-0 content-start list-none gap-1 rounded-lg border border-border-subtle bg-secondary p-2 md:overflow-y-auto">
+                    <ul className="flex min-h-0 min-w-0 flex-col list-none gap-1 overflow-x-hidden rounded-lg border border-border-subtle bg-secondary p-2 md:overflow-y-auto">
                       {launchers.map((launcher) => (
                         <SortableSessionLauncherItem
                           key={launcher.id}
@@ -377,7 +377,7 @@ export default function SessionLaunchersDialog({
               )}
             </section>
 
-            <section className="grid min-h-0 gap-3 rounded-lg border border-border-subtle bg-secondary p-3 md:overflow-y-auto">
+            <section className="grid min-h-0 content-start gap-3 rounded-lg border border-border-subtle bg-secondary p-3 md:overflow-y-auto">
               <div className="grid gap-2 md:grid-cols-2">
                 <label
                   htmlFor={nameId}
