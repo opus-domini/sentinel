@@ -8,7 +8,7 @@ require (
 	github.com/opus-domini/fast-shot v1.3.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
-	modernc.org/sqlite v1.52.0
+	modernc.org/sqlite v1.53.0
 	mvdan.cc/sh/v3 v3.13.1
 )
 
@@ -37,7 +37,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20260528193900-50dc527dd6c7 // indirect
 	golang.org/x/sys v0.46.0 // indirect
-	modernc.org/libc v1.73.4 // indirect
+	modernc.org/libc v1.73.5 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
