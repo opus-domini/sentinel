@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import LaunchersDialog from './LaunchersDialog'
 import type { TmuxLauncher } from '@/types'
@@ -19,7 +19,17 @@ vi.mock('@/contexts/MetaContext', () => ({
 }))
 
 describe('LaunchersDialog', () => {
+  const originalFetch = globalThis.fetch
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: { dirs: [] } }),
+    }) as typeof globalThis.fetch
+  })
+
   afterEach(() => {
+    globalThis.fetch = originalFetch
     cleanup()
   })
 
@@ -162,6 +172,69 @@ describe('LaunchersDialog', () => {
 
     expect(await screen.findByText('name is invalid')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', false)
+  })
+
+  it('suggests directories for the fixed path field', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/fs/dirs')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { dirs: ['/opt/app', '/opt/api'] } }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { dirs: [] } }) })
+    }) as typeof globalThis.fetch
+
+    const onSave = vi.fn().mockResolvedValue('launcher-fixed')
+    const launchers: Array<TmuxLauncher> = [
+      {
+        id: 'launcher-fixed',
+        name: 'fixed target',
+        icon: 'terminal',
+        command: 'ls',
+        cwdMode: 'fixed',
+        cwdValue: '/opt',
+        windowName: 'w',
+        sortOrder: 0,
+        createdAt: '2026-03-31T12:00:00Z',
+        updatedAt: '2026-03-31T12:00:00Z',
+        lastUsedAt: '',
+      },
+    ]
+
+    render(
+      <LaunchersDialog
+        open
+        onOpenChange={vi.fn()}
+        launchers={launchers}
+        onSave={onSave}
+        onDelete={vi.fn().mockResolvedValue(true)}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('fixed target').closest('button')!)
+
+    const fixedPath = screen.getByRole('combobox', { name: 'Fixed Path' })
+    fireEvent.focus(fixedPath)
+
+    const option = await screen.findByRole('option', { name: '/opt/app' })
+    fireEvent.keyDown(fixedPath, { key: 'ArrowDown' })
+
+    expect(fixedPath.getAttribute('aria-activedescendant')).toBe(option.id)
+    expect(option.getAttribute('aria-selected')).toBe('true')
+
+    // Accepting a suggestion must write back through onChange into draft.cwdValue
+    // and persist on save.
+    fireEvent.keyDown(fixedPath, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ cwdMode: 'fixed', cwdValue: '/opt/app' }),
+      )
+    })
   })
 
   it('shows user mode field when canSwitchUser is true', () => {
