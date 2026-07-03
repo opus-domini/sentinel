@@ -18,6 +18,7 @@ import { ChevronDown, Trash2 } from 'lucide-react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { DEFAULT_ICON_KEY, TMUX_ICONS, getTmuxIcon } from '@/lib/tmuxIcons'
 import type { LauncherCwdMode, LauncherUserMode, TmuxLauncher } from '@/types'
+import DirectoryCombobox from '@/components/DirectoryCombobox'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -204,6 +205,7 @@ export default function LaunchersDialog({
   const cwdModeLabelId = `${dialogId}-cwd-mode-label`
   const windowNameId = `${dialogId}-window-name`
   const fixedPathId = `${dialogId}-fixed-path`
+  const fixedPathLabelId = `${dialogId}-fixed-path-label`
   const userModeLabelId = `${dialogId}-user-mode-label`
   const fixedUserLabelId = `${dialogId}-fixed-user-label`
   const isMobile = useIsMobileLayout()
@@ -545,24 +547,23 @@ export default function LaunchersDialog({
               </div>
 
               {draft.cwdMode === 'fixed' && (
-                <label
-                  htmlFor={fixedPathId}
-                  className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
-                >
-                  Fixed Path
-                  <Input
+                <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                  <span id={fixedPathLabelId}>Fixed Path</span>
+                  <DirectoryCombobox
                     id={fixedPathId}
+                    ariaLabelledBy={fixedPathLabelId}
                     className="bg-surface-overlay font-mono"
                     value={draft.cwdValue}
-                    onChange={(event) =>
+                    open={open}
+                    onChange={(next) =>
                       updateDraft((prev) => ({
                         ...prev,
-                        cwdValue: event.target.value,
+                        cwdValue: next,
                       }))
                     }
                     placeholder="/home/hugo/project"
                   />
-                </label>
+                </div>
               )}
 
               {meta.canSwitchUser && (

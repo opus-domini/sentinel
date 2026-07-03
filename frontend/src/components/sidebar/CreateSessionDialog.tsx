@@ -1,8 +1,6 @@
-// Uses a custom autocomplete because the working-directory field requires
-// free-form text input with server-side filesystem path suggestions fetched
-// on each keystroke.
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import DirectoryCombobox from '@/components/DirectoryCombobox'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -45,16 +43,11 @@ export default function CreateSessionDialog({
   const id = useId()
   const nameId = `${id}-name`
   const cwdId = `${id}-cwd`
-  const cwdListboxId = `${id}-cwd-listbox`
   const errorId = `${id}-error`
   const runAsUserLabelId = `${id}-run-as-user-label`
   const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState(normalizedDefaultCwd)
-  const [cwdSuggestions, setCwdSuggestions] = useState<Array<string>>([])
-  const [cwdLoading, setCwdLoading] = useState(false)
-  const [cwdFocused, setCwdFocused] = useState(false)
-  const [activeSuggestion, setActiveSuggestion] = useState(-1)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [frequentDirs, setFrequentDirs] = useState<Array<string>>([])
@@ -65,10 +58,6 @@ export default function CreateSessionDialog({
   const resetForm = useCallback(() => {
     setName('')
     setCwd(normalizedDefaultCwd)
-    setCwdSuggestions([])
-    setCwdLoading(false)
-    setCwdFocused(false)
-    setActiveSuggestion(-1)
     setSaving(false)
     setError('')
     setAdvancedOpen(false)
@@ -110,62 +99,6 @@ export default function CreateSessionDialog({
     return () => abort.abort()
   }, [normalizedDefaultCwd, open, resetForm])
 
-  useEffect(() => {
-    if (!open) return
-
-    const query = cwd.trim() || normalizedDefaultCwd
-    if (query === '') {
-      setCwdSuggestions([])
-      setCwdLoading(false)
-      setActiveSuggestion(-1)
-      return
-    }
-
-    const abort = new AbortController()
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        setCwdLoading(true)
-        try {
-          const response = await fetch(
-            `/api/fs/dirs?prefix=${encodeURIComponent(query)}&limit=10`,
-            {
-              signal: abort.signal,
-              headers: { Accept: 'application/json' },
-              credentials: 'same-origin',
-            },
-          )
-          if (!response.ok) {
-            setCwdSuggestions([])
-            return
-          }
-          const payload = (await response.json()) as {
-            data?: DirectorySuggestionsResponse
-          }
-          const rawDirs = payload.data?.dirs
-          const dirs = Array.isArray(rawDirs)
-            ? rawDirs.filter((item): item is string => typeof item === 'string')
-            : []
-          setCwdSuggestions(dirs)
-          setActiveSuggestion(-1)
-        } catch {
-          if (!abort.signal.aborted) {
-            setCwdSuggestions([])
-            setActiveSuggestion(-1)
-          }
-        } finally {
-          if (!abort.signal.aborted) {
-            setCwdLoading(false)
-          }
-        }
-      })()
-    }, 140)
-
-    return () => {
-      window.clearTimeout(timer)
-      abort.abort()
-    }
-  }, [cwd, normalizedDefaultCwd, open])
-
   const filteredFrequentDirs = useMemo(() => {
     if (!normalizedDefaultCwd) return frequentDirs
     return frequentDirs.filter((d) => d !== normalizedDefaultCwd)
@@ -180,16 +113,6 @@ export default function CreateSessionDialog({
 
   function selectFrequentDir(path: string) {
     setCwd(path)
-    setCwdSuggestions([])
-    setActiveSuggestion(-1)
-    setError('')
-  }
-
-  function selectSuggestion(value: string) {
-    setCwd(value)
-    setCwdSuggestions([])
-    setActiveSuggestion(-1)
-    setCwdFocused(true)
     setError('')
   }
 
@@ -239,102 +162,18 @@ export default function CreateSessionDialog({
                 setError('')
               }}
             />
-            <div className="relative">
-              <Input
-                id={cwdId}
-                aria-label="Working directory"
-                placeholder="working directory"
-                value={cwd}
-                role="combobox"
-                tabIndex={0}
-                aria-expanded={cwdFocused && (cwdLoading || cwdSuggestions.length > 0)}
-                aria-autocomplete="list"
-                aria-controls={cwdListboxId}
-                aria-activedescendant={
-                  activeSuggestion >= 0 && activeSuggestion < cwdSuggestions.length
-                    ? `${cwdListboxId}-option-${activeSuggestion}`
-                    : undefined
-                }
-                onChange={(e) => {
-                  setCwd(e.target.value)
-                  setActiveSuggestion(-1)
-                  setError('')
-                }}
-                onFocus={() => setCwdFocused(true)}
-                onBlur={() => {
-                  window.setTimeout(() => {
-                    setCwdFocused(false)
-                    setActiveSuggestion(-1)
-                  }, 80)
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    setCwdSuggestions([])
-                    setActiveSuggestion(-1)
-                    return
-                  }
-                  if (cwdSuggestions.length === 0) return
-
-                  if (event.key === 'ArrowDown') {
-                    event.preventDefault()
-                    setActiveSuggestion((prev) => Math.min(prev + 1, cwdSuggestions.length - 1))
-                    return
-                  }
-                  if (event.key === 'ArrowUp') {
-                    event.preventDefault()
-                    setActiveSuggestion((prev) => Math.max(prev - 1, 0))
-                    return
-                  }
-                  if (event.key === 'Enter' || event.key === 'Tab') {
-                    const idx = activeSuggestion
-                    if (idx >= 0 && idx < cwdSuggestions.length) {
-                      event.preventDefault()
-                      selectSuggestion(cwdSuggestions[idx])
-                      return
-                    }
-                    if (event.key === 'Tab' && cwdSuggestions.length === 1) {
-                      event.preventDefault()
-                      selectSuggestion(cwdSuggestions[0])
-                    }
-                  }
-                }}
-              />
-
-              {open && cwdFocused && (cwdLoading || cwdSuggestions.length > 0) && (
-                <div
-                  id={cwdListboxId}
-                  role="listbox"
-                  className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
-                >
-                  {cwdLoading && (
-                    <div className="px-2 py-1 text-[11px] text-secondary-foreground">
-                      Searching directories...
-                    </div>
-                  )}
-                  {!cwdLoading &&
-                    cwdSuggestions.map((item, idx) => (
-                      <button
-                        key={item}
-                        id={`${cwdListboxId}-option-${idx}`}
-                        type="button"
-                        role="option"
-                        aria-selected={idx === activeSuggestion}
-                        className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] ${
-                          idx === activeSuggestion
-                            ? 'bg-accent text-accent-foreground'
-                            : 'hover:bg-secondary'
-                        }`}
-                        onMouseDown={(event) => {
-                          event.preventDefault()
-                          selectSuggestion(item)
-                        }}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
+            <DirectoryCombobox
+              id={cwdId}
+              ariaLabel="Working directory"
+              placeholder="working directory"
+              value={cwd}
+              open={open}
+              fallbackPrefix={normalizedDefaultCwd}
+              onChange={(next) => {
+                setCwd(next)
+                setError('')
+              }}
+            />
             {filteredFrequentDirs.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {filteredFrequentDirs.map((dir) => (

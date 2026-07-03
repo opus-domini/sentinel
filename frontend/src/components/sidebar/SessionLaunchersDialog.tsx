@@ -17,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { Trash2 } from 'lucide-react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import type { SessionLauncher } from '@/types'
+import DirectoryCombobox from '@/components/DirectoryCombobox'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -174,6 +175,7 @@ export default function SessionLaunchersDialog({
   const nameId = `${dialogId}-name`
   const iconLabelId = `${dialogId}-icon-label`
   const cwdId = `${dialogId}-cwd`
+  const cwdLabelId = `${dialogId}-cwd-label`
   const userLabelId = `${dialogId}-user-label`
   const isMobile = useIsMobileLayout()
   const dragEnabled = !isMobile
@@ -436,24 +438,23 @@ export default function SessionLaunchersDialog({
                 </div>
               </div>
 
-              <label
-                htmlFor={cwdId}
-                className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground"
-              >
-                Working Directory
-                <Input
+              <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+                <span id={cwdLabelId}>Working Directory</span>
+                <DirectoryCombobox
                   id={cwdId}
+                  ariaLabelledBy={cwdLabelId}
                   className="bg-surface-overlay font-mono"
                   value={draft.cwd}
-                  onChange={(event) =>
+                  open={open}
+                  onChange={(next) =>
                     updateDraft((previous) => ({
                       ...previous,
-                      cwd: event.target.value,
+                      cwd: next,
                     }))
                   }
                   placeholder={normalizedDefaultCwd || '/srv/app'}
                 />
-              </label>
+              </div>
 
               {meta.canSwitchUser && (
                 <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">

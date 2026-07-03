@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SessionLaunchersDialog from './SessionLaunchersDialog'
 
@@ -18,7 +18,17 @@ vi.mock('@/contexts/MetaContext', () => ({
 }))
 
 describe('SessionLaunchersDialog', () => {
+  const originalFetch = globalThis.fetch
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: { dirs: [] } }),
+    }) as typeof globalThis.fetch
+  })
+
   afterEach(() => {
+    globalThis.fetch = originalFetch
     cleanup()
   })
 
@@ -97,5 +107,40 @@ describe('SessionLaunchersDialog', () => {
     await waitFor(() => {
       expect(onDelete).toHaveBeenCalledWith('launcher-api')
     })
+  })
+
+  it('suggests directories for the working directory field', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/fs/dirs')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { dirs: ['/srv/app', '/srv/api'] } }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { dirs: [] } }) })
+    }) as typeof globalThis.fetch
+
+    render(
+      <SessionLaunchersDialog
+        open
+        onOpenChange={vi.fn()}
+        defaultCwd="/srv"
+        launchers={[]}
+        onSave={vi.fn().mockResolvedValue('launcher-api')}
+        onDelete={vi.fn().mockResolvedValue(true)}
+        onReorder={vi.fn()}
+      />,
+    )
+
+    const cwd = screen.getByRole('combobox', { name: 'Working Directory' })
+    fireEvent.focus(cwd)
+    fireEvent.change(cwd, { target: { value: '/srv' } })
+
+    const option = await screen.findByRole('option', { name: '/srv/app' })
+    fireEvent.keyDown(cwd, { key: 'ArrowDown' })
+
+    expect(cwd.getAttribute('aria-activedescendant')).toBe(option.id)
+    expect(option.getAttribute('aria-selected')).toBe('true')
   })
 })
