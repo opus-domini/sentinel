@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/opus-domini/sentinel/compare/v0.9.3...v0.9.4) (2026-07-03)
+
+
+### Features
+
+* **tmux:** launcher dropdown/dialog UX and shared directory autocomplete ([#214](https://github.com/opus-domini/sentinel/issues/214)) ([b3d7345](https://github.com/opus-domini/sentinel/commit/b3d7345c3e62fae0ab21f8fe1ea97a3504791b67))
+
 ## [0.9.3](https://github.com/opus-domini/sentinel/compare/v0.9.2...v0.9.3) (2026-06-28)
 
 
