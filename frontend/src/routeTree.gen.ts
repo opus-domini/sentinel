@@ -78,13 +78,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/metrics' | '/ops' | '/runbooks' | '/services' | '/tmux'
   id:
-    | '__root__'
-    | '/'
-    | '/metrics'
-    | '/ops'
-    | '/runbooks'
-    | '/services'
-    | '/tmux'
+    '__root__' | '/' | '/metrics' | '/ops' | '/runbooks' | '/services' | '/tmux'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
