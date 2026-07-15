@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.0](https://github.com/opus-domini/sentinel/compare/v0.9.4...v0.10.0) (2026-07-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** Node.js 26 and npm 12 are now required for frontend development and CI.
+
+### Chores
+
+* **deps:** require Node 26 and update dependencies ([186616c](https://github.com/opus-domini/sentinel/commit/186616cbec1851e0de3fbaa09c483e97ec2a0e73))
+
 ## [0.9.4](https://github.com/opus-domini/sentinel/compare/v0.9.3...v0.9.4) (2026-07-03)
 
 
