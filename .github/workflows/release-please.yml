@@ -1,80 +1,15 @@
 name: Release Please
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
-env:
-  NPM_VERSION: 12.0.1
-  GORELEASER_VERSION: v2.17.0
-  SYFT_VERSION: v1.46.0
-
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-
 jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-      html_url: ${{ steps.release.outputs.html_url }}
-    steps:
-      - name: Run release-please
-        id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          token: ${{ github.token }}
-          config-file: .github/release-please-config.json
-          manifest-file: .github/.release-please-manifest.json
-
-      - name: Release outputs
-        run: |
-          echo "release_created=${{ steps.release.outputs.release_created }}"
-          echo "tag_name=${{ steps.release.outputs.tag_name }}"
-          echo "version=${{ steps.release.outputs.version }}"
-          echo "html_url=${{ steps.release.outputs.html_url }}"
-
-  goreleaser:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    runs-on: ubuntu-latest
+  release:
     permissions:
-      contents: write # upload release assets
-      id-token: write # keyless cosign signing via GitHub OIDC
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
-          fetch-depth: 0
-
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Set up npm
-        run: npm install --global npm@${NPM_VERSION}
-
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - name: Install Syft
-        run: curl -sSfL "https://raw.githubusercontent.com/anchore/syft/${SYFT_VERSION}/install.sh" | sh -s -- -b /usr/local/bin "${SYFT_VERSION}"
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          version: ${{ env.GORELEASER_VERSION }}
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+    uses: opus-domini/actions/.github/workflows/release.yml@08fc4c4e801f551ee1c960b7645d4c56127793e2
+    with:
+      frontend: true

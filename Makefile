@@ -225,9 +225,15 @@ uninstall: ## Remove service, binary and shell completion
 
 # --- Release ---------------------------------------------------
 
+# Real releases go through .github/workflows/release-please.yml only: the
+# workflow runs the ci-full gate against the tagged commit, pins GoReleaser,
+# and signs artifacts with keyless cosign via GitHub OIDC. Use
+# release-snapshot/release-check for local validation.
 .PHONY: release
-release: check-goreleaser ## Publish a GoReleaser release
-	goreleaser release --clean
+release:
+	@printf '%s\n' 'Releases are published by the Release Please workflow (gated, pinned, cosign-signed).' \
+		'Run it from the GitHub Actions tab; use `make release-snapshot` or `make release-check` locally.'
+	@exit 1
 
 .PHONY: release-check
 release-check: check-goreleaser ## Validate the GoReleaser config

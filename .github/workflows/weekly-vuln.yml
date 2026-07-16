@@ -2,31 +2,13 @@ name: Weekly Vulnerability Scan
 
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    # Organization scans use distinct minutes to avoid a synchronized burst.
+    - cron: "37 6 * * 1"
   workflow_dispatch:
-
-env:
-  GOVULNCHECK_VERSION: v1.6.0
 
 permissions:
   contents: read
 
 jobs:
   vuln:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - name: Install govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Run vulnerability scan
-        run: make vuln
+    uses: opus-domini/actions/.github/workflows/vulnerability-scan.yml@08fc4c4e801f551ee1c960b7645d4c56127793e2

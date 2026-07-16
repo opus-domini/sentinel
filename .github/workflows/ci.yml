@@ -7,94 +7,12 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  NPM_VERSION: 12.0.1
-  GOLANGCI_LINT_VERSION: v2.12.2
-  GOVULNCHECK_VERSION: v1.6.0
-
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  ci-fast:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref != 'refs/heads/main') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Set up npm
-        run: npm install --global npm@${NPM_VERSION}
-
-      - name: Install frontend dependencies
-        run: npm ci --prefix frontend
-
-      - name: Install CI tools
-        run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Verify go.mod is tidy
-        run: go mod tidy && git diff --exit-code go.mod go.sum
-
-      - name: Fast CI
-        run: make ci-fast
-
-  ci-full:
-    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Set up npm
-        run: npm install --global npm@${NPM_VERSION}
-
-      - name: Install frontend dependencies
-        run: npm ci --prefix frontend
-
-      - name: Install CI tools
-        run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
-          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Verify go.mod is tidy
-        run: go mod tidy && git diff --exit-code go.mod go.sum
-
-      - name: Full CI
-        run: make ci-full
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@e53489f4d376d79066609109e7a95a29eb3740b1 # v7.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+  ci:
+    uses: opus-domini/actions/.github/workflows/ci.yml@08fc4c4e801f551ee1c960b7645d4c56127793e2
+    with:
+      frontend: true
+      upload-codecov: true
