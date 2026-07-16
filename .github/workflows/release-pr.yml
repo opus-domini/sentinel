@@ -1,0 +1,14 @@
+name: Prepare Release PR
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  prepare:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: opus-domini/actions/.github/workflows/release-pr.yml@00f37fef202600f60a11587a05474d1239cd48fc

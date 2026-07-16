@@ -1,0 +1,29 @@
+name: Publish Release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+    paths:
+      - .github/.release-please-manifest.json
+
+jobs:
+  publish:
+    if: >-
+      ${{ github.event.action == 'closed' &&
+          github.event.pull_request.merged == true &&
+          github.event.pull_request.base.ref == 'main' &&
+          github.event.pull_request.base.repo.full_name == github.repository &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
+          contains(github.event.pull_request.labels.*.name, 'autorelease: pending') }}
+    permissions:
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+    uses: opus-domini/actions/.github/workflows/release.yml@00f37fef202600f60a11587a05474d1239cd48fc
+    with:
+      frontend: true
