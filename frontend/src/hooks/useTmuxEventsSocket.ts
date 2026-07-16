@@ -13,6 +13,7 @@ import type {
 import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import { shouldRefreshSessionsFromEvent } from '@/lib/tmuxSessionEvents'
 import { buildWSProtocols } from '@/lib/wsAuth'
+import { useConnectionHealth } from '@/contexts/ConnectionHealthContext'
 
 type UseTmuxEventsSocketOptions = {
   api: ApiFunction
@@ -42,6 +43,7 @@ type UseTmuxEventsSocketOptions = {
 }
 
 export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
+  const { ready: connectionReady } = useConnectionHealth()
   const {
     api,
     authenticated,
@@ -233,6 +235,12 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
 
   // Main WebSocket connection effect
   useEffect(() => {
+    if (!connectionReady) {
+      settlePendingSeenAcks(false)
+      presenceSocketRef.current = null
+      setEventsSocketConnected(false)
+      return
+    }
     if (tokenRequired && !authenticated) {
       settlePendingSeenAcks(false)
       presenceSocketRef.current = null
@@ -509,6 +517,7 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     syncActivityDelta,
     tabsStateRef,
     authenticated,
+    connectionReady,
     tokenRequired,
   ])
 

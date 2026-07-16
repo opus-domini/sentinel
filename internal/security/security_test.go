@@ -104,7 +104,7 @@ func TestCheckOrigin(t *testing.T) {
 			host:       "myhost.ts.net",
 			forwarded:  "https",
 			remoteAddr: "192.0.2.11:1234",
-			wantErr:    ErrOriginDenied,
+			wantErr:    ErrUntrustedProxy,
 		},
 	}
 	for _, tt := range tests {
@@ -135,6 +135,32 @@ func TestCheckOrigin(t *testing.T) {
 				t.Errorf("CheckOrigin() unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestCheckOriginDescribesUntrustedHTTPSProxy(t *testing.T) {
+	t.Parallel()
+
+	guard := NewWithOptions("", nil, CookieSecureAuto, MultiUserConfig{}, nil)
+	req := httptest.NewRequest(http.MethodPost, "http://sentinel.example/api/connection/check", nil)
+	req.Host = "sentinel.example"
+	req.RemoteAddr = "127.0.0.1:43210"
+	req.Header.Set("Origin", "https://sentinel.example")
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	err := guard.CheckOrigin(req)
+	if !errors.Is(err, ErrUntrustedProxy) {
+		t.Fatalf("CheckOrigin() error = %v, want ErrUntrustedProxy", err)
+	}
+	var originErr *OriginError
+	if !errors.As(err, &originErr) {
+		t.Fatalf("CheckOrigin() error type = %T, want *OriginError", err)
+	}
+	if originErr.Origin != "https://sentinel.example" || originErr.Proxy != "127.0.0.1" {
+		t.Fatalf("origin error = %+v", originErr)
+	}
+	if originErr.Message != `HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies` {
+		t.Fatalf("message = %q", originErr.Message)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -273,7 +274,8 @@ func TestApplyReplacesBinaryAndWritesState(t *testing.T) {
 
 	tmp := t.TempDir()
 	execPath := mustWriteCurrentBinary(t, tmp, "old-binary")
-	archiveName, archivePath, sum := mustPrepareUpdateArchive(t, tmp, "1.4.0", "new-binary")
+	candidate := "#!/bin/sh\nexit 0\n"
+	archiveName, archivePath, sum := mustPrepareUpdateArchive(t, tmp, "1.4.0", candidate)
 	ts := newUpdaterReleaseServer(t, "v1.4.0", archiveName, archivePath, sum)
 	defer ts.Close()
 
@@ -293,8 +295,44 @@ func TestApplyReplacesBinaryAndWritesState(t *testing.T) {
 		t.Fatal("Apply() reported Applied=false")
 	}
 
-	assertUpdaterInstalledBinary(t, execPath, "new-binary", "old-binary")
+	assertUpdaterInstalledBinary(t, execPath, candidate, "old-binary")
 	assertUpdaterApplyState(t, tmp, "1.4.0")
+}
+
+func TestInstallApplyArchiveRejectsCandidateBeforeReplacingBinary(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	execPath := mustWriteCurrentBinary(t, tmp, "stable-binary")
+	_, archivePath, _ := mustPrepareUpdateArchive(
+		t,
+		tmp,
+		"1.4.0",
+		"#!/bin/sh\necho 'server.trusted_proxies is invalid' >&2\nexit 1\n",
+	)
+
+	_, _, _, err := installApplyArchive(
+		context.Background(),
+		archivePath,
+		execPath,
+		filepath.Join(tmp, "config.toml"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "updated binary rejected the current configuration") {
+		t.Fatalf("installApplyArchive() error = %v", err)
+	}
+	if !strings.Contains(err.Error(), "server.trusted_proxies is invalid") {
+		t.Fatalf("installApplyArchive() error lacks candidate diagnosis: %v", err)
+	}
+	current, readErr := os.ReadFile(execPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(current) != "stable-binary" {
+		t.Fatalf("current binary = %q, want stable-binary", current)
+	}
+	if _, statErr := os.Stat(execPath + ".bak"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("backup should not exist after rejected candidate: %v", statErr)
+	}
 }
 
 func mustWriteCurrentBinary(t *testing.T, dir, content string) string {

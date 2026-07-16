@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ServerOfflineBanner } from '@/components/ServerOfflineBanner'
+import { ConnectionIssueBanner } from '@/components/ConnectionIssueBanner'
 import ToastViewport from '@/components/toast/ToastViewport'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,11 +17,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { LayoutContext } from '@/contexts/LayoutContext'
+import { ConnectionHealthContext } from '@/contexts/ConnectionHealthContext'
 import { MetaContext } from '@/contexts/MetaContext'
 import { OpsEventsContext } from '@/contexts/OpsEventsContext'
 import { ToastContext } from '@/contexts/ToastContext'
 import { TokenContext } from '@/contexts/TokenContext'
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useConnectionCheck } from '@/hooks/useConnectionCheck'
 import { useSentinelMeta } from '@/hooks/useSentinelMeta'
 import { useServerStatus } from '@/hooks/useServerStatus'
 import { useSharedOpsEventsSocket } from '@/hooks/useSharedOpsEventsSocket'
@@ -81,7 +84,11 @@ function TokenGateDialog({
             aria-label="Authentication token"
             disabled={submitting}
           />
-          {error !== '' && <p className="mt-2 text-xs text-destructive-foreground">{error}</p>}
+          {error !== '' && (
+            <p role="alert" className="mt-2 text-xs text-destructive-foreground">
+              {error}
+            </p>
+          )}
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={draft.trim() === '' || submitting}>
               Continue
@@ -137,11 +144,20 @@ function RootComponent() {
 
   const authenticated = !meta.tokenRequired || !meta.unauthorized
   const needsTokenGate = meta.loaded && meta.tokenRequired && meta.unauthorized
-  const showOutlet = meta.loaded && !needsTokenGate
+
+  const handlePreflightUnauthorized = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['meta'], exact: true })
+  }, [queryClient])
+  const connectionHealth = useConnectionCheck({
+    enabled: meta.loaded && authenticated,
+    onUnauthorized: handlePreflightUnauthorized,
+  })
+  const showOutlet = meta.loaded && !needsTokenGate && connectionHealth.ready
 
   const opsEvents = useSharedOpsEventsSocket({
     authenticated,
     tokenRequired: meta.tokenRequired,
+    connectionReady: connectionHealth.ready,
   })
 
   const setToken = useCallback(
@@ -166,18 +182,27 @@ function RootComponent() {
     <MetaContext.Provider value={meta}>
       <TokenContext.Provider value={tokenContextValue}>
         <ToastContext.Provider value={toastContextValue}>
-          <OpsEventsContext.Provider value={opsEvents}>
-            <LayoutContext.Provider value={layout}>
-              <TooltipProvider delayDuration={300}>
-                <ErrorBoundary>
-                  {showOutlet ? <Outlet /> : <LoadingGate />}
-                  {needsTokenGate && <TokenGateDialog onSubmit={submitGateToken} />}
-                  <ToastViewport toasts={toasts} onDismiss={dismissToast} />
-                  {offline && <ServerOfflineBanner onRetry={retry} />}
-                </ErrorBoundary>
-              </TooltipProvider>
-            </LayoutContext.Provider>
-          </OpsEventsContext.Provider>
+          <ConnectionHealthContext.Provider value={connectionHealth}>
+            <OpsEventsContext.Provider value={opsEvents}>
+              <LayoutContext.Provider value={layout}>
+                <TooltipProvider delayDuration={300}>
+                  <ErrorBoundary>
+                    {showOutlet ? <Outlet /> : <LoadingGate />}
+                    {needsTokenGate && <TokenGateDialog onSubmit={submitGateToken} />}
+                    <ToastViewport toasts={toasts} onDismiss={dismissToast} />
+                    {!offline && connectionHealth.issue && (
+                      <ConnectionIssueBanner
+                        issue={connectionHealth.issue}
+                        checking={connectionHealth.checking}
+                        onRetry={connectionHealth.retry}
+                      />
+                    )}
+                    {offline && <ServerOfflineBanner onRetry={retry} />}
+                  </ErrorBoundary>
+                </TooltipProvider>
+              </LayoutContext.Provider>
+            </OpsEventsContext.Provider>
+          </ConnectionHealthContext.Provider>
         </ToastContext.Provider>
       </TokenContext.Provider>
     </MetaContext.Provider>

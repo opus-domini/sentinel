@@ -58,7 +58,7 @@ describe('connectionLabel', () => {
     ['connected', 'Connected'],
     ['connecting', 'Connecting'],
     ['disconnected', 'Disconnected'],
-    ['error', 'Error'],
+    ['error', 'Connection error'],
   ] as Array<[ConnectionState, string]>)('returns "%s" → "%s"', (state, expected) => {
     expect(connectionLabel(state)).toBe(expected)
   })

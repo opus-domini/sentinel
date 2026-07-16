@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ConnectionState } from '@/types'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { createReconnect } from '@/lib/wsReconnect'
+import { useConnectionHealth } from '@/contexts/ConnectionHealthContext'
 
 type LogStreamTarget =
   | { kind: 'service'; name: string }
@@ -54,6 +55,7 @@ export function useLogStream({
   enabled,
   onLine,
 }: UseLogStreamOptions): ConnectionState {
+  const { ready: connectionReady } = useConnectionHealth()
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const targetKey = logStreamTargetKey(target)
   const targetQuery = logStreamTargetQuery(target)
@@ -64,7 +66,7 @@ export function useLogStream({
   }, [onLine])
 
   useEffect(() => {
-    if (!enabled || targetKey === '') {
+    if (!enabled || targetKey === '' || !connectionReady) {
       setConnectionState('disconnected')
       return
     }
@@ -157,7 +159,7 @@ export function useLogStream({
         }
       }
     }
-  }, [authenticated, tokenRequired, targetKey, targetQuery, enabled])
+  }, [authenticated, connectionReady, tokenRequired, targetKey, targetQuery, enabled])
 
   return connectionState
 }

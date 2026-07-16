@@ -385,6 +385,52 @@ func TestRegisterRoutesThroughMux(t *testing.T) {
 	}
 }
 
+func TestConnectionCheckReturnsActionableUntrustedProxyError(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{
+		guard:      security.NewWithOptions("", nil, security.CookieSecureAuto, security.MultiUserConfig{}, nil),
+		configPath: "/root/.sentinel/config.toml",
+	}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "http://sentinel.example/api/connection/check", nil)
+	r.Host = "sentinel.example"
+	r.RemoteAddr = "127.0.0.1:54321"
+	r.Header.Set("Origin", "https://sentinel.example")
+	r.Header.Set("X-Forwarded-Proto", "https")
+
+	h.wrap(h.connectionCheck)(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusForbidden, w.Body.String())
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				ConfigPath    string `json:"configPath"`
+				Configuration string `json:"configuration"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Code != "UNTRUSTED_PROXY" {
+		t.Fatalf("code = %q", body.Error.Code)
+	}
+	if body.Error.Message != `HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies` {
+		t.Fatalf("message = %q", body.Error.Message)
+	}
+	if body.Error.Details.ConfigPath != "/root/.sentinel/config.toml" {
+		t.Fatalf("configPath = %q", body.Error.Details.ConfigPath)
+	}
+	if body.Error.Details.Configuration != "[server]\ntrusted_proxies = [\"127.0.0.1\"]" {
+		t.Fatalf("configuration = %q", body.Error.Details.Configuration)
+	}
+}
+
 // jsonBody is a helper to decode a JSON response body.
 func jsonBody(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	t.Helper()

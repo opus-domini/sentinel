@@ -119,6 +119,7 @@ func Register(mux *http.ServeMux, guard *security.Guard, st *store.Store, events
 
 func (h *Handler) spaPage(w http.ResponseWriter, r *http.Request) {
 	if err := h.guard.CheckOrigin(r); err != nil {
+		h.guard.LogOriginDenial(r, err)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -140,6 +141,7 @@ func (h *Handler) spaPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) serveManifest(w http.ResponseWriter, r *http.Request) {
 	if err := h.guard.CheckOrigin(r); err != nil {
+		h.guard.LogOriginDenial(r, err)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -151,6 +153,7 @@ func (h *Handler) serveManifest(w http.ResponseWriter, r *http.Request) {
 // (with the appropriate HTTP error already written to w).
 func (h *Handler) requireWSAuth(w http.ResponseWriter, r *http.Request) bool {
 	if err := h.guard.CheckOrigin(r); err != nil {
+		h.guard.LogOriginDenial(r, err)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return false
 	}

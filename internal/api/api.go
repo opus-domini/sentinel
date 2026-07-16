@@ -384,6 +384,10 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	writeData(w, http.StatusOK, data)
 }
 
+func (h *Handler) connectionCheck(w http.ResponseWriter, _ *http.Request) {
+	writeData(w, http.StatusOK, map[string]any{"status": "ready"})
+}
+
 type setAuthTokenRequest struct {
 	Token string `json:"token"`
 }
@@ -547,11 +551,51 @@ func splitDirectoryLookup(prefix string) (baseDir string, matchPrefix string, ok
 func (h *Handler) wrapOrigin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := h.guard.CheckOrigin(r); err != nil {
-			writeError(w, http.StatusForbidden, "ORIGIN_DENIED", "request origin is not allowed", nil)
+			h.guard.LogOriginDenial(r, err)
+			code, message, details := h.originFailure(err)
+			writeError(w, http.StatusForbidden, code, message, details)
 			return
 		}
 		next(w, r)
 	}
+}
+
+func (h *Handler) originFailure(err error) (string, string, map[string]any) {
+	code := "ORIGIN_DENIED"
+	message := "request origin is not allowed"
+	details := map[string]any{
+		"configPath": h.configPath,
+	}
+
+	var originErr *security.OriginError
+	if !errors.As(err, &originErr) {
+		return code, message, details
+	}
+	message = originErr.Message
+	if errors.Is(originErr, security.ErrUntrustedProxy) {
+		code = "UNTRUSTED_PROXY"
+	}
+	if originErr.Origin != "" {
+		details["origin"] = originErr.Origin
+	}
+	if originErr.ExpectedOrigin != "" {
+		details["expectedOrigin"] = originErr.ExpectedOrigin
+	}
+	if originErr.Proxy != "" {
+		details["proxy"] = originErr.Proxy
+	}
+
+	var lines []string
+	if code == "ORIGIN_DENIED" && originErr.Origin != "" {
+		lines = append(lines, "allowed_origins = ["+strconv.Quote(originErr.Origin)+"]")
+	}
+	if code == "UNTRUSTED_PROXY" && originErr.Proxy != "" {
+		lines = append(lines, "trusted_proxies = ["+strconv.Quote(originErr.Proxy)+"]")
+	}
+	if len(lines) > 0 {
+		details["configuration"] = "[server]\n" + strings.Join(lines, "\n")
+	}
+	return code, message, details
 }
 
 func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {

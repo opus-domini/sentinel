@@ -292,6 +292,7 @@ func TestCSVEnvReplacesLists(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("SENTINEL_SERVER_ALLOWED_ORIGINS", "https://a.example, https://b.example")
+	t.Setenv("SENTINEL_SERVER_TRUSTED_PROXIES", "127.0.0.1")
 	t.Setenv("SENTINEL_ALLOWED_USERS", "alice,bob")
 	cfg, _, err := LoadPath(path)
 	if err != nil {
@@ -327,6 +328,10 @@ schedule = "@daily"
 		{name: "invalid port", content: "[server]\nport = 999999\n", wantErr: "server.port"},
 		{name: "invalid log level", content: "[log]\nlevel = \"verbose\"\n", wantErr: "log.level"},
 		{name: "invalid schedule", content: "[health_report]\nschedule = \"not cron\"\n", wantErr: "health_report.schedule"},
+		{name: "origin with path", content: "[server]\nallowed_origins = [\"https://example.com/path\"]\n", wantErr: "must not contain credentials, a path"},
+		{name: "invalid trusted proxy", content: "[server]\ntrusted_proxies = [\"localhost\"]\n", wantErr: "must be an IP address or CIDR"},
+		{name: "https origin needs trusted proxy", content: "[server]\nallowed_origins = [\"https://example.com\"]\n", wantErr: "server.trusted_proxies must contain the HTTPS proxy address"},
+		{name: "https origin with trusted proxy", content: "[server]\nallowed_origins = [\"https://example.com\"]\ntrusted_proxies = [\"127.0.0.1\"]\n"},
 		{name: "unknown key", content: "[server]\nwat = true\n", wantErr: "unknown key: server.wat"},
 		{name: "bad toml", content: "[server\n", wantErr: "decode config"},
 	}

@@ -141,4 +141,24 @@ describe('useSharedOpsEventsSocket', () => {
 
     expect(MockWebSocket.instances).toHaveLength(0)
   })
+
+  it('does not open sockets before the connection check passes', () => {
+    const { result, rerender } = renderHook(
+      ({ connectionReady }) =>
+        useSharedOpsEventsSocket({
+          authenticated: true,
+          tokenRequired: false,
+          connectionReady,
+        }),
+      { initialProps: { connectionReady: false } },
+    )
+
+    act(() => {
+      result.current.subscribe(vi.fn())
+    })
+    expect(MockWebSocket.instances).toHaveLength(0)
+
+    rerender({ connectionReady: true })
+    expect(MockWebSocket.instances).toHaveLength(1)
+  })
 })

@@ -32,4 +32,12 @@ describe('ConnectionBadge', () => {
 
     expect(onClick).toHaveBeenCalledTimes(1)
   })
+
+  it('shows connection errors without requiring a tooltip', () => {
+    render(<ConnectionBadge state="error" detail="websocket error" />)
+
+    expect(screen.getByRole('status', { name: 'Connection error' }).textContent).toContain(
+      'Connection error',
+    )
+  })
 })

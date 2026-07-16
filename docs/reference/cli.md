@@ -58,9 +58,12 @@ Prints the canonical config file path.
 
 ```bash
 sentinel config validate
+sentinel config validate --effective
 ```
 
 Validates the config file before a service restart or daemon start.
+`--effective` validates the values after environment overrides and is also the
+contract used by the updater to check a candidate binary before installation.
 
 ### Show
 
@@ -225,7 +228,10 @@ sentinel service autoupdate status --scope auto|user|system|launchd
 sentinel doctor
 ```
 
-Outputs host/runtime diagnosis: OS/arch, listen addr, data dir, tmux path, service manager status, and managed unit states.
+Outputs host/runtime diagnosis: OS/arch, config path and validity, allowed
+origins, trusted proxies, listen addr, data dir, tmux path, service manager
+status, and managed unit states. Every problem is printed with its concrete
+cause, and the command exits non-zero when any problem is found.
 
 ## `sentinel update`
 
@@ -257,6 +263,10 @@ service, and a normal user targets the user service. Use `--scope user` or
 `--scope system` when you need to override that decision. Use `--restart=false`
 only when you intentionally want to install the binary now and restart Sentinel
 yourself later.
+
+Before replacing the installed executable, the updater runs the downloaded
+candidate against the current effective configuration. An incompatible release
+is rejected while the running binary remains untouched.
 
 ### Status
 

@@ -940,11 +940,14 @@ func TestDoctorStatusError(t *testing.T) {
 
 	var out, errOut bytes.Buffer
 	code := Run([]string{"doctor"}, &out, &errOut)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0", code)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
 	}
 	if !strings.Contains(out.String(), "unavailable") {
 		t.Fatalf("stdout missing unavailable label: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "service status is unavailable: service not available") {
+		t.Fatalf("stdout missing exact diagnosis: %s", out.String())
 	}
 }
 

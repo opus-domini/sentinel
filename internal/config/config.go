@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -399,6 +400,32 @@ func validateConfig(cfg Config) error {
 	default:
 		issues = append(issues, `server.cookie_secure must be one of "auto", "always", or "never"`)
 	}
+	for _, origin := range cfg.Server.AllowedOrigins {
+		if err := validateAllowedOrigin(origin); err != nil {
+			issues = append(issues, fmt.Sprintf("server.allowed_origins entry %q %v", origin, err))
+		}
+	}
+	for _, proxy := range cfg.Server.TrustedProxies {
+		if net.ParseIP(proxy) == nil {
+			if _, _, err := net.ParseCIDR(proxy); err != nil {
+				issues = append(issues, fmt.Sprintf(
+					"server.trusted_proxies entry %q must be an IP address or CIDR",
+					proxy,
+				))
+			}
+		}
+	}
+	if cfg.Server.CookieSecure == CookieSecureAuto && len(cfg.Server.TrustedProxies) == 0 {
+		for _, origin := range cfg.Server.AllowedOrigins {
+			parsed, err := url.Parse(origin)
+			if err == nil && parsed.Scheme == "https" {
+				issues = append(issues,
+					"server.trusted_proxies must contain the HTTPS proxy address when server.cookie_secure is \"auto\" and server.allowed_origins contains an HTTPS origin",
+				)
+				break
+			}
+		}
+	}
 	switch cfg.Log.Level {
 	case "debug", "info", "warn", "error":
 	default:
@@ -429,6 +456,24 @@ func validateConfig(cfg Config) error {
 	}
 	if len(issues) > 0 {
 		return errors.New(strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func validateAllowedOrigin(origin string) error {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		return errors.New("must be an absolute HTTP or HTTPS origin")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("must use the http or https scheme")
+	}
+	if parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("must not contain credentials, a path, query parameters, or a fragment")
+	}
+	canonical := parsed.Scheme + "://" + parsed.Host
+	if origin != canonical {
+		return fmt.Errorf("must use canonical form %q", canonical)
 	}
 	return nil
 }

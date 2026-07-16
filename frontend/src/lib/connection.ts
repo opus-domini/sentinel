@@ -35,6 +35,6 @@ export function connectionLabel(state: ConnectionState): string {
     case 'disconnected':
       return 'Disconnected'
     case 'error':
-      return 'Error'
+      return 'Connection error'
   }
 }

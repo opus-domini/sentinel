@@ -62,6 +62,22 @@ If request volume is high:
 - Check token value in Settings — authentication uses an HttpOnly cookie set via the UI.
 - For WS, ensure the `sentinel.v1` subprotocol is used and the auth cookie is present.
 
+## `403 UNTRUSTED_PROXY` or `403 ORIGIN_DENIED`
+
+Sentinel checks the browser connection before opening WebSockets. The UI shows
+the rejected value, config path, exact `[server]` entry, and a retry action.
+
+- `UNTRUSTED_PROXY`: the direct HTTPS proxy address is missing from
+  `server.trusted_proxies`.
+- `ORIGIN_DENIED`: the browser origin does not match Sentinel and is missing
+  from `server.allowed_origins`.
+
+After editing the config, restart the managed service and run:
+
+```bash
+sentinel doctor
+```
+
 ## Mobile scroll/keyboard instability
 
 Sentinel uses viewport tracking and touch lock zones.

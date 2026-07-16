@@ -100,7 +100,7 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 				return failf("%w", err)
 			}
 
-			cfg, _, err := loadConfigFn()
+			cfg, configPath, err := loadConfigFn()
 			if err != nil {
 				return failf("update apply failed: %w", err)
 			}
@@ -111,6 +111,7 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 				OS:              strings.TrimSpace(targetOS),
 				Arch:            strings.TrimSpace(targetArch),
 				DataDir:         cfg.DataDir(),
+				ConfigPath:      configPath,
 				ExecPath:        strings.TrimSpace(execPath),
 				AllowDowngrade:  allowDowngrade,
 				AllowUnverified: allowUnverified,

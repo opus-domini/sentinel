@@ -89,6 +89,7 @@ type ApplyOptions struct {
 	OS              string
 	Arch            string
 	DataDir         string
+	ConfigPath      string
 	ExecPath        string
 	AllowDowngrade  bool
 	AllowUnverified bool
@@ -242,7 +243,7 @@ func applyOnce(ctx context.Context, cfg ApplyOptions) (ApplyResult, error) {
 	}
 	defer cleanup()
 
-	execPath, backupPath, appliedAt, err := installApplyArchive(archivePath, cfg.ExecPath)
+	execPath, backupPath, appliedAt, err := installApplyArchive(ctx, archivePath, cfg.ExecPath, cfg.ConfigPath)
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -309,7 +310,7 @@ func downloadAndVerifyArchive(ctx context.Context, client *http.Client, assetURL
 	return nil
 }
 
-func installApplyArchive(archivePath, rawExecPath string) (string, string, time.Time, error) {
+func installApplyArchive(ctx context.Context, archivePath, rawExecPath, configPath string) (string, string, time.Time, error) {
 	execPath, err := resolveExecPath(rawExecPath)
 	if err != nil {
 		return "", "", time.Time{}, err
@@ -318,12 +319,28 @@ func installApplyArchive(archivePath, rawExecPath string) (string, string, time.
 	if err := extractBinaryFromArchive(archivePath, newBinaryPath); err != nil {
 		return "", "", time.Time{}, fmt.Errorf("extract binary: %w", err)
 	}
+	defer func() { _ = os.Remove(newBinaryPath) }()
+	if err := validateCandidateConfig(ctx, newBinaryPath, configPath); err != nil {
+		return "", "", time.Time{}, err
+	}
 	appliedAt := time.Now().UTC()
 	backupPath := execPath + ".bak"
 	if err := installBinary(execPath, newBinaryPath, backupPath); err != nil {
 		return "", "", time.Time{}, err
 	}
 	return execPath, backupPath, appliedAt, nil
+}
+
+func validateCandidateConfig(ctx context.Context, candidatePath, configPath string) error {
+	args := make([]string, 0, 5)
+	if configPath = strings.TrimSpace(configPath); configPath != "" {
+		args = append(args, "--config", configPath)
+	}
+	args = append(args, "config", "validate", "--effective")
+	if err := runCommand(ctx, candidatePath, args...); err != nil {
+		return fmt.Errorf("updated binary rejected the current configuration: %w", err)
+	}
+	return nil
 }
 
 func restartAfterApply(ctx context.Context, cfg ApplyOptions, execPath, backupPath string) error {
@@ -399,6 +416,7 @@ func normalizeApplyOptions(opts ApplyOptions) ApplyOptions {
 	if cfg.Arch == "" {
 		cfg.Arch = runtime.GOARCH
 	}
+	cfg.ConfigPath = strings.TrimSpace(cfg.ConfigPath)
 	cfg.SystemdScope = strings.ToLower(strings.TrimSpace(cfg.SystemdScope))
 	if cfg.SystemdScope == "" || cfg.SystemdScope == restartScopeAuto {
 		cfg.SystemdScope = defaultRestartScope()

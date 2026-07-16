@@ -73,8 +73,14 @@ export function authCookieUpdateErrorMessage(
   if (action === 'validate' && result.status === 401) {
     return 'Invalid token.'
   }
-  if (result.code === 'ORIGIN_DENIED' || result.status === 403) {
-    return 'Request origin is not allowed. Update server.allowed_origins for this URL.'
+  if (result.code === 'UNTRUSTED_PROXY') {
+    return result.message || 'The HTTPS proxy is not listed in server.trusted_proxies.'
+  }
+  if (result.code === 'ORIGIN_DENIED') {
+    return result.message || 'This browser origin is not listed in server.allowed_origins.'
+  }
+  if (result.status === 403) {
+    return result.message || 'Sentinel rejected this browser origin.'
   }
   if (result.message !== '') {
     return result.message

@@ -15,8 +15,9 @@ type Subscriber = (message: unknown) => void
 export function useSharedOpsEventsSocket(options: {
   authenticated: boolean
   tokenRequired: boolean
+  connectionReady?: boolean
 }) {
-  const { authenticated, tokenRequired } = options
+  const { authenticated, tokenRequired, connectionReady = true } = options
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const subscribersRef = useRef(new Set<Subscriber>())
   const socketRef = useRef<WebSocket | null>(null)
@@ -47,6 +48,7 @@ export function useSharedOpsEventsSocket(options: {
 
   const connect = useCallback(() => {
     if (disposedRef.current) return
+    if (!connectionReady) return
     if (tokenRequired && !authenticated) return
     if (subscribersRef.current.size === 0) return
     if (document.visibilityState === 'hidden') return
@@ -96,11 +98,12 @@ export function useSharedOpsEventsSocket(options: {
       clearRetry()
       retryTimerRef.current = window.setTimeout(connect, reconnectRef.current.next())
     }
-  }, [authenticated, clearRetry, tokenRequired])
+  }, [authenticated, clearRetry, connectionReady, tokenRequired])
 
   const reconnectNow = useCallback(() => {
     if (
       disposedRef.current ||
+      !connectionReady ||
       subscribersRef.current.size === 0 ||
       (tokenRequired && !authenticated) ||
       document.visibilityState === 'hidden'
@@ -119,7 +122,7 @@ export function useSharedOpsEventsSocket(options: {
       }
     }
     connect()
-  }, [authenticated, clearRetry, connect, tokenRequired])
+  }, [authenticated, clearRetry, connect, connectionReady, tokenRequired])
 
   useEffect(() => {
     const handleVisible = () => {
@@ -139,7 +142,7 @@ export function useSharedOpsEventsSocket(options: {
     if (subscribersRef.current.size > 0 && socketRef.current === null) {
       connect()
     }
-  }, [authenticated, tokenRequired, connect])
+  }, [authenticated, connectionReady, tokenRequired, connect])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -183,6 +186,7 @@ export function useSharedOpsEventsSocket(options: {
 
     if (
       disposedRef.current ||
+      !connectionReady ||
       subscribersRef.current.size === 0 ||
       (tokenRequired && !authenticated) ||
       document.visibilityState === 'hidden'
@@ -192,7 +196,7 @@ export function useSharedOpsEventsSocket(options: {
     }
 
     connect()
-  }, [authenticated, clearRetry, connect, tokenRequired])
+  }, [authenticated, clearRetry, connect, connectionReady, tokenRequired])
 
   return useMemo(
     () => ({ connectionState, forceReconnect, subscribe }),

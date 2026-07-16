@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/updater"
@@ -129,6 +130,9 @@ func TestRunCLIConfigFlagOverridesPath(t *testing.T) {
 	if got := strings.TrimSpace(out.String()); got != configPath {
 		t.Fatalf("config path output = %q, want %q", got, configPath)
 	}
+	if got := os.Getenv("SENTINEL_CONFIG"); got != "" {
+		t.Fatalf("SENTINEL_CONFIG leaked after Run: %q", got)
+	}
 }
 
 func TestRunCLIConfigValidate(t *testing.T) {
@@ -163,12 +167,27 @@ func TestRunCLIConfigValidate(t *testing.T) {
 	}
 }
 
+func TestRunCLIConfigValidateEffectiveAcceptsMissingFileDefaults(t *testing.T) {
+	t.Setenv("SENTINEL_CONFIG", "")
+	configPath := filepath.Join(t.TempDir(), "missing.toml")
+
+	var out, errOut bytes.Buffer
+	code := Run([]string{"--config", configPath, "config", "validate", "--effective"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "config valid") {
+		t.Fatalf("stdout = %s", out.String())
+	}
+}
+
 func TestRunCLIConfigShowPrintsEffectiveConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
 	t.Setenv("SENTINEL_SERVER_HOST", "")
 	t.Setenv("SENTINEL_SERVER_PORT", "")
 	t.Setenv("SENTINEL_SERVER_ALLOWED_ORIGINS", "")
+	t.Setenv("SENTINEL_SERVER_TRUSTED_PROXIES", "")
 	t.Setenv("SENTINEL_LOG_LEVEL", "")
 	configPath := filepath.Join(dir, "config.toml")
 	content := `version = 1
@@ -178,6 +197,7 @@ host = "127.0.0.1"
 port = 5050
 token = "super-secret"
 allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+trusted_proxies = ["10.0.0.0/8"]
 
 [log]
 level = "debug"
@@ -223,6 +243,10 @@ schedule = "0 9 * * *"
 	origins, ok := server["allowed_origins"].([]any)
 	if !ok || len(origins) != 2 || origins[0] != "http://localhost:3000" || origins[1] != "http://127.0.0.1:3000" {
 		t.Fatalf("allowed_origins = %#v", server["allowed_origins"])
+	}
+	proxies, ok := server["trusted_proxies"].([]any)
+	if !ok || len(proxies) != 1 || proxies[0] != "10.0.0.0/8" {
+		t.Fatalf("trusted_proxies = %#v", server["trusted_proxies"])
 	}
 	watchtower, ok := got["watchtower"].(map[string]any)
 	if !ok {
@@ -673,6 +697,51 @@ func TestRunCLIDoctor(t *testing.T) {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("output missing %q:\n%s", fragment, text)
 		}
+	}
+}
+
+func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
+	origLoad := loadConfigFn
+	origStatus := serviceStatusFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		serviceStatusFn = origStatus
+	})
+
+	cfg := testCLIConfig("/tmp/.sentinel", "")
+	loadConfigFn = func() (config.Config, string, error) {
+		return cfg, "/root/.sentinel/config.toml", errors.New(
+			`server.trusted_proxies entry "localhost" must be an IP address or CIDR`,
+		)
+	}
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return []daemon.ScopedServiceStatus{{
+			Scope: "system",
+			UserServiceStatus: daemon.UserServiceStatus{
+				ServicePath:        "/etc/systemd/system/sentinel.service",
+				UnitFileExists:     true,
+				EnabledState:       "enabled",
+				ActiveState:        "active",
+				SystemctlAvailable: true,
+			},
+		}}, nil
+	}
+
+	var out, errOut bytes.Buffer
+	code := Run([]string{"doctor"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	for _, fragment := range []string{
+		"config path: /root/.sentinel/config.toml",
+		`configuration is invalid: server.trusted_proxies entry "localhost" must be an IP address or CIDR`,
+	} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("output missing %q:\n%s", fragment, out.String())
+		}
+	}
+	if !strings.Contains(errOut.String(), "doctor found ") {
+		t.Fatalf("stderr = %s", errOut.String())
 	}
 }
 

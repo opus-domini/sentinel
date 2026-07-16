@@ -86,6 +86,8 @@ ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sen
   decision when the update process needs to target a specific service manager.
 - Manual `sentinel update apply --restart=false` installs the binary without
   restarting for maintenance-window edge cases.
+- Every apply validates the current effective configuration with the candidate
+  binary before replacing the installed executable.
 - Status can be inspected with:
 
 ```bash

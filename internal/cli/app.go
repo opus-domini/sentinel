@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
@@ -20,10 +21,11 @@ type App struct {
 
 // Shared command and output keys.
 const (
-	cmdStatus  = "status"
-	cmdConfig  = "config"
-	cmdInstall = "install"
-	optionAuto = "auto"
+	cmdStatus    = "status"
+	cmdConfig    = "config"
+	cmdInstall   = "install"
+	optionAuto   = "auto"
+	hostOSDarwin = "darwin"
 )
 
 // Test indirections: swapped to fakes so command behaviour can be exercised
@@ -57,6 +59,15 @@ func runDaemon() int {
 // process exit code. With no args it prints the root help — starting the
 // server requires the explicit "daemon" command.
 func Run(args []string, stdout, stderr io.Writer) int {
+	originalConfigPath, configPathWasSet := os.LookupEnv("SENTINEL_CONFIG")
+	defer func() {
+		if configPathWasSet {
+			_ = os.Setenv("SENTINEL_CONFIG", originalConfigPath)
+			return
+		}
+		_ = os.Unsetenv("SENTINEL_CONFIG")
+	}()
+
 	app := &App{Stdout: stdout, Stderr: stderr}
 	root := newRootCmd(app)
 	root.SetArgs(args)

@@ -159,19 +159,28 @@ func newConfigPathCmd(app *App) *cobra.Command {
 }
 
 func newConfigValidateCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var effective bool
+	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Validate the Sentinel config file",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			path := config.Path()
-			if err := config.ValidateFile(path); err != nil {
+			var err error
+			if effective {
+				_, path, err = loadConfigFn()
+			} else {
+				err = config.ValidateFile(path)
+			}
+			if err != nil {
 				return failf("config validation failed: %w", err)
 			}
 			done(app.Stdout, "ok:", path+" - config valid")
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&effective, "effective", false, "validate effective config including environment overrides")
+	return cmd
 }
 
 func newConfigShowCmd(app *App) *cobra.Command {
@@ -217,6 +226,7 @@ type configShowServer struct {
 	Port                int      `json:"port"`
 	Token               string   `json:"token"`
 	AllowedOrigins      []string `json:"allowed_origins"`
+	TrustedProxies      []string `json:"trusted_proxies"`
 	CookieSecure        string   `json:"cookie_secure"`
 	AllowInsecureCookie bool     `json:"allow_insecure_cookie"`
 	Timezone            string   `json:"timezone"`
@@ -252,6 +262,7 @@ func newConfigShowOutput(cfg config.Config) configShowOutput {
 			Port:                cfg.Server.Port,
 			Token:               redactConfigSecret(cfg.Server.Token),
 			AllowedOrigins:      nonNilStrings(cfg.Server.AllowedOrigins),
+			TrustedProxies:      nonNilStrings(cfg.Server.TrustedProxies),
 			CookieSecure:        cfg.Server.CookieSecure,
 			AllowInsecureCookie: cfg.Server.AllowInsecureCookie,
 			Timezone:            cfg.Server.Timezone,

@@ -5,10 +5,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +19,8 @@ var (
 	ErrUnauthorized = errors.New("unauthorized")
 	// ErrOriginDenied is returned when a request origin is not allowed.
 	ErrOriginDenied = errors.New("origin denied")
+	// ErrUntrustedProxy is returned when HTTPS forwarding headers came from a proxy that is not trusted.
+	ErrUntrustedProxy = errors.New("https proxy is not trusted")
 	// ErrRemoteToken is returned when remote access has no token configured.
 	ErrRemoteToken = errors.New("token is required for non-loopback listen address")
 	// ErrRemoteAllowedOrigin is returned when remote access has no allowed origin configured.
@@ -33,6 +37,8 @@ var (
 
 // AuthCookieName identifies the auth cookie name value.
 const AuthCookieName = "sentinel_auth"
+
+const maxOriginLogEntries = 256
 
 // CookieSecurePolicy controls the Secure flag on auth cookies.
 type CookieSecurePolicy int
@@ -72,6 +78,32 @@ type Guard struct {
 	cookieSecure   CookieSecurePolicy
 	multiUser      MultiUserConfig
 	trustedProxies []trustedProxy
+	originLogMu    sync.Mutex
+	originLogAt    map[string]time.Time
+}
+
+// OriginError describes why a request origin was rejected.
+type OriginError struct {
+	Kind           error
+	Origin         string
+	ExpectedOrigin string
+	Proxy          string
+	Message        string
+}
+
+func (e *OriginError) Error() string {
+	if e == nil {
+		return ErrOriginDenied.Error()
+	}
+	return e.Message
+}
+
+// Unwrap exposes the stable origin failure kind to errors.Is.
+func (e *OriginError) Unwrap() error {
+	if e == nil || e.Kind == nil {
+		return ErrOriginDenied
+	}
+	return e.Kind
 }
 
 type trustedProxy struct {
@@ -96,6 +128,7 @@ func NewWithOptions(token string, allowedOrigins []string, cookieSecure CookieSe
 		allowedOrigins: make(map[string]struct{}),
 		cookieSecure:   cookieSecure,
 		multiUser:      mu,
+		originLogAt:    make(map[string]time.Time),
 	}
 	for _, origin := range allowedOrigins {
 		trimmed := strings.TrimSpace(origin)
@@ -189,7 +222,7 @@ func (g *Guard) TokenRequired() bool {
 
 // CheckOrigin checks origin. A nil guard fails closed (denies).
 func (g *Guard) CheckOrigin(r *http.Request) error {
-	if g == nil {
+	if g == nil || r == nil {
 		return ErrOriginDenied
 	}
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
@@ -202,17 +235,100 @@ func (g *Guard) CheckOrigin(r *http.Request) error {
 
 	parsed, err := url.Parse(origin)
 	if err != nil {
-		return fmt.Errorf("%w: invalid origin", ErrOriginDenied)
+		return &OriginError{
+			Kind:    ErrOriginDenied,
+			Origin:  origin,
+			Message: fmt.Sprintf("request origin %q is invalid", origin),
+		}
 	}
 
 	scheme := "http"
 	if g.requestUsesTLS(r) {
 		scheme = "https"
 	}
+	expectedOrigin := scheme + "://" + r.Host
+	if parsed.Scheme == "https" && strings.EqualFold(parsed.Host, r.Host) && r.TLS == nil &&
+		strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") &&
+		!g.trustsRemote(r.RemoteAddr) {
+		proxy := remoteHost(r.RemoteAddr)
+		return &OriginError{
+			Kind:           ErrUntrustedProxy,
+			Origin:         origin,
+			ExpectedOrigin: expectedOrigin,
+			Proxy:          proxy,
+			Message: fmt.Sprintf(
+				"HTTPS proxy %q is not trusted; add it to server.trusted_proxies",
+				proxy,
+			),
+		}
+	}
 	if parsed.Scheme != scheme || !strings.EqualFold(parsed.Host, r.Host) {
-		return fmt.Errorf("%w: expected %s://%s, got %s", ErrOriginDenied, scheme, r.Host, origin)
+		return &OriginError{
+			Kind:           ErrOriginDenied,
+			Origin:         origin,
+			ExpectedOrigin: expectedOrigin,
+			Proxy:          remoteHost(r.RemoteAddr),
+			Message: fmt.Sprintf(
+				"request origin %q is not allowed; expected %q or an entry in server.allowed_origins",
+				origin,
+				expectedOrigin,
+			),
+		}
 	}
 	return nil
+}
+
+// LogOriginDenial writes one structured warning per distinct failure per minute.
+func (g *Guard) LogOriginDenial(r *http.Request, err error) {
+	if g == nil || r == nil || err == nil {
+		return
+	}
+	var originErr *OriginError
+	if !errors.As(err, &originErr) {
+		originErr = &OriginError{
+			Kind:    ErrOriginDenied,
+			Origin:  strings.TrimSpace(r.Header.Get("Origin")),
+			Proxy:   remoteHost(r.RemoteAddr),
+			Message: err.Error(),
+		}
+	}
+	code := "ORIGIN_DENIED"
+	if errors.Is(originErr, ErrUntrustedProxy) {
+		code = "UNTRUSTED_PROXY"
+	}
+	key := strings.Join([]string{code, originErr.Origin, r.Host, originErr.Proxy}, "|")
+	now := time.Now()
+	g.originLogMu.Lock()
+	if g.originLogAt == nil {
+		g.originLogAt = make(map[string]time.Time)
+	}
+	last := g.originLogAt[key]
+	if !last.IsZero() && now.Sub(last) < time.Minute {
+		g.originLogMu.Unlock()
+		return
+	}
+	if len(g.originLogAt) >= maxOriginLogEntries {
+		for loggedKey, loggedAt := range g.originLogAt {
+			if now.Sub(loggedAt) >= time.Minute {
+				delete(g.originLogAt, loggedKey)
+			}
+		}
+		if len(g.originLogAt) >= maxOriginLogEntries {
+			g.originLogMu.Unlock()
+			return
+		}
+	}
+	g.originLogAt[key] = now
+	g.originLogMu.Unlock()
+
+	slog.Warn("request origin rejected",
+		"code", code,
+		"origin", originErr.Origin,
+		"host", r.Host,
+		"proxy", originErr.Proxy,
+		"forwarded_proto", strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")),
+		"reason", originErr.Message,
+	)
 }
 
 // RequireAuth requires auth. A nil guard fails closed (denies).
@@ -285,10 +401,7 @@ func (g *Guard) trustsRemote(remoteAddr string) bool {
 	if len(g.trustedProxies) == 0 {
 		return false
 	}
-	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
-	if err != nil {
-		host = strings.TrimSpace(remoteAddr)
-	}
+	host := remoteHost(remoteAddr)
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return false
@@ -299,6 +412,14 @@ func (g *Guard) trustsRemote(remoteAddr string) bool {
 		}
 	}
 	return false
+}
+
+func remoteHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
+	if err != nil {
+		return strings.TrimSpace(remoteAddr)
+	}
+	return host
 }
 
 // TokenMatches reports whether a token matches value. A nil guard fails closed.

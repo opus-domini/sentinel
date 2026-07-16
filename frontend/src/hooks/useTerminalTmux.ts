@@ -15,6 +15,7 @@ import { attachTouchWheelBridge } from '@/lib/touchWheelBridge'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { createReconnect } from '@/lib/wsReconnect'
+import { useConnectionHealth } from '@/contexts/ConnectionHealthContext'
 
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
@@ -218,6 +219,7 @@ export function useTerminalTmux({
   allowWheelInAlternateBuffer = false,
   suppressBrowserContextMenu = false,
 }: UseTerminalTmuxArgs): UseTerminalTmuxResult {
+  const { ready: connectionReady, issue: connectionIssue } = useConnectionHealth()
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [statusDetail, setStatusDetail] = useState('ready')
   const [termCols, setTermCols] = useState(0)
@@ -638,6 +640,14 @@ export function useTerminalTmux({
 
   const connectRuntime = useCallback(
     (runtime: SessionRuntime, options?: { resetTerminal?: boolean; force?: boolean }) => {
+      if (!connectionReady) {
+        setRuntimeStatus(
+          runtime,
+          connectionIssue ? 'error' : 'disconnected',
+          connectionIssue?.message ?? 'checking server connection',
+        )
+        return
+      }
       if (!options?.force && isSocketOpenOrConnecting(runtime.socket)) {
         return
       }
@@ -778,6 +788,8 @@ export function useTerminalTmux({
     [
       clearHandshakeTimer,
       clearReconnectTimer,
+      connectionIssue,
+      connectionReady,
       connectedVerb,
       connectingVerb,
       enqueueRuntimeWrite,

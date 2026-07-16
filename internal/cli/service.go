@@ -266,7 +266,7 @@ func newServiceLogsCmd(app *App) *cobra.Command {
 
 // runtimeServiceManagerLabel names the service manager for the current OS.
 func runtimeServiceManagerLabel() string {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == hostOSDarwin {
 		return "launchctl"
 	}
 	return "systemctl"

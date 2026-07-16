@@ -114,7 +114,7 @@ describe('TokenDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'Request origin is not allowed.',
+      'request origin is not allowed',
     )
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })

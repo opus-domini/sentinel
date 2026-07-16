@@ -20,6 +20,12 @@ export default function ConnectionBadge({
   const base = detail && state !== 'connected' ? `${label} — ${detail}` : label
   const tooltip = onClick ? `${base} — ${actionLabel}` : base
   const dot = <span className={`inline-block h-2 w-2 rounded-full ${connectionDotClass(state)}`} />
+  const content = (
+    <>
+      {dot}
+      {state === 'error' && <span className="text-[11px] font-medium">{label}</span>}
+    </>
+  )
 
   if (onClick) {
     return (
@@ -27,12 +33,13 @@ export default function ConnectionBadge({
         <button
           type="button"
           className={cn(
-            'inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-border-subtle bg-surface-elevated hover:bg-surface-active',
+            'inline-flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-border-subtle bg-surface-elevated hover:bg-surface-active',
+            state === 'error' ? 'px-2 text-destructive-foreground' : 'w-7',
           )}
           aria-label={`${label}; ${actionLabel}`}
           onClick={onClick}
         >
-          {dot}
+          {content}
         </button>
       </TooltipHelper>
     )
@@ -41,11 +48,14 @@ export default function ConnectionBadge({
   return (
     <TooltipHelper content={tooltip}>
       <span
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border-subtle bg-surface-elevated"
+        className={cn(
+          'inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-border-subtle bg-surface-elevated',
+          state === 'error' ? 'px-2 text-destructive-foreground' : 'w-7',
+        )}
         role="status"
         aria-label={label}
       >
-        {dot}
+        {content}
       </span>
     </TooltipHelper>
   )

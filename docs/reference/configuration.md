@@ -30,6 +30,14 @@ sentinel db init
 `sentinel config show` prints the effective runtime configuration as JSON with
 secret values redacted.
 
+Validation is strict:
+
+- every `allowed_origins` entry must be a canonical `http://` or `https://`
+  origin without a path, query, fragment, or credentials;
+- every `trusted_proxies` entry must be an IP address or CIDR;
+- with `cookie_secure = "auto"`, an HTTPS allowed origin requires the TLS
+  terminator address in `trusted_proxies`.
+
 ## Config File
 
 ```toml
@@ -125,3 +133,7 @@ allowed_origins = ["https://sentinel.example.com"]
 # Set only when a reverse proxy in front of Sentinel terminates TLS.
 trusted_proxies = ["127.0.0.1"]
 ```
+
+Use the address Sentinel sees as the direct peer. For a local Tailscale Serve,
+nginx, or Caddy proxy, that is commonly `127.0.0.1`. `sentinel doctor` reports
+the exact invalid field when this configuration is incoherent.
