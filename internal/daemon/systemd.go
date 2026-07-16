@@ -941,7 +941,9 @@ func installNeedrestartOverride(confDir, confPath string) {
 	}
 	const content = "# Sentinel: static Go binary, does not need restart after library upgrades.\n" +
 		"$nrconf{override_rc}{qr(^sentinel)} = 0;\n"
-	_ = os.WriteFile(confPath, []byte(content), 0o644) //nolint:gosec // needrestart reads config as root; 0644 matches /etc/needrestart/conf.d/* convention
+	if err := os.WriteFile(confPath, []byte(content), 0o644); err == nil { //nolint:gosec // needrestart convention requires a world-readable system config
+		_ = os.Chmod(confPath, 0o644) //nolint:gosec // enforce the documented mode independently of the process umask
+	}
 }
 
 func removeNeedrestartOverride(confPath string) {

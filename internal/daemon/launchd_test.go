@@ -914,6 +914,9 @@ func TestWriteLaunchdAutoUpdatePlistSystemScope(t *testing.T) {
 		stdoutPath:   "/var/log/out.log",
 		stderrPath:   "/var/log/err.log",
 	}
+	if err := os.WriteFile(plistPath, []byte("stale"), 0o600); err != nil {
+		t.Fatalf("seed restrictive plist: %v", err)
+	}
 
 	err := writeLaunchdAutoUpdatePlist(cfg)
 	if err != nil {

@@ -1886,6 +1886,9 @@ func TestInstallNeedrestartOverride(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(confPath, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	installNeedrestartOverride(confDir, confPath)
 	data, err := os.ReadFile(confPath)
 	if err != nil {

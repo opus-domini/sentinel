@@ -67,8 +67,12 @@ func installUserLaunchd(opts InstallUserOptions) error {
 		return err
 	}
 	plist := renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath)
-	if err := os.WriteFile(servicePath, []byte(plist), launchdUnitFileMode(scope)); err != nil {
+	mode := launchdUnitFileMode(scope)
+	if err := os.WriteFile(servicePath, []byte(plist), mode); err != nil {
 		return fmt.Errorf("write launchd service plist: %w", err)
+	}
+	if err := os.Chmod(servicePath, mode); err != nil {
+		return fmt.Errorf("set launchd service plist mode: %w", err)
 	}
 
 	if opts.Enable || opts.Start {
@@ -168,8 +172,12 @@ func writeLaunchdAutoUpdatePlist(cfg launchdAutoUpdateInstallConfig) error {
 		cfg.stdoutPath,
 		cfg.stderrPath,
 	)
-	if err := os.WriteFile(cfg.updaterPath, []byte(plist), launchdUnitFileMode(cfg.scope)); err != nil {
+	mode := launchdUnitFileMode(cfg.scope)
+	if err := os.WriteFile(cfg.updaterPath, []byte(plist), mode); err != nil {
 		return fmt.Errorf("write launchd autoupdate plist: %w", err)
+	}
+	if err := os.Chmod(cfg.updaterPath, mode); err != nil {
+		return fmt.Errorf("set launchd autoupdate plist mode: %w", err)
 	}
 	return nil
 }
