@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.10.1](https://github.com/opus-domini/sentinel/compare/v0.10.0...v0.10.1) (2026-07-17)
+
+
+### Features
+
+* add actionable connection diagnostics ([e136898](https://github.com/opus-domini/sentinel/commit/e136898572ce26555cd0053b26e4f0045280f892))
+* add HTTP MCP server for tmux ([0ce8b1c](https://github.com/opus-domini/sentinel/commit/0ce8b1cc5ed6b24a9e6d298689d9413726056365))
+
+
+### Bug Fixes
+
+* **daemon:** enforce system file permissions ([d9f77ac](https://github.com/opus-domini/sentinel/commit/d9f77ace65070f130ceeda83c44d54bd3901e395))
+* update API contract test for MCP settings ([7b77978](https://github.com/opus-domini/sentinel/commit/7b77978206eabd138795956f09b586b5895c6a34))
+
+
+### CI
+
+* adopt repository-scoped runner pools ([511e4b5](https://github.com/opus-domini/sentinel/commit/511e4b5113285cefcef07668ffd0b5ce168d5700))
+* pin hardened reusable workflows ([77745ad](https://github.com/opus-domini/sentinel/commit/77745ad87b02a5983165d908569f318825f980b3))
+* restore automatic release lifecycle ([871f013](https://github.com/opus-domini/sentinel/commit/871f013bd1cdff06ed193ea3b4890c36ab3117bb))
+* split release preparation and publication ([9068652](https://github.com/opus-domini/sentinel/commit/9068652f98df8187d2004b05f3ab0803b06918ce))
+* use organization reusable workflows ([f70da02](https://github.com/opus-domini/sentinel/commit/f70da024a9db79e787987c36a71062e3b5e325ad))
+
 ## [0.10.0](https://github.com/opus-domini/sentinel/compare/v0.9.4...v0.10.0) (2026-07-15)
 
 
