@@ -129,6 +129,7 @@ func newContractMux(t *testing.T) *http.ServeMux {
 		"",
 		"UTC",
 		"",
+		nil,
 		5,
 	)
 	return mux
