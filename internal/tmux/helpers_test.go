@@ -64,6 +64,51 @@ func TestSendKeysVia(t *testing.T) {
 	}
 }
 
+func TestSendTextAndKeyViaPreserveExplicitActions(t *testing.T) {
+	t.Parallel()
+
+	var calls [][]string
+	runFn := func(_ context.Context, args ...string) (string, error) {
+		calls = append(calls, slices.Clone(args))
+		return "", nil
+	}
+	if err := sendTextVia(context.Background(), runFn, "%7", "  -n value  "); err != nil {
+		t.Fatalf("sendTextVia() error = %v", err)
+	}
+	if err := sendKeyVia(context.Background(), runFn, "%7", "Enter"); err != nil {
+		t.Fatalf("sendKeyVia() error = %v", err)
+	}
+	want := [][]string{
+		{"send-keys", "-t", "%7", "-l", "--", "  -n value  "},
+		{"send-keys", "-t", "%7", "--", "Enter"},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+	for index := range want {
+		if !slices.Equal(calls[index], want[index]) {
+			t.Fatalf("call %d = %#v, want %#v", index, calls[index], want[index])
+		}
+	}
+}
+
+func TestCapturePaneScreenVia(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+	runFn := func(_ context.Context, args ...string) (string, error) {
+		got = slices.Clone(args)
+		return "prompt$ ", nil
+	}
+	screen, err := capturePaneScreenVia(context.Background(), runFn, "%3")
+	if err != nil {
+		t.Fatalf("capturePaneScreenVia() error = %v", err)
+	}
+	if screen != "prompt$ " || !slices.Equal(got, []string{"capture-pane", "-p", "-t", "%3"}) {
+		t.Fatalf("screen = %q, args = %#v", screen, got)
+	}
+}
+
 func TestSplitPaneViaBuildsDirectionFlags(t *testing.T) {
 	t.Parallel()
 

@@ -260,6 +260,39 @@ func sendKeysVia(ctx context.Context, runFn runnerFunc, paneID, keys string, ent
 	return nil
 }
 
+func sendTextVia(ctx context.Context, runFn runnerFunc, paneID, text string) error {
+	if strings.TrimSpace(paneID) == "" {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errPaneIDRequired}
+	}
+	if text == "" {
+		return nil
+	}
+	_, err := runFn(ctx, "send-keys", "-t", paneID, "-l", "--", text)
+	return err
+}
+
+func sendKeyVia(ctx context.Context, runFn runnerFunc, paneID, key string) error {
+	if strings.TrimSpace(paneID) == "" {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errPaneIDRequired}
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "key is required"}
+	}
+	if len(key) > 64 || strings.ContainsAny(key, "\r\n\x00") {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "invalid key"}
+	}
+	_, err := runFn(ctx, "send-keys", "-t", paneID, "--", key)
+	return err
+}
+
+func capturePaneScreenVia(ctx context.Context, runFn runnerFunc, paneID string) (string, error) {
+	if strings.TrimSpace(paneID) == "" {
+		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errPaneIDRequired}
+	}
+	return runFn(ctx, "capture-pane", "-p", "-t", paneID)
+}
+
 func capturePaneLinesVia(ctx context.Context, runFn runnerFunc, target string, lines int) (string, error) {
 	if strings.TrimSpace(target) == "" {
 		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "target is required"}

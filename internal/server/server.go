@@ -19,6 +19,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/api"
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
+	"github.com/opus-domini/sentinel/internal/mcpserver"
 	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/report"
 	"github.com/opus-domini/sentinel/internal/scheduler"
@@ -113,7 +114,17 @@ func Serve(version string) int {
 	opsManager := services.NewManager(time.Now(), st)
 
 	mux := http.NewServeMux()
-	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configPath, cfg.Server.Timezone, cfg.Server.Locale, cfg.Runbooks.MaxConcurrent)
+	mcpState := mcpserver.NewState(cfg.MCP.Enabled, strings.TrimSpace(cfg.Server.Token) != "")
+	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configPath, cfg.Server.Timezone, cfg.Server.Locale, mcpState, cfg.Runbooks.MaxConcurrent)
+	mcpServer := mcpserver.New(mcpState, guard, mcpserver.Options{
+		Version:             version,
+		SessionUser:         apiHandler.SessionUser,
+		KnownSessionUsers:   apiHandler.KnownSessionUsers,
+		RegisterSessionUser: apiHandler.RegisterSessionUser,
+	})
+	mux.Handle("POST /mcp", mcpServer)
+	mux.Handle("GET /mcp", mcpServer)
+	mux.Handle("DELETE /mcp", mcpServer)
 
 	if err := ui.Register(mux, guard, st, eventHub, opsManager, apiHandler.SessionUser); err != nil {
 		slog.Error("frontend init failed", "err", err)
@@ -181,6 +192,9 @@ func Serve(version string) int {
 	apiShutdownCtx, cancelAPI := context.WithTimeout(context.Background(), 5*time.Second)
 	apiHandler.Shutdown(apiShutdownCtx)
 	cancelAPI()
+	mcpShutdownCtx, cancelMCP := context.WithTimeout(context.Background(), 3*time.Second)
+	mcpServer.Shutdown(mcpShutdownCtx)
+	cancelMCP()
 
 	stopMetrics()
 	<-metricsDone

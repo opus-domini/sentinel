@@ -322,6 +322,7 @@ func TestRegisterRoutesThroughMux(t *testing.T) {
 		"/tmp/sentinel.yaml",
 		"America/Sao_Paulo",
 		"pt-BR",
+		nil,
 		1,
 	)
 	t.Cleanup(func() {

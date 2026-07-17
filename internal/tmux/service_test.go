@@ -120,6 +120,24 @@ func TestRunAsUserEmptyDelegatesToRun(t *testing.T) {
 	}
 }
 
+func TestBuildControlCommandUsesNativeTmuxControlMode(t *testing.T) {
+	name, args, err := BuildControlCommand("", "agent-work")
+	if err != nil {
+		t.Fatalf("BuildControlCommand() error = %v", err)
+	}
+	want := []string{"-C", "attach-session", "-f", "active-pane,ignore-size", "-t", "agent-work"}
+	if name != "tmux" || !slices.Equal(args, want) {
+		t.Fatalf("BuildControlCommand() = %q %#v, want tmux %#v", name, args, want)
+	}
+}
+
+func TestBuildControlCommandRejectsEmptySession(t *testing.T) {
+	_, _, err := BuildControlCommand("", " ")
+	if !IsKind(err, ErrKindInvalidIdentifier) {
+		t.Fatalf("BuildControlCommand() error = %v, want invalid identifier", err)
+	}
+}
+
 func TestServiceCreateSessionWithUser(t *testing.T) {
 	// Not parallel: mutates package-level run variable.
 

@@ -45,6 +45,7 @@ type Config struct {
 	Log          LogConfig          `toml:"log" json:"log"`
 	HealthReport HealthReportConfig `toml:"health_report" json:"health_report"`
 	Watchtower   WatchtowerConfig   `toml:"watchtower" json:"watchtower"`
+	MCP          MCPConfig          `toml:"mcp" json:"mcp"`
 	Runbooks     RunbooksConfig     `toml:"runbooks" json:"runbooks"`
 	MultiUser    MultiUserConfig    `toml:"multi_user" json:"multi_user"`
 	SystemUsers  []string           `toml:"-" json:"system_users"`
@@ -87,6 +88,11 @@ type WatchtowerConfig struct {
 	CaptureLines   int           `toml:"capture_lines" json:"capture_lines"`
 	CaptureTimeout time.Duration `toml:"capture_timeout" json:"capture_timeout"`
 	JournalRows    int           `toml:"journal_rows" json:"journal_rows"`
+}
+
+// MCPConfig controls the HTTP Model Context Protocol endpoint.
+type MCPConfig struct {
+	Enabled bool `toml:"enabled" json:"enabled"`
 }
 
 // RunbooksConfig controls runbook execution behavior.
@@ -449,6 +455,9 @@ func validateConfig(cfg Config) error {
 	if cfg.Watchtower.JournalRows <= 0 {
 		issues = append(issues, "watchtower.journal_rows must be a positive integer")
 	}
+	if cfg.MCP.Enabled && strings.TrimSpace(cfg.Server.Token) == "" {
+		issues = append(issues, "mcp.enabled requires server.token")
+	}
 	if strings.TrimSpace(cfg.HealthReport.Schedule) != "" {
 		if err := validate.CronExpression(cfg.HealthReport.Schedule); err != nil {
 			issues = append(issues, "health_report.schedule "+err.Error())
@@ -487,6 +496,7 @@ func applyEnv(cfg *Config) {
 	applyLogEnv(cfg)
 	applyHealthReportEnv(cfg)
 	applyWatchtowerEnv(cfg)
+	applyMCPEnv(cfg)
 	applyRunbooksEnv(cfg)
 	applyMultiUserEnv(cfg)
 }
@@ -580,6 +590,14 @@ func applyWatchtowerEnv(cfg *Config) {
 	}
 }
 
+func applyMCPEnv(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("SENTINEL_MCP_ENABLED")); v != "" {
+		if parsed, ok := parseBool(v); ok {
+			cfg.MCP.Enabled = parsed
+		}
+	}
+}
+
 func applyRunbooksEnv(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("SENTINEL_RUNBOOK_MAX_CONCURRENT")); v != "" {
 		if parsed, ok := parsePositiveInt(v); ok {
@@ -669,6 +687,12 @@ func defaultConfigTOML(cfg Config) []byte {
 	writeConfigLine(&b, "  capture_timeout = %q", humanize.Duration(cfg.Watchtower.CaptureTimeout))
 	writeConfigLine(&b, "  # Environment variable: SENTINEL_WATCHTOWER_JOURNAL_ROWS")
 	writeConfigLine(&b, "  journal_rows = %d", cfg.Watchtower.JournalRows)
+	writeConfigLine(&b, "")
+	writeConfigLine(&b, "# Model Context Protocol endpoint at /mcp.")
+	writeConfigLine(&b, "[mcp]")
+	writeConfigLine(&b, "  # Requires server.token and uses it as the Bearer token.")
+	writeConfigLine(&b, "  # Environment variable: SENTINEL_MCP_ENABLED")
+	writeConfigLine(&b, "  enabled = %t", cfg.MCP.Enabled)
 	writeConfigLine(&b, "")
 	writeConfigLine(&b, "# Manual runbook execution.")
 	writeConfigLine(&b, "[runbooks]")

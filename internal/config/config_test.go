@@ -83,6 +83,8 @@ func TestInitCreatesDefaultConfig(t *testing.T) {
 		`path = "` + filepath.Join(dir, "sentinel.db") + `"`,
 		"[log]",
 		`path = "` + filepath.Join(dir, "logs", "sentinel.log") + `"`,
+		"[mcp]",
+		"enabled = false",
 	} {
 		if !strings.Contains(content, fragment) {
 			t.Fatalf("default config missing %q:\n%s", fragment, content)
@@ -174,6 +176,9 @@ journal_rows = 10000
 [runbooks]
 max_concurrent = 8
 
+[mcp]
+enabled = true
+
 [multi_user]
 allowed_users = ["deploy"]
 allow_root_target = true
@@ -213,6 +218,9 @@ user_switch_method = "sudo"
 	if cfg.Runbooks.MaxConcurrent != 8 {
 		t.Fatalf("Runbooks.MaxConcurrent = %d", cfg.Runbooks.MaxConcurrent)
 	}
+	if !cfg.MCP.Enabled {
+		t.Fatal("MCP.Enabled = false, want true")
+	}
 	if cfg.MultiUser.UserSwitchMethod != "sudo" {
 		t.Fatalf("UserSwitchMethod = %q", cfg.MultiUser.UserSwitchMethod)
 	}
@@ -236,6 +244,7 @@ path = "`+filepath.Join(dir, "file.db")+`"
 	t.Setenv("SENTINEL_SERVER_PORT", "5050")
 	t.Setenv("SENTINEL_SERVER_TOKEN", "env-token")
 	t.Setenv("SENTINEL_STORAGE_PATH", filepath.Join(dir, "env.db"))
+	t.Setenv("SENTINEL_MCP_ENABLED", "true")
 
 	cfg, _, err := Load()
 	if err != nil {
@@ -249,6 +258,22 @@ path = "`+filepath.Join(dir, "file.db")+`"
 	}
 	if cfg.Storage.Path != filepath.Join(dir, "env.db") {
 		t.Fatalf("Storage.Path = %q", cfg.Storage.Path)
+	}
+	if !cfg.MCP.Enabled {
+		t.Fatal("MCP.Enabled = false, want env override true")
+	}
+}
+
+func TestLoadRejectsEnabledMCPWithoutSharedToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[mcp]\nenabled = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	clearConfigEnv(t)
+
+	_, _, err := LoadPath(path)
+	if err == nil || !strings.Contains(err.Error(), "mcp.enabled requires server.token") {
+		t.Fatalf("LoadPath() error = %v", err)
 	}
 }
 
@@ -511,6 +536,7 @@ func clearConfigEnv(t *testing.T) {
 		"SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT",
 		"SENTINEL_WATCHTOWER_JOURNAL_ROWS",
 		"SENTINEL_RUNBOOK_MAX_CONCURRENT",
+		"SENTINEL_MCP_ENABLED",
 		"SENTINEL_ALLOWED_USERS",
 		"SENTINEL_ALLOW_ROOT_TARGET",
 		"SENTINEL_USER_SWITCH_METHOD",

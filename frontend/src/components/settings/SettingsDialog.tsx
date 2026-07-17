@@ -4,6 +4,7 @@ import type { StorageFlushResponse, StorageStatsResponse } from '@/types'
 
 import { LOCALES, TIMEZONES } from '@/lib/dateFormat'
 import ThemeSelector from '@/components/settings/ThemeSelector'
+import MCPSettingsPanel from '@/components/settings/MCPSettingsPanel'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +45,7 @@ type SettingsDialogProps = {
   onOpenChange: (open: boolean) => void
 }
 
-type SettingsSection = 'appearance' | 'app' | 'data' | 'about'
+type SettingsSection = 'appearance' | 'app' | 'mcp' | 'data' | 'about'
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { version, timezone, locale } = useMetaContext()
@@ -238,6 +239,17 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               onClick={() => setActiveSection('app')}
             >
               App
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="settings-tab-mcp"
+              aria-selected={activeSection === 'mcp'}
+              aria-controls="settings-panel-mcp"
+              className={sectionButtonClass('mcp')}
+              onClick={() => setActiveSection('mcp')}
+            >
+              MCP
             </button>
             <button
               type="button"
@@ -491,6 +503,17 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   </p>
                 )}
               </div>
+            </section>
+          )}
+
+          {activeSection === 'mcp' && (
+            <section
+              id="settings-panel-mcp"
+              role="tabpanel"
+              aria-labelledby="settings-tab-mcp"
+              className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
+            >
+              <MCPSettingsPanel />
             </section>
           )}
 

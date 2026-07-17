@@ -27,6 +27,18 @@ WS connections authenticate via the same `sentinel_auth` HttpOnly cookie. The br
 
 - Protocol: `sentinel.v1`
 
+### MCP
+
+`/mcp` requires `Authorization: Bearer <server.token>` on every request. The
+browser authentication cookie is intentionally not accepted for MCP clients.
+The endpoint is absent (`404`) while `[mcp].enabled` is false, and Sentinel
+refuses to enable it when `server.token` is empty.
+
+MCP requests pass through the same origin policy and multi-user target checks
+as the rest of Sentinel. Exposing MCP gives an authenticated client the ability
+to create tmux sessions and send input to panes, so keep it on a private network
+overlay or behind an authenticated TLS endpoint.
+
 ## Origin Validation
 
 `allowed_origins` can be explicitly configured. If omitted, same-host origin checks apply on loopback binds.

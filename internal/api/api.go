@@ -66,6 +66,12 @@ type opsControlPlane interface {
 	LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error)
 }
 
+type mcpSettings interface {
+	Enabled() bool
+	TokenConfigured() bool
+	SetEnabled(bool) error
+}
+
 // ---------------------------------------------------------------------------
 // handlerRepo – repository interface consumed by API handlers.
 // Each sub-interface has at most 5 methods.
@@ -233,6 +239,7 @@ type Handler struct {
 	configPath       string
 	timezone         string
 	locale           string
+	mcpSettings      mcpSettings
 	userSwitchMethod string
 	mu               sync.Mutex // protects mutable settings (timezone, locale)
 	configMu         sync.Mutex // serializes config-file read-modify-write
@@ -293,6 +300,7 @@ func Register(
 	configPath string,
 	timezone string,
 	locale string,
+	mcpSettings mcpSettings,
 	runbookMaxConcurrent int,
 ) *Handler {
 	if runbookMaxConcurrent <= 0 {
@@ -309,6 +317,7 @@ func Register(
 		configPath:       configPath,
 		timezone:         timezone,
 		locale:           locale,
+		mcpSettings:      mcpSettings,
 		userSwitchMethod: tmux.UserSwitchMethod,
 		runCtx:           runCtx,
 		runCancel:        runCancel,

@@ -165,6 +165,16 @@ func (h *Handler) SessionUser(session string) string {
 	return ""
 }
 
+// KnownSessionUsers returns OS users with tmux sessions known to Sentinel.
+func (h *Handler) KnownSessionUsers() []string {
+	return h.knownSessionUsers()
+}
+
+// RegisterSessionUser records the OS user that owns a tmux session.
+func (h *Handler) RegisterSessionUser(session, user string) {
+	h.registerSessionUser(session, user)
+}
+
 // registerSessionUser records which OS user owns a tmux session,
 // both in memory and in persistent storage.
 func (h *Handler) registerSessionUser(session, user string) {

@@ -214,6 +214,59 @@ func (h *Handler) patchLocale(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) getMCPSettings(w http.ResponseWriter, _ *http.Request) {
+	if h.mcpSettings == nil {
+		writeError(w, http.StatusServiceUnavailable, "MCP_UNAVAILABLE", "MCP settings are unavailable", nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"enabled":         h.mcpSettings.Enabled(),
+		"tokenConfigured": h.mcpSettings.TokenConfigured(),
+		"endpoint":        "/mcp",
+	})
+}
+
+func (h *Handler) patchMCPSettings(w http.ResponseWriter, r *http.Request) {
+	if h.mcpSettings == nil {
+		writeError(w, http.StatusServiceUnavailable, "MCP_UNAVAILABLE", "MCP settings are unavailable", nil)
+		return
+	}
+	var req struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if req.Enabled == nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "enabled is required", nil)
+		return
+	}
+	if *req.Enabled && !h.mcpSettings.TokenConfigured() {
+		writeError(w, http.StatusConflict, "MCP_TOKEN_REQUIRED", "configure server.token before enabling MCP", nil)
+		return
+	}
+
+	if h.configPath != "" {
+		h.configMu.Lock()
+		err := upsertConfigValue(h.configPath, "mcp", "enabled", strconv.FormatBool(*req.Enabled))
+		h.configMu.Unlock()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to persist MCP setting", nil)
+			return
+		}
+	}
+	if err := h.mcpSettings.SetEnabled(*req.Enabled); err != nil {
+		writeError(w, http.StatusConflict, "MCP_TOKEN_REQUIRED", err.Error(), nil)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"enabled":         h.mcpSettings.Enabled(),
+		"tokenConfigured": h.mcpSettings.TokenConfigured(),
+		"endpoint":        "/mcp",
+	})
+}
+
 func upsertConfigString(path, section, key, value string) error {
 	return upsertConfigValue(path, section, key, strconv.Quote(value))
 }

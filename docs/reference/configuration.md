@@ -75,6 +75,9 @@ journal_rows = 5000
 [runbooks]
 max_concurrent = 5
 
+[mcp]
+enabled = false
+
 [multi_user]
 allowed_users = []
 allow_root_target = false
@@ -107,6 +110,7 @@ user_switch_method = "systemd-run"
 | `SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT`   | `150ms`                                  | Per-pane capture timeout                                        |
 | `SENTINEL_WATCHTOWER_JOURNAL_ROWS`      | `5000`                                   | Tmux activity retention                                         |
 | `SENTINEL_RUNBOOK_MAX_CONCURRENT`       | `5`                                      | Max concurrent manual runbook executions                        |
+| `SENTINEL_MCP_ENABLED`                  | `false`                                  | Expose the Streamable HTTP MCP endpoint at `/mcp`                |
 | `SENTINEL_ALLOWED_USERS`                | empty                                    | Comma-separated OS users allowed as session targets             |
 | `SENTINEL_ALLOW_ROOT_TARGET`            | `false`                                  | Whether to allow targeting root                                 |
 | `SENTINEL_USER_SWITCH_METHOD`           | `systemd-run` on Linux, `sudo` elsewhere | User switch method                                              |
@@ -132,8 +136,14 @@ token = "strong-secret"
 allowed_origins = ["https://sentinel.example.com"]
 # Set only when a reverse proxy in front of Sentinel terminates TLS.
 trusted_proxies = ["127.0.0.1"]
+
+[mcp]
+enabled = true
 ```
 
 Use the address Sentinel sees as the direct peer. For a local Tailscale Serve,
 nginx, or Caddy proxy, that is commonly `127.0.0.1`. `sentinel doctor` reports
 the exact invalid field when this configuration is incoherent.
+
+MCP uses `server.token`; there is no separate MCP secret. Configuration
+validation rejects `mcp.enabled = true` when the shared token is empty.

@@ -301,6 +301,7 @@ const (
 const (
 	errWindowOrderMismatch = "tmux window order does not match live windows"
 	errInvalidSplitDir     = "invalid split direction"
+	errPaneIDRequired      = "pane ID is required"
 )
 
 func setSessionOption(ctx context.Context, session, option string, enabled bool) error {

@@ -304,6 +304,8 @@ The optional `webhookURL` field configures a webhook endpoint that receives a PO
 | `PATCH` | `/api/ops/config`            | Update editable config sections |
 | `PATCH` | `/api/ops/settings/timezone` | Update timezone                 |
 | `PATCH` | `/api/ops/settings/locale`   | Update locale                   |
+| `GET`   | `/api/ops/settings/mcp`      | Read live MCP availability      |
+| `PATCH` | `/api/ops/settings/mcp`      | Enable or disable `/mcp` live   |
 
 ## Operations: Storage
 

@@ -56,6 +56,78 @@ func TestSettingsHandlersPersistConfig(t *testing.T) {
 	}
 }
 
+func TestMCPSettingsPersistAndChangeLiveState(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil)
+	state := &fakeMCPSettings{tokenConfigured: true}
+	h.mcpSettings = state
+	configPath := t.TempDir() + "/config.toml"
+	if err := os.WriteFile(configPath, []byte("[server]\ntoken = \"shared-token\"\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	h.configPath = configPath
+
+	patchW := httptest.NewRecorder()
+	patchR := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/mcp", strings.NewReader(`{"enabled":true}`))
+	h.patchMCPSettings(patchW, patchR)
+	if patchW.Code != http.StatusOK {
+		t.Fatalf("patchMCPSettings status = %d, want 200; body=%s", patchW.Code, patchW.Body.String())
+	}
+	if !state.enabled {
+		t.Fatal("MCP live state remained disabled")
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted struct {
+		MCP struct {
+			Enabled bool `toml:"enabled"`
+		} `toml:"mcp"`
+	}
+	if err := toml.Unmarshal(content, &persisted); err != nil {
+		t.Fatalf("parse persisted config: %v", err)
+	}
+	if !persisted.MCP.Enabled {
+		t.Fatalf("persisted MCP setting is disabled:\n%s", content)
+	}
+
+	getW := httptest.NewRecorder()
+	h.getMCPSettings(getW, httptest.NewRequest(http.MethodGet, "/api/ops/settings/mcp", nil))
+	if getW.Code != http.StatusOK || !strings.Contains(getW.Body.String(), `"endpoint":"/mcp"`) {
+		t.Fatalf("getMCPSettings response = %d %s", getW.Code, getW.Body.String())
+	}
+}
+
+func TestMCPSettingsRejectEnableWithoutSharedToken(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil)
+	h.mcpSettings = &fakeMCPSettings{}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/api/ops/settings/mcp", strings.NewReader(`{"enabled":true}`))
+	h.patchMCPSettings(w, r)
+
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "MCP_TOKEN_REQUIRED") {
+		t.Fatalf("patchMCPSettings response = %d %s", w.Code, w.Body.String())
+	}
+}
+
+type fakeMCPSettings struct {
+	enabled         bool
+	tokenConfigured bool
+}
+
+func (s *fakeMCPSettings) Enabled() bool { return s.enabled }
+
+func (s *fakeMCPSettings) TokenConfigured() bool { return s.tokenConfigured }
+
+func (s *fakeMCPSettings) SetEnabled(enabled bool) error {
+	s.enabled = enabled
+	return nil
+}
+
 func TestSettingsHandlersSerializeConcurrentWrites(t *testing.T) {
 	t.Parallel()
 

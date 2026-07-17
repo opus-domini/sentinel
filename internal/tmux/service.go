@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/opus-domini/sentinel/internal/userswitch"
 )
@@ -33,6 +34,28 @@ var SystemUsers []string // set once at startup from main
 var UserSwitchMethod = userswitch.DefaultMethod(runtime.GOOS) // set once at startup from config
 
 var execCommandContext = exec.CommandContext // var enables test injection
+
+// BuildControlCommand returns the executable and arguments for a persistent
+// tmux control-mode client. Multi-user targets use the same validated switch
+// path as one-shot tmux commands.
+func BuildControlCommand(user, session string) (string, []string, error) {
+	user = strings.TrimSpace(user)
+	session = strings.TrimSpace(session)
+	if session == "" {
+		return "", nil, &Error{Kind: ErrKindInvalidIdentifier, Msg: "session is required"}
+	}
+	if user != "" {
+		if err := verifySystemUser(user); err != nil {
+			return "", nil, &Error{Kind: ErrKindCommandFailed, Msg: err.Error()}
+		}
+	}
+	args := []string{"-C", "attach-session", "-f", "active-pane,ignore-size", "-t", session}
+	name, commandArgs, err := userswitch.BuildTmuxCommand(UserSwitchMethod, user, args, true)
+	if err != nil {
+		return "", nil, &Error{Kind: ErrKindCommandFailed, Msg: err.Error()}
+	}
+	return name, commandArgs, nil
+}
 
 // verifySystemUser checks that the username matches the safe character set
 // and exists in the in-memory system users list.
@@ -302,6 +325,21 @@ func (s Service) SendKeys(ctx context.Context, paneID, keys string, enter bool) 
 		return SendKeys(ctx, paneID, keys, enter)
 	}
 	return sendKeysVia(ctx, s.run, paneID, keys, enter)
+}
+
+// SendText sends text literally, preserving whitespace.
+func (s Service) SendText(ctx context.Context, paneID, text string) error {
+	return sendTextVia(ctx, s.run, paneID, text)
+}
+
+// SendKey sends one named tmux key such as Enter or C-c.
+func (s Service) SendKey(ctx context.Context, paneID, key string) error {
+	return sendKeyVia(ctx, s.run, paneID, key)
+}
+
+// CapturePaneScreen captures the visible pane as plain text.
+func (s Service) CapturePaneScreen(ctx context.Context, paneID string) (string, error) {
+	return capturePaneScreenVia(ctx, s.run, paneID)
 }
 
 // CapturePaneLines captures pane lines.

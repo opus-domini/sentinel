@@ -216,6 +216,7 @@ type configShowOutput struct {
 	Log          config.LogConfig       `json:"log"`
 	HealthReport configShowHealthReport `json:"health_report"`
 	Watchtower   configShowWatchtower   `json:"watchtower"`
+	MCP          config.MCPConfig       `json:"mcp"`
 	Runbooks     config.RunbooksConfig  `json:"runbooks"`
 	MultiUser    configShowMultiUser    `json:"multi_user"`
 	SystemUsers  []string               `json:"system_users"`
@@ -275,6 +276,7 @@ func newConfigShowOutput(cfg config.Config) configShowOutput {
 			Schedule:   cfg.HealthReport.Schedule,
 		},
 		Runbooks: cfg.Runbooks,
+		MCP:      cfg.MCP,
 		MultiUser: configShowMultiUser{
 			AllowedUsers:     nonNilStrings(cfg.MultiUser.AllowedUsers),
 			AllowRootTarget:  cfg.MultiUser.AllowRootTarget,
