@@ -31,6 +31,7 @@ import { shouldSkipInspectorRefresh } from '@/lib/tmuxInspectorRefresh'
 import { moveSidebarItem } from '@/lib/sessionSidebarOrder'
 import { createTmuxOperationId } from '@/lib/tmuxOperationId'
 import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName } from '@/lib/tmuxName'
+import { deriveTmuxCloseTransition } from '@/lib/tmuxCloseTransition'
 import {
   addPendingPaneClose,
   addPendingWindowClose,
@@ -1278,6 +1279,34 @@ export function useInspector(options: UseInspectorOptions) {
     tabsStateRef,
   ])
 
+  const finalizeEndedSession = useCallback(
+    (session: string, reason: string) => {
+      pendingKillSessionsRef.current.add(session)
+      clearPendingInspectorSessionState(session)
+      queryClient.removeQueries({ queryKey: tmuxInspectorQueryKey(session), exact: true })
+      setSessions((prev) => prev.filter((item) => item.name !== session))
+      setWindows([])
+      setPanes([])
+      setActiveWindowIndexOverride(null)
+      setActivePaneIDOverride(null)
+      closeCurrentSocket(reason)
+      resetTerminal()
+      dispatchTabs({ type: 'close', session })
+      setConnection('disconnected', reason)
+      void refreshSessions()
+    },
+    [
+      clearPendingInspectorSessionState,
+      closeCurrentSocket,
+      dispatchTabs,
+      queryClient,
+      refreshSessions,
+      resetTerminal,
+      setConnection,
+      setSessions,
+    ],
+  )
+
   const closeWindow = useCallback(
     (windowIndex: number) => {
       const active = tabsStateRef.current.activeSession
@@ -1286,14 +1315,15 @@ export function useInspector(options: UseInspectorOptions) {
         (windowInfo) => windowInfo.session === active,
       )
       const currentPanes = panesRef.current.filter((paneInfo) => paneInfo.session === active)
-      const removedPaneCount = currentPanes.filter(
-        (paneInfo) => paneInfo.windowIndex === windowIndex,
-      ).length
       const changedAt = new Date().toISOString()
-      const rem = currentWindows.filter((w) => w.index !== windowIndex)
-      const remP = currentPanes.filter((p) => p.windowIndex !== windowIndex)
-      const ord = [...rem].sort((a, b) => a.index - b.index)
-      const isLastWindow = rem.length === 0
+      const transition = deriveTmuxCloseTransition(
+        currentWindows,
+        currentPanes,
+        activeWindowOverrideRef.current,
+        activePaneOverrideRef.current,
+        { type: 'window', windowIndex },
+      )
+      if (!transition.removed) return
 
       const killWindow = () => {
         return api<void>(`/api/tmux/sessions/${encodeURIComponent(active)}/kill-window`, {
@@ -1307,20 +1337,6 @@ export function useInspector(options: UseInspectorOptions) {
         void refreshSessions()
       }
 
-      const finalizeLastWindowClose = () => {
-        pendingKillSessionsRef.current.add(active)
-        setSessions((prev) => prev.filter((item) => item.name !== active))
-        setWindows([])
-        setPanes([])
-        setActiveWindowIndexOverride(null)
-        setActivePaneIDOverride(null)
-        closeCurrentSocket('last window closed')
-        resetTerminal()
-        dispatchTabs({ type: 'close', session: active })
-        setConnection('disconnected', 'last window closed')
-        void refreshSessions()
-      }
-
       const handleLastWindowCloseError = (error: unknown) => {
         const msg = error instanceof Error ? error.message : 'failed to close window'
         setInspectorError(msg)
@@ -1329,48 +1345,31 @@ export function useInspector(options: UseInspectorOptions) {
       }
 
       setInspectorError('')
-      if (isLastWindow) {
-        void killWindow().then(finalizeLastWindowClose).catch(handleLastWindowCloseError)
+      if (transition.sessionEnded) {
+        void killWindow()
+          .then(() => finalizeEndedSession(active, 'last window closed'))
+          .catch(handleLastWindowCloseError)
         return
-      } else {
-        removePendingWindowCreate(pendingCreateWindowsRef.current, active, windowIndex)
-        addPendingWindowClose(pendingCloseWindowsRef.current, active, windowIndex)
-        clearPendingWindowPaneFloor(pendingWindowPaneFloorsRef.current, active, windowIndex)
-        const currentActiveWindowIndex =
-          activeWindowOverrideRef.current ?? currentWindows.find((w) => w.active)?.index ?? null
-
-        let nextWI: number | null = null
-        if (
-          currentActiveWindowIndex !== null &&
-          ord.some((w) => w.index === currentActiveWindowIndex)
-        )
-          nextWI = currentActiveWindowIndex
-        if (nextWI === null) {
-          const h = ord.find((w) => w.index > windowIndex)
-          nextWI = h ? h.index : (ord.at(-1)?.index ?? null)
-        }
-        let nextPI: string | null = null
-        if (nextWI !== null) {
-          const ap = remP.find((p) => p.windowIndex === nextWI && p.active)
-          nextPI = ap ? ap.paneId : (remP.find((p) => p.windowIndex === nextWI)?.paneId ?? null)
-        }
-        setSessions((prev) =>
-          prev.map((item) =>
-            item.name === active
-              ? {
-                  ...item,
-                  windows: Math.max(0, item.windows - 1),
-                  panes: Math.max(0, item.panes - Math.max(1, removedPaneCount)),
-                  activityAt: changedAt,
-                }
-              : item,
-          ),
-        )
-        setWindows(rem.map((w) => ({ ...w, active: w.index === nextWI })))
-        setPanes(remP.map((p) => ({ ...p, active: p.paneId === nextPI })))
-        setActiveWindowIndexOverride(nextWI)
-        setActivePaneIDOverride(nextPI)
       }
+      removePendingWindowCreate(pendingCreateWindowsRef.current, active, windowIndex)
+      addPendingWindowClose(pendingCloseWindowsRef.current, active, windowIndex)
+      clearPendingWindowPaneFloor(pendingWindowPaneFloorsRef.current, active, windowIndex)
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.name === active
+            ? {
+                ...item,
+                windows: Math.max(0, item.windows - 1),
+                panes: Math.max(0, item.panes - Math.max(1, transition.removedPaneCount)),
+                activityAt: changedAt,
+              }
+            : item,
+        ),
+      )
+      setWindows(transition.windows)
+      setPanes(transition.panes)
+      setActiveWindowIndexOverride(transition.activeWindowIndex)
+      setActivePaneIDOverride(transition.activePaneID)
       void killWindow()
         .then(() => {
           removePendingWindowClose(pendingCloseWindowsRef.current, active, windowIndex)
@@ -1388,13 +1387,10 @@ export function useInspector(options: UseInspectorOptions) {
     },
     [
       api,
-      closeCurrentSocket,
-      dispatchTabs,
+      finalizeEndedSession,
       pushErrorToast,
       refreshInspector,
       refreshSessions,
-      resetTerminal,
-      setConnection,
       setSessions,
       tabsStateRef,
     ],
@@ -1407,77 +1403,76 @@ export function useInspector(options: UseInspectorOptions) {
       if (isPendingSplitPaneID(paneID)) return
       const changedAt = new Date().toISOString()
       addPendingPaneClose(pendingClosePanesRef.current, active, paneID)
-      const removed = panes.find((p) => p.paneId === paneID)
-      const remP = panes.filter((p) => p.paneId !== paneID)
-      const countByW = new Map<number, number>()
-      for (const p of remP) countByW.set(p.windowIndex, (countByW.get(p.windowIndex) ?? 0) + 1)
-      const remW = windows
-        .filter((w) => countByW.has(w.index))
-        .map((w) => ({ ...w, panes: countByW.get(w.index) ?? 0 }))
-      const ord = [...remW].sort((a, b) => a.index - b.index)
-
-      const currentActiveWindowIndex =
-        activeWindowOverrideRef.current ?? windows.find((w) => w.active)?.index ?? null
-      const currentActivePaneID =
-        activePaneOverrideRef.current ?? panes.find((p) => p.active)?.paneId ?? null
-
-      let nextWI: number | null = null
-      if (
-        currentActiveWindowIndex !== null &&
-        ord.some((w) => w.index === currentActiveWindowIndex)
+      const transition = deriveTmuxCloseTransition(
+        windows,
+        panes,
+        activeWindowOverrideRef.current,
+        activePaneOverrideRef.current,
+        { type: 'pane', paneID },
       )
-        nextWI = currentActiveWindowIndex
-      if (nextWI === null && removed && ord.some((w) => w.index === removed.windowIndex))
-        nextWI = removed.windowIndex
-      if (nextWI === null) nextWI = ord.at(0)?.index ?? null
-      let nextPI: string | null = null
-      if (currentActivePaneID !== null && remP.some((p) => p.paneId === currentActivePaneID))
-        nextPI = currentActivePaneID
-      if (nextPI === null && nextWI !== null) {
-        const ap = remP.find((p) => p.windowIndex === nextWI && p.active)
-        nextPI = ap ? ap.paneId : (remP.find((p) => p.windowIndex === nextWI)?.paneId ?? null)
+      if (!transition.removed) {
+        removePendingPaneClose(pendingClosePanesRef.current, active, paneID)
+        return
       }
-      const removedWindow = removed ? !remW.some((w) => w.index === removed.windowIndex) : false
-      if (removed && removedWindow) {
-        removePendingWindowCreate(pendingCreateWindowsRef.current, active, removed.windowIndex)
-        addPendingWindowClose(pendingCloseWindowsRef.current, active, removed.windowIndex)
-      }
-      if (removed) {
-        clearPendingWindowPaneFloor(pendingWindowPaneFloorsRef.current, active, removed.windowIndex)
+      const removedWindowIndex = transition.removedWindowIndex
+      if (removedWindowIndex !== null) {
+        removePendingWindowCreate(pendingCreateWindowsRef.current, active, removedWindowIndex)
+        addPendingWindowClose(pendingCloseWindowsRef.current, active, removedWindowIndex)
+        clearPendingWindowPaneFloor(pendingWindowPaneFloorsRef.current, active, removedWindowIndex)
       }
       setInspectorError('')
+      const killPane = () =>
+        api<void>(`/api/tmux/sessions/${encodeURIComponent(active)}/kill-pane`, {
+          method: 'POST',
+          body: JSON.stringify({ paneId: paneID }),
+        })
+
+      if (transition.sessionEnded) {
+        void killPane()
+          .then(() => finalizeEndedSession(active, 'last pane closed'))
+          .catch((error) => {
+            removePendingPaneClose(pendingClosePanesRef.current, active, paneID)
+            if (removedWindowIndex !== null) {
+              removePendingWindowClose(pendingCloseWindowsRef.current, active, removedWindowIndex)
+            }
+            const msg = error instanceof Error ? error.message : 'failed to close pane'
+            setInspectorError(msg)
+            pushErrorToast('Kill Pane', msg)
+            void refreshInspector(active, { background: true })
+            void refreshSessions()
+          })
+        return
+      }
+
       setSessions((prev) =>
         prev.map((item) =>
           item.name === active
             ? {
                 ...item,
                 panes: Math.max(0, item.panes - 1),
-                windows: removedWindow ? Math.max(0, item.windows - 1) : item.windows,
+                windows: removedWindowIndex !== null ? Math.max(0, item.windows - 1) : item.windows,
                 activityAt: changedAt,
               }
             : item,
         ),
       )
-      setWindows(remW.map((w) => ({ ...w, active: w.index === nextWI })))
-      setPanes(remP.map((p) => ({ ...p, active: p.paneId === nextPI })))
-      setActiveWindowIndexOverride(nextWI)
-      setActivePaneIDOverride(nextPI)
-      void api<void>(`/api/tmux/sessions/${encodeURIComponent(active)}/kill-pane`, {
-        method: 'POST',
-        body: JSON.stringify({ paneId: paneID }),
-      })
+      setWindows(transition.windows)
+      setPanes(transition.panes)
+      setActiveWindowIndexOverride(transition.activeWindowIndex)
+      setActivePaneIDOverride(transition.activePaneID)
+      void killPane()
         .then(() => {
           removePendingPaneClose(pendingClosePanesRef.current, active, paneID)
-          if (removedWindow && removed) {
-            removePendingWindowClose(pendingCloseWindowsRef.current, active, removed.windowIndex)
+          if (removedWindowIndex !== null) {
+            removePendingWindowClose(pendingCloseWindowsRef.current, active, removedWindowIndex)
           }
           void refreshInspector(active, { background: true })
           void refreshSessions()
         })
         .catch((error) => {
           removePendingPaneClose(pendingClosePanesRef.current, active, paneID)
-          if (removedWindow && removed) {
-            removePendingWindowClose(pendingCloseWindowsRef.current, active, removed.windowIndex)
+          if (removedWindowIndex !== null) {
+            removePendingWindowClose(pendingCloseWindowsRef.current, active, removedWindowIndex)
           }
           const msg = error instanceof Error ? error.message : 'failed to close pane'
           setInspectorError(msg)
@@ -1488,6 +1483,7 @@ export function useInspector(options: UseInspectorOptions) {
     },
     [
       api,
+      finalizeEndedSession,
       panes,
       pushErrorToast,
       refreshInspector,

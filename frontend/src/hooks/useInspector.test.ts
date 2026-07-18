@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useInspector } from './useInspector'
 import type { ReactNode } from 'react'
 import { buildPendingSplitPaneID } from '@/lib/tmuxInspectorOptimistic'
+import { tmuxInspectorQueryKey } from '@/lib/tmuxQueryCache'
 import type { PaneInfo, Session, WindowInfo } from '@/types'
 import type { ApiFunction, RuntimeMetrics, TabsStateRef } from './tmuxTypes'
 
@@ -1355,5 +1356,93 @@ describe('useInspector – closeWindow', () => {
     expect(opts.resetTerminal).not.toHaveBeenCalled()
     expect(opts.dispatchTabs).not.toHaveBeenCalled()
     expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(false)
+  })
+})
+
+describe('useInspector – closePane', () => {
+  it('removes the session, tab, terminal and cached inspector after its last pane closes', async () => {
+    const opts = createMockOptions({
+      windows: [makeWindow({ index: 0, active: true })],
+      panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+    })
+    const { queryClient, wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.panes).toHaveLength(1)
+    })
+    queryClient.setQueryData(tmuxInspectorQueryKey('dev'), {
+      windows: result.current.windows,
+      panes: result.current.panes,
+    })
+    expect(queryClient.getQueryData(tmuxInspectorQueryKey('dev'))).toBeDefined()
+
+    await act(async () => {
+      result.current.closePane('%1')
+      await waitFor(() => {
+        expect(opts.dispatchTabs).toHaveBeenCalledWith({
+          type: 'close',
+          session: 'dev',
+        })
+      })
+    })
+
+    expect(result.current.windows).toEqual([])
+    expect(result.current.panes).toEqual([])
+    expect(result.current.activeWindowIndexOverride).toBeNull()
+    expect(result.current.activePaneIDOverride).toBeNull()
+    expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(true)
+    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last pane closed')
+    expect(opts.resetTerminal).toHaveBeenCalled()
+    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last pane closed')
+    expect(queryClient.getQueryData(tmuxInspectorQueryKey('dev'))).toBeUndefined()
+
+    const removeSession = opts.setSessions.mock.calls.at(-1)?.[0]
+    expect(typeof removeSession).toBe('function')
+    if (typeof removeSession === 'function') {
+      expect(removeSession([makeSession('dev')])).toEqual([])
+    }
+  })
+
+  it('keeps the session recoverable when closing its last pane fails', async () => {
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({ windows: [makeWindow({ index: 0, active: true })] })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/kill-pane')) {
+        return Promise.reject(new Error('tmux kill-pane failed'))
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+    const opts = createMockOptions({
+      api,
+      windows: [makeWindow({ index: 0, active: true })],
+      panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+    })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.panes).toHaveLength(1)
+    })
+
+    await act(async () => {
+      result.current.closePane('%1')
+      await waitFor(() => {
+        expect(opts.pushErrorToast).toHaveBeenCalledWith('Kill Pane', 'tmux kill-pane failed')
+      })
+    })
+
+    expect(result.current.windows).toHaveLength(1)
+    expect(result.current.panes).toHaveLength(1)
+    expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(false)
+    expect(opts.closeCurrentSocket).not.toHaveBeenCalled()
+    expect(opts.resetTerminal).not.toHaveBeenCalled()
+    expect(opts.dispatchTabs).not.toHaveBeenCalledWith({ type: 'close', session: 'dev' })
   })
 })
