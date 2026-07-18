@@ -39,7 +39,7 @@ func TestServerAvailabilityAndBearerAuthentication(t *testing.T) {
 	}
 }
 
-func TestOfficialClientListsSentinelToolsOverHTTP(t *testing.T) {
+func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	server := New(
 		NewState(true, true),
 		security.New("shared-token", nil, security.CookieSecureAuto),
@@ -53,8 +53,11 @@ func TestOfficialClientListsSentinelToolsOverHTTP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
-		Endpoint:             httpServer.URL,
-		HTTPClient:           &http.Client{Transport: bearerTransport{token: "shared-token"}},
+		Endpoint: httpServer.URL,
+		HTTPClient: &http.Client{Transport: bearerTransport{
+			token: "shared-token",
+			host:  "azdrix.example.ts.net",
+		}},
 		MaxRetries:           -1,
 		DisableStandaloneSSE: true,
 	}, nil)
@@ -89,10 +92,14 @@ func TestOfficialClientListsSentinelToolsOverHTTP(t *testing.T) {
 
 type bearerTransport struct {
 	token string
+	host  string
 }
 
 func (t bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	clone := req.Clone(req.Context())
 	clone.Header.Set("Authorization", "Bearer "+t.token)
+	if t.host != "" {
+		clone.Host = t.host
+	}
 	return http.DefaultTransport.RoundTrip(clone)
 }

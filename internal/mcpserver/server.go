@@ -58,6 +58,9 @@ func New(state *State, guard *security.Guard, opts Options) *Server {
 			Stateless:    true,
 			JSONResponse: true,
 			Logger:       slog.Default(),
+			// Sentinel validates Origin and Bearer authentication before the SDK.
+			// Reverse proxies may forward a public Host to the loopback listener.
+			DisableLocalhostProtection: true,
 		},
 	)
 	return &Server{
