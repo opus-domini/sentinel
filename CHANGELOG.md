@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/opus-domini/sentinel/compare/v0.10.2...v0.10.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* allow MCP through reverse proxies ([c4e1fd5](https://github.com/opus-domini/sentinel/commit/c4e1fd5faf0553e25dcdfbdef02a86beaa28eddd))
+
 ## [0.10.2](https://github.com/opus-domini/sentinel/compare/v0.10.1...v0.10.2) (2026-07-18)
 
 
