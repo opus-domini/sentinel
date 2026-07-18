@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.10.2](https://github.com/opus-domini/sentinel/compare/v0.10.1...v0.10.2) (2026-07-18)
+
+
+### Features
+
+* name MCP clients after host ([8c30553](https://github.com/opus-domini/sentinel/commit/8c30553375881f90845817b7dd9924ed706f0ba2))
+
+
+### Bug Fixes
+
+* diagnose deployment scope before unit access ([63bcea1](https://github.com/opus-domini/sentinel/commit/63bcea1afe675fd63bc165272bd5cfc2e89278b3))
+* reconcile tmux close transitions ([920082c](https://github.com/opus-domini/sentinel/commit/920082ca1c59bee33e32ad5d67c1b3fa25296104))
+* unify managed deployment scope ([2608b01](https://github.com/opus-domini/sentinel/commit/2608b015033376cdfb7cf9a35fd46b0695841d38))
+
+
+### CI
+
+* re-pin the canonical ductor runner contract ([e7723c9](https://github.com/opus-domini/sentinel/commit/e7723c96bea9bdc48bfdd541096734eab3ddf81e))
+
 ## [0.10.1](https://github.com/opus-domini/sentinel/compare/v0.10.0...v0.10.1) (2026-07-17)
 
 
