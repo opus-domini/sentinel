@@ -124,12 +124,13 @@ sentinel daemon
 ### Install
 
 ```bash
-sentinel service install --exec PATH --enable=true --start=true
+sentinel service install --scope auto|user|system --exec PATH --enable=true --start=true
 ```
 
 Flags:
 
 - `--exec`: binary path for service unit (optional, defaults to current executable).
+- `--scope`: preserve/select `auto`, `user`, or `system` deployment scope.
 - `--enable`: enable at boot/login.
 - `--start`: start immediately.
 
@@ -137,7 +138,7 @@ Flags:
 
 ```bash
 sentinel service uninstall --disable=true --stop=true --remove-unit=true
-sentinel service uninstall --purge
+sentinel service uninstall --scope auto|user|system --purge
 ```
 
 Flags:
@@ -146,7 +147,8 @@ Flags:
 - `--stop`: stop service.
 - `--remove-unit`: remove managed unit/plist.
 - `--purge`: also remove the autoupdate timer, the bash completion and the
-  sentinel binary. User data in `~/.sentinel` is left intact.
+  deployment binary. The binary is retained if another deployment uses it.
+  Runtime data is left intact.
 
 `--purge` is the full teardown — it is what `make uninstall` runs.
 
@@ -159,8 +161,8 @@ sentinel service status
 Reports the managed service in **every scope where it is installed** — user and
 system — regardless of the euid the command runs under. A system service
 installed with `sudo` is still reported when `status` is run as a normal user.
-Prints the unit path, existence, manager availability, and enabled/active state
-per scope.
+Prints the unit, binary, config and data paths plus manager availability and
+enabled/active state per scope.
 
 `uninstall`, `logs` and the lifecycle commands (`start`/`stop`/`restart`/
 `enable`/`disable`) likewise act on the scope the service is actually installed
@@ -169,7 +171,7 @@ in; modifying a system-scope service still requires `sudo`.
 ### Logs
 
 ```bash
-sentinel service logs --follow --lines 50
+sentinel service logs --scope auto|user|system --follow --lines 50
 ```
 
 Flags:
@@ -192,6 +194,7 @@ sentinel service disable
 Drive the managed unit directly: `start`, `stop` and `restart` control the
 running service; `enable` and `disable` control whether it launches on
 boot/login. These map to `systemctl` on Linux and `launchctl` on macOS.
+All lifecycle commands accept `--scope auto|user|system`.
 
 ## `sentinel service autoupdate`
 
@@ -199,11 +202,9 @@ boot/login. These map to `systemctl` on Linux and `launchctl` on macOS.
 
 ```bash
 sentinel service autoupdate install \
-  --exec PATH \
   --enable=true \
   --start=true \
-  --service sentinel \
-  --scope auto|user|system|launchd \
+  --scope auto|user|system \
   --on-calendar daily \
   --randomized-delay 1h
 ```
@@ -213,13 +214,13 @@ sentinel service autoupdate install \
 ```bash
 sentinel service autoupdate uninstall \
   --disable=true --stop=true --remove-unit=true \
-  --scope auto|user|system|launchd
+  --scope auto|user|system
 ```
 
 ### Status
 
 ```bash
-sentinel service autoupdate status --scope auto|user|system|launchd
+sentinel service autoupdate status --scope auto|user|system
 ```
 
 ## `sentinel doctor`
@@ -238,7 +239,7 @@ cause, and the command exits non-zero when any problem is found.
 ### Check
 
 ```bash
-sentinel update check --repo owner/name --api URL --os linux --arch amd64
+sentinel update check --scope auto|user|system --repo owner/name --api URL --os linux --arch amd64
 ```
 
 ### Apply
@@ -253,25 +254,31 @@ sentinel update apply \
   --allow-downgrade=false \
   --allow-unverified=false \
   --restart=true \
-  --service sentinel \
   --scope auto|user|system
 ```
 
 Successful applies restart the managed service by default so the new binary is
-the running binary. Restart scope defaults to `auto`: root targets the system
-service, and a normal user targets the user service. Use `--scope user` or
-`--scope system` when you need to override that decision. Use `--restart=false`
-only when you intentionally want to install the binary now and restart Sentinel
-yourself later.
+the running binary. Before loading configuration or downloading a release, the
+command detects whether the installed service is in user or system scope. A
+normal user invoking apply against a system installation is stopped immediately
+with `sudo sentinel update apply --scope system`, instead of reading the user's
+unrelated config or failing later while writing the system binary. Use
+`--scope user` or `--scope system` to select explicitly when both installations
+exist; `auto` rejects that ambiguous state. Use `--restart=false` only when you
+intentionally want to install the binary now and restart Sentinel yourself
+later.
 
 Before replacing the installed executable, the updater runs the downloaded
 candidate against the current effective configuration. An incompatible release
 is rejected while the running binary remains untouched.
+If restart or the post-restart health check fails, the updater reports whether
+the previous binary was actually restored and restarted; rollback failures are
+never described as successful.
 
 ### Status
 
 ```bash
-sentinel update status
+sentinel update status --scope auto|user|system
 ```
 
 ## `sentinel completion`

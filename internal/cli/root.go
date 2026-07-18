@@ -11,7 +11,7 @@ import (
 func newRootCmd(app *App) *cobra.Command {
 	var configPath string
 	root := &cobra.Command{
-		Use:   "sentinel",
+		Use:   sentinelServiceUnit,
 		Short: "Sentinel command-line interface",
 		Long: "Sentinel is a host operations platform: a single binary serving a\n" +
 			"browser UI for tmux sessions, service monitoring, metrics and runbooks.\n" +

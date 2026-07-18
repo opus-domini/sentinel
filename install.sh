@@ -7,7 +7,7 @@ set -euo pipefail
 #   curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash
 #
 # The installer downloads a published GitHub release archive, verifies its
-# checksum when possible, installs the binary, installs shell completion through
+# checksum, installs the binary, installs shell completion through
 # `sentinel completion install --shell auto`, and optionally installs the host
 # service. It never edits shell rc files.
 #
@@ -16,6 +16,7 @@ set -euo pipefail
 #   INSTALL_DIR        Binary install directory (default: ~/.local/bin, or /usr/local/bin as root)
 #   VERSION            Specific version to install, with or without "v" (default: latest)
 #   INSTALL_SERVICE    Set to 0/false/no/off to skip service installation
+#   INSTALL_SCOPE      Installation scope: auto, user, or system (default: auto)
 #   ENABLE_AUTOUPDATE  Set to 1/true/yes/on to install and enable daily autoupdate
 
 # --- Configuration ----------------------------------------------------------
@@ -24,18 +25,11 @@ APP="sentinel"
 PROJECT="Sentinel"
 REPO="${REPO:-opus-domini/sentinel}"
 INSTALL_SERVICE="${INSTALL_SERVICE:-1}"
+INSTALL_SCOPE="${INSTALL_SCOPE:-auto}"
 ENABLE_AUTOUPDATE="${ENABLE_AUTOUPDATE:-0}"
 IS_ROOT=0
 if [ "$(id -u)" -eq 0 ]; then
   IS_ROOT=1
-fi
-
-if [ -z "${INSTALL_DIR:-}" ]; then
-  if [ "$IS_ROOT" -eq 1 ]; then
-    INSTALL_DIR="/usr/local/bin"
-  else
-    INSTALL_DIR="${HOME:?HOME is required}/.local/bin"
-  fi
 fi
 
 # --- Output helpers ---------------------------------------------------------
@@ -107,39 +101,34 @@ checksum_tool() {
 
 install_systemd_service() {
   if ! command -v systemctl >/dev/null 2>&1; then
-    warn "systemctl not found; skipping service installation"
-    if is_true "$ENABLE_AUTOUPDATE"; then
-      warn "autoupdate requires systemctl on Linux; skipping autoupdate setup"
-    fi
-    return 0
+    fail "systemctl not found; set INSTALL_SERVICE=0 for a standalone installation"
   fi
 
-  if [ "$IS_ROOT" -eq 1 ]; then
+  if [ "$RESOLVED_SCOPE" = "system" ]; then
     info "Installing systemd system service..."
-    if "$TARGET" service install --exec "$TARGET" --enable=true --start=true; then
+    if "$TARGET" service install --scope system --exec "$TARGET" --enable=true --start=true; then
       ok "systemd system service installed and started"
       if is_true "$ENABLE_AUTOUPDATE"; then
         info "Enabling daily autoupdate timer (system scope)..."
-        "$TARGET" service autoupdate install --exec "$TARGET" --enable=true --start=true --service sentinel --scope system \
+        "$TARGET" service autoupdate install --enable=true --start=true --scope system \
           && ok "Autoupdate timer enabled" \
-          || warn "failed to enable autoupdate timer; retry with: sentinel service autoupdate install --scope system"
+          || rollback_install "failed to enable the system autoupdate timer"
       fi
     else
-      warn "service installation failed; retry with: ${TARGET} service install --exec ${TARGET}"
+      rollback_install "system service installation failed"
     fi
   else
     info "Installing systemd user service..."
-    if "$TARGET" service install --exec "$TARGET" --enable=true --start=true; then
+    if "$TARGET" service install --scope user --exec "$TARGET" --enable=true --start=true; then
       ok "systemd user service installed and restarted"
       if is_true "$ENABLE_AUTOUPDATE"; then
         info "Enabling daily autoupdate timer (user scope)..."
-        "$TARGET" service autoupdate install --exec "$TARGET" --enable=true --start=true --service sentinel --scope user \
+        "$TARGET" service autoupdate install --enable=true --start=true --scope user \
           && ok "Autoupdate timer enabled" \
-          || warn "failed to enable autoupdate timer; retry with: sentinel service autoupdate install"
+          || rollback_install "failed to enable the user autoupdate timer"
       fi
     else
-      warn "service installation failed; retry with: ${TARGET} service install --exec ${TARGET}"
-      warn "if no active user bus is available, login to the target user session and retry"
+      rollback_install "user service installation failed; ensure the target user has an active systemd session"
     fi
   fi
 }
@@ -148,23 +137,23 @@ install_launchd_service() {
   local scope_label="user"
   local log_path="~/.sentinel/logs/sentinel.out.log"
 
-  if [ "$IS_ROOT" -eq 1 ]; then
+  if [ "$RESOLVED_SCOPE" = "system" ]; then
     scope_label="system"
     log_path="/var/log/sentinel/sentinel.out.log"
   fi
 
   info "Installing launchd ${scope_label} service..."
-  if "$TARGET" service install --exec "$TARGET" --enable=true --start=true; then
+  if "$TARGET" service install --scope "$RESOLVED_SCOPE" --exec "$TARGET" --enable=true --start=true; then
     ok "launchd ${scope_label} service installed and started"
     if is_true "$ENABLE_AUTOUPDATE"; then
       info "Enabling daily autoupdate with launchd (${scope_label} scope)..."
-      "$TARGET" service autoupdate install --exec "$TARGET" --enable=true --start=true --service io.opusdomini.sentinel --scope launchd --on-calendar daily \
+      "$TARGET" service autoupdate install --enable=true --start=true --scope "$RESOLVED_SCOPE" --on-calendar daily \
         && ok "launchd autoupdate enabled" \
-        || warn "failed to enable launchd autoupdate; retry with: sentinel service autoupdate install --scope launchd"
+        || rollback_install "failed to enable launchd autoupdate"
     fi
     info "Service logs: tail -f ${log_path}"
   else
-    warn "service installation failed; retry with: ${TARGET} service install --exec ${TARGET}"
+    rollback_install "launchd service installation failed"
   fi
 }
 
@@ -175,6 +164,71 @@ case "$OS" in
   linux|darwin) ;;
   *) fail "unsupported OS: $OS" ;;
 esac
+
+# --- Deployment scope preflight ---------------------------------------------
+
+case "$INSTALL_SCOPE" in
+  auto|user|system) ;;
+  *) fail "invalid INSTALL_SCOPE=${INSTALL_SCOPE}; expected auto, user, or system" ;;
+esac
+
+USER_HOME="${HOME:?HOME is required}"
+if [ "$IS_ROOT" -eq 1 ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ] && command -v getent >/dev/null 2>&1; then
+  SUDO_HOME=$(getent passwd "$SUDO_USER" | awk -F: '{print $6}')
+  if [ -n "$SUDO_HOME" ]; then
+    USER_HOME="$SUDO_HOME"
+  fi
+fi
+
+if [ "$OS" = "linux" ]; then
+  USER_SERVICE_PATH="${USER_HOME}/.config/systemd/user/sentinel.service"
+  SYSTEM_SERVICE_PATH="/etc/systemd/system/sentinel.service"
+else
+  USER_SERVICE_PATH="${USER_HOME}/Library/LaunchAgents/io.opusdomini.sentinel.plist"
+  SYSTEM_SERVICE_PATH="/Library/LaunchDaemons/io.opusdomini.sentinel.plist"
+fi
+
+HAS_USER_SERVICE=0
+HAS_SYSTEM_SERVICE=0
+[ -f "$USER_SERVICE_PATH" ] && HAS_USER_SERVICE=1
+[ -f "$SYSTEM_SERVICE_PATH" ] && HAS_SYSTEM_SERVICE=1
+
+if [ "$HAS_USER_SERVICE" -eq 1 ] && [ "$HAS_SYSTEM_SERVICE" -eq 1 ]; then
+  fail "Sentinel is installed in both user and system scope; remove one deployment before installing"
+fi
+
+EXISTING_SCOPE=""
+[ "$HAS_USER_SERVICE" -eq 1 ] && EXISTING_SCOPE="user"
+[ "$HAS_SYSTEM_SERVICE" -eq 1 ] && EXISTING_SCOPE="system"
+
+RESOLVED_SCOPE="$INSTALL_SCOPE"
+if [ "$RESOLVED_SCOPE" = "auto" ]; then
+  if [ -n "$EXISTING_SCOPE" ]; then
+    RESOLVED_SCOPE="$EXISTING_SCOPE"
+  elif [ "$IS_ROOT" -eq 1 ]; then
+    RESOLVED_SCOPE="system"
+  else
+    RESOLVED_SCOPE="user"
+  fi
+fi
+
+if [ -n "$EXISTING_SCOPE" ] && [ "$EXISTING_SCOPE" != "$RESOLVED_SCOPE" ]; then
+  fail "Sentinel is already installed in ${EXISTING_SCOPE} scope; uninstall it before installing in ${RESOLVED_SCOPE} scope"
+fi
+if [ "$RESOLVED_SCOPE" = "system" ] && [ "$IS_ROOT" -ne 1 ]; then
+  fail "Sentinel is installed system-wide; re-run the installer as root with INSTALL_SCOPE=system"
+fi
+if [ "$RESOLVED_SCOPE" = "user" ] && [ "$IS_ROOT" -eq 1 ]; then
+  fail "Sentinel is installed for ${SUDO_USER:-a user}; run the installer as that user without sudo"
+fi
+
+if [ -z "${INSTALL_DIR:-}" ]; then
+  if [ "$RESOLVED_SCOPE" = "system" ]; then
+    INSTALL_DIR="/usr/local/bin"
+  else
+    INSTALL_DIR="${USER_HOME}/.local/bin"
+  fi
+fi
 
 case "$(uname -m)" in
   x86_64|amd64) ARCH="amd64" ;;
@@ -252,24 +306,63 @@ if tool=$(checksum_tool); then
     fi
     ok "Checksum verified for ${ARCHIVE}"
   else
-    warn "${CHECKSUMS_FILE} not found for ${VERSION}; proceeding without checksum verification"
+    fail "${CHECKSUMS_FILE} not found for ${VERSION}; refusing an unverified installation"
   fi
 else
-  warn "no checksum tool found (sha256sum/shasum); release integrity verification will be skipped"
+  fail "sha256sum or shasum is required to verify the release"
 fi
 
 tar -xzf "${TMP}/${ARCHIVE}" -C "$TMP" || fail "extraction failed"
 [ -x "${TMP}/${APP}" ] || fail "archive did not contain an executable ${APP} binary"
 
+if [ "$RESOLVED_SCOPE" = "system" ]; then
+  CONFIG_PATH="/etc/sentinel/config.toml"
+  DATA_DIR="/var/lib/sentinel"
+  if [ ! -f "$CONFIG_PATH" ] && [ -f "/root/.sentinel/config.toml" ]; then
+    CONFIG_PATH="/root/.sentinel/config.toml"
+    DATA_DIR="/root/.sentinel"
+  fi
+else
+  CONFIG_PATH="${USER_HOME}/.sentinel/config.toml"
+  DATA_DIR="${USER_HOME}/.sentinel"
+fi
+
+SENTINEL_DATA_DIR="$DATA_DIR" "${TMP}/${APP}" --config "$CONFIG_PATH" config validate --effective \
+  || fail "the downloaded Sentinel version rejected ${CONFIG_PATH}"
+
 # --- Binary installation ----------------------------------------------------
 
 mkdir -p "$INSTALL_DIR"
 TARGET="${INSTALL_DIR}/${APP}"
+SENTINEL_DATA_DIR="$DATA_DIR" "${TMP}/${APP}" --config "$CONFIG_PATH" service install --check --scope "$RESOLVED_SCOPE" --exec "$TARGET" \
+  || fail "installation preflight failed before replacing ${TARGET}"
+PREVIOUS_BINARY=""
+if [ -f "$TARGET" ]; then
+  PREVIOUS_BINARY="${TMP}/${APP}.previous"
+  cp -p "$TARGET" "$PREVIOUS_BINARY"
+fi
+
+rollback_install() {
+  local reason="$1"
+  if [ -n "$PREVIOUS_BINARY" ] && [ -f "$PREVIOUS_BINARY" ]; then
+    if ! cp -p "$PREVIOUS_BINARY" "$TARGET"; then
+      fail "$reason; rollback also failed to restore the previous binary at ${TARGET}"
+    fi
+    if "$TARGET" service restart --scope "$RESOLVED_SCOPE" >/dev/null 2>&1; then
+      fail "$reason; the previous binary was restored and restarted"
+    fi
+    fail "$reason; the previous binary was restored, but its service could not be restarted"
+  fi
+  "$TARGET" service uninstall --scope "$RESOLVED_SCOPE" >/dev/null 2>&1 || true
+  rm -f "$TARGET" || fail "$reason; cleanup also failed to remove ${TARGET}"
+  fail "$reason; the incomplete binary installation was removed"
+}
+
 if command -v install >/dev/null 2>&1; then
-  install -m 0755 "${TMP}/${APP}" "$TARGET"
+  install -m 0755 "${TMP}/${APP}" "$TARGET" || rollback_install "binary installation failed"
 else
-  cp "${TMP}/${APP}" "$TARGET"
-  chmod 0755 "$TARGET"
+  cp "${TMP}/${APP}" "$TARGET" || rollback_install "binary installation failed"
+  chmod 0755 "$TARGET" || rollback_install "setting binary permissions failed"
 fi
 ok "Installed ${PROJECT} to ${TARGET}"
 

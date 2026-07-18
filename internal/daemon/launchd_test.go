@@ -12,7 +12,7 @@ import (
 func TestRenderLaunchdUserServicePlistIncludesExecStart(t *testing.T) {
 	t.Parallel()
 
-	plist := renderLaunchdUserServicePlist("/usr/local/bin/sentinel", "/tmp/sentinel.out.log", "/tmp/sentinel.err.log")
+	plist := renderLaunchdUserServicePlist("/usr/local/bin/sentinel", "", "", "/tmp/sentinel.out.log", "/tmp/sentinel.err.log")
 	if !strings.Contains(plist, "<string>/usr/local/bin/sentinel</string>") {
 		t.Fatalf("plist missing executable path: %s", plist)
 	}
@@ -29,6 +29,8 @@ func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
 
 	plist := renderLaunchdUserAutoUpdatePlist(
 		"/usr/local/bin/sentinel",
+		"",
+		"",
 		launchdServiceLabel,
 		managerScopeUser,
 		86400,
@@ -135,16 +137,8 @@ func TestNormalizeLaunchdScope(t *testing.T) {
 		t.Fatal("expected error for invalid scope")
 	}
 
-	got, err = normalizeLaunchdScope("")
-	if err != nil {
-		t.Fatalf("normalizeLaunchdScope(\"\") error: %v", err)
-	}
-	want := managerScopeUser
-	if os.Geteuid() == 0 {
-		want = managerScopeSystem
-	}
-	if got != want {
-		t.Fatalf("normalizeLaunchdScope(\"\") = %q, want %q", got, want)
+	if _, err = normalizeLaunchdScope(""); err == nil {
+		t.Fatal("normalizeLaunchdScope(\"\") error = nil")
 	}
 }
 
@@ -352,16 +346,8 @@ func TestEnsureLaunchdSupportedOnLinux(t *testing.T) {
 func TestNormalizeLaunchdScopeLaunchdAlias(t *testing.T) {
 	t.Parallel()
 
-	got, err := normalizeLaunchdScope(managerScopeLaunchd)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := managerScopeUser
-	if os.Geteuid() == 0 {
-		want = managerScopeSystem
-	}
-	if got != want {
-		t.Fatalf("normalizeLaunchdScope(launchd) = %q, want %q", got, want)
+	if _, err := normalizeLaunchdScope("launchd"); err == nil {
+		t.Fatal("normalizeLaunchdScope(launchd) error = nil")
 	}
 }
 
@@ -375,7 +361,6 @@ func TestNormalizeLaunchdScopeCaseInsensitive(t *testing.T) {
 		{"User", managerScopeUser},
 		{"SYSTEM", managerScopeSystem},
 		{" user ", managerScopeUser},
-		{"Launchd", managerScopeUser}, // non-root
 	}
 
 	for _, tc := range tests {
@@ -385,13 +370,8 @@ func TestNormalizeLaunchdScopeCaseInsensitive(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			want := tc.want
-			// For auto-like scopes, root changes the result
-			if (strings.TrimSpace(strings.ToLower(tc.input)) == "launchd") && os.Geteuid() == 0 {
-				want = managerScopeSystem
-			}
-			if got != want {
-				t.Fatalf("normalizeLaunchdScope(%q) = %q, want %q", tc.input, got, want)
+			if got != tc.want {
+				t.Fatalf("normalizeLaunchdScope(%q) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
 	}
@@ -535,7 +515,7 @@ func TestLaunchdStartIntervalNegative(t *testing.T) {
 func TestRenderLaunchdUserServicePlistXMLEscaping(t *testing.T) {
 	t.Parallel()
 
-	plist := renderLaunchdUserServicePlist("/path/with <special>&chars", "/tmp/out.log", "/tmp/err.log")
+	plist := renderLaunchdUserServicePlist("/path/with <special>&chars", "", "", "/tmp/out.log", "/tmp/err.log")
 	if strings.Contains(plist, "<special>") {
 		t.Fatal("plist should escape angle brackets in exec path")
 	}
@@ -552,6 +532,8 @@ func TestRenderLaunchdUserAutoUpdatePlistCustomInterval(t *testing.T) {
 
 	plist := renderLaunchdUserAutoUpdatePlist(
 		"/usr/bin/sentinel",
+		"",
+		"",
 		"custom.label",
 		managerScopeSystem,
 		3600,
@@ -604,18 +586,6 @@ func TestLaunchdLogPathsForScopeInvalid(t *testing.T) {
 	_, _, err := launchdLogPathsForScope("test-svc", "bogus")
 	if err == nil {
 		t.Fatal("expected error for invalid scope")
-	}
-}
-
-func TestUserServicePathLaunchdWrapper(t *testing.T) {
-	t.Parallel()
-
-	path, err := userServicePathLaunchd()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if path == "" {
-		t.Fatal("expected non-empty path")
 	}
 }
 
@@ -757,7 +727,7 @@ func TestLaunchdKickstartNoLaunchctl(t *testing.T) {
 func TestUserStatusLaunchdDirect(t *testing.T) {
 	t.Parallel()
 
-	st, err := userStatusLaunchdForScope("")
+	st, err := userStatusLaunchdForScope(managerScopeUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1207,7 +1177,7 @@ func TestLaunchdLabelFromServiceUnitWhitespaceOnly(t *testing.T) {
 func TestRenderLaunchdUserServicePlistLogPaths(t *testing.T) {
 	t.Parallel()
 
-	plist := renderLaunchdUserServicePlist("/usr/bin/sentinel", "/var/log/out.log", "/var/log/err.log")
+	plist := renderLaunchdUserServicePlist("/usr/bin/sentinel", "", "", "/var/log/out.log", "/var/log/err.log")
 	if !strings.Contains(plist, "<string>/var/log/out.log</string>") {
 		t.Fatal("plist missing stdout path")
 	}
@@ -1227,6 +1197,8 @@ func TestRenderLaunchdUserAutoUpdatePlistLabel(t *testing.T) {
 
 	plist := renderLaunchdUserAutoUpdatePlist(
 		"/usr/bin/sentinel",
+		"",
+		"",
 		launchdServiceLabel,
 		managerScopeUser,
 		86400,
@@ -1241,16 +1213,8 @@ func TestRenderLaunchdUserAutoUpdatePlistLabel(t *testing.T) {
 func TestNormalizeLaunchdScopeAutoAlias(t *testing.T) {
 	t.Parallel()
 
-	got, err := normalizeLaunchdScope("auto")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := managerScopeUser
-	if os.Geteuid() == 0 {
-		want = managerScopeSystem
-	}
-	if got != want {
-		t.Fatalf("normalizeLaunchdScope(auto) = %q, want %q", got, want)
+	if _, err := normalizeLaunchdScope("auto"); err == nil {
+		t.Fatal("normalizeLaunchdScope(auto) error = nil")
 	}
 }
 

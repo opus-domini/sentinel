@@ -21,11 +21,14 @@ type App struct {
 
 // Shared command and output keys.
 const (
-	cmdStatus    = "status"
-	cmdConfig    = "config"
-	cmdInstall   = "install"
-	optionAuto   = "auto"
-	hostOSDarwin = "darwin"
+	cmdStatus           = "status"
+	cmdConfig           = "config"
+	cmdInstall          = "install"
+	optionAuto          = "auto"
+	optionUser          = "user"
+	optionSystem        = "system"
+	hostOSDarwin        = "darwin"
+	sentinelServiceUnit = "sentinel"
 )
 
 // Test indirections: swapped to fakes so command behaviour can be exercised
@@ -34,19 +37,24 @@ var (
 	daemonFn                  = runDaemon
 	installUserSvcFn          = daemon.InstallUser
 	uninstallUserSvcFn        = daemon.UninstallUser
-	controlServiceFn          = daemon.ControlUser
+	controlScopedServiceFn    = daemon.Control
 	serviceStatusFn           = daemon.ServiceStatus
 	userLogsFn                = daemon.UserLogs
 	installUserAutoUpdateFn   = daemon.InstallUserAutoUpdate
 	uninstallUserAutoUpdateFn = daemon.UninstallUserAutoUpdate
 	userAutoUpdateStatusFn    = daemon.UserAutoUpdateStatusForScope
 	removeShellCompletionsFn  = removeShellCompletions
-	removeSentinelBinaryFn    = removeSentinelBinary
+	removeSentinelBinaryAtFn  = removeSentinelBinaryAt
 	loadConfigFn              = config.Load
+	loadConfigPathFn          = config.LoadPathForDataDir
 	currentVersionFn          = Version
 	updateCheckFn             = updater.Check
 	updateApplyFn             = updater.Apply
 	updateStatusFn            = updater.Status
+	installedDeploymentsFn    = daemon.InstalledDeployments
+	resolveDeploymentFn       = daemon.ResolveDeployment
+	resolveInstallScopeFn     = daemon.ResolveInstallScope
+	requireScopeAccessFn      = daemon.RequireScopeAccess
 )
 
 // runDaemon is the default daemonFn: it boots the HTTP server with the

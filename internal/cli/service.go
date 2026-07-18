@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
 )
 
@@ -40,18 +41,21 @@ func newServiceCmd(app *App) *cobra.Command {
 // newServiceLifecycleCmd builds a leaf command that runs a single systemd/
 // launchd lifecycle action (start, stop, restart, enable, disable).
 func newServiceLifecycleCmd(app *App, action, short, doneMsg string) *cobra.Command {
-	return &cobra.Command{
+	var scope string
+	cmd := &cobra.Command{
 		Use:   action,
 		Short: short,
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if err := controlServiceFn(action); err != nil {
+			if err := controlScopedServiceFn(action, scope); err != nil {
 				return failf("service %s failed: %w", action, err)
 			}
 			writeln(app.Stdout, doneMsg)
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "target deployment: auto|user|system")
+	return cmd
 }
 
 func newServiceInstallCmd(app *App) *cobra.Command {
@@ -59,31 +63,60 @@ func newServiceInstallCmd(app *App) *cobra.Command {
 		execPath string
 		enable   bool
 		start    bool
+		scope    string
+		check    bool
 	)
 	cmd := &cobra.Command{
 		Use:   cmdInstall,
 		Short: "Install the service unit and start it",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runServiceInstall(app, execPath, enable, start)
+			return runServiceInstall(app, execPath, scope, enable, start, check)
 		},
 	}
 	cmd.Flags().StringVar(&execPath, "exec", "", "binary path for the service unit (default: current executable)")
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "installation scope: auto|user|system")
 	cmd.Flags().BoolVar(&enable, "enable", true, "enable the service at startup")
 	cmd.Flags().BoolVar(&start, "start", true, "start the service immediately")
+	cmd.Flags().BoolVar(&check, "check", false, "validate scope, config and binary destination without installing")
 	return cmd
 }
 
-func runServiceInstall(app *App, execPath string, enable, start bool) error {
+func runServiceInstall(app *App, execPath, scopeRaw string, enable, start, check bool) error {
+	scope, err := resolveInstallScopeFn(scopeRaw)
+	if err != nil {
+		return failf("service install failed: %w", err)
+	}
+	if err := requireScopeAccessFn(scope); err != nil {
+		return failf("service install failed: %w", err)
+	}
+	resolvedExecPath, err := validateServiceInstallBinary(scope, execPath)
+	if err != nil {
+		return failf("service install failed: %w", err)
+	}
+	configPath, dataDir, err := prepareServiceConfig(scope, !check)
+	if err != nil {
+		return failf("service install failed: %w", err)
+	}
+	if check {
+		if err := preflightInstallDestination(resolvedExecPath); err != nil {
+			return failf("service install check failed: %w", err)
+		}
+		writef(app.Stdout, "service install check passed: scope=%s config=%s data=%s\n", scope, configPath, dataDir)
+		return nil
+	}
 	if err := installUserSvcFn(daemon.InstallUserOptions{
-		ExecPath: strings.TrimSpace(execPath),
-		Enable:   enable,
-		Start:    start,
+		ExecPath:   resolvedExecPath,
+		Scope:      scope,
+		ConfigPath: configPath,
+		DataDir:    dataDir,
+		Enable:     enable,
+		Start:      start,
 	}); err != nil {
 		return failf("service install failed: %w", err)
 	}
 
-	if path, err := daemon.UserServicePath(); err == nil {
+	if path, err := daemon.UserServicePathForScope(scope); err == nil {
 		writef(app.Stdout, "service installed: %s\n", path)
 	}
 	switch {
@@ -99,37 +132,118 @@ func runServiceInstall(app *App, execPath string, enable, start bool) error {
 	return nil
 }
 
+func validateServiceInstallBinary(scope, requestedPath string) (string, error) {
+	requestedPath = strings.TrimSpace(requestedPath)
+	if requestedPath == "" {
+		var err error
+		requestedPath, err = os.Executable()
+		if err != nil {
+			return "", fmt.Errorf("resolve current executable: %w", err)
+		}
+	}
+	deployments, err := installedDeploymentsFn()
+	if err != nil {
+		return "", err
+	}
+	for _, deployment := range deployments {
+		if deployment.Scope != scope {
+			continue
+		}
+		if !sameBinaryPath(deployment.BinaryPath, requestedPath) {
+			return "", fmt.Errorf(
+				"the %s deployment uses %s; reinstall with --exec %s or uninstall it before changing the binary path",
+				scope,
+				deployment.BinaryPath,
+				deployment.BinaryPath,
+			)
+		}
+		return deployment.BinaryPath, nil
+	}
+	return requestedPath, nil
+}
+
+func preflightInstallDestination(execPath string) error {
+	execPath = strings.TrimSpace(execPath)
+	if execPath == "" {
+		var err error
+		execPath, err = os.Executable()
+		if err != nil {
+			return err
+		}
+	}
+	dir := filepath.Dir(execPath)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("create binary directory %s: %w", dir, err)
+	}
+	probe, err := os.CreateTemp(dir, ".sentinel-install-preflight-*")
+	if err != nil {
+		return fmt.Errorf("binary destination %s is not writable: %w", execPath, err)
+	}
+	probePath := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(probePath)
+		return err
+	}
+	return os.Remove(probePath)
+}
+
 func newServiceUninstallCmd(app *App) *cobra.Command {
 	var (
 		disable    bool
 		stop       bool
 		removeUnit bool
 		purge      bool
+		scope      string
 	)
 	cmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Stop the service and remove its unit",
 		Long: "Stop the Sentinel service and remove its unit file.\n\n" +
 			"--purge also removes the autoupdate timer, the shell completion and the\n" +
-			"sentinel binary. User data in ~/.sentinel is left intact.",
+			"deployment binary. Configuration and runtime data are left intact.",
 		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runServiceUninstall(app, disable, stop, removeUnit, purge)
+			return runServiceUninstall(app, scope, disable, stop, removeUnit, purge)
 		},
 	}
 	cmd.Flags().BoolVar(&disable, "disable", true, "disable the service from auto-start")
 	cmd.Flags().BoolVar(&stop, "stop", true, "stop the running service")
 	cmd.Flags().BoolVar(&removeUnit, "remove-unit", true, "remove the managed unit file")
 	cmd.Flags().BoolVar(&purge, "purge", false, "also remove the autoupdate timer, shell completion and binary")
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "target deployment: auto|user|system")
 	return cmd
 }
 
-func runServiceUninstall(app *App, disable, stop, removeUnit, purge bool) error {
+func runServiceUninstall(app *App, scopeRaw string, disable, stop, removeUnit, purge bool) error {
+	deployment, err := resolveDeploymentFn(scopeRaw)
+	if err != nil {
+		return failf("service uninstall failed: %w", err)
+	}
+	if err := requireScopeAccessFn(deployment.Scope); err != nil {
+		return failf("service uninstall failed: %w", err)
+	}
+	removeBinary := purge
+	if purge {
+		deployments, discoveryErr := installedDeploymentsFn()
+		if discoveryErr != nil {
+			removeBinary = false
+			writef(app.Stderr, "binary not removed: cannot verify whether another deployment uses it: %v\n", discoveryErr)
+		} else {
+			for _, other := range deployments {
+				if other.Scope != deployment.Scope && sameBinaryPath(other.BinaryPath, deployment.BinaryPath) {
+					removeBinary = false
+					writef(app.Stderr, "binary not removed: the %s deployment also uses %s\n", other.Scope, deployment.BinaryPath)
+					break
+				}
+			}
+		}
+	}
 	if purge {
 		if err := uninstallUserAutoUpdateFn(daemon.UninstallUserAutoUpdateOptions{
 			Disable:    true,
 			Stop:       true,
 			RemoveUnit: true,
+			Scope:      deployment.Scope,
 		}); err != nil {
 			writef(app.Stderr, "autoupdate timer not removed: %v\n", err)
 		} else {
@@ -138,6 +252,7 @@ func runServiceUninstall(app *App, disable, stop, removeUnit, purge bool) error 
 	}
 
 	if err := uninstallUserSvcFn(daemon.UninstallUserOptions{
+		Scope:      deployment.Scope,
 		Disable:    disable,
 		Stop:       stop,
 		RemoveUnit: removeUnit,
@@ -150,13 +265,29 @@ func runServiceUninstall(app *App, disable, stop, removeUnit, purge bool) error 
 		for _, path := range removeShellCompletionsFn() {
 			writef(app.Stdout, "removed %s\n", path)
 		}
-		if path, err := removeSentinelBinaryFn(); err != nil {
-			writef(app.Stderr, "binary not removed: %v\n", err)
-		} else {
-			writef(app.Stdout, "removed %s\n", path)
+		if removeBinary {
+			if path, err := removeSentinelBinaryAtFn(deployment.BinaryPath); err != nil {
+				writef(app.Stderr, "binary not removed: %v\n", err)
+			} else {
+				writef(app.Stdout, "removed %s\n", path)
+			}
 		}
 	}
 	return nil
+}
+
+func sameBinaryPath(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" || right == "" {
+		return false
+	}
+	if filepath.Clean(left) == filepath.Clean(right) {
+		return true
+	}
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }
 
 // removeShellCompletions deletes installed shell completion scripts. It returns
@@ -183,17 +314,104 @@ func removeShellCompletions() []string {
 	return removed
 }
 
-// removeSentinelBinary deletes the running sentinel executable. On Linux and
-// macOS a process can unlink its own binary; the inode survives until exit.
-func removeSentinelBinary() (string, error) {
-	exe, err := os.Executable()
+func removeSentinelBinaryAt(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("deployment binary path is empty")
+	}
+	if err := os.Remove(path); err != nil {
+		return path, err
+	}
+	return path, nil
+}
+
+func prepareServiceConfig(scope string, create bool) (string, string, error) {
+	canonicalConfig, canonicalData, err := daemon.ScopePaths(scope)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if err := os.Remove(exe); err != nil {
-		return exe, err
+	configPath := canonicalConfig
+	dataDir := canonicalData
+
+	if explicit := strings.TrimSpace(os.Getenv("SENTINEL_CONFIG")); explicit != "" {
+		configPath = config.Path()
+	} else if deployments, listErr := installedDeploymentsFn(); listErr != nil {
+		return "", "", listErr
+	} else {
+		for _, deployment := range deployments {
+			if deployment.Scope != scope {
+				continue
+			}
+			if deployment.LegacyConfigPath && scope == daemon.ScopeSystem {
+				if create {
+					if err := migrateLegacyConfig(deployment.ConfigPath, canonicalConfig); err != nil {
+						return "", "", err
+					}
+					configPath = canonicalConfig
+				} else {
+					configPath = deployment.ConfigPath
+				}
+				dataDir = deployment.DataDir
+			} else {
+				configPath = deployment.ConfigPath
+				dataDir = deployment.DataDir
+			}
+			break
+		}
 	}
-	return exe, nil
+
+	if _, statErr := os.Stat(configPath); statErr != nil {
+		if !os.IsNotExist(statErr) {
+			return "", "", fmt.Errorf("stat config %s: %w", configPath, statErr)
+		}
+		if create {
+			if _, initErr := config.InitPath(configPath, dataDir, false); initErr != nil {
+				return "", "", initErr
+			}
+		}
+	}
+	cfg, resolved, err := config.LoadPathForDataDir(configPath, dataDir)
+	if err != nil {
+		return "", "", err
+	}
+	if create {
+		if err := config.EnsureDirs(cfg); err != nil {
+			return "", "", err
+		}
+	}
+	return resolved, cfg.DataDir(), nil
+}
+
+func migrateLegacyConfig(source, target string) error {
+	if _, err := os.Stat(target); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat canonical system config: %w", err)
+	}
+	raw, err := os.ReadFile(source) //nolint:gosec // explicit legacy Sentinel config.
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read legacy system config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return fmt.Errorf("create canonical system config directory: %w", err)
+	}
+	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // canonical root-owned config.
+	if err != nil {
+		return fmt.Errorf("create canonical system config: %w", err)
+	}
+	if _, err := file.Write(raw); err != nil {
+		_ = file.Close()
+		_ = os.Remove(target)
+		return fmt.Errorf("copy legacy system config: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(target)
+		return fmt.Errorf("close canonical system config: %w", err)
+	}
+	return nil
 }
 
 func newServiceStatusCmd(app *App) *cobra.Command {
@@ -225,6 +443,9 @@ func runServiceStatus(app *App) error {
 			{Key: fmt.Sprintf("%s unit file", s.Scope), Value: s.ServicePath},
 			{Key: fmt.Sprintf("%s unit exists", s.Scope), Value: fmt.Sprintf("%t", s.UnitFileExists)},
 			{Key: fmt.Sprintf("%s available", managerLabel), Value: fmt.Sprintf("%t", s.SystemctlAvailable)},
+			{Key: fmt.Sprintf("%s binary", s.Scope), Value: s.BinaryPath},
+			{Key: fmt.Sprintf("%s config", s.Scope), Value: s.ConfigPath},
+			{Key: fmt.Sprintf("%s data dir", s.Scope), Value: s.DataDir},
 		}
 		if s.SystemctlAvailable {
 			rows = append(rows,
@@ -241,6 +462,7 @@ func newServiceLogsCmd(app *App) *cobra.Command {
 	var (
 		follow bool
 		lines  int
+		scope  string
 	)
 	cmd := &cobra.Command{
 		Use:   "logs",
@@ -253,6 +475,7 @@ func newServiceLogsCmd(app *App) *cobra.Command {
 				Lines:  lines,
 				Stdout: app.Stdout,
 				Stderr: app.Stderr,
+				Scope:  scope,
 			}); err != nil {
 				return failf("service logs failed: %w", err)
 			}
@@ -261,6 +484,7 @@ func newServiceLogsCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "stream new log lines as they arrive")
 	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "number of past log lines to show")
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "target deployment: auto|user|system")
 	return cmd
 }
 

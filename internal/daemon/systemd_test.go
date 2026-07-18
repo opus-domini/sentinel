@@ -25,7 +25,7 @@ func TestEscapeSystemdExec(t *testing.T) {
 func TestRenderUserUnitIncludesExecStart(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserUnit("/usr/local/bin/sentinel")
+	unit := renderUserUnit("/usr/local/bin/sentinel", "", "")
 	if !strings.Contains(unit, "ExecStart=/usr/local/bin/sentinel daemon") {
 		t.Fatalf("rendered unit missing ExecStart: %s", unit)
 	}
@@ -40,12 +40,12 @@ func TestRenderUserUnitIncludesExecStart(t *testing.T) {
 func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserAutoUpdateUnit("/usr/local/bin/sentinel", "sentinel", managerScopeUser)
+	unit := renderUserAutoUpdateUnit("/usr/local/bin/sentinel", "", "", "sentinel", managerScopeUser)
 	if !strings.Contains(unit, "ExecStart=/usr/local/bin/sentinel update apply") {
 		t.Fatalf("rendered updater unit missing ExecStart: %s", unit)
 	}
-	if !strings.Contains(unit, "-service=sentinel") {
-		t.Fatalf("rendered updater unit missing service target: %s", unit)
+	if strings.Contains(unit, "-service=") {
+		t.Fatalf("rendered updater unit must derive the service from scope: %s", unit)
 	}
 	if !strings.Contains(unit, "-scope=user") {
 		t.Fatalf("rendered updater unit missing restart scope: %s", unit)
@@ -84,16 +84,11 @@ func TestNormalizeLinuxAutoUpdateScope(t *testing.T) {
 		t.Fatal("expected error for invalid scope")
 	}
 
-	got, err = normalizeLinuxAutoUpdateScope("")
-	if err != nil {
-		t.Fatalf("normalizeLinuxAutoUpdateScope(\"\") error: %v", err)
+	if _, err = normalizeLinuxAutoUpdateScope(""); err == nil {
+		t.Fatal("normalizeLinuxAutoUpdateScope(\"\") error = nil")
 	}
-	want := managerScopeUser
-	if os.Geteuid() == 0 {
-		want = managerScopeSystem
-	}
-	if got != want {
-		t.Fatalf("normalizeLinuxAutoUpdateScope(\"\") = %q, want %q", got, want)
+	if _, err = normalizeLinuxAutoUpdateScope(managerScopeAuto); err == nil {
+		t.Fatal("normalizeLinuxAutoUpdateScope(auto) error = nil")
 	}
 }
 
@@ -467,63 +462,6 @@ func TestEnsureServicePlatformSupported(t *testing.T) {
 	}
 }
 
-func TestUserServicePath(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-
-	path, err := UserServicePath()
-	if err != nil {
-		t.Fatalf("UserServicePath() error: %v", err)
-	}
-
-	if os.Geteuid() == 0 {
-		if path != systemUnitPath {
-			t.Fatalf("root path = %q, want %q", path, systemUnitPath)
-		}
-	} else {
-		home, _ := os.UserHomeDir()
-		want := filepath.Join(home, ".config", "systemd", "user", userUnitName)
-		if path != want {
-			t.Fatalf("user path = %q, want %q", path, want)
-		}
-	}
-}
-
-func TestUserAutoUpdateServicePathWrapper(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS && runtime.GOOS != launchdSupportedOS {
-		t.Skip("test requires Linux or macOS")
-	}
-
-	path, err := UserAutoUpdateServicePath()
-	if err != nil {
-		t.Fatalf("UserAutoUpdateServicePath() error: %v", err)
-	}
-	if path == "" {
-		t.Fatal("expected non-empty path")
-	}
-}
-
-func TestUserAutoUpdateTimerPathWrapper(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS && runtime.GOOS != launchdSupportedOS {
-		t.Skip("test requires Linux or macOS")
-	}
-
-	path, err := UserAutoUpdateTimerPath()
-	if err != nil {
-		t.Fatalf("UserAutoUpdateTimerPath() error: %v", err)
-	}
-	if path == "" {
-		t.Fatal("expected non-empty path")
-	}
-}
-
 func TestUserAutoUpdatePathsForUserScope(t *testing.T) {
 	t.Parallel()
 
@@ -705,16 +643,8 @@ func TestResolveInstallUserAutoUpdateConfigSetsScope(t *testing.T) {
 func TestNormalizeLinuxAutoUpdateScopeAutoScope(t *testing.T) {
 	t.Parallel()
 
-	got, err := normalizeLinuxAutoUpdateScope("auto")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := managerScopeUser
-	if os.Geteuid() == 0 {
-		want = managerScopeSystem
-	}
-	if got != want {
-		t.Fatalf("normalizeLinuxAutoUpdateScope(auto) = %q, want %q", got, want)
+	if _, err := normalizeLinuxAutoUpdateScope("auto"); err == nil {
+		t.Fatal("normalizeLinuxAutoUpdateScope(auto) error = nil")
 	}
 }
 
@@ -759,7 +689,7 @@ func TestEscapeSystemdExecBackslash(t *testing.T) {
 func TestRenderUserUnitEscapesSpacesInPath(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserUnit("/opt/my app/sentinel")
+	unit := renderUserUnit("/opt/my app/sentinel", "", "")
 	if !strings.Contains(unit, `ExecStart=/opt/my\x20app/sentinel daemon`) {
 		t.Fatalf("rendered unit should escape spaces in ExecStart: %s", unit)
 	}
@@ -768,9 +698,9 @@ func TestRenderUserUnitEscapesSpacesInPath(t *testing.T) {
 func TestRenderUserAutoUpdateUnitSystemScope(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "myservice", managerScopeSystem)
-	if !strings.Contains(unit, "-service=myservice") {
-		t.Fatalf("unit missing custom service name: %s", unit)
+	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "", "", "myservice", managerScopeSystem)
+	if strings.Contains(unit, "-service=") {
+		t.Fatalf("unit must not override the deployment service: %s", unit)
 	}
 	if !strings.Contains(unit, "-scope=system") {
 		t.Fatalf("unit missing system scope: %s", unit)
@@ -838,26 +768,6 @@ func TestUserStatusOnLinux(t *testing.T) {
 	}
 }
 
-func TestUserAutoUpdateStatusWrapper(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS && runtime.GOOS != launchdSupportedOS {
-		t.Skip("test requires Linux or macOS")
-	}
-
-	st, err := UserAutoUpdateStatus()
-	if err != nil {
-		if strings.Contains(err.Error(), "systemctl") || strings.Contains(err.Error(), "launchctl") {
-			t.Skip("tool not available")
-		}
-		t.Fatalf("UserAutoUpdateStatus() error: %v", err)
-	}
-
-	if st.ServicePath == "" {
-		t.Fatal("expected non-empty ServicePath")
-	}
-}
-
 func TestUserAutoUpdateStatusForScopeOnLinux(t *testing.T) {
 	t.Parallel()
 
@@ -903,14 +813,13 @@ func TestUserAutoUpdateStatusForScopeInvalid(t *testing.T) {
 }
 
 func TestRemoveUserAutoUpdateUnitsNonExistent(t *testing.T) {
-	t.Parallel()
-
 	if runtime.GOOS != systemdSupportedOS {
 		t.Skip("test requires Linux for systemd paths")
 	}
+	t.Setenv("HOME", t.TempDir())
 
 	// removeUserAutoUpdateUnits should succeed when files don't exist (os.ErrNotExist is ignored)
-	err := removeUserAutoUpdateUnits()
+	err := removeUserAutoUpdateUnits(managerScopeUser)
 	if err != nil {
 		t.Fatalf("removeUserAutoUpdateUnits() should not error for non-existent files: %v", err)
 	}
@@ -1112,7 +1021,7 @@ func TestInstallSystemAutoUpdateLinuxNonRoot(t *testing.T) {
 		t.Skip("test requires non-root")
 	}
 
-	err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "sentinel", "daily", time.Hour, false, false)
+	err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "", "", "sentinel", "daily", time.Hour, false, false)
 	if err == nil {
 		t.Fatal("expected error for non-root")
 	}
@@ -1166,18 +1075,17 @@ func TestUserStatusSystemLinuxNonRoot(t *testing.T) {
 }
 
 func TestRemoveUserAutoUpdateUnitsExistingFiles(t *testing.T) {
-	t.Parallel()
-
 	if runtime.GOOS != systemdSupportedOS {
 		t.Skip("test requires Linux for systemd paths")
 	}
+	t.Setenv("HOME", t.TempDir())
 
 	// Create temp files that look like the auto-update units, then verify removal.
 	// removeUserAutoUpdateUnits uses the real home-based paths, so we can only test
 	// the non-existent path (already tested) and verify the function returns nil.
 	// The existing test covers the os.ErrNotExist path. This test ensures both
 	// removal paths succeed when files genuinely do not exist.
-	err := removeUserAutoUpdateUnits()
+	err := removeUserAutoUpdateUnits(managerScopeUser)
 	if err != nil {
 		t.Fatalf("removeUserAutoUpdateUnits() should succeed when files don't exist: %v", err)
 	}
@@ -1190,14 +1098,14 @@ func TestInstallSystemServiceLinuxBadExecPath(t *testing.T) {
 		t.Skip("test requires Linux")
 	}
 
-	// Invalid exec path should error before privilege check
+	// Scope is diagnosed before inspecting the target binary.
 	err := installSystemServiceLinux(InstallUserOptions{
 		ExecPath: "/usr/bin/sentinel\revil",
 	})
-	if err == nil {
-		t.Fatal("expected error for invalid exec path")
+	if os.Geteuid() != 0 && (err == nil || !strings.Contains(err.Error(), "root privileges")) {
+		t.Fatalf("error = %v, want root privileges diagnosis", err)
 	}
-	if !strings.Contains(err.Error(), "invalid executable path") {
+	if os.Geteuid() == 0 && (err == nil || !strings.Contains(err.Error(), "invalid executable path")) {
 		t.Fatalf("error = %v, want invalid executable path", err)
 	}
 }
@@ -1213,7 +1121,7 @@ func TestInstallSystemAutoUpdateLinuxBadExecPath(t *testing.T) {
 	}
 
 	// Even with a valid exec path, non-root should fail with privilege error
-	err := installSystemAutoUpdateLinux("/usr/bin/sentinel\nevil", "sentinel", "daily", time.Hour, false, false)
+	err := installSystemAutoUpdateLinux("/usr/bin/sentinel\nevil", "", "", "sentinel", "daily", time.Hour, false, false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1247,7 +1155,7 @@ func TestInstallSystemAutoUpdateLinuxEnableStartBranches(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "sentinel", "daily", time.Hour, tc.enable, tc.start)
+			err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "", "", "sentinel", "daily", time.Hour, tc.enable, tc.start)
 			if err == nil {
 				t.Fatal("expected error for non-root")
 			}
@@ -1511,28 +1419,6 @@ func TestInstallUserAutoUpdateBadServiceUnit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid service unit name") {
 		t.Fatalf("error = %v, want invalid service unit name", err)
-	}
-}
-
-func TestUserServicePathNonRoot(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("test requires non-root")
-	}
-
-	path, err := UserServicePath()
-	if err != nil {
-		t.Fatalf("UserServicePath() error: %v", err)
-	}
-
-	home, _ := os.UserHomeDir()
-	want := filepath.Join(home, ".config", "systemd", "user", userUnitName)
-	if path != want {
-		t.Fatalf("path = %q, want %q", path, want)
 	}
 }
 

@@ -31,10 +31,10 @@ func TestServiceStatusMultiScope(t *testing.T) {
 	t.Cleanup(func() { serviceStatusFn = origStatus })
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{
-			{Scope: "user", UserServiceStatus: daemon.UserServiceStatus{
+			{Deployment: daemon.Deployment{Scope: "user"}, UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath: "/home/u/.config/systemd/user/sentinel.service", UnitFileExists: true,
 			}},
-			{Scope: "system", UserServiceStatus: daemon.UserServiceStatus{
+			{Deployment: daemon.Deployment{Scope: "system"}, UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath: "/etc/systemd/system/sentinel.service", UnitFileExists: true,
 			}},
 		}, nil

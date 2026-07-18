@@ -254,12 +254,12 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 		origUninstall := uninstallUserSvcFn
 		origAutoUpdate := uninstallUserAutoUpdateFn
 		origCompletion := removeShellCompletionsFn
-		origBinary := removeSentinelBinaryFn
+		origBinary := removeSentinelBinaryAtFn
 		t.Cleanup(func() {
 			uninstallUserSvcFn = origUninstall
 			uninstallUserAutoUpdateFn = origAutoUpdate
 			removeShellCompletionsFn = origCompletion
-			removeSentinelBinaryFn = origBinary
+			removeSentinelBinaryAtFn = origBinary
 		})
 
 		var autoUpdateCalled, completionCalled, binaryCalled bool
@@ -272,7 +272,7 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 			completionCalled = true
 			return []string{"/tmp/shell-completion/sentinel"}
 		}
-		removeSentinelBinaryFn = func() (string, error) {
+		removeSentinelBinaryAtFn = func(string) (string, error) {
 			binaryCalled = true
 			return "/tmp/bin/sentinel", nil
 		}
@@ -295,15 +295,15 @@ func TestRunServiceUninstallCommand(t *testing.T) {
 
 	t.Run("default run does not purge", func(t *testing.T) {
 		origUninstall := uninstallUserSvcFn
-		origBinary := removeSentinelBinaryFn
+		origBinary := removeSentinelBinaryAtFn
 		t.Cleanup(func() {
 			uninstallUserSvcFn = origUninstall
-			removeSentinelBinaryFn = origBinary
+			removeSentinelBinaryAtFn = origBinary
 		})
 
 		uninstallUserSvcFn = func(daemon.UninstallUserOptions) error { return nil }
 		binaryCalled := false
-		removeSentinelBinaryFn = func() (string, error) {
+		removeSentinelBinaryAtFn = func(string) (string, error) {
 			binaryCalled = true
 			return "", nil
 		}
@@ -797,12 +797,15 @@ func TestUpdateApplyAlreadyUpToDate(t *testing.T) {
 	origLoad := loadConfigFn
 	origVersion := currentVersionFn
 	origApply := updateApplyFn
+	origResolve := resolveDeploymentFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		currentVersionFn = origVersion
 		updateApplyFn = origApply
+		resolveDeploymentFn = origResolve
 	})
 
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) { return daemon.Deployment{}, daemon.ErrNoServiceInstalled }
 	loadConfigFn = testLoadConfig("/tmp", "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 	updateApplyFn = func(_ context.Context, _ updater.ApplyOptions) (updater.ApplyResult, error) {
@@ -954,6 +957,7 @@ func TestDoctorStatusError(t *testing.T) {
 // TestServiceInstallEnableStartCombinations covers the output messages for
 // different enable/start flag combinations.
 func TestServiceInstallEnableStartCombinations(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	cases := []struct {
 		name    string
 		args    []string

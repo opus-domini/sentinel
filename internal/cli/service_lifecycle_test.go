@@ -21,14 +21,17 @@ func TestServiceLifecycleCommands(t *testing.T) {
 		{"disable", "service disabled"},
 	}
 
-	origControl := controlServiceFn
-	t.Cleanup(func() { controlServiceFn = origControl })
+	origControl := controlScopedServiceFn
+	t.Cleanup(func() { controlScopedServiceFn = origControl })
 
 	for _, tc := range cases {
 		t.Run(tc.action, func(t *testing.T) {
 			var gotAction string
-			controlServiceFn = func(action string) error {
+			controlScopedServiceFn = func(action, scope string) error {
 				gotAction = action
+				if scope != optionAuto {
+					t.Fatalf("scope = %q, want auto", scope)
+				}
 				return nil
 			}
 
@@ -48,9 +51,9 @@ func TestServiceLifecycleCommands(t *testing.T) {
 }
 
 func TestServiceLifecycleCommandFailure(t *testing.T) {
-	origControl := controlServiceFn
-	t.Cleanup(func() { controlServiceFn = origControl })
-	controlServiceFn = func(string) error { return errors.New("systemctl failed") }
+	origControl := controlScopedServiceFn
+	t.Cleanup(func() { controlScopedServiceFn = origControl })
+	controlScopedServiceFn = func(string, string) error { return errors.New("systemctl failed") }
 
 	var out, errOut bytes.Buffer
 	code := Run([]string{"service", "restart"}, &out, &errOut)

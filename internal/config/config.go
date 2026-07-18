@@ -119,7 +119,16 @@ var ErrConfigExists = errors.New("config file already exists")
 
 // Default returns Sentinel's built-in configuration.
 func Default() Config {
-	dataRoot := defaultDataDir()
+	return DefaultForDataDir(defaultDataDir())
+}
+
+// DefaultForDataDir returns built-in defaults rooted at an explicit deployment
+// data directory instead of the caller's HOME.
+func DefaultForDataDir(dataRoot string) Config {
+	dataRoot = strings.TrimSpace(dataRoot)
+	if dataRoot == "" {
+		dataRoot = defaultDataDir()
+	}
 	return Config{
 		Version: 1,
 		Server: ServerConfig{
@@ -182,25 +191,39 @@ func Load() (Config, string, error) {
 
 // LoadPath reads a TOML file and resolves defaults without creating files.
 func LoadPath(path string) (Config, string, error) {
+	return loadPathWithDefaults(path, Default())
+}
+
+// LoadPathForDataDir loads a deployment config with defaults rooted at its
+// explicit data directory.
+func LoadPathForDataDir(path, dataDir string) (Config, string, error) {
+	return loadPathWithDefaults(path, DefaultForDataDir(dataDir))
+}
+
+func loadPathWithDefaults(path string, defaults Config) (Config, string, error) {
 	resolved, err := resolvePathOrDefault(path)
 	if err != nil {
-		cfg := Default()
+		cfg := defaults
 		return cfg, path, err
 	}
 	if _, err := os.Stat(resolved); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			cfg := Default()
+			cfg := defaults
 			return cfg, resolved, fmt.Errorf("stat config file: %w", err)
 		}
-		cfg := Default()
+		cfg := defaults
 		applyEnv(&cfg)
 		return cfg, resolved, cfg.Resolve()
 	}
-	return loadExisting(resolved, true)
+	return loadExistingWithDefaults(resolved, true, defaults)
 }
 
 func loadExisting(path string, applyEnvironment bool) (Config, string, error) {
-	cfg := Default()
+	return loadExistingWithDefaults(path, applyEnvironment, Default())
+}
+
+func loadExistingWithDefaults(path string, applyEnvironment bool, defaults Config) (Config, string, error) {
+	cfg := defaults
 	meta, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
 		return cfg, path, fmt.Errorf("decode config: %w", err)
@@ -256,7 +279,16 @@ func (e configValidationError) Error() string {
 // Init creates the canonical config file. It refuses to overwrite existing
 // files unless force is true.
 func Init(force bool) (string, error) {
-	path := Path()
+	return InitPath(Path(), defaultDataDir(), force)
+}
+
+// InitPath creates a config at an explicit deployment path and data root.
+func InitPath(path, dataDir string, force bool) (string, error) {
+	resolved, err := ExpandPath(path)
+	if err != nil {
+		return path, err
+	}
+	path = resolved
 	if !force {
 		if _, err := os.Stat(path); err == nil {
 			return path, fmt.Errorf("%w: %s", ErrConfigExists, path)
@@ -273,14 +305,14 @@ func Init(force bool) (string, error) {
 	if !force {
 		flag |= os.O_EXCL
 	}
-	file, err := os.OpenFile(path, flag, 0o600) //nolint:gosec // canonical user config file.
+	file, err := os.OpenFile(path, flag, 0o600) //nolint:gosec // canonical deployment config file.
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return path, fmt.Errorf("%w: %s", ErrConfigExists, path)
 		}
 		return path, fmt.Errorf("create config file: %w", err)
 	}
-	if _, err := file.Write(defaultConfigTOML(Default())); err != nil {
+	if _, err := file.Write(defaultConfigTOML(DefaultForDataDir(dataDir))); err != nil {
 		_ = file.Close()
 		return path, fmt.Errorf("write config file: %w", err)
 	}

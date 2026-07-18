@@ -25,7 +25,7 @@ func TestBuildHealthCheckCommand(t *testing.T) {
 		{"restart disabled", "linux", ApplyOptions{SkipRestart: true, SystemdScope: "user"}, nil},
 		{"scope none", "linux", ApplyOptions{SystemdScope: "none"}, nil},
 		{"scope launchd", "linux", ApplyOptions{SystemdScope: "launchd"}, nil},
-		{"darwin skips check", "darwin", ApplyOptions{SystemdScope: "system", ServiceUnit: "sentinel"}, nil},
+		{"darwin system", "darwin", ApplyOptions{SystemdScope: "system", ServiceUnit: "sentinel"}, []string{"launchctl", "print", "system/io.opusdomini.sentinel"}},
 		{"linux system", "linux", ApplyOptions{SystemdScope: "system", ServiceUnit: "sentinel"}, []string{"systemctl", "is-active", "--quiet", "sentinel"}},
 		{"linux user", "linux", ApplyOptions{SystemdScope: "user", ServiceUnit: "sentinel"}, []string{"systemctl", "--user", "is-active", "--quiet", "sentinel"}},
 	}

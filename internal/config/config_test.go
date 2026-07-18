@@ -29,6 +29,37 @@ func TestDefaultUsesSentinelDataRoot(t *testing.T) {
 	}
 }
 
+func TestDefaultForDataDirDoesNotDependOnCallerHome(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dataDir := filepath.Join(t.TempDir(), "system-data")
+
+	cfg := DefaultForDataDir(dataDir)
+	if got, want := cfg.Storage.Path, filepath.Join(dataDir, "sentinel.db"); got != want {
+		t.Fatalf("Storage.Path = %q, want %q", got, want)
+	}
+	if got, want := cfg.Log.Path, filepath.Join(dataDir, "logs", "sentinel.log"); got != want {
+		t.Fatalf("Log.Path = %q, want %q", got, want)
+	}
+}
+
+func TestLoadPathForDataDirRootsMissingConfigDefaultsInDeployment(t *testing.T) {
+	clearConfigEnv(t)
+	root := t.TempDir()
+	configPath := filepath.Join(root, "etc", "config.toml")
+	dataDir := filepath.Join(root, "var", "lib", "sentinel")
+
+	cfg, gotPath, err := LoadPathForDataDir(configPath, dataDir)
+	if err != nil {
+		t.Fatalf("LoadPathForDataDir() error = %v", err)
+	}
+	if gotPath != configPath {
+		t.Fatalf("path = %q, want %q", gotPath, configPath)
+	}
+	if got, want := cfg.Storage.Path, filepath.Join(dataDir, "sentinel.db"); got != want {
+		t.Fatalf("Storage.Path = %q, want %q", got, want)
+	}
+}
+
 func TestPathUsesExplicitConfigEnv(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "custom.toml")
@@ -88,6 +119,32 @@ func TestInitCreatesDefaultConfig(t *testing.T) {
 	} {
 		if !strings.Contains(content, fragment) {
 			t.Fatalf("default config missing %q:\n%s", fragment, content)
+		}
+	}
+}
+
+func TestInitPathCreatesDeploymentConfig(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "etc", "sentinel", "config.toml")
+	dataDir := filepath.Join(root, "var", "lib", "sentinel")
+
+	gotPath, err := InitPath(configPath, dataDir, false)
+	if err != nil {
+		t.Fatalf("InitPath() error = %v", err)
+	}
+	if gotPath != configPath {
+		t.Fatalf("path = %q, want %q", gotPath, configPath)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`path = "` + filepath.Join(dataDir, "sentinel.db") + `"`,
+		`path = "` + filepath.Join(dataDir, "logs", "sentinel.log") + `"`,
+	} {
+		if !strings.Contains(string(content), want) {
+			t.Fatalf("config missing %q:\n%s", want, content)
 		}
 	}
 }

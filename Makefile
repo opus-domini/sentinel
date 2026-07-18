@@ -11,11 +11,12 @@ FRONTEND := frontend
 DOCS_CHECK := ./scripts/docs-check.sh
 WEB_URL    := http://127.0.0.1:4040
 
-# System scope under root, user scope otherwise (see CLAUDE.md).
+# The candidate CLI resolves an existing deployment before selecting a fresh
+# user/system destination.
 PREFIX        ?= $(shell [ "$$(id -u)" -eq 0 ] && echo /usr/local || echo "$(HOME)/.local")
 BINDIR         = $(PREFIX)/bin
 INSTALLED_BIN  = $(BINDIR)/$(APP)
-XDG_CONFIG_HOME ?= $(HOME)/.config
+INSTALL_BACKUP = $(BINDIR)/.$(APP).install-backup
 
 VERSION ?= dev
 LDFLAGS ?= -s -w -X github.com/opus-domini/sentinel/pkg/sentinel.version=$(VERSION)
@@ -188,7 +189,7 @@ check: fmt tidy vet lint lint-frontend typecheck-frontend test-coverage test-fro
 # --- Install ---------------------------------------------------
 
 .PHONY: install
-install: install-binary install-service install-completion ## Install binary, service and shell completion (user scope; system scope when run as root)
+install: install-service install-completion-existing ## Install binary, service and shell completion (user scope; system scope when run as root)
 	@printf '\n  \033[1;32m✓\033[0m \033[1m%s installed\033[0m\n\n' "$(APP)"
 	@printf '  \033[36m%-12s\033[0m %s\n' 'Binary' "$(INSTALLED_BIN)"
 	@printf '  \033[36m%-12s\033[0m %s\n' 'Service' "$(APP).service"
@@ -200,9 +201,15 @@ install: install-binary install-service install-completion ## Install binary, se
 	@printf '    \033[2m3.\033[0m %-28s\033[2m%s\033[0m\n' "open $(WEB_URL)" 'launch the web UI'
 	@printf '\n'
 
+.PHONY: install-preflight
+install-preflight: build ## Validate deployment scope and install destination before replacing the binary
+	"$(BIN)" service install --check --scope auto --exec "$(INSTALLED_BIN)"
+
 .PHONY: install-binary
-install-binary: build ## Install the binary
-	install -Dm755 "$(BIN)" "$(INSTALLED_BIN)"
+install-binary: install-preflight ## Install the binary
+	@set -eu; mkdir -p "$(BINDIR)"; \
+	  if ! install -m755 "$(BIN)" "$(INSTALLED_BIN).new"; then rm -f "$(INSTALLED_BIN).new"; exit 1; fi; \
+	  if ! mv -f "$(INSTALLED_BIN).new" "$(INSTALLED_BIN)"; then rm -f "$(INSTALLED_BIN).new"; exit 1; fi
 	@echo "Installed $(APP) to $(INSTALLED_BIN)"
 
 .PHONY: install-completion
@@ -211,16 +218,34 @@ install-completion: install-binary ## Install shell completion for the installed
 		&& echo "Shell completion installed (open a new shell to use it)" || true
 
 .PHONY: install-service
-install-service: install-binary ## Install and restart the service (system scope when run as root)
-	"$(INSTALLED_BIN)" service install --exec "$(INSTALLED_BIN)"
+install-service: install-preflight ## Transactionally install the binary and restart the resolved service
+	@set -eu; mkdir -p "$(BINDIR)"; \
+	if [ -f "$(INSTALLED_BIN)" ]; then cp -p "$(INSTALLED_BIN)" "$(INSTALL_BACKUP)"; else rm -f "$(INSTALL_BACKUP)"; fi; \
+	if ! install -m755 "$(BIN)" "$(INSTALLED_BIN).new"; then rm -f "$(INSTALLED_BIN).new" "$(INSTALL_BACKUP)"; exit 1; fi; \
+	if ! mv -f "$(INSTALLED_BIN).new" "$(INSTALLED_BIN)"; then rm -f "$(INSTALLED_BIN).new" "$(INSTALL_BACKUP)"; exit 1; fi; \
+	if ! "$(INSTALLED_BIN)" service install --scope auto --exec "$(INSTALLED_BIN)"; then \
+	  if [ -f "$(INSTALL_BACKUP)" ]; then \
+	    if ! install -m755 "$(INSTALL_BACKUP)" "$(INSTALLED_BIN)"; then echo "Service installation and binary rollback both failed" >&2; exit 1; fi; \
+	    rm -f "$(INSTALL_BACKUP)"; \
+	    "$(INSTALLED_BIN)" service restart --scope auto >/dev/null 2>&1 || true; \
+	    echo "Service installation failed; restored the previous binary" >&2; \
+	  else \
+	    rm -f "$(INSTALLED_BIN)"; \
+	    echo "Service installation failed; removed the incomplete binary installation" >&2; \
+	  fi; \
+	  exit 1; \
+	fi; \
+	rm -f "$(INSTALL_BACKUP)"; \
+	echo "Installed $(APP) to $(INSTALLED_BIN)"
+
+.PHONY: install-completion-existing
+install-completion-existing: install-service ## Install completion after a successful managed install
+	@"$(INSTALLED_BIN)" completion install --shell auto \
+		&& echo "Shell completion installed (open a new shell to use it)" || true
 
 .PHONY: uninstall
 uninstall: ## Remove service, binary and shell completion
-	-"$(INSTALLED_BIN)" service uninstall --purge
-	rm -f "$(HOME)/.local/share/bash-completion/completions/$(APP)"
-	rm -f "$(HOME)/.local/share/zsh/site-functions/_$(APP)"
-	rm -f "$(XDG_CONFIG_HOME)/fish/completions/$(APP).fish"
-	rm -f "$(INSTALLED_BIN)"
+	"$(INSTALLED_BIN)" service uninstall --scope auto --purge
 	@echo "Sentinel uninstalled."
 
 # --- Release ---------------------------------------------------

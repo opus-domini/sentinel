@@ -29,6 +29,8 @@ const (
 type launchdAutoUpdateInstallConfig struct {
 	scope        string
 	execPath     string
+	configPath   string
+	dataDir      string
 	serviceLabel string
 	interval     int
 	updaterPath  string
@@ -41,7 +43,7 @@ func installUserLaunchd(opts InstallUserOptions) error {
 		return err
 	}
 
-	scope, err := normalizeLaunchdScope(managerScopeAuto)
+	scope, err := ResolveInstallScope(opts.Scope)
 	if err != nil {
 		return err
 	}
@@ -51,6 +53,9 @@ func installUserLaunchd(opts InstallUserOptions) error {
 
 	execPath, err := resolveExecPath(opts.ExecPath)
 	if err != nil {
+		return err
+	}
+	if err := validateExecutable(execPath); err != nil {
 		return err
 	}
 
@@ -66,24 +71,22 @@ func installUserLaunchd(opts InstallUserOptions) error {
 	if err != nil {
 		return err
 	}
-	plist := renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath)
+	plist := renderLaunchdUserServicePlist(execPath, opts.ConfigPath, opts.DataDir, stdoutPath, stderrPath)
 	mode := launchdUnitFileMode(scope)
-	if err := os.WriteFile(servicePath, []byte(plist), mode); err != nil {
+	replacement, err := replaceManagedFile(servicePath, []byte(plist), mode)
+	if err != nil {
 		return fmt.Errorf("write launchd service plist: %w", err)
-	}
-	if err := os.Chmod(servicePath, mode); err != nil {
-		return fmt.Errorf("set launchd service plist mode: %w", err)
 	}
 
 	if opts.Enable || opts.Start {
 		_ = launchdBootout(scope, launchdServiceLabel)
 		if err := launchdBootstrap(scope, servicePath, launchdServiceLabel); err != nil {
-			return err
+			return rollbackLaunchdInstall(err, replacement, scope, launchdServiceLabel)
 		}
 	}
 	if opts.Start {
 		if err := launchdKickstart(scope, launchdServiceLabel); err != nil {
-			return err
+			return rollbackLaunchdInstall(err, replacement, scope, launchdServiceLabel)
 		}
 	}
 	return nil
@@ -98,22 +101,26 @@ func installUserAutoUpdateLaunchd(opts InstallUserAutoUpdateOptions) error {
 	if err != nil {
 		return err
 	}
+	if err := validateExecutable(cfg.execPath); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(cfg.updaterPath), 0o750); err != nil {
 		return fmt.Errorf("create launchd directory: %w", err)
 	}
-	if err := writeLaunchdAutoUpdatePlist(cfg); err != nil {
+	replacement, err := replaceLaunchdAutoUpdatePlist(cfg)
+	if err != nil {
 		return err
 	}
 
 	if opts.Enable || opts.Start {
 		_ = launchdBootout(cfg.scope, launchdAutoUpdateLabel)
 		if err := launchdBootstrap(cfg.scope, cfg.updaterPath, launchdAutoUpdateLabel); err != nil {
-			return err
+			return rollbackLaunchdInstall(err, replacement, cfg.scope, launchdAutoUpdateLabel)
 		}
 	}
 	if opts.Start {
 		if err := launchdKickstart(cfg.scope, launchdAutoUpdateLabel); err != nil {
-			return err
+			return rollbackLaunchdInstall(err, replacement, cfg.scope, launchdAutoUpdateLabel)
 		}
 	}
 	return nil
@@ -155,6 +162,8 @@ func resolveLaunchdAutoUpdateInstallConfig(opts InstallUserAutoUpdateOptions) (l
 	return launchdAutoUpdateInstallConfig{
 		scope:        scope,
 		execPath:     execPath,
+		configPath:   strings.TrimSpace(opts.ConfigPath),
+		dataDir:      strings.TrimSpace(opts.DataDir),
 		serviceLabel: serviceLabel,
 		interval:     interval,
 		updaterPath:  updaterPath,
@@ -164,8 +173,15 @@ func resolveLaunchdAutoUpdateInstallConfig(opts InstallUserAutoUpdateOptions) (l
 }
 
 func writeLaunchdAutoUpdatePlist(cfg launchdAutoUpdateInstallConfig) error {
+	_, err := replaceLaunchdAutoUpdatePlist(cfg)
+	return err
+}
+
+func replaceLaunchdAutoUpdatePlist(cfg launchdAutoUpdateInstallConfig) (*managedFileReplacement, error) {
 	plist := renderLaunchdUserAutoUpdatePlist(
 		cfg.execPath,
+		cfg.configPath,
+		cfg.dataDir,
 		cfg.serviceLabel,
 		cfg.scope,
 		cfg.interval,
@@ -173,13 +189,25 @@ func writeLaunchdAutoUpdatePlist(cfg launchdAutoUpdateInstallConfig) error {
 		cfg.stderrPath,
 	)
 	mode := launchdUnitFileMode(cfg.scope)
-	if err := os.WriteFile(cfg.updaterPath, []byte(plist), mode); err != nil {
-		return fmt.Errorf("write launchd autoupdate plist: %w", err)
+	replacement, err := replaceManagedFile(cfg.updaterPath, []byte(plist), mode)
+	if err != nil {
+		return nil, fmt.Errorf("write launchd autoupdate plist: %w", err)
 	}
-	if err := os.Chmod(cfg.updaterPath, mode); err != nil {
-		return fmt.Errorf("set launchd autoupdate plist mode: %w", err)
+	return replacement, nil
+}
+
+func rollbackLaunchdInstall(cause error, replacement *managedFileReplacement, scope, label string) error {
+	_ = launchdBootout(scope, label)
+	rollbackErr := rollbackManagedFiles(cause, replacement)
+	if replacement != nil && replacement.existed {
+		if err := launchdBootstrap(scope, replacement.path, label); err != nil {
+			return errors.Join(rollbackErr, fmt.Errorf("restore previous launchd job: %w", err))
+		}
+		if err := launchdKickstart(scope, label); err != nil {
+			return errors.Join(rollbackErr, fmt.Errorf("restart previous launchd job: %w", err))
+		}
 	}
-	return nil
+	return rollbackErr
 }
 
 func uninstallUserLaunchd(opts UninstallUserOptions) error {
@@ -187,10 +215,11 @@ func uninstallUserLaunchd(opts UninstallUserOptions) error {
 		return err
 	}
 
-	scope, err := resolveServiceScope()
+	deployment, err := ResolveDeployment(opts.Scope)
 	if err != nil {
 		return err
 	}
+	scope := deployment.Scope
 	if err := requireScopePrivilege(scope); err != nil {
 		return err
 	}
@@ -315,10 +344,6 @@ func userAutoUpdateStatusLaunchdForScope(scopeRaw string) (UserAutoUpdateService
 	return st, nil
 }
 
-func userServicePathLaunchd() (string, error) {
-	return userServicePathLaunchdForScope("")
-}
-
 func userServicePathLaunchdForScope(scopeRaw string) (string, error) {
 	scope, err := normalizeLaunchdScope(scopeRaw)
 	if err != nil {
@@ -328,7 +353,7 @@ func userServicePathLaunchdForScope(scopeRaw string) (string, error) {
 		return launchdSystemServicePath, nil
 	}
 
-	home, err := os.UserHomeDir()
+	home, err := userScopeHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
@@ -344,7 +369,7 @@ func userAutoUpdatePathLaunchdForScope(scopeRaw string) (string, error) {
 		return launchdSystemUpdaterPath, nil
 	}
 
-	home, err := os.UserHomeDir()
+	home, err := userScopeHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
@@ -361,7 +386,7 @@ func launchdLogFilePaths(baseName, scopeRaw string) (string, string, error) {
 	if scope == managerScopeSystem {
 		logDir = launchdSystemLogDir
 	} else {
-		home, err := os.UserHomeDir()
+		home, err := userScopeHomeDir()
 		if err != nil {
 			return "", "", fmt.Errorf("resolve home dir: %w", err)
 		}
@@ -389,10 +414,11 @@ func userLogsLaunchd(opts LogsOptions) error {
 		return errors.New("tail was not found in PATH")
 	}
 
-	scope, err := resolveServiceScope()
+	deployment, err := ResolveDeployment(opts.Scope)
 	if err != nil {
 		return err
 	}
+	scope := deployment.Scope
 	stdoutPath, stderrPath, err := launchdLogFilePaths("sentinel", scope)
 	if err != nil {
 		return err
@@ -439,17 +465,12 @@ func ensureLaunchdScopePrivileges(scope string) error {
 func normalizeLaunchdScope(raw string) (string, error) {
 	scope := strings.ToLower(strings.TrimSpace(raw))
 	switch scope {
-	case "", managerScopeAuto, managerScopeLaunchd:
-		if os.Geteuid() == 0 {
-			return managerScopeSystem, nil
-		}
-		return managerScopeUser, nil
 	case managerScopeUser:
 		return managerScopeUser, nil
 	case managerScopeSystem:
 		return managerScopeSystem, nil
 	default:
-		return "", fmt.Errorf("invalid launchd scope: %s", raw)
+		return "", fmt.Errorf("invalid launchd scope %q: pass user or system explicitly", raw)
 	}
 }
 
@@ -587,7 +608,7 @@ func launchdStartInterval(raw string) (int, error) {
 	return 0, fmt.Errorf("invalid on-calendar value for launchd: %s", raw)
 }
 
-func renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath string) string {
+func renderLaunchdUserServicePlist(execPath, configPath, dataDir, stdoutPath, stderrPath string) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -597,6 +618,7 @@ func renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath string) stri
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
+		<string>--config=%s</string>
 		<string>daemon</string>
 	</array>
 	<key>RunAtLoad</key>
@@ -611,16 +633,20 @@ func renderLaunchdUserServicePlist(execPath, stdoutPath, stderrPath string) stri
 	<dict>
 		<key>SENTINEL_LOG_LEVEL</key>
 		<string>info</string>
+		<key>SENTINEL_DATA_DIR</key>
+		<string>%s</string>
 		<key>TERM</key>
 		<string>xterm-256color</string>
 	</dict>
 </dict>
 </plist>
-`, xmlEscape(launchdServiceLabel), xmlEscape(execPath), xmlEscape(stdoutPath), xmlEscape(stderrPath))
+`, xmlEscape(launchdServiceLabel), xmlEscape(execPath), xmlEscape(configPath), xmlEscape(stdoutPath), xmlEscape(stderrPath), xmlEscape(dataDir))
 }
 
 func renderLaunchdUserAutoUpdatePlist(
 	execPath,
+	configPath,
+	dataDir,
 	serviceLabel string,
 	scope string,
 	intervalSeconds int,
@@ -636,6 +662,7 @@ func renderLaunchdUserAutoUpdatePlist(
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
+		<string>--config=%s</string>
 		<string>update</string>
 		<string>apply</string>
 		<string>-service=%s</string>
@@ -647,9 +674,14 @@ func renderLaunchdUserAutoUpdatePlist(
 	<string>%s</string>
 	<key>StandardErrorPath</key>
 	<string>%s</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>SENTINEL_DATA_DIR</key>
+		<string>%s</string>
+	</dict>
 </dict>
 </plist>
-`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(serviceLabel), xmlEscape(scope), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath))
+`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(configPath), xmlEscape(serviceLabel), xmlEscape(scope), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath), xmlEscape(dataDir))
 }
 
 func xmlEscape(raw string) string {

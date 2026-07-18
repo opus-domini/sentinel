@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
 
+	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +25,35 @@ func newDoctorCmd(app *App) *cobra.Command {
 }
 
 func runDoctor(app *App) error {
-	cfg, configPath, cfgErr := loadConfigFn()
+	deployments, deploymentsErr := installedDeploymentsFn()
+	var (
+		cfg                 config.Config
+		configPath          string
+		cfgErr              error
+		deploymentAccessErr error
+	)
+	if deploymentsErr != nil {
+		cfg = config.Default()
+		configPath = "unavailable"
+	} else {
+		switch len(deployments) {
+		case 0:
+			cfg, configPath, cfgErr = loadConfigFn()
+		case 1:
+			deployment := deployments[0]
+			configPath = deployment.ConfigPath
+			deploymentAccessErr = requireScopeAccessFn(deployment.Scope)
+			if deploymentAccessErr == nil {
+				cfg, configPath, cfgErr = loadConfigPathFn(deployment.ConfigPath, deployment.DataDir)
+			} else {
+				cfg = config.DefaultForDataDir(deployment.DataDir)
+			}
+		default:
+			cfg = config.Default()
+			configPath = "ambiguous: select one deployment"
+			deploymentAccessErr = daemon.ErrAmbiguousDeployment
+		}
+	}
 	tmuxPath, tmuxErr := exec.LookPath("tmux")
 	managerLabel := runtimeServiceManagerLabel()
 	managerPath, managerErr := exec.LookPath(managerLabel)
@@ -43,6 +74,16 @@ func runDoctor(app *App) error {
 		{Key: "trusted proxies", Value: doctorListValue(cfg.Server.TrustedProxies)},
 	}
 	var issues []string
+	if deploymentsErr != nil {
+		issues = append(issues, fmt.Sprintf("deployment discovery failed: %v", deploymentsErr))
+	}
+	if deploymentAccessErr != nil {
+		if errors.Is(deploymentAccessErr, daemon.ErrAmbiguousDeployment) {
+			issues = append(issues, "Sentinel is installed in both user and system scope; remove one deployment or inspect each with an explicit scope")
+		} else {
+			issues = append(issues, deploymentAccessErr.Error()+"; run `sudo sentinel doctor` to inspect the system config")
+		}
+	}
 	if runtime.GOOS != "linux" && runtime.GOOS != hostOSDarwin {
 		issues = append(issues, fmt.Sprintf("host operating system %q is not supported", runtime.GOOS))
 	}
@@ -75,6 +116,9 @@ func runDoctor(app *App) error {
 			rows = append(rows,
 				outputRow{Key: fmt.Sprintf("%s unit file", s.Scope), Value: s.ServicePath},
 				outputRow{Key: fmt.Sprintf("%s unit exists", s.Scope), Value: fmt.Sprintf("%t", s.UnitFileExists)},
+				outputRow{Key: fmt.Sprintf("%s binary", s.Scope), Value: s.BinaryPath},
+				outputRow{Key: fmt.Sprintf("%s config", s.Scope), Value: s.ConfigPath},
+				outputRow{Key: fmt.Sprintf("%s data dir", s.Scope), Value: s.DataDir},
 			)
 			if s.SystemctlAvailable {
 				rows = append(rows,

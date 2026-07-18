@@ -23,7 +23,7 @@ func (s InstalledScopes) None() bool { return !s.User && !s.System }
 
 // ScopedServiceStatus is a service status tagged with the scope it came from.
 type ScopedServiceStatus struct {
-	Scope string
+	Deployment
 	UserServiceStatus
 }
 
@@ -36,7 +36,7 @@ func fileExists(path string) bool {
 // the caller's euid (unlike UserServicePath, which resolves to the system path
 // for root).
 func userScopeUnitPath() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := userScopeHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
@@ -71,34 +71,17 @@ func detectLaunchdScopes() InstalledScopes {
 	return scopes
 }
 
-// resolveServiceScope returns the scope the installed service lives in, for
-// commands that act on a single service. It errors when nothing is installed.
-// When a unit exists in both scopes it picks the one the current euid operates
-// naturally (system for root, user otherwise).
+// resolveServiceScope returns the only installed service scope. Ambiguous
+// user+system installations are rejected instead of silently selected by euid.
 func resolveServiceScope() (string, error) {
-	scopes := DetectInstalledScopes()
-	switch {
-	case scopes.None():
-		return "", ErrNoServiceInstalled
-	case scopes.User && scopes.System:
-		if os.Geteuid() == 0 {
-			return managerScopeSystem, nil
-		}
-		return managerScopeUser, nil
-	case scopes.System:
-		return managerScopeSystem, nil
-	default:
-		return managerScopeUser, nil
-	}
+	deployment, err := ResolveDeployment(ScopeAuto)
+	return deployment.Scope, err
 }
 
 // requireScopePrivilege errors when acting on scope needs a privilege the
 // caller lacks — modifying a system unit requires root.
 func requireScopePrivilege(scope string) error {
-	if scope == managerScopeSystem && os.Geteuid() != 0 {
-		return errors.New("the Sentinel service is installed system-wide; re-run with sudo")
-	}
-	return nil
+	return RequireScopeAccess(scope)
 }
 
 // ServiceStatus reports the status of every scope where a Sentinel service
@@ -113,15 +96,23 @@ func ServiceStatus() ([]ScopedServiceStatus, error) {
 	scopes := DetectInstalledScopes()
 	var report []ScopedServiceStatus
 	if scopes.User {
+		deployment, err := readDeployment(managerScopeUser)
+		if err != nil {
+			return nil, err
+		}
 		st, err := userStatusUserLinux()
 		if err != nil {
 			return nil, err
 		}
-		report = append(report, ScopedServiceStatus{Scope: managerScopeUser, UserServiceStatus: st})
+		report = append(report, ScopedServiceStatus{Deployment: deployment, UserServiceStatus: st})
 	}
 	if scopes.System {
+		deployment, err := readDeployment(managerScopeSystem)
+		if err != nil {
+			return nil, err
+		}
 		st := userStatusSystemLinux()
-		report = append(report, ScopedServiceStatus{Scope: managerScopeSystem, UserServiceStatus: st})
+		report = append(report, ScopedServiceStatus{Deployment: deployment, UserServiceStatus: st})
 	}
 	return report, nil
 }
@@ -130,18 +121,26 @@ func serviceStatusLaunchd() ([]ScopedServiceStatus, error) {
 	scopes := detectLaunchdScopes()
 	var report []ScopedServiceStatus
 	if scopes.User {
+		deployment, err := readDeployment(managerScopeUser)
+		if err != nil {
+			return nil, err
+		}
 		st, err := userStatusLaunchdForScope(managerScopeUser)
 		if err != nil {
 			return nil, err
 		}
-		report = append(report, ScopedServiceStatus{Scope: managerScopeUser, UserServiceStatus: st})
+		report = append(report, ScopedServiceStatus{Deployment: deployment, UserServiceStatus: st})
 	}
 	if scopes.System {
+		deployment, err := readDeployment(managerScopeSystem)
+		if err != nil {
+			return nil, err
+		}
 		st, err := userStatusLaunchdForScope(managerScopeSystem)
 		if err != nil {
 			return nil, err
 		}
-		report = append(report, ScopedServiceStatus{Scope: managerScopeSystem, UserServiceStatus: st})
+		report = append(report, ScopedServiceStatus{Deployment: deployment, UserServiceStatus: st})
 	}
 	return report, nil
 }

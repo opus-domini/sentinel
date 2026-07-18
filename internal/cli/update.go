@@ -2,12 +2,17 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/humanize"
 	"github.com/opus-domini/sentinel/internal/updater"
 )
@@ -38,13 +43,14 @@ func newUpdateCheckCmd(app *App) *cobra.Command {
 		apiBase    string
 		targetOS   string
 		targetArch string
+		scope      string
 	)
 	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Check whether a newer release is available",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg, _, err := loadConfigFn()
+			ctx, err := resolveUpdateContext(scope, false)
 			if err != nil {
 				return failf("update check failed: %w", err)
 			}
@@ -54,7 +60,7 @@ func newUpdateCheckCmd(app *App) *cobra.Command {
 				APIBaseURL:     strings.TrimSpace(apiBase),
 				OS:             strings.TrimSpace(targetOS),
 				Arch:           strings.TrimSpace(targetArch),
-				DataDir:        cfg.DataDir(),
+				DataDir:        ctx.cfg.DataDir(),
 			})
 			if err != nil {
 				return failf("update check failed: %w", err)
@@ -74,6 +80,7 @@ func newUpdateCheckCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&apiBase, "api", "", "GitHub API base URL override")
 	cmd.Flags().StringVar(&targetOS, "os", runtime.GOOS, "target operating system")
 	cmd.Flags().StringVar(&targetArch, "arch", runtime.GOARCH, "target CPU architecture")
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "target deployment: auto|user|system")
 	return cmd
 }
 
@@ -99,10 +106,32 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 			if err != nil {
 				return failf("%w", err)
 			}
-
-			cfg, configPath, err := loadConfigFn()
+			updateContext, err := resolveUpdateContext(restartScope, true)
 			if err != nil {
 				return failf("update apply failed: %w", err)
+			}
+			if updateContext.deployment != nil {
+				if requested := strings.TrimSpace(execPath); requested != "" && !sameBinaryPath(requested, updateContext.deployment.BinaryPath) {
+					return failf("update apply failed: --exec=%s does not match the %s deployment binary %s", requested, updateContext.deployment.Scope, updateContext.deployment.BinaryPath)
+				}
+				if requested := strings.TrimSpace(serviceUnit); requested != "" && requested != sentinelServiceUnit && requested != "io.opusdomini.sentinel" {
+					return failf("update apply failed: --service cannot override the managed Sentinel deployment")
+				}
+				execPath = updateContext.deployment.BinaryPath
+				restartScope = updateContext.deployment.Scope
+				serviceUnit = sentinelServiceUnit
+			} else {
+				restartScope = "none"
+				restart = false
+				if strings.TrimSpace(execPath) == "" {
+					execPath, err = os.Executable()
+					if err != nil {
+						return failf("update apply failed: resolve current executable: %w", err)
+					}
+				}
+				if err := preflightBinaryWrite(execPath); err != nil {
+					return failf("update apply failed: %w", err)
+				}
 			}
 			result, err := updateApplyFn(context.Background(), updater.ApplyOptions{
 				CurrentVersion:  currentVersionFn(),
@@ -110,8 +139,8 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 				APIBaseURL:      strings.TrimSpace(apiBase),
 				OS:              strings.TrimSpace(targetOS),
 				Arch:            strings.TrimSpace(targetArch),
-				DataDir:         cfg.DataDir(),
-				ConfigPath:      configPath,
+				DataDir:         updateContext.cfg.DataDir(),
+				ConfigPath:      updateContext.configPath,
 				ExecPath:        strings.TrimSpace(execPath),
 				AllowDowngrade:  allowDowngrade,
 				AllowUnverified: allowUnverified,
@@ -148,8 +177,8 @@ func newUpdateApplyCmd(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&allowDowngrade, "allow-downgrade", false, "allow installing an older release")
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow update when the checksum is unavailable")
 	cmd.Flags().BoolVar(&restart, "restart", true, "restart the managed service after a successful update")
-	cmd.Flags().StringVar(&serviceUnit, "service", "sentinel", "service unit/label to restart after the update")
-	cmd.Flags().StringVar(&scope, "scope", optionAuto, "restart manager scope: auto, user, or system")
+	cmd.Flags().StringVar(&serviceUnit, "service", sentinelServiceUnit, "service unit/label to restart after the update")
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "installation and service scope: auto, user, or system")
 	return cmd
 }
 
@@ -159,7 +188,7 @@ func normalizeUpdateApplyScope(raw string) (string, error) {
 		return optionAuto, nil
 	}
 	switch scope {
-	case optionAuto, "user", "system":
+	case optionAuto, optionUser, optionSystem:
 		return scope, nil
 	default:
 		return "", fmt.Errorf("unsupported update apply scope %q (valid: auto, user, system)", raw)
@@ -167,16 +196,17 @@ func normalizeUpdateApplyScope(raw string) (string, error) {
 }
 
 func newUpdateStatusCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var scope string
+	cmd := &cobra.Command{
 		Use:   cmdStatus,
 		Short: "Show the last recorded update state",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg, _, err := loadConfigFn()
+			ctx, err := resolveUpdateContext(scope, false)
 			if err != nil {
 				return failf("update status failed: %w", err)
 			}
-			state, err := updateStatusFn(cfg.DataDir())
+			state, err := updateStatusFn(ctx.cfg.DataDir())
 			if err != nil {
 				return failf("update status failed: %w", err)
 			}
@@ -195,4 +225,69 @@ func newUpdateStatusCmd(app *App) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&scope, "scope", optionAuto, "target deployment: auto|user|system")
+	return cmd
+}
+
+type updateContext struct {
+	cfg        config.Config
+	configPath string
+	deployment *daemon.Deployment
+}
+
+func resolveUpdateContext(scopeRaw string, requireWritable bool) (updateContext, error) {
+	deployment, err := resolveDeploymentFn(scopeRaw)
+	if err != nil {
+		if !errors.Is(err, daemon.ErrNoServiceInstalled) {
+			return updateContext{}, err
+		}
+		if normalized, normalizeErr := normalizeUpdateApplyScope(scopeRaw); normalizeErr != nil {
+			return updateContext{}, normalizeErr
+		} else if normalized != optionAuto {
+			return updateContext{}, fmt.Errorf("no managed Sentinel deployment exists in %s scope", normalized)
+		}
+		cfg, configPath, loadErr := loadConfigFn()
+		if loadErr != nil {
+			return updateContext{}, loadErr
+		}
+		return updateContext{cfg: cfg, configPath: configPath}, nil
+	}
+	if err := requireScopeAccessFn(deployment.Scope); err != nil {
+		return updateContext{}, err
+	}
+	if requireWritable {
+		if err := preflightBinaryWrite(deployment.BinaryPath); err != nil {
+			return updateContext{}, err
+		}
+	}
+	cfg, configPath, err := loadConfigPathFn(deployment.ConfigPath, deployment.DataDir)
+	if err != nil {
+		return updateContext{}, err
+	}
+	return updateContext{cfg: cfg, configPath: configPath, deployment: &deployment}, nil
+}
+
+func preflightBinaryWrite(binaryPath string) error {
+	binaryPath = strings.TrimSpace(binaryPath)
+	if binaryPath == "" {
+		return errors.New("deployment binary path is empty")
+	}
+	if info, err := os.Stat(binaryPath); err != nil {
+		return fmt.Errorf("access deployment binary %s: %w", binaryPath, err)
+	} else if !info.Mode().IsRegular() {
+		return fmt.Errorf("deployment binary is not a regular file: %s", binaryPath)
+	}
+	probe, err := os.CreateTemp(filepath.Dir(binaryPath), ".sentinel-update-preflight-*")
+	if err != nil {
+		return fmt.Errorf("deployment binary %s is not writable by this user: %w", binaryPath, err)
+	}
+	probePath := probe.Name()
+	if closeErr := probe.Close(); closeErr != nil {
+		_ = os.Remove(probePath)
+		return fmt.Errorf("close update preflight file: %w", closeErr)
+	}
+	if err := os.Remove(probePath); err != nil {
+		return fmt.Errorf("remove update preflight file: %w", err)
+	}
+	return nil
 }

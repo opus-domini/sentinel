@@ -8,7 +8,7 @@ import (
 func TestRenderUserUnitOmitsHardeningDirectives(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserUnit("/usr/bin/sentinel")
+	unit := renderUserUnit("/usr/bin/sentinel", "", "")
 	if strings.Contains(unit, "NoNewPrivileges=") {
 		t.Error("expected NoNewPrivileges= directive to be absent from user unit")
 	}
@@ -20,7 +20,7 @@ func TestRenderUserUnitOmitsHardeningDirectives(t *testing.T) {
 func TestRenderUserAutoUpdateUnitOmitsHardeningDirectives(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "sentinel", managerScopeUser)
+	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "", "", "sentinel", managerScopeUser)
 	if strings.Contains(unit, "NoNewPrivileges=") {
 		t.Error("expected NoNewPrivileges= directive to be absent from auto-update unit")
 	}

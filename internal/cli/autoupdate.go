@@ -47,19 +47,31 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 		Short: "Install the autoupdate timer and start it",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			deployment, err := resolveDeploymentFn(scope)
+			if err != nil {
+				return failf("service autoupdate install failed: %w", err)
+			}
+			if err := requireScopeAccessFn(deployment.Scope); err != nil {
+				return failf("service autoupdate install failed: %w", err)
+			}
+			if requested := strings.TrimSpace(execPath); requested != "" && requested != deployment.BinaryPath {
+				return failf("service autoupdate install failed: --exec does not match deployment binary %s", deployment.BinaryPath)
+			}
 			if err := installUserAutoUpdateFn(daemon.InstallUserAutoUpdateOptions{
-				ExecPath:        strings.TrimSpace(execPath),
+				ExecPath:        deployment.BinaryPath,
+				ConfigPath:      deployment.ConfigPath,
+				DataDir:         deployment.DataDir,
 				Enable:          enable,
 				Start:           start,
-				ServiceUnit:     strings.TrimSpace(serviceUnit),
-				SystemdScope:    strings.TrimSpace(scope),
+				ServiceUnit:     sentinelServiceUnit,
+				SystemdScope:    deployment.Scope,
 				OnCalendar:      strings.TrimSpace(onCalendar),
 				RandomizedDelay: randomizedDelay,
 			}); err != nil {
 				return failf("service autoupdate install failed: %w", err)
 			}
 
-			if timerPath, err := daemon.UserAutoUpdateTimerPathForScope(strings.TrimSpace(scope)); err == nil {
+			if timerPath, err := daemon.UserAutoUpdateTimerPathForScope(deployment.Scope); err == nil {
 				writef(app.Stdout, "autoupdate timer installed: %s\n", timerPath)
 			}
 			switch {
@@ -79,9 +91,11 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&enable, "enable", true, "enable the autoupdate timer at startup")
 	cmd.Flags().BoolVar(&start, "start", true, "start the autoupdate timer immediately")
 	cmd.Flags().StringVar(&serviceUnit, "service", "sentinel", "service unit/label to restart after an update")
-	cmd.Flags().StringVar(&scope, "scope", defaultAutoUpdateScope, "restart manager scope: auto|user|system|launchd")
+	cmd.Flags().StringVar(&scope, "scope", defaultAutoUpdateScope, "target deployment: auto|user|system")
 	cmd.Flags().StringVar(&onCalendar, "on-calendar", "daily", "update schedule: daily|hourly|weekly|duration|seconds")
 	cmd.Flags().DurationVar(&randomizedDelay, "randomized-delay", time.Hour, "randomized delay before updating (systemd only)")
+	_ = cmd.Flags().MarkHidden("exec")
+	_ = cmd.Flags().MarkHidden("service")
 	return cmd
 }
 
@@ -97,11 +111,18 @@ func newServiceAutoUpdateUninstallCmd(app *App) *cobra.Command {
 		Short: "Stop the autoupdate timer and remove its units",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			deployment, err := resolveDeploymentFn(scope)
+			if err != nil {
+				return failf("service autoupdate uninstall failed: %w", err)
+			}
+			if err := requireScopeAccessFn(deployment.Scope); err != nil {
+				return failf("service autoupdate uninstall failed: %w", err)
+			}
 			if err := uninstallUserAutoUpdateFn(daemon.UninstallUserAutoUpdateOptions{
 				Disable:    disable,
 				Stop:       stop,
 				RemoveUnit: removeUnit,
-				Scope:      strings.TrimSpace(scope),
+				Scope:      deployment.Scope,
 			}); err != nil {
 				return failf("service autoupdate uninstall failed: %w", err)
 			}
@@ -112,7 +133,7 @@ func newServiceAutoUpdateUninstallCmd(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&disable, "disable", true, "disable the autoupdate timer from auto-start")
 	cmd.Flags().BoolVar(&stop, "stop", true, "stop the running autoupdate timer")
 	cmd.Flags().BoolVar(&removeUnit, "remove-unit", true, "remove the autoupdate unit files")
-	cmd.Flags().StringVar(&scope, "scope", defaultAutoUpdateScope, "target scope: auto|user|system|launchd")
+	cmd.Flags().StringVar(&scope, "scope", defaultAutoUpdateScope, "target deployment: auto|user|system")
 	return cmd
 }
 
@@ -123,7 +144,14 @@ func newServiceAutoUpdateStatusCmd(app *App) *cobra.Command {
 		Short: "Show the autoupdate timer status",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			status, err := userAutoUpdateStatusFn(strings.TrimSpace(scope))
+			deployment, err := resolveDeploymentFn(scope)
+			if err != nil {
+				return failf("service autoupdate status failed: %w", err)
+			}
+			if err := requireScopeAccessFn(deployment.Scope); err != nil {
+				return failf("service autoupdate status failed: %w", err)
+			}
+			status, err := userAutoUpdateStatusFn(deployment.Scope)
 			if err != nil {
 				return failf("service autoupdate status failed: %w", err)
 			}
@@ -146,6 +174,6 @@ func newServiceAutoUpdateStatusCmd(app *App) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&scope, "scope", defaultAutoUpdateScope, "target scope: auto|user|system|launchd")
+	cmd.Flags().StringVar(&scope, "scope", defaultAutoUpdateScope, "target deployment: auto|user|system")
 	return cmd
 }

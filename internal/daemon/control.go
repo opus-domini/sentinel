@@ -7,7 +7,7 @@ import (
 	"slices"
 )
 
-// Lifecycle action names accepted by ControlUser.
+// Lifecycle action names accepted by Control.
 const (
 	actionStart   = "start"
 	actionStop    = "stop"
@@ -16,27 +16,25 @@ const (
 	actionDisable = "disable"
 )
 
-// ServiceActions lists the lifecycle actions ControlUser accepts.
+// ServiceActions lists the lifecycle actions Control accepts.
 var ServiceActions = []string{actionStart, actionStop, actionRestart, actionEnable, actionDisable}
 
-// ControlUser runs a lifecycle action on the managed Sentinel service. The
-// action must be one of start, stop, restart, enable or disable. On Linux it
-// drives systemctl (the system manager when run as root, otherwise the user
-// manager); on macOS it drives launchctl.
-func ControlUser(action string) error {
+// Control runs a lifecycle action against a resolved deployment.
+func Control(action, scopeRaw string) error {
 	if !validServiceAction(action) {
 		return fmt.Errorf("unknown service action: %s", action)
 	}
 	if runtime.GOOS == launchdSupportedOS {
-		return controlUserLaunchd(action)
+		return controlUserLaunchd(action, scopeRaw)
 	}
 	if err := ensureServicePlatformSupported(); err != nil {
 		return err
 	}
-	scope, err := resolveServiceScope()
+	deployment, err := ResolveDeployment(scopeRaw)
 	if err != nil {
 		return err
 	}
+	scope := deployment.Scope
 	if err := requireScopePrivilege(scope); err != nil {
 		return err
 	}
@@ -56,14 +54,15 @@ func validServiceAction(action string) bool {
 // controlUserLaunchd maps a lifecycle action onto launchctl. launchd has no
 // 1:1 equivalent of every systemd verb, so start/restart go through
 // bootstrap+kickstart and stop unloads the job.
-func controlUserLaunchd(action string) error {
+func controlUserLaunchd(action, scopeRaw string) error {
 	if err := ensureLaunchdSupported(); err != nil {
 		return err
 	}
-	scope, err := resolveServiceScope()
+	deployment, err := ResolveDeployment(scopeRaw)
 	if err != nil {
 		return err
 	}
+	scope := deployment.Scope
 	if err := requireScopePrivilege(scope); err != nil {
 		return err
 	}

@@ -349,8 +349,14 @@ func restartAfterApply(ctx context.Context, cfg ApplyOptions, execPath, backupPa
 		return nil
 	}
 	if err := runCommand(ctx, restartCmd[0], restartCmd[1:]...); err != nil {
-		_ = rollbackBinary(execPath, backupPath)
-		return fmt.Errorf("restart service failed: %w", err)
+		restartErr := fmt.Errorf("restart updated service failed: %w", err)
+		if rollbackErr := rollbackBinary(execPath, backupPath); rollbackErr != nil {
+			return errors.Join(restartErr, rollbackErr)
+		}
+		if restoreErr := runCommand(ctx, restartCmd[0], restartCmd[1:]...); restoreErr != nil {
+			return errors.Join(restartErr, fmt.Errorf("previous binary was restored but its service restart failed: %w", restoreErr))
+		}
+		return fmt.Errorf("%w; restored and restarted the previous binary", restartErr)
 	}
 
 	// A successful restart only means the unit started. Give the new binary a
@@ -362,11 +368,14 @@ func restartAfterApply(ctx context.Context, cfg ApplyOptions, execPath, backupPa
 	}
 	sleepFn(healthCheckDelay)
 	if err := runCommand(ctx, healthCmd[0], healthCmd[1:]...); err != nil {
-		_ = rollbackBinary(execPath, backupPath)
-		// Bring the previous, known-good binary back up. Best-effort: the
-		// rollback itself is what matters for the returned error.
-		_ = runCommand(ctx, restartCmd[0], restartCmd[1:]...)
-		return fmt.Errorf("updated service failed its health check; rolled back to the previous binary: %w", err)
+		healthErr := fmt.Errorf("updated service failed its health check: %w", err)
+		if rollbackErr := rollbackBinary(execPath, backupPath); rollbackErr != nil {
+			return errors.Join(healthErr, rollbackErr)
+		}
+		if restoreErr := runCommand(ctx, restartCmd[0], restartCmd[1:]...); restoreErr != nil {
+			return errors.Join(healthErr, fmt.Errorf("previous binary was restored but its service restart failed: %w", restoreErr))
+		}
+		return fmt.Errorf("%w; restored and restarted the previous binary", healthErr)
 	}
 	return nil
 }
@@ -521,8 +530,7 @@ func (o ApplyOptions) buildRestartCommand() []string {
 }
 
 // buildHealthCheckCommand returns the command that confirms the service is
-// active after a restart. It returns nil when no reliable check is available
-// (launchd, or scope=none), in which case the restart result is trusted.
+// still registered after a restart.
 func (o ApplyOptions) buildHealthCheckCommand() []string {
 	if o.SkipRestart {
 		return nil
@@ -536,7 +544,17 @@ func (o ApplyOptions) buildHealthCheckCommand() []string {
 		scope = defaultRestartScope()
 	}
 	if updaterRuntimeGOOS == hostOSDarwin {
-		return nil
+		if scope == restartScopeNone {
+			return nil
+		}
+		if scope == restartScopeLaunchd {
+			if updaterGeteuid() == 0 {
+				scope = restartScopeSystem
+			} else {
+				scope = restartScopeUser
+			}
+		}
+		return []string{"launchctl", "print", launchdJobTarget(scope, unit)}
 	}
 
 	switch scope {
@@ -567,6 +585,10 @@ func defaultRestartScope() string {
 }
 
 func buildLaunchdRestartCommand(scope, unit string) []string {
+	return []string{"launchctl", "kickstart", "-k", launchdJobTarget(scope, unit)}
+}
+
+func launchdJobTarget(scope, unit string) string {
 	if unit == defaultServiceUnit {
 		unit = defaultLaunchdLabel
 	}
@@ -574,7 +596,7 @@ func buildLaunchdRestartCommand(scope, unit string) []string {
 	if scope == restartScopeSystem {
 		domain = restartScopeSystem
 	}
-	return []string{"launchctl", "kickstart", "-k", fmt.Sprintf("%s/%s", domain, unit)}
+	return fmt.Sprintf("%s/%s", domain, unit)
 }
 
 func fetchLatestRelease(ctx context.Context, cfg CheckOptions) (release, error) {
@@ -914,7 +936,6 @@ func installBinary(execPath, newPath, backupPath string) error {
 }
 
 func rollbackBinary(execPath, backupPath string) error {
-	_ = os.Remove(execPath)
 	if err := os.Rename(backupPath, execPath); err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
 	}

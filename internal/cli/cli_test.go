@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -556,6 +557,7 @@ func TestRunCLIDBResetForceRejectsResource(t *testing.T) {
 }
 
 func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	origInstall := installUserSvcFn
 	t.Cleanup(func() { installUserSvcFn = origInstall })
 
@@ -582,13 +584,85 @@ func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
 	}
 }
 
+func TestValidateServiceInstallBinaryRejectsDeploymentPathDrift(t *testing.T) {
+	origDeployments := installedDeploymentsFn
+	t.Cleanup(func() { installedDeploymentsFn = origDeployments })
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) {
+		return []daemon.Deployment{{
+			Scope:      daemon.ScopeSystem,
+			BinaryPath: "/usr/local/bin/sentinel",
+		}}, nil
+	}
+
+	_, err := validateServiceInstallBinary(daemon.ScopeSystem, "/opt/sentinel")
+	if err == nil {
+		t.Fatal("validateServiceInstallBinary() error = nil")
+	}
+	for _, want := range []string{"system deployment uses /usr/local/bin/sentinel", "uninstall it before changing"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+}
+
+func TestRunServiceUninstallPurgeKeepsSharedDeploymentBinary(t *testing.T) {
+	origResolve := resolveDeploymentFn
+	origDeployments := installedDeploymentsFn
+	origAccess := requireScopeAccessFn
+	origUninstall := uninstallUserSvcFn
+	origAutoUpdate := uninstallUserAutoUpdateFn
+	origCompletions := removeShellCompletionsFn
+	origRemoveBinary := removeSentinelBinaryAtFn
+	t.Cleanup(func() {
+		resolveDeploymentFn = origResolve
+		installedDeploymentsFn = origDeployments
+		requireScopeAccessFn = origAccess
+		uninstallUserSvcFn = origUninstall
+		uninstallUserAutoUpdateFn = origAutoUpdate
+		removeShellCompletionsFn = origCompletions
+		removeSentinelBinaryAtFn = origRemoveBinary
+	})
+
+	const binaryPath = "/usr/local/bin/sentinel"
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeUser, BinaryPath: binaryPath}, nil
+	}
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) {
+		return []daemon.Deployment{
+			{Scope: daemon.ScopeUser, BinaryPath: binaryPath},
+			{Scope: daemon.ScopeSystem, BinaryPath: binaryPath},
+		}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
+	uninstallUserSvcFn = func(daemon.UninstallUserOptions) error { return nil }
+	uninstallUserAutoUpdateFn = func(daemon.UninstallUserAutoUpdateOptions) error { return nil }
+	removeShellCompletionsFn = func() []string { return nil }
+	removeCalled := false
+	removeSentinelBinaryAtFn = func(string) (string, error) {
+		removeCalled = true
+		return binaryPath, nil
+	}
+
+	var out, errOut bytes.Buffer
+	code := Run([]string{"service", "uninstall", "--scope", daemon.ScopeUser, "--purge"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0: %s", code, errOut.String())
+	}
+	if removeCalled {
+		t.Fatal("shared deployment binary was removed")
+	}
+	if !strings.Contains(errOut.String(), "system deployment also uses") {
+		t.Fatalf("stderr missing shared-binary diagnosis: %s", errOut.String())
+	}
+}
+
 func TestRunCLIServiceStatus(t *testing.T) {
 	origStatus := serviceStatusFn
 	t.Cleanup(func() { serviceStatusFn = origStatus })
 
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Scope: "user",
+			Deployment: daemon.Deployment{Scope: "user"},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/tmp/sentinel.service",
 				UnitFileExists:     true,
@@ -626,7 +700,7 @@ func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
 
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Scope: "system",
+			Deployment: daemon.Deployment{Scope: "system"},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/etc/systemd/system/sentinel.service",
 				UnitFileExists:     false,
@@ -661,15 +735,18 @@ func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
 func TestRunCLIDoctor(t *testing.T) {
 	origLoad := loadConfigFn
 	origStatus := serviceStatusFn
+	origDeployments := installedDeploymentsFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		serviceStatusFn = origStatus
+		installedDeploymentsFn = origDeployments
 	})
 
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return nil, nil }
 	loadConfigFn = testLoadConfig("/tmp/.sentinel", "token")
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Scope: "user",
+			Deployment: daemon.Deployment{Scope: "user"},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/tmp/sentinel.service",
 				UnitFileExists:     true,
@@ -702,21 +779,35 @@ func TestRunCLIDoctor(t *testing.T) {
 
 func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
 	origLoad := loadConfigFn
+	origLoadPath := loadConfigPathFn
 	origStatus := serviceStatusFn
+	origDeployments := installedDeploymentsFn
+	origAccess := requireScopeAccessFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
+		loadConfigPathFn = origLoadPath
 		serviceStatusFn = origStatus
+		installedDeploymentsFn = origDeployments
+		requireScopeAccessFn = origAccess
 	})
 
 	cfg := testCLIConfig("/tmp/.sentinel", "")
-	loadConfigFn = func() (config.Config, string, error) {
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) {
+		return []daemon.Deployment{{
+			Scope:      daemon.ScopeSystem,
+			ConfigPath: "/root/.sentinel/config.toml",
+			DataDir:    "/tmp/.sentinel",
+		}}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
+	loadConfigPathFn = func(string, string) (config.Config, string, error) {
 		return cfg, "/root/.sentinel/config.toml", errors.New(
 			`server.trusted_proxies entry "localhost" must be an IP address or CIDR`,
 		)
 	}
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Scope: "system",
+			Deployment: daemon.Deployment{Scope: "system"},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/etc/systemd/system/sentinel.service",
 				UnitFileExists:     true,
@@ -756,7 +847,7 @@ func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 	loadConfigFn = testLoadConfig("/tmp/.sentinel", "")
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Scope: "system",
+			Deployment: daemon.Deployment{Scope: "system"},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/etc/systemd/system/sentinel.service",
 				UnitFileExists:     false,
@@ -831,7 +922,17 @@ func TestRunCLIHelpFlag(t *testing.T) {
 
 func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 	origInstall := installUserAutoUpdateFn
-	t.Cleanup(func() { installUserAutoUpdateFn = origInstall })
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	t.Cleanup(func() {
+		installUserAutoUpdateFn = origInstall
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+	})
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeSystem, BinaryPath: testSentinelPath, ConfigPath: "/etc/sentinel/config.toml", DataDir: "/var/lib/sentinel"}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
 
 	var got daemon.InstallUserAutoUpdateOptions
 	installUserAutoUpdateFn = func(opts daemon.InstallUserAutoUpdateOptions) error {
@@ -863,8 +964,8 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 	if got.Start {
 		t.Fatal("Start = true, want false")
 	}
-	if got.ServiceUnit != "sentinel-custom" {
-		t.Fatalf("ServiceUnit = %q, want sentinel-custom", got.ServiceUnit)
+	if got.ServiceUnit != "sentinel" {
+		t.Fatalf("ServiceUnit = %q, want sentinel", got.ServiceUnit)
 	}
 	if got.SystemdScope != testScopeSystem {
 		t.Fatalf("SystemdScope = %q, want %s", got.SystemdScope, testScopeSystem)
@@ -879,7 +980,17 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 
 func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
 	origStatus := userAutoUpdateStatusFn
-	t.Cleanup(func() { userAutoUpdateStatusFn = origStatus })
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	t.Cleanup(func() {
+		userAutoUpdateStatusFn = origStatus
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+	})
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeUser}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
 
 	userAutoUpdateStatusFn = func(scope string) (daemon.UserAutoUpdateServiceStatus, error) {
 		if scope != testScopeUser {
@@ -918,7 +1029,17 @@ func TestRunCLIServiceAutoUpdateStatus(t *testing.T) {
 
 func TestRunCLIServiceAutoUpdateStatusScopeFlag(t *testing.T) {
 	origStatus := userAutoUpdateStatusFn
-	t.Cleanup(func() { userAutoUpdateStatusFn = origStatus })
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	t.Cleanup(func() {
+		userAutoUpdateStatusFn = origStatus
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+	})
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeSystem}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
 
 	userAutoUpdateStatusFn = func(scope string) (daemon.UserAutoUpdateServiceStatus, error) {
 		if scope != testScopeSystem {
@@ -937,7 +1058,17 @@ func TestRunCLIServiceAutoUpdateStatusScopeFlag(t *testing.T) {
 
 func TestRunCLIServiceAutoUpdateUninstallScopeFlag(t *testing.T) {
 	origUninstall := uninstallUserAutoUpdateFn
-	t.Cleanup(func() { uninstallUserAutoUpdateFn = origUninstall })
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	t.Cleanup(func() {
+		uninstallUserAutoUpdateFn = origUninstall
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+	})
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeSystem}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
 
 	var got daemon.UninstallUserAutoUpdateOptions
 	uninstallUserAutoUpdateFn = func(opts daemon.UninstallUserAutoUpdateOptions) error {
@@ -960,12 +1091,15 @@ func TestRunCLIUpdateCheck(t *testing.T) {
 	origLoad := loadConfigFn
 	origVersion := currentVersionFn
 	origCheck := updateCheckFn
+	origResolve := resolveDeploymentFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		currentVersionFn = origVersion
 		updateCheckFn = origCheck
+		resolveDeploymentFn = origResolve
 	})
 
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) { return daemon.Deployment{}, daemon.ErrNoServiceInstalled }
 	loadConfigFn = testLoadConfig(testSentinelPath, "")
 	currentVersionFn = func() string { return testCurrentVersion1 }
 
@@ -1003,17 +1137,35 @@ func TestRunCLIUpdateCheck(t *testing.T) {
 }
 
 func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "sentinel")
+	if err := os.WriteFile(binaryPath, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	origLoad := loadConfigFn
+	origLoadPath := loadConfigPathFn
 	origVersion := currentVersionFn
 	origApply := updateApplyFn
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
+		loadConfigPathFn = origLoadPath
 		currentVersionFn = origVersion
 		updateApplyFn = origApply
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
 	})
 
 	loadConfigFn = testLoadConfig(testSentinelPath, "")
+	loadConfigPathFn = func(string, string) (config.Config, string, error) {
+		cfg, _, err := testLoadConfig(testSentinelPath, "")()
+		return cfg, "/etc/sentinel/config.toml", err
+	}
 	currentVersionFn = func() string { return testCurrentVersion1 }
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeSystem, BinaryPath: binaryPath, ConfigPath: "/etc/sentinel/config.toml", DataDir: testSentinelPath}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
 
 	var got updater.ApplyOptions
 	updateApplyFn = func(_ context.Context, opts updater.ApplyOptions) (updater.ApplyResult, error) {
@@ -1022,8 +1174,8 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 			Applied:        true,
 			CurrentVersion: testCurrentVersion1,
 			LatestVersion:  "1.1.0",
-			BinaryPath:     testSentinelPath,
-			BackupPath:     testSentinelPath + ".bak",
+			BinaryPath:     binaryPath,
+			BackupPath:     binaryPath + ".bak",
 		}, nil
 	}
 
@@ -1035,7 +1187,7 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 		"--api", "http://example",
 		"--os", "linux",
 		"--arch", "amd64",
-		"--exec", testSentinelPath,
+		"--exec", binaryPath,
 		"--allow-downgrade=true",
 		"--allow-unverified=true",
 		"--restart=false",
@@ -1048,8 +1200,8 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 	if got.DataDir != testSentinelPath {
 		t.Fatalf("DataDir = %q, want %s", got.DataDir, testSentinelPath)
 	}
-	if got.ExecPath != testSentinelPath {
-		t.Fatalf("ExecPath = %q, want %s", got.ExecPath, testSentinelPath)
+	if got.ExecPath != binaryPath {
+		t.Fatalf("ExecPath = %q, want %s", got.ExecPath, binaryPath)
 	}
 	if !got.AllowDowngrade {
 		t.Fatal("AllowDowngrade = false, want true")
@@ -1069,17 +1221,35 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 }
 
 func TestRunCLIUpdateApplyRestartsByDefault(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "sentinel")
+	if err := os.WriteFile(binaryPath, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	origLoad := loadConfigFn
+	origLoadPath := loadConfigPathFn
 	origVersion := currentVersionFn
 	origApply := updateApplyFn
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
+		loadConfigPathFn = origLoadPath
 		currentVersionFn = origVersion
 		updateApplyFn = origApply
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
 	})
 
 	loadConfigFn = testLoadConfig(testSentinelPath, "")
+	loadConfigPathFn = func(string, string) (config.Config, string, error) {
+		cfg, _, err := testLoadConfig(testSentinelPath, "")()
+		return cfg, "/tmp/config.toml", err
+	}
 	currentVersionFn = func() string { return testCurrentVersion1 }
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeUser, BinaryPath: binaryPath, ConfigPath: "/tmp/config.toml", DataDir: testSentinelPath}, nil
+	}
+	requireScopeAccessFn = func(string) error { return nil }
 
 	var got updater.ApplyOptions
 	updateApplyFn = func(_ context.Context, opts updater.ApplyOptions) (updater.ApplyResult, error) {
@@ -1099,8 +1269,8 @@ func TestRunCLIUpdateApplyRestartsByDefault(t *testing.T) {
 	if got.SkipRestart {
 		t.Fatal("SkipRestart = true, want false by default")
 	}
-	if got.SystemdScope != "auto" {
-		t.Fatalf("SystemdScope = %q, want auto by default", got.SystemdScope)
+	if got.SystemdScope != daemon.ScopeUser {
+		t.Fatalf("SystemdScope = %q, want user deployment", got.SystemdScope)
 	}
 }
 
@@ -1116,14 +1286,105 @@ func TestRunCLIUpdateApplyRejectsInvalidScope(t *testing.T) {
 	}
 }
 
+func TestRunCLIUpdateApplyRejectsSystemInstallBeforeLoadingUserConfig(t *testing.T) {
+	origLoad := loadConfigFn
+	origApply := updateApplyFn
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		updateApplyFn = origApply
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+	})
+
+	loadCalled := false
+	applyCalled := false
+	loadConfigFn = func() (config.Config, string, error) {
+		loadCalled = true
+		return config.Config{}, "", errors.New("invalid user config")
+	}
+	updateApplyFn = func(_ context.Context, _ updater.ApplyOptions) (updater.ApplyResult, error) {
+		applyCalled = true
+		return updater.ApplyResult{}, nil
+	}
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{Scope: daemon.ScopeSystem}, nil
+	}
+	requireScopeAccessFn = func(string) error {
+		return errors.New("the Sentinel deployment is system-wide; re-run with sudo and --scope system")
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := Run([]string{"update", "apply"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if loadCalled {
+		t.Fatal("loadConfigFn called before system-scope diagnosis")
+	}
+	if applyCalled {
+		t.Fatal("updateApplyFn called after system-scope diagnosis")
+	}
+	for _, want := range []string{
+		"deployment is system-wide",
+		"sudo",
+		"--scope system",
+	} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("stderr missing %q: %s", want, errOut.String())
+		}
+	}
+}
+
+func TestResolveUpdateContextPropagatesExplicitScopeMismatch(t *testing.T) {
+	origResolve := resolveDeploymentFn
+	t.Cleanup(func() {
+		resolveDeploymentFn = origResolve
+	})
+	resolveDeploymentFn = func(scope string) (daemon.Deployment, error) {
+		return daemon.Deployment{}, fmt.Errorf("no Sentinel service is installed in %s scope", scope)
+	}
+	if _, err := resolveUpdateContext("user", false); err == nil || !strings.Contains(err.Error(), "user scope") {
+		t.Fatalf("resolveUpdateContext(user) error = %v, want explicit scope diagnostic", err)
+	}
+}
+
+func TestResolveUpdateContextRejectsAmbiguousDeployment(t *testing.T) {
+	origResolve := resolveDeploymentFn
+	t.Cleanup(func() {
+		resolveDeploymentFn = origResolve
+	})
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{}, fmt.Errorf("%w; choose --scope user or --scope system", daemon.ErrAmbiguousDeployment)
+	}
+	_, err := resolveUpdateContext(optionAuto, false)
+	if err == nil {
+		t.Fatal("resolveUpdateContext(auto) error = nil, want ambiguous-scope diagnostic")
+	}
+	for _, want := range []string{
+		"both user and system scope",
+		"--scope user",
+		"--scope system",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+}
+
 func TestRunCLIUpdateStatus(t *testing.T) {
 	origLoad := loadConfigFn
 	origStatus := updateStatusFn
+	origResolve := resolveDeploymentFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		updateStatusFn = origStatus
+		resolveDeploymentFn = origResolve
 	})
 
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) { return daemon.Deployment{}, daemon.ErrNoServiceInstalled }
 	loadConfigFn = testLoadConfig(testSentinelPath, "")
 	updateStatusFn = func(dataDir string) (updater.State, error) {
 		if dataDir != testSentinelPath {

@@ -33,20 +33,23 @@ const (
 	managerScopeAuto          = "auto"
 	managerScopeUser          = "user"
 	managerScopeSystem        = "system"
-	managerScopeLaunchd       = "launchd"
 	systemdStateUnknown       = "unknown"
 	defaultOnCalendar         = "daily"
 )
 
 // InstallUserOptions represents install user options data.
 type InstallUserOptions struct {
-	ExecPath string
-	Enable   bool
-	Start    bool
+	ExecPath   string
+	Scope      string
+	ConfigPath string
+	DataDir    string
+	Enable     bool
+	Start      bool
 }
 
 // UninstallUserOptions represents uninstall user options data.
 type UninstallUserOptions struct {
+	Scope      string
 	Disable    bool
 	Stop       bool
 	RemoveUnit bool
@@ -54,6 +57,7 @@ type UninstallUserOptions struct {
 
 // LogsOptions controls how the managed service log stream is rendered.
 type LogsOptions struct {
+	Scope  string
 	Follow bool
 	Lines  int
 	Stdout io.Writer
@@ -65,6 +69,8 @@ const defaultLogLines = 50
 // InstallUserAutoUpdateOptions represents install user auto update options data.
 type InstallUserAutoUpdateOptions struct {
 	ExecPath        string
+	ConfigPath      string
+	DataDir         string
 	Enable          bool
 	Start           bool
 	ServiceUnit     string
@@ -105,6 +111,8 @@ type UserAutoUpdateServiceStatus struct {
 type installUserAutoUpdateConfig struct {
 	scope           string
 	execPath        string
+	configPath      string
+	dataDir         string
 	serviceUnit     string
 	onCalendar      string
 	randomizedDelay time.Duration
@@ -118,7 +126,15 @@ func InstallUser(opts InstallUserOptions) error {
 	if err := ensureServicePlatformSupported(); err != nil {
 		return err
 	}
-	if runtime.GOOS == systemdSupportedOS && os.Geteuid() == 0 {
+	scope, err := ResolveInstallScope(opts.Scope)
+	if err != nil {
+		return err
+	}
+	if err := RequireScopeAccess(scope); err != nil {
+		return err
+	}
+	opts.Scope = scope
+	if runtime.GOOS == systemdSupportedOS && scope == managerScopeSystem {
 		return installSystemServiceLinux(opts)
 	}
 	if err := ensureSystemdUserSupported(); err != nil {
@@ -129,8 +145,11 @@ func InstallUser(opts InstallUserOptions) error {
 	if err != nil {
 		return err
 	}
+	if err := validateExecutable(execPath); err != nil {
+		return err
+	}
 
-	servicePath, err := UserServicePath()
+	servicePath, err := userScopeUnitPath()
 	if err != nil {
 		return err
 	}
@@ -138,15 +157,20 @@ func InstallUser(opts InstallUserOptions) error {
 		return fmt.Errorf("create systemd user directory: %w", err)
 	}
 
-	unit := renderUserUnit(execPath)
-	if err := os.WriteFile(servicePath, []byte(unit), 0o600); err != nil {
+	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir)
+	wasActive := isSystemctlUserActive("sentinel")
+	replacement, err := replaceManagedFile(servicePath, []byte(unit), 0o600)
+	if err != nil {
 		return fmt.Errorf("write user service: %w", err)
 	}
 
 	if err := runSystemctlUser("daemon-reload"); err != nil {
-		return err
+		return rollbackSystemdInstall(err, runSystemctlUser, "sentinel", wasActive, replacement)
 	}
-	return applySystemdUnitState(opts.Enable, opts.Start, isSystemctlUserActive, runSystemctlUser)
+	if err := applySystemdUnitState(opts.Enable, opts.Start, isSystemctlUserActive, runSystemctlUser); err != nil {
+		return rollbackSystemdInstall(err, runSystemctlUser, "sentinel", wasActive, replacement)
+	}
+	return nil
 }
 
 // InstallUserAutoUpdate handles install user auto update.
@@ -163,15 +187,27 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return errors.New("systemctl was not found in PATH")
 	}
+	scope, err := normalizeLinuxAutoUpdateScope(opts.SystemdScope)
+	if err != nil {
+		return err
+	}
+	if scope == managerScopeSystem && os.Geteuid() != 0 {
+		return errors.New("scope=system requires root privileges")
+	}
 
 	cfg, err := resolveInstallUserAutoUpdateConfig(opts)
 	if err != nil {
+		return err
+	}
+	if err := validateExecutable(cfg.execPath); err != nil {
 		return err
 	}
 
 	if cfg.scope == managerScopeSystem {
 		return installSystemAutoUpdateLinux(
 			cfg.execPath,
+			cfg.configPath,
+			cfg.dataDir,
 			cfg.serviceUnit,
 			cfg.onCalendar,
 			cfg.randomizedDelay,
@@ -190,7 +226,6 @@ func resolveInstallUserAutoUpdateConfig(opts InstallUserAutoUpdateOptions) (inst
 	if err != nil {
 		return installUserAutoUpdateConfig{}, err
 	}
-
 	execPath, err := resolveExecPath(opts.ExecPath)
 	if err != nil {
 		return installUserAutoUpdateConfig{}, err
@@ -216,6 +251,8 @@ func resolveInstallUserAutoUpdateConfig(opts InstallUserAutoUpdateOptions) (inst
 	return installUserAutoUpdateConfig{
 		scope:           scope,
 		execPath:        execPath,
+		configPath:      strings.TrimSpace(opts.ConfigPath),
+		dataDir:         strings.TrimSpace(opts.DataDir),
 		serviceUnit:     serviceUnit,
 		onCalendar:      onCalendar,
 		randomizedDelay: randomizedDelay,
@@ -236,19 +273,25 @@ func installUserAutoUpdateLinuxUser(cfg installUserAutoUpdateConfig, opts Instal
 		return fmt.Errorf("create systemd user directory: %w", err)
 	}
 
-	serviceUnitText := renderUserAutoUpdateUnit(cfg.execPath, cfg.serviceUnit, cfg.scope)
-	if err := os.WriteFile(servicePath, []byte(serviceUnitText), 0o600); err != nil {
+	serviceUnitText := renderUserAutoUpdateUnit(cfg.execPath, cfg.configPath, cfg.dataDir, cfg.serviceUnit, cfg.scope)
+	wasActive := isSystemctlUserActive("sentinel-updater.timer")
+	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), 0o600)
+	if err != nil {
 		return fmt.Errorf("write updater service: %w", err)
 	}
 	timerUnitText := renderUserAutoUpdateTimer(cfg.onCalendar, cfg.randomizedDelay)
-	if err := os.WriteFile(timerPath, []byte(timerUnitText), 0o600); err != nil {
-		return fmt.Errorf("write updater timer: %w", err)
+	timerReplacement, err := replaceManagedFile(timerPath, []byte(timerUnitText), 0o600)
+	if err != nil {
+		return rollbackManagedFiles(fmt.Errorf("write updater timer: %w", err), serviceReplacement)
 	}
 
 	if err := runSystemctlUser("daemon-reload"); err != nil {
-		return withSystemdUserBusHint(err)
+		return rollbackSystemdInstall(withSystemdUserBusHint(err), runSystemctlUser, "sentinel-updater.timer", wasActive, serviceReplacement, timerReplacement)
 	}
-	return applyUserAutoUpdateTimerState(opts.Enable, opts.Start)
+	if err := applyUserAutoUpdateTimerState(opts.Enable, opts.Start); err != nil {
+		return rollbackSystemdInstall(err, runSystemctlUser, "sentinel-updater.timer", wasActive, serviceReplacement, timerReplacement)
+	}
+	return nil
 }
 
 func applyUserAutoUpdateTimerState(enable, start bool) error {
@@ -273,10 +316,11 @@ func UninstallUser(opts UninstallUserOptions) error {
 		return err
 	}
 
-	scope, err := resolveServiceScope()
+	deployment, err := ResolveDeployment(opts.Scope)
 	if err != nil {
 		return err
 	}
+	scope := deployment.Scope
 	if err := requireScopePrivilege(scope); err != nil {
 		return err
 	}
@@ -340,7 +384,7 @@ func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
 func uninstallUserAutoUpdateSystemd(opts UninstallUserAutoUpdateOptions, runFn func(args ...string) error) error {
 	stopUserAutoUpdateTimer(opts.Disable, opts.Stop, runFn)
 	if opts.RemoveUnit {
-		if err := removeUserAutoUpdateUnits(); err != nil {
+		if err := removeUserAutoUpdateUnits(opts.Scope); err != nil {
 			return err
 		}
 	}
@@ -362,12 +406,12 @@ func stopUserAutoUpdateTimer(disable, stop bool, runFn func(args ...string) erro
 	}
 }
 
-func removeUserAutoUpdateUnits() error {
-	servicePath, err := UserAutoUpdateServicePath()
+func removeUserAutoUpdateUnits(scope string) error {
+	servicePath, err := UserAutoUpdateServicePathForScope(scope)
 	if err != nil {
 		return err
 	}
-	timerPath, err := UserAutoUpdateTimerPath()
+	timerPath, err := UserAutoUpdateTimerPathForScope(scope)
 	if err != nil {
 		return err
 	}
@@ -415,10 +459,11 @@ func UserLogs(opts LogsOptions) error {
 		return errors.New("journalctl was not found in PATH")
 	}
 
-	scope, err := resolveServiceScope()
+	deployment, err := ResolveDeployment(opts.Scope)
 	if err != nil {
 		return err
 	}
+	scope := deployment.Scope
 	args := journalctlLogArgs(scope == managerScopeSystem, opts.Follow, opts.Lines)
 	cmd := exec.CommandContext(context.Background(), "journalctl", args...)
 	cmd.Stdout = opts.Stdout
@@ -458,11 +503,6 @@ func runLogCommand(cmd *exec.Cmd) error {
 		return fmt.Errorf("run %s: %w", filepath.Base(cmd.Path), err)
 	}
 	return nil
-}
-
-// UserAutoUpdateStatus handles user auto update status.
-func UserAutoUpdateStatus() (UserAutoUpdateServiceStatus, error) {
-	return UserAutoUpdateStatusForScope("")
 }
 
 // UserAutoUpdateStatusForScope handles user auto update status for scope.
@@ -520,27 +560,10 @@ func UserAutoUpdateStatusForScope(scopeRaw string) (UserAutoUpdateServiceStatus,
 	return st, nil
 }
 
-// UserServicePath handles user service path.
-func UserServicePath() (string, error) {
-	if runtime.GOOS == launchdSupportedOS {
-		return userServicePathLaunchd()
-	}
-	if err := ensureServicePlatformSupported(); err != nil {
-		return "", err
-	}
-	if runtime.GOOS == systemdSupportedOS && os.Geteuid() == 0 {
-		return systemUnitPath, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home dir: %w", err)
-	}
-	return filepath.Join(home, ".config", "systemd", "user", userUnitName), nil
-}
-
-// UserAutoUpdateServicePath handles user auto update service path.
-func UserAutoUpdateServicePath() (string, error) {
-	return UserAutoUpdateServicePathForScope("")
+// UserServicePathForScope returns the managed service path without deriving the
+// scope from process privileges.
+func UserServicePathForScope(scope string) (string, error) {
+	return servicePathForScope(scope)
 }
 
 // UserAutoUpdateServicePathForScope handles user auto update service path for scope.
@@ -558,16 +581,11 @@ func UserAutoUpdateServicePathForScope(scopeRaw string) (string, error) {
 	if scope == managerScopeSystem {
 		return systemAutoUpdateService, nil
 	}
-	home, err := os.UserHomeDir()
+	home, err := userScopeHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
 	return filepath.Join(home, ".config", "systemd", "user", userAutoUpdateServiceName), nil
-}
-
-// UserAutoUpdateTimerPath handles user auto update timer path.
-func UserAutoUpdateTimerPath() (string, error) {
-	return UserAutoUpdateTimerPathForScope("")
 }
 
 // UserAutoUpdateTimerPathForScope handles user auto update timer path for scope.
@@ -586,7 +604,7 @@ func UserAutoUpdateTimerPathForScope(scopeRaw string) (string, error) {
 	if scope == managerScopeSystem {
 		return systemAutoUpdateTimer, nil
 	}
-	home, err := os.UserHomeDir()
+	home, err := userScopeHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
@@ -613,43 +631,45 @@ func ensureServicePlatformSupported() error {
 func normalizeLinuxAutoUpdateScope(raw string) (string, error) {
 	scope := strings.ToLower(strings.TrimSpace(raw))
 	switch scope {
-	case "", managerScopeAuto:
-		if os.Geteuid() == 0 {
-			return managerScopeSystem, nil
-		}
-		return managerScopeUser, nil
 	case managerScopeUser:
 		return managerScopeUser, nil
 	case managerScopeSystem:
 		return managerScopeSystem, nil
 	default:
-		return "", fmt.Errorf("invalid systemd scope: %s", raw)
+		return "", fmt.Errorf("invalid systemd scope %q: pass user or system explicitly", raw)
 	}
 }
 
 func installSystemServiceLinux(opts InstallUserOptions) error {
+	if os.Geteuid() != 0 {
+		return errors.New("system service install requires root privileges")
+	}
 	execPath, err := resolveExecPath(opts.ExecPath)
 	if err != nil {
 		return err
 	}
-	if os.Geteuid() != 0 {
-		return errors.New("system service install requires root privileges")
+	if err := validateExecutable(execPath); err != nil {
+		return err
 	}
-
 	if err := os.MkdirAll(filepath.Dir(systemUnitPath), 0o750); err != nil {
 		return fmt.Errorf("create systemd system directory: %w", err)
 	}
-	unit := renderUserUnit(execPath)
-	if err := os.WriteFile(systemUnitPath, []byte(unit), 0o600); err != nil {
+	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir)
+	wasActive := isSystemctlSystemActive("sentinel")
+	replacement, err := replaceManagedFile(systemUnitPath, []byte(unit), 0o600)
+	if err != nil {
 		return fmt.Errorf("write system service: %w", err)
 	}
 
 	installNeedrestartOverride(needrestartConfDir, needrestartConfPath)
 
 	if err := runSystemctlSystem("daemon-reload"); err != nil {
-		return err
+		return rollbackSystemdInstall(err, runSystemctlSystem, "sentinel", wasActive, replacement)
 	}
-	return applySystemdUnitState(opts.Enable, opts.Start, isSystemctlSystemActive, runSystemctlSystem)
+	if err := applySystemdUnitState(opts.Enable, opts.Start, isSystemctlSystemActive, runSystemctlSystem); err != nil {
+		return rollbackSystemdInstall(err, runSystemctlSystem, "sentinel", wasActive, replacement)
+	}
+	return nil
 }
 
 func uninstallSystemServiceLinux(opts UninstallUserOptions) error {
@@ -691,7 +711,7 @@ func userStatusSystemLinux() UserServiceStatus {
 	return st
 }
 
-func installSystemAutoUpdateLinux(execPath, serviceUnit, onCalendar string, randomizedDelay time.Duration, enable, start bool) error {
+func installSystemAutoUpdateLinux(execPath, configPath, dataDir, serviceUnit, onCalendar string, randomizedDelay time.Duration, enable, start bool) error {
 	if os.Geteuid() != 0 {
 		return errors.New("scope=system requires root privileges")
 	}
@@ -702,28 +722,60 @@ func installSystemAutoUpdateLinux(execPath, serviceUnit, onCalendar string, rand
 		return fmt.Errorf("create systemd system directory: %w", err)
 	}
 
-	serviceUnitText := renderUserAutoUpdateUnit(execPath, serviceUnit, managerScopeSystem)
-	if err := os.WriteFile(servicePath, []byte(serviceUnitText), 0o600); err != nil {
+	serviceUnitText := renderUserAutoUpdateUnit(execPath, configPath, dataDir, serviceUnit, managerScopeSystem)
+	wasActive := isSystemctlSystemActive("sentinel-updater.timer")
+	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), 0o600)
+	if err != nil {
 		return fmt.Errorf("write updater system service: %w", err)
 	}
 	timerUnitText := renderUserAutoUpdateTimer(onCalendar, randomizedDelay)
-	if err := os.WriteFile(timerPath, []byte(timerUnitText), 0o600); err != nil {
-		return fmt.Errorf("write updater system timer: %w", err)
+	timerReplacement, err := replaceManagedFile(timerPath, []byte(timerUnitText), 0o600)
+	if err != nil {
+		return rollbackManagedFiles(fmt.Errorf("write updater system timer: %w", err), serviceReplacement)
 	}
 
 	if err := runSystemctlSystem("daemon-reload"); err != nil {
-		return err
+		return rollbackSystemdInstall(err, runSystemctlSystem, "sentinel-updater.timer", wasActive, serviceReplacement, timerReplacement)
 	}
+	var stateErr error
 	switch {
 	case enable && start:
-		return runSystemctlSystem("enable", "--now", "sentinel-updater.timer")
+		stateErr = runSystemctlSystem("enable", "--now", "sentinel-updater.timer")
 	case enable:
-		return runSystemctlSystem("enable", "sentinel-updater.timer")
+		stateErr = runSystemctlSystem("enable", "sentinel-updater.timer")
 	case start:
-		return runSystemctlSystem("start", "sentinel-updater.timer")
-	default:
-		return nil
+		stateErr = runSystemctlSystem("start", "sentinel-updater.timer")
 	}
+	if stateErr != nil {
+		return rollbackSystemdInstall(stateErr, runSystemctlSystem, "sentinel-updater.timer", wasActive, serviceReplacement, timerReplacement)
+	}
+	return nil
+}
+
+func rollbackSystemdInstall(
+	cause error,
+	runFn func(args ...string) error,
+	unit string,
+	wasActive bool,
+	replacements ...*managedFileReplacement,
+) error {
+	errs := []error{cause}
+	wasInstalled := len(replacements) > 0 && replacements[0] != nil && replacements[0].existed
+	if !wasInstalled {
+		if disableErr := runFn("disable", "--now", unit); disableErr != nil {
+			errs = append(errs, fmt.Errorf("disable partially installed systemd unit: %w", disableErr))
+		}
+	}
+	rollbackErr := rollbackManagedFiles(errors.Join(errs...), replacements...)
+	if reloadErr := runFn("daemon-reload"); reloadErr != nil {
+		return errors.Join(rollbackErr, fmt.Errorf("reload restored systemd definitions: %w", reloadErr))
+	}
+	if wasInstalled && wasActive {
+		if restartErr := runFn("restart", unit); restartErr != nil {
+			return errors.Join(rollbackErr, fmt.Errorf("restart restored systemd unit: %w", restartErr))
+		}
+	}
+	return rollbackErr
 }
 
 func uninstallSystemAutoUpdateLinux(opts UninstallUserAutoUpdateOptions) error {
@@ -868,7 +920,11 @@ func normalizeSystemctlErrorState(state string) string {
 	}
 }
 
-func renderUserUnit(execPath string) string {
+func renderUserUnit(execPath, configPath, dataDir string) string {
+	configArg := ""
+	if strings.TrimSpace(configPath) != "" {
+		configArg = " --config=" + escapeSystemdExec(configPath)
+	}
 	return fmt.Sprintf(`[Unit]
 Description=Sentinel - terminal workspace
 Documentation=https://github.com/opus-domini/sentinel
@@ -877,12 +933,13 @@ StartLimitBurst=4
 
 [Service]
 Type=simple
-ExecStart=%s daemon
+ExecStart=%s%s daemon
 Restart=on-failure
 RestartSec=2
 KillMode=process
 Environment=SENTINEL_LOG_LEVEL=info
 Environment=HOME=%%h
+Environment="SENTINEL_DATA_DIR=%s"
 Environment=TERM=xterm-256color
 Environment=LANG=C.UTF-8
 # Note: NoNewPrivileges and SystemCallArchitectures are intentionally omitted —
@@ -890,10 +947,14 @@ Environment=LANG=C.UTF-8
 
 [Install]
 WantedBy=default.target
-`, escapeSystemdExec(execPath))
+`, escapeSystemdExec(execPath), configArg, escapeSystemdEnvironment(dataDir))
 }
 
-func renderUserAutoUpdateUnit(execPath, serviceUnit, scope string) string {
+func renderUserAutoUpdateUnit(execPath, configPath, dataDir, _ string, scope string) string {
+	configArg := ""
+	if strings.TrimSpace(configPath) != "" {
+		configArg = " --config=" + escapeSystemdExec(configPath)
+	}
 	return fmt.Sprintf(`[Unit]
 Description=Sentinel automatic updater
 Documentation=https://github.com/opus-domini/sentinel
@@ -902,12 +963,13 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%s update apply -service=%s -scope=%s
+ExecStart=%s%s update apply -scope=%s
 Environment=SENTINEL_LOG_LEVEL=info
+Environment="SENTINEL_DATA_DIR=%s"
 
 [Install]
 WantedBy=default.target
-`, escapeSystemdExec(execPath), serviceUnit, scope)
+`, escapeSystemdExec(execPath), configArg, scope, escapeSystemdEnvironment(dataDir))
 }
 
 func renderUserAutoUpdateTimer(onCalendar string, randomizedDelay time.Duration) string {
@@ -928,6 +990,12 @@ WantedBy=timers.target
 func escapeSystemdExec(path string) string {
 	path = strings.ReplaceAll(path, "\\", "\\\\")
 	return strings.ReplaceAll(path, " ", "\\x20")
+}
+
+func escapeSystemdEnvironment(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `"`, `\"`)
+	return value
 }
 
 // installNeedrestartOverride writes a config snippet that prevents needrestart
@@ -967,4 +1035,21 @@ func resolveExecPath(raw string) (string, error) {
 		return "", errors.New("invalid executable path")
 	}
 	return execPath, nil
+}
+
+func validateExecutable(path string) error {
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("executable path must be absolute: %s", path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("inspect executable %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("executable path is not a regular file: %s", path)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		return fmt.Errorf("executable path is not executable: %s", path)
+	}
+	return nil
 }
