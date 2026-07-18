@@ -55,19 +55,28 @@ func (f fakeTmux) CapturePaneLines(ctx context.Context, target string, lines int
 func TestServiceStartStop(t *testing.T) {
 	t.Parallel()
 
-	var calls atomic.Int32
+	collected := make(chan struct{}, 1)
 	svc := New(nil, fakeTmux{}, Options{
 		TickInterval: 10 * time.Millisecond,
 		Collect: func(context.Context) error {
-			calls.Add(1)
+			select {
+			case collected <- struct{}{}:
+			default:
+			}
 			return nil
 		},
 	})
 
-	svc.Start(context.Background())
-	time.Sleep(35 * time.Millisecond)
+	t.Cleanup(func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		svc.Stop(stopCtx)
+	})
 
-	if calls.Load() == 0 {
+	svc.Start(context.Background())
+	select {
+	case <-collected:
+	case <-time.After(time.Second):
 		t.Fatal("collect was not called")
 	}
 
