@@ -2,6 +2,9 @@ package daemon
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -167,5 +170,140 @@ func TestParseLaunchdDeploymentFields(t *testing.T) {
 	}
 	if got := parseLaunchdEnvironment(plist, "SENTINEL_DATA_DIR"); got != "/Library/Application Support/Sentinel" {
 		t.Fatalf("data dir = %q", got)
+	}
+}
+
+func TestParseDeploymentMissingFields(t *testing.T) {
+	t.Parallel()
+
+	if binary, configPath := parseSystemdExecStart("[Service]\nType=simple\n"); binary != "" || configPath != "" {
+		t.Fatalf("unexpected systemd fields: binary=%q config=%q", binary, configPath)
+	}
+	if binary, configPath := parseSystemdExecStart("ExecStart=\n"); binary != "" || configPath != "" {
+		t.Fatalf("unexpected empty ExecStart fields: binary=%q config=%q", binary, configPath)
+	}
+	if got := parseSystemdEnvironment("Environment=OTHER=value\n", "SENTINEL_DATA_DIR"); got != "" {
+		t.Fatalf("unexpected systemd environment = %q", got)
+	}
+	if binary, configPath := parseLaunchdProgramArguments("<plist></plist>"); binary != "" || configPath != "" {
+		t.Fatalf("unexpected launchd fields: binary=%q config=%q", binary, configPath)
+	}
+	if binary, configPath := parseLaunchdProgramArguments("<key>ProgramArguments</key><array>"); binary != "" || configPath != "" {
+		t.Fatalf("unexpected unterminated launchd fields: binary=%q config=%q", binary, configPath)
+	}
+	if got := parseLaunchdEnvironment("<plist></plist>", "SENTINEL_DATA_DIR"); got != "" {
+		t.Fatalf("unexpected launchd environment = %q", got)
+	}
+}
+
+func TestDeploymentPathHelpers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	userConfig, userData, err := ScopePaths(ScopeUser)
+	if err != nil {
+		t.Fatalf("ScopePaths(user) error = %v", err)
+	}
+	if userConfig != filepath.Join(userData, "config.toml") {
+		t.Fatalf("user config = %q, data = %q", userConfig, userData)
+	}
+
+	systemConfig, systemData, err := ScopePaths(ScopeSystem)
+	if err != nil {
+		t.Fatalf("ScopePaths(system) error = %v", err)
+	}
+	if runtime.GOOS == launchdSupportedOS {
+		if systemData != "/Library/Application Support/Sentinel" {
+			t.Fatalf("system data = %q", systemData)
+		}
+	} else if systemConfig != "/etc/sentinel/config.toml" || systemData != "/var/lib/sentinel" {
+		t.Fatalf("system config = %q, data = %q", systemConfig, systemData)
+	}
+
+	if _, _, err := ScopePaths("bogus"); err == nil {
+		t.Fatal("ScopePaths() accepted an invalid scope")
+	}
+	legacyConfig, legacyData, err := legacyScopePaths(ScopeUser)
+	if err != nil || legacyConfig != userConfig || legacyData != userData {
+		t.Fatalf("legacy user paths = %q, %q, %v", legacyConfig, legacyData, err)
+	}
+	if _, _, err := legacyScopePaths(ScopeSystem); err != nil {
+		t.Fatalf("legacyScopePaths(system) error = %v", err)
+	}
+	if _, err := servicePathForScope("bogus"); err == nil {
+		t.Fatal("servicePathForScope() accepted an invalid scope")
+	}
+}
+
+func TestNormalizeExplicitScope(t *testing.T) {
+	t.Parallel()
+
+	for _, scope := range []string{ScopeUser, ScopeSystem} {
+		got, err := normalizeExplicitScope(scope)
+		if err != nil || got != scope {
+			t.Fatalf("normalizeExplicitScope(%q) = %q, %v", scope, got, err)
+		}
+	}
+	for _, scope := range []string{"", ScopeAuto, "bogus"} {
+		if _, err := normalizeExplicitScope(scope); err == nil {
+			t.Fatalf("normalizeExplicitScope(%q) accepted an invalid target", scope)
+		}
+	}
+}
+
+func TestManagedCommandsRejectInvalidScopeBeforeHostAccess(t *testing.T) {
+	t.Parallel()
+
+	if _, err := ResolveInstallScope("bogus"); err == nil {
+		t.Fatal("ResolveInstallScope() accepted an invalid scope")
+	}
+	if err := InstallUser(InstallUserOptions{Scope: ScopeAuto}); err == nil {
+		t.Fatal("InstallUser() accepted an automatic scope")
+	}
+	if err := UninstallUser(UninstallUserOptions{Scope: "bogus"}); err == nil {
+		t.Fatal("UninstallUser() accepted an invalid scope")
+	}
+	if err := Control(actionStart, "bogus"); err == nil {
+		t.Fatal("Control() accepted an invalid scope")
+	}
+}
+
+func TestValidateExecutable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	executable := filepath.Join(dir, "sentinel")
+	if err := os.WriteFile(executable, []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateExecutable(executable); err != nil {
+		t.Fatalf("validateExecutable() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "relative", path: "sentinel", want: "must be absolute"},
+		{name: "missing", path: filepath.Join(dir, "missing"), want: "inspect executable"},
+		{name: "directory", path: dir, want: "not a regular file"},
+	}
+	notExecutable := filepath.Join(dir, "not-executable")
+	if err := os.WriteFile(notExecutable, []byte("binary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tests = append(tests, struct {
+		name string
+		path string
+		want string
+	}{name: "not executable", path: notExecutable, want: "is not executable"})
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateExecutable(tc.path)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
