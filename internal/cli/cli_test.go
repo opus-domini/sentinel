@@ -26,6 +26,45 @@ const (
 	testScopeSystem     = "system"
 )
 
+func stubUserServiceInstallContext(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	origResolve := resolveInstallScopeFn
+	origAccess := requireScopeAccessFn
+	origDeployments := installedDeploymentsFn
+	t.Cleanup(func() {
+		resolveInstallScopeFn = origResolve
+		requireScopeAccessFn = origAccess
+		installedDeploymentsFn = origDeployments
+	})
+	resolveInstallScopeFn = func(string) (string, error) { return daemon.ScopeUser, nil }
+	requireScopeAccessFn = func(string) error { return nil }
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return nil, nil }
+}
+
+func stubUserDeploymentContext(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	deployment := daemon.Deployment{
+		Scope:      daemon.ScopeUser,
+		BinaryPath: testSentinelPath,
+		ConfigPath: filepath.Join(home, ".sentinel", "config.toml"),
+		DataDir:    filepath.Join(home, ".sentinel"),
+	}
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	origDeployments := installedDeploymentsFn
+	t.Cleanup(func() {
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+		installedDeploymentsFn = origDeployments
+	})
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) { return deployment, nil }
+	requireScopeAccessFn = func(string) error { return nil }
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return []daemon.Deployment{deployment}, nil }
+}
+
 func TestRunWithoutArgsPrintsHelp(t *testing.T) {
 	origDaemon := daemonFn
 	t.Cleanup(func() { daemonFn = origDaemon })
@@ -557,7 +596,7 @@ func TestRunCLIDBResetForceRejectsResource(t *testing.T) {
 }
 
 func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	stubUserServiceInstallContext(t)
 	origInstall := installUserSvcFn
 	t.Cleanup(func() { installUserSvcFn = origInstall })
 
@@ -839,12 +878,15 @@ func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
 func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 	origLoad := loadConfigFn
 	origStatus := serviceStatusFn
+	origDeployments := installedDeploymentsFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		serviceStatusFn = origStatus
+		installedDeploymentsFn = origDeployments
 	})
 
 	loadConfigFn = testLoadConfig("/tmp/.sentinel", "")
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return nil, nil }
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
 			Deployment: daemon.Deployment{Scope: "system"},
@@ -890,6 +932,7 @@ func TestRunCLIUnknownCommand(t *testing.T) {
 }
 
 func TestRunCLIServiceInstallFailure(t *testing.T) {
+	stubUserServiceInstallContext(t)
 	origInstall := installUserSvcFn
 	t.Cleanup(func() { installUserSvcFn = origInstall })
 

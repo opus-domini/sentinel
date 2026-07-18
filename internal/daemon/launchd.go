@@ -43,7 +43,7 @@ func installUserLaunchd(opts InstallUserOptions) error {
 		return err
 	}
 
-	scope, err := ResolveInstallScope(opts.Scope)
+	scope, err := normalizeExplicitScope(opts.Scope)
 	if err != nil {
 		return err
 	}

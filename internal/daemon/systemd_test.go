@@ -943,6 +943,7 @@ func TestInstallUserBadExecPath(t *testing.T) {
 
 	err := InstallUser(InstallUserOptions{
 		ExecPath: "/usr/bin/sentinel\nevil",
+		Scope:    ScopeUser,
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid exec path")

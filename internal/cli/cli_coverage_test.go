@@ -167,6 +167,7 @@ func TestRunRejectsUnknownRootFlag(t *testing.T) {
 
 // TestRunServiceUninstallCommand covers success, failure, help and unexpected arg paths.
 func TestRunServiceUninstallCommand(t *testing.T) {
+	stubUserDeploymentContext(t)
 	t.Run("success", func(t *testing.T) {
 		origUninstall := uninstallUserSvcFn
 		t.Cleanup(func() { uninstallUserSvcFn = origUninstall })
@@ -579,6 +580,7 @@ func TestServiceInstallHelpAndArgs(t *testing.T) {
 
 // TestServiceAutoUpdateInstallFailure covers the error path.
 func TestServiceAutoUpdateInstallFailure(t *testing.T) {
+	stubUserDeploymentContext(t)
 	origInstall := installUserAutoUpdateFn
 	t.Cleanup(func() { installUserAutoUpdateFn = origInstall })
 
@@ -957,7 +959,7 @@ func TestDoctorStatusError(t *testing.T) {
 // TestServiceInstallEnableStartCombinations covers the output messages for
 // different enable/start flag combinations.
 func TestServiceInstallEnableStartCombinations(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	stubUserServiceInstallContext(t)
 	cases := []struct {
 		name    string
 		args    []string
@@ -1006,6 +1008,7 @@ func TestServiceInstallEnableStartCombinations(t *testing.T) {
 // TestServiceAutoUpdateInstallEnableStartCombinations covers the output messages
 // for different enable/start flag combinations on autoupdate install.
 func TestServiceAutoUpdateInstallEnableStartCombinations(t *testing.T) {
+	stubUserDeploymentContext(t)
 	cases := []struct {
 		name    string
 		args    []string

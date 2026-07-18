@@ -66,11 +66,11 @@ func ResolveDeployment(scopeRaw string) (Deployment, error) {
 	if err != nil {
 		return Deployment{}, err
 	}
-	deployments, err := InstalledDeployments()
+	selected, err := selectAccessibleDeployment(detectedDeployments(), scope, os.Geteuid())
 	if err != nil {
 		return Deployment{}, err
 	}
-	return selectDeployment(deployments, scope)
+	return readDeployment(selected.Scope)
 }
 
 // ResolveInstallScope preserves an existing scope and refuses to create a
@@ -81,11 +81,19 @@ func ResolveInstallScope(scopeRaw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	deployments, err := InstalledDeployments()
-	if err != nil {
-		return "", err
+	return selectInstallScope(detectedDeployments(), scope, os.Geteuid())
+}
+
+func detectedDeployments() []Deployment {
+	scopes := DetectInstalledScopes()
+	deployments := make([]Deployment, 0, 2)
+	if scopes.User {
+		deployments = append(deployments, Deployment{Scope: ScopeUser})
 	}
-	return selectInstallScope(deployments, scope, os.Geteuid())
+	if scopes.System {
+		deployments = append(deployments, Deployment{Scope: ScopeSystem})
+	}
+	return deployments
 }
 
 func selectDeployment(deployments []Deployment, scope string) (Deployment, error) {
@@ -105,6 +113,21 @@ func selectDeployment(deployments []Deployment, scope string) (Deployment, error
 		}
 	}
 	return Deployment{}, fmt.Errorf("no Sentinel service is installed in %s scope", scope)
+}
+
+func selectAccessibleDeployment(deployments []Deployment, scope string, euid int) (Deployment, error) {
+	selected, err := selectDeployment(deployments, scope)
+	if err != nil {
+		return Deployment{}, err
+	}
+	// Diagnose a mismatched caller identity before reading a root-owned unit.
+	// System unit files are intentionally private, so attempting to parse one as
+	// an unprivileged user would otherwise hide the useful scope diagnosis behind
+	// a generic permission-denied error.
+	if err := requireScopeAccess(selected.Scope, euid); err != nil {
+		return Deployment{}, err
+	}
+	return selected, nil
 }
 
 func selectInstallScope(deployments []Deployment, scope string, euid int) (string, error) {
@@ -130,13 +153,17 @@ func selectInstallScope(deployments []Deployment, scope string, euid int) (strin
 // RequireScopeAccess returns an actionable error before any config or network
 // work happens under the wrong identity.
 func RequireScopeAccess(scope string) error {
+	return requireScopeAccess(scope, os.Geteuid())
+}
+
+func requireScopeAccess(scope string, euid int) error {
 	switch scope {
 	case ScopeSystem:
-		if os.Geteuid() != 0 {
+		if euid != 0 {
 			return errors.New("the Sentinel deployment is system-wide; re-run with sudo and --scope system")
 		}
 	case ScopeUser:
-		if os.Geteuid() == 0 {
+		if euid == 0 {
 			return errors.New("the Sentinel deployment belongs to a user; run the command as that user without sudo and use --scope user")
 		}
 	default:
@@ -155,6 +182,17 @@ func normalizeManagedScope(raw string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid scope %q (valid: auto, user, system)", raw)
 	}
+}
+
+func normalizeExplicitScope(raw string) (string, error) {
+	scope, err := normalizeManagedScope(raw)
+	if err != nil {
+		return "", err
+	}
+	if scope == ScopeAuto {
+		return "", errors.New("deployment scope must be user or system")
+	}
+	return scope, nil
 }
 
 func readDeployment(scope string) (Deployment, error) {

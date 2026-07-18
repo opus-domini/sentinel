@@ -48,6 +48,58 @@ func TestSelectDeploymentMatrix(t *testing.T) {
 	}
 }
 
+func TestSelectAccessibleDeploymentDiagnosesScopeBeforeUnitRead(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		installed []Deployment
+		scope     string
+		euid      int
+		wantScope string
+		wantError string
+	}{
+		{
+			name:      "unprivileged caller with system deployment",
+			installed: []Deployment{{Scope: ScopeSystem}},
+			scope:     ScopeAuto,
+			euid:      1000,
+			wantError: "deployment is system-wide; re-run with sudo",
+		},
+		{
+			name:      "root caller with user deployment",
+			installed: []Deployment{{Scope: ScopeUser}},
+			scope:     ScopeAuto,
+			euid:      0,
+			wantError: "deployment belongs to a user",
+		},
+		{
+			name:      "matching user caller",
+			installed: []Deployment{{Scope: ScopeUser}},
+			scope:     ScopeAuto,
+			euid:      1000,
+			wantScope: ScopeUser,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := selectAccessibleDeployment(tc.installed, tc.scope, tc.euid)
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("error = %v, want %q", err, tc.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("selectAccessibleDeployment() error = %v", err)
+			}
+			if got.Scope != tc.wantScope {
+				t.Fatalf("scope = %q, want %q", got.Scope, tc.wantScope)
+			}
+		})
+	}
+}
+
 func TestSelectInstallScopeMatrix(t *testing.T) {
 	t.Parallel()
 

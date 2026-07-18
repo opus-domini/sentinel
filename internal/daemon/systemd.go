@@ -126,7 +126,7 @@ func InstallUser(opts InstallUserOptions) error {
 	if err := ensureServicePlatformSupported(); err != nil {
 		return err
 	}
-	scope, err := ResolveInstallScope(opts.Scope)
+	scope, err := normalizeExplicitScope(opts.Scope)
 	if err != nil {
 		return err
 	}
