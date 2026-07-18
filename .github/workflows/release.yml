@@ -24,6 +24,6 @@ jobs:
       id-token: write
       issues: write
       pull-requests: write
-    uses: opus-domini/actions/.github/workflows/release.yml@d46c516d62240b7b6a10bb3e4caf2a1810e8d8a9
+    uses: opus-domini/actions/.github/workflows/release.yml@1bc7bd95911fd11f6049c1c9b8a379aed73983e6
     with:
       frontend: true
