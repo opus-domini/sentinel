@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/opus-domini/sentinel/compare/v0.10.3...v0.10.4) (2026-07-18)
+
+
+### Build
+
+* **deps:** release updated dependencies ([5783dad](https://github.com/opus-domini/sentinel/commit/5783dad223c703e771165edab34a2de34c17893f))
+
 ## [0.10.3](https://github.com/opus-domini/sentinel/compare/v0.10.2...v0.10.3) (2026-07-18)
 
 
