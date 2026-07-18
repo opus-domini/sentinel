@@ -293,17 +293,23 @@ func sameBinaryPath(left, right string) bool {
 // removeShellCompletions deletes installed shell completion scripts. It returns
 // the paths it removed.
 func removeShellCompletions() []string {
-	paths := []string{}
-	if home, err := os.UserHomeDir(); err == nil {
+	home, _ := os.UserHomeDir()
+	return removeShellCompletionsFrom(home, os.Getenv("XDG_CONFIG_HOME"), "/usr/share/bash-completion/completions/sentinel")
+}
+
+func removeShellCompletionsFrom(home, configHome, systemPath string) []string {
+	paths := make([]string, 0, 4)
+	if home != "" {
 		paths = append(paths, filepath.Join(home, ".local", "share", "bash-completion", "completions", "sentinel"))
 		paths = append(paths, filepath.Join(home, ".local", "share", "zsh", "site-functions", "_sentinel"))
-		configHome := os.Getenv("XDG_CONFIG_HOME")
 		if configHome == "" {
 			configHome = filepath.Join(home, ".config")
 		}
 		paths = append(paths, filepath.Join(configHome, "fish", "completions", "sentinel.fish"))
 	}
-	paths = append(paths, "/usr/share/bash-completion/completions/sentinel")
+	if systemPath != "" {
+		paths = append(paths, systemPath)
+	}
 
 	removed := make([]string, 0, len(paths))
 	for _, path := range paths {

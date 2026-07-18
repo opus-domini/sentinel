@@ -60,17 +60,14 @@ func TestRemoveSentinelBinaryAt(t *testing.T) {
 }
 
 func TestRemoveShellCompletions(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("avoids touching the system completion path as root")
-	}
 	home := t.TempDir()
 	configHome := filepath.Join(home, "xdg")
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	systemPath := filepath.Join(home, "system", "sentinel")
 	paths := []string{
 		filepath.Join(home, ".local", "share", "bash-completion", "completions", "sentinel"),
 		filepath.Join(home, ".local", "share", "zsh", "site-functions", "_sentinel"),
 		filepath.Join(configHome, "fish", "completions", "sentinel.fish"),
+		systemPath,
 	}
 	for _, path := range paths {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -81,11 +78,26 @@ func TestRemoveShellCompletions(t *testing.T) {
 		}
 	}
 
-	removed := removeShellCompletions()
+	removed := removeShellCompletionsFrom(home, configHome, systemPath)
 	for _, path := range paths {
 		if !slices.Contains(removed, path) {
 			t.Errorf("removed paths missing %q: %v", path, removed)
 		}
+	}
+}
+
+func TestRemoveShellCompletionsUsesDefaultConfigHome(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".config", "fish", "completions", "sentinel.fish")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("completion"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	removed := removeShellCompletionsFrom(home, "", "")
+	if !slices.Contains(removed, path) {
+		t.Fatalf("removed paths missing %q: %v", path, removed)
 	}
 }
 
@@ -226,6 +238,56 @@ func TestPrepareServiceConfigWithoutCreatingFile(t *testing.T) {
 	}
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		t.Fatalf("config file was unexpectedly created: %v", err)
+	}
+}
+
+func TestPrepareServiceConfigUsesInstalledDeployment(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+	t.Setenv("SENTINEL_CONFIG", "")
+	if err := os.WriteFile(configPath, []byte("version = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	origDeployments := installedDeploymentsFn
+	t.Cleanup(func() { installedDeploymentsFn = origDeployments })
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) {
+		return []daemon.Deployment{{
+			Scope:            daemon.ScopeSystem,
+			ConfigPath:       configPath,
+			DataDir:          dir,
+			LegacyConfigPath: true,
+		}}, nil
+	}
+
+	resolved, dataDir, err := prepareServiceConfig(daemon.ScopeSystem, false)
+	if err != nil {
+		t.Fatalf("prepareServiceConfig() error = %v", err)
+	}
+	if resolved != configPath || dataDir != dir {
+		t.Fatalf("config = %q, data = %q", resolved, dataDir)
+	}
+}
+
+func TestValidateServiceInstallBinaryRecognizesSameFile(t *testing.T) {
+	dir := t.TempDir()
+	managedPath := filepath.Join(dir, "sentinel")
+	requestedPath := filepath.Join(dir, "sentinel-link")
+	if err := os.WriteFile(managedPath, []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(managedPath, requestedPath); err != nil {
+		t.Fatal(err)
+	}
+
+	origDeployments := installedDeploymentsFn
+	t.Cleanup(func() { installedDeploymentsFn = origDeployments })
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) {
+		return []daemon.Deployment{{Scope: daemon.ScopeUser, BinaryPath: managedPath}}, nil
+	}
+	got, err := validateServiceInstallBinary(daemon.ScopeUser, requestedPath)
+	if err != nil || got != managedPath {
+		t.Fatalf("binary = %q, error = %v", got, err)
 	}
 }
 

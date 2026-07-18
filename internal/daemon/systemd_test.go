@@ -972,6 +972,118 @@ func TestInstallUserAutoUpdateBadExecPath(t *testing.T) {
 	}
 }
 
+func TestInstallUserAutoUpdateLinuxUser(t *testing.T) {
+	if runtime.GOOS != systemdSupportedOS {
+		t.Skip("test requires Linux")
+	}
+	home := t.TempDir()
+	binDir := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SUDO_USER", "")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	systemctlPath := filepath.Join(binDir, "systemctl")
+	script := "#!/bin/sh\nif [ \"$2\" = \"is-active\" ]; then exit 3; fi\nexit 0\n"
+	if err := os.WriteFile(systemctlPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := installUserAutoUpdateConfig{
+		scope:           ScopeUser,
+		execPath:        "/opt/sentinel/bin/sentinel",
+		configPath:      filepath.Join(home, ".sentinel", "config.toml"),
+		dataDir:         filepath.Join(home, ".sentinel"),
+		serviceUnit:     "sentinel",
+		onCalendar:      "daily",
+		randomizedDelay: time.Minute,
+	}
+	if err := installUserAutoUpdateLinuxUser(cfg, InstallUserAutoUpdateOptions{Enable: true, Start: true}); err != nil {
+		t.Fatalf("installUserAutoUpdateLinuxUser() error = %v", err)
+	}
+	servicePath, err := UserAutoUpdateServicePathForScope(ScopeUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timerPath, err := UserAutoUpdateTimerPathForScope(ScopeUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{servicePath, timerPath} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("managed unit %s was not written: %v", path, err)
+		}
+	}
+
+	for _, state := range []struct {
+		enable bool
+		start  bool
+	}{
+		{enable: true},
+		{start: true},
+		{},
+	} {
+		if err := applyUserAutoUpdateTimerState(state.enable, state.start); err != nil {
+			t.Fatalf("applyUserAutoUpdateTimerState(%t, %t) error = %v", state.enable, state.start, err)
+		}
+	}
+}
+
+func TestUserAutoUpdateLifecycleLinuxUser(t *testing.T) {
+	if runtime.GOOS != systemdSupportedOS {
+		t.Skip("test requires Linux")
+	}
+	home := t.TempDir()
+	binDir := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SUDO_USER", "")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	systemctlPath := filepath.Join(binDir, "systemctl")
+	script := "#!/bin/sh\ncase \"$2\" in\nis-enabled) echo enabled ;;\nis-active) echo inactive; exit 3 ;;\nesac\nexit 0\n"
+	if err := os.WriteFile(systemctlPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	execPath := filepath.Join(binDir, "sentinel")
+	if err := os.WriteFile(execPath, []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dataDir := filepath.Join(home, ".sentinel")
+	if err := InstallUserAutoUpdate(InstallUserAutoUpdateOptions{
+		ExecPath:        execPath,
+		ConfigPath:      filepath.Join(dataDir, "config.toml"),
+		DataDir:         dataDir,
+		Enable:          true,
+		Start:           false,
+		ServiceUnit:     "sentinel",
+		SystemdScope:    ScopeUser,
+		OnCalendar:      "hourly",
+		RandomizedDelay: time.Minute,
+	}); err != nil {
+		t.Fatalf("InstallUserAutoUpdate() error = %v", err)
+	}
+
+	status, err := UserAutoUpdateStatusForScope(ScopeUser)
+	if err != nil {
+		t.Fatalf("UserAutoUpdateStatusForScope() error = %v", err)
+	}
+	if !status.ServiceUnitExists || !status.TimerUnitExists || !status.SystemctlAvailable {
+		t.Fatalf("status = %+v", status)
+	}
+	if status.TimerEnabledState != "enabled" || status.TimerActiveState != "inactive" {
+		t.Fatalf("unexpected timer state: %+v", status)
+	}
+
+	if err := UninstallUserAutoUpdate(UninstallUserAutoUpdateOptions{
+		Disable:    true,
+		Stop:       true,
+		RemoveUnit: true,
+		Scope:      ScopeUser,
+	}); err != nil {
+		t.Fatalf("UninstallUserAutoUpdate() error = %v", err)
+	}
+	if fileExists(status.ServicePath) || fileExists(status.TimerPath) {
+		t.Fatalf("autoupdate units still exist: %+v", status)
+	}
+}
+
 func TestInstallSystemServiceLinuxNonRoot(t *testing.T) {
 	t.Parallel()
 

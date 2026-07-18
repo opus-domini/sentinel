@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"os/exec"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +98,20 @@ func TestTailLogArgs(t *testing.T) {
 				t.Fatalf("tailLogArgs(%t, %d, %v) = %v, want %v", tc.follow, tc.lines, tc.paths, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRunLogCommand(t *testing.T) {
+	t.Parallel()
+
+	if err := runLogCommand(exec.Command("sh", "-c", "exit 0")); err != nil {
+		t.Fatalf("successful command error = %v", err)
+	}
+	if err := runLogCommand(exec.Command("sh", "-c", "exit 7")); err != nil {
+		t.Fatalf("exit status should be ignored: %v", err)
+	}
+	cmd := &exec.Cmd{Path: "/definitely/missing/sentinel-log-command"}
+	if err := runLogCommand(cmd); err == nil || !strings.Contains(err.Error(), "run sentinel-log-command") {
+		t.Fatalf("start failure error = %v", err)
 	}
 }
