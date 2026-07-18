@@ -6,7 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 )
 
 func writef(w io.Writer, format string, args ...any) {
@@ -51,7 +52,8 @@ func renderStyle(w io.Writer, kind textStyle, s string) string {
 	if kind == stylePlain || s == "" || !shouldUsePrettyOutput(w) {
 		return s
 	}
-	style := lipgloss.NewRenderer(w).NewStyle()
+	style := lipgloss.NewStyle()
+	profile := colorprofile.Detect(w, os.Environ())
 	switch kind {
 	case stylePlain:
 		return s
@@ -60,11 +62,11 @@ func renderStyle(w io.Writer, kind textStyle, s string) string {
 	case styleMuted:
 		style = style.Faint(true)
 	case styleSuccess:
-		style = style.Foreground(lipgloss.Color("42"))
+		style = style.Foreground(profile.Convert(lipgloss.Color("42")))
 	case styleWarning:
-		style = style.Foreground(lipgloss.Color("214"))
+		style = style.Foreground(profile.Convert(lipgloss.Color("214")))
 	case styleDanger:
-		style = style.Foreground(lipgloss.Color("203"))
+		style = style.Foreground(profile.Convert(lipgloss.Color("203")))
 	}
 	return style.Render(s)
 }

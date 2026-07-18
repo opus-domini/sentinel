@@ -9,31 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TmuxRouteImport } from './routes/tmux'
-import { Route as ServicesRouteImport } from './routes/services'
-import { Route as RunbooksRouteImport } from './routes/runbooks'
-import { Route as OpsRouteImport } from './routes/ops'
-import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MetricsRouteImport } from './routes/metrics'
+import { Route as OpsRouteImport } from './routes/ops'
+import { Route as RunbooksRouteImport } from './routes/runbooks'
+import { Route as ServicesRouteImport } from './routes/services'
+import { Route as TmuxRouteImport } from './routes/tmux'
 
-const TmuxRoute = TmuxRouteImport.update({
-  id: '/tmux',
-  path: '/tmux',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ServicesRoute = ServicesRouteImport.update({
-  id: '/services',
-  path: '/services',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RunbooksRoute = RunbooksRouteImport.update({
-  id: '/runbooks',
-  path: '/runbooks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OpsRoute = OpsRouteImport.update({
-  id: '/ops',
-  path: '/ops',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MetricsRoute = MetricsRouteImport.update({
@@ -41,9 +26,24 @@ const MetricsRoute = MetricsRouteImport.update({
   path: '/metrics',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const OpsRoute = OpsRouteImport.update({
+  id: '/ops',
+  path: '/ops',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RunbooksRoute = RunbooksRouteImport.update({
+  id: '/runbooks',
+  path: '/runbooks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TmuxRoute = TmuxRouteImport.update({
+  id: '/tmux',
+  path: '/tmux',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -92,32 +92,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/tmux': {
-      id: '/tmux'
-      path: '/tmux'
-      fullPath: '/tmux'
-      preLoaderRoute: typeof TmuxRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/services': {
-      id: '/services'
-      path: '/services'
-      fullPath: '/services'
-      preLoaderRoute: typeof ServicesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/runbooks': {
-      id: '/runbooks'
-      path: '/runbooks'
-      fullPath: '/runbooks'
-      preLoaderRoute: typeof RunbooksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/ops': {
-      id: '/ops'
-      path: '/ops'
-      fullPath: '/ops'
-      preLoaderRoute: typeof OpsRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/metrics': {
@@ -127,11 +106,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MetricsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/ops': {
+      id: '/ops'
+      path: '/ops'
+      fullPath: '/ops'
+      preLoaderRoute: typeof OpsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runbooks': {
+      id: '/runbooks'
+      path: '/runbooks'
+      fullPath: '/runbooks'
+      preLoaderRoute: typeof RunbooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tmux': {
+      id: '/tmux'
+      path: '/tmux'
+      fullPath: '/tmux'
+      preLoaderRoute: typeof TmuxRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
