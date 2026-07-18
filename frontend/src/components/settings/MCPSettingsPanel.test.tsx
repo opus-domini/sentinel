@@ -32,13 +32,13 @@ describe('MCPSettingsPanel', () => {
     })
     const { container } = render(
       <QueryClientProvider client={queryClient}>
-        <MCPSettingsPanel />
+        <MCPSettingsPanel hostname="Azdrix.LAN" />
       </QueryClientProvider>,
     )
 
     expect(await screen.findByText('Remote agent access')).toBeTruthy()
     expect(screen.getByText(`${window.location.origin}/mcp`)).toBeTruthy()
-    expect(screen.getByText(/codex mcp add sentinel/).textContent).toContain(
+    expect(screen.getByText(/codex mcp add sentinel-azdrix-lan/).textContent).toContain(
       '--bearer-token-env-var SENTINEL_TOKEN',
     )
     expect(container.querySelector('pre')?.className).toContain('max-w-full')
@@ -53,9 +53,12 @@ describe('MCPSettingsPanel', () => {
     expect(await screen.findByText('Available')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Claude' }))
-    expect(screen.getByText(/claude mcp add-json/).textContent).toContain('${SENTINEL_TOKEN}')
+    expect(screen.getByText(/claude mcp add-json/).textContent).toContain(
+      'claude mcp add-json --scope user sentinel-azdrix-lan',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'mcpServers' }))
     expect(screen.getByText(/"mcpServers"/)).toBeTruthy()
+    expect(screen.getByText(/"sentinel-azdrix-lan"/)).toBeTruthy()
   })
 
   it('blocks enable when server.token is missing', async () => {
@@ -63,7 +66,7 @@ describe('MCPSettingsPanel', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={queryClient}>
-        <MCPSettingsPanel />
+        <MCPSettingsPanel hostname="azdrix" />
       </QueryClientProvider>,
     )
 

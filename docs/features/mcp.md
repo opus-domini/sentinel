@@ -35,14 +35,14 @@ token.
 
 ## Connect
 
-For a Sentinel served at `https://sentinel.example.ts.net`:
+For a host named `azdrix` serving Sentinel at `https://azdrix.example.ts.net`:
 
 ### Codex
 
 ```bash
 export SENTINEL_TOKEN='<same value as server.token>'
-codex mcp add sentinel \
-  --url https://sentinel.example.ts.net/mcp \
+codex mcp add sentinel-azdrix \
+  --url https://azdrix.example.ts.net/mcp \
   --bearer-token-env-var SENTINEL_TOKEN
 ```
 
@@ -53,8 +53,8 @@ configuration:
 
 ```bash
 export SENTINEL_TOKEN='<same value as server.token>'
-claude mcp add-json --scope user sentinel \
-  '{"type":"http","url":"https://sentinel.example.ts.net/mcp","headers":{"Authorization":"Bearer ${SENTINEL_TOKEN}"}}'
+claude mcp add-json --scope user sentinel-azdrix \
+  '{"type":"http","url":"https://azdrix.example.ts.net/mcp","headers":{"Authorization":"Bearer ${SENTINEL_TOKEN}"}}'
 ```
 
 ### `mcpServers` JSON
@@ -62,9 +62,9 @@ claude mcp add-json --scope user sentinel \
 ```json
 {
   "mcpServers": {
-    "sentinel": {
+    "sentinel-azdrix": {
       "type": "http",
-      "url": "https://sentinel.example.ts.net/mcp",
+      "url": "https://azdrix.example.ts.net/mcp",
       "headers": {
         "Authorization": "Bearer ${SENTINEL_TOKEN}"
       }
@@ -75,6 +75,9 @@ claude mcp add-json --scope user sentinel \
 
 Environment-variable expansion in a generic `mcpServers` file depends on the
 client. Do not commit the literal token.
+
+The Settings page derives the MCP server name from the Sentinel host name and
+uses the same `sentinel-<hostname>` identifier in every client format.
 
 ## Tools
 

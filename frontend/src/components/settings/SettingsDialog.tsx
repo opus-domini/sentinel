@@ -48,7 +48,7 @@ type SettingsDialogProps = {
 type SettingsSection = 'appearance' | 'app' | 'mcp' | 'data' | 'about'
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
-  const { version, timezone, locale } = useMetaContext()
+  const { version, timezone, locale, hostname } = useMetaContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
   const [savingTimezone, setSavingTimezone] = useState(false)
@@ -513,7 +513,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               aria-labelledby="settings-tab-mcp"
               className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
             >
-              <MCPSettingsPanel />
+              <MCPSettingsPanel hostname={hostname} />
             </section>
           )}
 

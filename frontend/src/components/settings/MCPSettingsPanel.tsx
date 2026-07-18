@@ -15,9 +15,22 @@ type MCPSettings = {
 
 type SnippetKind = 'codex' | 'claude' | 'json'
 
+type MCPSettingsPanelProps = {
+  hostname: string
+}
+
 const MCP_SETTINGS_QUERY_KEY = ['settings', 'mcp'] as const
 
-export default function MCPSettingsPanel() {
+function formatMCPServerName(hostname: string): string {
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized === '' ? 'sentinel' : `sentinel-${normalized}`
+}
+
+export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
   const api = useTmuxApi()
   const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
@@ -31,6 +44,7 @@ export default function MCPSettingsPanel() {
   })
 
   const settings = settingsQuery.data
+  const serverName = useMemo(() => formatMCPServerName(hostname), [hostname])
   const endpoint = useMemo(() => {
     const path = settings?.endpoint || '/mcp'
     return new URL(path, window.location.origin).toString()
@@ -41,7 +55,7 @@ export default function MCPSettingsPanel() {
     const jsonConfig = JSON.stringify(
       {
         mcpServers: {
-          sentinel: {
+          [serverName]: {
             type: 'http',
             url: endpoint,
             headers: {
@@ -59,11 +73,11 @@ export default function MCPSettingsPanel() {
       headers: { Authorization: 'Bearer ${SENTINEL_TOKEN}' },
     })
     return {
-      codex: `${tokenExport}\ncodex mcp add sentinel --url ${endpoint} --bearer-token-env-var SENTINEL_TOKEN`,
-      claude: `${tokenExport}\nclaude mcp add-json --scope user sentinel '${claudeConfig}'`,
+      codex: `${tokenExport}\ncodex mcp add ${serverName} --url ${endpoint} --bearer-token-env-var SENTINEL_TOKEN`,
+      claude: `${tokenExport}\nclaude mcp add-json --scope user ${serverName} '${claudeConfig}'`,
       json: jsonConfig,
     }
-  }, [endpoint])
+  }, [endpoint, serverName])
 
   const copy = (key: string, value: string) => {
     writeClipboardText(value)
