@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.7](https://github.com/opus-domini/sentinel/compare/v0.10.6...v0.10.7) (2026-07-19)
+
+
+### CI
+
+* update shared release workflows ([2a2e244](https://github.com/opus-domini/sentinel/commit/2a2e2448478ea3b8ec4d371da62b586ca593eed3))
+
 ## [0.10.6](https://github.com/opus-domini/sentinel/compare/v0.10.5...v0.10.6) (2026-07-19)
 
 
