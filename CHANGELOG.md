@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.8](https://github.com/opus-domini/sentinel/compare/v0.10.7...v0.10.8) (2026-07-19)
+
+
+### Bug Fixes
+
+* reconcile autoupdate and trust loopback proxies ([b551c6c](https://github.com/opus-domini/sentinel/commit/b551c6c586f9ddd5592d38caa27e99d814e94861))
+
 ## [0.10.7](https://github.com/opus-domini/sentinel/compare/v0.10.6...v0.10.7) (2026-07-19)
 
 
