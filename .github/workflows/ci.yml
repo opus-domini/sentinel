@@ -5,6 +5,9 @@ on:
     branches:
       - main
   pull_request:
+    paths-ignore:
+      - .github/.release-please-manifest.json
+      - CHANGELOG.md
   workflow_dispatch:
 
 permissions:
@@ -12,7 +15,7 @@ permissions:
 
 jobs:
   ci:
-    uses: opus-domini/actions/.github/workflows/ci.yml@1bc7bd95911fd11f6049c1c9b8a379aed73983e6
+    uses: opus-domini/actions/.github/workflows/ci.yml@0f492b1146df1f2316d2bb6b69b5bbd34c6548f1
     with:
       frontend: true
       upload-codecov: true

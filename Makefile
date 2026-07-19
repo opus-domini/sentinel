@@ -193,9 +193,9 @@ uninstall: build ## Remove service, binary and shell completion
 # --- Release ---------------------------------------------------
 
 # Real releases go through the release-pr.yml and release.yml workflows. The
-# publication workflow runs the ci-full gate against the tagged commit, pins
-# GoReleaser, and signs artifacts with keyless cosign via GitHub OIDC. Use
-# release-snapshot/release-check for local validation.
+# default-branch push CI is the single ci-full gate. Publication verifies that
+# exact SHA, pins GoReleaser, and signs artifacts with keyless cosign via GitHub
+# OIDC. Use release-snapshot/release-check for local validation.
 .PHONY: release
 release:
 	@printf '%s\n' 'Releases are published by the Release Please workflow (gated, pinned, cosign-signed).' \
