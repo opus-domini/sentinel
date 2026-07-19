@@ -153,6 +153,9 @@ func runDoctor(app *App) error {
 					))
 				}
 			}
+			autoUpdateRows, autoUpdateIssues := inspectDoctorAutoUpdate(s.Scope)
+			rows = append(rows, autoUpdateRows...)
+			issues = append(issues, autoUpdateIssues...)
 		}
 	}
 	printRows(app.Stdout, rows)
@@ -171,6 +174,48 @@ func runDoctor(app *App) error {
 	}
 	printRows(app.Stdout, problemRows)
 	return failf("doctor found %d problem(s)", len(issues))
+}
+
+func inspectDoctorAutoUpdate(scope string) ([]outputRow, []string) {
+	status, err := userAutoUpdateStatusFn(scope)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("inspect %s autoupdate: %v", scope, err)}
+	}
+	if !status.ServiceUnitExists && !status.TimerUnitExists {
+		return nil, nil
+	}
+
+	rows := []outputRow{
+		{Key: fmt.Sprintf("%s autoupdate service exists", scope), Value: fmt.Sprintf("%t", status.ServiceUnitExists)},
+		{Key: fmt.Sprintf("%s autoupdate timer exists", scope), Value: fmt.Sprintf("%t", status.TimerUnitExists)},
+	}
+	var issues []string
+	if status.ServiceUnitExists != status.TimerUnitExists {
+		issues = append(issues, fmt.Sprintf("%s autoupdate installation is incomplete", scope))
+	}
+	if !status.SystemctlAvailable {
+		return rows, issues
+	}
+
+	rows = append(rows,
+		outputRow{Key: fmt.Sprintf("%s autoupdate timer enabled", scope), Value: status.TimerEnabledState},
+		outputRow{Key: fmt.Sprintf("%s autoupdate timer active", scope), Value: status.TimerActiveState},
+		outputRow{Key: fmt.Sprintf("%s autoupdate last run", scope), Value: status.LastRunState},
+	)
+	if !strings.EqualFold(status.LastRunState, "failed") {
+		return rows, issues
+	}
+
+	command := fmt.Sprintf("sentinel service install --scope %s", scope)
+	if scope == daemon.ScopeSystem {
+		command = "sudo " + command
+	}
+	issues = append(issues, fmt.Sprintf(
+		"%s autoupdate last run failed; refresh it with `%s`",
+		scope,
+		command,
+	))
+	return rows, issues
 }
 
 func doctorListValue(values []string) string {

@@ -117,9 +117,22 @@ func runServiceInstall(app *App, execPath, scopeRaw string, enable, start, check
 	}); err != nil {
 		return failf("service install failed: %w", err)
 	}
+	reconciledAutoUpdate, err := reconcileAutoUpdateFn(daemon.InstallUserAutoUpdateOptions{
+		ExecPath:     resolvedExecPath,
+		ConfigPath:   configPath,
+		DataDir:      dataDir,
+		ServiceUnit:  sentinelServiceUnit,
+		SystemdScope: scope,
+	})
+	if err != nil {
+		return failf("service install failed: refresh existing autoupdate: %w", err)
+	}
 
 	if path, err := daemon.UserServicePathForScope(scope); err == nil {
 		writef(app.Stdout, "service installed: %s\n", path)
+	}
+	if reconciledAutoUpdate {
+		writeln(app.Stdout, "existing autoupdate installation refreshed")
 	}
 	switch {
 	case enable && start:

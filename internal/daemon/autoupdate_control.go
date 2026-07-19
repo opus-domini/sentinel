@@ -31,7 +31,7 @@ func PauseAutoUpdate(scopeRaw string) (bool, error) {
 	if !status.ServiceUnitExists && !status.TimerUnitExists {
 		return false, nil
 	}
-	wasActive := status.TimerActiveState == "active" || status.TimerActiveState == "running"
+	wasActive := status.TimerActiveState == serviceStateActive || status.TimerActiveState == "running"
 	if autoUpdateControlOS == launchdSupportedOS {
 		if !wasActive {
 			return false, nil

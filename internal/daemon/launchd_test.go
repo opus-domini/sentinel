@@ -31,7 +31,6 @@ func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
 		"/usr/local/bin/sentinel",
 		"",
 		"",
-		launchdServiceLabel,
 		managerScopeUser,
 		86400,
 		"/tmp/sentinel-updater.out.log",
@@ -40,13 +39,68 @@ func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
 	for _, fragment := range []string{
 		"<string>update</string>",
 		"<string>apply</string>",
-		"<string>-service=" + launchdServiceLabel + "</string>",
-		"<string>-scope=user</string>",
+		"<string>--scope=user</string>",
 		"<integer>86400</integer>",
 	} {
 		if !strings.Contains(plist, fragment) {
 			t.Fatalf("plist missing %q: %s", fragment, plist)
 		}
+	}
+}
+
+func TestReconcileLaunchdAutoUpdatePreservesIntervalAndRepairsArguments(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SUDO_USER", "")
+
+	updaterPath, err := userAutoUpdatePathLaunchdForScope(managerScopeUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(updaterPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldPlist := renderLaunchdUserAutoUpdatePlist(
+		"/old/sentinel",
+		filepath.Join(home, ".sentinel", "config.toml"),
+		filepath.Join(home, ".sentinel"),
+		managerScopeUser,
+		604800,
+		filepath.Join(home, ".sentinel", "logs", "updater.out.log"),
+		filepath.Join(home, ".sentinel", "logs", "updater.err.log"),
+	)
+	oldPlist = strings.Replace(oldPlist, "--scope=user", "-scope=user", 1)
+	if err := os.WriteFile(updaterPath, []byte(oldPlist), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err = reconcileLaunchdAutoUpdate(InstallUserAutoUpdateOptions{
+		ExecPath:     "/usr/local/bin/sentinel",
+		ConfigPath:   filepath.Join(home, ".sentinel", "config.toml"),
+		DataDir:      filepath.Join(home, ".sentinel"),
+		SystemdScope: managerScopeUser,
+	}, UserAutoUpdateServiceStatus{
+		ServicePath:       updaterPath,
+		ServiceUnitExists: true,
+		TimerUnitExists:   true,
+	})
+	if err != nil {
+		t.Fatalf("reconcileLaunchdAutoUpdate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(updaterPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plist := string(content)
+	if !strings.Contains(plist, "<string>--scope=user</string>") {
+		t.Fatalf("reconciled plist has invalid scope argument:\n%s", plist)
+	}
+	if strings.Contains(plist, "<string>-scope=user</string>") {
+		t.Fatalf("reconciled plist retained a single-dash scope:\n%s", plist)
+	}
+	if !strings.Contains(plist, "<integer>604800</integer>") {
+		t.Fatalf("reconciled plist changed the interval:\n%s", plist)
 	}
 }
 
@@ -80,30 +134,6 @@ func TestLaunchdStartIntervalRejectsInvalidValues(t *testing.T) {
 
 	if _, err := launchdStartInterval("invalid"); err == nil {
 		t.Fatal("expected error for invalid launchd interval")
-	}
-}
-
-func TestLaunchdLabelFromServiceUnit(t *testing.T) {
-	t.Parallel()
-
-	label, err := launchdLabelFromServiceUnit("")
-	if err != nil {
-		t.Fatalf("launchdLabelFromServiceUnit(\"\") error: %v", err)
-	}
-	if label != launchdServiceLabel {
-		t.Fatalf("default label = %q, want %q", label, launchdServiceLabel)
-	}
-
-	label, err = launchdLabelFromServiceUnit("sentinel.custom")
-	if err != nil {
-		t.Fatalf("launchdLabelFromServiceUnit(\"sentinel.custom\") error: %v", err)
-	}
-	if label != "sentinel.custom" {
-		t.Fatalf("label = %q, want sentinel.custom", label)
-	}
-
-	if _, err := launchdLabelFromServiceUnit("bad label"); err == nil {
-		t.Fatal("expected error for whitespace in label")
 	}
 }
 
@@ -431,42 +461,6 @@ func TestUserAutoUpdatePathLaunchdForScopeInvalid(t *testing.T) {
 	}
 }
 
-func TestLaunchdLabelFromServiceUnitSentinel(t *testing.T) {
-	t.Parallel()
-
-	label, err := launchdLabelFromServiceUnit("sentinel")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if label != launchdServiceLabel {
-		t.Fatalf("label = %q, want %q", label, launchdServiceLabel)
-	}
-}
-
-func TestLaunchdLabelFromServiceUnitWhitespace(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{"tab in name", "bad\tname", true},
-		{"newline in name", "bad\nname", true},
-		{"cr in name", "bad\rname", true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			_, err := launchdLabelFromServiceUnit(tc.input)
-			if tc.wantErr && err == nil {
-				t.Fatal("expected error")
-			}
-		})
-	}
-}
-
 func TestLaunchdStartIntervalDuration(t *testing.T) {
 	t.Parallel()
 
@@ -534,7 +528,6 @@ func TestRenderLaunchdUserAutoUpdatePlistCustomInterval(t *testing.T) {
 		"/usr/bin/sentinel",
 		"",
 		"",
-		"custom.label",
 		managerScopeSystem,
 		3600,
 		"/var/log/out.log",
@@ -543,10 +536,7 @@ func TestRenderLaunchdUserAutoUpdatePlistCustomInterval(t *testing.T) {
 	if !strings.Contains(plist, "<integer>3600</integer>") {
 		t.Fatalf("plist missing custom interval: %s", plist)
 	}
-	if !strings.Contains(plist, "<string>-service=custom.label</string>") {
-		t.Fatalf("plist missing custom service label: %s", plist)
-	}
-	if !strings.Contains(plist, "<string>-scope=system</string>") {
+	if !strings.Contains(plist, "<string>--scope=system</string>") {
 		t.Fatalf("plist missing custom scope: %s", plist)
 	}
 }
@@ -740,11 +730,10 @@ func TestResolveLaunchdAutoUpdateInstallConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name              string
-		opts              InstallUserAutoUpdateOptions
-		wantErr           string
-		checkInterval     int
-		checkServiceLabel string
+		name          string
+		opts          InstallUserAutoUpdateOptions
+		wantErr       string
+		checkInterval int
 	}{
 		{
 			name: "defaults",
@@ -752,19 +741,16 @@ func TestResolveLaunchdAutoUpdateInstallConfig(t *testing.T) {
 				ExecPath:     "/usr/bin/sentinel",
 				SystemdScope: "user",
 			},
-			checkInterval:     86400, // daily
-			checkServiceLabel: launchdServiceLabel,
+			checkInterval: 86400, // daily
 		},
 		{
-			name: "custom label and hourly",
+			name: "hourly",
 			opts: InstallUserAutoUpdateOptions{
 				ExecPath:     "/usr/bin/sentinel",
 				SystemdScope: "user",
-				ServiceUnit:  "custom.unit",
 				OnCalendar:   "hourly",
 			},
-			checkInterval:     3600,
-			checkServiceLabel: "custom.unit",
+			checkInterval: 3600,
 		},
 		{
 			name: "invalid scope",
@@ -781,15 +767,6 @@ func TestResolveLaunchdAutoUpdateInstallConfig(t *testing.T) {
 				SystemdScope: "user",
 			},
 			wantErr: "invalid executable path",
-		},
-		{
-			name: "invalid service unit",
-			opts: InstallUserAutoUpdateOptions{
-				ExecPath:     "/usr/bin/sentinel",
-				SystemdScope: "user",
-				ServiceUnit:  "bad name",
-			},
-			wantErr: "invalid service unit name",
 		},
 		{
 			name: "invalid on-calendar",
@@ -818,9 +795,6 @@ func TestResolveLaunchdAutoUpdateInstallConfig(t *testing.T) {
 			if tc.checkInterval != 0 && cfg.interval != tc.checkInterval {
 				t.Fatalf("interval = %d, want %d", cfg.interval, tc.checkInterval)
 			}
-			if tc.checkServiceLabel != "" && cfg.serviceLabel != tc.checkServiceLabel {
-				t.Fatalf("serviceLabel = %q, want %q", cfg.serviceLabel, tc.checkServiceLabel)
-			}
 		})
 	}
 }
@@ -832,13 +806,12 @@ func TestWriteLaunchdAutoUpdatePlist(t *testing.T) {
 	plistPath := filepath.Join(tmpDir, "test.plist")
 
 	cfg := launchdAutoUpdateInstallConfig{
-		scope:        managerScopeUser,
-		execPath:     "/usr/bin/sentinel",
-		serviceLabel: launchdServiceLabel,
-		interval:     86400,
-		updaterPath:  plistPath,
-		stdoutPath:   "/tmp/out.log",
-		stderrPath:   "/tmp/err.log",
+		scope:       managerScopeUser,
+		execPath:    "/usr/bin/sentinel",
+		interval:    86400,
+		updaterPath: plistPath,
+		stdoutPath:  "/tmp/out.log",
+		stderrPath:  "/tmp/err.log",
 	}
 
 	err := writeLaunchdAutoUpdatePlist(cfg)
@@ -876,13 +849,12 @@ func TestWriteLaunchdAutoUpdatePlistSystemScope(t *testing.T) {
 	plistPath := filepath.Join(tmpDir, "test.plist")
 
 	cfg := launchdAutoUpdateInstallConfig{
-		scope:        managerScopeSystem,
-		execPath:     "/usr/bin/sentinel",
-		serviceLabel: launchdServiceLabel,
-		interval:     3600,
-		updaterPath:  plistPath,
-		stdoutPath:   "/var/log/out.log",
-		stderrPath:   "/var/log/err.log",
+		scope:       managerScopeSystem,
+		execPath:    "/usr/bin/sentinel",
+		interval:    3600,
+		updaterPath: plistPath,
+		stdoutPath:  "/var/log/out.log",
+		stderrPath:  "/var/log/err.log",
 	}
 	if err := os.WriteFile(plistPath, []byte("stale"), 0o600); err != nil {
 		t.Fatalf("seed restrictive plist: %v", err)
@@ -907,13 +879,12 @@ func TestWriteLaunchdAutoUpdatePlistBadPath(t *testing.T) {
 	t.Parallel()
 
 	cfg := launchdAutoUpdateInstallConfig{
-		scope:        managerScopeUser,
-		execPath:     "/usr/bin/sentinel",
-		serviceLabel: launchdServiceLabel,
-		interval:     86400,
-		updaterPath:  "/nonexistent/dir/test.plist",
-		stdoutPath:   "/tmp/out.log",
-		stderrPath:   "/tmp/err.log",
+		scope:       managerScopeUser,
+		execPath:    "/usr/bin/sentinel",
+		interval:    86400,
+		updaterPath: "/nonexistent/dir/test.plist",
+		stdoutPath:  "/tmp/out.log",
+		stderrPath:  "/tmp/err.log",
 	}
 
 	err := writeLaunchdAutoUpdatePlist(cfg)
@@ -1162,18 +1133,6 @@ func TestLaunchdStartIntervalNegativeDuration(t *testing.T) {
 	}
 }
 
-func TestLaunchdLabelFromServiceUnitWhitespaceOnly(t *testing.T) {
-	t.Parallel()
-
-	label, err := launchdLabelFromServiceUnit("   ")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if label != launchdServiceLabel {
-		t.Fatalf("label = %q, want %q", label, launchdServiceLabel)
-	}
-}
-
 func TestRenderLaunchdUserServicePlistLogPaths(t *testing.T) {
 	t.Parallel()
 
@@ -1199,7 +1158,6 @@ func TestRenderLaunchdUserAutoUpdatePlistLabel(t *testing.T) {
 		"/usr/bin/sentinel",
 		"",
 		"",
-		launchdServiceLabel,
 		managerScopeUser,
 		86400,
 		"/tmp/out.log",

@@ -29,15 +29,14 @@ const (
 )
 
 type launchdAutoUpdateInstallConfig struct {
-	scope        string
-	execPath     string
-	configPath   string
-	dataDir      string
-	serviceLabel string
-	interval     int
-	updaterPath  string
-	stdoutPath   string
-	stderrPath   string
+	scope       string
+	execPath    string
+	configPath  string
+	dataDir     string
+	interval    int
+	updaterPath string
+	stdoutPath  string
+	stderrPath  string
 }
 
 func installUserLaunchd(opts InstallUserOptions) error {
@@ -145,10 +144,6 @@ func resolveLaunchdAutoUpdateInstallConfig(opts InstallUserAutoUpdateOptions) (l
 	if err != nil {
 		return launchdAutoUpdateInstallConfig{}, err
 	}
-	serviceLabel, err := launchdLabelFromServiceUnit(opts.ServiceUnit)
-	if err != nil {
-		return launchdAutoUpdateInstallConfig{}, err
-	}
 	interval, err := launchdStartInterval(opts.OnCalendar)
 	if err != nil {
 		return launchdAutoUpdateInstallConfig{}, err
@@ -166,15 +161,14 @@ func resolveLaunchdAutoUpdateInstallConfig(opts InstallUserAutoUpdateOptions) (l
 	_ = opts.RandomizedDelay
 
 	return launchdAutoUpdateInstallConfig{
-		scope:        scope,
-		execPath:     execPath,
-		configPath:   strings.TrimSpace(opts.ConfigPath),
-		dataDir:      strings.TrimSpace(opts.DataDir),
-		serviceLabel: serviceLabel,
-		interval:     interval,
-		updaterPath:  updaterPath,
-		stdoutPath:   stdoutPath,
-		stderrPath:   stderrPath,
+		scope:       scope,
+		execPath:    execPath,
+		configPath:  strings.TrimSpace(opts.ConfigPath),
+		dataDir:     strings.TrimSpace(opts.DataDir),
+		interval:    interval,
+		updaterPath: updaterPath,
+		stdoutPath:  stdoutPath,
+		stderrPath:  stderrPath,
 	}, nil
 }
 
@@ -188,7 +182,6 @@ func replaceLaunchdAutoUpdatePlist(cfg launchdAutoUpdateInstallConfig) (*managed
 		cfg.execPath,
 		cfg.configPath,
 		cfg.dataDir,
-		cfg.serviceLabel,
 		cfg.scope,
 		cfg.interval,
 		cfg.stdoutPath,
@@ -558,7 +551,7 @@ func readLaunchdJobState(scope, label string) (loaded bool, active string, lastR
 
 	active = launchdStateInactive
 	if strings.Contains(strings.ToLower(out), "state = running") {
-		active = "active"
+		active = serviceStateActive
 	}
 	lastRun = parseLaunchdLastRun(out)
 	return true, active, lastRun
@@ -578,17 +571,6 @@ func parseLaunchdLastRun(raw string) string {
 		}
 	}
 	return "-"
-}
-
-func launchdLabelFromServiceUnit(raw string) (string, error) {
-	label := strings.TrimSpace(raw)
-	if label == "" || label == "sentinel" {
-		return launchdServiceLabel, nil
-	}
-	if strings.ContainsAny(label, "\n\r\t ") {
-		return "", errors.New("invalid service unit name")
-	}
-	return label, nil
 }
 
 func launchdStartInterval(raw string) (int, error) {
@@ -655,7 +637,6 @@ func renderLaunchdUserAutoUpdatePlist(
 	execPath,
 	configPath,
 	dataDir,
-	serviceLabel string,
 	scope string,
 	intervalSeconds int,
 	stdoutPath,
@@ -673,8 +654,7 @@ func renderLaunchdUserAutoUpdatePlist(
 		<string>--config=%s</string>
 		<string>update</string>
 		<string>apply</string>
-		<string>-service=%s</string>
-		<string>-scope=%s</string>
+		<string>--scope=%s</string>
 	</array>
 	<key>StartInterval</key>
 	<integer>%d</integer>
@@ -689,7 +669,7 @@ func renderLaunchdUserAutoUpdatePlist(
 	</dict>
 </dict>
 </plist>
-`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(configPath), xmlEscape(serviceLabel), xmlEscape(scope), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath), xmlEscape(dataDir))
+`, xmlEscape(launchdAutoUpdateLabel), xmlEscape(execPath), xmlEscape(configPath), xmlEscape(scope), intervalSeconds, xmlEscape(stdoutPath), xmlEscape(stderrPath), xmlEscape(dataDir))
 }
 
 func xmlEscape(raw string) string {

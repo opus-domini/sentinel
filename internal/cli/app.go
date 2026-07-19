@@ -45,6 +45,7 @@ var (
 	serviceStatusFn           = daemon.ServiceStatus
 	userLogsFn                = daemon.UserLogs
 	installUserAutoUpdateFn   = daemon.InstallUserAutoUpdate
+	reconcileAutoUpdateFn     = daemon.ReconcileAutoUpdate
 	uninstallUserAutoUpdateFn = daemon.UninstallUserAutoUpdate
 	userAutoUpdateStatusFn    = daemon.UserAutoUpdateStatusForScope
 	removeShellCompletionsFn  = removeShellCompletions

@@ -32,14 +32,17 @@ func stubUserServiceInstallContext(t *testing.T) {
 	origResolve := resolveInstallScopeFn
 	origAccess := requireScopeAccessFn
 	origDeployments := installedDeploymentsFn
+	origReconcile := reconcileAutoUpdateFn
 	t.Cleanup(func() {
 		resolveInstallScopeFn = origResolve
 		requireScopeAccessFn = origAccess
 		installedDeploymentsFn = origDeployments
+		reconcileAutoUpdateFn = origReconcile
 	})
 	resolveInstallScopeFn = func(string) (string, error) { return daemon.ScopeUser, nil }
 	requireScopeAccessFn = func(string) error { return nil }
 	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return nil, nil }
+	reconcileAutoUpdateFn = func(daemon.InstallUserAutoUpdateOptions) (bool, error) { return false, nil }
 }
 
 func stubUserDeploymentContext(t *testing.T) {
@@ -605,6 +608,11 @@ func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
 		got = opts
 		return nil
 	}
+	var gotAutoUpdate daemon.InstallUserAutoUpdateOptions
+	reconcileAutoUpdateFn = func(opts daemon.InstallUserAutoUpdateOptions) (bool, error) {
+		gotAutoUpdate = opts
+		return true, nil
+	}
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -620,6 +628,12 @@ func TestRunCLIServiceInstallParsesFlags(t *testing.T) {
 	}
 	if got.Start {
 		t.Fatal("Start = true, want false")
+	}
+	if gotAutoUpdate.ExecPath != testSentinelPath || gotAutoUpdate.SystemdScope != daemon.ScopeUser {
+		t.Fatalf("autoupdate reconcile options = %+v", gotAutoUpdate)
+	}
+	if !strings.Contains(out.String(), "existing autoupdate installation refreshed") {
+		t.Fatalf("stdout missing autoupdate reconciliation: %s", out.String())
 	}
 }
 
@@ -781,10 +795,12 @@ func TestRunCLIDoctor(t *testing.T) {
 	origLoad := loadConfigFn
 	origStatus := serviceStatusFn
 	origDeployments := installedDeploymentsFn
+	origAutoUpdateStatus := userAutoUpdateStatusFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		serviceStatusFn = origStatus
 		installedDeploymentsFn = origDeployments
+		userAutoUpdateStatusFn = origAutoUpdateStatus
 	})
 
 	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return nil, nil }
@@ -804,6 +820,9 @@ func TestRunCLIDoctor(t *testing.T) {
 				SystemctlAvailable: true,
 			},
 		}}, nil
+	}
+	userAutoUpdateStatusFn = func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+		return daemon.UserAutoUpdateServiceStatus{}, nil
 	}
 
 	var out bytes.Buffer
@@ -826,18 +845,74 @@ func TestRunCLIDoctor(t *testing.T) {
 	}
 }
 
+func TestRunCLIDoctorReportsFailedAutoUpdate(t *testing.T) {
+	origLoad := loadConfigFn
+	origStatus := serviceStatusFn
+	origDeployments := installedDeploymentsFn
+	origAutoUpdateStatus := userAutoUpdateStatusFn
+	t.Cleanup(func() {
+		loadConfigFn = origLoad
+		serviceStatusFn = origStatus
+		installedDeploymentsFn = origDeployments
+		userAutoUpdateStatusFn = origAutoUpdateStatus
+	})
+
+	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return nil, nil }
+	loadConfigFn = testLoadConfig("/tmp/.sentinel", "token")
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return []daemon.ScopedServiceStatus{{
+			Deployment: daemon.Deployment{Scope: daemon.ScopeSystem},
+			UserServiceStatus: daemon.UserServiceStatus{
+				ServicePath:        "/etc/systemd/system/sentinel.service",
+				UnitFileExists:     true,
+				EnabledState:       stateEnabled,
+				ActiveState:        stateActive,
+				SystemctlAvailable: true,
+			},
+		}}, nil
+	}
+	userAutoUpdateStatusFn = func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+		return daemon.UserAutoUpdateServiceStatus{
+			ServiceUnitExists:  true,
+			TimerUnitExists:    true,
+			SystemctlAvailable: true,
+			TimerEnabledState:  stateEnabled,
+			TimerActiveState:   stateActive,
+			LastRunState:       "failed",
+		}, nil
+	}
+
+	var out, errOut bytes.Buffer
+	code := Run([]string{"doctor"}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	for _, fragment := range []string{
+		"system autoupdate service exists: true",
+		"system autoupdate timer exists: true",
+		"system autoupdate last run: failed",
+		"sudo sentinel service install --scope system",
+	} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("output missing %q:\n%s", fragment, out.String())
+		}
+	}
+}
+
 func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
 	origLoad := loadConfigFn
 	origLoadPath := loadConfigPathFn
 	origStatus := serviceStatusFn
 	origDeployments := installedDeploymentsFn
 	origAccess := requireScopeAccessFn
+	origAutoUpdateStatus := userAutoUpdateStatusFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		loadConfigPathFn = origLoadPath
 		serviceStatusFn = origStatus
 		installedDeploymentsFn = origDeployments
 		requireScopeAccessFn = origAccess
+		userAutoUpdateStatusFn = origAutoUpdateStatus
 	})
 
 	cfg := testCLIConfig("/tmp/.sentinel", "")
@@ -870,6 +945,9 @@ func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
 			},
 		}}, nil
 	}
+	userAutoUpdateStatusFn = func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+		return daemon.UserAutoUpdateServiceStatus{}, nil
+	}
 
 	var out, errOut bytes.Buffer
 	code := Run([]string{"doctor"}, &out, &errOut)
@@ -893,10 +971,12 @@ func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 	origLoad := loadConfigFn
 	origStatus := serviceStatusFn
 	origDeployments := installedDeploymentsFn
+	origAutoUpdateStatus := userAutoUpdateStatusFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
 		serviceStatusFn = origStatus
 		installedDeploymentsFn = origDeployments
+		userAutoUpdateStatusFn = origAutoUpdateStatus
 	})
 
 	loadConfigFn = testLoadConfig("/tmp/.sentinel", "")
@@ -916,6 +996,9 @@ func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 				SystemctlAvailable: true,
 			},
 		}}, nil
+	}
+	userAutoUpdateStatusFn = func(string) (daemon.UserAutoUpdateServiceStatus, error) {
+		return daemon.UserAutoUpdateServiceStatus{}, nil
 	}
 
 	var out bytes.Buffer
