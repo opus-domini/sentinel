@@ -21,6 +21,29 @@ func TestNormalizeWaitDefaultsAndBounds(t *testing.T) {
 	}
 }
 
+func TestToolTimeoutHelpers(t *testing.T) {
+	if got := boundedTimeout(0, 3*time.Second); got != 3*time.Second {
+		t.Fatalf("boundedTimeout fallback = %s", got)
+	}
+	if got := boundedTimeout(250, time.Second); got != 250*time.Millisecond {
+		t.Fatalf("boundedTimeout explicit = %s", got)
+	}
+	if got := boundedTimeout(int((maxToolWait+time.Second)/time.Millisecond), time.Second); got != maxToolWait {
+		t.Fatalf("boundedTimeout maximum = %s", got)
+	}
+
+	nowish := deadlineOf(context.Background())
+	if delta := time.Since(nowish); delta < 0 || delta > time.Second {
+		t.Fatalf("deadlineOf(background) = %s", nowish)
+	}
+	want := time.Now().Add(time.Minute)
+	ctx, cancel := context.WithDeadline(context.Background(), want)
+	defer cancel()
+	if got := deadlineOf(ctx); !got.Equal(want) {
+		t.Fatalf("deadlineOf(context) = %s, want %s", got, want)
+	}
+}
+
 func TestNormalizeWaitRejectsInvalidModeBeforeInteraction(t *testing.T) {
 	_, err := normalizeWait(waitInput{Mode: "command-complete"})
 	if err == nil || !strings.Contains(err.Error(), "unsupported wait mode") {

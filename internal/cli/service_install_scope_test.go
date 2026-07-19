@@ -81,3 +81,37 @@ func TestPromptInstallScopeRejectsCanceledInput(t *testing.T) {
 		t.Fatal("promptInstallScope() error = nil")
 	}
 }
+
+func TestResolveInstallScopeCommandWritesMachineReadableScope(t *testing.T) {
+	original := resolveInstallScopeFn
+	t.Cleanup(func() { resolveInstallScopeFn = original })
+	resolveInstallScopeFn = func(scope string) (string, error) {
+		if scope != daemon.ScopeUser {
+			t.Fatalf("scope = %q", scope)
+		}
+		return daemon.ScopeUser, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd := newServiceResolveInstallScopeCmd(&App{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
+	cmd.SetArgs([]string{"--scope", daemon.ScopeUser})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if stdout.String() != "user\n" || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestResolveInstallScopeCommandReportsResolutionFailure(t *testing.T) {
+	original := resolveInstallScopeFn
+	t.Cleanup(func() { resolveInstallScopeFn = original })
+	resolveInstallScopeFn = func(string) (string, error) {
+		return "", daemon.ErrAmbiguousDeployment
+	}
+
+	cmd := newServiceResolveInstallScopeCmd(&App{Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "resolve install scope failed") {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}

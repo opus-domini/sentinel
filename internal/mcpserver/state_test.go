@@ -32,3 +32,15 @@ func TestStateChangesLiveAvailability(t *testing.T) {
 		t.Fatal("state remained enabled")
 	}
 }
+
+func TestStateReportsTokenConfiguration(t *testing.T) {
+	if (*State)(nil).TokenConfigured() {
+		t.Fatal("nil state reported a configured token")
+	}
+	if NewState(false, false).TokenConfigured() {
+		t.Fatal("state reported a token that was not configured")
+	}
+	if !NewState(false, true).TokenConfigured() {
+		t.Fatal("state did not report its configured token")
+	}
+}

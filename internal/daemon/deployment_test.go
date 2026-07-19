@@ -175,6 +175,20 @@ func TestCanonicalBinaryPath(t *testing.T) {
 	}
 }
 
+func TestRegularFileExists(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "sentinel")
+	if err := os.WriteFile(file, []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if !regularFileExists(file) {
+		t.Fatal("regularFileExists() rejected a regular file")
+	}
+	if regularFileExists(dir) || regularFileExists(filepath.Join(dir, "missing")) {
+		t.Fatal("regularFileExists() accepted a directory or missing path")
+	}
+}
+
 func TestParseSystemdDeploymentFields(t *testing.T) {
 	t.Parallel()
 
