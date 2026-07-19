@@ -36,10 +36,10 @@ describe('useConnectionCheck', () => {
         JSON.stringify({
           error: {
             code: 'UNTRUSTED_PROXY',
-            message: 'HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies',
+            message: 'HTTPS proxy "192.0.2.10" is not trusted; add it to server.trusted_proxies',
             details: {
               configPath: '/root/.sentinel/config.toml',
-              configuration: '[server]\ntrusted_proxies = ["127.0.0.1"]',
+              configuration: '[server]\ntrusted_proxies = ["192.0.2.10"]',
             },
           },
         }),
@@ -56,9 +56,9 @@ describe('useConnectionCheck', () => {
     expect(result.current.issue).toEqual({
       code: 'UNTRUSTED_PROXY',
       title: 'HTTPS proxy is not trusted',
-      message: 'HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies',
+      message: 'HTTPS proxy "192.0.2.10" is not trusted; add it to server.trusted_proxies',
       configPath: '/root/.sentinel/config.toml',
-      configuration: '[server]\ntrusted_proxies = ["127.0.0.1"]',
+      configuration: '[server]\ntrusted_proxies = ["192.0.2.10"]',
     })
   })
 

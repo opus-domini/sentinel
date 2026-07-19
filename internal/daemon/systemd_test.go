@@ -44,11 +44,14 @@ func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
 	if !strings.Contains(unit, "ExecStart=/usr/local/bin/sentinel update apply") {
 		t.Fatalf("rendered updater unit missing ExecStart: %s", unit)
 	}
-	if strings.Contains(unit, "-service=") {
+	if strings.Contains(unit, "--service=") {
 		t.Fatalf("rendered updater unit must derive the service from scope: %s", unit)
 	}
-	if !strings.Contains(unit, "-scope=user") {
+	if !strings.Contains(unit, "--scope=user") {
 		t.Fatalf("rendered updater unit missing restart scope: %s", unit)
+	}
+	if strings.Contains(unit, " update apply -scope=") {
+		t.Fatalf("rendered updater unit contains an invalid single-dash flag: %s", unit)
 	}
 }
 
@@ -699,10 +702,10 @@ func TestRenderUserAutoUpdateUnitSystemScope(t *testing.T) {
 	t.Parallel()
 
 	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "", "", "myservice", managerScopeSystem)
-	if strings.Contains(unit, "-service=") {
+	if strings.Contains(unit, "--service=") {
 		t.Fatalf("unit must not override the deployment service: %s", unit)
 	}
-	if !strings.Contains(unit, "-scope=system") {
+	if !strings.Contains(unit, "--scope=system") {
 		t.Fatalf("unit missing system scope: %s", unit)
 	}
 }
@@ -1023,6 +1026,93 @@ func TestInstallUserAutoUpdateLinuxUser(t *testing.T) {
 	} {
 		if err := applyUserAutoUpdateTimerState(state.enable, state.start); err != nil {
 			t.Fatalf("applyUserAutoUpdateTimerState(%t, %t) error = %v", state.enable, state.start, err)
+		}
+	}
+}
+
+func TestReconcileAutoUpdatePreservesSystemdTimerAndRepairsService(t *testing.T) {
+	if runtime.GOOS != systemdSupportedOS {
+		t.Skip("test requires Linux")
+	}
+	home := t.TempDir()
+	binDir := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SUDO_USER", "")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	commandLog := filepath.Join(t.TempDir(), "systemctl.log")
+	systemctlPath := filepath.Join(binDir, "systemctl")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$COMMAND_LOG\"\n" +
+		"if [ \"$2\" = \"is-enabled\" ]; then echo enabled; exit 0; fi\n" +
+		"if [ \"$2\" = \"is-active\" ]; then\n" +
+		"  if [ \"$3\" = \"sentinel-updater.timer\" ]; then echo active; exit 0; fi\n" +
+		"  echo failed; exit 3\n" +
+		"fi\nexit 0\n"
+	if err := os.WriteFile(systemctlPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("COMMAND_LOG", commandLog)
+
+	execPath := filepath.Join(binDir, "sentinel")
+	if err := os.WriteFile(execPath, []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	servicePath, err := UserAutoUpdateServicePathForScope(ScopeUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timerPath, err := UserAutoUpdateTimerPathForScope(ScopeUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(servicePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(servicePath, []byte("ExecStart=/old/sentinel update apply -scope=user\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const timer = "[Timer]\nOnCalendar=weekly\nRandomizedDelaySec=17\n"
+	if err := os.WriteFile(timerPath, []byte(timer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	reconciled, err := ReconcileAutoUpdate(InstallUserAutoUpdateOptions{
+		ExecPath:     execPath,
+		ConfigPath:   filepath.Join(home, ".sentinel", "config.toml"),
+		DataDir:      filepath.Join(home, ".sentinel"),
+		SystemdScope: ScopeUser,
+	})
+	if err != nil {
+		t.Fatalf("ReconcileAutoUpdate() error = %v", err)
+	}
+	if !reconciled {
+		t.Fatal("ReconcileAutoUpdate() reconciled = false")
+	}
+
+	serviceContent, err := os.ReadFile(servicePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(serviceContent), " update apply --scope=user") {
+		t.Fatalf("reconciled service has invalid arguments:\n%s", serviceContent)
+	}
+	if strings.Contains(string(serviceContent), " update apply -scope=") {
+		t.Fatalf("reconciled service retained a single-dash scope:\n%s", serviceContent)
+	}
+	timerContent, err := os.ReadFile(timerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(timerContent) != timer {
+		t.Fatalf("timer schedule changed:\n%s", timerContent)
+	}
+	commands, err := os.ReadFile(commandLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"--user daemon-reload", "--user reset-failed sentinel-updater.service"} {
+		if !strings.Contains(string(commands), want) {
+			t.Fatalf("systemctl calls missing %q:\n%s", want, commands)
 		}
 	}
 }

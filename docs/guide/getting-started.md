@@ -88,8 +88,8 @@ host = "0.0.0.0"
 port = 4040
 token = "replace-with-strong-token"
 allowed_origins = ["https://sentinel.example.com"]
-# Optional: only when a reverse proxy terminates TLS for Sentinel.
-trusted_proxies = ["127.0.0.1"]
+# Optional: only when the direct reverse proxy peer is not on loopback.
+trusted_proxies = []
 ```
 
 Validate before restarting the service:

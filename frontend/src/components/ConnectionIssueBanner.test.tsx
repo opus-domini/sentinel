@@ -14,13 +14,13 @@ vi.mock('@/lib/clipboardProvider', () => ({
 describe('ConnectionIssueBanner', () => {
   it('shows the cause, config path, exact configuration, and recovery actions', () => {
     const onRetry = vi.fn()
-    const configuration = '[server]\ntrusted_proxies = ["127.0.0.1"]'
+    const configuration = '[server]\ntrusted_proxies = ["192.0.2.10"]'
     render(
       <ConnectionIssueBanner
         issue={{
           code: 'UNTRUSTED_PROXY',
           title: 'HTTPS proxy is not trusted',
-          message: 'HTTPS proxy "127.0.0.1" is not trusted.',
+          message: 'HTTPS proxy "192.0.2.10" is not trusted.',
           configPath: '/root/.sentinel/config.toml',
           configuration,
         }}

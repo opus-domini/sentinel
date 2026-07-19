@@ -51,12 +51,13 @@ Recommendations:
 
 ## Trusted Proxies
 
-Sentinel only trusts `X-Forwarded-Proto` from IPs or CIDRs listed in `trusted_proxies`.
-Leave it empty unless Sentinel is behind a reverse proxy that terminates TLS.
+Sentinel trusts `X-Forwarded-Proto` from IPv4 and IPv6 loopback proxies by
+default. Add IPs or CIDRs to `trusted_proxies` only when the direct proxy peer
+is not local.
 
 ```toml
 [server]
-trusted_proxies = ["127.0.0.1", "10.0.0.0/8"]
+trusted_proxies = ["10.0.0.0/8"]
 ```
 
 Requests from untrusted remotes cannot force HTTPS origin/cookie decisions with forwarded headers.

@@ -124,6 +124,12 @@ downloads/verifies artifacts and executes the resulting plan. Conflicts are
 diagnosed before replacing a binary, and service activation failure rolls the
 binary back.
 
+When the main service is reinstalled or upgraded, Sentinel also refreshes an
+existing autoupdate definition in the same scope. The refresh keeps the current
+timer schedule and activation state while updating the executable, canonical
+paths, CLI arguments and unit permissions. It does not enable autoupdate when
+no updater is already installed.
+
 Autoupdate enable during install:
 
 ```bash
@@ -156,3 +162,7 @@ ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sen
 sentinel update status
 sentinel service autoupdate status
 ```
+
+`sentinel doctor` includes an installed updater in its service checks and
+reports a failed last run. Re-running `sentinel service install --scope
+user|system` repairs the existing updater without replacing its schedule.

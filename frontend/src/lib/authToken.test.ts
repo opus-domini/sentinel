@@ -83,9 +83,9 @@ describe('auth token helpers', () => {
         ok: false,
         status: 403,
         code: 'UNTRUSTED_PROXY',
-        message: 'HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies',
+        message: 'HTTPS proxy "192.0.2.10" is not trusted; add it to server.trusted_proxies',
       }),
-    ).toBe('HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies')
+    ).toBe('HTTPS proxy "192.0.2.10" is not trusted; add it to server.trusted_proxies')
   })
 
   it('uses the invalid token message only for validation 401s', () => {

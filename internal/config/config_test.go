@@ -496,7 +496,7 @@ schedule = "@daily"
 		{name: "invalid schedule", content: "[health_report]\nschedule = \"not cron\"\n", wantErr: "health_report.schedule"},
 		{name: "origin with path", content: "[server]\nallowed_origins = [\"https://example.com/path\"]\n", wantErr: "must not contain credentials, a path"},
 		{name: "invalid trusted proxy", content: "[server]\ntrusted_proxies = [\"localhost\"]\n", wantErr: "must be an IP address or CIDR"},
-		{name: "https origin needs trusted proxy", content: "[server]\nallowed_origins = [\"https://example.com\"]\n", wantErr: "server.trusted_proxies must contain the HTTPS proxy address"},
+		{name: "https origin supports implicit loopback proxy", content: "[server]\nallowed_origins = [\"https://example.com\"]\n"},
 		{name: "https origin with trusted proxy", content: "[server]\nallowed_origins = [\"https://example.com\"]\ntrusted_proxies = [\"127.0.0.1\"]\n"},
 		{name: "unknown key", content: "[server]\nwat = true\n", wantErr: "unknown key: server.wat"},
 		{name: "bad toml", content: "[server\n", wantErr: "decode config"},

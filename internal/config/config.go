@@ -483,17 +483,6 @@ func validateConfig(cfg Config) error {
 			}
 		}
 	}
-	if cfg.Server.CookieSecure == CookieSecureAuto && len(cfg.Server.TrustedProxies) == 0 {
-		for _, origin := range cfg.Server.AllowedOrigins {
-			parsed, err := url.Parse(origin)
-			if err == nil && parsed.Scheme == "https" {
-				issues = append(issues,
-					"server.trusted_proxies must contain the HTTPS proxy address when server.cookie_secure is \"auto\" and server.allowed_origins contains an HTTPS origin",
-				)
-				break
-			}
-		}
-	}
 	switch cfg.Log.Level {
 	case "debug", "info", "warn", "error":
 	default:
@@ -703,7 +692,7 @@ func defaultConfigTOML(cfg Config) []byte {
 	writeConfigLine(&b, "  token = %q", cfg.Server.Token)
 	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_ALLOWED_ORIGINS")
 	writeConfigLine(&b, "  allowed_origins = [%s]", quoteStringList(cfg.Server.AllowedOrigins))
-	writeConfigLine(&b, "  # Trusted proxy IPs/CIDRs allowed to set X-Forwarded-Proto.")
+	writeConfigLine(&b, "  # Additional non-loopback proxy IPs/CIDRs allowed to set X-Forwarded-Proto.")
 	writeConfigLine(&b, "  # Environment variable: SENTINEL_SERVER_TRUSTED_PROXIES")
 	writeConfigLine(&b, "  trusted_proxies = [%s]", quoteStringList(cfg.Server.TrustedProxies))
 	writeConfigLine(&b, "  # Cookie Secure flag: auto, always, or never.")

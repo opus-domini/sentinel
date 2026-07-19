@@ -36,6 +36,7 @@ const (
 	managerScopeUser          = "user"
 	managerScopeSystem        = "system"
 	systemdStateUnknown       = "unknown"
+	serviceStateActive        = "active"
 	defaultOnCalendar         = "daily"
 )
 
@@ -980,7 +981,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%s%s update apply -scope=%s
+ExecStart=%s%s update apply --scope=%s
 Environment=SENTINEL_LOG_LEVEL=info
 Environment="SENTINEL_DATA_DIR=%s"
 

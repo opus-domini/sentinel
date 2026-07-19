@@ -67,8 +67,8 @@ If request volume is high:
 Sentinel checks the browser connection before opening WebSockets. The UI shows
 the rejected value, config path, exact `[server]` entry, and a retry action.
 
-- `UNTRUSTED_PROXY`: the direct HTTPS proxy address is missing from
-  `server.trusted_proxies`.
+- `UNTRUSTED_PROXY`: the direct non-loopback HTTPS proxy address is missing
+  from `server.trusted_proxies`. Loopback proxies are trusted automatically.
 - `ORIGIN_DENIED`: the browser origin does not match Sentinel and is missing
   from `server.allowed_origins`.
 

@@ -45,8 +45,8 @@ Validation is strict:
 - every `allowed_origins` entry must be a canonical `http://` or `https://`
   origin without a path, query, fragment, or credentials;
 - every `trusted_proxies` entry must be an IP address or CIDR;
-- with `cookie_secure = "auto"`, an HTTPS allowed origin requires the TLS
-  terminator address in `trusted_proxies`.
+- IPv4 and IPv6 loopback are trusted proxy peers by default; other TLS
+  terminator addresses must be listed in `trusted_proxies`.
 
 ## Config File
 
@@ -144,15 +144,15 @@ host = "0.0.0.0"
 port = 4040
 token = "strong-secret"
 allowed_origins = ["https://sentinel.example.com"]
-# Set only when a reverse proxy in front of Sentinel terminates TLS.
-trusted_proxies = ["127.0.0.1"]
+# Set only when the direct reverse proxy peer is not on loopback.
+trusted_proxies = []
 
 [mcp]
 enabled = true
 ```
 
-Use the address Sentinel sees as the direct peer. For a local Tailscale Serve,
-nginx, or Caddy proxy, that is commonly `127.0.0.1`. `sentinel doctor` reports
+Use the address Sentinel sees as the direct peer. Local Tailscale Serve, nginx,
+and Caddy proxies commonly use loopback and need no entry. `sentinel doctor` reports
 the exact invalid field when this configuration is incoherent.
 
 MCP uses `server.token`; there is no separate MCP secret. Configuration
