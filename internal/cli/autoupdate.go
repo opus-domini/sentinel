@@ -54,6 +54,17 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 			if err := requireScopeAccessFn(deployment.Scope); err != nil {
 				return failf("service autoupdate install failed: %w", err)
 			}
+			canonical, err := daemon.HasCanonicalPaths(deployment)
+			if err != nil {
+				return failf("service autoupdate install failed: %w", err)
+			}
+			if !canonical {
+				return failf(
+					"service autoupdate install failed: the %s deployment uses noncanonical paths; run `sentinel service migrate --scope %s` first",
+					deployment.Scope,
+					deployment.Scope,
+				)
+			}
 			if requested := strings.TrimSpace(execPath); requested != "" && requested != deployment.BinaryPath {
 				return failf("service autoupdate install failed: --exec does not match deployment binary %s", deployment.BinaryPath)
 			}

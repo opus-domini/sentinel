@@ -7,7 +7,7 @@ sentinel config <init|edit|path|validate|show>
 sentinel db <init|status|reset>
 sentinel doctor
 sentinel daemon
-sentinel service <install|uninstall|status|logs|autoupdate>
+sentinel service <install|migrate|uninstall|status|logs|autoupdate>
 sentinel update <check|apply|status>
 sentinel completion <bash|zsh|fish>
 sentinel --help
@@ -20,6 +20,9 @@ via the explicit `daemon` command.
 Global flag:
 
 - `--config <path>`: use a specific config file path for the invocation.
+
+Managed `config` commands resolve the installed deployment automatically.
+`sentinel config --scope system ...` selects the system deployment explicitly.
 
 ## `sentinel config`
 
@@ -53,6 +56,9 @@ sentinel config path
 ```
 
 Prints the canonical config file path.
+
+For an installed system deployment this prints `/etc/sentinel/config.toml`,
+even when the command is executed through `sudo`.
 
 ### Validate
 
@@ -121,6 +127,17 @@ sentinel daemon
 
 ## `sentinel service`
 
+### Migrate
+
+```bash
+sudo sentinel service migrate --scope system
+```
+
+Migrates the historical root-home system layout to `/etc/sentinel`,
+`/var/lib/sentinel` and `/var/log/sentinel`. Divergent active and legacy config
+files are reported as a conflict and are never selected or overwritten
+silently.
+
 ### Install
 
 ```bash
@@ -130,7 +147,9 @@ sentinel service install --scope auto|user|system --exec PATH --enable=true --st
 Flags:
 
 - `--exec`: binary path for service unit (optional, defaults to current executable).
-- `--scope`: preserve/select `auto`, `user`, or `system` deployment scope.
+- `--scope`: preserve the existing scope with `auto`, or explicitly select
+  `user`/`system`. A fresh `auto` install is rejected so caller privileges can
+  never decide deployment intent implicitly.
 - `--enable`: enable at boot/login.
 - `--start`: start immediately.
 

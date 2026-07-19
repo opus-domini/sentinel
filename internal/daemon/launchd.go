@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/opus-domini/sentinel/internal/config"
 )
 
 const (
@@ -71,7 +73,11 @@ func installUserLaunchd(opts InstallUserOptions) error {
 	if err != nil {
 		return err
 	}
-	plist := renderLaunchdUserServicePlist(execPath, opts.ConfigPath, opts.DataDir, stdoutPath, stderrPath)
+	layout, err := LayoutForScope(scope)
+	if err != nil {
+		return err
+	}
+	plist := renderLaunchdUserServicePlist(execPath, opts.ConfigPath, opts.DataDir, layout.LogPath, stdoutPath, stderrPath)
 	mode := launchdUnitFileMode(scope)
 	replacement, err := replaceManagedFile(servicePath, []byte(plist), mode)
 	if err != nil {
@@ -608,7 +614,7 @@ func launchdStartInterval(raw string) (int, error) {
 	return 0, fmt.Errorf("invalid on-calendar value for launchd: %s", raw)
 }
 
-func renderLaunchdUserServicePlist(execPath, configPath, dataDir, stdoutPath, stderrPath string) string {
+func renderLaunchdUserServicePlist(execPath, configPath, dataDir, logPath, stdoutPath, stderrPath string) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -635,12 +641,14 @@ func renderLaunchdUserServicePlist(execPath, configPath, dataDir, stdoutPath, st
 		<string>info</string>
 		<key>SENTINEL_DATA_DIR</key>
 		<string>%s</string>
+		<key>%s</key>
+		<string>%s</string>
 		<key>TERM</key>
 		<string>xterm-256color</string>
 	</dict>
 </dict>
 </plist>
-`, xmlEscape(launchdServiceLabel), xmlEscape(execPath), xmlEscape(configPath), xmlEscape(stdoutPath), xmlEscape(stderrPath), xmlEscape(dataDir))
+`, xmlEscape(launchdServiceLabel), xmlEscape(execPath), xmlEscape(configPath), xmlEscape(stdoutPath), xmlEscape(stderrPath), xmlEscape(dataDir), config.ManagedDefaultLogPathEnv, xmlEscape(logPath))
 }
 
 func renderLaunchdUserAutoUpdatePlist(

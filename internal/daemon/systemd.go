@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/opus-domini/sentinel/internal/config"
 )
 
 // serviceUnitNameRE bounds an installed unit name to systemd-safe characters.
@@ -156,8 +158,11 @@ func InstallUser(opts InstallUserOptions) error {
 	if err := os.MkdirAll(filepath.Dir(servicePath), 0o750); err != nil {
 		return fmt.Errorf("create systemd user directory: %w", err)
 	}
-
-	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir)
+	layout, err := LayoutForScope(scope)
+	if err != nil {
+		return err
+	}
+	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir, layout.LogPath)
 	wasActive := isSystemctlUserActive("sentinel")
 	replacement, err := replaceManagedFile(servicePath, []byte(unit), 0o600)
 	if err != nil {
@@ -654,7 +659,11 @@ func installSystemServiceLinux(opts InstallUserOptions) error {
 	if err := os.MkdirAll(filepath.Dir(systemUnitPath), 0o750); err != nil {
 		return fmt.Errorf("create systemd system directory: %w", err)
 	}
-	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir)
+	layout, err := LayoutForScope(managerScopeSystem)
+	if err != nil {
+		return err
+	}
+	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir, layout.LogPath)
 	wasActive := isSystemctlSystemActive("sentinel")
 	replacement, err := replaceManagedFile(systemUnitPath, []byte(unit), 0o600)
 	if err != nil {
@@ -920,7 +929,7 @@ func normalizeSystemctlErrorState(state string) string {
 	}
 }
 
-func renderUserUnit(execPath, configPath, dataDir string) string {
+func renderUserUnit(execPath, configPath, dataDir, logPath string) string {
 	configArg := ""
 	if strings.TrimSpace(configPath) != "" {
 		configArg = " --config=" + escapeSystemdExec(configPath)
@@ -940,6 +949,7 @@ KillMode=process
 Environment=SENTINEL_LOG_LEVEL=info
 Environment=HOME=%%h
 Environment="SENTINEL_DATA_DIR=%s"
+Environment="%s=%s"
 Environment=TERM=xterm-256color
 Environment=LANG=C.UTF-8
 # Note: NoNewPrivileges and SystemCallArchitectures are intentionally omitted —
@@ -947,7 +957,7 @@ Environment=LANG=C.UTF-8
 
 [Install]
 WantedBy=default.target
-`, escapeSystemdExec(execPath), configArg, escapeSystemdEnvironment(dataDir))
+`, escapeSystemdExec(execPath), configArg, escapeSystemdEnvironment(dataDir), config.ManagedDefaultLogPathEnv, escapeSystemdEnvironment(logPath))
 }
 
 func renderUserAutoUpdateUnit(execPath, configPath, dataDir, _ string, scope string) string {

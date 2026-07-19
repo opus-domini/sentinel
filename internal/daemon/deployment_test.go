@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/opus-domini/sentinel/internal/config"
 )
 
 func TestSelectDeploymentMatrix(t *testing.T) {
@@ -112,22 +114,21 @@ func TestSelectInstallScopeMatrix(t *testing.T) {
 		name      string
 		installed []Deployment
 		scope     string
-		euid      int
 		want      string
 		wantErr   error
 	}{
-		{name: "fresh user", scope: ScopeAuto, euid: 1000, want: ScopeUser},
-		{name: "fresh system", scope: ScopeAuto, euid: 0, want: ScopeSystem},
-		{name: "fresh explicit user as root", scope: ScopeUser, euid: 0, want: ScopeUser},
-		{name: "preserve user", installed: []Deployment{user}, scope: ScopeAuto, euid: 0, want: ScopeUser},
-		{name: "preserve system", installed: []Deployment{system}, scope: ScopeAuto, euid: 1000, want: ScopeSystem},
-		{name: "reject user to system", installed: []Deployment{user}, scope: ScopeSystem, euid: 0, wantErr: ErrAmbiguousDeployment},
-		{name: "reject system to user", installed: []Deployment{system}, scope: ScopeUser, euid: 1000, wantErr: ErrAmbiguousDeployment},
-		{name: "reject both", installed: []Deployment{user, system}, scope: ScopeAuto, euid: 1000, wantErr: ErrAmbiguousDeployment},
+		{name: "fresh auto requires choice", scope: ScopeAuto, wantErr: ErrInstallScopeRequired},
+		{name: "fresh explicit user", scope: ScopeUser, want: ScopeUser},
+		{name: "fresh explicit system", scope: ScopeSystem, want: ScopeSystem},
+		{name: "preserve user", installed: []Deployment{user}, scope: ScopeAuto, want: ScopeUser},
+		{name: "preserve system", installed: []Deployment{system}, scope: ScopeAuto, want: ScopeSystem},
+		{name: "reject user to system", installed: []Deployment{user}, scope: ScopeSystem, wantErr: ErrAmbiguousDeployment},
+		{name: "reject system to user", installed: []Deployment{system}, scope: ScopeUser, wantErr: ErrAmbiguousDeployment},
+		{name: "reject both", installed: []Deployment{user, system}, scope: ScopeAuto, wantErr: ErrAmbiguousDeployment},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := selectInstallScope(tc.installed, tc.scope, tc.euid)
+			got, err := selectInstallScope(tc.installed, tc.scope)
 			if tc.wantErr != nil {
 				if err == nil {
 					t.Fatal("selectInstallScope() error = nil")
@@ -144,10 +145,40 @@ func TestSelectInstallScopeMatrix(t *testing.T) {
 	}
 }
 
+func TestInstallationCandidatesPreferManagedServices(t *testing.T) {
+	managed := []Deployment{{Scope: ScopeSystem, BinaryPath: "/opt/sentinel"}}
+	got := installationCandidates(managed, true, true, "/home/user/.local/bin/sentinel", "/usr/local/bin/sentinel")
+	if len(got) != 1 || got[0].BinaryPath != "/opt/sentinel" {
+		t.Fatalf("installationCandidates() = %#v", got)
+	}
+}
+
+func TestInstallationCandidatesUseCanonicalStandaloneBinaries(t *testing.T) {
+	got := installationCandidates(nil, true, true, "/home/user/.local/bin/sentinel", "/usr/local/bin/sentinel")
+	if len(got) != 2 || got[0].Scope != ScopeUser || got[1].Scope != ScopeSystem {
+		t.Fatalf("installationCandidates() = %#v", got)
+	}
+}
+
+func TestCanonicalBinaryPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	userPath, err := CanonicalBinaryPath(ScopeUser)
+	if err != nil || !strings.HasSuffix(userPath, filepath.Join(".local", "bin", "sentinel")) {
+		t.Fatalf("CanonicalBinaryPath(user) = %q, %v", userPath, err)
+	}
+	systemPath, err := CanonicalBinaryPath(ScopeSystem)
+	if err != nil || systemPath != "/usr/local/bin/sentinel" {
+		t.Fatalf("CanonicalBinaryPath(system) = %q, %v", systemPath, err)
+	}
+	if _, err := CanonicalBinaryPath("invalid"); err == nil {
+		t.Fatal("CanonicalBinaryPath(invalid) error = nil")
+	}
+}
+
 func TestParseSystemdDeploymentFields(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserUnit("/opt/Sentinel App/sentinel", "/etc/sentinel/config.toml", "/var/lib/sentinel")
+	unit := renderUserUnit("/opt/Sentinel App/sentinel", "/etc/sentinel/config.toml", "/var/lib/sentinel", "/var/log/sentinel/sentinel.log")
 	binary, configPath := parseSystemdExecStart(unit)
 	if binary != "/opt/Sentinel App/sentinel" {
 		t.Fatalf("binary = %q", binary)
@@ -158,18 +189,24 @@ func TestParseSystemdDeploymentFields(t *testing.T) {
 	if got := parseSystemdEnvironment(unit, "SENTINEL_DATA_DIR"); got != "/var/lib/sentinel" {
 		t.Fatalf("data dir = %q", got)
 	}
+	if got := parseSystemdEnvironment(unit, config.ManagedDefaultLogPathEnv); got != "/var/log/sentinel/sentinel.log" {
+		t.Fatalf("default log = %q", got)
+	}
 }
 
 func TestParseLaunchdDeploymentFields(t *testing.T) {
 	t.Parallel()
 
-	plist := renderLaunchdUserServicePlist("/opt/sentinel", "/Library/Application Support/Sentinel/config.toml", "/Library/Application Support/Sentinel", "/tmp/out", "/tmp/err")
+	plist := renderLaunchdUserServicePlist("/opt/sentinel", "/Library/Preferences/io.opusdomini.sentinel.toml", "/Library/Application Support/Sentinel", "/Library/Logs/Sentinel/sentinel.log", "/tmp/out", "/tmp/err")
 	binary, configPath := parseLaunchdProgramArguments(plist)
-	if binary != "/opt/sentinel" || configPath != "/Library/Application Support/Sentinel/config.toml" {
+	if binary != "/opt/sentinel" || configPath != "/Library/Preferences/io.opusdomini.sentinel.toml" {
 		t.Fatalf("binary=%q config=%q", binary, configPath)
 	}
 	if got := parseLaunchdEnvironment(plist, "SENTINEL_DATA_DIR"); got != "/Library/Application Support/Sentinel" {
 		t.Fatalf("data dir = %q", got)
+	}
+	if got := parseLaunchdEnvironment(plist, config.ManagedDefaultLogPathEnv); got != "/Library/Logs/Sentinel/sentinel.log" {
+		t.Fatalf("default log = %q", got)
 	}
 }
 
@@ -218,6 +255,18 @@ func TestDeploymentPathHelpers(t *testing.T) {
 	} else if systemConfig != "/etc/sentinel/config.toml" || systemData != "/var/lib/sentinel" {
 		t.Fatalf("system config = %q, data = %q", systemConfig, systemData)
 	}
+	systemLayout, err := LayoutForScope(ScopeSystem)
+	if err != nil {
+		t.Fatalf("LayoutForScope(system) error = %v", err)
+	}
+	if runtime.GOOS == launchdSupportedOS {
+		if systemLayout.ConfigPath != "/Library/Preferences/io.opusdomini.sentinel.toml" ||
+			systemLayout.LogPath != "/Library/Logs/Sentinel/sentinel.log" {
+			t.Fatalf("system layout = %+v", systemLayout)
+		}
+	} else if systemLayout.LogPath != "/var/log/sentinel/sentinel.log" {
+		t.Fatalf("system log = %q", systemLayout.LogPath)
+	}
 
 	if _, _, err := ScopePaths("bogus"); err == nil {
 		t.Fatal("ScopePaths() accepted an invalid scope")
@@ -229,8 +278,134 @@ func TestDeploymentPathHelpers(t *testing.T) {
 	if _, _, err := legacyScopePaths(ScopeSystem); err != nil {
 		t.Fatalf("legacyScopePaths(system) error = %v", err)
 	}
+	legacyLayout, err := LegacyLayoutForScope(ScopeSystem)
+	if err != nil || legacyLayout.ConfigPath == "" || legacyLayout.DataDir == "" || legacyLayout.LogPath == "" {
+		t.Fatalf("LegacyLayoutForScope(system) = %+v, %v", legacyLayout, err)
+	}
+	if canonical, err := HasCanonicalPaths(Deployment{
+		Scope:      ScopeSystem,
+		ConfigPath: systemLayout.ConfigPath,
+		DataDir:    systemLayout.DataDir,
+	}); err != nil || !canonical {
+		t.Fatalf("HasCanonicalPaths(system) = %t, %v", canonical, err)
+	}
 	if _, err := servicePathForScope("bogus"); err == nil {
 		t.Fatal("servicePathForScope() accepted an invalid scope")
+	}
+}
+
+func TestAutoUpdateMigrationControlRejectsInvalidScope(t *testing.T) {
+	t.Parallel()
+
+	if _, err := PauseAutoUpdate("bogus"); err == nil {
+		t.Fatal("PauseAutoUpdate() accepted invalid scope")
+	}
+	if err := ResumeAutoUpdate("bogus", true); err == nil {
+		t.Fatal("ResumeAutoUpdate() accepted invalid scope")
+	}
+	if err := ResumeAutoUpdate("bogus", false); err != nil {
+		t.Fatalf("inactive ResumeAutoUpdate() error = %v", err)
+	}
+}
+
+func TestAutoUpdateMigrationControlPausesAndResumesUserTimer(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("user-scope access intentionally rejects root")
+	}
+	t.Setenv("HOME", t.TempDir())
+	origOS := autoUpdateControlOS
+	origStatus := autoUpdateStatusFn
+	origUserctl := autoUpdateRunUserctlFn
+	t.Cleanup(func() {
+		autoUpdateControlOS = origOS
+		autoUpdateStatusFn = origStatus
+		autoUpdateRunUserctlFn = origUserctl
+	})
+	autoUpdateControlOS = systemdSupportedOS
+	autoUpdateStatusFn = func(string) (UserAutoUpdateServiceStatus, error) {
+		return UserAutoUpdateServiceStatus{
+			ServiceUnitExists: true,
+			TimerUnitExists:   true,
+			TimerActiveState:  "active",
+		}, nil
+	}
+	var calls [][]string
+	autoUpdateRunUserctlFn = func(args ...string) error {
+		calls = append(calls, append([]string(nil), args...))
+		return nil
+	}
+	active, err := PauseAutoUpdate(ScopeUser)
+	if err != nil || !active {
+		t.Fatalf("PauseAutoUpdate() = %t, %v", active, err)
+	}
+	if err := ResumeAutoUpdate(ScopeUser, active); err != nil {
+		t.Fatalf("ResumeAutoUpdate() error = %v", err)
+	}
+	if len(calls) != 2 || calls[0][0] != "stop" || calls[1][0] != "start" {
+		t.Fatalf("systemctl calls = %v", calls)
+	}
+	autoUpdateStatusFn = func(string) (UserAutoUpdateServiceStatus, error) {
+		return UserAutoUpdateServiceStatus{}, nil
+	}
+	if active, err := PauseAutoUpdate(ScopeUser); err != nil || active {
+		t.Fatalf("PauseAutoUpdate(no units) = %t, %v", active, err)
+	}
+	autoUpdateStatusFn = func(string) (UserAutoUpdateServiceStatus, error) {
+		return UserAutoUpdateServiceStatus{}, errors.New("status unavailable")
+	}
+	if _, err := PauseAutoUpdate(ScopeUser); err == nil || !strings.Contains(err.Error(), "status unavailable") {
+		t.Fatalf("PauseAutoUpdate(status error) = %v", err)
+	}
+}
+
+func TestAutoUpdateMigrationControlPausesAndResumesLaunchdJob(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("user-scope access intentionally rejects root")
+	}
+	t.Setenv("HOME", t.TempDir())
+	origOS := autoUpdateControlOS
+	origStatus := autoUpdateStatusFn
+	origBootout := autoUpdateBootoutFn
+	origBootstrap := autoUpdateBootstrapFn
+	t.Cleanup(func() {
+		autoUpdateControlOS = origOS
+		autoUpdateStatusFn = origStatus
+		autoUpdateBootoutFn = origBootout
+		autoUpdateBootstrapFn = origBootstrap
+	})
+	autoUpdateControlOS = launchdSupportedOS
+	autoUpdateStatusFn = func(string) (UserAutoUpdateServiceStatus, error) {
+		return UserAutoUpdateServiceStatus{
+			ServiceUnitExists: true,
+			TimerUnitExists:   true,
+			TimerActiveState:  "active",
+		}, nil
+	}
+	bootoutCalls := 0
+	bootstrapCalls := 0
+	autoUpdateBootoutFn = func(_, _ string) error {
+		bootoutCalls++
+		return nil
+	}
+	autoUpdateBootstrapFn = func(_, _, _ string) error {
+		bootstrapCalls++
+		return nil
+	}
+	active, err := PauseAutoUpdate(ScopeUser)
+	if err != nil || !active {
+		t.Fatalf("PauseAutoUpdate() = %t, %v", active, err)
+	}
+	if err := ResumeAutoUpdate(ScopeUser, active); err != nil {
+		t.Fatalf("ResumeAutoUpdate() error = %v", err)
+	}
+	if bootoutCalls != 1 || bootstrapCalls != 1 {
+		t.Fatalf("bootout=%d bootstrap=%d", bootoutCalls, bootstrapCalls)
+	}
+	autoUpdateStatusFn = func(string) (UserAutoUpdateServiceStatus, error) {
+		return UserAutoUpdateServiceStatus{ServiceUnitExists: true, TimerActiveState: "inactive"}, nil
+	}
+	if active, err := PauseAutoUpdate(ScopeUser); err != nil || active {
+		t.Fatalf("PauseAutoUpdate(inactive launchd) = %t, %v", active, err)
 	}
 }
 

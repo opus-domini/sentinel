@@ -41,8 +41,22 @@ func newDBInitCmd(app *App) *cobra.Command {
 }
 
 func runDBInit(app *App) error {
-	cfg, configPath, err := config.Ensure()
+	target, err := resolveConfigTarget(optionAuto)
 	if err != nil {
+		return failf("db init failed: %w", err)
+	}
+	if _, statErr := os.Stat(target.path); errors.Is(statErr, os.ErrNotExist) {
+		if _, initErr := config.InitPathForDeployment(target.path, target.dataDir, target.logPath, false); initErr != nil {
+			return failf("db init failed: %w", initErr)
+		}
+	} else if statErr != nil {
+		return failf("db init failed: stat config file: %w", statErr)
+	}
+	cfg, configPath, err := config.LoadPathForDeployment(target.path, target.dataDir, target.logPath)
+	if err != nil {
+		return failf("db init failed: %w", err)
+	}
+	if err := config.EnsureDirs(cfg); err != nil {
 		return failf("db init failed: %w", err)
 	}
 	st, dbPath, err := openDBStore(cfg)

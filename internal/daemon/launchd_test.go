@@ -12,7 +12,7 @@ import (
 func TestRenderLaunchdUserServicePlistIncludesExecStart(t *testing.T) {
 	t.Parallel()
 
-	plist := renderLaunchdUserServicePlist("/usr/local/bin/sentinel", "", "", "/tmp/sentinel.out.log", "/tmp/sentinel.err.log")
+	plist := renderLaunchdUserServicePlist("/usr/local/bin/sentinel", "", "", "", "/tmp/sentinel.out.log", "/tmp/sentinel.err.log")
 	if !strings.Contains(plist, "<string>/usr/local/bin/sentinel</string>") {
 		t.Fatalf("plist missing executable path: %s", plist)
 	}
@@ -515,7 +515,7 @@ func TestLaunchdStartIntervalNegative(t *testing.T) {
 func TestRenderLaunchdUserServicePlistXMLEscaping(t *testing.T) {
 	t.Parallel()
 
-	plist := renderLaunchdUserServicePlist("/path/with <special>&chars", "", "", "/tmp/out.log", "/tmp/err.log")
+	plist := renderLaunchdUserServicePlist("/path/with <special>&chars", "", "", "", "/tmp/out.log", "/tmp/err.log")
 	if strings.Contains(plist, "<special>") {
 		t.Fatal("plist should escape angle brackets in exec path")
 	}
@@ -1177,7 +1177,7 @@ func TestLaunchdLabelFromServiceUnitWhitespaceOnly(t *testing.T) {
 func TestRenderLaunchdUserServicePlistLogPaths(t *testing.T) {
 	t.Parallel()
 
-	plist := renderLaunchdUserServicePlist("/usr/bin/sentinel", "", "", "/var/log/out.log", "/var/log/err.log")
+	plist := renderLaunchdUserServicePlist("/usr/bin/sentinel", "", "", "", "/var/log/out.log", "/var/log/err.log")
 	if !strings.Contains(plist, "<string>/var/log/out.log</string>") {
 		t.Fatal("plist missing stdout path")
 	}

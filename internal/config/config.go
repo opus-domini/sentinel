@@ -37,6 +37,10 @@ const (
 	defaultPort    = 4040
 )
 
+// ManagedDefaultLogPathEnv supplies the scope-specific log default persisted
+// by service definitions without overriding an explicit [log].path value.
+const ManagedDefaultLogPathEnv = "SENTINEL_DEFAULT_LOG_PATH"
+
 // Config is the complete runtime configuration for Sentinel.
 type Config struct {
 	Version      int                `toml:"version" json:"version"`
@@ -125,9 +129,23 @@ func Default() Config {
 // DefaultForDataDir returns built-in defaults rooted at an explicit deployment
 // data directory instead of the caller's HOME.
 func DefaultForDataDir(dataRoot string) Config {
+	return DefaultForDeployment(dataRoot, "")
+}
+
+// DefaultForDeployment returns built-in defaults rooted at explicit managed
+// data and log locations. An empty log path keeps the per-data-dir default used
+// by standalone and user deployments.
+func DefaultForDeployment(dataRoot, logPath string) Config {
 	dataRoot = strings.TrimSpace(dataRoot)
 	if dataRoot == "" {
 		dataRoot = defaultDataDir()
+	}
+	logPath = strings.TrimSpace(logPath)
+	if logPath == "" {
+		logPath = strings.TrimSpace(os.Getenv(ManagedDefaultLogPathEnv))
+		if logPath == "" {
+			logPath = filepath.Join(dataRoot, "logs", "sentinel.log")
+		}
 	}
 	return Config{
 		Version: 1,
@@ -138,7 +156,7 @@ func DefaultForDataDir(dataRoot string) Config {
 			Timezone:     time.Now().Location().String(),
 		},
 		Storage: StorageConfig{Path: filepath.Join(dataRoot, "sentinel.db")},
-		Log:     LogConfig{Level: DefaultLogLevel, Path: filepath.Join(dataRoot, "logs", "sentinel.log")},
+		Log:     LogConfig{Level: DefaultLogLevel, Path: logPath},
 		Watchtower: WatchtowerConfig{
 			Enabled:        true,
 			TickInterval:   1 * time.Second,
@@ -198,6 +216,12 @@ func LoadPath(path string) (Config, string, error) {
 // explicit data directory.
 func LoadPathForDataDir(path, dataDir string) (Config, string, error) {
 	return loadPathWithDefaults(path, DefaultForDataDir(dataDir))
+}
+
+// LoadPathForDeployment loads a managed config with defaults rooted at its
+// canonical data and log locations.
+func LoadPathForDeployment(path, dataDir, logPath string) (Config, string, error) {
+	return loadPathWithDefaults(path, DefaultForDeployment(dataDir, logPath))
 }
 
 func loadPathWithDefaults(path string, defaults Config) (Config, string, error) {
@@ -284,6 +308,12 @@ func Init(force bool) (string, error) {
 
 // InitPath creates a config at an explicit deployment path and data root.
 func InitPath(path, dataDir string, force bool) (string, error) {
+	return InitPathForDeployment(path, dataDir, "", force)
+}
+
+// InitPathForDeployment creates a managed config with explicit data and log
+// defaults.
+func InitPathForDeployment(path, dataDir, logPath string, force bool) (string, error) {
 	resolved, err := ExpandPath(path)
 	if err != nil {
 		return path, err
@@ -312,7 +342,7 @@ func InitPath(path, dataDir string, force bool) (string, error) {
 		}
 		return path, fmt.Errorf("create config file: %w", err)
 	}
-	if _, err := file.Write(defaultConfigTOML(DefaultForDataDir(dataDir))); err != nil {
+	if _, err := file.Write(defaultConfigTOML(DefaultForDeployment(dataDir, logPath))); err != nil {
 		_ = file.Close()
 		return path, fmt.Errorf("write config file: %w", err)
 	}

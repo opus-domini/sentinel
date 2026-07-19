@@ -54,7 +54,7 @@ func writeUserUnit(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	unit := renderUserUnit("/tmp/sentinel", filepath.Join(home, ".sentinel", "config.toml"), filepath.Join(home, ".sentinel"))
+	unit := renderUserUnit("/tmp/sentinel", filepath.Join(home, ".sentinel", "config.toml"), filepath.Join(home, ".sentinel"), filepath.Join(home, ".sentinel", "logs", "sentinel.log"))
 	if err := os.WriteFile(filepath.Join(dir, userUnitName), []byte(unit), 0o600); err != nil {
 		t.Fatalf("write unit: %v", err)
 	}

@@ -8,9 +8,17 @@ Configuration precedence:
 
 ## Files and Directories
 
-- Config file: `~/.sentinel/config.toml`
-- Database: `~/.sentinel/sentinel.db`
-- Daemon log: `~/.sentinel/logs/sentinel.log`
+Managed deployments use one layout selected by installation scope:
+
+| Scope | Config | Database and mutable state | Daemon log |
+| --- | --- | --- | --- |
+| Linux system | `/etc/sentinel/config.toml` | `/var/lib/sentinel` | `/var/log/sentinel/sentinel.log` |
+| Linux user | `~/.sentinel/config.toml` | `~/.sentinel` | `~/.sentinel/logs/sentinel.log` |
+| macOS system | `/Library/Preferences/io.opusdomini.sentinel.toml` | `/Library/Application Support/Sentinel` | `/Library/Logs/Sentinel/sentinel.log` |
+| macOS user | `~/.sentinel/config.toml` | `~/.sentinel` | `~/.sentinel/logs/sentinel.log` |
+
+`/root/.sentinel` and `/var/root/.sentinel` are legacy system layouts. They are
+never selected for a fresh managed installation.
 
 `SENTINEL_DATA_DIR` changes the default data root. `SENTINEL_CONFIG` or
 `sentinel --config <path>` changes only the config file path.
@@ -26,7 +34,9 @@ sentinel config show
 sentinel db init
 ```
 
-`sentinel config init --force` overwrites an existing config file.
+Managed config and database commands automatically target the installed
+deployment. Use `--scope user|system` when both intent and privileges must be
+explicit. `sentinel config init --force` overwrites the selected config file.
 `sentinel config show` prints the effective runtime configuration as JSON with
 secret values redacted.
 

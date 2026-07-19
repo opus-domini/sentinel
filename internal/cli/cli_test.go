@@ -739,7 +739,11 @@ func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
 
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Deployment: daemon.Deployment{Scope: "system"},
+			Deployment: daemon.Deployment{
+				Scope:      "system",
+				ConfigPath: "/etc/sentinel/config.toml",
+				DataDir:    "/var/lib/sentinel",
+			},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/etc/systemd/system/sentinel.service",
 				UnitFileExists:     false,
@@ -772,6 +776,8 @@ func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
 }
 
 func TestRunCLIDoctor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	origLoad := loadConfigFn
 	origStatus := serviceStatusFn
 	origDeployments := installedDeploymentsFn
@@ -785,7 +791,11 @@ func TestRunCLIDoctor(t *testing.T) {
 	loadConfigFn = testLoadConfig("/tmp/.sentinel", "token")
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Deployment: daemon.Deployment{Scope: "user"},
+			Deployment: daemon.Deployment{
+				Scope:      "user",
+				ConfigPath: filepath.Join(home, ".sentinel", "config.toml"),
+				DataDir:    filepath.Join(home, ".sentinel"),
+			},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/tmp/sentinel.service",
 				UnitFileExists:     true,
@@ -846,7 +856,11 @@ func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
 	}
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Deployment: daemon.Deployment{Scope: "system"},
+			Deployment: daemon.Deployment{
+				Scope:      "system",
+				ConfigPath: "/etc/sentinel/config.toml",
+				DataDir:    "/var/lib/sentinel",
+			},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/etc/systemd/system/sentinel.service",
 				UnitFileExists:     true,
@@ -889,7 +903,11 @@ func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
 	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return nil, nil }
 	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
 		return []daemon.ScopedServiceStatus{{
-			Deployment: daemon.Deployment{Scope: "system"},
+			Deployment: daemon.Deployment{
+				Scope:      "system",
+				ConfigPath: "/etc/sentinel/config.toml",
+				DataDir:    "/var/lib/sentinel",
+			},
 			UserServiceStatus: daemon.UserServiceStatus{
 				ServicePath:        "/etc/systemd/system/sentinel.service",
 				UnitFileExists:     false,
@@ -1185,14 +1203,14 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	origLoad := loadConfigFn
-	origLoadPath := loadConfigPathFn
+	origLoadDeployment := loadConfigDeploymentFn
 	origVersion := currentVersionFn
 	origApply := updateApplyFn
 	origResolve := resolveDeploymentFn
 	origAccess := requireScopeAccessFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
-		loadConfigPathFn = origLoadPath
+		loadConfigDeploymentFn = origLoadDeployment
 		currentVersionFn = origVersion
 		updateApplyFn = origApply
 		resolveDeploymentFn = origResolve
@@ -1200,13 +1218,13 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 	})
 
 	loadConfigFn = testLoadConfig(testSentinelPath, "")
-	loadConfigPathFn = func(string, string) (config.Config, string, error) {
+	loadConfigDeploymentFn = func(string, string, string) (config.Config, string, error) {
 		cfg, _, err := testLoadConfig(testSentinelPath, "")()
 		return cfg, "/etc/sentinel/config.toml", err
 	}
 	currentVersionFn = func() string { return testCurrentVersion1 }
 	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
-		return daemon.Deployment{Scope: daemon.ScopeSystem, BinaryPath: binaryPath, ConfigPath: "/etc/sentinel/config.toml", DataDir: testSentinelPath}, nil
+		return daemon.Deployment{Scope: daemon.ScopeSystem, BinaryPath: binaryPath, ConfigPath: "/etc/sentinel/config.toml", DataDir: "/var/lib/sentinel"}, nil
 	}
 	requireScopeAccessFn = func(string) error { return nil }
 
@@ -1264,19 +1282,21 @@ func TestRunCLIUpdateApplyParsesFlags(t *testing.T) {
 }
 
 func TestRunCLIUpdateApplyRestartsByDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	binaryPath := filepath.Join(t.TempDir(), "sentinel")
 	if err := os.WriteFile(binaryPath, []byte("binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	origLoad := loadConfigFn
-	origLoadPath := loadConfigPathFn
+	origLoadDeployment := loadConfigDeploymentFn
 	origVersion := currentVersionFn
 	origApply := updateApplyFn
 	origResolve := resolveDeploymentFn
 	origAccess := requireScopeAccessFn
 	t.Cleanup(func() {
 		loadConfigFn = origLoad
-		loadConfigPathFn = origLoadPath
+		loadConfigDeploymentFn = origLoadDeployment
 		currentVersionFn = origVersion
 		updateApplyFn = origApply
 		resolveDeploymentFn = origResolve
@@ -1284,13 +1304,18 @@ func TestRunCLIUpdateApplyRestartsByDefault(t *testing.T) {
 	})
 
 	loadConfigFn = testLoadConfig(testSentinelPath, "")
-	loadConfigPathFn = func(string, string) (config.Config, string, error) {
+	loadConfigDeploymentFn = func(string, string, string) (config.Config, string, error) {
 		cfg, _, err := testLoadConfig(testSentinelPath, "")()
-		return cfg, "/tmp/config.toml", err
+		return cfg, filepath.Join(home, ".sentinel", "config.toml"), err
 	}
 	currentVersionFn = func() string { return testCurrentVersion1 }
 	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
-		return daemon.Deployment{Scope: daemon.ScopeUser, BinaryPath: binaryPath, ConfigPath: "/tmp/config.toml", DataDir: testSentinelPath}, nil
+		return daemon.Deployment{
+			Scope:      daemon.ScopeUser,
+			BinaryPath: binaryPath,
+			ConfigPath: filepath.Join(home, ".sentinel", "config.toml"),
+			DataDir:    filepath.Join(home, ".sentinel"),
+		}, nil
 	}
 	requireScopeAccessFn = func(string) error { return nil }
 

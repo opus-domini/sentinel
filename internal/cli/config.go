@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +27,13 @@ var (
 	execCommand = exec.CommandContext
 )
 
-func newConfigInitCmd(app *App) *cobra.Command {
+type configTarget struct {
+	path    string
+	dataDir string
+	logPath string
+}
+
+func newConfigInitCmd(app *App, scope *string) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -33,7 +41,11 @@ func newConfigInitCmd(app *App) *cobra.Command {
 		Long:  "Initialize the canonical Sentinel config file.",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			path, err := config.Init(force)
+			target, err := resolveConfigTarget(*scope)
+			if err != nil {
+				return failf("config init failed: %w", err)
+			}
+			path, err := config.InitPathForDeployment(target.path, target.dataDir, target.logPath, force)
 			if err != nil {
 				if errors.Is(err, config.ErrConfigExists) {
 					return failf("%v (use --force to overwrite)", err)
@@ -54,6 +66,7 @@ func newConfigInitCmd(app *App) *cobra.Command {
 }
 
 func newConfigCmd(app *App) *cobra.Command {
+	var scope string
 	cmd := &cobra.Command{
 		Use:   cmdConfig,
 		Short: "Initialize, edit, inspect and validate Sentinel config",
@@ -63,11 +76,18 @@ func newConfigCmd(app *App) *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(newConfigInitCmd(app), newConfigEditCmd(app), newConfigPathCmd(app), newConfigValidateCmd(app), newConfigShowCmd(app))
+	cmd.PersistentFlags().StringVar(&scope, "scope", optionAuto, "target deployment: auto|user|system")
+	cmd.AddCommand(
+		newConfigInitCmd(app, &scope),
+		newConfigEditCmd(app, &scope),
+		newConfigPathCmd(app, &scope),
+		newConfigValidateCmd(app, &scope),
+		newConfigShowCmd(app, &scope),
+	)
 	return cmd
 }
 
-func newConfigEditCmd(app *App) *cobra.Command {
+func newConfigEditCmd(app *App, scope *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "edit",
 		Short: "Open the Sentinel config file in your editor",
@@ -75,18 +95,22 @@ func newConfigEditCmd(app *App) *cobra.Command {
 			"$VISUAL, or xdg-open. Blocking editors are validated after they close.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runConfigEdit(cmd.Context(), app)
+			return runConfigEdit(cmd.Context(), app, *scope)
 		},
 	}
 }
 
-func runConfigEdit(ctx context.Context, app *App) error {
-	path := config.Path()
+func runConfigEdit(ctx context.Context, app *App, scope string) error {
+	target, err := resolveConfigTarget(scope)
+	if err != nil {
+		return failf("config edit failed: %w", err)
+	}
+	path := target.path
 	editor, err := resolveConfigEditor()
 	if err != nil {
 		return failf("config edit failed: %w", err)
 	}
-	if _, err := config.Init(false); err == nil {
+	if _, err := config.InitPathForDeployment(path, target.dataDir, target.logPath, false); err == nil {
 		done(app.Stdout, "wrote", path)
 	} else if !errors.Is(err, config.ErrConfigExists) {
 		return failf("config init failed: %w", err)
@@ -146,29 +170,36 @@ func runResolvedConfigEditor(ctx context.Context, app *App, editor configEditor,
 	return nil
 }
 
-func newConfigPathCmd(app *App) *cobra.Command {
+func newConfigPathCmd(app *App, scope *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "path",
 		Short: "Print the Sentinel config path",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			writeln(app.Stdout, config.Path())
+			target, err := resolveConfigTarget(*scope)
+			if err != nil {
+				return failf("config path failed: %w", err)
+			}
+			writeln(app.Stdout, target.path)
 			return nil
 		},
 	}
 }
 
-func newConfigValidateCmd(app *App) *cobra.Command {
+func newConfigValidateCmd(app *App, scope *string) *cobra.Command {
 	var effective bool
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Validate the Sentinel config file",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			path := config.Path()
-			var err error
+			target, err := resolveConfigTarget(*scope)
+			if err != nil {
+				return failf("config validation failed: %w", err)
+			}
+			path := target.path
 			if effective {
-				_, path, err = loadConfigFn()
+				_, path, err = config.LoadPathForDeployment(target.path, target.dataDir, target.logPath)
 			} else {
 				err = config.ValidateFile(path)
 			}
@@ -183,14 +214,18 @@ func newConfigValidateCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-func newConfigShowCmd(app *App) *cobra.Command {
+func newConfigShowCmd(app *App, scope *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
 		Short: "Show effective Sentinel config",
 		Long:  "Show the effective Sentinel config after applying defaults, file values and environment overrides.",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg, err := loadValidatedConfig()
+			target, err := resolveConfigTarget(*scope)
+			if err != nil {
+				return failf("config show failed: %w", err)
+			}
+			cfg, err := loadValidatedConfigTarget(target)
 			if err != nil {
 				return failf("config show failed: %w", err)
 			}
@@ -205,8 +240,60 @@ func newConfigShowCmd(app *App) *cobra.Command {
 }
 
 func loadValidatedConfig() (config.Config, error) {
-	cfg, _, err := config.Load()
+	target, err := resolveConfigTarget(optionAuto)
+	if err != nil {
+		return config.Config{}, err
+	}
+	return loadValidatedConfigTarget(target)
+}
+
+func loadValidatedConfigTarget(target configTarget) (config.Config, error) {
+	cfg, _, err := config.LoadPathForDeployment(target.path, target.dataDir, target.logPath)
 	return cfg, err
+}
+
+func resolveConfigTarget(scopeRaw string) (configTarget, error) {
+	if strings.TrimSpace(os.Getenv("SENTINEL_CONFIG")) != "" || strings.TrimSpace(os.Getenv("SENTINEL_DATA_DIR")) != "" {
+		cfg := config.Default()
+		return configTarget{
+			path:    config.Path(),
+			dataDir: cfg.DataDir(),
+			logPath: cfg.Log.Path,
+		}, nil
+	}
+	deployment, err := resolveDeploymentFn(scopeRaw)
+	if err == nil {
+		layout, layoutErr := daemon.LayoutForScope(deployment.Scope)
+		if layoutErr != nil {
+			return configTarget{}, layoutErr
+		}
+		logPath := filepath.Join(deployment.DataDir, "logs", "sentinel.log")
+		if canonical, canonicalErr := daemon.HasCanonicalPaths(deployment); canonicalErr != nil {
+			return configTarget{}, canonicalErr
+		} else if canonical {
+			logPath = layout.LogPath
+		}
+		return configTarget{path: deployment.ConfigPath, dataDir: deployment.DataDir, logPath: logPath}, nil
+	}
+	if !errors.Is(err, daemon.ErrNoServiceInstalled) {
+		return configTarget{}, err
+	}
+	scope := strings.ToLower(strings.TrimSpace(scopeRaw))
+	if scope == "" || scope == optionAuto {
+		cfg := config.Default()
+		return configTarget{path: config.Path(), dataDir: cfg.DataDir(), logPath: cfg.Log.Path}, nil
+	}
+	if scope != optionUser && scope != optionSystem {
+		return configTarget{}, fmt.Errorf("invalid scope %q (valid: auto, user, system)", scopeRaw)
+	}
+	if err := requireScopeAccessFn(scope); err != nil {
+		return configTarget{}, err
+	}
+	layout, err := daemon.LayoutForScope(scope)
+	if err != nil {
+		return configTarget{}, err
+	}
+	return configTarget{path: layout.ConfigPath, dataDir: layout.DataDir, logPath: layout.LogPath}, nil
 }
 
 type configShowOutput struct {

@@ -255,12 +255,29 @@ func resolveUpdateContext(scopeRaw string, requireWritable bool) (updateContext,
 	if err := requireScopeAccessFn(deployment.Scope); err != nil {
 		return updateContext{}, err
 	}
+	canonical, err := daemon.HasCanonicalPaths(deployment)
+	if err != nil {
+		return updateContext{}, err
+	}
+	if !canonical {
+		return updateContext{}, fmt.Errorf(
+			"the %s deployment uses config %s and data %s; run `sentinel service migrate --scope %s` before updating",
+			deployment.Scope,
+			deployment.ConfigPath,
+			deployment.DataDir,
+			deployment.Scope,
+		)
+	}
 	if requireWritable {
 		if err := preflightBinaryWrite(deployment.BinaryPath); err != nil {
 			return updateContext{}, err
 		}
 	}
-	cfg, configPath, err := loadConfigPathFn(deployment.ConfigPath, deployment.DataDir)
+	layout, err := daemon.LayoutForScope(deployment.Scope)
+	if err != nil {
+		return updateContext{}, err
+	}
+	cfg, configPath, err := loadConfigDeploymentFn(deployment.ConfigPath, deployment.DataDir, layout.LogPath)
 	if err != nil {
 		return updateContext{}, err
 	}

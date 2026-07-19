@@ -15,6 +15,7 @@ import (
 
 // App is the per-invocation runtime context shared by every subcommand.
 type App struct {
+	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
 }
@@ -29,6 +30,9 @@ const (
 	optionSystem        = "system"
 	hostOSDarwin        = "darwin"
 	sentinelServiceUnit = "sentinel"
+	stateActive         = "active"
+	stateEnabled        = "enabled"
+	stateRunning        = "running"
 )
 
 // Test indirections: swapped to fakes so command behaviour can be exercised
@@ -47,6 +51,7 @@ var (
 	removeSentinelBinaryAtFn  = removeSentinelBinaryAt
 	loadConfigFn              = config.Load
 	loadConfigPathFn          = config.LoadPathForDataDir
+	loadConfigDeploymentFn    = config.LoadPathForDeployment
 	currentVersionFn          = Version
 	updateCheckFn             = updater.Check
 	updateApplyFn             = updater.Apply
@@ -55,6 +60,8 @@ var (
 	resolveDeploymentFn       = daemon.ResolveDeployment
 	resolveInstallScopeFn     = daemon.ResolveInstallScope
 	requireScopeAccessFn      = daemon.RequireScopeAccess
+	pauseAutoUpdateFn         = daemon.PauseAutoUpdate
+	resumeAutoUpdateFn        = daemon.ResumeAutoUpdate
 )
 
 // runDaemon is the default daemonFn: it boots the HTTP server with the
@@ -76,7 +83,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		_ = os.Unsetenv("SENTINEL_CONFIG")
 	}()
 
-	app := &App{Stdout: stdout, Stderr: stderr}
+	app := &App{Stdin: os.Stdin, Stdout: stdout, Stderr: stderr}
 	root := newRootCmd(app)
 	root.SetArgs(args)
 	root.SetOut(stdout)

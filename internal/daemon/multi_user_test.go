@@ -8,7 +8,7 @@ import (
 func TestRenderUserUnitOmitsHardeningDirectives(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserUnit("/usr/bin/sentinel", "", "")
+	unit := renderUserUnit("/usr/bin/sentinel", "", "", "")
 	if strings.Contains(unit, "NoNewPrivileges=") {
 		t.Error("expected NoNewPrivileges= directive to be absent from user unit")
 	}

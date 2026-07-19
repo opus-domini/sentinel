@@ -23,6 +23,11 @@ const (
 // ErrAmbiguousDeployment reports simultaneous user and system installations.
 var ErrAmbiguousDeployment = errors.New("sentinel is installed in both user and system scope")
 
+// ErrInstallScopeRequired reports a fresh installation where user intent is
+// required. Install entrypoints may prompt interactively or require an
+// explicit user/system scope in automation.
+var ErrInstallScopeRequired = errors.New("no existing Sentinel installation was found; choose user or system scope")
+
 // Deployment is the complete identity of one managed Sentinel installation.
 // Service operations must keep these fields together instead of resolving
 // scope, executable and configuration independently.
@@ -32,9 +37,17 @@ type Deployment struct {
 	BinaryPath        string
 	ConfigPath        string
 	DataDir           string
-	LegacyConfigPath  bool
 	AutoUpdateService string
 	AutoUpdateTimer   string
+}
+
+// ScopeLayout is the canonical filesystem layout for one managed deployment.
+// Managed commands must resolve these paths together so configuration, mutable
+// state and logs cannot drift into different installation scopes.
+type ScopeLayout struct {
+	ConfigPath string
+	DataDir    string
+	LogPath    string
 }
 
 // InstalledDeployments returns every Sentinel deployment visible to the
@@ -73,15 +86,42 @@ func ResolveDeployment(scopeRaw string) (Deployment, error) {
 	return readDeployment(selected.Scope)
 }
 
-// ResolveInstallScope preserves an existing scope and refuses to create a
-// second implicit deployment. A fresh install uses the caller privileges only
-// when scope=auto.
+// ResolveInstallScope preserves an existing service or canonical standalone
+// binary scope and refuses to create a second implicit installation. A fresh
+// install with scope=auto requires an explicit user choice.
 func ResolveInstallScope(scopeRaw string) (string, error) {
 	scope, err := normalizeManagedScope(scopeRaw)
 	if err != nil {
 		return "", err
 	}
-	return selectInstallScope(detectedDeployments(), scope, os.Geteuid())
+	return selectInstallScope(detectedInstallations(), scope)
+}
+
+func detectedInstallations() []Deployment {
+	managed := detectedDeployments()
+	userBinary, userErr := CanonicalBinaryPath(ScopeUser)
+	systemBinary, systemErr := CanonicalBinaryPath(ScopeSystem)
+	return installationCandidates(
+		managed,
+		userErr == nil && regularFileExists(userBinary),
+		systemErr == nil && regularFileExists(systemBinary),
+		userBinary,
+		systemBinary,
+	)
+}
+
+func installationCandidates(managed []Deployment, hasUserBinary, hasSystemBinary bool, userBinary, systemBinary string) []Deployment {
+	if len(managed) > 0 {
+		return managed
+	}
+	installations := make([]Deployment, 0, 2)
+	if hasUserBinary {
+		installations = append(installations, Deployment{Scope: ScopeUser, BinaryPath: userBinary})
+	}
+	if hasSystemBinary {
+		installations = append(installations, Deployment{Scope: ScopeSystem, BinaryPath: systemBinary})
+	}
+	return installations
 }
 
 func detectedDeployments() []Deployment {
@@ -130,7 +170,7 @@ func selectAccessibleDeployment(deployments []Deployment, scope string, euid int
 	return selected, nil
 }
 
-func selectInstallScope(deployments []Deployment, scope string, euid int) (string, error) {
+func selectInstallScope(deployments []Deployment, scope string) (string, error) {
 	if len(deployments) > 1 {
 		return "", fmt.Errorf("%w; remove one deployment before installing", ErrAmbiguousDeployment)
 	}
@@ -144,10 +184,29 @@ func selectInstallScope(deployments []Deployment, scope string, euid int) (strin
 	if scope != ScopeAuto {
 		return scope, nil
 	}
-	if euid == 0 {
-		return ScopeSystem, nil
+	return "", ErrInstallScopeRequired
+}
+
+// CanonicalBinaryPath returns the default executable path for an installation
+// scope. Existing managed services may retain a different explicit path.
+func CanonicalBinaryPath(scope string) (string, error) {
+	switch scope {
+	case ScopeUser:
+		home, err := userScopeHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".local", "bin", "sentinel"), nil
+	case ScopeSystem:
+		return filepath.Join(string(filepath.Separator), "usr", "local", "bin", "sentinel"), nil
+	default:
+		return "", fmt.Errorf("invalid deployment scope: %s", scope)
 	}
-	return ScopeUser, nil
+}
+
+func regularFileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // RequireScopeAccess returns an actionable error before any config or network
@@ -217,13 +276,11 @@ func readDeployment(scope string) (Deployment, error) {
 		return Deployment{}, fmt.Errorf("%s service definition does not contain a Sentinel executable", scope)
 	}
 
-	legacy := false
 	if strings.TrimSpace(configPath) == "" {
 		configPath, dataDir, err = legacyScopePaths(scope)
 		if err != nil {
 			return Deployment{}, err
 		}
-		legacy = scope == ScopeSystem
 	}
 	if strings.TrimSpace(dataDir) == "" {
 		dataDir = filepath.Dir(configPath)
@@ -242,31 +299,67 @@ func readDeployment(scope string) (Deployment, error) {
 		BinaryPath:        binaryPath,
 		ConfigPath:        configPath,
 		DataDir:           dataDir,
-		LegacyConfigPath:  legacy,
 		AutoUpdateService: autoService,
 		AutoUpdateTimer:   autoTimer,
 	}, nil
 }
 
-// ScopePaths returns the canonical config and data paths for a fresh scope.
-func ScopePaths(scope string) (configPath, dataDir string, err error) {
+// LayoutForScope returns the canonical filesystem layout for a managed scope.
+func LayoutForScope(scope string) (ScopeLayout, error) {
 	switch scope {
 	case ScopeUser:
 		home, homeErr := userScopeHomeDir()
 		if homeErr != nil {
-			return "", "", homeErr
+			return ScopeLayout{}, homeErr
 		}
-		dataDir = filepath.Join(home, ".sentinel")
-		return filepath.Join(dataDir, "config.toml"), dataDir, nil
+		dataDir := filepath.Join(home, ".sentinel")
+		return ScopeLayout{
+			ConfigPath: filepath.Join(dataDir, "config.toml"),
+			DataDir:    dataDir,
+			LogPath:    filepath.Join(dataDir, "logs", "sentinel.log"),
+		}, nil
 	case ScopeSystem:
 		if runtime.GOOS == launchdSupportedOS {
-			dataDir = "/Library/Application Support/Sentinel"
-			return filepath.Join(dataDir, "config.toml"), dataDir, nil
+			return ScopeLayout{
+				ConfigPath: "/Library/Preferences/io.opusdomini.sentinel.toml",
+				DataDir:    "/Library/Application Support/Sentinel",
+				LogPath:    "/Library/Logs/Sentinel/sentinel.log",
+			}, nil
 		}
-		return "/etc/sentinel/config.toml", "/var/lib/sentinel", nil
+		return ScopeLayout{
+			ConfigPath: "/etc/sentinel/config.toml",
+			DataDir:    "/var/lib/sentinel",
+			LogPath:    "/var/log/sentinel/sentinel.log",
+		}, nil
 	default:
-		return "", "", fmt.Errorf("invalid deployment scope: %s", scope)
+		return ScopeLayout{}, fmt.Errorf("invalid deployment scope: %s", scope)
 	}
+}
+
+// ScopePaths returns the canonical config and data paths for a fresh scope.
+func ScopePaths(scope string) (configPath, dataDir string, err error) {
+	layout, err := LayoutForScope(scope)
+	if err != nil {
+		return "", "", err
+	}
+	return layout.ConfigPath, layout.DataDir, nil
+}
+
+// HasCanonicalPaths reports whether a deployment unit points exclusively at
+// the canonical config and data locations for its scope.
+func HasCanonicalPaths(deployment Deployment) (bool, error) {
+	layout, err := LayoutForScope(deployment.Scope)
+	if err != nil {
+		return false, err
+	}
+	return sameCleanPath(deployment.ConfigPath, layout.ConfigPath) &&
+		sameCleanPath(deployment.DataDir, layout.DataDir), nil
+}
+
+func sameCleanPath(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	return left != "" && right != "" && filepath.Clean(left) == filepath.Clean(right)
 }
 
 func legacyScopePaths(scope string) (configPath, dataDir string, err error) {
@@ -279,6 +372,20 @@ func legacyScopePaths(scope string) (configPath, dataDir string, err error) {
 	}
 	dataDir = filepath.Join(rootHome, ".sentinel")
 	return filepath.Join(dataDir, "config.toml"), dataDir, nil
+}
+
+// LegacyLayoutForScope returns the only historical managed layout accepted by
+// the migration command. It is intentionally not used for fresh installs.
+func LegacyLayoutForScope(scope string) (ScopeLayout, error) {
+	configPath, dataDir, err := legacyScopePaths(scope)
+	if err != nil {
+		return ScopeLayout{}, err
+	}
+	return ScopeLayout{
+		ConfigPath: configPath,
+		DataDir:    dataDir,
+		LogPath:    filepath.Join(dataDir, "logs", "sentinel.log"),
+	}, nil
 }
 
 func servicePathForScope(scope string) (string, error) {

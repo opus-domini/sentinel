@@ -130,7 +130,7 @@ func empty(w io.Writer, msg string) {
 func valueStyle(value string) textStyle {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
-	case "true", "active", "enabled", "loaded", "ok", "yes", "up":
+	case "true", stateActive, stateEnabled, "loaded", "ok", "yes", "up":
 		return styleSuccess
 	case "false", "inactive", "disabled", "not-loaded", "unavailable", "not-found", "failed", "error", "down":
 		return styleDanger

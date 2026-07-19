@@ -24,7 +24,9 @@ func newServiceCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(
+		newServiceResolveInstallScopeCmd(app),
 		newServiceInstallCmd(app),
+		newServiceMigrateCmd(app),
 		newServiceUninstallCmd(app),
 		newServiceStatusCmd(app),
 		newServiceLogsCmd(app),
@@ -332,51 +334,53 @@ func removeSentinelBinaryAt(path string) (string, error) {
 }
 
 func prepareServiceConfig(scope string, create bool) (string, string, error) {
-	canonicalConfig, canonicalData, err := daemon.ScopePaths(scope)
+	layout, err := daemon.LayoutForScope(scope)
 	if err != nil {
 		return "", "", err
 	}
-	configPath := canonicalConfig
-	dataDir := canonicalData
-
-	if explicit := strings.TrimSpace(os.Getenv("SENTINEL_CONFIG")); explicit != "" {
-		configPath = config.Path()
-	} else if deployments, listErr := installedDeploymentsFn(); listErr != nil {
+	if explicit := strings.TrimSpace(os.Getenv("SENTINEL_CONFIG")); explicit != "" &&
+		filepath.Clean(config.Path()) != filepath.Clean(layout.ConfigPath) {
+		return "", "", fmt.Errorf(
+			"managed %s deployments use %s; remove --config or set it to the canonical path",
+			scope,
+			layout.ConfigPath,
+		)
+	}
+	deployments, listErr := installedDeploymentsFn()
+	if listErr != nil {
 		return "", "", listErr
-	} else {
-		for _, deployment := range deployments {
-			if deployment.Scope != scope {
-				continue
-			}
-			if deployment.LegacyConfigPath && scope == daemon.ScopeSystem {
-				if create {
-					if err := migrateLegacyConfig(deployment.ConfigPath, canonicalConfig); err != nil {
-						return "", "", err
-					}
-					configPath = canonicalConfig
-				} else {
-					configPath = deployment.ConfigPath
-				}
-				dataDir = deployment.DataDir
-			} else {
-				configPath = deployment.ConfigPath
-				dataDir = deployment.DataDir
-			}
-			break
+	}
+	for _, deployment := range deployments {
+		if deployment.Scope != scope {
+			continue
 		}
+		canonical, canonicalErr := daemon.HasCanonicalPaths(deployment)
+		if canonicalErr != nil {
+			return "", "", canonicalErr
+		}
+		if !canonical {
+			return "", "", fmt.Errorf(
+				"the %s deployment uses config %s and data %s; run `sentinel service migrate --scope %s` before reinstalling",
+				scope,
+				deployment.ConfigPath,
+				deployment.DataDir,
+				scope,
+			)
+		}
+		break
 	}
 
-	if _, statErr := os.Stat(configPath); statErr != nil {
+	if _, statErr := os.Stat(layout.ConfigPath); statErr != nil {
 		if !os.IsNotExist(statErr) {
-			return "", "", fmt.Errorf("stat config %s: %w", configPath, statErr)
+			return "", "", fmt.Errorf("stat config %s: %w", layout.ConfigPath, statErr)
 		}
 		if create {
-			if _, initErr := config.InitPath(configPath, dataDir, false); initErr != nil {
+			if _, initErr := config.InitPathForDeployment(layout.ConfigPath, layout.DataDir, layout.LogPath, false); initErr != nil {
 				return "", "", initErr
 			}
 		}
 	}
-	cfg, resolved, err := config.LoadPathForDataDir(configPath, dataDir)
+	cfg, resolved, err := config.LoadPathForDeployment(layout.ConfigPath, layout.DataDir, layout.LogPath)
 	if err != nil {
 		return "", "", err
 	}
@@ -385,39 +389,7 @@ func prepareServiceConfig(scope string, create bool) (string, string, error) {
 			return "", "", err
 		}
 	}
-	return resolved, cfg.DataDir(), nil
-}
-
-func migrateLegacyConfig(source, target string) error {
-	if _, err := os.Stat(target); err == nil {
-		return nil
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("stat canonical system config: %w", err)
-	}
-	raw, err := os.ReadFile(source) //nolint:gosec // explicit legacy Sentinel config.
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read legacy system config: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-		return fmt.Errorf("create canonical system config directory: %w", err)
-	}
-	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // canonical root-owned config.
-	if err != nil {
-		return fmt.Errorf("create canonical system config: %w", err)
-	}
-	if _, err := file.Write(raw); err != nil {
-		_ = file.Close()
-		_ = os.Remove(target)
-		return fmt.Errorf("copy legacy system config: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(target)
-		return fmt.Errorf("close canonical system config: %w", err)
-	}
-	return nil
+	return resolved, layout.DataDir, nil
 }
 
 func newServiceStatusCmd(app *App) *cobra.Command {
@@ -445,6 +417,14 @@ func runServiceStatus(app *App) error {
 		if i > 0 {
 			writeln(app.Stdout, "")
 		}
+		canonical, canonicalErr := daemon.HasCanonicalPaths(s.Deployment)
+		layout, layoutErr := daemon.LayoutForScope(s.Scope)
+		if canonicalErr != nil {
+			return failf("service status failed: %w", canonicalErr)
+		}
+		if layoutErr != nil {
+			return failf("service status failed: %w", layoutErr)
+		}
 		rows := []outputRow{
 			{Key: fmt.Sprintf("%s unit file", s.Scope), Value: s.ServicePath},
 			{Key: fmt.Sprintf("%s unit exists", s.Scope), Value: fmt.Sprintf("%t", s.UnitFileExists)},
@@ -452,6 +432,10 @@ func runServiceStatus(app *App) error {
 			{Key: fmt.Sprintf("%s binary", s.Scope), Value: s.BinaryPath},
 			{Key: fmt.Sprintf("%s config", s.Scope), Value: s.ConfigPath},
 			{Key: fmt.Sprintf("%s data dir", s.Scope), Value: s.DataDir},
+			{Key: fmt.Sprintf("%s canonical layout", s.Scope), Value: fmt.Sprintf("%t", canonical)},
+			{Key: fmt.Sprintf("%s expected config", s.Scope), Value: layout.ConfigPath},
+			{Key: fmt.Sprintf("%s expected data dir", s.Scope), Value: layout.DataDir},
+			{Key: fmt.Sprintf("%s expected log", s.Scope), Value: layout.LogPath},
 		}
 		if s.SystemctlAvailable {
 			rows = append(rows,

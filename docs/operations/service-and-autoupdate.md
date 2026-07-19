@@ -5,8 +5,9 @@ This page covers managed runtime behavior across Linux and macOS.
 ## Service Install Behavior
 
 `sentinel service install` is deployment-aware. `--scope auto` preserves the
-only installed deployment; a fresh install selects system scope as root and
-user scope otherwise. It never silently creates the opposite scope:
+only installed deployment or canonical standalone binary. A fresh install
+requires `--scope user|system`; it never infers intent from privileges or
+silently creates the opposite scope:
 
 - Linux + root: system service (`/etc/systemd/system/sentinel.service`)
 - Linux + non-root: user service (`~/.config/systemd/user/sentinel.service`)
@@ -16,17 +17,30 @@ user scope otherwise. It never silently creates the opposite scope:
 Unified service name is `sentinel` from CLI perspective.
 
 The service definition persists one deployment identity: scope, binary,
-configuration and data directory. Fresh system installs use
-`/etc/sentinel/config.toml` with data under `/var/lib/sentinel`; fresh user
-installs use `~/.sentinel/config.toml` and `~/.sentinel`. A legacy system
-configuration under `/root/.sentinel` is copied to the canonical system path
-when its service is explicitly reinstalled; its existing data directory is
-preserved so the reinstall does not move or recreate runtime state.
+configuration and data directory. Linux system installs use
+`/etc/sentinel/config.toml`, `/var/lib/sentinel` and
+`/var/log/sentinel/sentinel.log`; user installs keep all three resources under
+`~/.sentinel`.
+
+A deployment is either canonical or legacy; hybrid layouts are invalid.
+`service install` and `update apply` refuse a legacy or hybrid deployment and
+point to the migration command instead of silently changing one path:
+
+```bash
+sudo sentinel service migrate --scope system
+```
+
+Migration stops an active service before copying SQLite state, rebases the
+default database and log paths, rewrites the service definition, restarts it in
+its previous state and removes the legacy directory only after success. If the
+active and legacy TOML files differ, migration stops before changing anything
+and requires explicit reconciliation.
 
 ## Service Commands
 
 ```bash
 sentinel service install --scope auto --exec /path/to/sentinel
+sentinel service migrate --scope system
 sentinel service status
 sentinel service restart --scope auto
 sentinel service uninstall --scope auto
@@ -78,17 +92,30 @@ Resolution:
 ## macOS (`launchd`) Notes
 
 - Same CLI command set as Linux.
-- Scope resolves automatically based on privileges.
+- Existing scope resolves automatically; fresh installs require a choice.
 - Logs:
   - user scope: `~/.sentinel/logs/sentinel.out.log`
   - system scope: `/var/log/sentinel/sentinel.out.log`
 
 ## Install Script (`install.sh`)
 
-`install.sh` installs binary and immediately starts/restarts the managed service.
-Set `INSTALL_SCOPE=user|system` for an explicit scope. The installer diagnoses
-an existing opposite-scope or ambiguous installation before downloading or
-replacing a binary, and rolls the binary back if service activation fails.
+`make install` and `install.sh` install the binary and immediately
+start/restart the managed service. Both detect an existing managed service
+first and preserve its scope. If no service exists, they also inspect the
+canonical binary locations for a standalone installation.
+
+A fresh interactive install explains the user and system layouts and requires
+an explicit choice; it never infers scope from whether the installer happened
+to run as root. A fresh non-interactive install must set
+`INSTALL_SCOPE=user|system`. Choosing system scope from an unprivileged shell
+requests `sudo` only for system files and service management. User scope never
+runs through `sudo`.
+
+The downloaded or locally built Go CLI is the single source of truth for scope
+discovery, conflicts and the interactive prompt. The shell installer only
+downloads/verifies artifacts and executes the resulting plan. Conflicts are
+diagnosed before replacing a binary, and service activation failure rolls the
+binary back.
 
 Autoupdate enable during install:
 
@@ -103,6 +130,8 @@ ENABLE_AUTOUPDATE=1 curl -fsSL https://raw.githubusercontent.com/opus-domini/sen
   whether Sentinel is installed in user or system scope. A normal user pointed
   at a system installation is stopped with the exact `sudo sentinel update
   apply --scope system` recovery command.
+- Updates refuse noncanonical managed paths until `service migrate` completes;
+  this prevents an update from preserving or deepening a hybrid deployment.
 - Successful apply restarts the exact managed service selected from the unit.
   If units exist in both scopes, manual apply requires an explicit
   `--scope user` or `--scope system` choice.

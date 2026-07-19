@@ -42,6 +42,32 @@ func TestDefaultForDataDirDoesNotDependOnCallerHome(t *testing.T) {
 	}
 }
 
+func TestDefaultForDeploymentUsesSeparateLogPath(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "lib")
+	logPath := filepath.Join(t.TempDir(), "log", "sentinel.log")
+	cfg := DefaultForDeployment(dataDir, logPath)
+	if got := cfg.Storage.Path; got != filepath.Join(dataDir, "sentinel.db") {
+		t.Fatalf("storage path = %q", got)
+	}
+	if got := cfg.Log.Path; got != logPath {
+		t.Fatalf("log path = %q, want %q", got, logPath)
+	}
+}
+
+func TestDefaultUsesManagedLogDefaultWithoutOverridingConfig(t *testing.T) {
+	dataDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "sentinel.log")
+	t.Setenv("SENTINEL_DATA_DIR", dataDir)
+	t.Setenv(ManagedDefaultLogPathEnv, logPath)
+	t.Setenv("SENTINEL_LOG_PATH", "")
+
+	if got := Default().Log.Path; got != logPath {
+		t.Fatalf("managed default log = %q, want %q", got, logPath)
+	}
+}
+
 func TestLoadPathForDataDirRootsMissingConfigDefaultsInDeployment(t *testing.T) {
 	clearConfigEnv(t)
 	root := t.TempDir()
@@ -585,6 +611,7 @@ func clearConfigEnv(t *testing.T) {
 		"SENTINEL_STORAGE_PATH",
 		"SENTINEL_LOG_LEVEL",
 		"SENTINEL_LOG_PATH",
+		ManagedDefaultLogPathEnv,
 		"SENTINEL_HEALTH_REPORT_WEBHOOK_URL",
 		"SENTINEL_HEALTH_REPORT_SCHEDULE",
 		"SENTINEL_WATCHTOWER_ENABLED",

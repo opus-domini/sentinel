@@ -16,7 +16,9 @@ set -euo pipefail
 #   INSTALL_DIR        Binary install directory (default: ~/.local/bin, or /usr/local/bin as root)
 #   VERSION            Specific version to install, with or without "v" (default: latest)
 #   INSTALL_SERVICE    Set to 0/false/no/off to skip service installation
-#   INSTALL_SCOPE      Installation scope: auto, user, or system (default: auto)
+#   INSTALL_SCOPE      Installation scope: user or system. Existing installs are
+#                      detected automatically; fresh non-interactive installs
+#                      must set this explicitly.
 #   ENABLE_AUTOUPDATE  Set to 1/true/yes/on to install and enable daily autoupdate
 
 # --- Configuration ----------------------------------------------------------
@@ -27,6 +29,7 @@ REPO="${REPO:-opus-domini/sentinel}"
 INSTALL_SERVICE="${INSTALL_SERVICE:-1}"
 INSTALL_SCOPE="${INSTALL_SCOPE:-auto}"
 ENABLE_AUTOUPDATE="${ENABLE_AUTOUPDATE:-0}"
+INSTALL_SOURCE="${SENTINEL_INSTALL_SOURCE:-}"
 IS_ROOT=0
 if [ "$(id -u)" -eq 0 ]; then
   IS_ROOT=1
@@ -81,6 +84,14 @@ is_false() {
   esac
 }
 
+run_for_scope() {
+  if [ "$RESOLVED_SCOPE" = "system" ] && [ "$IS_ROOT" -ne 1 ]; then
+    sudo "$@"
+  else
+    "$@"
+  fi
+}
+
 normalize_version() {
   if [ "${1#v}" = "$1" ]; then
     printf 'v%s\n' "$1"
@@ -106,11 +117,11 @@ install_systemd_service() {
 
   if [ "$RESOLVED_SCOPE" = "system" ]; then
     info "Installing systemd system service..."
-    if "$TARGET" service install --scope system --exec "$TARGET" --enable=true --start=true; then
+    if run_for_scope "$TARGET" service install --scope system --exec "$TARGET" --enable=true --start=true; then
       ok "systemd system service installed and started"
       if is_true "$ENABLE_AUTOUPDATE"; then
         info "Enabling daily autoupdate timer (system scope)..."
-        "$TARGET" service autoupdate install --enable=true --start=true --scope system \
+        run_for_scope "$TARGET" service autoupdate install --enable=true --start=true --scope system \
           && ok "Autoupdate timer enabled" \
           || rollback_install "failed to enable the system autoupdate timer"
       fi
@@ -119,11 +130,11 @@ install_systemd_service() {
     fi
   else
     info "Installing systemd user service..."
-    if "$TARGET" service install --scope user --exec "$TARGET" --enable=true --start=true; then
+    if run_for_scope "$TARGET" service install --scope user --exec "$TARGET" --enable=true --start=true; then
       ok "systemd user service installed and restarted"
       if is_true "$ENABLE_AUTOUPDATE"; then
         info "Enabling daily autoupdate timer (user scope)..."
-        "$TARGET" service autoupdate install --enable=true --start=true --scope user \
+        run_for_scope "$TARGET" service autoupdate install --enable=true --start=true --scope user \
           && ok "Autoupdate timer enabled" \
           || rollback_install "failed to enable the user autoupdate timer"
       fi
@@ -143,11 +154,11 @@ install_launchd_service() {
   fi
 
   info "Installing launchd ${scope_label} service..."
-  if "$TARGET" service install --scope "$RESOLVED_SCOPE" --exec "$TARGET" --enable=true --start=true; then
+  if run_for_scope "$TARGET" service install --scope "$RESOLVED_SCOPE" --exec "$TARGET" --enable=true --start=true; then
     ok "launchd ${scope_label} service installed and started"
     if is_true "$ENABLE_AUTOUPDATE"; then
       info "Enabling daily autoupdate with launchd (${scope_label} scope)..."
-      "$TARGET" service autoupdate install --enable=true --start=true --scope "$RESOLVED_SCOPE" --on-calendar daily \
+      run_for_scope "$TARGET" service autoupdate install --enable=true --start=true --scope "$RESOLVED_SCOPE" --on-calendar daily \
         && ok "launchd autoupdate enabled" \
         || rollback_install "failed to enable launchd autoupdate"
     fi
@@ -180,56 +191,6 @@ if [ "$IS_ROOT" -eq 1 ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]
   fi
 fi
 
-if [ "$OS" = "linux" ]; then
-  USER_SERVICE_PATH="${USER_HOME}/.config/systemd/user/sentinel.service"
-  SYSTEM_SERVICE_PATH="/etc/systemd/system/sentinel.service"
-else
-  USER_SERVICE_PATH="${USER_HOME}/Library/LaunchAgents/io.opusdomini.sentinel.plist"
-  SYSTEM_SERVICE_PATH="/Library/LaunchDaemons/io.opusdomini.sentinel.plist"
-fi
-
-HAS_USER_SERVICE=0
-HAS_SYSTEM_SERVICE=0
-[ -f "$USER_SERVICE_PATH" ] && HAS_USER_SERVICE=1
-[ -f "$SYSTEM_SERVICE_PATH" ] && HAS_SYSTEM_SERVICE=1
-
-if [ "$HAS_USER_SERVICE" -eq 1 ] && [ "$HAS_SYSTEM_SERVICE" -eq 1 ]; then
-  fail "Sentinel is installed in both user and system scope; remove one deployment before installing"
-fi
-
-EXISTING_SCOPE=""
-[ "$HAS_USER_SERVICE" -eq 1 ] && EXISTING_SCOPE="user"
-[ "$HAS_SYSTEM_SERVICE" -eq 1 ] && EXISTING_SCOPE="system"
-
-RESOLVED_SCOPE="$INSTALL_SCOPE"
-if [ "$RESOLVED_SCOPE" = "auto" ]; then
-  if [ -n "$EXISTING_SCOPE" ]; then
-    RESOLVED_SCOPE="$EXISTING_SCOPE"
-  elif [ "$IS_ROOT" -eq 1 ]; then
-    RESOLVED_SCOPE="system"
-  else
-    RESOLVED_SCOPE="user"
-  fi
-fi
-
-if [ -n "$EXISTING_SCOPE" ] && [ "$EXISTING_SCOPE" != "$RESOLVED_SCOPE" ]; then
-  fail "Sentinel is already installed in ${EXISTING_SCOPE} scope; uninstall it before installing in ${RESOLVED_SCOPE} scope"
-fi
-if [ "$RESOLVED_SCOPE" = "system" ] && [ "$IS_ROOT" -ne 1 ]; then
-  fail "Sentinel is installed system-wide; re-run the installer as root with INSTALL_SCOPE=system"
-fi
-if [ "$RESOLVED_SCOPE" = "user" ] && [ "$IS_ROOT" -eq 1 ]; then
-  fail "Sentinel is installed for ${SUDO_USER:-a user}; run the installer as that user without sudo"
-fi
-
-if [ -z "${INSTALL_DIR:-}" ]; then
-  if [ "$RESOLVED_SCOPE" = "system" ]; then
-    INSTALL_DIR="/usr/local/bin"
-  else
-    INSTALL_DIR="${USER_HOME}/.local/bin"
-  fi
-fi
-
 case "$(uname -m)" in
   x86_64|amd64) ARCH="amd64" ;;
   aarch64|arm64) ARCH="arm64" ;;
@@ -246,8 +207,10 @@ esac
 # --- Dependency checks ------------------------------------------------------
 
 need awk
-need curl
-need tar
+if [ -z "$INSTALL_SOURCE" ]; then
+  need curl
+  need tar
+fi
 
 if ! command -v tmux >/dev/null 2>&1; then
   important "tmux was not found on this host. ${PROJECT} installed successfully, but tmux features stay disabled until tmux is installed."
@@ -255,86 +218,133 @@ fi
 
 # --- Version resolution -----------------------------------------------------
 
-VERSION="${VERSION:-}"
-if [ -z "$VERSION" ]; then
-  info "Fetching latest ${PROJECT} release..."
-  if ! VERSION=$(curl -fsSL --retry 3 --retry-delay 2 "https://api.github.com/repos/${REPO}/releases/latest" \
-    | awk -F'"' '
-      /"tag_name"/ && tag == "" { tag = $4 }
-      END { if (tag != "") print tag }
-    '); then
-    fail "could not fetch latest release metadata; set VERSION=vX.Y.Z"
-  fi
-fi
-[ -n "$VERSION" ] || fail "could not determine latest release; set VERSION=vX.Y.Z"
-VERSION=$(normalize_version "$VERSION")
-ASSET_VERSION="${VERSION#v}"
-
-# --- Download and verification ---------------------------------------------
-
-ARCHIVE="${APP}-${ASSET_VERSION}-${OS}-${ARCH}.tar.gz"
-CHECKSUMS_FILE="${APP}-${ASSET_VERSION}-checksums.txt"
-BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-info "Installing ${PROJECT} ${VERSION} (${OS}/${ARCH})..."
-info "Downloading ${ARCHIVE}..."
-curl -fsSL --retry 3 --retry-delay 2 -o "${TMP}/${ARCHIVE}" "${BASE_URL}/${ARCHIVE}" \
-  || fail "download failed - check that ${VERSION} exists"
-
-if tool=$(checksum_tool); then
-  if curl -fsSL --retry 3 --retry-delay 2 -o "${TMP}/${CHECKSUMS_FILE}" "${BASE_URL}/${CHECKSUMS_FILE}"; then
-    TARGET_CHECKSUM="${TMP}/${APP}-target-checksum.txt"
-    awk -v target="$ARCHIVE" '
-      NF >= 2 {
-        file = $NF
-        gsub(/^\*/, "", file)
-        if (file == target) {
-          print $1 "  " target
-        }
-      }
-    ' "${TMP}/${CHECKSUMS_FILE}" > "$TARGET_CHECKSUM"
-
-    [ -s "$TARGET_CHECKSUM" ] || fail "checksum entry for ${ARCHIVE} was not found in ${CHECKSUMS_FILE}"
-
-    info "Verifying release checksum..."
-    if [ "$tool" = "sha256sum" ]; then
-      (cd "$TMP" && sha256sum -c "$(basename "$TARGET_CHECKSUM")") || fail "checksum verification failed"
-    else
-      (cd "$TMP" && shasum -a 256 -c "$(basename "$TARGET_CHECKSUM")") || fail "checksum verification failed"
-    fi
-    ok "Checksum verified for ${ARCHIVE}"
-  else
-    fail "${CHECKSUMS_FILE} not found for ${VERSION}; refusing an unverified installation"
-  fi
+if [ -n "$INSTALL_SOURCE" ]; then
+  [ -x "$INSTALL_SOURCE" ] || fail "local install source is not executable: ${INSTALL_SOURCE}"
+  CANDIDATE="$INSTALL_SOURCE"
+  info "Installing locally built ${PROJECT} (${OS}/${ARCH})..."
 else
-  fail "sha256sum or shasum is required to verify the release"
+  VERSION="${VERSION:-}"
+  if [ -z "$VERSION" ]; then
+    info "Fetching latest ${PROJECT} release..."
+    if ! VERSION=$(curl -fsSL --retry 3 --retry-delay 2 "https://api.github.com/repos/${REPO}/releases/latest" \
+      | awk -F'"' '
+        /"tag_name"/ && tag == "" { tag = $4 }
+        END { if (tag != "") print tag }
+      '); then
+      fail "could not fetch latest release metadata; set VERSION=vX.Y.Z"
+    fi
+  fi
+  [ -n "$VERSION" ] || fail "could not determine latest release; set VERSION=vX.Y.Z"
+  VERSION=$(normalize_version "$VERSION")
+  ASSET_VERSION="${VERSION#v}"
+  ARCHIVE="${APP}-${ASSET_VERSION}-${OS}-${ARCH}.tar.gz"
+  CHECKSUMS_FILE="${APP}-${ASSET_VERSION}-checksums.txt"
+  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+
+  info "Installing ${PROJECT} ${VERSION} (${OS}/${ARCH})..."
+  info "Downloading ${ARCHIVE}..."
+  curl -fsSL --retry 3 --retry-delay 2 -o "${TMP}/${ARCHIVE}" "${BASE_URL}/${ARCHIVE}" \
+    || fail "download failed - check that ${VERSION} exists"
+
+  if tool=$(checksum_tool); then
+    if curl -fsSL --retry 3 --retry-delay 2 -o "${TMP}/${CHECKSUMS_FILE}" "${BASE_URL}/${CHECKSUMS_FILE}"; then
+      TARGET_CHECKSUM="${TMP}/${APP}-target-checksum.txt"
+      awk -v target="$ARCHIVE" '
+        NF >= 2 {
+          file = $NF
+          gsub(/^\*/, "", file)
+          if (file == target) {
+            print $1 "  " target
+          }
+        }
+      ' "${TMP}/${CHECKSUMS_FILE}" > "$TARGET_CHECKSUM"
+
+      [ -s "$TARGET_CHECKSUM" ] || fail "checksum entry for ${ARCHIVE} was not found in ${CHECKSUMS_FILE}"
+
+      info "Verifying release checksum..."
+      if [ "$tool" = "sha256sum" ]; then
+        (cd "$TMP" && sha256sum -c "$(basename "$TARGET_CHECKSUM")") || fail "checksum verification failed"
+      else
+        (cd "$TMP" && shasum -a 256 -c "$(basename "$TARGET_CHECKSUM")") || fail "checksum verification failed"
+      fi
+      ok "Checksum verified for ${ARCHIVE}"
+    else
+      fail "${CHECKSUMS_FILE} not found for ${VERSION}; refusing an unverified installation"
+    fi
+  else
+    fail "sha256sum or shasum is required to verify the release"
+  fi
+
+  tar -xzf "${TMP}/${ARCHIVE}" -C "$TMP" || fail "extraction failed"
+  [ -x "${TMP}/${APP}" ] || fail "archive did not contain an executable ${APP} binary"
+  CANDIDATE="${TMP}/${APP}"
 fi
 
-tar -xzf "${TMP}/${ARCHIVE}" -C "$TMP" || fail "extraction failed"
-[ -x "${TMP}/${APP}" ] || fail "archive did not contain an executable ${APP} binary"
+# --- Deployment scope resolution -------------------------------------------
+
+if { exec 3<>/dev/tty; } 2>/dev/null; then
+  RESOLVED_SCOPE=$("$CANDIDATE" service resolve-install-scope --scope "$INSTALL_SCOPE" --interactive <&3) \
+    || fail "could not resolve the installation scope"
+  exec 3>&-
+else
+  RESOLVED_SCOPE=$("$CANDIDATE" service resolve-install-scope --scope "$INSTALL_SCOPE") \
+    || fail "could not resolve the installation scope"
+fi
+
+if [ "$RESOLVED_SCOPE" = "system" ] && [ "$IS_ROOT" -ne 1 ]; then
+  need sudo
+  info "System scope selected; requesting sudo for system files and service management..."
+  sudo -v || fail "system installation requires sudo access"
+fi
+if [ "$RESOLVED_SCOPE" = "user" ] && [ "$IS_ROOT" -eq 1 ]; then
+  fail "user scope must be installed by that user; re-run without sudo with INSTALL_SCOPE=user"
+fi
+
+if [ -z "${INSTALL_DIR:-}" ]; then
+  if [ "$RESOLVED_SCOPE" = "system" ]; then
+    INSTALL_DIR="/usr/local/bin"
+  else
+    INSTALL_DIR="${USER_HOME}/.local/bin"
+  fi
+fi
+
+if [ "$OS" = "linux" ]; then
+  SYSTEM_SERVICE_PATH="/etc/systemd/system/sentinel.service"
+else
+  SYSTEM_SERVICE_PATH="/Library/LaunchDaemons/io.opusdomini.sentinel.plist"
+fi
+HAS_SYSTEM_SERVICE=0
+[ -f "$SYSTEM_SERVICE_PATH" ] && HAS_SYSTEM_SERVICE=1
 
 if [ "$RESOLVED_SCOPE" = "system" ]; then
-  CONFIG_PATH="/etc/sentinel/config.toml"
-  DATA_DIR="/var/lib/sentinel"
-  if [ ! -f "$CONFIG_PATH" ] && [ -f "/root/.sentinel/config.toml" ]; then
-    CONFIG_PATH="/root/.sentinel/config.toml"
-    DATA_DIR="/root/.sentinel"
+  if [ "$OS" = "linux" ]; then
+    CONFIG_PATH="/etc/sentinel/config.toml"
+  else
+    CONFIG_PATH="/Library/Preferences/io.opusdomini.sentinel.toml"
   fi
 else
   CONFIG_PATH="${USER_HOME}/.sentinel/config.toml"
-  DATA_DIR="${USER_HOME}/.sentinel"
 fi
 
-SENTINEL_DATA_DIR="$DATA_DIR" "${TMP}/${APP}" --config "$CONFIG_PATH" config validate --effective \
-  || fail "the downloaded Sentinel version rejected ${CONFIG_PATH}"
+if [ "$RESOLVED_SCOPE" = "system" ] && [ "$HAS_SYSTEM_SERVICE" -eq 1 ]; then
+  info "Checking the system deployment filesystem layout..."
+  run_for_scope "$CANDIDATE" service migrate --scope system \
+    || fail "system deployment migration failed before replacing the binary"
+fi
+
+if [ -f "$CONFIG_PATH" ]; then
+  run_for_scope "$CANDIDATE" --config "$CONFIG_PATH" config validate \
+    || fail "the downloaded Sentinel version rejected ${CONFIG_PATH}"
+fi
 
 # --- Binary installation ----------------------------------------------------
 
-mkdir -p "$INSTALL_DIR"
 TARGET="${INSTALL_DIR}/${APP}"
-SENTINEL_DATA_DIR="$DATA_DIR" "${TMP}/${APP}" --config "$CONFIG_PATH" service install --check --scope "$RESOLVED_SCOPE" --exec "$TARGET" \
+run_for_scope mkdir -p "$INSTALL_DIR"
+run_for_scope "$CANDIDATE" service install --check --scope "$RESOLVED_SCOPE" --exec "$TARGET" \
   || fail "installation preflight failed before replacing ${TARGET}"
 PREVIOUS_BINARY=""
 if [ -f "$TARGET" ]; then
@@ -345,24 +355,24 @@ fi
 rollback_install() {
   local reason="$1"
   if [ -n "$PREVIOUS_BINARY" ] && [ -f "$PREVIOUS_BINARY" ]; then
-    if ! cp -p "$PREVIOUS_BINARY" "$TARGET"; then
+    if ! run_for_scope cp -p "$PREVIOUS_BINARY" "$TARGET"; then
       fail "$reason; rollback also failed to restore the previous binary at ${TARGET}"
     fi
-    if "$TARGET" service restart --scope "$RESOLVED_SCOPE" >/dev/null 2>&1; then
+    if run_for_scope "$TARGET" service restart --scope "$RESOLVED_SCOPE" >/dev/null 2>&1; then
       fail "$reason; the previous binary was restored and restarted"
     fi
     fail "$reason; the previous binary was restored, but its service could not be restarted"
   fi
-  "$TARGET" service uninstall --scope "$RESOLVED_SCOPE" >/dev/null 2>&1 || true
-  rm -f "$TARGET" || fail "$reason; cleanup also failed to remove ${TARGET}"
+  run_for_scope "$TARGET" service uninstall --scope "$RESOLVED_SCOPE" >/dev/null 2>&1 || true
+  run_for_scope rm -f "$TARGET" || fail "$reason; cleanup also failed to remove ${TARGET}"
   fail "$reason; the incomplete binary installation was removed"
 }
 
 if command -v install >/dev/null 2>&1; then
-  install -m 0755 "${TMP}/${APP}" "$TARGET" || rollback_install "binary installation failed"
+  run_for_scope install -m 0755 "$CANDIDATE" "$TARGET" || rollback_install "binary installation failed"
 else
-  cp "${TMP}/${APP}" "$TARGET" || rollback_install "binary installation failed"
-  chmod 0755 "$TARGET" || rollback_install "setting binary permissions failed"
+  run_for_scope cp "$CANDIDATE" "$TARGET" || rollback_install "binary installation failed"
+  run_for_scope chmod 0755 "$TARGET" || rollback_install "setting binary permissions failed"
 fi
 ok "Installed ${PROJECT} to ${TARGET}"
 
@@ -393,14 +403,14 @@ esac
 
 # --- Final guidance ---------------------------------------------------------
 
-cat <<EOF
-
-${BOLD}${PROJECT} installed:${RESET}
-  binary:  ${TARGET}
-  service: ${APP}
-
-Next steps:
-  ${APP} service status
-  ${APP} doctor
-  Open http://127.0.0.1:4040 when the service is running.
-EOF
+SERVICE_SUMMARY="$APP"
+if is_false "$INSTALL_SERVICE"; then
+  SERVICE_SUMMARY="not installed (INSTALL_SERVICE=${INSTALL_SERVICE})"
+fi
+printf '\n%b%s installed:%b\n' "$BOLD" "$PROJECT" "$RESET"
+printf '  binary:  %s\n' "$TARGET"
+printf '  service: %s\n\n' "$SERVICE_SUMMARY"
+printf 'Next steps:\n'
+printf '  %s service status\n' "$APP"
+printf '  %s doctor\n' "$APP"
+printf '  Open http://127.0.0.1:4040 when the service is running.\n'

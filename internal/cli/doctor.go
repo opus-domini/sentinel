@@ -113,19 +113,39 @@ func runDoctor(app *App) error {
 		rows = append(rows, outputRow{Key: "service", Value: "not installed"})
 	default:
 		for _, s := range report {
+			canonical, canonicalErr := daemon.HasCanonicalPaths(s.Deployment)
+			if canonicalErr != nil {
+				issues = append(issues, fmt.Sprintf("inspect %s deployment layout: %v", s.Scope, canonicalErr))
+			}
 			rows = append(rows,
 				outputRow{Key: fmt.Sprintf("%s unit file", s.Scope), Value: s.ServicePath},
 				outputRow{Key: fmt.Sprintf("%s unit exists", s.Scope), Value: fmt.Sprintf("%t", s.UnitFileExists)},
 				outputRow{Key: fmt.Sprintf("%s binary", s.Scope), Value: s.BinaryPath},
 				outputRow{Key: fmt.Sprintf("%s config", s.Scope), Value: s.ConfigPath},
 				outputRow{Key: fmt.Sprintf("%s data dir", s.Scope), Value: s.DataDir},
+				outputRow{Key: fmt.Sprintf("%s canonical layout", s.Scope), Value: fmt.Sprintf("%t", canonical)},
 			)
+			if canonicalErr == nil && !canonical {
+				layout, layoutErr := daemon.LayoutForScope(s.Scope)
+				if layoutErr != nil {
+					issues = append(issues, fmt.Sprintf("resolve %s canonical layout: %v", s.Scope, layoutErr))
+				} else {
+					issues = append(issues, fmt.Sprintf(
+						"%s deployment uses noncanonical paths; run `sentinel service migrate --scope %s` (expected config %s, data %s, log %s)",
+						s.Scope,
+						s.Scope,
+						layout.ConfigPath,
+						layout.DataDir,
+						layout.LogPath,
+					))
+				}
+			}
 			if s.SystemctlAvailable {
 				rows = append(rows,
 					outputRow{Key: fmt.Sprintf("%s unit enabled", s.Scope), Value: s.EnabledState},
 					outputRow{Key: fmt.Sprintf("%s unit active", s.Scope), Value: s.ActiveState},
 				)
-				if s.UnitFileExists && s.ActiveState != "active" {
+				if s.UnitFileExists && s.ActiveState != stateActive {
 					issues = append(issues, fmt.Sprintf(
 						"%s service is installed but not active (state: %s)",
 						s.Scope,
