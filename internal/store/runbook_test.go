@@ -320,7 +320,7 @@ func TestDeleteOpsRunbook(t *testing.T) {
 			t.Fatalf("InsertOpsRunbook: %v", err)
 		}
 
-		if err := s.DeleteOpsRunbook(ctx, "delete.me"); err != nil {
+		if _, err := s.DeleteOpsRunbook(ctx, "delete.me", ""); err != nil {
 			t.Fatalf("DeleteOpsRunbook: %v", err)
 		}
 
@@ -332,16 +332,83 @@ func TestDeleteOpsRunbook(t *testing.T) {
 	})
 
 	t.Run("delete nonexistent returns ErrNoRows", func(t *testing.T) {
-		err := s.DeleteOpsRunbook(ctx, "ghost.runbook")
+		_, err := s.DeleteOpsRunbook(ctx, "ghost.runbook", "")
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("delete empty ID returns ErrNoRows", func(t *testing.T) {
-		err := s.DeleteOpsRunbook(ctx, "")
+		_, err := s.DeleteOpsRunbook(ctx, "", "")
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
+		}
+	})
+
+	t.Run("requires exact confirmation name", func(t *testing.T) {
+		rb, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{ID: "confirm.delete", Name: "Exact Name"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DeleteOpsRunbook(ctx, rb.ID, "exact name"); !errors.Is(err, ErrOpsRunbookNameMismatch) {
+			t.Fatalf("error = %v, want ErrOpsRunbookNameMismatch", err)
+		}
+		if _, err := s.GetOpsRunbook(ctx, rb.ID); err != nil {
+			t.Fatalf("runbook was deleted after confirmation mismatch: %v", err)
+		}
+	})
+
+	t.Run("refuses active execution", func(t *testing.T) {
+		rb, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{ID: "active.delete", Name: "Active"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.CreateOpsRunbookRunWithParams(ctx, rb.ID, time.Now().UTC(), nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DeleteOpsRunbook(ctx, rb.ID, rb.Name); !errors.Is(err, ErrOpsRunbookActive) {
+			t.Fatalf("error = %v, want ErrOpsRunbookActive", err)
+		}
+	})
+
+	t.Run("deletes schedules and preserves run history", func(t *testing.T) {
+		rb, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{ID: "cascade.delete", Name: "Cascade"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.InsertOpsSchedule(ctx, OpsScheduleWrite{
+			RunbookID: rb.ID, Name: "Cascade schedule", ScheduleType: "cron", CronExpr: "0 * * * *", Timezone: "UTC",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		run, err := s.CreateOpsRunbookRunWithParams(ctx, rb.ID, time.Now().UTC(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+			RunID: run.ID, Status: opsRunbookStatusFailed, Error: "finished", FinishedAt: time.Now().UTC().Format(time.RFC3339),
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		deleted, err := s.DeleteOpsRunbook(ctx, rb.ID, rb.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if deleted.DeletedSchedules != 1 || deleted.Name != rb.Name {
+			t.Fatalf("DeleteOpsRunbook() = %#v", deleted)
+		}
+		if _, err := s.GetOpsRunbookRun(ctx, run.ID); err != nil {
+			t.Fatalf("historical run was deleted: %v", err)
+		}
+		schedules, err := s.ListOpsSchedules(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, schedule := range schedules {
+			if schedule.RunbookID == rb.ID {
+				t.Fatalf("schedule %q was not deleted", schedule.ID)
+			}
 		}
 	})
 }

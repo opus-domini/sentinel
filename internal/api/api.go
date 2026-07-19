@@ -113,19 +113,8 @@ type presenceRepo interface {
 	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
 }
 
-type opsRunbookRepo interface {
-	ListOpsRunbooks(ctx context.Context) ([]store.OpsRunbook, error)
-	InsertOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
-	UpdateOpsRunbook(ctx context.Context, w store.OpsRunbookWrite) (store.OpsRunbook, error)
-	DeleteOpsRunbook(ctx context.Context, id string) error
-	// GetOpsRunbook is provided by runbook.Repo (embedded in handlerRepo).
-}
-
 type opsJobRepo interface {
-	ListOpsRunbookRuns(ctx context.Context, limit int) ([]store.OpsRunbookRun, error)
 	CreateOpsRunbookRun(ctx context.Context, runbookID string, at time.Time) (store.OpsRunbookRun, error)
-	CreateOpsRunbookRunWithParams(ctx context.Context, runbookID string, at time.Time, params map[string]string) (store.OpsRunbookRun, error)
-	// GetOpsRunbookRun is provided by runbook.Repo (embedded in handlerRepo).
 	DeleteOpsRunbookRun(ctx context.Context, runID string) error
 }
 
@@ -134,7 +123,6 @@ type opsScheduleRepo interface {
 	InsertOpsSchedule(ctx context.Context, w store.OpsScheduleWrite) (store.OpsSchedule, error)
 	UpdateOpsSchedule(ctx context.Context, w store.OpsScheduleWrite) (store.OpsSchedule, error)
 	DeleteOpsSchedule(ctx context.Context, id string) error
-	DeleteSchedulesByRunbook(ctx context.Context, runbookID string) error
 	UpdateScheduleAfterRun(ctx context.Context, id, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
 	UpdateScheduleLastRun(ctx context.Context, id, lastRunAt, lastRunStatus string) error
 }
@@ -211,7 +199,6 @@ type handlerRepo interface {
 	watchtowerReadRepo
 	watchtowerMarkRepo
 	presenceRepo
-	opsRunbookRepo
 	opsJobRepo
 	opsScheduleRepo
 	customServicesRepo
@@ -249,16 +236,12 @@ type Handler struct {
 	// Populated on session create/launch and from session presets.
 	sessionUsers sync.Map // map[sessionName]string
 
-	// runCtx is the parent context for fire-and-forget goroutines (runbook
-	// execution). Cancelled during Shutdown to signal in-flight runs.
+	// runCtx is the parent context for scheduled runbook executions. Cancelled
+	// during Shutdown to signal in-flight scheduled runs.
 	runCtx    context.Context
 	runCancel context.CancelFunc
 	wg        sync.WaitGroup
-
-	// runSem limits the number of concurrent manual runbook executions.
-	// A non-blocking send is attempted; if the channel is full the handler
-	// returns HTTP 429 Too Many Requests.
-	runSem chan struct{}
+	runbooks  *runbook.Manager
 }
 
 const (
@@ -272,13 +255,7 @@ const (
 	scheduleTypeOnce             = "once"
 	stepTypeApproval             = "approval"
 	defaultTimezoneUTC           = "UTC"
-	urlSchemeHTTP                = "http"
-	urlSchemeHTTPS               = "https"
 )
-
-func isHTTPOrHTTPSScheme(scheme string) bool {
-	return scheme == urlSchemeHTTP || scheme == urlSchemeHTTPS
-}
 
 func marshalMetadata(v any) string {
 	b, err := json.Marshal(v)
@@ -321,8 +298,8 @@ func Register(
 		userSwitchMethod: tmux.UserSwitchMethod,
 		runCtx:           runCtx,
 		runCancel:        runCancel,
-		runSem:           make(chan struct{}, runbookMaxConcurrent),
 	}
+	h.runbooks = runbook.NewManager(st, h.emitEvent, runbookMaxConcurrent)
 	h.registerMetaRoutes(mux)
 	h.registerTmuxRoutes(mux)
 	h.registerServicesRoutes(mux)
@@ -341,6 +318,9 @@ func (h *Handler) Shutdown(ctx context.Context) {
 	if h.runCancel != nil {
 		h.runCancel()
 	}
+	if h.runbooks != nil {
+		h.runbooks.Shutdown(ctx)
+	}
 	done := make(chan struct{})
 	go func() {
 		h.wg.Wait()
@@ -350,6 +330,14 @@ func (h *Handler) Shutdown(ctx context.Context) {
 	case <-done:
 	case <-ctx.Done():
 	}
+}
+
+// RunbookManager returns the shared HTTP/MCP runbook control plane.
+func (h *Handler) RunbookManager() *runbook.Manager {
+	if h == nil {
+		return nil
+	}
+	return h.runbooks
 }
 
 func (h *Handler) emit(eventType string, payload map[string]any) {

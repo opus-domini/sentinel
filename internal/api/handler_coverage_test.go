@@ -321,7 +321,7 @@ func TestRunOpsRunbookSuccessWithParameters(t *testing.T) {
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want 202; body=%s", w.Code, w.Body.String())
 	}
-	h.wg.Wait()
+	h.runbooks.WaitIdle()
 }
 
 // ---------------------------------------------------------------------------

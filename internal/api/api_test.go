@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
+	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -295,15 +296,27 @@ func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 	}
 	runCtx, runCancel := context.WithCancel(context.Background())
 	t.Cleanup(runCancel)
-	return &Handler{
+	h := &Handler{
 		guard:     guard,
 		tmux:      tm,
 		ops:       &mockOpsControlPlane{},
 		repo:      st,
 		runCtx:    runCtx,
 		runCancel: runCancel,
-		runSem:    make(chan struct{}, 5),
-	}, st
+	}
+	h.runbooks = runbook.NewManager(st, h.emitEvent, 5)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		h.runbooks.Shutdown(ctx)
+	})
+	return h, st
+}
+
+func replaceRunbookManager(t *testing.T, h *Handler, st *store.Store, maxConcurrent int) {
+	t.Helper()
+	h.runbooks.Shutdown(context.Background())
+	h.runbooks = runbook.NewManager(st, h.emitEvent, maxConcurrent)
 }
 
 func TestRegisterRoutesThroughMux(t *testing.T) {
@@ -4455,7 +4468,8 @@ func TestUpdateOpsRunbookNotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/api/ops/runbooks/nonexistent", strings.NewReader(`{
-		"name":"test"
+		"name":"test",
+		"steps":[{"type":"run","title":"test","command":"true"}]
 	}`))
 	r.SetPathValue("runbook", "nonexistent")
 	h.updateOpsRunbook(w, r)
@@ -6131,7 +6145,7 @@ func TestRunOpsRunbookSemaphoreAccepted(t *testing.T) {
 	}
 
 	// Wait for the background goroutine to finish so the semaphore is released.
-	h.wg.Wait()
+	h.runbooks.WaitIdle()
 }
 
 func TestRunOpsRunbookSemaphoreFull(t *testing.T) {
@@ -6139,13 +6153,12 @@ func TestRunOpsRunbookSemaphoreFull(t *testing.T) {
 
 	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
-	// Replace the semaphore with capacity 1 for this test.
-	h.runSem = make(chan struct{}, 1)
+	replaceRunbookManager(t, h, st, 1)
 	ctx := context.Background()
 
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
 		Name:  "sem-full-rb",
-		Steps: []store.OpsRunbookStep{{Type: "run", Title: "echo", Command: "echo ok"}},
+		Steps: []store.OpsRunbookStep{{Type: "run", Title: "wait", Command: "sleep 1"}},
 	})
 	if err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
@@ -6181,7 +6194,7 @@ func TestRunOpsRunbookSemaphoreFull(t *testing.T) {
 	}
 
 	// Wait for the background goroutine to finish so the semaphore is released.
-	h.wg.Wait()
+	h.runbooks.WaitIdle()
 }
 
 func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
@@ -6189,8 +6202,7 @@ func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
 
 	h, st := newTestHandler(t, nil)
 	h.events = events.NewHub()
-	// Use capacity 1 to verify the slot is released after goroutine completes.
-	h.runSem = make(chan struct{}, 1)
+	replaceRunbookManager(t, h, st, 1)
 	ctx := context.Background()
 
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
@@ -6211,7 +6223,7 @@ func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
 	}
 
 	// Wait for goroutine to finish — this should release the semaphore.
-	h.wg.Wait()
+	h.runbooks.WaitIdle()
 
 	// Second request should now succeed because the slot was released.
 	w2 := httptest.NewRecorder()
@@ -6223,14 +6235,14 @@ func TestRunOpsRunbookSemaphoreReleasedAfterCompletion(t *testing.T) {
 		t.Fatalf("second request after release: status = %d, want 202; body=%s", w2.Code, w2.Body.String())
 	}
 
-	h.wg.Wait()
+	h.runbooks.WaitIdle()
 }
 
 func TestRunOpsRunbookSemaphoreReleasedOnNotFound(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil)
-	h.runSem = make(chan struct{}, 1)
+	h, st := newTestHandler(t, nil)
+	replaceRunbookManager(t, h, st, 1)
 
 	// Request with a non-existent runbook ID — should acquire then release.
 	w := httptest.NewRecorder()
@@ -6242,14 +6254,21 @@ func TestRunOpsRunbookSemaphoreReleasedOnNotFound(t *testing.T) {
 		t.Fatalf("status = %d, want 404", w.Code)
 	}
 
-	// The semaphore slot should have been released, so we can acquire it.
-	select {
-	case h.runSem <- struct{}{}:
-		// Good — slot is available.
-		<-h.runSem
-	default:
-		t.Fatal("semaphore was not released after not-found error")
+	rb, err := st.InsertOpsRunbook(context.Background(), store.OpsRunbookWrite{
+		Name:  "after-not-found",
+		Steps: []store.OpsRunbookStep{{Type: "run", Title: "true", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
+	w2 := httptest.NewRecorder()
+	r2 := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+rb.ID+"/run", nil)
+	r2.SetPathValue("runbook", rb.ID)
+	h.runOpsRunbook(w2, r2)
+	if w2.Code != http.StatusAccepted {
+		t.Fatalf("request after not found: status = %d, want 202; body=%s", w2.Code, w2.Body.String())
+	}
+	h.runbooks.WaitIdle()
 }
 
 // ---------------------------------------------------------------------------

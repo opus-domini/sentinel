@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/tmux"
 	"github.com/opus-domini/sentinel/internal/validate"
@@ -32,6 +33,7 @@ type tools struct {
 	sessionUser         func(string) string
 	knownSessionUsers   func() []string
 	registerSessionUser func(string, string)
+	runbooks            *runbook.Manager
 }
 
 type tmuxService interface {
@@ -204,6 +206,9 @@ func (t *tools) register(server *mcp.Server) {
 		Description: "Detach an MCP control client without stopping or killing the tmux session.",
 		Annotations: closedWorldAnnotations(false, false, false),
 	}, t.detach)
+	if t.runbooks != nil {
+		t.registerRunbookTools(server)
+	}
 }
 
 func (t *tools) listSessions(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, listSessionsOutput, error) {

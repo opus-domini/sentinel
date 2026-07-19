@@ -96,6 +96,13 @@ type OpsRunbookWrite struct {
 	WebhookURL  string
 }
 
+// OpsRunbookDeleteResult describes an atomic runbook deletion.
+type OpsRunbookDeleteResult struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	DeletedSchedules int64  `json:"deletedSchedules"`
+}
+
 // OpsRunbookRunUpdate represents ops runbook run update data.
 type OpsRunbookRunUpdate struct {
 	RunID          string
@@ -115,6 +122,14 @@ type OpsRunbookRunUpdate struct {
 // ErrOpsRunbookRunConflict is returned by UpdateOpsRunbookRun when a guarded
 // transition (FromStatus set) matches no row because the run already moved on.
 var ErrOpsRunbookRunConflict = errors.New("ops runbook run status conflict")
+
+// ErrOpsRunbookActive is returned when a queued, running, or approval-paused
+// execution prevents deletion of its runbook definition.
+var ErrOpsRunbookActive = errors.New("ops runbook has an active execution")
+
+// ErrOpsRunbookNameMismatch is returned when destructive confirmation does
+// not match the persisted runbook name.
+var ErrOpsRunbookNameMismatch = errors.New("ops runbook confirmation name does not match")
 
 // ListOpsRunbooks lists ops runbooks.
 func (s *Store) ListOpsRunbooks(ctx context.Context) ([]OpsRunbook, error) {
@@ -471,24 +486,54 @@ func (s *Store) UpdateOpsRunbook(ctx context.Context, w OpsRunbookWrite) (OpsRun
 	return s.getOpsRunbookByID(ctx, id)
 }
 
-// DeleteOpsRunbook deletes ops runbook.
-func (s *Store) DeleteOpsRunbook(ctx context.Context, id string) error {
+// DeleteOpsRunbook atomically removes a runbook and its schedules. Historical
+// runs remain available. When expectedName is non-empty it must exactly match
+// the persisted name.
+func (s *Store) DeleteOpsRunbook(ctx context.Context, id, expectedName string) (OpsRunbookDeleteResult, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return sql.ErrNoRows
+		return OpsRunbookDeleteResult{}, sql.ErrNoRows
 	}
-	result, err := s.db.ExecContext(ctx, "DELETE FROM ops_runbooks WHERE id = ?", id)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return OpsRunbookDeleteResult{}, err
 	}
-	affected, err := result.RowsAffected()
+	defer func() { _ = tx.Rollback() }()
+
+	var name string
+	if err := tx.QueryRowContext(ctx, "SELECT name FROM ops_runbooks WHERE id = ?", id).Scan(&name); err != nil {
+		return OpsRunbookDeleteResult{}, err
+	}
+	if expectedName != "" && expectedName != name {
+		return OpsRunbookDeleteResult{}, fmt.Errorf("%w: expected %q", ErrOpsRunbookNameMismatch, name)
+	}
+
+	var active int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM ops_runbook_runs
+		WHERE runbook_id = ? AND status IN (?, ?, ?)`,
+		id, opsRunbookStatusQueued, opsRunbookStatusRunning, OpsRunbookStatusWaitingApproval,
+	).Scan(&active); err != nil {
+		return OpsRunbookDeleteResult{}, err
+	}
+	if active > 0 {
+		return OpsRunbookDeleteResult{}, ErrOpsRunbookActive
+	}
+
+	schedules, err := tx.ExecContext(ctx, "DELETE FROM ops_schedules WHERE runbook_id = ?", id)
 	if err != nil {
-		return err
+		return OpsRunbookDeleteResult{}, err
 	}
-	if affected == 0 {
-		return sql.ErrNoRows
+	deletedSchedules, err := schedules.RowsAffected()
+	if err != nil {
+		return OpsRunbookDeleteResult{}, err
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, "DELETE FROM ops_runbooks WHERE id = ?", id); err != nil {
+		return OpsRunbookDeleteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return OpsRunbookDeleteResult{}, err
+	}
+	return OpsRunbookDeleteResult{ID: id, Name: name, DeletedSchedules: deletedSchedules}, nil
 }
 
 // UpdateOpsRunbookRun updates ops runbook run.

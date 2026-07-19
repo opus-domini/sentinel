@@ -7,7 +7,7 @@
 
 - Features
   - [Tmux Workspace](/features/tmux-workspace.md)
-  - [MCP Tmux Control](/features/mcp.md)
+  - [MCP Control](/features/mcp.md)
   - [Multi-User Sessions](/features/multi-user-sessions.md)
   - [Ops Control Plane](/features/ops-control-plane.md)
   - [Services](/features/services.md)

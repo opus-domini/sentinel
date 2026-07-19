@@ -63,7 +63,7 @@ func TestApproveOpsRunbookRunResumesRun(t *testing.T) {
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("approve status = %d, want 202; body=%s", w.Code, w.Body.String())
 	}
-	h.wg.Wait()
+	h.runbooks.WaitIdle()
 
 	updated, err := st.GetOpsRunbookRun(context.Background(), run.ID)
 	if err != nil {
@@ -101,7 +101,7 @@ func TestApproveOpsRunbookRunResumesFollowingSteps(t *testing.T) {
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("approve status = %d, want 202; body=%s", w.Code, w.Body.String())
 	}
-	h.wg.Wait()
+	h.runbooks.WaitIdle()
 
 	updated, err := st.GetOpsRunbookRun(context.Background(), run.ID)
 	if err != nil {

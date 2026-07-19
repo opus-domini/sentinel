@@ -7,6 +7,21 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
+// ValidateInputParams rejects misspelled or otherwise undeclared parameter
+// names before values are resolved with defaults.
+func ValidateInputParams(defs []store.RunbookParameter, values map[string]string) error {
+	defined := make(map[string]struct{}, len(defs))
+	for _, parameter := range defs {
+		defined[parameter.Name] = struct{}{}
+	}
+	for name := range values {
+		if _, ok := defined[name]; !ok {
+			return fmt.Errorf("parameter %q is not defined by this runbook", name)
+		}
+	}
+	return nil
+}
+
 // ShellEscape wraps a string in single quotes and escapes any embedded
 // single quotes. This prevents shell injection when substituting user-
 // provided parameter values into commands.
@@ -19,12 +34,15 @@ func ShellEscape(s string) string {
 // missing required parameter.
 func ValidateParams(defs []store.RunbookParameter, values map[string]string) error {
 	for _, p := range defs {
-		if !p.Required {
+		value, ok := values[p.Name]
+		if p.Required && (!ok || strings.TrimSpace(value) == "") {
+			return fmt.Errorf("required parameter %q is missing", p.Name)
+		}
+		if !ok || value == "" {
 			continue
 		}
-		v, ok := values[p.Name]
-		if !ok || strings.TrimSpace(v) == "" {
-			return fmt.Errorf("required parameter %q is missing", p.Name)
+		if err := validateParameterValue(p, value); err != nil {
+			return err
 		}
 	}
 	return nil

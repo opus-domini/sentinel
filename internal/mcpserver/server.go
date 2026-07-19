@@ -1,4 +1,4 @@
-// Package mcpserver exposes Sentinel's tmux control plane over MCP.
+// Package mcpserver exposes Sentinel's tmux and runbook control planes over MCP.
 package mcpserver
 
 import (
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
@@ -19,6 +20,7 @@ type Options struct {
 	SessionUser         func(string) string
 	KnownSessionUsers   func() []string
 	RegisterSessionUser func(string, string)
+	Runbooks            *runbook.Manager
 }
 
 // Server owns the official MCP handler and tmux attachment manager.
@@ -41,6 +43,7 @@ func New(state *State, guard *security.Guard, opts Options) *Server {
 		sessionUser:         opts.SessionUser,
 		knownSessionUsers:   opts.KnownSessionUsers,
 		registerSessionUser: opts.RegisterSessionUser,
+		runbooks:            opts.Runbooks,
 	}
 	version := strings.TrimSpace(opts.Version)
 	if version == "" {

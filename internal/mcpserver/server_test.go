@@ -5,12 +5,15 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/store"
 )
 
 func TestToolErrorAddsOperationContext(t *testing.T) {
@@ -50,10 +53,17 @@ func TestServerAvailabilityAndBearerAuthentication(t *testing.T) {
 }
 
 func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "sentinel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	runbooks := runbook.NewManager(st, nil, 5)
+	t.Cleanup(func() { runbooks.Shutdown(context.Background()) })
 	server := New(
 		NewState(true, true),
 		security.New("shared-token", nil, security.CookieSecureAuto),
-		Options{Version: "test"},
+		Options{Version: "test", Runbooks: runbooks},
 	)
 	t.Cleanup(func() { server.Shutdown(context.Background()) })
 	httpServer := httptest.NewServer(server)
@@ -86,6 +96,14 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	}
 	slices.Sort(got)
 	want := []string{
+		"runbook_create",
+		"runbook_delete",
+		"runbook_get",
+		"runbook_get_run",
+		"runbook_list",
+		"runbook_list_runs",
+		"runbook_run",
+		"runbook_wait",
 		"tmux_attach",
 		"tmux_create_session",
 		"tmux_detach",

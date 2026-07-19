@@ -121,6 +121,7 @@ func Serve(version string) int {
 		SessionUser:         apiHandler.SessionUser,
 		KnownSessionUsers:   apiHandler.KnownSessionUsers,
 		RegisterSessionUser: apiHandler.RegisterSessionUser,
+		Runbooks:            apiHandler.RunbookManager(),
 	})
 	mux.Handle("POST /mcp", mcpServer)
 	mux.Handle("GET /mcp", mcpServer)

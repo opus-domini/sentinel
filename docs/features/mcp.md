@@ -1,8 +1,9 @@
-# MCP Tmux Control
+# MCP Control
 
-Sentinel can expose its tmux control plane as a Streamable HTTP MCP server at
-`/mcp`. This is intended for agents that need to work inside a remote machine's
-existing tmux sessions without SSH access.
+Sentinel can expose its tmux and runbook control planes as a Streamable HTTP MCP
+server at `/mcp`. This is intended for agents that need to work inside a remote
+machine's existing tmux sessions or execute its operational runbooks without SSH
+access.
 
 The server uses the official
 [Model Context Protocol Go SDK](https://github.com/modelcontextprotocol/go-sdk)
@@ -91,8 +92,44 @@ uses the same `sentinel-<hostname>` identifier in every client format.
 | `tmux_interact` | Send ordered literal-text and named-key actions, then wait and capture the pane |
 | `tmux_read` | Long-poll incremental control events after a cursor |
 | `tmux_detach` | Release the MCP attachment without killing the tmux session |
+| `runbook_list` | List runbooks, parameters, step counts, and approval requirements |
+| `runbook_get` | Read a complete runbook definition |
+| `runbook_create` | Validate and create a runbook without executing it |
+| `runbook_delete` | Delete a confirmed inactive runbook and its schedules while preserving run history |
+| `runbook_run` | Start a runbook with typed parameter values |
+| `runbook_get_run` | Inspect one execution with bounded trailing step output |
+| `runbook_wait` | Wait for progress, completion, or a human approval boundary |
+| `runbook_list_runs` | List recent executions with bounded trailing step output |
 
 There is deliberately no raw tmux-command tool.
+
+There is also deliberately no MCP tool to update a runbook or approve/reject an
+approval step. Agents can create a new explicit definition, but an approval step
+remains a human decision in the Sentinel UI. `runbook_wait` returns immediately
+when a run reaches `waiting_approval` so the agent can report that boundary
+instead of hanging.
+
+## Runbook Model
+
+A typical agent flow is:
+
+1. Call `runbook_list`, then `runbook_get` when the full definition is needed.
+2. Call `runbook_run` with values matching the runbook's typed parameters.
+3. Call `runbook_wait`, passing the last `completedSteps` value as
+   `afterCompletedSteps` when following a longer execution.
+4. Continue waiting until the status is `succeeded`, `failed`, or
+   `waiting_approval`.
+
+`runbook_wait` is a bounded long poll capped at 20 seconds. `runbook_get_run`,
+`runbook_wait`, and `runbook_list_runs` return only the trailing portion of each
+step's output (4,000 characters by default, configurable up to 32,768) and mark
+truncated output with `outputTruncated: true`.
+
+`runbook_create` defaults `enabled` to `true`, performs the same definition
+validation as the HTTP API, and returns non-blocking shell syntax warnings.
+`runbook_delete` requires `confirmName` to exactly match the persisted name,
+refuses deletion while an execution is queued, running, or waiting for approval,
+and preserves historical executions.
 
 ## Interaction Model
 
