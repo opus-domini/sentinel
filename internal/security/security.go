@@ -398,13 +398,13 @@ func (g *Guard) requestUsesTLS(r *http.Request) bool {
 }
 
 func (g *Guard) trustsRemote(remoteAddr string) bool {
-	if len(g.trustedProxies) == 0 {
-		return false
-	}
 	host := remoteHost(remoteAddr)
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return false
+	}
+	if ip.IsLoopback() {
+		return true
 	}
 	for _, p := range g.trustedProxies {
 		if p.ip != nil && p.ip.Equal(ip) || p.cidr != nil && p.cidr.Contains(ip) {

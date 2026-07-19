@@ -396,7 +396,7 @@ func TestConnectionCheckReturnsActionableUntrustedProxyError(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "http://sentinel.example/api/connection/check", nil)
 	r.Host = "sentinel.example"
-	r.RemoteAddr = "127.0.0.1:54321"
+	r.RemoteAddr = "192.0.2.10:54321"
 	r.Header.Set("Origin", "https://sentinel.example")
 	r.Header.Set("X-Forwarded-Proto", "https")
 
@@ -421,13 +421,13 @@ func TestConnectionCheckReturnsActionableUntrustedProxyError(t *testing.T) {
 	if body.Error.Code != "UNTRUSTED_PROXY" {
 		t.Fatalf("code = %q", body.Error.Code)
 	}
-	if body.Error.Message != `HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies` {
+	if body.Error.Message != `HTTPS proxy "192.0.2.10" is not trusted; add it to server.trusted_proxies` {
 		t.Fatalf("message = %q", body.Error.Message)
 	}
 	if body.Error.Details.ConfigPath != "/root/.sentinel/config.toml" {
 		t.Fatalf("configPath = %q", body.Error.Details.ConfigPath)
 	}
-	if body.Error.Details.Configuration != "[server]\ntrusted_proxies = [\"127.0.0.1\"]" {
+	if body.Error.Details.Configuration != "[server]\ntrusted_proxies = [\"192.0.2.10\"]" {
 		t.Fatalf("configuration = %q", body.Error.Details.Configuration)
 	}
 }

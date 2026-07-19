@@ -144,7 +144,7 @@ func TestCheckOriginDescribesUntrustedHTTPSProxy(t *testing.T) {
 	guard := NewWithOptions("", nil, CookieSecureAuto, MultiUserConfig{}, nil)
 	req := httptest.NewRequest(http.MethodPost, "http://sentinel.example/api/connection/check", nil)
 	req.Host = "sentinel.example"
-	req.RemoteAddr = "127.0.0.1:43210"
+	req.RemoteAddr = "192.0.2.10:43210"
 	req.Header.Set("Origin", "https://sentinel.example")
 	req.Header.Set("X-Forwarded-Proto", "https")
 
@@ -156,11 +156,27 @@ func TestCheckOriginDescribesUntrustedHTTPSProxy(t *testing.T) {
 	if !errors.As(err, &originErr) {
 		t.Fatalf("CheckOrigin() error type = %T, want *OriginError", err)
 	}
-	if originErr.Origin != "https://sentinel.example" || originErr.Proxy != "127.0.0.1" {
+	if originErr.Origin != "https://sentinel.example" || originErr.Proxy != "192.0.2.10" {
 		t.Fatalf("origin error = %+v", originErr)
 	}
-	if originErr.Message != `HTTPS proxy "127.0.0.1" is not trusted; add it to server.trusted_proxies` {
+	if originErr.Message != `HTTPS proxy "192.0.2.10" is not trusted; add it to server.trusted_proxies` {
 		t.Fatalf("message = %q", originErr.Message)
+	}
+}
+
+func TestCheckOriginTrustsLoopbackHTTPSProxyByDefault(t *testing.T) {
+	t.Parallel()
+
+	guard := NewWithOptions("", nil, CookieSecureAuto, MultiUserConfig{}, nil)
+	for _, remoteAddr := range []string{"127.0.0.1:43210", "[::1]:43210"} {
+		req := httptest.NewRequest(http.MethodPost, "http://sentinel.example/api/connection/check", nil)
+		req.Host = "sentinel.example"
+		req.RemoteAddr = remoteAddr
+		req.Header.Set("Origin", "https://sentinel.example")
+		req.Header.Set("X-Forwarded-Proto", "https")
+		if err := guard.CheckOrigin(req); err != nil {
+			t.Errorf("CheckOrigin() with remote %s error = %v", remoteAddr, err)
+		}
 	}
 }
 
