@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.9](https://github.com/opus-domini/sentinel/compare/v0.10.8...v0.10.9) (2026-07-19)
+
+
+### Features
+
+* **mcp:** expose runbook control plane ([57ac072](https://github.com/opus-domini/sentinel/commit/57ac0721bc5835404af9f333cba26936b621c6e9))
+
 ## [0.10.8](https://github.com/opus-domini/sentinel/compare/v0.10.7...v0.10.8) (2026-07-19)
 
 
