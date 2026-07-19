@@ -412,5 +412,11 @@ printf '  binary:  %s\n' "$TARGET"
 printf '  service: %s\n\n' "$SERVICE_SUMMARY"
 printf 'Next steps:\n'
 printf '  %s service status\n' "$APP"
-printf '  %s doctor\n' "$APP"
+if [ "$RESOLVED_SCOPE" = "system" ]; then
+  printf '  sudo %s doctor\n' "$APP"
+  printf '  sudo %s update apply --scope system\n' "$APP"
+else
+  printf '  %s doctor\n' "$APP"
+  printf '  %s update apply --scope user\n' "$APP"
+fi
 printf '  Open http://127.0.0.1:4040 when the service is running.\n'

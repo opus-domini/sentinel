@@ -111,6 +111,13 @@ to run as root. A fresh non-interactive install must set
 requests `sudo` only for system files and service management. User scope never
 runs through `sudo`.
 
+The printed next steps retain the resolved scope. System deployments use
+`sudo sentinel doctor` and `sudo sentinel update apply --scope system`; user
+deployments use the corresponding unprivileged user commands. Systemd units
+under `/etc/systemd/system` are world-readable (`0644`) so a normal user can
+inspect deployment status without gaining access to the root-only Sentinel
+configuration.
+
 The downloaded or locally built Go CLI is the single source of truth for scope
 discovery, conflicts and the interactive prompt. The shell installer only
 downloads/verifies artifacts and executes the resulting plan. Conflicts are

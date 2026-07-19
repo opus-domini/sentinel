@@ -164,7 +164,7 @@ func InstallUser(opts InstallUserOptions) error {
 	}
 	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir, layout.LogPath)
 	wasActive := isSystemctlUserActive("sentinel")
-	replacement, err := replaceManagedFile(servicePath, []byte(unit), 0o600)
+	replacement, err := replaceManagedFile(servicePath, []byte(unit), systemdUnitFileMode(scope))
 	if err != nil {
 		return fmt.Errorf("write user service: %w", err)
 	}
@@ -280,12 +280,12 @@ func installUserAutoUpdateLinuxUser(cfg installUserAutoUpdateConfig, opts Instal
 
 	serviceUnitText := renderUserAutoUpdateUnit(cfg.execPath, cfg.configPath, cfg.dataDir, cfg.serviceUnit, cfg.scope)
 	wasActive := isSystemctlUserActive("sentinel-updater.timer")
-	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), 0o600)
+	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), systemdUnitFileMode(cfg.scope))
 	if err != nil {
 		return fmt.Errorf("write updater service: %w", err)
 	}
 	timerUnitText := renderUserAutoUpdateTimer(cfg.onCalendar, cfg.randomizedDelay)
-	timerReplacement, err := replaceManagedFile(timerPath, []byte(timerUnitText), 0o600)
+	timerReplacement, err := replaceManagedFile(timerPath, []byte(timerUnitText), systemdUnitFileMode(cfg.scope))
 	if err != nil {
 		return rollbackManagedFiles(fmt.Errorf("write updater timer: %w", err), serviceReplacement)
 	}
@@ -645,6 +645,13 @@ func normalizeLinuxAutoUpdateScope(raw string) (string, error) {
 	}
 }
 
+func systemdUnitFileMode(scope string) os.FileMode {
+	if scope == managerScopeSystem {
+		return 0o644
+	}
+	return 0o600
+}
+
 func installSystemServiceLinux(opts InstallUserOptions) error {
 	if os.Geteuid() != 0 {
 		return errors.New("system service install requires root privileges")
@@ -665,7 +672,7 @@ func installSystemServiceLinux(opts InstallUserOptions) error {
 	}
 	unit := renderUserUnit(execPath, opts.ConfigPath, opts.DataDir, layout.LogPath)
 	wasActive := isSystemctlSystemActive("sentinel")
-	replacement, err := replaceManagedFile(systemUnitPath, []byte(unit), 0o600)
+	replacement, err := replaceManagedFile(systemUnitPath, []byte(unit), systemdUnitFileMode(managerScopeSystem))
 	if err != nil {
 		return fmt.Errorf("write system service: %w", err)
 	}
@@ -733,12 +740,12 @@ func installSystemAutoUpdateLinux(execPath, configPath, dataDir, serviceUnit, on
 
 	serviceUnitText := renderUserAutoUpdateUnit(execPath, configPath, dataDir, serviceUnit, managerScopeSystem)
 	wasActive := isSystemctlSystemActive("sentinel-updater.timer")
-	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), 0o600)
+	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), systemdUnitFileMode(managerScopeSystem))
 	if err != nil {
 		return fmt.Errorf("write updater system service: %w", err)
 	}
 	timerUnitText := renderUserAutoUpdateTimer(onCalendar, randomizedDelay)
-	timerReplacement, err := replaceManagedFile(timerPath, []byte(timerUnitText), 0o600)
+	timerReplacement, err := replaceManagedFile(timerPath, []byte(timerUnitText), systemdUnitFileMode(managerScopeSystem))
 	if err != nil {
 		return rollbackManagedFiles(fmt.Errorf("write updater system timer: %w", err), serviceReplacement)
 	}

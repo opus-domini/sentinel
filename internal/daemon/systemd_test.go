@@ -1105,6 +1105,28 @@ func TestInstallSystemServiceLinuxNonRoot(t *testing.T) {
 	}
 }
 
+func TestSystemdUnitFileMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		scope string
+		want  os.FileMode
+	}{
+		{managerScopeSystem, 0o644},
+		{managerScopeUser, 0o600},
+		{managerScopeAuto, 0o600},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.scope, func(t *testing.T) {
+			t.Parallel()
+			if got := systemdUnitFileMode(tc.scope); got != tc.want {
+				t.Fatalf("systemdUnitFileMode(%q) = %o, want %o", tc.scope, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestUninstallSystemServiceLinuxNonRoot(t *testing.T) {
 	t.Parallel()
 
