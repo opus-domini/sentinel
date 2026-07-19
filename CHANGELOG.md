@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/opus-domini/sentinel/compare/v0.10.4...v0.10.5) (2026-07-19)
+
+
+### Features
+
+* standardize managed installation scopes ([2f0bce6](https://github.com/opus-domini/sentinel/commit/2f0bce6fcb06c6c9ebc4e151de4516224c2ed177))
+
 ## [0.10.4](https://github.com/opus-domini/sentinel/compare/v0.10.3...v0.10.4) (2026-07-18)
 
 
