@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -347,6 +348,63 @@ path = "`+filepath.Join(dir, "file.db")+`"
 	}
 }
 
+func TestApplyEnvOverridesAllRuntimeSections(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("SENTINEL_SERVER_ALLOWED_ORIGINS", "https://one.example, https://two.example")
+	t.Setenv("SENTINEL_SERVER_TRUSTED_PROXIES", "127.0.0.1/32,10.0.0.0/8")
+	t.Setenv("SENTINEL_SERVER_COOKIE_SECURE", "always")
+	t.Setenv("SENTINEL_SERVER_ALLOW_INSECURE_COOKIE", "true")
+	t.Setenv("SENTINEL_SERVER_TIMEZONE", "America/Sao_Paulo")
+	t.Setenv("SENTINEL_SERVER_LOCALE", "pt-BR")
+	t.Setenv("SENTINEL_LOG_LEVEL", "debug")
+	t.Setenv("SENTINEL_LOG_PATH", "/tmp/sentinel-test.log")
+	t.Setenv("SENTINEL_HEALTH_REPORT_WEBHOOK_URL", "https://hooks.example/sentinel")
+	t.Setenv("SENTINEL_HEALTH_REPORT_SCHEDULE", "0 * * * *")
+	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "true")
+	t.Setenv("SENTINEL_WATCHTOWER_TICK_INTERVAL", "3s")
+	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_LINES", "120")
+	t.Setenv("SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", "750ms")
+	t.Setenv("SENTINEL_WATCHTOWER_JOURNAL_ROWS", "240")
+	t.Setenv("SENTINEL_RUNBOOK_MAX_CONCURRENT", "7")
+	t.Setenv("SENTINEL_ALLOWED_USERS", "alice, bob")
+	t.Setenv("SENTINEL_ALLOW_ROOT_TARGET", "true")
+	t.Setenv("SENTINEL_USER_SWITCH_METHOD", "sudo")
+
+	cfg := Default()
+	applyEnv(&cfg)
+
+	if got, want := cfg.Server.AllowedOrigins, []string{"https://one.example", "https://two.example"}; !slices.Equal(got, want) {
+		t.Fatalf("AllowedOrigins = %v, want %v", got, want)
+	}
+	if got, want := cfg.Server.TrustedProxies, []string{"127.0.0.1/32", "10.0.0.0/8"}; !slices.Equal(got, want) {
+		t.Fatalf("TrustedProxies = %v, want %v", got, want)
+	}
+	if cfg.Server.CookieSecure != "always" || !cfg.Server.AllowInsecureCookie {
+		t.Fatalf("cookie settings = secure:%q allow_insecure:%t", cfg.Server.CookieSecure, cfg.Server.AllowInsecureCookie)
+	}
+	if cfg.Server.Timezone != "America/Sao_Paulo" || cfg.Server.Locale != "pt-BR" {
+		t.Fatalf("server locale settings = timezone:%q locale:%q", cfg.Server.Timezone, cfg.Server.Locale)
+	}
+	if cfg.Log.Level != "debug" || cfg.Log.Path != "/tmp/sentinel-test.log" {
+		t.Fatalf("log settings = %+v", cfg.Log)
+	}
+	if cfg.HealthReport.WebhookURL != "https://hooks.example/sentinel" || cfg.HealthReport.Schedule != "0 * * * *" {
+		t.Fatalf("health report settings = %+v", cfg.HealthReport)
+	}
+	if !cfg.Watchtower.Enabled || cfg.Watchtower.TickInterval != 3*time.Second || cfg.Watchtower.CaptureLines != 120 || cfg.Watchtower.CaptureTimeout != 750*time.Millisecond || cfg.Watchtower.JournalRows != 240 {
+		t.Fatalf("watchtower settings = %+v", cfg.Watchtower)
+	}
+	if cfg.Runbooks.MaxConcurrent != 7 {
+		t.Fatalf("Runbooks.MaxConcurrent = %d, want 7", cfg.Runbooks.MaxConcurrent)
+	}
+	if got, want := cfg.MultiUser.AllowedUsers, []string{"alice", "bob"}; !slices.Equal(got, want) {
+		t.Fatalf("AllowedUsers = %v, want %v", got, want)
+	}
+	if !cfg.MultiUser.AllowRootTarget || cfg.MultiUser.UserSwitchMethod != "sudo" {
+		t.Fatalf("multi-user settings = %+v", cfg.MultiUser)
+	}
+}
+
 func TestLoadRejectsEnabledMCPWithoutSharedToken(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(path, []byte("[mcp]\nenabled = true\n"), 0o600); err != nil {
@@ -604,6 +662,7 @@ func clearConfigEnv(t *testing.T) {
 		"SENTINEL_SERVER_PORT",
 		"SENTINEL_SERVER_TOKEN",
 		"SENTINEL_SERVER_ALLOWED_ORIGINS",
+		"SENTINEL_SERVER_TRUSTED_PROXIES",
 		"SENTINEL_SERVER_COOKIE_SECURE",
 		"SENTINEL_SERVER_ALLOW_INSECURE_COOKIE",
 		"SENTINEL_SERVER_TIMEZONE",

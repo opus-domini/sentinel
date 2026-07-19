@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -11,6 +12,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/opus-domini/sentinel/internal/security"
 )
+
+func TestToolErrorAddsOperationContext(t *testing.T) {
+	if got := toolError("list sessions", nil).Error(); got != "list sessions" {
+		t.Fatalf("toolError() = %q", got)
+	}
+	if got := toolError("list sessions", errors.New("tmux unavailable")).Error(); got != "list sessions: tmux unavailable" {
+		t.Fatalf("toolError() = %q", got)
+	}
+}
 
 func TestServerAvailabilityAndBearerAuthentication(t *testing.T) {
 	state := NewState(false, true)

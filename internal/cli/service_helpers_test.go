@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -441,6 +442,232 @@ func TestRunServiceMigrateCanonicalNoOp(t *testing.T) {
 	if err != nil || planned.canonical.ConfigPath != deployment.ConfigPath {
 		t.Fatalf("planDeploymentMigration() = %+v, %v", planned, err)
 	}
+}
+
+func TestRunServiceMigrateEarlyFailureDiagnostics(t *testing.T) {
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	origPlan := planDeploymentMigrationFn
+	origStatus := serviceStatusFn
+	origPause := pauseAutoUpdateFn
+	origResume := resumeAutoUpdateFn
+	origControl := controlScopedServiceFn
+	t.Cleanup(func() {
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+		planDeploymentMigrationFn = origPlan
+		serviceStatusFn = origStatus
+		pauseAutoUpdateFn = origPause
+		resumeAutoUpdateFn = origResume
+		controlScopedServiceFn = origControl
+	})
+
+	want := errors.New("diagnostic failure")
+	legacy := daemon.ScopeLayout{
+		ConfigPath: "/root/.sentinel/config.toml",
+		DataDir:    "/root/.sentinel",
+		LogPath:    "/root/.sentinel/logs/sentinel.log",
+	}
+	canonical := daemon.ScopeLayout{
+		ConfigPath: "/etc/sentinel/config.toml",
+		DataDir:    "/var/lib/sentinel",
+		LogPath:    "/var/log/sentinel/sentinel.log",
+	}
+	deployment := daemon.Deployment{
+		Scope:      daemon.ScopeSystem,
+		BinaryPath: "/usr/local/bin/sentinel",
+		ConfigPath: legacy.ConfigPath,
+		DataDir:    legacy.DataDir,
+	}
+	migration := deploymentMigration{deployment: deployment, legacy: legacy, canonical: canonical}
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+
+	t.Run("resolve deployment", func(t *testing.T) {
+		resolveDeploymentFn = func(string) (daemon.Deployment, error) { return daemon.Deployment{}, want }
+		if err := runServiceMigrate(app, optionAuto); !errors.Is(err, want) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) { return deployment, nil }
+	t.Run("scope access", func(t *testing.T) {
+		requireScopeAccessFn = func(string) error { return want }
+		if err := runServiceMigrate(app, optionAuto); !errors.Is(err, want) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	requireScopeAccessFn = func(string) error { return nil }
+	t.Run("migration plan", func(t *testing.T) {
+		planDeploymentMigrationFn = func(daemon.Deployment) (deploymentMigration, error) { return deploymentMigration{}, want }
+		if err := runServiceMigrate(app, optionAuto); !errors.Is(err, want) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	planDeploymentMigrationFn = func(daemon.Deployment) (deploymentMigration, error) { return migration, nil }
+	t.Run("service status", func(t *testing.T) {
+		serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) { return nil, want }
+		if err := runServiceMigrate(app, optionAuto); !errors.Is(err, want) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+		return []daemon.ScopedServiceStatus{{
+			Deployment: deployment,
+			UserServiceStatus: daemon.UserServiceStatus{
+				SystemctlAvailable: true,
+				EnabledState:       stateEnabled,
+				ActiveState:        stateActive,
+			},
+		}}, nil
+	}
+	t.Run("pause autoupdate", func(t *testing.T) {
+		pauseAutoUpdateFn = func(string) (bool, error) { return false, want }
+		if err := runServiceMigrate(app, optionAuto); !errors.Is(err, want) || !strings.Contains(err.Error(), "pause autoupdate") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	pauseAutoUpdateFn = func(string) (bool, error) { return true, nil }
+	t.Run("stop and restore", func(t *testing.T) {
+		var actions []string
+		controlScopedServiceFn = func(action, _ string) error {
+			actions = append(actions, action)
+			if action == "stop" {
+				return want
+			}
+			return nil
+		}
+		resumeAutoUpdateFn = func(string, bool) error { return nil }
+		err := runServiceMigrate(app, optionAuto)
+		if !errors.Is(err, want) || !slices.Equal(actions, []string{"stop", "start"}) {
+			t.Fatalf("error=%v actions=%v", err, actions)
+		}
+	})
+
+	t.Run("stop and failed restore", func(t *testing.T) {
+		controlScopedServiceFn = func(string, string) error { return want }
+		resumeAutoUpdateFn = func(string, bool) error { return want }
+		err := runServiceMigrate(app, optionAuto)
+		if !errors.Is(err, want) || !strings.Contains(err.Error(), "restore failed") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+}
+
+func TestRunServiceMigrateLateFailureDiagnostics(t *testing.T) {
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	origPlan := planDeploymentMigrationFn
+	origStatus := serviceStatusFn
+	origPause := pauseAutoUpdateFn
+	origResume := resumeAutoUpdateFn
+	origControl := controlScopedServiceFn
+	origInstall := installUserSvcFn
+	t.Cleanup(func() {
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+		planDeploymentMigrationFn = origPlan
+		serviceStatusFn = origStatus
+		pauseAutoUpdateFn = origPause
+		resumeAutoUpdateFn = origResume
+		controlScopedServiceFn = origControl
+		installUserSvcFn = origInstall
+	})
+
+	want := errors.New("diagnostic failure")
+	run := func(t *testing.T, configRaw []byte, customize func(*deploymentMigration), installErr, resumeErr error) error {
+		t.Helper()
+		dir := t.TempDir()
+		legacy := daemon.ScopeLayout{
+			ConfigPath: filepath.Join(dir, "legacy", "config.toml"),
+			DataDir:    filepath.Join(dir, "legacy"),
+			LogPath:    filepath.Join(dir, "legacy", "logs", "sentinel.log"),
+		}
+		canonical := daemon.ScopeLayout{
+			ConfigPath: filepath.Join(dir, "etc", "config.toml"),
+			DataDir:    filepath.Join(dir, "lib"),
+			LogPath:    filepath.Join(dir, "log", "sentinel.log"),
+		}
+		deployment := daemon.Deployment{
+			Scope:      daemon.ScopeSystem,
+			BinaryPath: "/usr/local/bin/sentinel",
+			ConfigPath: legacy.ConfigPath,
+			DataDir:    legacy.DataDir,
+		}
+		migration := deploymentMigration{
+			deployment: deployment,
+			legacy:     legacy,
+			canonical:  canonical,
+			configRaw:  configRaw,
+		}
+		if customize != nil {
+			customize(&migration)
+			deployment = migration.deployment
+		}
+		resolveDeploymentFn = func(string) (daemon.Deployment, error) { return deployment, nil }
+		requireScopeAccessFn = func(string) error { return nil }
+		planDeploymentMigrationFn = func(daemon.Deployment) (deploymentMigration, error) { return migration, nil }
+		serviceStatusFn = func() ([]daemon.ScopedServiceStatus, error) {
+			return []daemon.ScopedServiceStatus{{
+				Deployment: deployment,
+				UserServiceStatus: daemon.UserServiceStatus{
+					SystemctlAvailable: true,
+					EnabledState:       stateEnabled,
+					ActiveState:        "inactive",
+				},
+			}}, nil
+		}
+		pauseAutoUpdateFn = func(string) (bool, error) { return false, nil }
+		resumeAutoUpdateFn = func(string, bool) error { return resumeErr }
+		controlScopedServiceFn = func(string, string) error {
+			t.Fatal("inactive service should not be controlled")
+			return nil
+		}
+		installUserSvcFn = func(daemon.InstallUserOptions) error { return installErr }
+		return runServiceMigrate(&App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}, daemon.ScopeSystem)
+	}
+
+	t.Run("invalid migrated config", func(t *testing.T) {
+		err := run(t, []byte("version = [\n"), nil, nil, nil)
+		if err == nil || !strings.Contains(err.Error(), "validate migrated config") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("custom path remains in legacy directory", func(t *testing.T) {
+		err := run(t, []byte("version = 1\n"), func(migration *deploymentMigration) {
+			migration.configRaw = fmt.Appendf(nil, "version = 1\n[storage]\npath = %q\n", filepath.Join(migration.legacy.DataDir, "custom.db"))
+		}, nil, nil)
+		if err == nil || !strings.Contains(err.Error(), "still references the legacy data directory") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("canonical service install", func(t *testing.T) {
+		err := run(t, []byte("version = 1\n"), nil, want, nil)
+		if !errors.Is(err, want) || !strings.Contains(err.Error(), "install canonical service definition") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("legacy cleanup and autoupdate restore", func(t *testing.T) {
+		err := run(t, []byte("version = 1\n"), func(migration *deploymentMigration) {
+			migration.deployment.DataDir = filepath.Join(filepath.Dir(migration.legacy.DataDir), "unrecognized")
+		}, nil, want)
+		if err == nil || !strings.Contains(err.Error(), "legacy cleanup failed") || !strings.Contains(err.Error(), "restoring autoupdate also failed") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("autoupdate restore after success", func(t *testing.T) {
+		err := run(t, []byte("version = 1\n"), nil, nil, want)
+		if !errors.Is(err, want) || !strings.Contains(err.Error(), "restoring autoupdate failed") {
+			t.Fatalf("error = %v", err)
+		}
+	})
 }
 
 func TestRunServiceMigrateRestartsSourceWhenStagingFails(t *testing.T) {
