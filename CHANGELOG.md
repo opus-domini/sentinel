@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.6](https://github.com/opus-domini/sentinel/compare/v0.10.5...v0.10.6) (2026-07-19)
+
+
+### Bug Fixes
+
+* make system installs inspectable ([517566a](https://github.com/opus-domini/sentinel/commit/517566a645cf69a8531d5985516244abf9b3b94e))
+
 ## [0.10.5](https://github.com/opus-domini/sentinel/compare/v0.10.4...v0.10.5) (2026-07-19)
 
 
