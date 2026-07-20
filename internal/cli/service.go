@@ -230,11 +230,11 @@ func newServiceUninstallCmd(app *App) *cobra.Command {
 }
 
 func runServiceUninstall(app *App, scopeRaw string, disable, stop, removeUnit, purge bool) error {
-	deployment, err := resolveDeploymentFn(scopeRaw)
+	deployment, err := resolveRemovalFn(scopeRaw)
 	if err != nil {
 		return failf("service uninstall failed: %w", err)
 	}
-	if err := requireScopeAccessFn(deployment.Scope); err != nil {
+	if err := requireRemovalAccessFn(deployment.Scope); err != nil {
 		return failf("service uninstall failed: %w", err)
 	}
 	removeBinary := purge

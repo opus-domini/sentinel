@@ -60,6 +60,11 @@ sentinel service autoupdate uninstall
   ambiguous user+system installation.
 - `user` or `system`: select one deployment explicitly.
 
+The ambiguity diagnostic includes both unit paths and the explicit cleanup
+command. A historical user deployment owned by root can be removed from a root
+login with `sentinel service uninstall --scope user --purge`; this does not
+permit root to create or operate new user-scoped deployments.
+
 Autoupdate derives its binary, config and service manager from that deployment;
 these values cannot drift independently.
 Reinstalling an existing deployment must use the binary recorded in its unit.

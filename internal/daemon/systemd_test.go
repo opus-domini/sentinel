@@ -1760,6 +1760,26 @@ func TestUninstallUserSystemdDaemonReloadError(t *testing.T) {
 	}
 }
 
+func TestUninstallUserSystemdRemovesLegacyUnitWithoutUserBus(t *testing.T) {
+	t.Parallel()
+
+	unitPath := filepath.Join(t.TempDir(), "sentinel.service")
+	if err := os.WriteFile(unitPath, []byte("[Unit]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := uninstallUserSystemd(
+		UninstallUserOptions{Disable: true, Stop: true, RemoveUnit: true},
+		unitPath,
+		func(...string) error { return errors.New("Failed to connect to user scope bus") },
+	)
+	if err != nil {
+		t.Fatalf("uninstallUserSystemd() error = %v", err)
+	}
+	if _, err := os.Stat(unitPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy unit still exists: %v", err)
+	}
+}
+
 func TestUninstallUserAutoUpdateSystemd(t *testing.T) {
 	t.Parallel()
 

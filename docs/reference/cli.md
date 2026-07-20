@@ -171,6 +171,18 @@ Flags:
 
 `--purge` is the full teardown — it is what `make uninstall` runs.
 
+When both scopes are present, the ambiguity error reports the detected unit
+paths and keeps `auto` disabled until one deployment is removed. A root login
+may remove a legacy user-scoped deployment owned by root with:
+
+```bash
+sentinel service uninstall --scope user --purge
+```
+
+This exception applies only to removal. Root still cannot install, update, or
+operate a user-scoped deployment, and a process invoked through `sudo` cannot
+remove the invoking user's deployment; run that command as the owning user.
+
 ### Status
 
 ```bash

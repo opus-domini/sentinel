@@ -59,8 +59,10 @@ var (
 	updateStatusFn            = updater.Status
 	installedDeploymentsFn    = daemon.InstalledDeployments
 	resolveDeploymentFn       = daemon.ResolveDeployment
+	resolveRemovalFn          = daemon.ResolveDeploymentForRemoval
 	resolveInstallScopeFn     = daemon.ResolveInstallScope
 	requireScopeAccessFn      = daemon.RequireScopeAccess
+	requireRemovalAccessFn    = daemon.RequireScopeRemovalAccess
 	pauseAutoUpdateFn         = daemon.PauseAutoUpdate
 	resumeAutoUpdateFn        = daemon.ResumeAutoUpdate
 )

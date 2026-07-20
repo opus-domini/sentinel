@@ -53,6 +53,57 @@ func TestSelectDeploymentMatrix(t *testing.T) {
 	}
 }
 
+func TestAmbiguousDeploymentErrorIsActionable(t *testing.T) {
+	t.Parallel()
+
+	_, err := selectDeployment([]Deployment{{Scope: ScopeUser}, {Scope: ScopeSystem}}, ScopeAuto)
+	if !errors.Is(err, ErrAmbiguousDeployment) {
+		t.Fatalf("error = %v, want ErrAmbiguousDeployment", err)
+	}
+	for _, want := range []string{
+		"sentinel.service",
+		"sentinel service status",
+		"--scope user",
+		"--scope system",
+		"sentinel service uninstall",
+		"--purge",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+}
+
+func TestRequireScopeRemovalAccess(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		scope     string
+		euid      int
+		sudoUser  string
+		wantError string
+	}{
+		{name: "root login removes root user deployment", scope: ScopeUser, euid: 0},
+		{name: "explicit root sudo user removes root user deployment", scope: ScopeUser, euid: 0, sudoUser: "root"},
+		{name: "sudo cannot remove invoking user deployment", scope: ScopeUser, euid: 0, sudoUser: "deploy", wantError: "belongs to deploy"},
+		{name: "normal user removes own deployment", scope: ScopeUser, euid: 1000},
+		{name: "normal user cannot remove system deployment", scope: ScopeSystem, euid: 1000, wantError: "system-wide"},
+		{name: "root removes system deployment", scope: ScopeSystem, euid: 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := requireScopeRemovalAccess(tc.scope, tc.euid, tc.sudoUser)
+			if tc.wantError == "" && err != nil {
+				t.Fatalf("requireScopeRemovalAccess() error = %v", err)
+			}
+			if tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
+				t.Fatalf("error = %v, want containing %q", err, tc.wantError)
+			}
+		})
+	}
+}
+
 func TestSelectAccessibleDeploymentDiagnosesScopeBeforeUnitRead(t *testing.T) {
 	t.Parallel()
 

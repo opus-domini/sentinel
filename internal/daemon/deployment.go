@@ -86,6 +86,27 @@ func ResolveDeployment(scopeRaw string) (Deployment, error) {
 	return readDeployment(selected.Scope)
 }
 
+// ResolveDeploymentForRemoval selects a deployment using the narrower access
+// rules for uninstalling a legacy user-scoped deployment owned by root.
+func ResolveDeploymentForRemoval(scopeRaw string) (Deployment, error) {
+	return resolveDeployment(scopeRaw, RequireScopeRemovalAccess)
+}
+
+func resolveDeployment(scopeRaw string, access func(string) error) (Deployment, error) {
+	scope, err := normalizeManagedScope(scopeRaw)
+	if err != nil {
+		return Deployment{}, err
+	}
+	selected, err := selectDeployment(detectedDeployments(), scope)
+	if err != nil {
+		return Deployment{}, err
+	}
+	if err := access(selected.Scope); err != nil {
+		return Deployment{}, err
+	}
+	return readDeployment(selected.Scope)
+}
+
 // ResolveInstallScope preserves an existing service or canonical standalone
 // binary scope and refuses to create a second implicit installation. A fresh
 // install with scope=auto requires an explicit user choice.
@@ -144,7 +165,7 @@ func selectDeployment(deployments []Deployment, scope string) (Deployment, error
 		case 1:
 			return deployments[0], nil
 		default:
-			return Deployment{}, fmt.Errorf("%w; choose --scope user or --scope system", ErrAmbiguousDeployment)
+			return Deployment{}, ambiguousDeploymentError()
 		}
 	}
 	for _, deployment := range deployments {
@@ -153,6 +174,23 @@ func selectDeployment(deployments []Deployment, scope string) (Deployment, error
 		}
 	}
 	return Deployment{}, fmt.Errorf("no Sentinel service is installed in %s scope", scope)
+}
+
+func ambiguousDeploymentError() error {
+	userUnit, userErr := servicePathForScope(ScopeUser)
+	if userErr != nil {
+		userUnit = "user service unit"
+	}
+	systemUnit, systemErr := servicePathForScope(ScopeSystem)
+	if systemErr != nil {
+		systemUnit = "system service unit"
+	}
+	return fmt.Errorf(
+		"%w; detected user unit %s and system unit %s; inspect both with `sentinel service status`, choose `--scope user` or `--scope system`, and remove an obsolete deployment with `sentinel service uninstall --scope <user|system> --purge`",
+		ErrAmbiguousDeployment,
+		userUnit,
+		systemUnit,
+	)
 }
 
 func selectAccessibleDeployment(deployments []Deployment, scope string, euid int) (Deployment, error) {
@@ -172,7 +210,7 @@ func selectAccessibleDeployment(deployments []Deployment, scope string, euid int
 
 func selectInstallScope(deployments []Deployment, scope string) (string, error) {
 	if len(deployments) > 1 {
-		return "", fmt.Errorf("%w; remove one deployment before installing", ErrAmbiguousDeployment)
+		return "", ambiguousDeploymentError()
 	}
 	if len(deployments) == 1 {
 		existing := deployments[0].Scope
@@ -213,6 +251,24 @@ func regularFileExists(path string) bool {
 // work happens under the wrong identity.
 func RequireScopeAccess(scope string) error {
 	return requireScopeAccess(scope, os.Geteuid())
+}
+
+// RequireScopeRemovalAccess allows a root login to remove only root's own
+// legacy user-scoped deployment. A sudo process still belongs to SUDO_USER and
+// must not remove that user's deployment as root.
+func RequireScopeRemovalAccess(scope string) error {
+	return requireScopeRemovalAccess(scope, os.Geteuid(), os.Getenv("SUDO_USER"))
+}
+
+func requireScopeRemovalAccess(scope string, euid int, sudoUserRaw string) error {
+	if scope == ScopeUser && euid == 0 {
+		sudoUser := strings.TrimSpace(sudoUserRaw)
+		if sudoUser == "" || sudoUser == "root" {
+			return nil
+		}
+		return fmt.Errorf("the Sentinel user deployment belongs to %s; run the command as that user without sudo and use --scope user", sudoUser)
+	}
+	return requireScopeAccess(scope, euid)
 }
 
 func requireScopeAccess(scope string, euid int) error {

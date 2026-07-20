@@ -322,12 +322,12 @@ func UninstallUser(opts UninstallUserOptions) error {
 		return err
 	}
 
-	deployment, err := ResolveDeployment(opts.Scope)
+	deployment, err := ResolveDeploymentForRemoval(opts.Scope)
 	if err != nil {
 		return err
 	}
 	scope := deployment.Scope
-	if err := requireScopePrivilege(scope); err != nil {
+	if err := RequireScopeRemovalAccess(scope); err != nil {
 		return err
 	}
 	if scope == managerScopeSystem {
@@ -360,7 +360,11 @@ func uninstallUserSystemd(opts UninstallUserOptions, servicePath string, runFn f
 		}
 	}
 
-	return runFn("daemon-reload")
+	err := runFn("daemon-reload")
+	if err != nil && opts.RemoveUnit && isSystemdUserBusUnavailable(err) {
+		return nil
+	}
+	return withSystemdUserBusHint(err)
 }
 
 // UninstallUserAutoUpdate handles uninstall user auto update.
@@ -884,13 +888,20 @@ func withSystemdUserBusHint(err error) error {
 	if err == nil {
 		return nil
 	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "failed to connect to user scope bus") ||
-		strings.Contains(msg, "dbus_session_bus_address") ||
-		strings.Contains(msg, "xdg_runtime_dir not defined") {
+	if isSystemdUserBusUnavailable(err) {
 		return fmt.Errorf("%w; if running as root use -scope system, or run as the target user with an active user session", err)
 	}
 	return err
+}
+
+func isSystemdUserBusUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "failed to connect to user scope bus") ||
+		strings.Contains(msg, "dbus_session_bus_address") ||
+		strings.Contains(msg, "xdg_runtime_dir not defined")
 }
 
 func readSystemctlState(args ...string) string {

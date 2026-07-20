@@ -56,15 +56,21 @@ func stubUserDeploymentContext(t *testing.T) {
 		DataDir:    filepath.Join(home, ".sentinel"),
 	}
 	origResolve := resolveDeploymentFn
+	origRemovalResolve := resolveRemovalFn
 	origAccess := requireScopeAccessFn
+	origRemovalAccess := requireRemovalAccessFn
 	origDeployments := installedDeploymentsFn
 	t.Cleanup(func() {
 		resolveDeploymentFn = origResolve
+		resolveRemovalFn = origRemovalResolve
 		requireScopeAccessFn = origAccess
+		requireRemovalAccessFn = origRemovalAccess
 		installedDeploymentsFn = origDeployments
 	})
 	resolveDeploymentFn = func(string) (daemon.Deployment, error) { return deployment, nil }
+	resolveRemovalFn = func(string) (daemon.Deployment, error) { return deployment, nil }
 	requireScopeAccessFn = func(string) error { return nil }
+	requireRemovalAccessFn = func(string) error { return nil }
 	installedDeploymentsFn = func() ([]daemon.Deployment, error) { return []daemon.Deployment{deployment}, nil }
 }
 
@@ -659,17 +665,17 @@ func TestValidateServiceInstallBinaryRejectsDeploymentPathDrift(t *testing.T) {
 }
 
 func TestRunServiceUninstallPurgeKeepsSharedDeploymentBinary(t *testing.T) {
-	origResolve := resolveDeploymentFn
+	origResolve := resolveRemovalFn
 	origDeployments := installedDeploymentsFn
-	origAccess := requireScopeAccessFn
+	origAccess := requireRemovalAccessFn
 	origUninstall := uninstallUserSvcFn
 	origAutoUpdate := uninstallUserAutoUpdateFn
 	origCompletions := removeShellCompletionsFn
 	origRemoveBinary := removeSentinelBinaryAtFn
 	t.Cleanup(func() {
-		resolveDeploymentFn = origResolve
+		resolveRemovalFn = origResolve
 		installedDeploymentsFn = origDeployments
-		requireScopeAccessFn = origAccess
+		requireRemovalAccessFn = origAccess
 		uninstallUserSvcFn = origUninstall
 		uninstallUserAutoUpdateFn = origAutoUpdate
 		removeShellCompletionsFn = origCompletions
@@ -677,7 +683,7 @@ func TestRunServiceUninstallPurgeKeepsSharedDeploymentBinary(t *testing.T) {
 	})
 
 	const binaryPath = "/usr/local/bin/sentinel"
-	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+	resolveRemovalFn = func(string) (daemon.Deployment, error) {
 		return daemon.Deployment{Scope: daemon.ScopeUser, BinaryPath: binaryPath}, nil
 	}
 	installedDeploymentsFn = func() ([]daemon.Deployment, error) {
@@ -686,7 +692,7 @@ func TestRunServiceUninstallPurgeKeepsSharedDeploymentBinary(t *testing.T) {
 			{Scope: daemon.ScopeSystem, BinaryPath: binaryPath},
 		}, nil
 	}
-	requireScopeAccessFn = func(string) error { return nil }
+	requireRemovalAccessFn = func(string) error { return nil }
 	uninstallUserSvcFn = func(daemon.UninstallUserOptions) error { return nil }
 	uninstallUserAutoUpdateFn = func(daemon.UninstallUserAutoUpdateOptions) error { return nil }
 	removeShellCompletionsFn = func() []string { return nil }
