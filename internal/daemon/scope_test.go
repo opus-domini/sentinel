@@ -31,16 +31,14 @@ func TestInstalledScopesNone(t *testing.T) {
 func TestRequireScopePrivilege(t *testing.T) {
 	t.Parallel()
 
-	if err := requireScopePrivilege(managerScopeUser); err != nil {
+	if err := requireScopeAccess(managerScopeUser, 1000); err != nil {
 		t.Fatalf("user scope should never require a privilege: %v", err)
 	}
-	err := requireScopePrivilege(managerScopeSystem)
-	if os.Geteuid() == 0 {
-		if err != nil {
-			t.Fatalf("root acting on the system scope should be allowed: %v", err)
-		}
-	} else if err == nil {
+	if err := requireScopeAccess(managerScopeSystem, 1000); err == nil {
 		t.Fatal("a non-root caller acting on the system scope must be rejected")
+	}
+	if err := requireScopeAccess(managerScopeSystem, 0); err != nil {
+		t.Fatalf("root acting on the system scope should be allowed: %v", err)
 	}
 }
 
@@ -99,7 +97,7 @@ func TestResolveServiceScopeUser(t *testing.T) {
 	}
 
 	writeUserUnit(t)
-	scope, err := resolveServiceScope()
+	scope, err := resolveServiceScopeForEUID(1000)
 	if err != nil {
 		t.Fatalf("resolveServiceScope() error = %v", err)
 	}

@@ -75,11 +75,15 @@ func InstalledDeployments() ([]Deployment, error) {
 // ResolveDeployment selects an installed deployment. Auto succeeds only when
 // exactly one deployment exists.
 func ResolveDeployment(scopeRaw string) (Deployment, error) {
+	return resolveDeploymentForEUID(scopeRaw, os.Geteuid())
+}
+
+func resolveDeploymentForEUID(scopeRaw string, euid int) (Deployment, error) {
 	scope, err := normalizeManagedScope(scopeRaw)
 	if err != nil {
 		return Deployment{}, err
 	}
-	selected, err := selectAccessibleDeployment(detectedDeployments(), scope, os.Geteuid())
+	selected, err := selectAccessibleDeployment(detectedDeployments(), scope, euid)
 	if err != nil {
 		return Deployment{}, err
 	}

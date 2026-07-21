@@ -74,7 +74,11 @@ func detectLaunchdScopes() InstalledScopes {
 // resolveServiceScope returns the only installed service scope. Ambiguous
 // user+system installations are rejected instead of silently selected by euid.
 func resolveServiceScope() (string, error) {
-	deployment, err := ResolveDeployment(ScopeAuto)
+	return resolveServiceScopeForEUID(os.Geteuid())
+}
+
+func resolveServiceScopeForEUID(euid int) (string, error) {
+	deployment, err := resolveDeploymentForEUID(ScopeAuto, euid)
 	return deployment.Scope, err
 }
 

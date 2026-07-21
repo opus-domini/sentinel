@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var doctorLookPath = exec.LookPath
+
 func newDoctorCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
@@ -54,9 +56,9 @@ func runDoctor(app *App) error {
 			deploymentAccessErr = daemon.ErrAmbiguousDeployment
 		}
 	}
-	tmuxPath, tmuxErr := exec.LookPath("tmux")
+	tmuxPath, tmuxErr := doctorLookPath("tmux")
 	managerLabel := runtimeServiceManagerLabel()
-	managerPath, managerErr := exec.LookPath(managerLabel)
+	managerPath, managerErr := doctorLookPath(managerLabel)
 	report, statusErr := serviceStatusFn()
 
 	printHeading(app.Stdout, "Sentinel doctor report")

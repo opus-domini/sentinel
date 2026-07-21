@@ -190,9 +190,6 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 	if runtime.GOOS != systemdSupportedOS {
 		return errors.New("auto-update service commands are supported on Linux and macOS only")
 	}
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		return errors.New("systemctl was not found in PATH")
-	}
 	scope, err := normalizeLinuxAutoUpdateScope(opts.SystemdScope)
 	if err != nil {
 		return err
@@ -207,6 +204,9 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 	}
 	if err := validateExecutable(cfg.execPath); err != nil {
 		return err
+	}
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return errors.New("systemctl was not found in PATH")
 	}
 
 	if cfg.scope == managerScopeSystem {

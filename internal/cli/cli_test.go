@@ -26,6 +26,13 @@ const (
 	testScopeSystem     = "system"
 )
 
+func stubDoctorLookPath(t *testing.T) {
+	t.Helper()
+	original := doctorLookPath
+	doctorLookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	t.Cleanup(func() { doctorLookPath = original })
+}
+
 func stubUserServiceInstallContext(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -796,6 +803,7 @@ func TestRunCLIServiceStatusSystemUnitLabel(t *testing.T) {
 }
 
 func TestRunCLIDoctor(t *testing.T) {
+	stubDoctorLookPath(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	origLoad := loadConfigFn
@@ -852,6 +860,7 @@ func TestRunCLIDoctor(t *testing.T) {
 }
 
 func TestRunCLIDoctorReportsFailedAutoUpdate(t *testing.T) {
+	stubDoctorLookPath(t)
 	origLoad := loadConfigFn
 	origStatus := serviceStatusFn
 	origDeployments := installedDeploymentsFn
@@ -906,6 +915,7 @@ func TestRunCLIDoctorReportsFailedAutoUpdate(t *testing.T) {
 }
 
 func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
+	stubDoctorLookPath(t)
 	origLoad := loadConfigFn
 	origLoadPath := loadConfigPathFn
 	origStatus := serviceStatusFn
@@ -974,6 +984,7 @@ func TestRunCLIDoctorFailsWithExactConfigDiagnosis(t *testing.T) {
 }
 
 func TestRunCLIDoctorSystemUnitLabel(t *testing.T) {
+	stubDoctorLookPath(t)
 	origLoad := loadConfigFn
 	origStatus := serviceStatusFn
 	origDeployments := installedDeploymentsFn

@@ -16,11 +16,15 @@ var launchdStartIntervalRE = regexp.MustCompile(`(?s)<key>StartInterval</key>\s*
 // ReconcileAutoUpdate refreshes an existing managed updater after the main
 // service is installed. It preserves the timer schedule and activation state.
 func ReconcileAutoUpdate(opts InstallUserAutoUpdateOptions) (bool, error) {
+	return reconcileAutoUpdateForEUID(opts, os.Geteuid())
+}
+
+func reconcileAutoUpdateForEUID(opts InstallUserAutoUpdateOptions, euid int) (bool, error) {
 	scope, err := normalizeExplicitScope(opts.SystemdScope)
 	if err != nil {
 		return false, err
 	}
-	if err := RequireScopeAccess(scope); err != nil {
+	if err := requireScopeAccess(scope, euid); err != nil {
 		return false, err
 	}
 	status, err := UserAutoUpdateStatusForScope(scope)

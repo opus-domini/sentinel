@@ -1076,12 +1076,12 @@ func TestReconcileAutoUpdatePreservesSystemdTimerAndRepairsService(t *testing.T)
 		t.Fatal(err)
 	}
 
-	reconciled, err := ReconcileAutoUpdate(InstallUserAutoUpdateOptions{
+	reconciled, err := reconcileAutoUpdateForEUID(InstallUserAutoUpdateOptions{
 		ExecPath:     execPath,
 		ConfigPath:   filepath.Join(home, ".sentinel", "config.toml"),
 		DataDir:      filepath.Join(home, ".sentinel"),
 		SystemdScope: ScopeUser,
-	})
+	}, 1000)
 	if err != nil {
 		t.Fatalf("ReconcileAutoUpdate() error = %v", err)
 	}
