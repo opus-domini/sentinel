@@ -11,4 +11,4 @@ permissions:
 
 jobs:
   vuln:
-    uses: opus-domini/actions/.github/workflows/vulnerability-scan.yml@17866e559e67dd922c92b62d99f8f4be6e14422e
+    uses: opus-domini/actions/.github/workflows/vulnerability-scan.yml@046e06e5508f3f1857623b3d2d2a8351318e0bb5
