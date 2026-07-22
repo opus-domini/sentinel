@@ -11,4 +11,4 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-    uses: opus-domini/actions/.github/workflows/release-pr.yml@d9d604ff1a59cfbc6806685a4a0e96eb6c53956d
+    uses: opus-domini/actions/.github/workflows/release-pr.yml@2a77045ce3f8ac6a7e9ba476cd2a0a6ea5c2b883
