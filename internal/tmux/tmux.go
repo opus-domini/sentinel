@@ -260,7 +260,7 @@ func CreateSession(ctx context.Context, name, cwd string) error {
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
-	_, err := run(ctx, args...)
+	_, err := createSessionRun(ctx, args...)
 	return err
 }
 
@@ -865,13 +865,24 @@ func nextWindowIndexFromListOutput(out string) (int, bool) {
 }
 
 var run = func(ctx context.Context, args ...string) (string, error) { // var enables test injection
-	cmd := exec.CommandContext(ctx, "tmux", args...)
+	return executeTmuxCommand(ctx, "tmux", args, args)
+}
+
+func executeTmuxCommand(ctx context.Context, name string, commandArgs, tmuxArgs []string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, commandArgs...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", classifyError(err, stderr.String(), args)
+		if name != "tmux" && errors.Is(err, exec.ErrNotFound) {
+			return "", &Error{
+				Kind: ErrKindCommandFailed,
+				Msg:  name + " is required to isolate tmux sessions from Sentinel",
+				Err:  err,
+			}
+		}
+		return "", classifyError(err, stderr.String(), tmuxArgs)
 	}
 	return stdout.String(), nil
 }

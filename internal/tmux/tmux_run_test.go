@@ -3,6 +3,7 @@ package tmux
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -22,6 +23,13 @@ func setRun(t *testing.T, fn func(ctx context.Context, args ...string) (string, 
 	orig := run
 	run = fn
 	t.Cleanup(func() { run = orig })
+}
+
+func setCreateSessionRun(t *testing.T, fn func(ctx context.Context, args ...string) (string, error)) {
+	t.Helper()
+	original := createSessionRun
+	createSessionRun = fn
+	t.Cleanup(func() { createSessionRun = original })
 }
 
 func errServerNotRunning() *Error {
@@ -943,7 +951,7 @@ func TestCreateSession(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("with_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
+		setCreateSessionRun(t, func(_ context.Context, args ...string) (string, error) {
 			joined := strings.Join(args, " ")
 			if !strings.Contains(joined, "-c /home/user") {
 				t.Errorf("expected -c /home/user, got: %v", args)
@@ -961,7 +969,7 @@ func TestCreateSession(t *testing.T) {
 	})
 
 	t.Run("without_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
+		setCreateSessionRun(t, func(_ context.Context, args ...string) (string, error) {
 			joined := strings.Join(args, " ")
 			if strings.Contains(joined, "-c") {
 				t.Errorf("expected no -c flag, got: %v", args)
@@ -976,7 +984,7 @@ func TestCreateSession(t *testing.T) {
 	})
 
 	t.Run("error_propagation", func(t *testing.T) {
-		setRun(t, func(_ context.Context, _ ...string) (string, error) {
+		setCreateSessionRun(t, func(_ context.Context, _ ...string) (string, error) {
 			return "", &Error{Kind: ErrKindSessionExists, Msg: "already exists"}
 		})
 
@@ -988,6 +996,55 @@ func TestCreateSession(t *testing.T) {
 			t.Errorf("expected ErrKindSessionExists, got %v", err)
 		}
 	})
+}
+
+func TestBuildCreateSessionCommand(t *testing.T) {
+	tmuxArgs := []string{"new-session", "-d", "-s", "work", "-c", "/srv/work"}
+
+	tests := []struct {
+		name     string
+		goos     string
+		euid     int
+		wantName string
+		wantArgs []string
+	}{
+		{
+			name:     "linux user scope",
+			goos:     "linux",
+			euid:     1000,
+			wantName: "systemd-run",
+			wantArgs: append(
+				[]string{"--user", "--scope", "--collect", "--quiet", "--", "tmux"},
+				tmuxArgs...,
+			),
+		},
+		{
+			name:     "linux system scope",
+			goos:     "linux",
+			euid:     0,
+			wantName: "systemd-run",
+			wantArgs: append(
+				[]string{"--scope", "--collect", "--quiet", "--", "tmux"},
+				tmuxArgs...,
+			),
+		},
+		{
+			name:     "non linux",
+			goos:     "darwin",
+			euid:     501,
+			wantName: "tmux",
+			wantArgs: tmuxArgs,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			name, args := buildCreateSessionCommand(test.goos, test.euid, tmuxArgs)
+			if name != test.wantName || !slices.Equal(args, test.wantArgs) {
+				t.Fatalf("buildCreateSessionCommand() = %q %#v, want %q %#v", name, args, test.wantName, test.wantArgs)
+			}
+		})
+	}
 }
 
 // --- SetSessionMouse ---

@@ -139,18 +139,18 @@ func TestBuildControlCommandRejectsEmptySession(t *testing.T) {
 }
 
 func TestServiceCreateSessionWithUser(t *testing.T) {
-	// Not parallel: mutates package-level run variable.
+	// Not parallel: mutates package-level createSessionRun variable.
 
-	original := run
-	t.Cleanup(func() { run = original })
+	original := createSessionRun
+	t.Cleanup(func() { createSessionRun = original })
 
 	var gotArgs []string
-	run = func(_ context.Context, args ...string) (string, error) {
+	createSessionRun = func(_ context.Context, args ...string) (string, error) {
 		gotArgs = args
 		return "", nil
 	}
 
-	// Empty user => goes through package-level run.
+	// Empty user => goes through the package-level isolated session runner.
 	svc := Service{User: ""}
 	if err := svc.CreateSession(context.Background(), "test", "/tmp"); err != nil {
 		t.Fatalf("CreateSession error = %v", err)

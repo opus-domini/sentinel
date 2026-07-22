@@ -69,6 +69,9 @@ Fallback HTTP polling is used only when events channel is disconnected.
 ## Design Principles
 
 - Single-binary deployment.
+- Independent tmux lifecycle: Sentinel may discover and control tmux, but its
+  service stopping must not terminate the tmux server, sessions, panes, or
+  their processes.
 - No cloud relay by default.
 - Optimistic frontend interactions for responsiveness.
 - Server remains source of truth through projections and event patches.
