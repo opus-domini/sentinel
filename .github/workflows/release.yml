@@ -8,17 +8,27 @@ on:
       - main
     paths:
       - .github/.release-please-manifest.json
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact current main commit to recover
+        required: true
+        type: string
 
 jobs:
   publish:
     if: >-
-      ${{ github.event.action == 'closed' &&
-          github.event.pull_request.merged == true &&
-          github.event.pull_request.base.ref == 'main' &&
-          github.event.pull_request.base.repo.full_name == github.repository &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-          contains(github.event.pull_request.labels.*.name, 'autorelease: pending') }}
+      ${{ (github.event_name == 'pull_request' &&
+           github.event.action == 'closed' &&
+           github.event.pull_request.merged == true &&
+           github.event.pull_request.base.ref == 'main' &&
+           github.event.pull_request.base.repo.full_name == github.repository &&
+           github.event.pull_request.head.repo.full_name == github.repository &&
+           startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
+           contains(github.event.pull_request.labels.*.name, 'autorelease: pending')) ||
+          (github.event_name == 'workflow_dispatch' &&
+           github.ref == 'refs/heads/main' &&
+           inputs.release_sha != '') }}
     permissions:
       actions: read
       contents: write
@@ -28,3 +38,4 @@ jobs:
     uses: opus-domini/actions/.github/workflows/release.yml@d9d604ff1a59cfbc6806685a4a0e96eb6c53956d
     with:
       frontend: true
+      recovery_release_sha: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || '' }}
