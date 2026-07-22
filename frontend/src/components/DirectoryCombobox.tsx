@@ -160,6 +160,7 @@ export default function DirectoryCombobox({
         placeholder={placeholder}
         className={className}
         value={value}
+        autoComplete="off"
         role="combobox"
         tabIndex={0}
         aria-expanded={expanded}

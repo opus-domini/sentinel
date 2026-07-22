@@ -41,6 +41,12 @@ describe('DirectoryCombobox', () => {
     cleanup()
   })
 
+  it('disables browser-native autocomplete in favor of directory suggestions', () => {
+    render(<Harness />)
+
+    expect(screen.getByRole('combobox', { name: 'dir' }).getAttribute('autocomplete')).toBe('off')
+  })
+
   it('fetches and lists directory suggestions while focused', async () => {
     mockDirs(['/work/app', '/work/api'])
 
