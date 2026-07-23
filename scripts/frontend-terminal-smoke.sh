@@ -564,14 +564,22 @@ validate_eval_json "$artifacts_dir/mobile-eval.json" \
   sessionCloseHidden paneActionsConsolidated hasFooterSize
 capture_terminal_pixels mobile
 
+agent-browser --session "$browser_session" focus '.xterm-helper-textarea' >/dev/null
 agent-browser --session "$browser_session" find role button click --name "More terminal keys" >/dev/null
 agent-browser --session "$browser_session" wait '[aria-label="Advanced terminal keys"]' >/dev/null
+agent-browser --session "$browser_session" find role button click --name "Arrow left" >/dev/null
 agent-browser --session "$browser_session" eval \
-  "(() => { const panel = document.querySelector('[aria-label=\"Advanced terminal keys\"]'); const buttons = [...(panel?.querySelectorAll('button') || [])]; const rows = new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))); return { advancedPanelVisible: Boolean(panel), advancedPanelTwoRows: rows.size === 2, advancedKeysFitViewport: buttons.every((button) => { const rect = button.getBoundingClientRect(); return rect.left >= 0 && rect.right <= window.innerWidth; }), hasPageDown: Boolean(document.querySelector('[aria-label=\"Page down\"]')), hasArrowLeft: Boolean(document.querySelector('[aria-label=\"Arrow left\"]')), numberPadRemoved: !document.querySelector('[aria-label=\"Number pad\"]'), enterStillFixed: Boolean(document.querySelector('[aria-label=\"Enter\"]')) }; })()" \
+  "(() => { const panel = document.querySelector('[aria-label=\"Advanced terminal keys\"]'); const buttons = [...(panel?.querySelectorAll('button') || [])]; const rows = new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))); const active = document.activeElement; return { advancedPanelVisible: Boolean(panel), advancedPanelTwoRows: rows.size === 2, advancedKeysFitViewport: buttons.every((button) => { const rect = button.getBoundingClientRect(); return rect.left >= 0 && rect.right <= window.innerWidth; }), hasPageDown: Boolean(document.querySelector('[aria-label=\"Page down\"]')), hasArrowLeft: Boolean(document.querySelector('[aria-label=\"Arrow left\"]')), numberPadRemoved: !document.querySelector('[aria-label=\"Number pad\"]'), enterStillFixed: Boolean(document.querySelector('[aria-label=\"Enter\"]')), keyboardStayedDismissed: !active?.matches('textarea, input, [contenteditable=\"true\"]') }; })()" \
   >"$artifacts_dir/mobile-advanced-eval.json"
 validate_eval_json "$artifacts_dir/mobile-advanced-eval.json" \
   advancedPanelVisible advancedPanelTwoRows advancedKeysFitViewport hasPageDown hasArrowLeft \
-  numberPadRemoved enterStillFixed
+  numberPadRemoved enterStillFixed keyboardStayedDismissed
+agent-browser --session "$browser_session" find role button click --name "Toggle keyboard" >/dev/null
+agent-browser --session "$browser_session" eval \
+  "(() => ({ keyboardOpenedExplicitly: document.activeElement?.matches('.xterm-helper-textarea') === true }))()" \
+  >"$artifacts_dir/mobile-keyboard-toggle-eval.json"
+validate_eval_json "$artifacts_dir/mobile-keyboard-toggle-eval.json" keyboardOpenedExplicitly
+agent-browser --session "$browser_session" eval "document.activeElement?.blur?.()" >/dev/null
 agent-browser --session "$browser_session" find role button click --name "More terminal keys" >/dev/null
 
 agent-browser --session "$browser_session" find role button click --name "Select terminal text" >/dev/null

@@ -37,6 +37,7 @@ export default function TerminalControls({
 }: TerminalControlsProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const controlsRef = useRef<HTMLDivElement>(null)
+  const refocusAfterKey = advancedOpen ? undefined : onRefocus
 
   const sendKey = useCallback(
     (input: TerminalInput) => {
@@ -55,12 +56,22 @@ export default function TerminalControls({
     onRefocus()
   }, [isKeyboardVisible, onRefocus])
 
+  const toggleAdvanced = useCallback(() => {
+    if (!advancedOpen) {
+      const active = document.activeElement as HTMLElement | null
+      if (active?.matches('textarea, input, [contenteditable="true"]')) {
+        active.blur()
+      }
+    }
+    setAdvancedOpen((open) => !open)
+  }, [advancedOpen])
+
   const modifierKey = (modifier: ModifierName, label: string) => (
     <TerminalKeyButton
       ariaLabel={`${label} modifier — tap: sticky, hold: lock`}
       onPress={() => onToggleModifier(modifier)}
       onLongPress={() => onLockModifier(modifier)}
-      onRefocus={onRefocus}
+      onRefocus={refocusAfterKey}
       disabled={!inputEnabled}
       pressed={modifiers[modifier] !== 'off'}
       className="min-w-0 w-full px-1"
@@ -112,7 +123,7 @@ export default function TerminalControls({
         <TerminalAdvancedKeys
           inputEnabled={inputEnabled}
           onSendKey={sendKey}
-          onRefocus={onRefocus}
+          onRefocus={refocusAfterKey}
           modifiers={modifiers}
           onToggleModifier={onToggleModifier}
           onLockModifier={onLockModifier}
@@ -125,7 +136,7 @@ export default function TerminalControls({
         <TerminalKeyButton
           ariaLabel="Escape"
           onPress={() => sendKey('\x1b')}
-          onRefocus={onRefocus}
+          onRefocus={refocusAfterKey}
           disabled={!inputEnabled}
           className="min-w-0 w-full px-1"
         >
@@ -136,7 +147,7 @@ export default function TerminalControls({
         <TerminalKeyButton
           ariaLabel="Tab"
           onPress={() => sendKey('\t')}
-          onRefocus={onRefocus}
+          onRefocus={refocusAfterKey}
           disabled={!inputEnabled}
           className="min-w-0 w-full border-l border-border-subtle px-1"
         >
@@ -144,7 +155,7 @@ export default function TerminalControls({
         </TerminalKeyButton>
         <TerminalKeyButton
           ariaLabel="More terminal keys"
-          onPress={() => setAdvancedOpen((open) => !open)}
+          onPress={toggleAdvanced}
           pressed={advancedOpen}
           expanded={advancedOpen}
           className="min-w-0 w-full px-1 text-[9px]"
@@ -154,7 +165,7 @@ export default function TerminalControls({
         <TerminalKeyButton
           ariaLabel="Enter"
           onPress={() => sendKey('\r')}
-          onRefocus={onRefocus}
+          onRefocus={refocusAfterKey}
           disabled={!inputEnabled}
           className="min-w-0 w-full border-l border-border-subtle px-1 text-primary-text"
         >

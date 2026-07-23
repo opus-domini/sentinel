@@ -4,7 +4,7 @@ import type { ModifierName, TerminalInput, TerminalModifiers } from '@/lib/termi
 type TerminalAdvancedKeysProps = {
   inputEnabled: boolean
   onSendKey: (input: TerminalInput) => boolean
-  onRefocus: () => void
+  onRefocus?: () => void
   modifiers: TerminalModifiers
   onToggleModifier: (modifier: ModifierName) => void
   onLockModifier: (modifier: ModifierName) => void

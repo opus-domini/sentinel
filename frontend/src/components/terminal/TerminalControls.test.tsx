@@ -83,6 +83,29 @@ describe('TerminalControls', () => {
     })
   })
 
+  it('keeps the mobile keyboard dismissed while advanced keys are open', () => {
+    const terminalInput = document.createElement('textarea')
+    document.body.append(terminalInput)
+    terminalInput.focus()
+    const props = renderControls()
+
+    fireEvent.click(screen.getByRole('button', { name: 'More terminal keys' }))
+
+    expect(document.activeElement).not.toBe(terminalInput)
+    fireEvent.click(screen.getByRole('button', { name: 'Arrow left' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Escape' }))
+    expect(props.onSendKey).toHaveBeenNthCalledWith(1, {
+      csi: { type: 'letter', letter: 'D' },
+    })
+    expect(props.onSendKey).toHaveBeenNthCalledWith(2, '\x1b')
+    expect(props.onRefocus).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle keyboard' }))
+    expect(props.onRefocus).toHaveBeenCalledTimes(1)
+
+    terminalInput.remove()
+  })
+
   it('uses content-only active styling for every active terminal key', () => {
     renderControls({
       isKeyboardVisible: () => true,
