@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.13](https://github.com/opus-domini/sentinel/compare/v0.10.12...v0.10.13) (2026-07-23)
+
+
+### Refactors
+
+* **ui:** reorder primary navigation ([355b175](https://github.com/opus-domini/sentinel/commit/355b1752e52072ce62b0e429031c0ddeca4d6057))
+
 ## [0.10.12](https://github.com/opus-domini/sentinel/compare/v0.10.11...v0.10.12) (2026-07-23)
 
 
