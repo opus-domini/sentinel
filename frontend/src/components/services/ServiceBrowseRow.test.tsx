@@ -56,6 +56,7 @@ describe('ServiceBrowseRow', () => {
     const onAction = vi.fn()
     const onInspect = vi.fn()
     const onLogs = vi.fn()
+    const onToggleTrack = vi.fn()
 
     renderRow({
       service: service({
@@ -65,6 +66,7 @@ describe('ServiceBrowseRow', () => {
       onAction,
       onInspect,
       onLogs,
+      onToggleTrack,
     })
 
     const desktop = within(screen.getByTestId('service-actions-desktop'))
@@ -72,11 +74,13 @@ describe('ServiceBrowseRow', () => {
     fireEvent.click(desktop.getByRole('button', { name: 'Enable' }))
     fireEvent.click(desktop.getByRole('button', { name: 'Inspect status' }))
     fireEvent.click(desktop.getByRole('button', { name: 'View logs' }))
+    fireEvent.click(desktop.getByRole('button', { name: 'Pin service' }))
 
     expect(onAction).toHaveBeenCalledWith(expect.any(Object), 'start')
     expect(onAction).toHaveBeenCalledWith(expect.any(Object), 'enable')
     expect(onInspect).toHaveBeenCalledOnce()
     expect(onLogs).toHaveBeenCalledOnce()
+    expect(onToggleTrack).toHaveBeenCalledOnce()
   })
 
   it('collapses actions into a primary action plus overflow on mobile', () => {

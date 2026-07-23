@@ -136,12 +136,12 @@ Service state changes emit events over the `/ws/events` WebSocket:
 
 The dedicated `/services` route provides a full-page service management experience.
 
-- The sidebar (`ServicesSidebar`) lists pinned/tracked services with live status indicators. A `?` help dialog button and token/lock controls are available at the top of the sidebar.
+- Services uses the full application width without a secondary sidebar. Pinned/tracked units remain available through the `Pinned` browse filter, with live status indicators in the service list.
 - The main panel has a stats header showing total, active, and failed service counts, followed by a browse panel.
 - The browse panel discovers all host services and supports filtering by state (active/inactive/failed), scope (user/system), and free-text search.
 - Per-service actions include start, stop, restart, status inspect, and logs view. Services can be pinned or unpinned directly from the browse list.
 - Service status and logs open in modal dialogs.
-- Real-time updates arrive via WebSocket events (`ops.services.updated`, `ops.overview.updated`), keeping the sidebar and browse panel in sync without polling.
+- Real-time updates arrive via WebSocket events (`ops.services.updated`, `ops.overview.updated`), keeping the browse panel in sync without polling.
 
 ## API Endpoints
 

@@ -156,7 +156,7 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
     },
     {
       key: 'track',
-      label: svc.tracked ? 'Unpin from sidebar' : 'Pin to sidebar',
+      label: svc.tracked ? 'Unpin service' : 'Pin service',
       icon: svc.tracked ? PinOff : Pin,
       onClick: () => onToggleTrack(svc),
       disabled: rowBusy,

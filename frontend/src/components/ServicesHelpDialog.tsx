@@ -36,8 +36,8 @@ export default function ServicesHelpDialog() {
             <section>
               <h3 className="mb-1 font-medium text-foreground">Tracked Services</h3>
               <p>
-                Services pinned from the Browse panel appear in the sidebar for quick status
-                monitoring. Their active state is polled automatically.
+                Services pinned from the Browse panel can be isolated with the Pinned filter. Their
+                active state is polled automatically.
               </p>
             </section>
             <section>
@@ -46,7 +46,7 @@ export default function ServicesHelpDialog() {
                 The Browse panel discovers systemd (Linux) or launchd (macOS) units available on the
                 host. The default view stays focused on service units, and the type filter lets you
                 expand into timers, targets, sockets, and other unit kinds when needed. Pin any unit
-                to track it in the sidebar.
+                to add it to the tracked set.
               </p>
             </section>
             <section>
@@ -70,7 +70,7 @@ export default function ServicesHelpDialog() {
               <p>
                 The <strong className="text-foreground">sentinel</strong> and{' '}
                 <strong className="text-foreground">sentinel-updater</strong> services are built-in
-                and always tracked. They cannot be removed from the sidebar.
+                and always tracked.
               </p>
             </section>
           </div>

@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Menu, RefreshCw, Search, X } from 'lucide-react'
+import { RefreshCw, Search, X } from 'lucide-react'
 import type {
   OpsBrowseServicesResponse,
   OpsBrowsedService,
@@ -26,16 +26,15 @@ import type {
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
+import ServicesHelpDialog from '@/components/ServicesHelpDialog'
 import { ServiceBrowseRow } from '@/components/services/ServiceBrowseRow'
 import { ServiceLogsSheet } from '@/components/services/ServiceLogsSheet'
 import { ServicesOperationsSummary } from '@/components/services/ServicesOperationsSummary'
 import { ServiceStatusDialog } from '@/components/services/ServiceStatusDialog'
-import ServicesSidebar from '@/components/ServicesSidebar'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
-import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useTokenContext } from '@/contexts/TokenContext'
@@ -292,9 +291,8 @@ ServicesBrowseControls.displayName = 'ServicesBrowseControls'
 
 function ServicesPage() {
   const { tokenRequired, hostname } = useMetaContext()
-  const { authenticated, setToken } = useTokenContext()
+  const { authenticated } = useTokenContext()
   const { pushToast } = useToastContext()
-  const layout = useLayoutContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
 
@@ -356,11 +354,6 @@ function ServicesPage() {
     effectiveSvcTypeFilter.length === browseUnitTypes.length &&
     browseUnitTypes.every((type) => effectiveSvcTypeFilter.includes(type))
 
-  const servicesLoading = servicesQuery.isLoading
-  const servicesError =
-    servicesQuery.error != null
-      ? toErrorMessage(servicesQuery.error, 'failed to load services')
-      : ''
   const overviewError =
     overviewQuery.error != null
       ? toErrorMessage(overviewQuery.error, 'failed to load overview')
@@ -694,27 +687,6 @@ function ServicesPage() {
     [toggleTrack],
   )
 
-  const navigateToService = useCallback(
-    (unit: string) => {
-      setSvcStateFilter('all')
-      setSvcScopeFilter('all')
-      const matchingTypes = listOpsBrowseUnitTypes(
-        browseServices.filter((service) => service.unit === unit),
-      )
-      if (matchingTypes.length > 0) {
-        setSvcTypeFilterTouched(true)
-        setSvcTypeFilter(matchingTypes)
-      } else {
-        setSvcTypeFilter([])
-        setSvcTypeFilterTouched(false)
-      }
-      setSvcTrackFilter('all')
-      setSvcSearch(unit)
-      layout.setSidebarOpen(false)
-    },
-    [browseServices, layout],
-  )
-
   const toggleStateFilter = useCallback((filter: OpsServiceStateFilter) => {
     setSvcStateFilter((prev) => (prev === filter ? 'all' : filter))
   }, [])
@@ -753,37 +725,14 @@ function ServicesPage() {
   }, [])
 
   return (
-    <AppShell
-      sidebar={
-        <ServicesSidebar
-          isOpen={layout.sidebarOpen}
-          collapsed={layout.sidebarCollapsed}
-          tokenRequired={tokenRequired}
-          authenticated={authenticated}
-          loading={servicesLoading}
-          error={servicesError}
-          services={services}
-          onTokenChange={setToken}
-          onRemoveService={unregisterService}
-          onNavigateToService={navigateToService}
-        />
-      }
-    >
+    <AppShell>
       <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,var(--section-glow-brand),transparent_34%),var(--background)]">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="cursor-pointer md:hidden"
-              onClick={() => layout.setSidebarOpen((prev) => !prev)}
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
             <AppSectionTitle hostname={hostname} section="services" />
           </div>
           <div className="flex items-center gap-1.5">
+            <ServicesHelpDialog />
             <ConnectionBadge state={connectionState} onClick={resyncPage} />
           </div>
         </header>
