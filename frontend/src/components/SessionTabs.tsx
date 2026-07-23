@@ -91,6 +91,7 @@ function SortableTab({
   iconKey,
   isActive,
   hasActivity,
+  showIcon,
   dragEnabled,
   onSelect,
   onClose,
@@ -101,6 +102,7 @@ function SortableTab({
   iconKey: string
   isActive: boolean
   hasActivity: boolean
+  showIcon: boolean
   dragEnabled: boolean
   onSelect: () => void
   onClose: () => void
@@ -158,7 +160,7 @@ function SortableTab({
       aria-label={hasActivity ? `${tabName}, unread activity` : tabName}
       tabIndex={0}
     >
-      <SessionIcon className={iconClassName} />
+      {showIcon && <SessionIcon className={iconClassName} />}
       <span className="min-w-0 truncate pt-[5px] pr-2 leading-none">{tabName}</span>
       <Button
         variant="ghost"
@@ -285,6 +287,7 @@ export default function SessionTabs({
                 iconKey={sessionIcons?.get(tabName) ?? ''}
                 isActive={tabName === activeSession}
                 hasActivity={tabName !== activeSession && (activitySessions?.has(tabName) ?? false)}
+                showIcon={!isMobile}
                 dragEnabled={dragEnabled}
                 onSelect={() => onSelect(tabName)}
                 onClose={() => onClose(tabName)}

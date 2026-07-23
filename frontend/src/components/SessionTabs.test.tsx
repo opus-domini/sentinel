@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import SessionTabs, { clampSessionTabTransform } from './SessionTabs'
 
+const mobileLayout = vi.hoisted(() => ({ enabled: false }))
+
 vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+  useIsMobileLayout: () => mobileLayout.enabled,
 }))
 
 function renderTabs(overrides = {}) {
@@ -27,6 +29,7 @@ function renderTabs(overrides = {}) {
 describe('SessionTabs', () => {
   afterEach(() => {
     cleanup()
+    mobileLayout.enabled = false
   })
 
   it('marks the active tab and labels close buttons per session', () => {
@@ -60,6 +63,24 @@ describe('SessionTabs', () => {
     expect(inactiveIcon?.classList.contains('text-activity-foreground')).toBe(true)
     expect(inactiveLabel.className).not.toContain('text-activity-foreground')
     expect(inactiveTab.className).not.toContain('border-primary')
+  })
+
+  it('hides session icons on mobile while preserving unread activity semantics', () => {
+    mobileLayout.enabled = true
+    renderTabs({
+      activitySessions: new Set(['worker']),
+      sessionIcons: new Map([
+        ['api', 'terminal'],
+        ['worker', 'bot'],
+      ]),
+    })
+
+    const activeTab = screen.getByRole('tab', { name: 'api' })
+    const unreadTab = screen.getByRole('tab', { name: 'worker, unread activity' })
+
+    expect(activeTab.querySelectorAll('svg')).toHaveLength(1)
+    expect(unreadTab.querySelectorAll('svg')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Close worker tab' })).toBeTruthy()
   })
 
   it('prevents pointer text selection without removing keyboard access', () => {
