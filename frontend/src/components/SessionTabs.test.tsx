@@ -37,19 +37,50 @@ describe('SessionTabs', () => {
     expect(screen.getByRole('button', { name: 'Close worker tab' })).toBeTruthy()
   })
 
-  it('colors inactive tabs with activity using the primary menu tint', () => {
-    renderTabs({ activitySessions: new Set(['api', 'worker']) })
+  it('colors the session icon for active and unread tabs without tinting the label', () => {
+    renderTabs({
+      activitySessions: new Set(['api', 'worker']),
+      sessionIcons: new Map([
+        ['api', 'terminal'],
+        ['worker', 'bot'],
+      ]),
+    })
 
     const activeTab = screen.getByRole('tab', { name: 'api' })
-    const inactiveTab = screen.getByRole('tab', { name: 'worker' })
+    const inactiveTab = screen.getByRole('tab', { name: 'worker, unread activity' })
     const activeLabel = screen.getByText('api')
     const inactiveLabel = screen.getByText('worker')
+    const activeIcon = activeTab.querySelector('svg')
+    const inactiveIcon = inactiveTab.querySelector('svg')
 
     expect(activeTab.className).toContain('text-foreground')
-    expect(activeLabel.className).not.toContain('text-primary/60')
+    expect(activeIcon?.classList.contains('text-primary')).toBe(true)
+    expect(activeLabel.className).not.toContain('text-activity-foreground')
     expect(inactiveTab.className).toContain('text-secondary-foreground')
-    expect(inactiveLabel.className).toContain('text-primary/60')
+    expect(inactiveIcon?.classList.contains('text-activity-foreground')).toBe(true)
+    expect(inactiveLabel.className).not.toContain('text-activity-foreground')
     expect(inactiveTab.className).not.toContain('border-primary')
+  })
+
+  it('prevents pointer text selection without removing keyboard access', () => {
+    renderTabs()
+
+    const workerTab = screen.getByRole('tab', { name: 'worker' })
+
+    expect(workerTab.className).toContain('select-none')
+    expect(fireEvent.mouseDown(workerTab)).toBe(false)
+    expect(workerTab.getAttribute('tabindex')).toBe('0')
+  })
+
+  it('uses the same optical icon and label alignment as window tabs', () => {
+    renderTabs()
+
+    const apiTab = screen.getByRole('tab', { name: 'api' })
+    const apiLabel = screen.getByText('api')
+
+    expect(apiTab.className).toContain('text-[12px]/none')
+    expect(apiLabel.className).toContain('pt-[5px]')
+    expect(apiLabel.className).toContain('leading-none')
   })
 
   it('selects tabs from the keyboard without closing on delete keys', () => {

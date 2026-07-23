@@ -29,11 +29,13 @@ import {
 import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import { cn } from '@/lib/utils'
 import { hapticFeedback } from '@/lib/device'
+import { getTmuxIcon } from '@/lib/tmuxIcons'
 
 type SessionTabsProps = {
   openTabs: Array<string>
   activeSession: string
   activitySessions?: ReadonlySet<string>
+  sessionIcons?: ReadonlyMap<string, string>
   onSelect: (session: string) => void
   onClose: (session: string) => void
   onRename?: (session: string) => void
@@ -86,6 +88,7 @@ const restrictToSessionTabsBounds: Modifier = ({
 
 function SortableTab({
   tabName,
+  iconKey,
   isActive,
   hasActivity,
   dragEnabled,
@@ -95,6 +98,7 @@ function SortableTab({
   onKill,
 }: {
   tabName: string
+  iconKey: string
   isActive: boolean
   hasActivity: boolean
   dragEnabled: boolean
@@ -122,33 +126,40 @@ function SortableTab({
     }
   }
 
+  const SessionIcon = getTmuxIcon(iconKey)
+  const iconClassName = cn(
+    'size-3.5 shrink-0',
+    isActive
+      ? 'text-primary'
+      : hasActivity
+        ? 'text-activity-foreground'
+        : 'text-secondary-foreground',
+  )
+
   const tabContent = (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group inline-flex h-full min-w-[110px] max-w-[220px] cursor-pointer items-center border-r border-border-subtle px-2 text-[12px]',
+        'inline-flex h-full min-w-[110px] max-w-[220px] cursor-pointer select-none items-center gap-1.5 border-r border-border-subtle px-2 text-[12px]/none',
         isActive
           ? 'bg-surface-active text-foreground'
           : 'bg-surface-elevated text-secondary-foreground hover:bg-surface-active',
       )}
       {...(dragEnabled ? attributes : {})}
       {...(dragEnabled ? listeners : {})}
+      onMouseDown={(event) => {
+        event.preventDefault()
+      }}
       onClick={onSelect}
       onKeyDown={handleKeyDown}
       role="tab"
       aria-selected={isActive}
-      aria-label={tabName}
+      aria-label={hasActivity ? `${tabName}, unread activity` : tabName}
       tabIndex={0}
     >
-      <span
-        className={cn(
-          'min-w-0 truncate pr-2',
-          !isActive && hasActivity && 'text-primary/60 group-hover:text-primary/70',
-        )}
-      >
-        {tabName}
-      </span>
+      <SessionIcon className={iconClassName} />
+      <span className="min-w-0 truncate pt-[5px] pr-2 leading-none">{tabName}</span>
       <Button
         variant="ghost"
         size="icon-xs"
@@ -203,6 +214,7 @@ export default function SessionTabs({
   openTabs,
   activeSession,
   activitySessions,
+  sessionIcons,
   onSelect,
   onClose,
   onRename,
@@ -270,6 +282,7 @@ export default function SessionTabs({
               <SortableTab
                 key={tabName}
                 tabName={tabName}
+                iconKey={sessionIcons?.get(tabName) ?? ''}
                 isActive={tabName === activeSession}
                 hasActivity={tabName !== activeSession && (activitySessions?.has(tabName) ?? false)}
                 dragEnabled={dragEnabled}

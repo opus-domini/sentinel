@@ -23,6 +23,7 @@ type TmuxTerminalPanelProps = {
   openTabs: Array<string>
   activeSession: string
   activitySessions?: ReadonlySet<string>
+  sessionIcons?: ReadonlyMap<string, string>
   sessionUser?: string
   inspectorLoading: boolean
   inspectorError: string
@@ -70,6 +71,7 @@ export default function TmuxTerminalPanel({
   openTabs,
   activeSession,
   activitySessions,
+  sessionIcons,
   sessionUser,
   inspectorLoading,
   inspectorError,
@@ -405,6 +407,7 @@ export default function TmuxTerminalPanel({
           openTabs={openTabs}
           activeSession={activeSession}
           activitySessions={activitySessions}
+          sessionIcons={sessionIcons}
           onSelect={onSelectTab}
           onClose={onCloseTab}
           onRename={onRenameTab}

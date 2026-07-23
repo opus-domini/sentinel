@@ -932,6 +932,11 @@ function TmuxPage() {
     [sessions],
   )
 
+  const sessionIcons = useMemo(
+    () => new Map(sessions.map((session) => [session.name, session.icon])),
+    [sessions],
+  )
+
   // ---- JSX ----
   return (
     <AppShell
@@ -986,6 +991,7 @@ function TmuxPage() {
         openTabs={tabsState.openTabs}
         activeSession={tabsState.activeSession}
         activitySessions={activitySessions}
+        sessionIcons={sessionIcons}
         sessionUser={activeSessionUser}
         inspectorLoading={inspector.inspectorLoading}
         inspectorError={inspector.inspectorError}
