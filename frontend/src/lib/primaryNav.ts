@@ -16,14 +16,14 @@ export const PRIMARY_NAV_ITEMS: Array<PrimaryNavItem> = [
     Icon: SquareTerminal,
   },
   {
-    to: '/services',
-    label: 'Services',
-    Icon: Blocks,
-  },
-  {
     to: '/runbooks',
     label: 'Runbooks',
     Icon: ScrollText,
+  },
+  {
+    to: '/services',
+    label: 'Services',
+    Icon: Blocks,
   },
   {
     to: '/metrics',

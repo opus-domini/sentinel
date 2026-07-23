@@ -83,6 +83,6 @@ describe('SideRail', () => {
       link.getAttribute('aria-label'),
     )
 
-    expect(links).toEqual(['Tmux', 'Services', 'Runbooks', 'Metrics'])
+    expect(links).toEqual(['Tmux', 'Runbooks', 'Services', 'Metrics'])
   })
 })

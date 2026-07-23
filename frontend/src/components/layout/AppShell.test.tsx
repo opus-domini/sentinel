@@ -136,14 +136,14 @@ describe('AppShell', () => {
     expect(nav.className).not.toContain('shadow-2xl')
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/tmux',
-      '/services',
       '/runbooks',
+      '/services',
       '/metrics',
     ])
     expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Tmux',
-      'Services',
       'Runbooks',
+      'Services',
       'Metrics',
     ])
     const activeLink = screen.getByRole('link', { name: 'Services' })
