@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ArrowUpDown, X } from 'lucide-react'
+import { ArrowLeftRight, ArrowUpDown, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { PaneInfo } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,13 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { isPendingSplitPaneID } from '@/lib/tmuxInspectorOptimistic'
 import { cn } from '@/lib/utils'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 type PaneStripProps = {
   hasActiveSession: boolean
@@ -82,7 +88,7 @@ export default function PaneStrip({
   onSplitPaneVertical,
   onSplitPaneHorizontal,
 }: PaneStripProps) {
-  const isMobile = useIsMobileLayout()
+  const { touchOptimized: isMobile } = useViewport()
   const stripRef = useRef<HTMLDivElement | null>(null)
   const touchStateRef = useRef<PaneStripTouchState | null>(null)
   const sortedPanes = useMemo(
@@ -239,28 +245,56 @@ export default function PaneStrip({
         overscrollBehaviorY: 'none',
       }}
     >
-      <TooltipHelper content="Split vertical (left/right)">
-        <Button
-          variant="outline"
-          size="icon-xs"
-          onClick={onSplitPaneVertical}
-          aria-label="Split vertical"
-          disabled={visiblePanes.length === 0}
-        >
-          <ArrowLeftRight className="h-3.5 w-3.5" />
-        </Button>
-      </TooltipHelper>
-      <TooltipHelper content="Split horizontal (top/bottom)">
-        <Button
-          variant="outline"
-          size="icon-xs"
-          onClick={onSplitPaneHorizontal}
-          aria-label="Split horizontal"
-          disabled={visiblePanes.length === 0}
-        >
-          <ArrowUpDown className="h-3.5 w-3.5" />
-        </Button>
-      </TooltipHelper>
+      {isMobile ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="xs"
+              className="h-5 shrink-0 px-1.5"
+              aria-label="Create pane"
+              disabled={visiblePanes.length === 0}
+            >
+              <Plus className="size-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem onSelect={onSplitPaneVertical}>
+              <ArrowLeftRight className="size-4" />
+              Split vertical
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onSplitPaneHorizontal}>
+              <ArrowUpDown className="size-4" />
+              Split horizontal
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <>
+          <TooltipHelper content="Split vertical (left/right)">
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={onSplitPaneVertical}
+              aria-label="Split vertical"
+              disabled={visiblePanes.length === 0}
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHelper>
+          <TooltipHelper content="Split horizontal (top/bottom)">
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={onSplitPaneHorizontal}
+              aria-label="Split horizontal"
+              disabled={visiblePanes.length === 0}
+            >
+              <ArrowUpDown className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHelper>
+        </>
+      )}
 
       {visiblePanes.length === 0 && (
         <EmptyState variant="inline" className="text-[11px]">

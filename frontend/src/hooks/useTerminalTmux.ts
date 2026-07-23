@@ -9,13 +9,24 @@ import { Terminal } from '@xterm/xterm'
 import type { RefCallback } from 'react'
 import type { ConnectionState } from '@/types'
 import type { ReconnectState } from '@/lib/wsReconnect'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
 import { createWebClipboardProvider, writeClipboardText } from '@/lib/clipboardProvider'
 import { attachTouchWheelBridge } from '@/lib/touchWheelBridge'
+import {
+  EMPTY_TERMINAL_MODIFIERS,
+  consumeStickyModifiers,
+  lockModifier as setLockedModifier,
+  toggleStickyModifier,
+  transformTerminalInput,
+} from '@/lib/terminalInput'
+import type { ModifierName, TerminalInput, TerminalModifiers } from '@/lib/terminalInput'
 import { THEME_STORAGE_KEY, getTerminalTheme } from '@/lib/terminalThemes'
 import { buildWSProtocols } from '@/lib/wsAuth'
 import { createReconnect } from '@/lib/wsReconnect'
 import { useConnectionHealth } from '@/contexts/ConnectionHealthContext'
+import { useToastContext } from '@/contexts/ToastContext'
+import { attachTouchTerminalSelection } from '@/lib/touchTerminalSelection'
+import type { TouchTerminalSelectionController } from '@/lib/touchTerminalSelection'
 
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
@@ -76,10 +87,12 @@ type SessionRuntime = {
   lastSentRows: number
   isComposing: boolean
   onDataDispose: Disposable
+  modifiedInputDispose: Disposable
   onResizeDispose: Disposable
   onSelectionDispose: Disposable
   contextMenuDispose: Disposable
   touchWheelDispose: Disposable
+  touchSelectionDispose: TouchTerminalSelectionController
   hostResizeObserver: ResizeObserver | null
   hostResizeRafId: number | null
   reconnect: ReconnectState
@@ -120,7 +133,16 @@ type UseTerminalTmuxResult = {
   closeCurrentSocket: (reason?: string) => void
   resetTerminal: () => void
   fitTerminal: () => void
-  sendKey: (data: string) => void
+  sendKey: (input: TerminalInput) => boolean
+  modifiers: TerminalModifiers
+  toggleModifier: (modifier: ModifierName) => void
+  lockModifier: (modifier: ModifierName) => void
+  resetModifiers: () => void
+  selectionMode: boolean
+  hasSelection: boolean
+  enterSelectionMode: () => void
+  copySelection: () => Promise<boolean>
+  cancelSelection: () => void
   flushComposition: () => void
   focusTerminal: () => void
   zoomIn: () => void
@@ -220,6 +242,7 @@ export function useTerminalTmux({
   suppressBrowserContextMenu = false,
 }: UseTerminalTmuxArgs): UseTerminalTmuxResult {
   const { ready: connectionReady, issue: connectionIssue } = useConnectionHealth()
+  const { pushToast } = useToastContext()
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [statusDetail, setStatusDetail] = useState('ready')
   const [termCols, setTermCols] = useState(0)
@@ -228,12 +251,17 @@ export function useTerminalTmux({
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [hasSelection, setHasSelection] = useState(false)
+  const selectionModeRef = useRef(false)
 
-  const isMobile = useIsMobileLayout()
+  const { touchOptimized: isMobile } = useViewport()
   const isMobileRef = useRef(isMobile)
   isMobileRef.current = isMobile
 
   const isMountedRef = useRef(true)
+  const [modifiers, setModifiers] = useState<TerminalModifiers>(EMPTY_TERMINAL_MODIFIERS)
+  const modifiersRef = useRef<TerminalModifiers>(EMPTY_TERMINAL_MODIFIERS)
   const activeSessionRef = useRef(activeSession)
   const runtimesRef = useRef(new Map<string, SessionRuntime>())
   const hostsRef = useRef(new Map<string, HTMLDivElement>())
@@ -247,6 +275,61 @@ export function useTerminalTmux({
     writeBacklogRecoveries: 0,
     writeStallRecoveries: 0,
   })
+
+  const updateModifiers = useCallback(
+    (update: (current: TerminalModifiers) => TerminalModifiers) => {
+      const next = update(modifiersRef.current)
+      modifiersRef.current = next
+      if (isMountedRef.current) {
+        setModifiers(next)
+      }
+    },
+    [],
+  )
+
+  const resetModifiers = useCallback(() => {
+    updateModifiers(() => EMPTY_TERMINAL_MODIFIERS)
+  }, [updateModifiers])
+
+  const toggleModifier = useCallback(
+    (modifier: ModifierName) => {
+      updateModifiers((current) => toggleStickyModifier(current, modifier))
+    },
+    [updateModifiers],
+  )
+
+  const lockModifier = useCallback(
+    (modifier: ModifierName) => {
+      updateModifiers((current) => setLockedModifier(current, modifier))
+    },
+    [updateModifiers],
+  )
+
+  const sendRuntimeInput = useCallback(
+    (runtime: SessionRuntime, input: TerminalInput): boolean => {
+      const socket = runtime.socket
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return false
+      }
+
+      const transformed = transformTerminalInput(input, modifiersRef.current)
+      if (transformed.data === '') {
+        return false
+      }
+
+      try {
+        socket.send(runtime.encoder.encode(transformed.data))
+      } catch {
+        return false
+      }
+
+      if (transformed.consumesSticky) {
+        updateModifiers(consumeStickyModifiers)
+      }
+      return true
+    },
+    [updateModifiers],
+  )
 
   const setRuntimeStatus = useCallback(
     (runtime: SessionRuntime, next: ConnectionState, detail: string) => {
@@ -469,6 +552,39 @@ export function useTerminalTmux({
               runtime.terminal.scrollToBottom()
             })
           })
+
+          // Mobile IMEs commonly keep a single letter in composition and only
+          // let xterm emit it after the composition ends. A virtual modifier is
+          // one-shot, so intercept that text input while it travels through the
+          // terminal host: the ancestor capture phase runs before xterm's input
+          // listener on the hidden textarea.
+          const handleModifiedInput = (event: Event) => {
+            if (event.target !== ta) return
+            const inputEvent = event as InputEvent
+            const data = inputEvent.data
+            if (
+              !data ||
+              data.length !== 1 ||
+              !['insertText', 'insertCompositionText'].includes(inputEvent.inputType) ||
+              Object.values(modifiersRef.current).every((state) => state === 'off')
+            ) {
+              return
+            }
+            if (!sendRuntimeInput(runtime, data)) return
+
+            event.stopPropagation()
+            ta.value = ''
+            if (runtime.isComposing) {
+              // Reset xterm's composition state without forwarding stale text.
+              ta.dispatchEvent(new CompositionEvent('compositionend'))
+            }
+          }
+          host.addEventListener('input', handleModifiedInput, true)
+          runtime.modifiedInputDispose = {
+            dispose: () => {
+              host.removeEventListener('input', handleModifiedInput, true)
+            },
+          }
         }
 
         if (suppressBrowserContextMenu) {
@@ -514,6 +630,7 @@ export function useTerminalTmux({
       themeId,
       allowWheelInAlternateBuffer,
       refreshRuntime,
+      sendRuntimeInput,
     ],
   )
 
@@ -764,6 +881,9 @@ export function useTerminalTmux({
         if (runtime.socket === socket) {
           runtime.socket = null
         }
+        if (activeSessionRef.current === runtime.session) {
+          resetModifiers()
+        }
         const wasManual = runtime.manualCloseReason !== null
         const reason = runtime.manualCloseReason ?? 'connection closed'
         runtime.manualCloseReason = null
@@ -798,6 +918,7 @@ export function useTerminalTmux({
       isSocketCurrent,
       onAttachedMobile,
       setRuntimeStatus,
+      resetModifiers,
       wsPath,
       wsQueryKey,
     ],
@@ -892,10 +1013,12 @@ export function useTerminalTmux({
         lastSentRows: 0,
         isComposing: false,
         onDataDispose: { dispose: () => undefined },
+        modifiedInputDispose: { dispose: () => undefined },
         onResizeDispose: { dispose: () => undefined },
         onSelectionDispose: { dispose: () => undefined },
         contextMenuDispose: { dispose: () => undefined },
         touchWheelDispose: { dispose: () => undefined },
+        touchSelectionDispose: { dispose: () => undefined },
         hostResizeObserver: null,
         hostResizeRafId: null,
         reconnect: createReconnect(),
@@ -913,11 +1036,7 @@ export function useTerminalTmux({
       }
 
       runtime.onDataDispose = terminal.onData((data) => {
-        const socket = runtime.socket
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-          return
-        }
-        socket.send(runtime.encoder.encode(data))
+        sendRuntimeInput(runtime, data)
       })
 
       runtime.onResizeDispose = terminal.onResize(({ cols, rows }) => {
@@ -943,9 +1062,10 @@ export function useTerminalTmux({
       }
       const writeCurrentSelection = () => {
         clearSelectionClipboardTimer()
+        if (selectionModeRef.current) return
         const text = terminal.getSelection()
         if (text) {
-          writeClipboardText(text)
+          void writeClipboardText(text)
         }
       }
       runtime.onSelectionDispose = terminal.onSelectionChange(() => {
@@ -988,7 +1108,14 @@ export function useTerminalTmux({
       // per-origin socket pool (max 6 for HTTP/1.1).
       return runtime
     },
-    [allowWheelInAlternateBuffer, fontSize, openRuntimeInHost, sendResize, themeId],
+    [
+      allowWheelInAlternateBuffer,
+      fontSize,
+      openRuntimeInHost,
+      sendResize,
+      sendRuntimeInput,
+      themeId,
+    ],
   )
 
   const disposeRuntime = useCallback(
@@ -999,6 +1126,7 @@ export function useTerminalTmux({
       closeRuntimeSocket(runtime, reason)
       cleanupHostResizeObserver(runtime)
       runtime.onDataDispose.dispose()
+      runtime.modifiedInputDispose.dispose()
       runtime.onResizeDispose.dispose()
       runtime.onSelectionDispose.dispose()
       runtime.selectionEndDispose.dispose()
@@ -1008,13 +1136,23 @@ export function useTerminalTmux({
       }
       runtime.contextMenuDispose.dispose()
       runtime.touchWheelDispose.dispose()
+      runtime.touchSelectionDispose.dispose()
       clearRuntimeWriteQueue(runtime)
+      if (activeSessionRef.current === runtime.session) {
+        resetModifiers()
+      }
       runtime.terminal.dispose()
       runtimesRef.current.delete(runtime.session)
       hostsRef.current.delete(runtime.session)
       hostCallbacksRef.current.delete(runtime.session)
     },
-    [clearHandshakeTimer, clearReconnectTimer, cleanupHostResizeObserver, closeRuntimeSocket],
+    [
+      clearHandshakeTimer,
+      clearReconnectTimer,
+      cleanupHostResizeObserver,
+      closeRuntimeSocket,
+      resetModifiers,
+    ],
   )
 
   const getTerminalHostRef = useCallback(
@@ -1097,7 +1235,12 @@ export function useTerminalTmux({
     }
     clearRuntimeWriteQueue(runtime)
     runtime.terminal.reset()
-  }, [])
+    runtime.terminal.clearSelection()
+    selectionModeRef.current = false
+    setSelectionMode(false)
+    setHasSelection(false)
+    resetModifiers()
+  }, [resetModifiers])
 
   const fitTerminal = useCallback(() => {
     const sessionName = activeSessionRef.current.trim()
@@ -1111,21 +1254,20 @@ export function useTerminalTmux({
     fitRuntime(runtime)
   }, [fitRuntime])
 
-  const sendKey = useCallback((data: string) => {
-    const sessionName = activeSessionRef.current.trim()
-    if (sessionName === '') {
-      return
-    }
-    const runtime = runtimesRef.current.get(sessionName)
-    if (!runtime) {
-      return
-    }
-    const socket = runtime.socket
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return
-    }
-    socket.send(runtime.encoder.encode(data))
-  }, [])
+  const sendKey = useCallback(
+    (input: TerminalInput): boolean => {
+      const sessionName = activeSessionRef.current.trim()
+      if (sessionName === '') {
+        return false
+      }
+      const runtime = runtimesRef.current.get(sessionName)
+      if (!runtime) {
+        return false
+      }
+      return sendRuntimeInput(runtime, input)
+    },
+    [sendRuntimeInput],
+  )
 
   const flushComposition = useCallback(() => {
     const sessionName = activeSessionRef.current.trim()
@@ -1232,6 +1374,54 @@ export function useTerminalTmux({
     runtime.terminal.focus()
   }, [])
 
+  const cancelSelection = useCallback(() => {
+    const runtime = runtimesRef.current.get(activeSessionRef.current.trim())
+    runtime?.terminal.clearSelection()
+    runtime?.touchSelectionDispose.dispose()
+    if (runtime) {
+      runtime.touchSelectionDispose = { dispose: () => undefined }
+    }
+    selectionModeRef.current = false
+    setSelectionMode(false)
+    setHasSelection(false)
+    runtime?.terminal.focus()
+  }, [])
+
+  const enterSelectionMode = useCallback(() => {
+    const runtime = runtimesRef.current.get(activeSessionRef.current.trim())
+    if (!runtime?.terminal.element) return
+    runtime.terminal.clearSelection()
+    selectionModeRef.current = true
+    setHasSelection(false)
+    setSelectionMode(true)
+  }, [])
+
+  const copySelection = useCallback(async (): Promise<boolean> => {
+    const runtime = runtimesRef.current.get(activeSessionRef.current.trim())
+    const text = runtime?.terminal.getSelection() ?? ''
+    if (text === '') {
+      return false
+    }
+
+    const copied = await writeClipboardText(text)
+    if (copied) {
+      pushToast({
+        level: 'success',
+        title: 'Terminal selection',
+        message: 'Copied to clipboard',
+      })
+      cancelSelection()
+      return true
+    }
+
+    pushToast({
+      level: 'error',
+      title: 'Terminal selection',
+      message: 'Clipboard access was denied',
+    })
+    return false
+  }, [cancelSelection, pushToast])
+
   const prevActiveSessionRef = useRef('')
 
   useEffect(() => {
@@ -1239,6 +1429,14 @@ export function useTerminalTmux({
     const prevActive = prevActiveSessionRef.current
     activeSessionRef.current = activeSession
     prevActiveSessionRef.current = activeName
+    if (prevActive !== activeName) {
+      resetModifiers()
+      const previousRuntime = runtimesRef.current.get(prevActive)
+      previousRuntime?.terminal.clearSelection()
+      selectionModeRef.current = false
+      setSelectionMode(false)
+      setHasSelection(false)
+    }
     publishActiveRuntimeState()
     fitTerminal()
 
@@ -1273,6 +1471,7 @@ export function useTerminalTmux({
     fitTerminal,
     publishActiveRuntimeState,
     refreshRuntime,
+    resetModifiers,
   ])
 
   useEffect(() => {
@@ -1304,7 +1503,7 @@ export function useTerminalTmux({
     for (const runtime of runtimesRef.current.values()) {
       runtime.touchWheelDispose.dispose()
       runtime.touchWheelDispose = { dispose: () => undefined }
-      if (!isMobile || !allowWheelInAlternateBuffer) {
+      if (selectionMode || !isMobile || !allowWheelInAlternateBuffer) {
         continue
       }
       const host = hostsRef.current.get(runtime.session)
@@ -1318,7 +1517,33 @@ export function useTerminalTmux({
         dispatchTarget: screen ?? terminalElement,
       })
     }
-  }, [allowWheelInAlternateBuffer, isMobile])
+  }, [allowWheelInAlternateBuffer, isMobile, selectionMode])
+
+  useEffect(() => {
+    for (const runtime of runtimesRef.current.values()) {
+      runtime.touchSelectionDispose.dispose()
+      runtime.touchSelectionDispose = { dispose: () => undefined }
+    }
+    if (!selectionMode) return
+
+    const runtime = runtimesRef.current.get(activeSessionRef.current.trim())
+    const terminalElement = runtime?.terminal.element
+    const screen = terminalElement?.querySelector<HTMLElement>('.xterm-screen')
+    if (!runtime || !screen) {
+      selectionModeRef.current = false
+      setSelectionMode(false)
+      setHasSelection(false)
+      return
+    }
+
+    runtime.touchWheelDispose.dispose()
+    runtime.touchWheelDispose = { dispose: () => undefined }
+    runtime.touchSelectionDispose = attachTouchTerminalSelection({
+      screen,
+      terminal: runtime.terminal,
+      onSelectionChange: setHasSelection,
+    })
+  }, [activeSession, selectionMode])
 
   useEffect(() => {
     const onWindowResize = () => {
@@ -1446,6 +1671,15 @@ export function useTerminalTmux({
     resetTerminal,
     fitTerminal,
     sendKey,
+    modifiers,
+    toggleModifier,
+    lockModifier,
+    resetModifiers,
+    selectionMode,
+    hasSelection,
+    enterSelectionMode,
+    copySelection,
+    cancelSelection,
     flushComposition,
     focusTerminal,
     zoomIn,

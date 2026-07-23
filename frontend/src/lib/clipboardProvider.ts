@@ -6,26 +6,32 @@ import type { IClipboardProvider } from '@xterm/addon-clipboard'
  * uses a temporary textarea + execCommand('copy'), which works when triggered
  * by a user gesture (e.g. mouse selection).
  */
-export function writeClipboardText(text: string): void {
+export async function writeClipboardText(text: string): Promise<boolean> {
   // navigator.clipboard is undefined in non-secure contexts (HTTP over IP).
   // TypeScript DOM types declare it as always present, so we cast to check.
   const clipboard = navigator.clipboard as Clipboard | undefined
   if (clipboard) {
-    clipboard.writeText(text).catch(() => {})
-    return
+    try {
+      await clipboard.writeText(text)
+      return true
+    } catch {
+      return false
+    }
   }
+  let el: HTMLTextAreaElement | null = null
   try {
-    const el = document.createElement('textarea')
+    el = document.createElement('textarea')
     el.value = text
     el.style.position = 'fixed'
     el.style.left = '-9999px'
     el.style.opacity = '0'
     document.body.appendChild(el)
     el.select()
-    document.execCommand('copy')
-    document.body.removeChild(el)
+    return document.execCommand('copy')
   } catch {
-    // execCommand fallback may fail without user gesture.
+    return false
+  } finally {
+    el?.remove()
   }
 }
 
@@ -49,9 +55,8 @@ export function createWebClipboardProvider(): IClipboardProvider {
         return ''
       }
     },
-    writeText: (_selection, text) => {
-      writeClipboardText(text)
-      return Promise.resolve()
+    writeText: async (_selection, text) => {
+      await writeClipboardText(text)
     },
   }
 }

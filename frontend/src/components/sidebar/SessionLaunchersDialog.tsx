@@ -53,7 +53,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useMetaContext } from '@/contexts/MetaContext'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
 import { hapticFeedback } from '@/lib/device'
 import { DEFAULT_ICON_KEY, TMUX_ICONS, getTmuxIcon } from '@/lib/tmuxIcons'
 import { slugifyTmuxName } from '@/lib/tmuxName'
@@ -177,7 +177,7 @@ export default function SessionLaunchersDialog({
   const cwdId = `${dialogId}-cwd`
   const cwdLabelId = `${dialogId}-cwd-label`
   const userLabelId = `${dialogId}-user-label`
-  const isMobile = useIsMobileLayout()
+  const { touchOptimized: isMobile } = useViewport()
   const dragEnabled = !isMobile
   const normalizedDefaultCwd = useMemo(() => defaultCwd.trim(), [defaultCwd])
   const defaultDraft = useMemo(

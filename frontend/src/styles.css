@@ -233,13 +233,6 @@
   user-select: none;
 }
 
-/* DPad/NumPad need touch-action: none for custom gesture handling */
-.terminal-key-gesture {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: none;
-  user-select: none;
-}
-
 .xterm {
   width: 100%;
   height: 100%;
@@ -270,32 +263,33 @@
   display: none;
 }
 
-@media (max-width: 767px) {
-  .xterm,
-  .xterm .xterm-viewport,
-  .xterm .xterm-scrollable-element {
-    touch-action: none;
-    overscroll-behavior: none;
-    -webkit-touch-callout: none;
-  }
+.touch-optimized .xterm,
+.touch-optimized .xterm .xterm-viewport,
+.touch-optimized .xterm .xterm-scrollable-element {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+}
+
+.touch-terminal-selecting {
+  cursor: crosshair;
+  touch-action: none;
 }
 
 /* iOS root positioning for visual viewport tracking */
-@media (max-width: 767px) {
-  .viewport-tracked #root {
-    width: var(--visual-viewport-width, 100vw);
-    height: var(--visual-viewport-height, 100dvh);
-  }
+.viewport-compact.viewport-tracked #root {
+  width: var(--visual-viewport-width, 100vw);
+  height: var(--visual-viewport-height, 100dvh);
+}
 
-  .ios.viewport-tracked #root {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: var(--visual-viewport-width, 100vw);
-    height: var(--visual-viewport-height, 100dvh);
-    transform: translate3d(var(--viewport-offset-left, 0px), var(--viewport-offset-top, 0px), 0);
-    transform-origin: top left;
-  }
+.ios.viewport-compact.viewport-tracked #root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--visual-viewport-width, 100vw);
+  height: var(--visual-viewport-height, 100dvh);
+  transform: translate3d(var(--viewport-offset-left, 0px), var(--viewport-offset-top, 0px), 0);
+  transform-origin: top left;
 }
 
 /* Safe area padding when keyboard is hidden */
@@ -307,51 +301,49 @@
    nav extends through the safe-area inset so no empty strip appears below it.
    When the on-screen keyboard is up the nav is hidden behind it, so collapse
    the reserve too. */
-@media (max-width: 767px) {
-  .app-shell {
-    padding-bottom: 2.5rem;
-  }
+.viewport-compact .app-shell {
+  padding-bottom: 2.75rem;
+}
 
-  .mobile-primary-nav {
-    bottom: calc(env(safe-area-inset-bottom, 0px) * -1);
-    min-height: 2.5rem;
-    padding-bottom: calc(0.125rem + env(safe-area-inset-bottom, 0px));
-  }
+.viewport-compact .mobile-primary-nav {
+  bottom: calc(env(safe-area-inset-bottom, 0px) * -1);
+  min-height: 2.75rem;
+  padding-bottom: calc(0.125rem + env(safe-area-inset-bottom, 0px));
+}
 
-  .keyboard-visible .app-shell {
-    padding-bottom: 0;
-  }
+.viewport-compact.keyboard-visible .app-shell {
+  padding-bottom: 0;
+}
 
-  .keyboard-visible .mobile-primary-nav {
-    display: none;
-  }
+.viewport-compact.keyboard-visible .mobile-primary-nav {
+  display: none;
+}
+
+.keyboard-visible .terminal-footer-meta {
+  display: none;
 }
 
 /* Sidebar drawer backdrop */
-@media (max-width: 767px) {
-  .sidebar-drawer-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    background: rgba(0, 0, 0, 0.5);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease-out;
-  }
+.viewport-compact .sidebar-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out;
+}
 
-  .sidebar-drawer-backdrop.open {
-    opacity: 1;
-    pointer-events: auto;
-  }
+.viewport-compact .sidebar-drawer-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Prevent iOS zoom on inputs */
-@media (max-width: 767px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px !important;
-  }
+.touch-optimized input,
+.touch-optimized select,
+.touch-optimized textarea {
+  font-size: 16px !important;
 }
 
 /* Sheet slide animations */

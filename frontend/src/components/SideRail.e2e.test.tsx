@@ -23,6 +23,14 @@ vi.mock('@/components/settings/SettingsDialog', () => ({
   default: () => null,
 }))
 
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: false,
+    touchCapable: false,
+    touchOptimized: false,
+  }),
+}))
+
 const layoutValue = {
   sidebarOpen: false,
   setSidebarOpen: () => {},

@@ -6,8 +6,12 @@ import WindowStrip, { clampWindowStripTransform } from './WindowStrip'
 import type { TmuxLauncher, WindowInfo } from '@/types'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: false,
+    touchCapable: false,
+    touchOptimized: false,
+  }),
 }))
 
 describe('WindowStrip', () => {

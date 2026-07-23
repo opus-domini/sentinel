@@ -13,7 +13,8 @@ import type { ConnectionState, PaneInfo, TmuxLauncher, WindowInfo } from '@/type
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { isEditableHotkeyTarget, useDocumentHotkeys } from '@/hooks/useHotkeys'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
+import type { ModifierName, TerminalInput, TerminalModifiers } from '@/lib/terminalInput'
 
 type TmuxTerminalPanelProps = {
   hostname?: string
@@ -54,7 +55,15 @@ type TmuxTerminalPanelProps = {
   onSelectTab: (session: string) => void
   onCloseTab: (session: string) => void
   onReorderTabs?: (from: number, to: number) => void
-  onSendKey?: (data: string) => void
+  onSendKey?: (input: TerminalInput) => boolean
+  modifiers?: TerminalModifiers
+  onToggleModifier?: (modifier: ModifierName) => void
+  onLockModifier?: (modifier: ModifierName) => void
+  selectionMode?: boolean
+  hasSelection?: boolean
+  onEnterSelectionMode?: () => void
+  onCopySelection?: () => Promise<boolean>
+  onCancelSelection?: () => void
   onFlushComposition?: () => void
   onFocusTerminal?: () => void
   onZoomIn?: () => void
@@ -103,6 +112,14 @@ export default function TmuxTerminalPanel({
   onCloseTab,
   onReorderTabs,
   onSendKey,
+  modifiers,
+  onToggleModifier,
+  onLockModifier,
+  selectionMode = false,
+  hasSelection = false,
+  onEnterSelectionMode,
+  onCopySelection,
+  onCancelSelection,
   onFlushComposition,
   onFocusTerminal,
   onZoomIn,
@@ -110,12 +127,22 @@ export default function TmuxTerminalPanel({
   onOpenCreateSession,
   onResync,
 }: TmuxTerminalPanelProps) {
-  const isMobileLayout = useIsMobileLayout()
+  const { compactLayout, touchOptimized } = useViewport()
   const panelRef = useRef<HTMLElement | null>(null)
   const lockedTouchIDsRef = useRef<Set<number>>(new Set())
   const hasActiveSession = activeSession !== ''
-  const showSessionTabs = isMobileLayout || sidebarCollapsed
-  const showControls = isMobileLayout && hasActiveSession && !!onSendKey && !!onFocusTerminal
+  const showSessionTabs = compactLayout || sidebarCollapsed
+  const showControls =
+    touchOptimized &&
+    hasActiveSession &&
+    !!onSendKey &&
+    !!onFocusTerminal &&
+    !!modifiers &&
+    !!onToggleModifier &&
+    !!onLockModifier &&
+    !!onEnterSelectionMode &&
+    !!onCopySelection &&
+    !!onCancelSelection
   const terminalLoadingMessage = (() => {
     if (!hasActiveSession || connectionState !== 'connecting') {
       return ''
@@ -309,7 +336,7 @@ export default function TmuxTerminalPanel({
   )
 
   useEffect(() => {
-    if (!isMobileLayout) {
+    if (!touchOptimized) {
       return
     }
 
@@ -368,7 +395,7 @@ export default function TmuxTerminalPanel({
       document.removeEventListener('touchend', clearTouches, true)
       document.removeEventListener('touchcancel', clearTouches, true)
     }
-  }, [isMobileLayout])
+  }, [touchOptimized])
 
   return (
     <main
@@ -389,7 +416,7 @@ export default function TmuxTerminalPanel({
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            className={compactLayout ? undefined : 'hidden'}
             onClick={onToggleSidebarOpen}
             aria-label="Open menu"
           >
@@ -468,14 +495,15 @@ export default function TmuxTerminalPanel({
         ) : (
           <div className="text-center">
             <p className="text-[13px] text-muted-foreground">
-              <span className="md:hidden">Open the menu to attach a session</span>
-              <span className="hidden md:inline">Attach to a session from the sidebar</span>
+              {compactLayout
+                ? 'Open the menu to attach a session'
+                : 'Attach to a session from the sidebar'}
             </p>
             <div className="mt-3 flex items-center justify-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 cursor-pointer text-[11px] md:hidden"
+                className={cn('h-7 cursor-pointer text-[11px]', !compactLayout && 'hidden')}
                 onClick={onToggleSidebarOpen}
               >
                 Open menu
@@ -498,6 +526,15 @@ export default function TmuxTerminalPanel({
           onSendKey={onSendKey}
           onFlushComposition={onFlushComposition}
           onRefocus={onFocusTerminal}
+          inputEnabled={connectionState === 'connected'}
+          modifiers={modifiers}
+          onToggleModifier={onToggleModifier}
+          onLockModifier={onLockModifier}
+          selectionMode={selectionMode}
+          hasSelection={hasSelection}
+          onEnterSelectionMode={onEnterSelectionMode}
+          onCopySelection={onCopySelection}
+          onCancelSelection={onCancelSelection}
           isKeyboardVisible={isKeyboardVisible}
         />
       )}
@@ -526,7 +563,7 @@ export default function TmuxTerminalPanel({
           />
         </div>
         {hasActiveSession && (
-          <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+          <div className="terminal-footer-meta flex shrink-0 items-center gap-1 whitespace-nowrap">
             <TooltipHelper content="Zoom out">
               <button
                 type="button"

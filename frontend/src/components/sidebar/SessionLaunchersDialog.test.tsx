@@ -4,8 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SessionLaunchersDialog from './SessionLaunchersDialog'
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: false,
+    touchCapable: false,
+    touchOptimized: false,
+  }),
 }))
 
 vi.mock('@/contexts/MetaContext', () => ({

@@ -1,529 +1,183 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Keyboard } from 'lucide-react'
-import NumPad from './NumPad'
-import { hapticFeedback } from '@/lib/device'
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type ModifierState = 'off' | 'sticky' | 'locked'
-
-type CsiDef = { type: 'letter'; letter: string } | { type: 'tilde'; n: number }
-type ActiveModifiers = {
-  ctrl: boolean
-  alt: boolean
-  shift: boolean
-}
+import { useCallback, useRef, useState } from 'react'
+import { CornerDownLeft, Keyboard } from 'lucide-react'
+import TerminalAdvancedKeys from './TerminalAdvancedKeys'
+import TerminalKeyButton from './TerminalKeyButton'
+import type { ModifierName, TerminalInput, TerminalModifiers } from '@/lib/terminalInput'
 
 type TerminalControlsProps = {
-  onSendKey: (key: string) => void
+  onSendKey: (input: TerminalInput) => boolean
   onFlushComposition?: () => void
   onRefocus: () => void
-  disabled?: boolean
+  inputEnabled: boolean
+  modifiers: TerminalModifiers
+  onToggleModifier: (modifier: ModifierName) => void
+  onLockModifier: (modifier: ModifierName) => void
+  selectionMode: boolean
+  hasSelection: boolean
+  onEnterSelectionMode: () => void
+  onCopySelection: () => Promise<boolean>
+  onCancelSelection: () => void
   isKeyboardVisible?: () => boolean
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const LONG_PRESS_DELAY = 400
-const REPEAT_INTERVAL = 80
-
-const CSI_UP: CsiDef = { type: 'letter', letter: 'A' }
-const CSI_DOWN: CsiDef = { type: 'letter', letter: 'B' }
-const CSI_RIGHT: CsiDef = { type: 'letter', letter: 'C' }
-const CSI_LEFT: CsiDef = { type: 'letter', letter: 'D' }
-const CSI_HOME: CsiDef = { type: 'letter', letter: 'H' }
-const CSI_END: CsiDef = { type: 'letter', letter: 'F' }
-const CSI_PGUP: CsiDef = { type: 'tilde', n: 5 }
-const CSI_PGDN: CsiDef = { type: 'tilde', n: 6 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function ctrlCode(ch: string): string | null {
-  const c = ch.toUpperCase().charCodeAt(0)
-  if (c >= 0x41 && c <= 0x5a) return String.fromCharCode(c - 64)
-  switch (ch) {
-    case '@':
-    case ' ':
-      return '\x00'
-    case '[':
-      return '\x1b'
-    case '\\':
-      return '\x1c'
-    case ']':
-      return '\x1d'
-    case '^':
-      return '\x1e'
-    case '_':
-      return '\x1f'
-    case '?':
-      return '\x7f'
-    default:
-      return null
-  }
-}
-
-function buildCsi(def: CsiDef, modifiers: ActiveModifiers): string {
-  const mod = 1 + (modifiers.shift ? 1 : 0) + (modifiers.alt ? 2 : 0) + (modifiers.ctrl ? 4 : 0)
-  if (def.type === 'letter') {
-    return mod === 1 ? `\x1b[${def.letter}` : `\x1b[1;${mod}${def.letter}`
-  }
-  return mod === 1 ? `\x1b[${def.n}~` : `\x1b[${def.n};${mod}~`
-}
-
-function applySequenceModifiers(sequence: string, modifiers: ActiveModifiers): string {
-  if (sequence === '\t' && modifiers.shift) {
-    const reverseTab = '\x1b[Z'
-    return modifiers.alt ? `\x1b${reverseTab}` : reverseTab
-  }
-
-  if (sequence.length !== 1) {
-    return sequence
-  }
-
-  let next = sequence
-  if (modifiers.shift && /^[a-z]$/.test(next)) {
-    next = next.toUpperCase()
-  }
-  if (modifiers.ctrl) {
-    const mapped = ctrlCode(next)
-    if (mapped) next = mapped
-  }
-  if (modifiers.alt) {
-    next = `\x1b${next}`
-  }
-
-  return next
-}
-
-// ---------------------------------------------------------------------------
-// ExtraKey — a single key with optional auto-repeat on long-press
-// ---------------------------------------------------------------------------
-
-type ExtraKeyProps = {
-  label: React.ReactNode
-  ariaLabel: string
-  sequence?: string
-  csi?: CsiDef
-  repeat?: boolean
-  disabled?: boolean
-  ctrlRef: React.RefObject<ModifierState>
-  altRef: React.RefObject<ModifierState>
-  shiftRef: React.RefObject<ModifierState>
-  onSend: (seq: string) => void
-  onFlushComposition?: () => void
-  onConsume: () => void
-  onRefocus: () => void
-}
-
-function ExtraKey({
-  label,
-  ariaLabel,
-  sequence,
-  csi,
-  repeat,
-  disabled,
-  ctrlRef,
-  altRef,
-  shiftRef,
-  onSend,
-  onFlushComposition,
-  onConsume,
-  onRefocus,
-}: ExtraKeyProps) {
-  const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const repTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastTouch = useRef(0)
-
-  const fire = useCallback(() => {
-    // Flush any pending IME composition so the composed text is sent
-    // to the PTY before this key sequence.
-    onFlushComposition?.()
-
-    const modifiers: ActiveModifiers = {
-      ctrl: ctrlRef.current !== 'off',
-      alt: altRef.current !== 'off',
-      shift: shiftRef.current !== 'off',
-    }
-
-    let seq: string
-    if (csi) {
-      seq = buildCsi(csi, modifiers)
-    } else {
-      seq = applySequenceModifiers(sequence ?? '', modifiers)
-    }
-
-    if (seq) {
-      onSend(seq)
-      onConsume()
-    }
-  }, [csi, sequence, ctrlRef, altRef, shiftRef, onSend, onFlushComposition, onConsume])
-
-  const clearTimers = useCallback(() => {
-    if (longTimer.current !== null) {
-      clearTimeout(longTimer.current)
-      longTimer.current = null
-    }
-    if (repTimer.current !== null) {
-      clearInterval(repTimer.current)
-      repTimer.current = null
-    }
-  }, [])
-
-  const handleTouchStart = useCallback(() => {
-    lastTouch.current = Date.now()
-    hapticFeedback()
-    fire()
-    if (repeat) {
-      longTimer.current = setTimeout(() => {
-        repTimer.current = setInterval(fire, REPEAT_INTERVAL)
-      }, LONG_PRESS_DELAY)
-    }
-  }, [fire, repeat])
-
-  const handleTouchEnd = useCallback(() => {
-    clearTimers()
-    onRefocus()
-  }, [clearTimers, onRefocus])
-
-  const handleClick = useCallback(() => {
-    if (Date.now() - lastTouch.current < 700) return
-    hapticFeedback()
-    fire()
-    onRefocus()
-  }, [fire, onRefocus])
-
-  useEffect(() => clearTimers, [clearTimers])
-
-  return (
-    <button
-      type="button"
-      className="terminal-key flex min-h-[32px] flex-1 items-center justify-center text-[10px] font-medium text-terminal-key-text active:bg-terminal-key-active"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
-      onClick={handleClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-    >
-      {label}
-    </button>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// ModifierKey — modifiers with sticky (tap) and locked (long-press)
-// ---------------------------------------------------------------------------
-
-type ModifierKeyProps = {
-  label: string
-  ariaLabel: string
-  state: ModifierState
-  disabled?: boolean
-  onTap: () => void
-  onLongPress: () => void
-  onRefocus: () => void
-}
-
-function ModifierKey({
-  label,
-  ariaLabel,
-  state,
-  disabled,
-  onTap,
-  onLongPress,
-  onRefocus,
-}: ModifierKeyProps) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const wasLong = useRef(false)
-  const lastTouch = useRef(0)
-
-  const handleTouchStart = useCallback(() => {
-    lastTouch.current = Date.now()
-    wasLong.current = false
-    hapticFeedback()
-    timer.current = setTimeout(() => {
-      wasLong.current = true
-      hapticFeedback()
-      onLongPress()
-    }, LONG_PRESS_DELAY)
-  }, [onLongPress])
-
-  const handleTouchEnd = useCallback(() => {
-    if (timer.current !== null) {
-      clearTimeout(timer.current)
-      timer.current = null
-    }
-    if (!wasLong.current) onTap()
-    onRefocus()
-  }, [onTap, onRefocus])
-
-  const handleClick = useCallback(() => {
-    if (Date.now() - lastTouch.current < 700) return
-    onTap()
-    onRefocus()
-  }, [onTap, onRefocus])
-
-  useEffect(
-    () => () => {
-      if (timer.current !== null) clearTimeout(timer.current)
-    },
-    [],
-  )
-
-  const bg =
-    state === 'locked'
-      ? 'bg-primary text-primary-foreground'
-      : state === 'sticky'
-        ? 'bg-primary/20 text-primary-text border border-primary/40'
-        : 'text-terminal-key-text active:bg-terminal-key-active'
-
-  return (
-    <button
-      type="button"
-      className={`terminal-key flex min-h-[32px] flex-1 items-center justify-center rounded-sm text-[10px] font-semibold ${bg}`}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
-      onClick={handleClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      aria-pressed={state !== 'off'}
-    >
-      {label}
-    </button>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// TerminalControls — inline two-row extra-keys bar
-// ---------------------------------------------------------------------------
 
 export default function TerminalControls({
   onSendKey,
   onFlushComposition,
   onRefocus,
-  disabled,
+  inputEnabled,
+  modifiers,
+  onToggleModifier,
+  onLockModifier,
+  selectionMode,
+  hasSelection,
+  onEnterSelectionMode,
+  onCopySelection,
+  onCancelSelection,
   isKeyboardVisible,
 }: TerminalControlsProps) {
-  // -- Modifier state (ref + state kept in sync) --
-  const [ctrlState, setCtrlState] = useState<ModifierState>('off')
-  const [altState, setAltState] = useState<ModifierState>('off')
-  const [shiftState, setShiftState] = useState<ModifierState>('off')
-  const ctrlRef = useRef<ModifierState>('off')
-  const altRef = useRef<ModifierState>('off')
-  const shiftRef = useRef<ModifierState>('off')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const controlsRef = useRef<HTMLDivElement>(null)
 
-  const setCtrl = useCallback((s: ModifierState) => {
-    ctrlRef.current = s
-    setCtrlState(s)
-  }, [])
-  const setAlt = useCallback((s: ModifierState) => {
-    altRef.current = s
-    setAltState(s)
-  }, [])
-  const setShift = useCallback((s: ModifierState) => {
-    shiftRef.current = s
-    setShiftState(s)
-  }, [])
-
-  const consumeModifiers = useCallback(() => {
-    if (ctrlRef.current === 'sticky') setCtrl('off')
-    if (altRef.current === 'sticky') setAlt('off')
-    if (shiftRef.current === 'sticky') setShift('off')
-  }, [setCtrl, setAlt, setShift])
-
-  const ctrlTap = useCallback(
-    () => setCtrl(ctrlRef.current === 'off' ? 'sticky' : 'off'),
-    [setCtrl],
+  const sendKey = useCallback(
+    (input: TerminalInput) => {
+      onFlushComposition?.()
+      return onSendKey(input)
+    },
+    [onFlushComposition, onSendKey],
   )
-  const ctrlLock = useCallback(() => setCtrl('locked'), [setCtrl])
-  const altTap = useCallback(() => setAlt(altRef.current === 'off' ? 'sticky' : 'off'), [setAlt])
-  const altLock = useCallback(() => setAlt('locked'), [setAlt])
-  const shiftTap = useCallback(
-    () => setShift(shiftRef.current === 'off' ? 'sticky' : 'off'),
-    [setShift],
+
+  const toggleKeyboard = useCallback(() => {
+    const active = document.activeElement as HTMLElement | null
+    if (isKeyboardVisible?.() || active?.matches('textarea, input, [contenteditable="true"]')) {
+      active?.blur()
+      return
+    }
+    onRefocus()
+  }, [isKeyboardVisible, onRefocus])
+
+  const modifierKey = (modifier: ModifierName, label: string) => (
+    <TerminalKeyButton
+      ariaLabel={`${label} modifier — tap: sticky, hold: lock`}
+      onPress={() => onToggleModifier(modifier)}
+      onLongPress={() => onLockModifier(modifier)}
+      onRefocus={onRefocus}
+      disabled={!inputEnabled}
+      pressed={modifiers[modifier] !== 'off'}
+      className="min-w-0 w-full px-1"
+    >
+      {label}
+    </TerminalKeyButton>
   )
-  const shiftLock = useCallback(() => setShift('locked'), [setShift])
 
-  // -- Prevent focus steal so tapping keys doesn't blur the terminal --
-  useEffect(() => {
-    const el = controlsRef.current
-    if (!el || disabled) return
-    const prevent = (e: Event) => {
-      if (el.contains(e.target as Node)) e.preventDefault()
-    }
-    const opts: AddEventListenerOptions = { passive: false, capture: true }
-    el.addEventListener('touchstart', prevent, opts)
-    el.addEventListener('pointerdown', prevent, opts)
-    el.addEventListener('mousedown', prevent, opts)
-    return () => {
-      el.removeEventListener('touchstart', prevent, { capture: true })
-      el.removeEventListener('pointerdown', prevent, { capture: true })
-      el.removeEventListener('mousedown', prevent, { capture: true })
-    }
-  }, [disabled])
-
-  // -- Global key interception for helper-owned modifiers --
-  useEffect(() => {
-    const consume = (ch: string): boolean => {
-      const modifiers: ActiveModifiers = {
-        ctrl: ctrlRef.current !== 'off',
-        alt: altRef.current !== 'off',
-        shift: shiftRef.current !== 'off',
-      }
-      if (!modifiers.ctrl && !modifiers.alt && !modifiers.shift) return false
-
-      const seq = applySequenceModifiers(ch, modifiers)
-
-      onSendKey(seq)
-      consumeModifiers()
-      return true
-    }
-
-    // The xterm input is itself a textarea, so only bail for editable targets
-    // OUTSIDE the terminal surface — otherwise a locked modifier would hijack
-    // typing in dialogs, the session filter, etc.
-    const isForeignEditable = (target: EventTarget | null): boolean => {
-      const el = target as HTMLElement | null
-      if (el == null) return false
-      const editable = el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable
-      return editable && el.closest('.xterm') == null
-    }
-
-    const onKd = (e: KeyboardEvent) => {
-      if (isForeignEditable(e.target)) return
-      if (e.key.length === 1 && consume(e.key)) {
-        e.preventDefault()
-        e.stopPropagation()
-      }
-    }
-    const onBi = (e: InputEvent) => {
-      if (isForeignEditable(e.target)) return
-      if (e.data?.length === 1 && consume(e.data)) {
-        e.preventDefault()
-        e.stopPropagation()
-      }
-    }
-    const onIn = (e: Event) => {
-      if (isForeignEditable(e.target)) return
-      const ie = e as InputEvent
-      if (ie.data?.length === 1 && consume(ie.data)) {
-        ie.preventDefault()
-        ie.stopPropagation()
-      }
-    }
-
-    document.addEventListener('keydown', onKd, { capture: true })
-    document.addEventListener('beforeinput', onBi, { capture: true })
-    document.addEventListener('input', onIn, { capture: true })
-    return () => {
-      document.removeEventListener('keydown', onKd, { capture: true })
-      document.removeEventListener('beforeinput', onBi, { capture: true })
-      document.removeEventListener('input', onIn, { capture: true })
-    }
-  }, [onSendKey, consumeModifiers])
-
-  // -- Keyboard toggle (focus/blur terminal) --
-  const lastToggleTouch = useRef(0)
-  const toggleKb = useCallback(() => {
-    const el = document.activeElement as HTMLElement | null
-    if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) {
-      el.blur()
-    } else {
-      onRefocus()
-    }
-  }, [onRefocus])
-
-  // Shared props for all ExtraKey instances
-  const k = {
-    disabled,
-    ctrlRef,
-    altRef,
-    shiftRef,
-    onSend: onSendKey,
-    onFlushComposition,
-    onConsume: consumeModifiers,
-    onRefocus,
-  } as const
-
-  return (
-    <div ref={controlsRef} className="flex flex-col border-y border-border bg-surface-terminal-bar">
-      {/* Row 1: modifiers + navigation */}
-      <div className="flex">
-        <ExtraKey label="ESC" ariaLabel="Escape" sequence={'\x1b'} {...k} />
-        <ExtraKey label="TAB" ariaLabel="Tab" sequence={'\t'} {...k} />
-        <ModifierKey
-          label="SHIFT"
-          ariaLabel="Shift modifier — tap: sticky, hold: lock"
-          state={shiftState}
-          disabled={disabled}
-          onTap={shiftTap}
-          onLongPress={shiftLock}
-          onRefocus={onRefocus}
-        />
-        <ModifierKey
-          label="CTRL"
-          ariaLabel="Ctrl modifier — tap: sticky, hold: lock"
-          state={ctrlState}
-          disabled={disabled}
-          onTap={ctrlTap}
-          onLongPress={ctrlLock}
-          onRefocus={onRefocus}
-        />
-        <ModifierKey
-          label="ALT"
-          ariaLabel="Alt modifier — tap: sticky, hold: lock"
-          state={altState}
-          disabled={disabled}
-          onTap={altTap}
-          onLongPress={altLock}
-          onRefocus={onRefocus}
-        />
-        <ExtraKey label="←" ariaLabel="Arrow left" csi={CSI_LEFT} repeat {...k} />
-        <ExtraKey label="↓" ariaLabel="Arrow down" csi={CSI_DOWN} repeat {...k} />
-        <ExtraKey label="↑" ariaLabel="Arrow up" csi={CSI_UP} repeat {...k} />
-        <ExtraKey label="→" ariaLabel="Arrow right" csi={CSI_RIGHT} repeat {...k} />
-      </div>
-
-      {/* Row 2: symbols + extended navigation */}
-      <div className="flex border-t border-terminal-row">
-        <ExtraKey label="/" ariaLabel="Slash" sequence="/" repeat {...k} />
-        <ExtraKey label="-" ariaLabel="Hyphen" sequence="-" repeat {...k} />
-        <ExtraKey label="HOME" ariaLabel="Home" csi={CSI_HOME} {...k} />
-        <ExtraKey label="END" ariaLabel="End" csi={CSI_END} {...k} />
-        <ExtraKey label="PG↑" ariaLabel="Page up" csi={CSI_PGUP} {...k} />
-        <ExtraKey label="PG↓" ariaLabel="Page down" csi={CSI_PGDN} {...k} />
-        <NumPad
-          onSendKey={onSendKey}
-          disabled={disabled}
-          onRefocus={onRefocus}
-          isKeyboardVisible={isKeyboardVisible}
-          triggerClassName="terminal-key-gesture flex min-h-[32px] flex-1 items-center justify-center text-[10px] font-medium text-terminal-key-text active:bg-terminal-key-active"
-        />
+  if (selectionMode) {
+    return (
+      <div
+        ref={controlsRef}
+        className="relative z-20 flex h-11 items-stretch border-y border-border bg-surface-terminal-bar"
+        data-testid="terminal-selection-controls"
+      >
         <button
           type="button"
-          className="terminal-key flex min-h-[32px] flex-1 items-center justify-center text-terminal-key-text active:bg-terminal-key-active"
-          onTouchStart={() => {
-            lastToggleTouch.current = Date.now()
-            hapticFeedback()
-            toggleKb()
-          }}
-          onClick={() => {
-            if (Date.now() - lastToggleTouch.current < 700) return
-            toggleKb()
-          }}
-          disabled={disabled}
-          aria-label="Toggle keyboard"
+          className="min-w-16 shrink-0 px-3 text-[11px] font-semibold text-secondary-foreground"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onCancelSelection}
         >
-          <Keyboard className="h-3.5 w-3.5" />
+          Cancel
         </button>
+        <p className="flex min-w-0 flex-1 items-center justify-center px-2 text-center text-[10px] text-secondary-foreground">
+          Drag over terminal text
+        </p>
+        <button
+          type="button"
+          className="min-w-16 shrink-0 px-3 text-[11px] font-semibold text-primary-text disabled:opacity-40"
+          disabled={!hasSelection}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            void onCopySelection()
+          }}
+        >
+          Copy
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={controlsRef}
+      className="relative z-20 bg-surface-terminal-bar"
+      data-testid="terminal-controls"
+    >
+      {advancedOpen && (
+        <TerminalAdvancedKeys
+          inputEnabled={inputEnabled}
+          onSendKey={sendKey}
+          onRefocus={onRefocus}
+          modifiers={modifiers}
+          onToggleModifier={onToggleModifier}
+          onLockModifier={onLockModifier}
+        />
+      )}
+      <div
+        className="grid h-11 grid-cols-8 items-stretch border-y border-border"
+        aria-label="Terminal keys"
+      >
+        <TerminalKeyButton
+          ariaLabel="Escape"
+          onPress={() => sendKey('\x1b')}
+          onRefocus={onRefocus}
+          disabled={!inputEnabled}
+          className="min-w-0 w-full px-1"
+        >
+          ESC
+        </TerminalKeyButton>
+        {modifierKey('ctrl', 'CTRL')}
+        {modifierKey('alt', 'ALT')}
+        <TerminalKeyButton
+          ariaLabel="Tab"
+          onPress={() => sendKey('\t')}
+          onRefocus={onRefocus}
+          disabled={!inputEnabled}
+          className="min-w-0 w-full border-l border-border-subtle px-1"
+        >
+          TAB
+        </TerminalKeyButton>
+        <TerminalKeyButton
+          ariaLabel="More terminal keys"
+          onPress={() => setAdvancedOpen((open) => !open)}
+          pressed={advancedOpen}
+          expanded={advancedOpen}
+          className="min-w-0 w-full px-1 text-[9px]"
+        >
+          MORE
+        </TerminalKeyButton>
+        <TerminalKeyButton
+          ariaLabel="Enter"
+          onPress={() => sendKey('\r')}
+          onRefocus={onRefocus}
+          disabled={!inputEnabled}
+          className="min-w-0 w-full border-l border-border-subtle px-1 text-primary-text"
+        >
+          <CornerDownLeft className="size-4" aria-hidden="true" />
+        </TerminalKeyButton>
+        <TerminalKeyButton
+          ariaLabel="Select terminal text"
+          onPress={() => {
+            setAdvancedOpen(false)
+            onEnterSelectionMode()
+          }}
+          className="min-w-0 w-full px-1 text-[9px]"
+        >
+          SELECT
+        </TerminalKeyButton>
+        <TerminalKeyButton
+          ariaLabel="Toggle keyboard"
+          onPress={toggleKeyboard}
+          pressed={isKeyboardVisible?.() ?? false}
+          className="min-w-0 w-full px-1"
+        >
+          <Keyboard className="size-4" aria-hidden="true" />
+        </TerminalKeyButton>
       </div>
     </div>
   )

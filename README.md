@@ -96,7 +96,7 @@ If you expose Sentinel outside localhost (`0.0.0.0`), always configure:
 
 ![Desktop tmux fullscreen](docs/assets/images/desktop-tmux-fullscreen.png)
 
-> Full terminal control on mobile — touch-optimized with gesture-safe zones.
+> Full terminal control on mobile — one-row keys, Enter, advanced actions, and explicit text selection.
 
 <p align="center">
   <img src="docs/assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />

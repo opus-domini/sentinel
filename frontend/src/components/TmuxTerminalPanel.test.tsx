@@ -5,12 +5,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import TmuxTerminalPanel from './TmuxTerminalPanel'
 
-const { useIsMobileLayoutMock } = vi.hoisted(() => ({
-  useIsMobileLayoutMock: vi.fn(() => false),
+const { useTouchOptimizedMock } = vi.hoisted(() => ({
+  useTouchOptimizedMock: vi.fn(() => false),
 }))
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: useIsMobileLayoutMock,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => {
+    const enabled = useTouchOptimizedMock()
+    return {
+      compactLayout: enabled,
+      touchCapable: enabled,
+      touchOptimized: enabled,
+    }
+  },
 }))
 
 vi.mock('./ConnectionBadge', () => ({
@@ -87,7 +94,7 @@ const baseProps = {
 describe('TmuxTerminalPanel', () => {
   afterEach(() => {
     cleanup()
-    useIsMobileLayoutMock.mockReturnValue(false)
+    useTouchOptimizedMock.mockReturnValue(false)
   })
 
   it('hides session tabs on desktop when the sidebar is expanded', () => {
@@ -106,7 +113,7 @@ describe('TmuxTerminalPanel', () => {
   })
 
   it('keeps session tabs visible on mobile even when the sidebar is expanded', () => {
-    useIsMobileLayoutMock.mockReturnValue(true)
+    useTouchOptimizedMock.mockReturnValue(true)
 
     render(<TmuxTerminalPanel {...baseProps} sidebarCollapsed={false} />)
 
@@ -135,10 +142,11 @@ describe('TmuxTerminalPanel', () => {
   })
 
   it('hides the loading overlay once connected', () => {
-    render(<TmuxTerminalPanel {...baseProps} />)
+    const { container } = render(<TmuxTerminalPanel {...baseProps} />)
 
     expect(screen.queryByText('Waiting for tmux server')).toBeNull()
     expect(screen.queryByText('Reconnecting to tmux')).toBeNull()
+    expect(container.querySelector('.terminal-footer-meta')).toBeTruthy()
   })
 
   it('refocuses the terminal after creating a window', () => {

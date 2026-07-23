@@ -6,6 +6,10 @@ import AppShell from './AppShell'
 import { LayoutContext } from '@/contexts/LayoutContext'
 import type { ReactNode } from 'react'
 
+const { useEdgeSwipeMock } = vi.hoisted(() => ({
+  useEdgeSwipeMock: vi.fn(),
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, ...rest }: { children: ReactNode; to: string }) => (
     <a href={to} {...rest}>
@@ -25,14 +29,20 @@ vi.mock('@/components/settings/SettingsDialog', () => ({
 }))
 
 vi.mock('@/hooks/useEdgeSwipe', () => ({
-  useEdgeSwipe: vi.fn(),
+  useEdgeSwipe: useEdgeSwipeMock,
 }))
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+const viewport = vi.hoisted(() => ({ compactLayout: false }))
+
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: viewport.compactLayout,
+    touchCapable: viewport.compactLayout,
+    touchOptimized: viewport.compactLayout,
+  }),
 }))
 
-function renderShell(overrides = {}) {
+function renderShell(overrides = {}, shellProps: { disableEdgeSwipe?: boolean } = {}) {
   const layoutValue = {
     sidebarOpen: false,
     setSidebarOpen: vi.fn(),
@@ -55,7 +65,7 @@ function renderShell(overrides = {}) {
 
   render(
     <LayoutContext.Provider value={layoutValue}>
-      <AppShell sidebar={<aside>Sessions</aside>}>
+      <AppShell sidebar={<aside>Sessions</aside>} {...shellProps}>
         <main>Terminal</main>
       </AppShell>
     </LayoutContext.Provider>,
@@ -67,6 +77,8 @@ function renderShell(overrides = {}) {
 describe('AppShell', () => {
   afterEach(() => {
     cleanup()
+    viewport.compactLayout = false
+    useEdgeSwipeMock.mockClear()
   })
 
   it('exposes the sidebar resizer as a keyboard-operable separator', () => {
@@ -107,6 +119,7 @@ describe('AppShell', () => {
   })
 
   it('renders persistent mobile primary navigation in shared order with active page state', () => {
+    viewport.compactLayout = true
     const layout = renderShell()
 
     const nav = screen.getByRole('navigation', {
@@ -137,14 +150,25 @@ describe('AppShell', () => {
     const activeIcon = activeLink.querySelector('svg')
 
     expect(activeLink.getAttribute('aria-current')).toBe('page')
-    expect(activeLink.className).toContain('text-primary/60')
+    expect(activeLink.className).toContain('text-primary')
     expect(activeLink.className).not.toContain('bg-primary')
     expect(activeLink.className).not.toContain('ring-primary')
-    expect(activeLink.className).toContain('py-0.5')
+    expect(activeLink.className).toContain('min-h-10')
     expect(activeIcon?.getAttribute('class')).not.toContain('text-primary-text-bright')
-    expect(activeIcon?.getAttribute('class')).toContain('size-3.5')
+    expect(activeIcon?.getAttribute('class')).toContain('size-4')
 
     fireEvent.click(activeLink)
     expect(layout.setSidebarOpen).toHaveBeenCalledWith(true)
+  })
+
+  it('disables edge swipe while terminal selection owns the touch gesture', () => {
+    viewport.compactLayout = true
+    renderShell({}, { disableEdgeSwipe: true })
+
+    expect(useEdgeSwipeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: false,
+      }),
+    )
   })
 })

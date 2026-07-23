@@ -5,8 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import LaunchersDialog from './LaunchersDialog'
 import type { TmuxLauncher } from '@/types'
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: false,
+    touchCapable: false,
+    touchOptimized: false,
+  }),
 }))
 
 vi.mock('@/contexts/MetaContext', () => ({

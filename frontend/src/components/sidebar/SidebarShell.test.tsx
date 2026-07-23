@@ -5,8 +5,12 @@ import { describe, expect, it, vi } from 'vitest'
 import SidebarShell from './SidebarShell'
 import { LayoutContext } from '@/contexts/LayoutContext'
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: true,
+    touchCapable: true,
+    touchOptimized: true,
+  }),
 }))
 
 vi.mock('@tanstack/react-router', () => ({

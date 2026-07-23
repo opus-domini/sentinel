@@ -26,8 +26,12 @@ vi.mock('@xterm/xterm', () => {
       cols = 80
       rows = 24
       unicode: { activeVersion: string } = { activeVersion: '6' }
-      buffer = { active: { type: 'normal' } }
-      onData = vi.fn(() => ({ dispose: _noop }))
+      buffer = { active: { type: 'normal', viewportY: 0, length: 24 } }
+      dataHandler: ((data: string) => void) | null = null
+      onData = vi.fn((handler: (data: string) => void) => {
+        this.dataHandler = handler
+        return { dispose: _noop }
+      })
       onResize = vi.fn(() => ({ dispose: _noop }))
       onSelectionChange = vi.fn(() => ({ dispose: _noop }))
       loadAddon = vi.fn()
@@ -49,9 +53,13 @@ vi.mock('@xterm/xterm', () => {
       write = vi.fn()
       refresh = vi.fn()
       getSelection = vi.fn(() => '')
+      clearSelection = vi.fn()
+      select = vi.fn()
+      scrollLines = vi.fn()
       scrollToBottom = vi.fn()
       dispose = vi.fn()
       attachCustomWheelEventHandler = vi.fn()
+      emitData = (data: string) => this.dataHandler?.(data)
 
       constructor(options?: Record<string, unknown>) {
         this.options = options ?? {}
@@ -99,28 +107,51 @@ vi.mock('@xterm/addon-unicode-graphemes', () => ({
 vi.mock('@/contexts/ToastContext', () => ({
   useToastContext: () => ({ pushToast: vi.fn() }),
 }))
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () =>
-    (
-      globalThis as typeof globalThis & {
-        __SENTINEL_IS_MOBILE_LAYOUT?: boolean
-      }
-    ).__SENTINEL_IS_MOBILE_LAYOUT === true,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => {
+    const enabled =
+      (
+        globalThis as typeof globalThis & {
+          __SENTINEL_IS_MOBILE_LAYOUT?: boolean
+        }
+      ).__SENTINEL_IS_MOBILE_LAYOUT === true
+    return {
+      compactLayout: enabled,
+      touchCapable: enabled,
+      touchOptimized: enabled,
+    }
+  },
 }))
 vi.mock('@/lib/clipboardProvider', () => ({
   createWebClipboardProvider: () => ({
     readText: () => Promise.resolve(''),
     writeText: () => Promise.resolve(),
   }),
-  writeClipboardText: (text: string) =>
-    (
+  writeClipboardText: async (text: string) => {
+    ;(
       globalThis as typeof globalThis & {
         __SENTINEL_WRITE_CLIPBOARD_TEXT?: (text: string) => void
       }
-    ).__SENTINEL_WRITE_CLIPBOARD_TEXT?.(text),
+    ).__SENTINEL_WRITE_CLIPBOARD_TEXT?.(text)
+    return true
+  },
 }))
 vi.mock('@/lib/touchWheelBridge', () => ({
   attachTouchWheelBridge: () => ({ dispose: () => undefined }),
+}))
+vi.mock('@/lib/touchTerminalSelection', () => ({
+  attachTouchTerminalSelection: ({
+    onSelectionChange,
+  }: {
+    onSelectionChange: (hasSelection: boolean) => void
+  }) => {
+    ;(
+      globalThis as typeof globalThis & {
+        __SENTINEL_TOUCH_SELECTION_CHANGE?: (hasSelection: boolean) => void
+      }
+    ).__SENTINEL_TOUCH_SELECTION_CHANGE = onSelectionChange
+    return { dispose: () => undefined }
+  },
 }))
 vi.mock('@/lib/wsAuth', () => ({
   buildWSProtocols: () => ['sentinel.v1'],
@@ -202,6 +233,11 @@ function setupEnvironment() {
       __SENTINEL_WRITE_CLIPBOARD_TEXT?: (text: string) => void
     }
   ).__SENTINEL_WRITE_CLIPBOARD_TEXT = vi.fn()
+  ;(
+    globalThis as typeof globalThis & {
+      __SENTINEL_TOUCH_SELECTION_CHANGE?: (hasSelection: boolean) => void
+    }
+  ).__SENTINEL_TOUCH_SELECTION_CHANGE = undefined
   globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
   document.documentElement.style.setProperty('--surface-inset', '#112233')
   document.documentElement.style.setProperty('--foreground', '#ddeeff')
@@ -237,10 +273,13 @@ function setupEnvironment() {
 
 type MockTerminalInstance = {
   options: Record<string, unknown>
+  textarea: HTMLTextAreaElement | null
   cols: number
   rows: number
   onSelectionChange: ReturnType<typeof vi.fn>
+  emitData: (data: string) => void
   getSelection: ReturnType<typeof vi.fn>
+  clearSelection: ReturnType<typeof vi.fn>
   loadAddon: ReturnType<typeof vi.fn>
   reset: ReturnType<typeof vi.fn>
   write: ReturnType<typeof vi.fn>
@@ -315,6 +354,226 @@ function connectSession() {
   })
   return ws
 }
+
+describe('useTerminalTmux – shared input boundary', () => {
+  beforeEach(() => {
+    setupEnvironment()
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWebSocket
+  })
+
+  it('consumes sticky modifiers only after an accepted special-key send', () => {
+    const { result } = renderTerminalHook()
+    const socket = connectSession()
+
+    act(() => {
+      result.current.toggleModifier('ctrl')
+    })
+    expect(result.current.modifiers.ctrl).toBe('sticky')
+
+    let accepted = false
+    act(() => {
+      accepted = result.current.sendKey('c')
+    })
+
+    expect(accepted).toBe(true)
+    expect(Array.from(socket.send.mock.calls[0][0] as Uint8Array)).toEqual([3])
+    expect(result.current.modifiers.ctrl).toBe('off')
+  })
+
+  it('preserves sticky modifiers when the socket rejects input', () => {
+    const { result } = renderTerminalHook()
+    const socket = connectSession()
+
+    act(() => {
+      result.current.toggleModifier('alt')
+    })
+    socket.readyState = MockWebSocket.CLOSED
+
+    let accepted = true
+    act(() => {
+      accepted = result.current.sendKey('x')
+    })
+
+    expect(accepted).toBe(false)
+    expect(socket.send).not.toHaveBeenCalled()
+    expect(result.current.modifiers.alt).toBe('sticky')
+  })
+
+  it('routes xterm data through the same modifier transformation', () => {
+    const { result } = renderTerminalHook()
+    const socket = connectSession()
+    const terminal = latestTerminal()
+    if (!terminal) throw new Error('terminal not created')
+
+    act(() => {
+      result.current.lockModifier('shift')
+      terminal.emitData('a')
+    })
+
+    expect(new TextDecoder().decode(socket.send.mock.calls[0][0] as Uint8Array)).toBe('A')
+    expect(result.current.modifiers.shift).toBe('locked')
+  })
+
+  it('sends a sticky Ctrl chord immediately from mobile composition input', async () => {
+    const { result } = renderTerminalHook()
+    const socket = connectSession()
+    const host = document.createElement('div')
+    document.body.append(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+    const textarea = latestTerminal()?.textarea
+    if (!textarea) throw new Error('terminal textarea not created')
+    socket.send.mockClear()
+    const xtermInputHandler = vi.fn()
+    textarea.addEventListener('input', xtermInputHandler)
+
+    act(() => {
+      result.current.toggleModifier('ctrl')
+      textarea.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      textarea.value = 'c'
+      textarea.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          composed: true,
+          data: 'c',
+          inputType: 'insertCompositionText',
+        }),
+      )
+    })
+
+    expect(Array.from(socket.send.mock.calls[0][0] as Uint8Array)).toEqual([3])
+    expect(result.current.modifiers.ctrl).toBe('off')
+    expect(textarea.value).toBe('')
+    expect(xtermInputHandler).not.toHaveBeenCalled()
+    host.remove()
+  })
+
+  it('leaves ordinary and multi-character IME input on xterm native path', async () => {
+    const { result } = renderTerminalHook()
+    const socket = connectSession()
+    const host = document.createElement('div')
+    document.body.append(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+    const textarea = latestTerminal()?.textarea
+    if (!textarea) throw new Error('terminal textarea not created')
+    socket.send.mockClear()
+
+    textarea.value = 'text'
+    act(() => {
+      textarea.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          composed: true,
+          data: 'text',
+          inputType: 'insertCompositionText',
+        }),
+      )
+    })
+
+    expect(socket.send).not.toHaveBeenCalled()
+    expect(textarea.value).toBe('text')
+    host.remove()
+  })
+
+  it('resets modifiers when the active connection closes', () => {
+    const { result } = renderTerminalHook()
+    const socket = connectSession()
+
+    act(() => {
+      result.current.lockModifier('ctrl')
+      socket.emitClose()
+    })
+
+    expect(result.current.modifiers.ctrl).toBe('off')
+  })
+})
+
+describe('useTerminalTmux – touch selection mode', () => {
+  beforeEach(() => {
+    setupEnvironment()
+    ;(
+      globalThis as typeof globalThis & {
+        __SENTINEL_IS_MOBILE_LAYOUT?: boolean
+      }
+    ).__SENTINEL_IS_MOBILE_LAYOUT = true
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWebSocket
+  })
+
+  it('enters selection, exposes a selected range and copies while disconnected', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.append(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+    })
+    const terminal = latestTerminal()
+    if (!terminal) throw new Error('terminal not created')
+
+    act(() => {
+      result.current.enterSelectionMode()
+    })
+    expect(result.current.selectionMode).toBe(true)
+
+    act(() => {
+      ;(
+        globalThis as typeof globalThis & {
+          __SENTINEL_TOUCH_SELECTION_CHANGE?: (hasSelection: boolean) => void
+        }
+      ).__SENTINEL_TOUCH_SELECTION_CHANGE?.(true)
+    })
+    expect(result.current.hasSelection).toBe(true)
+
+    terminal.getSelection.mockReturnValue('selected output')
+    latestWS().readyState = MockWebSocket.CLOSED
+    await act(async () => {
+      await expect(result.current.copySelection()).resolves.toBe(true)
+    })
+
+    const writeClipboard = (
+      globalThis as typeof globalThis & {
+        __SENTINEL_WRITE_CLIPBOARD_TEXT?: ReturnType<typeof vi.fn>
+      }
+    ).__SENTINEL_WRITE_CLIPBOARD_TEXT
+    expect(writeClipboard).toHaveBeenCalledWith('selected output')
+    expect(result.current.selectionMode).toBe(false)
+    expect(result.current.hasSelection).toBe(false)
+    host.remove()
+  })
+
+  it('clears selection state on explicit cancel', async () => {
+    const { result } = renderTerminalHook()
+    const host = document.createElement('div')
+    document.body.append(host)
+
+    await act(async () => {
+      result.current.getTerminalHostRef('test-session')(host)
+      await Promise.resolve()
+      result.current.enterSelectionMode()
+    })
+    act(() => {
+      result.current.cancelSelection()
+    })
+
+    expect(result.current.selectionMode).toBe(false)
+    expect(latestTerminal()?.clearSelection).toHaveBeenCalled()
+    host.remove()
+  })
+})
 
 // ---------------------------------------------------------------------------
 // setConnection guard

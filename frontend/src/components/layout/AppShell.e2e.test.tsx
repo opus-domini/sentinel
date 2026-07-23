@@ -34,8 +34,12 @@ vi.mock('@/hooks/useEdgeSwipe', () => ({
   useEdgeSwipe: vi.fn(),
 }))
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: false,
+    touchCapable: false,
+    touchOptimized: false,
+  }),
 }))
 
 function ShellHarness() {
@@ -44,6 +48,7 @@ function ShellHarness() {
     defaultSidebarWidth: 340,
     minSidebarWidth: 240,
     maxSidebarWidth: 440,
+    compactLayout: false,
   })
 
   return (

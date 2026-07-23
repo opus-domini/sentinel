@@ -5,16 +5,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import SessionListPanel from './SessionListPanel'
 
-const { useIsMobileLayoutMock } = vi.hoisted(() => ({
-  useIsMobileLayoutMock: vi.fn(() => false),
+const { useTouchOptimizedMock } = vi.hoisted(() => ({
+  useTouchOptimizedMock: vi.fn(() => false),
 }))
 
 vi.mock('@/components/TooltipHelper', () => ({
   TooltipHelper: ({ children }: { children: ReactNode }) => children,
 }))
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: useIsMobileLayoutMock,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => {
+    const enabled = useTouchOptimizedMock()
+    return {
+      compactLayout: enabled,
+      touchCapable: enabled,
+      touchOptimized: enabled,
+    }
+  },
 }))
 
 vi.mock('@/hooks/useDateFormat', () => ({
@@ -33,7 +40,7 @@ vi.mock('@/contexts/MetaContext', () => ({
 
 afterEach(() => {
   cleanup()
-  useIsMobileLayoutMock.mockReturnValue(false)
+  useTouchOptimizedMock.mockReturnValue(false)
 })
 
 const baseSession = {
@@ -88,7 +95,7 @@ describe('SessionListPanel', () => {
   })
 
   it('keeps session cards scrollable on mobile', () => {
-    useIsMobileLayoutMock.mockReturnValue(true)
+    useTouchOptimizedMock.mockReturnValue(true)
 
     render(
       <SessionListPanel
@@ -114,7 +121,7 @@ describe('SessionListPanel', () => {
   })
 
   it('does not create its own vertical scroll container on desktop', () => {
-    useIsMobileLayoutMock.mockReturnValue(false)
+    useTouchOptimizedMock.mockReturnValue(false)
 
     const { container } = render(
       <SessionListPanel
@@ -146,7 +153,7 @@ describe('SessionListPanel', () => {
   })
 
   it('lets the outer sidebar own scrolling on mobile', () => {
-    useIsMobileLayoutMock.mockReturnValue(true)
+    useTouchOptimizedMock.mockReturnValue(true)
 
     const { container } = render(
       <SessionListPanel

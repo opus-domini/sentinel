@@ -20,7 +20,7 @@ import type { Session, SessionPreset } from '@/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { hapticFeedback } from '@/lib/device'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
 
 type SessionListPanelProps = {
   sessions: Array<Session>
@@ -59,8 +59,8 @@ export default function SessionListPanel({
   onUnpinSession,
   onReorder,
 }: SessionListPanelProps) {
-  const isMobileLayout = useIsMobileLayout()
-  const dragEnabled = !isMobileLayout
+  const { touchOptimized } = useViewport()
+  const dragEnabled = !touchOptimized
   const hasFilter = filter.trim() !== ''
   const sensors = useSensors(
     useSensor(PointerSensor, {

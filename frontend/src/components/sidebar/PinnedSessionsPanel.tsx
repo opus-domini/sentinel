@@ -19,7 +19,7 @@ import SessionListItem from './SessionListItem'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
 import type { Session, SessionPreset } from '@/types'
 import { hapticFeedback } from '@/lib/device'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
 import { getTmuxIcon } from '@/lib/tmuxIcons'
 
 type PinnedSessionsPanelProps = {
@@ -113,8 +113,8 @@ export default function PinnedSessionsPanel({
   onLaunchPreset,
   onReorder,
 }: PinnedSessionsPanelProps) {
-  const isMobileLayout = useIsMobileLayout()
-  const dragEnabled = !isMobileLayout
+  const { touchOptimized } = useViewport()
+  const dragEnabled = !touchOptimized
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },

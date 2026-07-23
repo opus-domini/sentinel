@@ -119,12 +119,12 @@ describe('writeClipboardText', () => {
     })
   })
 
-  it('uses navigator.clipboard when available', () => {
-    writeClipboardText('test')
+  it('uses navigator.clipboard when available', async () => {
+    await expect(writeClipboardText('test')).resolves.toBe(true)
     expect(mockWriteText).toHaveBeenCalledWith('test')
   })
 
-  it('falls back to execCommand when clipboard API is missing', () => {
+  it('falls back to execCommand when clipboard API is missing', async () => {
     Object.defineProperty(globalThis, 'navigator', {
       value: { ...originalNavigator, clipboard: undefined },
       writable: true,
@@ -132,11 +132,11 @@ describe('writeClipboardText', () => {
     })
     const mockExecCommand = vi.fn().mockReturnValue(true)
     document.execCommand = mockExecCommand
-    writeClipboardText('fallback text')
+    await expect(writeClipboardText('fallback text')).resolves.toBe(true)
     expect(mockExecCommand).toHaveBeenCalledWith('copy')
   })
 
-  it('does not throw when both clipboard API and execCommand fail', () => {
+  it('reports failure when both clipboard API and execCommand fail', async () => {
     Object.defineProperty(globalThis, 'navigator', {
       value: { ...originalNavigator, clipboard: undefined },
       writable: true,
@@ -145,6 +145,11 @@ describe('writeClipboardText', () => {
     document.execCommand = () => {
       throw new Error('not supported')
     }
-    expect(() => writeClipboardText('test')).not.toThrow()
+    await expect(writeClipboardText('test')).resolves.toBe(false)
+  })
+
+  it('reports async clipboard rejection', async () => {
+    mockWriteText.mockRejectedValue(new DOMException('not allowed'))
+    await expect(writeClipboardText('test')).resolves.toBe(false)
   })
 })

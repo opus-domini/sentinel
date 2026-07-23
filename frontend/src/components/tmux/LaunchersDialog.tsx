@@ -55,7 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
 import { hapticFeedback } from '@/lib/device'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { cn } from '@/lib/utils'
@@ -208,7 +208,7 @@ export default function LaunchersDialog({
   const fixedPathLabelId = `${dialogId}-fixed-path-label`
   const userModeLabelId = `${dialogId}-user-mode-label`
   const fixedUserLabelId = `${dialogId}-fixed-user-label`
-  const isMobile = useIsMobileLayout()
+  const { touchOptimized: isMobile } = useViewport()
   const dragEnabled = !isMobile
   const [selectedID, setSelectedID] = useState<string>('new')
   const [draft, setDraft] = useState<LauncherDraft>(DEFAULT_DRAFT)

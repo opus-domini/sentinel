@@ -5,16 +5,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import PinnedSessionsPanel from './PinnedSessionsPanel'
 
-const { useIsMobileLayoutMock } = vi.hoisted(() => ({
-  useIsMobileLayoutMock: vi.fn(() => false),
+const { useTouchOptimizedMock } = vi.hoisted(() => ({
+  useTouchOptimizedMock: vi.fn(() => false),
 }))
 
 vi.mock('@/components/TooltipHelper', () => ({
   TooltipHelper: ({ children }: { children: ReactNode }) => children,
 }))
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: useIsMobileLayoutMock,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => {
+    const enabled = useTouchOptimizedMock()
+    return {
+      compactLayout: enabled,
+      touchCapable: enabled,
+      touchOptimized: enabled,
+    }
+  },
 }))
 
 vi.mock('@/hooks/useDateFormat', () => ({
@@ -33,7 +40,7 @@ vi.mock('@/contexts/MetaContext', () => ({
 
 afterEach(() => {
   cleanup()
-  useIsMobileLayoutMock.mockReturnValue(false)
+  useTouchOptimizedMock.mockReturnValue(false)
 })
 
 const pinnedPreset = {
@@ -162,7 +169,7 @@ describe('PinnedSessionsPanel', () => {
   })
 
   it('keeps pinned preset launch buttons scrollable on mobile', () => {
-    useIsMobileLayoutMock.mockReturnValue(true)
+    useTouchOptimizedMock.mockReturnValue(true)
 
     render(
       <PinnedSessionsPanel

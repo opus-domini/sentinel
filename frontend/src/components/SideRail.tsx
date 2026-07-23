@@ -3,6 +3,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useLayoutContext } from '@/contexts/LayoutContext'
+import { useViewport } from '@/contexts/ViewportContext'
 import { PRIMARY_NAV_ITEMS } from '@/lib/primaryNav'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +19,7 @@ export default function SideRail({
   showSidebarToggles = true,
 }: SideRailProps) {
   const { setSettingsOpen } = useLayoutContext()
+  const { compactLayout } = useViewport()
 
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
@@ -30,8 +32,12 @@ export default function SideRail({
         : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
     )
 
+  if (compactLayout) {
+    return null
+  }
+
   return (
-    <aside className="hidden w-12 flex-col gap-1 border-r border-border-subtle bg-surface-raised px-1 py-2 md:flex">
+    <aside className="flex w-12 flex-col gap-1 border-r border-border-subtle bg-surface-raised px-1 py-2">
       <nav aria-label="Main navigation" className="flex flex-col gap-1">
         {PRIMARY_NAV_ITEMS.map(({ to, label, Icon }) => {
           const active = pathname === to
@@ -70,7 +76,7 @@ export default function SideRail({
           <Button
             variant="ghost"
             size="icon-lg"
-            className="hidden w-full text-secondary-foreground hover:text-foreground md:flex"
+            className="w-full text-secondary-foreground hover:text-foreground"
             onClick={onToggleSidebarCollapsed}
             aria-expanded={!sidebarCollapsed}
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}

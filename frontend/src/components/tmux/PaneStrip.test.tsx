@@ -1,18 +1,25 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import PaneStrip from './PaneStrip'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { PaneInfo } from '@/types'
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => false,
+const viewport = vi.hoisted(() => ({ touchOptimized: false }))
+
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: viewport.touchOptimized,
+    touchCapable: viewport.touchOptimized,
+    touchOptimized: viewport.touchOptimized,
+  }),
 }))
 
 describe('PaneStrip', () => {
   afterEach(() => {
     cleanup()
+    viewport.touchOptimized = false
   })
 
   it('renders malformed pane payloads without calling trim on undefined', () => {
@@ -118,5 +125,50 @@ describe('PaneStrip', () => {
     expect(paneChip?.className).toContain('border-primary/60')
     expect(paneChip?.className).toContain('text-secondary-foreground')
     expect(paneChip?.className).not.toContain('text-primary-text')
+  })
+
+  it('consolidates split actions into one touch-safe menu on touch devices', () => {
+    viewport.touchOptimized = true
+    const onSplitPaneVertical = vi.fn()
+    const onSplitPaneHorizontal = vi.fn()
+    render(
+      <TooltipProvider>
+        <PaneStrip
+          hasActiveSession
+          inspectorLoading={false}
+          inspectorError=""
+          panes={[
+            {
+              session: 'dev',
+              windowIndex: 0,
+              paneIndex: 0,
+              paneId: '%1',
+              title: 'shell',
+              active: true,
+              tty: '/dev/pts/1',
+            },
+          ]}
+          activeWindowIndex={0}
+          activePaneID="%1"
+          onSelectPane={vi.fn()}
+          onClosePane={vi.fn()}
+          onRenamePane={vi.fn()}
+          onSplitPaneVertical={onSplitPaneVertical}
+          onSplitPaneHorizontal={onSplitPaneHorizontal}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Split vertical' })).toBeNull()
+    const actions = screen.getByRole('button', { name: 'Create pane' })
+    expect(actions.getAttribute('data-size')).toBe('xs')
+    expect(actions.className).toContain('h-5')
+    expect(actions.querySelector('.lucide-plus')).not.toBeNull()
+    fireEvent.pointerDown(actions, { button: 0, ctrlKey: false })
+    expect(screen.getByRole('menuitem', { name: 'Split horizontal' })).not.toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Split vertical' }))
+
+    expect(onSplitPaneVertical).toHaveBeenCalledTimes(1)
+    expect(onSplitPaneHorizontal).not.toHaveBeenCalled()
   })
 })

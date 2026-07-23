@@ -290,6 +290,14 @@ function TmuxPage() {
     closeCurrentSocket,
     resetTerminal,
     sendKey,
+    modifiers,
+    toggleModifier,
+    lockModifier,
+    selectionMode,
+    hasSelection,
+    enterSelectionMode,
+    copySelection,
+    cancelSelection,
     flushComposition,
     focusTerminal,
     zoomIn,
@@ -940,6 +948,7 @@ function TmuxPage() {
   // ---- JSX ----
   return (
     <AppShell
+      disableEdgeSwipe={selectionMode}
       sidebar={
         <SessionSidebar
           sessions={filteredSessions}
@@ -1027,6 +1036,14 @@ function TmuxPage() {
         onCloseTab={sessionCRUD.closeTab}
         onReorderTabs={sessionCRUD.reorderTabs}
         onSendKey={sendKey}
+        modifiers={modifiers}
+        onToggleModifier={toggleModifier}
+        onLockModifier={lockModifier}
+        selectionMode={selectionMode}
+        hasSelection={hasSelection}
+        onEnterSelectionMode={enterSelectionMode}
+        onCopySelection={copySelection}
+        onCancelSelection={cancelSelection}
         onFlushComposition={flushComposition}
         onFocusTerminal={focusTerminal}
         onZoomIn={zoomIn}

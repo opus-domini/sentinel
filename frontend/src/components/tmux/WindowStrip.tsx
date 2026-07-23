@@ -44,7 +44,7 @@ import { TooltipHelper } from '@/components/TooltipHelper'
 import { hapticFeedback } from '@/lib/device'
 import { getTmuxIcon } from '@/lib/tmuxIcons'
 import { cn } from '@/lib/utils'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
 
 function asText(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -300,7 +300,7 @@ export default function WindowStrip({
   onOpenLaunchers,
   onReorderWindow,
 }: WindowStripProps) {
-  const isMobile = useIsMobileLayout()
+  const { touchOptimized: isMobile } = useViewport()
   const [windowsLocked, setWindowsLocked] = useState(false)
   const sensors = useSensors(
     useSensor(PointerSensor, {

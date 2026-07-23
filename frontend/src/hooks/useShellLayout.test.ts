@@ -11,6 +11,7 @@ function renderLayout(onResizeEnd = vi.fn()) {
       defaultSidebarWidth: 340,
       minSidebarWidth: 240,
       maxSidebarWidth: 440,
+      compactLayout: false,
       onResizeEnd,
     }),
   )

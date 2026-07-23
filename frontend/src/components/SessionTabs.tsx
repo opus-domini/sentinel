@@ -26,7 +26,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { useViewport } from '@/contexts/ViewportContext'
 import { cn } from '@/lib/utils'
 import { hapticFeedback } from '@/lib/device'
 import { getTmuxIcon } from '@/lib/tmuxIcons'
@@ -93,6 +93,7 @@ function SortableTab({
   hasActivity,
   showIcon,
   dragEnabled,
+  touchOptimized,
   onSelect,
   onClose,
   onRename,
@@ -104,6 +105,7 @@ function SortableTab({
   hasActivity: boolean
   showIcon: boolean
   dragEnabled: boolean
+  touchOptimized: boolean
   onSelect: () => void
   onClose: () => void
   onRename?: () => void
@@ -162,22 +164,24 @@ function SortableTab({
     >
       {showIcon && <SessionIcon className={iconClassName} />}
       <span className="min-w-0 truncate pt-[5px] pr-2 leading-none">{tabName}</span>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="ml-auto h-5 w-5 min-w-0 p-1 text-muted-foreground hover:text-foreground"
-        onClick={(event) => {
-          event.stopPropagation()
-          onClose()
-        }}
-        aria-label={`Close ${tabName} tab`}
-      >
-        <X className="h-2.5 w-2.5" />
-      </Button>
+      {!touchOptimized && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="ml-auto h-5 w-5 min-w-0 p-1 text-muted-foreground hover:text-foreground"
+          onClick={(event) => {
+            event.stopPropagation()
+            onClose()
+          }}
+          aria-label={`Close ${tabName} tab`}
+        >
+          <X className="h-2.5 w-2.5" />
+        </Button>
+      )}
     </div>
   )
 
-  if (!onRename && !onKill) {
+  if (!onRename && !onKill && !touchOptimized) {
     return tabContent
   }
 
@@ -207,6 +211,18 @@ function SortableTab({
             Kill session
           </ContextMenuItem>
         )}
+        {touchOptimized && (onRename || onKill) && <ContextMenuSeparator />}
+        {touchOptimized && (
+          <ContextMenuItem
+            className="text-destructive-foreground focus:text-destructive-foreground"
+            onSelect={(event) => {
+              event.preventDefault()
+              onClose()
+            }}
+          >
+            Close tab
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -224,8 +240,8 @@ export default function SessionTabs({
   onReorder,
   emptyLabel = 'No open sessions',
 }: SessionTabsProps) {
-  const isMobile = useIsMobileLayout()
-  const dragEnabled = !isMobile
+  const { compactLayout, touchOptimized } = useViewport()
+  const dragEnabled = !touchOptimized
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -287,8 +303,9 @@ export default function SessionTabs({
                 iconKey={sessionIcons?.get(tabName) ?? ''}
                 isActive={tabName === activeSession}
                 hasActivity={tabName !== activeSession && (activitySessions?.has(tabName) ?? false)}
-                showIcon={!isMobile}
+                showIcon={!compactLayout}
                 dragEnabled={dragEnabled}
+                touchOptimized={touchOptimized}
                 onSelect={() => onSelect(tabName)}
                 onClose={() => onClose(tabName)}
                 onRename={onRename ? () => onRename(tabName) : undefined}

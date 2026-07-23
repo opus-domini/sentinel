@@ -106,7 +106,7 @@ value = json.dumps({
     "activeSession": sys.argv[1],
     "activeEpoch": 1,
 })
-print("sessionStorage.setItem('sentinel_tabs', " + json.dumps(value) + "); location.reload();")
+print("localStorage.setItem('sentinel_tabs', " + json.dumps(value) + "); location.reload();")
 PY
 }
 
@@ -213,7 +213,7 @@ capture_output_eval() {
   local marker="$2"
 
   agent-browser --session "$browser_session" eval \
-    "(() => { const screenText = document.querySelector('.xterm-screen')?.innerText || ''; const gear = String.fromCodePoint(0x2699); const powerline = String.fromCodePoint(0xe0b6); const emoji = String.fromCodePoint(0x1f60a); const rocket = String.fromCodePoint(0x1f680); const fire = String.fromCodePoint(0x1f525); const brazil = String.fromCodePoint(0x1f1e7, 0x1f1f7); const technologist = String.fromCodePoint(0x1f469) + String.fromCodePoint(0x200d) + String.fromCodePoint(0x1f4bb); const marker = '${marker}'; const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), canvasCount: document.querySelectorAll('canvas').length, terminalCanvasCount, usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, hasOutputMarker: screenText.includes(marker), hasGear: screenText.includes(gear), hasPowerline: screenText.includes(powerline), hasEmoji: screenText.includes(emoji), hasEmojiStress: screenText.includes('EMOJI_STRESS') && screenText.includes(rocket) && screenText.includes(fire) && screenText.includes(brazil) && screenText.includes(technologist), metrics: window.__SENTINEL_TMUX_METRICS || {}, terminalMetrics, bodyTail: screenText.slice(-600) }; })()" \
+    "(() => { const screenText = document.querySelector('.xterm-screen')?.innerText || ''; const gear = String.fromCodePoint(0x2699); const powerline = String.fromCodePoint(0xe0b6); const emoji = String.fromCodePoint(0x1f60a); const rocket = String.fromCodePoint(0x1f680); const fire = String.fromCodePoint(0x1f525); const brazil = String.fromCodePoint(0x1f1e7, 0x1f1f7); const technologist = String.fromCodePoint(0x1f469) + String.fromCodePoint(0x200d) + String.fromCodePoint(0x1f4bb); const marker = '${marker}'; const terminalMetrics = { ...(window.__SENTINEL_TERMINAL_METRICS || {}) }; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), canvasCount: document.querySelectorAll('canvas').length, terminalCanvasCount, usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, hasOutputMarker: screenText.includes(marker), hasGear: screenText.includes(gear), hasPowerline: screenText.includes(powerline), hasEmoji: screenText.includes(emoji), hasEmojiStress: screenText.includes('EMOJI_STRESS') && screenText.includes(rocket) && screenText.includes(fire) && screenText.includes(brazil) && screenText.includes(technologist), metrics: { ...(window.__SENTINEL_TMUX_METRICS || {}) }, terminalMetrics }; })()" \
     >"$path"
 }
 
@@ -510,7 +510,10 @@ echo "starting sentinel at $base_url"
   cd "$root_dir"
   SENTINEL_SERVER_HOST="127.0.0.1" \
   SENTINEL_SERVER_PORT="${port}" \
+    SENTINEL_CONFIG="$data_dir/config.toml" \
     SENTINEL_DATA_DIR="$data_dir" \
+    SENTINEL_STORAGE_PATH="$data_dir/sentinel.db" \
+    SENTINEL_LOG_PATH="$artifacts_dir/server-runtime.log" \
     go run ./cmd/sentinel daemon
 ) >"$artifacts_dir/server.log" 2>&1 &
 server_pid=$!
@@ -546,14 +549,68 @@ validate_eval_json "$artifacts_dir/pixel-probe-eval.json" \
   terminalPresent screenPresent usesDomRenderer hasPixelProbePink hasLowContrastProbe
 capture_terminal_pixels desktop
 
+agent-browser --session "$browser_session" eval \
+  "document.activeElement?.blur?.(); document.documentElement.classList.remove('keyboard-visible')" >/dev/null
 agent-browser --session "$browser_session" set viewport 390 844 2 >/dev/null
+agent-browser --session "$browser_session" eval \
+  "window.dispatchEvent(new Event('orientationchange'))" >/dev/null
 agent-browser --session "$browser_session" wait 500 >/dev/null
 agent-browser --session "$browser_session" eval \
-  "(() => { const body = document.body.innerText; const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, hasMobileControls: Boolean(document.querySelector('[aria-label=\"Toggle keyboard\"]')), hasFooterSize: body.includes('cols ') && body.includes(' rows '), terminalMetrics, terminalCanvasCount, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }; })()" \
+  "(() => { const body = document.body.innerText; const terminalMetrics = window.__SENTINEL_TERMINAL_METRICS || {}; const terminalCanvasCount = document.querySelectorAll('.xterm canvas').length; const controls = document.querySelector('[data-testid=\"terminal-controls\"]'); const keyGrid = controls?.querySelector('[aria-label=\"Terminal keys\"]'); const primaryKeys = [...(keyGrid?.querySelectorAll('button') || [])]; const bottomNav = document.querySelector('.mobile-primary-nav'); const moreRect = document.querySelector('[aria-label=\"More terminal keys\"]')?.getBoundingClientRect(); const paneActions = document.querySelector('[aria-label=\"Create pane\"]'); const paneActionsRect = paneActions?.getBoundingClientRect(); const paneRect = document.querySelector('[aria-label^=\"Select pane \"]')?.getBoundingClientRect(); return { terminalPresent: Boolean(document.querySelector('.xterm')), screenPresent: Boolean(document.querySelector('.xterm-screen')), usesDomRenderer: terminalMetrics.renderer === 'dom' && terminalCanvasCount === 0, hasMobileControls: Boolean(document.querySelector('[aria-label=\"Toggle keyboard\"]')), hasEnter: Boolean(document.querySelector('[aria-label=\"Enter\"]')), hasMore: Boolean(moreRect), hasSelect: Boolean(document.querySelector('[aria-label=\"Select terminal text\"]')), controlsSingleRow: controls?.getBoundingClientRect().height === 44, controlsFitViewport: Boolean(keyGrid) && keyGrid.scrollWidth <= keyGrid.clientWidth && primaryKeys.every((button) => { const rect = button.getBoundingClientRect(); return rect.left >= 0 && rect.right <= window.innerWidth; }), moreFullyVisible: Boolean(moreRect) && moreRect.left >= 0 && moreRect.right <= window.innerWidth, paneActionMatchesPane: Boolean(paneActionsRect && paneRect) && Math.abs(paneActionsRect.height - paneRect.height) <= 1, bottomNavTouchSafe: (bottomNav?.getBoundingClientRect().height || 0) >= 44, sessionCloseHidden: !document.querySelector('[aria-label^=\"Close \"][aria-label$=\" tab\"]'), paneActionsConsolidated: Boolean(paneActions?.querySelector('.lucide-plus')) && !document.querySelector('[aria-label=\"Split vertical\"]'), hasFooterSize: body.includes('cols ') && body.includes(' rows '), terminalMetrics, terminalCanvasCount, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }; })()" \
   >"$artifacts_dir/mobile-eval.json"
 validate_eval_json "$artifacts_dir/mobile-eval.json" \
-  terminalPresent screenPresent usesDomRenderer hasMobileControls hasFooterSize
+  terminalPresent screenPresent usesDomRenderer hasMobileControls hasEnter hasMore hasSelect \
+  controlsSingleRow controlsFitViewport moreFullyVisible paneActionMatchesPane bottomNavTouchSafe \
+  sessionCloseHidden paneActionsConsolidated hasFooterSize
 capture_terminal_pixels mobile
+
+agent-browser --session "$browser_session" find role button click --name "More terminal keys" >/dev/null
+agent-browser --session "$browser_session" wait '[aria-label="Advanced terminal keys"]' >/dev/null
+agent-browser --session "$browser_session" eval \
+  "(() => { const panel = document.querySelector('[aria-label=\"Advanced terminal keys\"]'); const buttons = [...(panel?.querySelectorAll('button') || [])]; const rows = new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))); return { advancedPanelVisible: Boolean(panel), advancedPanelTwoRows: rows.size === 2, advancedKeysFitViewport: buttons.every((button) => { const rect = button.getBoundingClientRect(); return rect.left >= 0 && rect.right <= window.innerWidth; }), hasPageDown: Boolean(document.querySelector('[aria-label=\"Page down\"]')), hasArrowLeft: Boolean(document.querySelector('[aria-label=\"Arrow left\"]')), numberPadRemoved: !document.querySelector('[aria-label=\"Number pad\"]'), enterStillFixed: Boolean(document.querySelector('[aria-label=\"Enter\"]')) }; })()" \
+  >"$artifacts_dir/mobile-advanced-eval.json"
+validate_eval_json "$artifacts_dir/mobile-advanced-eval.json" \
+  advancedPanelVisible advancedPanelTwoRows advancedKeysFitViewport hasPageDown hasArrowLeft \
+  numberPadRemoved enterStillFixed
+agent-browser --session "$browser_session" find role button click --name "More terminal keys" >/dev/null
+
+agent-browser --session "$browser_session" find role button click --name "Select terminal text" >/dev/null
+agent-browser --session "$browser_session" wait '[data-testid="terminal-selection-controls"]' >/dev/null
+agent-browser --session "$browser_session" eval \
+  "(() => { const screen = document.querySelector('.xterm-screen'); if (!screen) return { selectionModeVisible: false }; const rect = screen.getBoundingClientRect(); const dispatch = (type, x, y) => screen.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 42, pointerType: 'touch', button: 0, clientX: x, clientY: y })); dispatch('pointerdown', rect.left + rect.width * 0.15, rect.top + rect.height * 0.25); dispatch('pointermove', rect.left + rect.width * 0.65, rect.top + rect.height * 0.45); dispatch('pointerup', rect.left + rect.width * 0.65, rect.top + rect.height * 0.45); return { selectionModeVisible: Boolean(document.querySelector('[data-testid=\"terminal-selection-controls\"]')), selectingClass: screen.classList.contains('touch-terminal-selecting') }; })()" \
+  >"$artifacts_dir/mobile-selection-eval.json"
+agent-browser --session "$browser_session" wait --fn "document.querySelector('[aria-label=\"Advanced terminal keys\"]') === null" >/dev/null
+agent-browser --session "$browser_session" eval \
+  "(() => ({ selectionModeVisible: Boolean(document.querySelector('[data-testid=\"terminal-selection-controls\"]')), selectingClass: Boolean(document.querySelector('.xterm-screen.touch-terminal-selecting')), copyEnabled: !document.querySelector('[data-testid=\"terminal-selection-controls\"] button:last-child')?.disabled }))()" \
+  >"$artifacts_dir/mobile-selection-state-eval.json"
+validate_eval_json "$artifacts_dir/mobile-selection-state-eval.json" \
+  selectionModeVisible selectingClass copyEnabled
+agent-browser --session "$browser_session" find role button click --name "Copy" >/dev/null
+agent-browser --session "$browser_session" wait '[data-testid="terminal-controls"]' >/dev/null
+agent-browser --session "$browser_session" wait --text "Copied to clipboard" >/dev/null
+
+agent-browser --session "$browser_session" focus '.xterm-helper-textarea' >/dev/null
+agent-browser --session "$browser_session" keyboard inserttext "printf ENTER_BUTTON_OK" >/dev/null
+agent-browser --session "$browser_session" find role button click --name "Enter" >/dev/null
+agent-browser --session "$browser_session" wait --text "ENTER_BUTTON_OK" >/dev/null
+
+agent-browser --session "$browser_session" set viewport 852 393 2 >/dev/null
+agent-browser --session "$browser_session" eval \
+  "window.dispatchEvent(new Event('orientationchange'))" >/dev/null
+agent-browser --session "$browser_session" eval \
+  "(() => ({ compactLandscape: document.documentElement.classList.contains('viewport-compact'), hasBottomNav: Boolean(document.querySelector('.mobile-primary-nav')), hasTerminalControls: Boolean(document.querySelector('[data-testid=\"terminal-controls\"]')), sideRailHidden: !document.querySelector('.app-shell > div > aside.w-12'), viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }))()" \
+  >"$artifacts_dir/mobile-landscape-eval.json"
+validate_eval_json "$artifacts_dir/mobile-landscape-eval.json" \
+  compactLandscape hasBottomNav hasTerminalControls sideRailHidden
+
+agent-browser --session "$browser_session" set viewport 393 500 2 >/dev/null
+agent-browser --session "$browser_session" eval \
+  "(() => { document.documentElement.classList.add('keyboard-visible'); const footerMeta = document.querySelector('.terminal-footer-meta'); const bottomNav = document.querySelector('.mobile-primary-nav'); return { footerMetaHidden: getComputedStyle(footerMeta).display === 'none', bottomNavHidden: getComputedStyle(bottomNav).display === 'none', terminalPresent: Boolean(document.querySelector('.xterm')) }; })()" \
+  >"$artifacts_dir/mobile-keyboard-eval.json"
+validate_eval_json "$artifacts_dir/mobile-keyboard-eval.json" \
+  footerMetaHidden bottomNavHidden terminalPresent
+agent-browser --session "$browser_session" eval \
+  "document.documentElement.classList.remove('keyboard-visible')" >/dev/null
 
 agent-browser --session "$browser_session" set viewport "$desktop_viewport_width" "$desktop_viewport_height" "$desktop_device_scale" >/dev/null
 agent-browser --session "$browser_session" wait 500 >/dev/null
@@ -564,12 +621,20 @@ validate_eval_json "$artifacts_dir/desktop-restored-eval.json" \
   terminalPresent screenPresent usesDomRenderer
 capture_terminal_pixels desktop-restored
 
-agent-browser --session "$browser_session" errors >"$artifacts_dir/page-errors.txt"
-if [[ -s "$artifacts_dir/page-errors.txt" ]]; then
-  echo "browser page errors detected" >&2
-  cat "$artifacts_dir/page-errors.txt" >&2
-  exit 1
-fi
+agent-browser --session "$browser_session" --json errors >"$artifacts_dir/page-errors.json"
+python3 - "$artifacts_dir/page-errors.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    payload = json.load(fh)
+
+errors = payload.get("data", {}).get("errors", [])
+if errors:
+    print("browser page errors detected", file=sys.stderr)
+    print(json.dumps(errors, indent=2, ensure_ascii=False), file=sys.stderr)
+    raise SystemExit(1)
+PY
 
 agent-browser --session "$browser_session" console >"$artifacts_dir/console.log"
 

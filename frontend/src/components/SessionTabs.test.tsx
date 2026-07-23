@@ -6,8 +6,12 @@ import SessionTabs, { clampSessionTabTransform } from './SessionTabs'
 
 const mobileLayout = vi.hoisted(() => ({ enabled: false }))
 
-vi.mock('@/hooks/useIsMobileLayout', () => ({
-  useIsMobileLayout: () => mobileLayout.enabled,
+vi.mock('@/contexts/ViewportContext', () => ({
+  useViewport: () => ({
+    compactLayout: mobileLayout.enabled,
+    touchCapable: mobileLayout.enabled,
+    touchOptimized: mobileLayout.enabled,
+  }),
 }))
 
 function renderTabs(overrides = {}) {
@@ -78,9 +82,12 @@ describe('SessionTabs', () => {
     const activeTab = screen.getByRole('tab', { name: 'api' })
     const unreadTab = screen.getByRole('tab', { name: 'worker, unread activity' })
 
-    expect(activeTab.querySelectorAll('svg')).toHaveLength(1)
-    expect(unreadTab.querySelectorAll('svg')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Close worker tab' })).toBeTruthy()
+    expect(activeTab.querySelectorAll('svg')).toHaveLength(0)
+    expect(unreadTab.querySelectorAll('svg')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: 'Close worker tab' })).toBeNull()
+
+    fireEvent.contextMenu(unreadTab)
+    expect(screen.getByText('Close tab')).toBeTruthy()
   })
 
   it('prevents pointer text selection without removing keyboard access', () => {

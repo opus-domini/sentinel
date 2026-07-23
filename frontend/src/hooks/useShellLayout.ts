@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
 import { useDocumentHotkeys } from '@/hooks/useHotkeys'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
 
@@ -9,6 +8,7 @@ type UseShellLayoutOptions = {
   defaultSidebarWidth: number
   minSidebarWidth: number
   maxSidebarWidth: number
+  compactLayout: boolean
   onResizeEnd?: () => void
 }
 
@@ -21,9 +21,9 @@ export function useShellLayout({
   defaultSidebarWidth,
   minSidebarWidth,
   maxSidebarWidth,
+  compactLayout,
   onResizeEnd,
 }: UseShellLayoutOptions) {
-  const isMobile = useIsMobileLayout()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => window.localStorage.getItem(storageKey) === '1',
@@ -112,15 +112,17 @@ export function useShellLayout({
 
   const layoutGridClass = useMemo(
     () =>
-      sidebarCollapsed
-        ? 'grid h-full grid-cols-[1fr] grid-rows-[minmax(0,1fr)] md:[grid-template-columns:48px_1fr]'
-        : 'grid h-full grid-cols-[1fr] grid-rows-[minmax(0,1fr)] md:[grid-template-columns:48px_var(--sidebar-width)_6px_1fr]',
-    [sidebarCollapsed],
+      compactLayout
+        ? 'grid h-full grid-cols-[1fr] grid-rows-[minmax(0,1fr)]'
+        : sidebarCollapsed
+          ? 'grid h-full grid-cols-[48px_1fr] grid-rows-[minmax(0,1fr)]'
+          : 'grid h-full grid-cols-[48px_var(--sidebar-width)_6px_1fr] grid-rows-[minmax(0,1fr)]',
+    [compactLayout, sidebarCollapsed],
   )
 
   const startSidebarResize = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      if (isMobile || sidebarCollapsed) {
+      if (compactLayout || sidebarCollapsed) {
         return
       }
 
@@ -143,7 +145,14 @@ export function useShellLayout({
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     },
-    [isMobile, maxSidebarWidth, minSidebarWidth, notifyResizeEnd, sidebarCollapsed, sidebarWidth],
+    [
+      compactLayout,
+      maxSidebarWidth,
+      minSidebarWidth,
+      notifyResizeEnd,
+      sidebarCollapsed,
+      sidebarWidth,
+    ],
   )
 
   return {

@@ -22,7 +22,7 @@ import { MetaContext } from '@/contexts/MetaContext'
 import { OpsEventsContext } from '@/contexts/OpsEventsContext'
 import { ToastContext } from '@/contexts/ToastContext'
 import { TokenContext } from '@/contexts/TokenContext'
-import { useIsMobileLayout } from '@/hooks/useIsMobileLayout'
+import { ViewportContext } from '@/contexts/ViewportContext'
 import { useConnectionCheck } from '@/hooks/useConnectionCheck'
 import { useSentinelMeta } from '@/hooks/useSentinelMeta'
 import { useServerStatus } from '@/hooks/useServerStatus'
@@ -30,6 +30,7 @@ import { useSharedOpsEventsSocket } from '@/hooks/useSharedOpsEventsSocket'
 import { useShellLayout } from '@/hooks/useShellLayout'
 import { useToasts } from '@/hooks/useToasts'
 import { useVisualViewport } from '@/hooks/useVisualViewport'
+import { useViewportCapabilities } from '@/hooks/useViewportCapabilities'
 import { applyDocumentAppBrand } from '@/lib/appBrand'
 import { authCookieUpdateErrorMessage, updateAuthCookie } from '@/lib/authToken'
 import type { AuthCookieUpdateResult } from '@/lib/authToken'
@@ -112,6 +113,7 @@ function LoadingGate() {
 
 function RootComponent() {
   useVisualViewport()
+  const viewport = useViewportCapabilities()
   const { toasts, pushToast, dismissToast } = useToasts()
   const queryClient = useQueryClient()
   const layout = useShellLayout({
@@ -119,6 +121,7 @@ function RootComponent() {
     defaultSidebarWidth: 340,
     minSidebarWidth: 240,
     maxSidebarWidth: 440,
+    compactLayout: viewport.compactLayout,
     onResizeEnd: () => {
       window.dispatchEvent(new Event('resize'))
     },
@@ -127,7 +130,6 @@ function RootComponent() {
 
   const { offline, retry } = useServerStatus()
   const meta = useSentinelMeta()
-  const isMobile = useIsMobileLayout()
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -137,10 +139,21 @@ function RootComponent() {
   }, [meta.hostname])
 
   useEffect(() => {
-    if (isMobile) {
+    if (viewport.compactLayout) {
       setSidebarOpen(false)
     }
-  }, [isMobile, pathname, setSidebarOpen])
+  }, [pathname, setSidebarOpen, viewport.compactLayout])
+
+  useEffect(() => {
+    const classList = document.documentElement.classList
+    classList.toggle('viewport-compact', viewport.compactLayout)
+    classList.toggle('touch-capable', viewport.touchCapable)
+    classList.toggle('touch-optimized', viewport.touchOptimized)
+
+    return () => {
+      classList.remove('viewport-compact', 'touch-capable', 'touch-optimized')
+    }
+  }, [viewport.compactLayout, viewport.touchCapable, viewport.touchOptimized])
 
   const authenticated = !meta.tokenRequired || !meta.unauthorized
   const needsTokenGate = meta.loaded && meta.tokenRequired && meta.unauthorized
@@ -179,33 +192,35 @@ function RootComponent() {
   )
 
   return (
-    <MetaContext.Provider value={meta}>
-      <TokenContext.Provider value={tokenContextValue}>
-        <ToastContext.Provider value={toastContextValue}>
-          <ConnectionHealthContext.Provider value={connectionHealth}>
-            <OpsEventsContext.Provider value={opsEvents}>
-              <LayoutContext.Provider value={layout}>
-                <TooltipProvider delayDuration={300}>
-                  <ErrorBoundary>
-                    {showOutlet ? <Outlet /> : <LoadingGate />}
-                    {needsTokenGate && <TokenGateDialog onSubmit={submitGateToken} />}
-                    <ToastViewport toasts={toasts} onDismiss={dismissToast} />
-                    {!offline && connectionHealth.issue && (
-                      <ConnectionIssueBanner
-                        issue={connectionHealth.issue}
-                        checking={connectionHealth.checking}
-                        onRetry={connectionHealth.retry}
-                      />
-                    )}
-                    {offline && <ServerOfflineBanner onRetry={retry} />}
-                  </ErrorBoundary>
-                </TooltipProvider>
-              </LayoutContext.Provider>
-            </OpsEventsContext.Provider>
-          </ConnectionHealthContext.Provider>
-        </ToastContext.Provider>
-      </TokenContext.Provider>
-    </MetaContext.Provider>
+    <ViewportContext.Provider value={viewport}>
+      <MetaContext.Provider value={meta}>
+        <TokenContext.Provider value={tokenContextValue}>
+          <ToastContext.Provider value={toastContextValue}>
+            <ConnectionHealthContext.Provider value={connectionHealth}>
+              <OpsEventsContext.Provider value={opsEvents}>
+                <LayoutContext.Provider value={layout}>
+                  <TooltipProvider delayDuration={300}>
+                    <ErrorBoundary>
+                      {showOutlet ? <Outlet /> : <LoadingGate />}
+                      {needsTokenGate && <TokenGateDialog onSubmit={submitGateToken} />}
+                      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
+                      {!offline && connectionHealth.issue && (
+                        <ConnectionIssueBanner
+                          issue={connectionHealth.issue}
+                          checking={connectionHealth.checking}
+                          onRetry={connectionHealth.retry}
+                        />
+                      )}
+                      {offline && <ServerOfflineBanner onRetry={retry} />}
+                    </ErrorBoundary>
+                  </TooltipProvider>
+                </LayoutContext.Provider>
+              </OpsEventsContext.Provider>
+            </ConnectionHealthContext.Provider>
+          </ToastContext.Provider>
+        </TokenContext.Provider>
+      </MetaContext.Provider>
+    </ViewportContext.Provider>
   )
 }
 
