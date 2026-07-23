@@ -44,7 +44,8 @@ Sentinel seeds three runbooks on first startup:
 1. `run` — Check for updates (`sentinel update check`)
 2. `run` — Apply update and restart (`sentinel update apply`)
 
-Built-in runbooks (IDs prefixed with `ops.`) cannot be deleted.
+These runbooks are installed as defaults on first startup. They can be edited or deleted like any
+other runbook.
 
 ## Parameters
 

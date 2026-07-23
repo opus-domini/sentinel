@@ -16,7 +16,6 @@ import type { ScheduleDraft } from '@/components/RunbookScheduleEditor'
 import { RunbookScheduleEditor } from '@/components/RunbookScheduleEditor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TooltipHelper } from '@/components/TooltipHelper'
 import { useDateFormat } from '@/hooks/useDateFormat'
 import { cn } from '@/lib/utils'
 import {
@@ -27,10 +26,6 @@ import {
   runbookJobProgress,
   runbookStatusMeta,
 } from '@/lib/runbookPresentation'
-
-function isBuiltinRunbook(id: string): boolean {
-  return id.startsWith('ops.')
-}
 
 function scheduleDescription(schedule: OpsSchedule): string {
   if (schedule.scheduleType === 'cron' && schedule.cronExpr) {
@@ -164,26 +159,15 @@ export function RunbookDetailPanel({
             <Pencil className="h-3 w-3" />
             Edit
           </Button>
-          {isBuiltinRunbook(runbook.id) ? (
-            <TooltipHelper content="Built-in runbooks cannot be deleted">
-              <span>
-                <Button variant="outline" size="sm" className="h-8 gap-1 px-3 text-[11px]" disabled>
-                  <Trash2 className="h-3 w-3" />
-                  Delete
-                </Button>
-              </span>
-            </TooltipHelper>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 cursor-pointer gap-1 px-3 text-[11px] text-destructive-foreground hover:text-destructive-foreground"
-              onClick={() => onDelete(runbook)}
-            >
-              <Trash2 className="h-3 w-3" />
-              Delete
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 cursor-pointer gap-1 px-3 text-[11px] text-destructive-foreground hover:text-destructive-foreground"
+            onClick={() => onDelete(runbook)}
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete
+          </Button>
           <Button
             variant="outline"
             size="sm"

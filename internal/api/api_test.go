@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -4458,6 +4460,25 @@ func TestCreateOpsRunbookValidation(t *testing.T) {
 	h.createOpsRunbook(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestDeleteSeededOpsRunbook(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil)
+	const runbookID = "ops.service.recover"
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/api/ops/runbooks/"+runbookID, nil)
+	r.SetPathValue("runbook", runbookID)
+	h.deleteOpsRunbook(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete seeded runbook status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+
+	if _, err := st.GetOpsRunbook(context.Background(), runbookID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("GetOpsRunbook after delete error = %v, want sql.ErrNoRows", err)
 	}
 }
 
