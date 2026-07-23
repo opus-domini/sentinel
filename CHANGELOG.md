@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.11](https://github.com/opus-domini/sentinel/compare/v0.10.10...v0.10.11) (2026-07-23)
+
+
+### Features
+
+* **ui:** improve mobile terminal experience ([186e151](https://github.com/opus-domini/sentinel/commit/186e151b90386139eeb2e0594ed5430d80ef5591))
+
+
+### Bug Fixes
+
+* **ui:** hide session tab icons on mobile ([3a64c47](https://github.com/opus-domini/sentinel/commit/3a64c47fc0c6abe359ae1f33bcb1863df2edb8df))
+
 ## [0.10.10](https://github.com/opus-domini/sentinel/compare/v0.10.9...v0.10.10) (2026-07-23)
 
 
