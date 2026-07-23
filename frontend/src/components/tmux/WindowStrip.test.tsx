@@ -80,6 +80,111 @@ describe('WindowStrip', () => {
     )
   })
 
+  it('prevents pointer focus from sticking to window tabs and close buttons', () => {
+    renderStrip({
+      hasActiveSession: true,
+      inspectorLoading: false,
+      inspectorError: '',
+      windows: [
+        {
+          session: 'dev',
+          index: 0,
+          name: 'shell',
+          displayName: 'Shell',
+          active: true,
+          panes: 1,
+        },
+      ],
+      activeWindowIndex: 0,
+      launchers: [],
+      recentLauncher: null,
+      onSelectWindow: vi.fn(),
+      onCloseWindow: vi.fn(),
+      onRenameWindow: vi.fn(),
+      onCreateWindow: vi.fn(),
+      onLaunchLauncher: vi.fn(),
+      onOpenLaunchers: vi.fn(),
+    })
+
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Shell' }))).toBe(false)
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Close window #0' }))).toBe(false)
+  })
+
+  it('locks window creation, closing, and drag controls without blocking selection', () => {
+    const onSelectWindow = vi.fn()
+    const onCloseWindow = vi.fn()
+
+    renderStrip({
+      hasActiveSession: true,
+      inspectorLoading: false,
+      inspectorError: '',
+      windows: [
+        {
+          session: 'dev',
+          index: 0,
+          name: 'one',
+          displayName: 'One',
+          active: true,
+          panes: 1,
+          tmuxWindowId: '@1',
+        },
+        {
+          session: 'dev',
+          index: 1,
+          name: 'two',
+          displayName: 'Two',
+          active: false,
+          panes: 1,
+          tmuxWindowId: '@2',
+        },
+      ],
+      activeWindowIndex: 0,
+      launchers: [],
+      recentLauncher: null,
+      onSelectWindow,
+      onCloseWindow,
+      onRenameWindow: vi.fn(),
+      onCreateWindow: vi.fn(),
+      onLaunchLauncher: vi.fn(),
+      onOpenLaunchers: vi.fn(),
+      onReorderWindow: vi.fn(),
+    })
+
+    const lockButton = screen.getByRole('button', { name: 'Lock window controls' })
+    expect(lockButton.getAttribute('aria-pressed')).toBe('false')
+    expect(lockButton.getAttribute('aria-description')).toContain(
+      'Prevents creating, closing, and reordering windows.',
+    )
+    expect(lockButton.className).toContain('cursor-pointer')
+    expect(screen.getByRole('button', { name: 'Create blank window' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open launcher menu' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'One' }).getAttribute('aria-roledescription')).toBe(
+      'sortable',
+    )
+    expect(screen.getByRole('button', { name: 'Close window #0' })).toBeTruthy()
+
+    fireEvent.click(lockButton)
+
+    const unlockButton = screen.getByRole('button', { name: 'Unlock window controls' })
+    expect(unlockButton.getAttribute('aria-pressed')).toBe('true')
+    expect(unlockButton.getAttribute('aria-description')).toContain(
+      'Allows creating, closing, and reordering windows.',
+    )
+    expect(unlockButton.className).toContain('cursor-pointer')
+    expect(screen.queryByRole('button', { name: 'Create blank window' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open launcher menu' })).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'One' }).getAttribute('aria-roledescription'),
+    ).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close window #0' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close window #1' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'One' }))
+
+    expect(onSelectWindow).toHaveBeenCalledWith(0)
+    expect(onCloseWindow).not.toHaveBeenCalled()
+  })
+
   it('launches configured launchers from the dropdown menu', async () => {
     const onLaunchLauncher = vi.fn()
     const onOpenLaunchers = vi.fn()

@@ -17,6 +17,7 @@ describe('ConnectionBadge', () => {
 
     const dot = badge.querySelector('span')
     expect(dot).not.toBeNull()
+    expect(badge.className).not.toContain('border-border-subtle')
   })
 
   it('acts as a resync control when a click handler is provided', () => {
@@ -27,6 +28,7 @@ describe('ConnectionBadge', () => {
       name: 'Connected; Resync connection',
     })
     expect(badge).toBeInstanceOf(HTMLButtonElement)
+    expect(badge.className).not.toContain('border-border-subtle')
 
     fireEvent.click(badge)
 

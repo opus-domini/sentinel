@@ -16,7 +16,8 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { X } from 'lucide-react'
-import type { DragEndEvent } from '@dnd-kit/core'
+import type { ClientRect, DragEndEvent, Modifier } from '@dnd-kit/core'
+import type { Transform } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
@@ -40,6 +41,48 @@ type SessionTabsProps = {
   onReorder?: (from: number, to: number) => void
   emptyLabel?: string
 }
+
+function canAutoScrollSessionTabs(element: Element): boolean {
+  return element instanceof HTMLElement && element.dataset.sentinelSessionTabsScroll === 'true'
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (max < min) {
+    return min
+  }
+  return Math.min(Math.max(value, min), max)
+}
+
+export function clampSessionTabTransform(
+  transform: Transform,
+  draggingNodeRect: ClientRect | null,
+  scrollableAncestors: Array<Element>,
+): Transform {
+  const tabsElement = scrollableAncestors.find(canAutoScrollSessionTabs)
+  const tabsRect = tabsElement instanceof HTMLElement ? tabsElement.getBoundingClientRect() : null
+
+  if (draggingNodeRect === null || tabsRect === null) {
+    return {
+      ...transform,
+      y: 0,
+    }
+  }
+
+  const minX = tabsRect.left - draggingNodeRect.left
+  const maxX = tabsRect.right - draggingNodeRect.right
+
+  return {
+    ...transform,
+    x: clamp(transform.x, minX, maxX),
+    y: 0,
+  }
+}
+
+const restrictToSessionTabsBounds: Modifier = ({
+  draggingNodeRect,
+  scrollableAncestors,
+  transform,
+}) => clampSessionTabTransform(transform, draggingNodeRect, scrollableAncestors)
 
 function SortableTab({
   tabName,
@@ -84,7 +127,7 @@ function SortableTab({
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group inline-flex h-[30px] min-w-[110px] max-w-[220px] cursor-pointer items-center border-r border-border-subtle px-2 text-[12px]',
+        'group inline-flex h-full min-w-[110px] max-w-[220px] cursor-pointer items-center border-r border-border-subtle px-2 text-[12px]',
         isActive
           ? 'bg-surface-active text-foreground'
           : 'bg-surface-elevated text-secondary-foreground hover:bg-surface-active',
@@ -198,15 +241,30 @@ export default function SessionTabs({
       role="tablist"
       aria-label="Session tabs"
       className="no-scrollbar flex items-stretch overflow-x-auto overflow-y-hidden border-b border-border bg-surface-sunken"
+      data-sentinel-session-tabs-scroll="true"
+      style={{
+        overscrollBehaviorX: 'contain',
+        overscrollBehaviorY: 'none',
+      }}
     >
       {openTabs.length === 0 && (
-        <div className="inline-flex h-[30px] min-w-[120px] items-center border-r border-border-subtle bg-surface-elevated px-2 text-[12px] text-secondary-foreground">
+        <div className="inline-flex h-full min-w-[120px] items-center border-r border-border-subtle bg-surface-elevated px-2 text-[12px] text-secondary-foreground">
           {emptyLabel}
         </div>
       )}
 
       {openTabs.length > 0 && (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToSessionTabsBounds]}
+          autoScroll={{
+            enabled: true,
+            canScroll: canAutoScrollSessionTabs,
+            layoutShiftCompensation: { x: true, y: false },
+          }}
+          onDragEnd={handleDragEnd}
+        >
           <SortableContext items={openTabs} strategy={horizontalListSortingStrategy}>
             {openTabs.map((tabName) => (
               <SortableTab

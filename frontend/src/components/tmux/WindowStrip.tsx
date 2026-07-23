@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -23,7 +23,7 @@ import type {
 } from '@dnd-kit/core'
 import type { CSSProperties, WheelEvent as ReactWheelEvent } from 'react'
 import type { Transform } from '@dnd-kit/utilities'
-import { ChevronDown, Plus, User, X } from 'lucide-react'
+import { ChevronDown, Lock, LockOpen, Plus, User, X } from 'lucide-react'
 import type { TmuxLauncher, WindowInfo } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -132,6 +132,7 @@ type WindowChipProps = {
   dragAttributes?: DraggableAttributes
   dragListeners?: DraggableSyntheticListeners
   isDragging?: boolean
+  closeEnabled: boolean
 }
 
 function WindowChip({
@@ -147,6 +148,7 @@ function WindowChip({
   dragAttributes,
   dragListeners,
   isDragging = false,
+  closeEnabled,
 }: WindowChipProps) {
   const unreadPanes = windowInfo.unreadPanes ?? 0
   const hasUnread = windowInfo.hasUnread ?? unreadPanes > 0
@@ -192,6 +194,9 @@ function WindowChip({
           'cursor-pointer',
         )}
         type="button"
+        onMouseDown={(event) => {
+          event.preventDefault()
+        }}
         onClick={() => onSelectWindow(windowInfo.index)}
         aria-label={isMobile ? `Select window ${displayName}` : undefined}
         {...(dragAttributes ?? {})}
@@ -214,10 +219,13 @@ function WindowChip({
           </>
         )}
       </button>
-      {!isMobile && (
+      {!isMobile && closeEnabled && (
         <button
           className="grid h-5 w-5 cursor-pointer place-items-center border-l border-border-subtle text-secondary-foreground hover:bg-surface-close-hover hover:text-destructive-foreground"
           type="button"
+          onMouseDown={(event) => {
+            event.preventDefault()
+          }}
           onClick={() => onCloseWindow(windowInfo.index)}
           aria-label={`Close window #${windowInfo.index}`}
         >
@@ -232,12 +240,14 @@ function WindowChip({
       <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
       <ContextMenuContent className="w-44">
         <ContextMenuItem onSelect={() => onRenameWindow(windowInfo)}>Rename window</ContextMenuItem>
-        <ContextMenuItem
-          className="text-destructive-foreground focus:text-destructive-foreground"
-          onSelect={() => onCloseWindow(windowInfo.index)}
-        >
-          Close window
-        </ContextMenuItem>
+        {closeEnabled && (
+          <ContextMenuItem
+            className="text-destructive-foreground focus:text-destructive-foreground"
+            onSelect={() => onCloseWindow(windowInfo.index)}
+          >
+            Close window
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -251,6 +261,7 @@ function SortableWindowChip(props: {
   onSelectWindow: (windowIndex: number) => void
   onCloseWindow: (windowIndex: number) => void
   onRenameWindow: (windowInfo: WindowInfo) => void
+  closeEnabled: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.windowInfo.tmuxWindowId ?? '',
@@ -290,6 +301,7 @@ export default function WindowStrip({
   onReorderWindow,
 }: WindowStripProps) {
   const isMobile = useIsMobileLayout()
+  const [windowsLocked, setWindowsLocked] = useState(false)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -311,6 +323,7 @@ export default function WindowStrip({
   )
   const reorderEnabled =
     !isMobile &&
+    !windowsLocked &&
     typeof onReorderWindow === 'function' &&
     sortedWindows.length > 1 &&
     sortedWindows.every((windowInfo) => asText(windowInfo.tmuxWindowId).trim() !== '')
@@ -324,6 +337,9 @@ export default function WindowStrip({
   const stripClass =
     'no-scrollbar flex min-h-[24px] items-center gap-1.5 overflow-x-auto overflow-y-hidden'
   const hasRenderableWindows = sortedWindows.length > 0
+  const windowLockHint = windowsLocked
+    ? 'Unlock windows\nAllows creating, closing, and reordering windows.'
+    : 'Lock windows\nPrevents creating, closing, and reordering windows.'
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -407,6 +423,7 @@ export default function WindowStrip({
               onSelectWindow={onSelectWindow}
               onCloseWindow={onCloseWindow}
               onRenameWindow={onRenameWindow}
+              closeEnabled={!windowsLocked}
             />
           ))}
         </SortableContext>
@@ -422,104 +439,131 @@ export default function WindowStrip({
           onSelectWindow={onSelectWindow}
           onCloseWindow={onCloseWindow}
           onRenameWindow={onRenameWindow}
+          closeEnabled={!windowsLocked}
         />
       ))
     )
 
   return (
-    <div
-      className={stripClass}
-      data-sentinel-window-strip-scroll="true"
-      onWheel={handleWheel}
-      style={{
-        overscrollBehaviorX: 'contain',
-        overscrollBehaviorY: 'none',
-      }}
-    >
-      <div className="flex shrink-0 items-center text-[11px]/none">
-        <TooltipHelper content="Create blank window">
-          <Button
-            variant="outline"
-            size="icon-xs"
-            className="rounded-r-none border-r-0"
-            onMouseDown={(event) => {
-              event.preventDefault()
-            }}
-            onClick={onCreateWindow}
-            aria-label="Create blank window"
-          >
-            <Plus className="size-3" />
-          </Button>
-        </TooltipHelper>
+    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <div
+        className={cn(stripClass, 'min-w-0 flex-1')}
+        data-sentinel-window-strip-scroll="true"
+        onWheel={handleWheel}
+        style={{
+          overscrollBehaviorX: 'contain',
+          overscrollBehaviorY: 'none',
+        }}
+      >
+        {!windowsLocked && (
+          <div className="flex shrink-0 items-center text-[11px]/none">
+            <TooltipHelper content="Create blank window">
+              <Button
+                variant="outline"
+                size="icon-xs"
+                className="rounded-r-none border-r-0"
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                }}
+                onClick={onCreateWindow}
+                aria-label="Create blank window"
+              >
+                <Plus className="size-3" />
+              </Button>
+            </TooltipHelper>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon-xs"
-              className="rounded-l-none px-0"
-              aria-label="Open launcher menu"
-            >
-              <ChevronDown className="size-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuItem onSelect={onCreateWindow}>
-              <Plus className="h-3.5 w-3.5" />
-              New blank window
-            </DropdownMenuItem>
-            {recentLauncher !== null && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Last used</DropdownMenuLabel>
-                <DropdownMenuItem
-                  className="items-start"
-                  onSelect={() => onLaunchLauncher(recentLauncher.id)}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  className="rounded-l-none px-0"
+                  aria-label="Open launcher menu"
                 >
-                  {(() => {
-                    const Icon = getTmuxIcon(recentLauncher.icon)
-                    return <Icon className="mt-0.5 h-3.5 w-3.5" />
-                  })()}
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate leading-tight">{recentLauncher.name}</span>
-                    <span className="truncate text-[10px] leading-tight text-muted-foreground">
-                      {describeLauncherCommand(recentLauncher.command)}
-                    </span>
-                  </span>
+                  <ChevronDown className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onSelect={onCreateWindow}>
+                  <Plus className="h-3.5 w-3.5" />
+                  New blank window
                 </DropdownMenuItem>
-              </>
-            )}
-            {secondaryLaunchers.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Launchers</DropdownMenuLabel>
-                {secondaryLaunchers.map((launcher) => {
-                  const Icon = getTmuxIcon(launcher.icon)
-                  return (
+                {recentLauncher !== null && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Last used</DropdownMenuLabel>
                     <DropdownMenuItem
-                      key={launcher.id}
                       className="items-start"
-                      onSelect={() => onLaunchLauncher(launcher.id)}
+                      onSelect={() => onLaunchLauncher(recentLauncher.id)}
                     >
-                      <Icon className="mt-0.5 h-3.5 w-3.5" />
+                      {(() => {
+                        const Icon = getTmuxIcon(recentLauncher.icon)
+                        return <Icon className="mt-0.5 h-3.5 w-3.5" />
+                      })()}
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="truncate leading-tight">{launcher.name}</span>
+                        <span className="truncate leading-tight">{recentLauncher.name}</span>
                         <span className="truncate text-[10px] leading-tight text-muted-foreground">
-                          {describeLauncherCommand(launcher.command)}
+                          {describeLauncherCommand(recentLauncher.command)}
                         </span>
                       </span>
                     </DropdownMenuItem>
-                  )
-                })}
-              </>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onOpenLaunchers}>Manage launchers...</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                  </>
+                )}
+                {secondaryLaunchers.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Launchers</DropdownMenuLabel>
+                    {secondaryLaunchers.map((launcher) => {
+                      const Icon = getTmuxIcon(launcher.icon)
+                      return (
+                        <DropdownMenuItem
+                          key={launcher.id}
+                          className="items-start"
+                          onSelect={() => onLaunchLauncher(launcher.id)}
+                        >
+                          <Icon className="mt-0.5 h-3.5 w-3.5" />
+                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            <span className="truncate leading-tight">{launcher.name}</span>
+                            <span className="truncate text-[10px] leading-tight text-muted-foreground">
+                              {describeLauncherCommand(launcher.command)}
+                            </span>
+                          </span>
+                        </DropdownMenuItem>
+                      )
+                    })}
+                  </>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onOpenLaunchers}>Manage launchers...</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+
+        {windowItems}
       </div>
 
-      {windowItems}
+      {!isMobile && (
+        <TooltipHelper content={windowLockHint}>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className={cn(
+              'shrink-0 cursor-pointer text-muted-foreground hover:text-foreground',
+              windowsLocked && 'bg-surface-active text-foreground',
+            )}
+            onMouseDown={(event) => {
+              event.preventDefault()
+            }}
+            onClick={() => setWindowsLocked((locked) => !locked)}
+            aria-label={windowsLocked ? 'Unlock window controls' : 'Lock window controls'}
+            aria-description={windowLockHint}
+            aria-pressed={windowsLocked}
+          >
+            {windowsLocked ? <Lock className="size-3" /> : <LockOpen className="size-3" />}
+          </Button>
+        </TooltipHelper>
+      )}
     </div>
   )
 }

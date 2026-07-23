@@ -33,7 +33,7 @@ export default function ConnectionBadge({
         <button
           type="button"
           className={cn(
-            'inline-flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-border-subtle bg-surface-elevated hover:bg-surface-active',
+            'inline-flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-full bg-surface-elevated hover:bg-surface-active',
             state === 'error' ? 'px-2 text-destructive-foreground' : 'w-7',
           )}
           aria-label={`${label}; ${actionLabel}`}
@@ -49,7 +49,7 @@ export default function ConnectionBadge({
     <TooltipHelper content={tooltip}>
       <span
         className={cn(
-          'inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-border-subtle bg-surface-elevated',
+          'inline-flex h-7 items-center justify-center gap-1.5 rounded-full bg-surface-elevated',
           state === 'error' ? 'px-2 text-destructive-foreground' : 'w-7',
         )}
         role="status"

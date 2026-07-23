@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import SessionTabs from './SessionTabs'
+import SessionTabs, { clampSessionTabTransform } from './SessionTabs'
 
 vi.mock('@/hooks/useIsMobileLayout', () => ({
   useIsMobileLayout: () => false,
@@ -73,5 +73,72 @@ describe('SessionTabs', () => {
 
     expect(props.onClose).toHaveBeenCalledWith('worker')
     expect(props.onSelect).not.toHaveBeenCalled()
+  })
+
+  it('fits tabs inside the bordered row and marks only the session strip for drag scrolling', () => {
+    renderTabs()
+
+    const tabs = screen.getByRole('tablist', { name: 'Session tabs' })
+
+    expect(tabs.className).toContain('overflow-y-hidden')
+    expect(screen.getByRole('tab', { name: 'api' }).className).toContain('h-full')
+    expect(screen.getByRole('tab', { name: 'api' }).className).not.toContain('h-[30px]')
+    expect(tabs.getAttribute('data-sentinel-session-tabs-scroll')).toBe('true')
+    expect(tabs.getAttribute('style')).toContain('overscroll-behavior-x: contain')
+    expect(tabs.getAttribute('style')).toContain('overscroll-behavior-y: none')
+  })
+
+  it('keeps dragged session tabs inside the visible strip bounds', () => {
+    const strip = document.createElement('div')
+    strip.dataset.sentinelSessionTabsScroll = 'true'
+    strip.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        left: 100,
+        right: 400,
+        bottom: 30,
+        width: 300,
+        height: 30,
+        x: 100,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect
+
+    const clamped = clampSessionTabTransform(
+      {
+        x: -80,
+        y: 24,
+        scaleX: 1,
+        scaleY: 1,
+      },
+      {
+        top: 0,
+        left: 70,
+        right: 180,
+        bottom: 30,
+        width: 110,
+        height: 30,
+      },
+      [strip],
+    )
+
+    expect(clamped.x).toBe(30)
+    expect(clamped.y).toBe(0)
+  })
+
+  it('removes vertical movement even when the session strip rect is unavailable', () => {
+    const clamped = clampSessionTabTransform(
+      {
+        x: 32,
+        y: 24,
+        scaleX: 1,
+        scaleY: 1,
+      },
+      null,
+      [],
+    )
+
+    expect(clamped.x).toBe(32)
+    expect(clamped.y).toBe(0)
   })
 })
