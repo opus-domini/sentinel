@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.12](https://github.com/opus-domini/sentinel/compare/v0.10.11...v0.10.12) (2026-07-23)
+
+
+### Bug Fixes
+
+* **ui:** keep mobile keyboard closed for advanced keys ([12f7ed2](https://github.com/opus-domini/sentinel/commit/12f7ed2c6dd1491954c4b8b6149b318f3a46fc67))
+
+
+### Refactors
+
+* **ui:** remove redundant services sidebar ([cd9ce93](https://github.com/opus-domini/sentinel/commit/cd9ce93544ac17b8f4f78ae0dab44b5f642bc1c7))
+
 ## [0.10.11](https://github.com/opus-domini/sentinel/compare/v0.10.10...v0.10.11) (2026-07-23)
 
 
