@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.10.10](https://github.com/opus-domini/sentinel/compare/v0.10.9...v0.10.10) (2026-07-23)
+
+
+### Features
+
+* **ui:** refine terminal tabs and window safety ([a9c8cf4](https://github.com/opus-domini/sentinel/commit/a9c8cf4c67c51d588c7a3b7cb7be1097d98e904a))
+
+
+### Bug Fixes
+
+* **frontend:** disable native cwd autocomplete ([edb34c1](https://github.com/opus-domini/sentinel/commit/edb34c11ae1b21368418c101d2c05f997a27222f))
+* improve ambiguous deployment cleanup ([3d00cb0](https://github.com/opus-domini/sentinel/commit/3d00cb00a230d0114d400038c154c00cc43b53f6))
+* **release:** expose recovery dispatch ([3391faf](https://github.com/opus-domini/sentinel/commit/3391fafd9b7e21685e9b7f520042268674fb8f4d))
+* **release:** remove obsolete runtime input ([1dadb06](https://github.com/opus-domini/sentinel/commit/1dadb06655dc4dcac84b9a6ec45d32f8f8532085))
+* **runbooks:** allow deleting default runbooks ([1d17e8f](https://github.com/opus-domini/sentinel/commit/1d17e8f47cc3695646677486a76d8505def0c355))
+* **service:** make host checks deterministic ([0aa6838](https://github.com/opus-domini/sentinel/commit/0aa6838d6f57aaebb1d931d6935a750b01bd16d2))
+* **tmux:** preserve sessions across sentinel restarts ([cb02184](https://github.com/opus-domini/sentinel/commit/cb02184412ac31726e2762b7b6c918a31065de5a))
+* **ui:** polish session tab behavior and icons ([5305ff2](https://github.com/opus-domini/sentinel/commit/5305ff2c14935b346d849c1e774a3f0394385ddb))
+
+
+### CI
+
+* adopt container-only Ductor runtimes ([9d214f3](https://github.com/opus-domini/sentinel/commit/9d214f35959f72e4e5936cc0e79f0f3dae0f7c55))
+* complete reusable workflow pin wave ([ddc748d](https://github.com/opus-domini/sentinel/commit/ddc748d1577cab27634b64549d9a851e31f0989e))
+* follow release merge history ([a22d034](https://github.com/opus-domini/sentinel/commit/a22d0342813b61443be0153fe3e80e37a618115b))
+* pin canonical release target ([4cb3c0d](https://github.com/opus-domini/sentinel/commit/4cb3c0dc62238b16bc0235b53d1319bd8827ec88))
+* pin Ductor release verification ([f848033](https://github.com/opus-domini/sentinel/commit/f84803314fff4a2bd882b5aa7de6589c550f3663))
+* pin release classification boundary ([bf91a50](https://github.com/opus-domini/sentinel/commit/bf91a5068a301bc4b4ae1654b202b69637088be2))
+* pin release PR classification fix ([aa063b4](https://github.com/opus-domini/sentinel/commit/aa063b44648d995329f18fb833e85b0f98b7c999))
+* update reusable workflow pin ([3b649ba](https://github.com/opus-domini/sentinel/commit/3b649ba70aa47deaf3ed542f6e5550ed8c860235))
+* update reusable workflow pin ([7b61e80](https://github.com/opus-domini/sentinel/commit/7b61e807497b90db6a6882589723dc93e3508bc2))
+* update reusable workflow pin ([f14cab7](https://github.com/opus-domini/sentinel/commit/f14cab7d5f19337c6df14a155f1726f78f60b242))
+
 ## [0.10.9](https://github.com/opus-domini/sentinel/compare/v0.10.8...v0.10.9) (2026-07-19)
 
 
