@@ -54,6 +54,97 @@ func TestStreamLogsByUnitBuildsJournalctlCommand(t *testing.T) {
 	}
 }
 
+func TestStreamLogsRejectsInvalidAndUnavailableServices(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		service string
+		repo    *stubCustomServicesRepo
+		goos    string
+		runner  commandRunner
+		wantErr error
+	}{
+		{
+			name:    "invalid name",
+			service: "   ",
+			wantErr: ErrServiceNotFound,
+		},
+		{
+			name:    "repository failure",
+			service: ServiceNameSentinel,
+			repo:    &stubCustomServicesRepo{err: errors.New("store unavailable")},
+			wantErr: errors.New("store unavailable"),
+		},
+		{
+			name:    "service not found",
+			service: ServiceNameSentinel,
+			repo:    &stubCustomServicesRepo{},
+			goos:    "linux",
+			wantErr: ErrServiceNotFound,
+		},
+		{
+			name:    "unsupported manager",
+			service: ServiceNameSentinel,
+			repo:    builtinServicesRepo("darwin"),
+			goos:    "darwin",
+			runner: func(context.Context, string, ...string) (string, error) {
+				return "state = running\nlast exit code = 0", nil
+			},
+			wantErr: ErrStreamingUnsupported,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			manager := &Manager{
+				nowFn:         time.Now,
+				uidFn:         func() int { return 1000 },
+				goos:          tc.goos,
+				commandRunner: tc.runner,
+			}
+			if tc.repo != nil {
+				manager.customServices = tc.repo
+			}
+			_, err := manager.StreamLogs(context.Background(), tc.service)
+			if !errors.Is(err, tc.wantErr) && (err == nil || err.Error() != tc.wantErr.Error()) {
+				t.Fatalf("StreamLogs() error = %v, want %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestStreamLogsBuildsJournalctlCommand(t *testing.T) {
+	// Not parallel: mutates package-level journalctlCommandContext.
+	installJournalctlCommandRecorder(t)
+
+	manager := &Manager{
+		nowFn:          time.Now,
+		uidFn:          func() int { return 1000 },
+		goos:           "linux",
+		customServices: builtinServicesRepo("linux"),
+		commandRunner: func(context.Context, string, ...string) (string, error) {
+			return probeActiveResponse, nil
+		},
+	}
+
+	reader, err := manager.StreamLogs(context.Background(), ServiceNameSentinel)
+	if err != nil {
+		t.Fatalf("StreamLogs() error = %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	out, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if !strings.Contains(string(out), sentinelSystemdUnit) {
+		t.Fatalf("journalctl command = %q, want unit %q", out, sentinelSystemdUnit)
+	}
+}
+
 func installJournalctlCommandRecorder(t *testing.T) {
 	t.Helper()
 

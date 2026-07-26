@@ -117,6 +117,14 @@ func TestDefaultMetricCollectorsUseIsolatedProc(t *testing.T) {
 	t.Cleanup(func() { procRootPath = originalProcRoot })
 	procRootPath = root
 
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := collectCPUPercent(cancelledCtx); got != -1 {
+		t.Fatalf("collectCPUPercent(cancelled) = %f, want -1", got)
+	}
+	if got := collectCPUPercent(context.Background()); got != 0 {
+		t.Fatalf("collectCPUPercent(static fixture) = %f, want 0", got)
+	}
 	if idle, total, err := readCPUStat(); err != nil || idle != 80 || total != 100 {
 		t.Fatalf("readCPUStat() = idle %d, total %d, err %v", idle, total, err)
 	}
@@ -147,6 +155,11 @@ func TestDefaultMetricCollectorsUseIsolatedProc(t *testing.T) {
 	if disk.totalBytes <= 0 || disk.freeBytes < 0 || disk.inodesTotal <= 0 {
 		t.Fatalf("collectDiskUsage() = %+v", disk)
 	}
+
+	metrics := CollectMetrics(context.Background(), root)
+	if metrics.MemTotalBytes != 1000*1024 || metrics.ProcessCount != 1 || metrics.CPUPercent != 0 {
+		t.Fatalf("CollectMetrics() = %+v", metrics)
+	}
 }
 
 func writeProcFixture(t *testing.T, root, relativePath, content string) {
@@ -173,6 +186,38 @@ func collectTestMetrics() HostMetrics {
 		),
 	)
 	return collector.Collect(context.Background(), "/isolated-test-filesystem")
+}
+
+func TestManagerMetricsUsesIsolatedCollector(t *testing.T) {
+	t.Parallel()
+
+	manager := &Manager{
+		metrics: newMetricsCollectorWith(
+			func() time.Time { return time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC) },
+			defaultMetricsCollectionIntervals(),
+			fakeMetricCollectors(
+				func(context.Context) processSample {
+					return processSample{processes: 3, threads: 5, complete: true}
+				},
+				func() float64 { return 25 },
+			),
+		),
+	}
+
+	metrics := manager.Metrics(context.Background())
+	if metrics.CPUPercent != 25 || metrics.ProcessCount != 3 {
+		t.Fatalf("Metrics() = %+v", metrics)
+	}
+
+	manager.metrics = nil
+	if manager.metricsCollector() == nil {
+		t.Fatal("metricsCollector() did not initialize a missing collector")
+	}
+
+	var nilManager *Manager
+	if nilManager.metricsCollector() == nil {
+		t.Fatal("nil manager did not return a collector")
+	}
 }
 
 func TestMetricsCollectorReusesRecentSnapshot(t *testing.T) {
