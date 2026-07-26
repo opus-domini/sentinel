@@ -2,8 +2,9 @@
 set -euo pipefail
 
 mapfile -t test_dirs < <(
-  rg --files -g '*_test.go' |
-    xargs -r -n1 dirname |
+  find . -type f -name '*_test.go' -print0 |
+    xargs -0 -r -n1 dirname |
+    sed 's#^\./##' |
     sort -u
 )
 
@@ -15,10 +16,10 @@ for dir in "${test_dirs[@]}"; do
     continue
   fi
   if [[ "${dir}" == "internal/testenv" ]]; then
-    if ! rg -q 'Run\(m' "${isolation_file}"; then
+    if ! grep -Eq 'Run\(m' "${isolation_file}"; then
       missing+=("${dir} (guard not invoked)")
     fi
-  elif ! rg -q 'testenv\.Run\(m' "${isolation_file}"; then
+  elif ! grep -Eq 'testenv\.Run\(m' "${isolation_file}"; then
     missing+=("${dir} (guard not invoked)")
   fi
 done
@@ -30,7 +31,7 @@ if ((${#missing[@]} > 0)); then
 fi
 
 for config in frontend/vitest.config.ts frontend/vitest.e2e.config.ts; do
-  if ! rg -q "setupFiles: \\['\\./src/test/hostIsolation\\.ts'\\]" "${config}"; then
+  if ! grep -Fq "setupFiles: ['./src/test/hostIsolation.ts']" "${config}"; then
     printf 'Vitest config does not load the host isolation guard: %s\n' "${config}" >&2
     exit 1
   fi
