@@ -270,6 +270,10 @@ func TestServeBootsAndShutsDown(t *testing.T) {
 	t.Setenv("SENTINEL_SERVER_HOST", host)
 	t.Setenv("SENTINEL_SERVER_PORT", port)
 	t.Setenv("SENTINEL_DATA_DIR", t.TempDir())
+	// This test exercises the server lifecycle, not Watchtower collection.
+	// Keep Watchtower disabled so its startup goroutine cannot reach tmux
+	// before the deliberately occupied listener makes Serve return.
+	t.Setenv("SENTINEL_WATCHTOWER_ENABLED", "false")
 
 	if code := Serve("test-version"); code != 1 {
 		t.Fatalf("Serve() = %d, want 1 when the listen address is already in use", code)
