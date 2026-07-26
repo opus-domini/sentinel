@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -182,7 +181,7 @@ func TestHandleControlMessageValidResize(t *testing.T) {
 // startShellForTest creates a real PTY for tests that need the concrete *term.PTY.
 func startShellForTest(t *testing.T) (*term.PTY, error) {
 	t.Helper()
-	return term.StartShell(context.Background(), "/bin/sh", 80, 24)
+	return term.StartShell(context.Background(), isolatedUIShell(t), 80, 24)
 }
 
 // ---------------------------------------------------------------------------
@@ -1135,8 +1134,10 @@ func TestReadManifestFile(t *testing.T) {
 }
 
 func TestRegisterServesBrandedManifest(t *testing.T) {
-	t.Parallel()
 	skipIfEmbeddedDistFileMissing(t, "manifest.webmanifest")
+	originalHostname := hostname
+	t.Cleanup(func() { hostname = originalHostname })
+	hostname = func() (string, error) { return "sentinel-test-host", nil }
 
 	st := newHTTPUIStore(t)
 	guard := security.New("", nil, security.CookieSecureNever)
@@ -1162,18 +1163,8 @@ func TestRegisterServesBrandedManifest(t *testing.T) {
 		t.Fatalf("manifest json = %v", err)
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		t.Fatalf("os.Hostname() error = %v", err)
-	}
-	hostname = strings.TrimSpace(hostname)
-
-	expectedName := manifestAppName
-	expectedShortName := manifestAppName
-	if hostname != "" {
-		expectedName = hostname + " - " + manifestAppName
-		expectedShortName = hostname
-	}
+	expectedName := "sentinel-test-host - " + manifestAppName
+	expectedShortName := "sentinel-test-host"
 
 	if got := manifest["name"]; got != expectedName {
 		t.Fatalf("manifest name = %v, want %q", got, expectedName)

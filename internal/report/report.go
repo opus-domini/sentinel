@@ -14,6 +14,8 @@ import (
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
+var osHostname = os.Hostname
+
 // SystemMetrics is a snapshot of host resource metrics included in the report.
 type SystemMetrics struct {
 	CPUPercent     float64 `json:"cpuPercent"`
@@ -223,7 +225,7 @@ func (g *Generator) Stop(ctx context.Context) {
 }
 
 func hostname() string {
-	h, err := os.Hostname()
+	h, err := osHostname()
 	if err != nil {
 		return "unknown"
 	}

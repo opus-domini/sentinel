@@ -40,26 +40,28 @@ type ManagerRepo interface {
 
 // Manager owns the shared manual runbook control plane used by HTTP and MCP.
 type Manager struct {
-	repo   ManagerRepo
-	emit   EmitFunc
-	ctx    context.Context
-	cancel context.CancelFunc
-	sem    chan struct{}
-	wg     sync.WaitGroup
+	repo          ManagerRepo
+	emit          EmitFunc
+	commandRunner CommandRunner
+	ctx           context.Context
+	cancel        context.CancelFunc
+	sem           chan struct{}
+	wg            sync.WaitGroup
 }
 
 // NewManager creates a shared runbook manager.
-func NewManager(repo ManagerRepo, emit EmitFunc, maxConcurrent int) *Manager {
+func NewManager(repo ManagerRepo, emit EmitFunc, maxConcurrent int, commandRunner CommandRunner) *Manager {
 	if maxConcurrent <= 0 {
 		maxConcurrent = defaultMaxConcurrentRuns
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
-		repo:   repo,
-		emit:   emit,
-		ctx:    ctx,
-		cancel: cancel,
-		sem:    make(chan struct{}, maxConcurrent),
+		repo:          repo,
+		emit:          emit,
+		commandRunner: commandRunner,
+		ctx:           ctx,
+		cancel:        cancel,
+		sem:           make(chan struct{}, maxConcurrent),
 	}
 }
 
@@ -176,10 +178,11 @@ func (m *Manager) Start(ctx context.Context, runbookID string, params map[string
 		defer m.wg.Done()
 		defer m.release()
 		Run(m.ctx, m.repo, m.emitEvent, RunParams{
-			Job:         job,
-			Source:      source,
-			StepTimeout: 30 * time.Second,
-			Parameters:  resolved,
+			Job:           job,
+			Source:        source,
+			StepTimeout:   30 * time.Second,
+			Parameters:    resolved,
+			CommandRunner: m.commandRunner,
 		})
 	}()
 	release = false
@@ -237,10 +240,11 @@ func (m *Manager) Approve(ctx context.Context, runID, source string) (store.OpsR
 		defer m.wg.Done()
 		defer m.release()
 		ResumeRun(m.ctx, m.repo, m.emitEvent, RunParams{
-			Job:         running,
-			Source:      source,
-			StepTimeout: 30 * time.Second,
-			Parameters:  job.ParametersUsed,
+			Job:           running,
+			Source:        source,
+			StepTimeout:   30 * time.Second,
+			Parameters:    job.ParametersUsed,
+			CommandRunner: m.commandRunner,
 		}, approvalStep)
 	}()
 	release = false

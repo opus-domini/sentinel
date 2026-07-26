@@ -306,7 +306,7 @@ func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 		runCtx:    runCtx,
 		runCancel: runCancel,
 	}
-	h.runbooks = runbook.NewManager(st, h.emitEvent, 5)
+	h.runbooks = runbook.NewManager(st, h.emitEvent, 5, testRunbookCommandRunner)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -318,7 +318,14 @@ func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 func replaceRunbookManager(t *testing.T, h *Handler, st *store.Store, maxConcurrent int) {
 	t.Helper()
 	h.runbooks.Shutdown(context.Background())
-	h.runbooks = runbook.NewManager(st, h.emitEvent, maxConcurrent)
+	h.runbooks = runbook.NewManager(st, h.emitEvent, maxConcurrent, testRunbookCommandRunner)
+}
+
+func testRunbookCommandRunner(_ context.Context, _ string, args ...string) (string, error) {
+	if len(args) >= 2 && args[0] == "-c" && args[1] == "printf after" {
+		return "after", nil
+	}
+	return "", nil
 }
 
 func TestRegisterRoutesThroughMux(t *testing.T) {

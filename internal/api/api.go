@@ -28,6 +28,7 @@ import (
 var (
 	osCurrentUser = user.Current // seam for testing
 	osGeteuid     = os.Geteuid   // seam for testing
+	osHostname    = os.Hostname  // seam for testing
 )
 
 type tmuxService interface {
@@ -299,7 +300,7 @@ func Register(
 		runCtx:           runCtx,
 		runCancel:        runCancel,
 	}
-	h.runbooks = runbook.NewManager(st, h.emitEvent, runbookMaxConcurrent)
+	h.runbooks = runbook.NewManager(st, h.emitEvent, runbookMaxConcurrent, nil)
 	h.registerMetaRoutes(mux)
 	h.registerTmuxRoutes(mux)
 	h.registerServicesRoutes(mux)
@@ -357,7 +358,7 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	tz := h.timezone
 	loc := h.locale
 	h.mu.Unlock()
-	host, _ := os.Hostname()
+	host, _ := osHostname()
 	data := map[string]any{
 		"tokenRequired": h.guard.TokenRequired(),
 		"defaultCwd":    defaultCwd,

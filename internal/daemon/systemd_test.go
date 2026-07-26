@@ -935,13 +935,20 @@ func TestUninstallUserAutoUpdateInvalidScope(t *testing.T) {
 }
 
 func TestInstallUserBadExecPath(t *testing.T) {
-	t.Parallel()
-
 	if runtime.GOOS != systemdSupportedOS {
 		t.Skip("test requires Linux")
 	}
 	if os.Geteuid() == 0 {
 		t.Skip("test requires non-root")
+	}
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir)
+	if err := os.WriteFile(
+		filepath.Join(binDir, "systemctl"),
+		[]byte("#!/bin/sh\nexit 0\n"),
+		0o700,
+	); err != nil {
+		t.Fatal(err)
 	}
 
 	err := InstallUser(InstallUserOptions{

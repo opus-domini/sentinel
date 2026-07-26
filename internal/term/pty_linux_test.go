@@ -3,13 +3,17 @@
 package term
 
 import (
+	"bufio"
 	"context"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
-// TestStartShellLifecycle drives a real shell PTY end to end: it exercises
+// TestStartShellLifecycle drives an isolated helper PTY end to end: it exercises
 // StartShell, startCommand, openPTY, setWinsize, ioctl, Read, Write, Resize,
 // Wait and Close.
 func TestStartShellLifecycle(t *testing.T) {
@@ -18,7 +22,7 @@ func TestStartShellLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pty, err := StartShell(ctx, "/bin/sh", 80, 24)
+	pty, err := StartShell(ctx, isolatedPTYShell(t), 80, 24)
 	if err != nil {
 		t.Fatalf("StartShell() error = %v", err)
 	}
@@ -57,6 +61,32 @@ func TestStartShellLifecycle(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("output drain did not finish after the shell exited")
 	}
+}
+
+func TestPTYHelperProcess(_ *testing.T) {
+	if len(os.Args) == 0 || !strings.HasPrefix(filepath.Base(os.Args[len(os.Args)-1]), "sentinel-test-pty-helper") {
+		return
+	}
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		if strings.HasPrefix(strings.TrimSpace(scanner.Text()), "exit") {
+			return
+		}
+	}
+}
+
+func isolatedPTYShell(t *testing.T) string {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable(): %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "sentinel-test-pty-helper")
+	script := "#!" + executable + " -test.run=^TestPTYHelperProcess$\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatalf("write PTY helper: %v", err)
+	}
+	return path
 }
 
 // TestStartTmuxAttach covers StartTmuxAttach. tmux may be absent on the host,

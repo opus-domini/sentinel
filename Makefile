@@ -14,7 +14,7 @@ WEB_URL    := http://127.0.0.1:4040
 VERSION ?= dev
 LDFLAGS ?= -s -w -X github.com/opus-domini/sentinel/pkg/sentinel.version=$(VERSION)
 COVERAGE_PROFILE ?= coverage.txt
-COVERAGE_PKGS    ?= ./...
+COVERAGE_PKGS    ?= $(shell $(GOCMD) list ./... | grep -v '/internal/testenv$$' | paste -sd, -)
 COVERAGE_CHECK    = ./scripts/coverage-check.sh
 COVERAGE_MIN     ?= 80
 
@@ -62,26 +62,30 @@ frontend-install: check-npm ## Install frontend dependencies reproducibly
 
 # --- Quality ---------------------------------------------------
 
+.PHONY: test-isolation
+test-isolation: ## Verify every test suite loads the host-isolation guard
+	./scripts/test-isolation-check.sh
+
 .PHONY: test
-test: check-go ## Run Go tests with race detection and shuffle
+test: check-go test-isolation ## Run Go tests with race detection and shuffle
 	$(GOCMD) test -race -shuffle=on $(PKG_LIST)
 
 .PHONY: test-unit
-test-unit: check-go check-npm ## Run fast unit test layer (Go + frontend)
+test-unit: check-go check-npm test-isolation ## Run fast unit test layer (Go + frontend)
 	$(GOCMD) test $(PKG_LIST)
 	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
 	$(NPM) --prefix "$(FRONTEND)" run test:unit
 
 .PHONY: test-contract
-test-contract: check-go ## Run API contract tests
+test-contract: check-go test-isolation ## Run API contract tests
 	$(GOCMD) test -tags=contract -run '^TestContract' $(PKG_LIST)
 
 .PHONY: test-integration
-test-integration: check-go ## Run integration tests
+test-integration: check-go test-isolation ## Run integration tests
 	$(GOCMD) test -tags=integration -run '^TestIntegration' $(PKG_LIST)
 
 .PHONY: test-coverage
-test-coverage: check-go ## Run tests with race detection and the coverage gate
+test-coverage: check-go test-isolation ## Run tests with race detection and the coverage gate
 	$(GOCMD) test -race -shuffle=on -covermode=atomic -coverpkg=$(COVERAGE_PKGS) -coverprofile="$(COVERAGE_PROFILE)" $(PKG_LIST)
 	COVERAGE_MIN=$(COVERAGE_MIN) $(COVERAGE_CHECK) "$(COVERAGE_PROFILE)"
 
@@ -93,17 +97,17 @@ coverage-check: check-go ## Validate an existing coverage profile against COVERA
 	COVERAGE_MIN=$(COVERAGE_MIN) $(COVERAGE_CHECK) "$(COVERAGE_PROFILE)"
 
 .PHONY: test-frontend
-test-frontend: check-npm ## Run frontend tests
+test-frontend: check-npm test-isolation ## Run frontend tests
 	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
 	$(NPM) --prefix "$(FRONTEND)" test
 
 .PHONY: test-e2e
-test-e2e: check-npm ## Run frontend end-to-end component flows
+test-e2e: check-npm test-isolation ## Run frontend end-to-end component flows
 	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
 	$(NPM) --prefix "$(FRONTEND)" run test:e2e
 
 .PHONY: benchmark
-benchmark: check-go ## Run Go benchmarks
+benchmark: check-go test-isolation ## Run Go benchmarks
 	$(GOCMD) test -run=^$$ -bench=. -benchmem $(PKG_LIST)
 
 .PHONY: test-perf

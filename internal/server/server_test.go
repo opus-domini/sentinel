@@ -145,9 +145,8 @@ func TestStartMetricsTickerStopsOnCancel(t *testing.T) {
 	t.Parallel()
 
 	hub := events.NewHub()
-	mgr := services.NewManager(time.Now(), nil)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := startMetricsTicker(ctx, mgr, hub)
+	done := startMetricsTicker(ctx, staticMetricsProvider{}, hub)
 	cancel()
 	select {
 	case <-done:
@@ -161,7 +160,7 @@ func TestStartStoreTickersStopOnCancel(t *testing.T) {
 
 	tickers := map[string]func(context.Context) <-chan struct{}{
 		"metrics": func(c context.Context) <-chan struct{} {
-			return startMetricsTicker(c, services.NewManager(time.Now(), nil), events.NewHub())
+			return startMetricsTicker(c, staticMetricsProvider{}, events.NewHub())
 		},
 	}
 	for name, start := range tickers {
@@ -208,7 +207,7 @@ func TestPublishMetrics(t *testing.T) {
 	hub := events.NewHub()
 	ch, unsub := hub.Subscribe(4)
 	defer unsub()
-	publishMetrics(context.Background(), services.NewManager(time.Now(), nil), hub)
+	publishMetrics(context.Background(), staticMetricsProvider{}, hub)
 	select {
 	case ev := <-ch:
 		if ev.Type != events.TypeOpsMetrics {
@@ -225,7 +224,13 @@ func TestTickHandlersWithClosedStore(t *testing.T) {
 	hub := events.NewHub()
 	ctx := context.Background()
 
-	publishMetrics(ctx, services.NewManager(time.Now(), nil), hub)
+	publishMetrics(ctx, staticMetricsProvider{}, hub)
+}
+
+type staticMetricsProvider struct{}
+
+func (staticMetricsProvider) Metrics(context.Context) services.HostMetrics {
+	return services.HostMetrics{CollectedAt: "2026-07-24T12:00:00Z"}
 }
 
 func TestRunFailsOnInvalidListenAddr(t *testing.T) {

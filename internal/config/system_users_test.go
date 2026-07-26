@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/user"
 	"testing"
 )
 
@@ -84,7 +85,7 @@ hugo:x:1000:1000:Hugo:/home/hugo:/bin/bash
 }
 
 func TestReadSystemUsersWithMockPasswd(t *testing.T) {
-	// Not parallel: mutates package-level readPasswdFile.
+	// Not parallel: mutates package-level host access seams.
 
 	content := `root:x:0:0:root:/root:/bin/bash
 daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
@@ -96,6 +97,11 @@ hugo:x:1000:1000:Hugo:/home/hugo:/bin/bash
 	t.Cleanup(func() { readPasswdFile = original })
 	readPasswdFile = func() (*os.File, error) {
 		return os.Open(tmpFile)
+	}
+	originalCurrentUser := osCurrentUser
+	t.Cleanup(func() { osCurrentUser = originalCurrentUser })
+	osCurrentUser = func() (*user.User, error) {
+		return &user.User{Username: "hugo"}, nil
 	}
 
 	users := ReadSystemUsers()
@@ -124,18 +130,22 @@ hugo:x:1000:1000:Hugo:/home/hugo:/bin/bash
 }
 
 func TestReadSystemUsersPasswdNotFound(t *testing.T) {
-	// Not parallel: mutates package-level readPasswdFile.
+	// Not parallel: mutates package-level host access seams.
 
 	original := readPasswdFile
 	t.Cleanup(func() { readPasswdFile = original })
 	readPasswdFile = func() (*os.File, error) {
 		return os.Open("/nonexistent/path/passwd")
 	}
+	originalCurrentUser := osCurrentUser
+	t.Cleanup(func() { osCurrentUser = originalCurrentUser })
+	osCurrentUser = func() (*user.User, error) {
+		return &user.User{Username: "tester"}, nil
+	}
 
 	users := ReadSystemUsers()
-	// Should still include the current user as fallback.
-	if len(users) == 0 {
-		t.Error("ReadSystemUsers returned empty slice; expected at least the current user")
+	if len(users) != 1 || users[0] != "tester" {
+		t.Errorf("ReadSystemUsers = %v, want [tester]", users)
 	}
 }
 

@@ -119,7 +119,7 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 func newContractMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(
+	handler := Register(
 		mux,
 		security.New("", nil, security.CookieSecureAuto),
 		newTestStore(t),
@@ -132,5 +132,6 @@ func newContractMux(t *testing.T) *http.ServeMux {
 		nil,
 		5,
 	)
+	handler.tmux = &mockTmux{}
 	return mux
 }

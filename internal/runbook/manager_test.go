@@ -30,7 +30,9 @@ func TestManagerSharesValidationExecutionAndEventOrdering(t *testing.T) {
 		mu.Lock()
 		statuses = append(statuses, job.Status)
 		mu.Unlock()
-	}, 1)
+	}, 1, func(context.Context, string, ...string) (string, error) {
+		return "", nil
+	})
 	t.Cleanup(func() { manager.Shutdown(context.Background()) })
 
 	if _, _, err := manager.Create(context.Background(), store.OpsRunbookWrite{Name: "invalid"}); !errors.Is(err, ErrInvalidDefinition) {

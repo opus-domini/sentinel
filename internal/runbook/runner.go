@@ -41,6 +41,10 @@ type RunParams struct {
 	// step commands before execution.
 	Parameters map[string]string
 
+	// CommandRunner executes run and script steps. Production callers leave it
+	// nil to use the real command runner; tests provide an isolated fake.
+	CommandRunner CommandRunner
+
 	// OnFinish is called after the run is persisted with the final status.
 	OnFinish func(ctx context.Context, status string)
 }
@@ -120,7 +124,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	if stepTimeout <= 0 {
 		stepTimeout = 30 * time.Second
 	}
-	executor := NewExecutor(nil, stepTimeout, params.Parameters)
+	executor := NewExecutor(params.CommandRunner, stepTimeout, params.Parameters)
 	var accumulated []store.OpsRunbookStepResult
 
 	// beforeStep writes a preliminary step result to the DB before execution.
@@ -429,7 +433,7 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 	if stepTimeout <= 0 {
 		stepTimeout = 30 * time.Second
 	}
-	executor := NewExecutor(nil, stepTimeout, params.Parameters)
+	executor := NewExecutor(params.CommandRunner, stepTimeout, params.Parameters)
 
 	// Recover previous step results from the run record. If this read fails,
 	// continuing would start from an empty set and overwrite the pre-approval

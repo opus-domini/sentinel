@@ -58,7 +58,7 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	runbooks := runbook.NewManager(st, nil, 5)
+	runbooks := runbook.NewManager(st, nil, 5, nil)
 	t.Cleanup(func() { runbooks.Shutdown(context.Background()) })
 	server := New(
 		NewState(true, true),

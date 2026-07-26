@@ -151,6 +151,11 @@ type Manager struct {
 	commandRunner commandRunner
 }
 
+var (
+	defaultHostname = os.Hostname
+	defaultUID      = os.Getuid
+)
+
 // NewManager creates manager.
 func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 	now := time.Now().UTC()
@@ -160,8 +165,8 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 	return &Manager{
 		startedAt:      startedAt,
 		nowFn:          time.Now,
-		hostname:       os.Hostname,
-		uidFn:          os.Getuid,
+		hostname:       defaultHostname,
+		uidFn:          defaultUID,
 		goos:           runtime.GOOS,
 		customServices: csRepo,
 		metrics:        newMetricsCollector(),

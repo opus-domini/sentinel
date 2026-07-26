@@ -26,6 +26,36 @@ const (
 	testScopeSystem     = "system"
 )
 
+func TestCLICommandHelperProcess(_ *testing.T) {
+	mode := os.Getenv("GO_WANT_SENTINEL_CLI_HELPER")
+	if mode == "" {
+		return
+	}
+	if mode == "edit" {
+		path := os.Args[len(os.Args)-1]
+		file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			os.Exit(2)
+		}
+		if _, err := file.WriteString("\n# edited\n"); err != nil {
+			_ = file.Close()
+			os.Exit(2)
+		}
+		if err := file.Close(); err != nil {
+			os.Exit(2)
+		}
+	}
+	os.Exit(0)
+}
+
+func cliHelperCommand(ctx context.Context, mode string, args ...string) *exec.Cmd {
+	commandArgs := []string{"-test.run=^TestCLICommandHelperProcess$", "--"}
+	commandArgs = append(commandArgs, args...)
+	cmd := exec.CommandContext(ctx, os.Args[0], commandArgs...)
+	cmd.Env = append(os.Environ(), "GO_WANT_SENTINEL_CLI_HELPER="+mode)
+	return cmd
+}
+
 func stubDoctorLookPath(t *testing.T) {
 	t.Helper()
 	original := doctorLookPath
@@ -108,6 +138,7 @@ func TestRunWithoutArgsPrintsHelp(t *testing.T) {
 func TestRunCLIConfigInitCreatesConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_CONFIG", "")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -131,6 +162,7 @@ func TestRunCLIConfigInitCreatesConfig(t *testing.T) {
 func TestRunCLIConfigInitRequiresForceForExistingConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
+	t.Setenv("SENTINEL_CONFIG", "")
 	configPath := filepath.Join(dir, "config.toml")
 	if err := os.WriteFile(configPath, []byte("stale = true\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -351,12 +383,17 @@ func TestRunCLIConfigShowValidatesExistingConfig(t *testing.T) {
 func TestRunCLIConfigEditInitializesRunsEditorAndValidates(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("SENTINEL_DATA_DIR", dir)
-	editorPath := filepath.Join(t.TempDir(), "editor.sh")
-	if err := os.WriteFile(editorPath, []byte("#!/bin/sh\nprintf '\\n# edited\\n' >> \"$1\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("EDITOR", editorPath)
+	t.Setenv("EDITOR", "sentinel-test-editor")
 	t.Setenv("VISUAL", "")
+
+	origExec := execCommand
+	t.Cleanup(func() { execCommand = origExec })
+	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		if name != "sh" || len(args) == 0 {
+			t.Fatalf("editor command = %s %v, want isolated sh invocation", name, args)
+		}
+		return cliHelperCommand(ctx, "edit", args[len(args)-1])
+	}
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -400,7 +437,7 @@ func TestRunCLIConfigEditXDGOpenFallbackSkipsValidation(t *testing.T) {
 	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		gotName = name
 		gotArgs = append([]string(nil), args...)
-		return exec.CommandContext(ctx, "/bin/true")
+		return cliHelperCommand(ctx, "success")
 	}
 
 	var out bytes.Buffer

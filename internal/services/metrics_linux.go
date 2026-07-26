@@ -6,11 +6,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
+
+var procRootPath = "/proc"
 
 func collectCPUPercent(ctx context.Context) float64 {
 	idle1, total1, err := readCPUStat()
@@ -39,7 +42,7 @@ func collectCPUPercent(ctx context.Context) float64 {
 
 // readCPUStat reads /proc/stat and returns (idle, total) CPU time values.
 func readCPUStat() (idle, total uint64, err error) {
-	data, err := os.ReadFile("/proc/stat")
+	data, err := os.ReadFile(filepath.Join(procRootPath, "stat"))
 	if err != nil {
 		return 0, 0, err
 	}
@@ -69,7 +72,7 @@ func readCPUStat() (idle, total uint64, err error) {
 }
 
 func collectMemInfo(_ context.Context) memorySample {
-	data, err := os.ReadFile("/proc/meminfo")
+	data, err := os.ReadFile(filepath.Join(procRootPath, "meminfo"))
 	if err != nil {
 		return memorySample{}
 	}
@@ -134,7 +137,7 @@ func collectMemInfo(_ context.Context) memorySample {
 }
 
 func collectLoadAvg(_ context.Context) (avg1, avg5, avg15 float64) {
-	data, err := os.ReadFile("/proc/loadavg")
+	data, err := os.ReadFile(filepath.Join(procRootPath, "loadavg"))
 	if err != nil {
 		return -1, -1, -1
 	}
@@ -177,7 +180,7 @@ func collectDiskUsage(path string) diskSample {
 }
 
 func collectNetworkIO() networkIOSample {
-	data, err := os.ReadFile("/proc/net/dev")
+	data, err := os.ReadFile(filepath.Join(procRootPath, "net", "dev"))
 	if err != nil {
 		return networkIOSample{}
 	}
@@ -209,7 +212,7 @@ func collectNetworkIO() networkIOSample {
 }
 
 func collectProcessInfo(ctx context.Context) processSample {
-	procRoot, err := os.OpenRoot("/proc")
+	procRoot, err := os.OpenRoot(procRootPath)
 	if err != nil {
 		return processSample{complete: true}
 	}
@@ -288,7 +291,7 @@ func readProcThreads(ctx context.Context, procRoot *os.Root, pid string) int {
 
 func collectHostUptime() uptimeSample {
 	uptime := uptimeSample{}
-	if data, err := os.ReadFile("/proc/uptime"); err == nil {
+	if data, err := os.ReadFile(filepath.Join(procRootPath, "uptime")); err == nil {
 		fields := strings.Fields(string(data))
 		if len(fields) > 0 {
 			if seconds, parseErr := strconv.ParseFloat(fields[0], 64); parseErr == nil {
@@ -296,7 +299,7 @@ func collectHostUptime() uptimeSample {
 			}
 		}
 	}
-	if data, err := os.ReadFile("/proc/stat"); err == nil {
+	if data, err := os.ReadFile(filepath.Join(procRootPath, "stat")); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
 			fields := strings.Fields(line)
 			if len(fields) != 2 || fields[0] != "btime" {
@@ -332,11 +335,11 @@ func readPressureAvg10(source pressureSource) float64 {
 	var err error
 	switch source {
 	case pressureCPU:
-		data, err = os.ReadFile("/proc/pressure/cpu")
+		data, err = os.ReadFile(filepath.Join(procRootPath, "pressure", "cpu"))
 	case pressureMemory:
-		data, err = os.ReadFile("/proc/pressure/memory")
+		data, err = os.ReadFile(filepath.Join(procRootPath, "pressure", "memory"))
 	case pressureIO:
-		data, err = os.ReadFile("/proc/pressure/io")
+		data, err = os.ReadFile(filepath.Join(procRootPath, "pressure", "io"))
 	default:
 		return -1
 	}

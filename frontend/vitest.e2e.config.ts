@@ -7,5 +7,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.e2e.test.ts', 'src/**/*.e2e.test.tsx'],
+    setupFiles: ['./src/test/hostIsolation.ts'],
   },
 })

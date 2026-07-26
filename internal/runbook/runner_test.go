@@ -28,6 +28,15 @@ type mockRepo struct {
 	getRunbookErr error
 }
 
+func successfulTestCommandRunner(context.Context, string, ...string) (string, error) {
+	return "ok\n", nil
+}
+
+func blockingTestCommandRunner(ctx context.Context, _ string, _ ...string) (string, error) {
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
 func (m *mockRepo) UpdateOpsRunbookRun(_ context.Context, update store.OpsRunbookRunUpdate) (store.OpsRunbookRun, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -87,10 +96,11 @@ func TestRunPersistsTerminalStateOnCancelledContext(t *testing.T) {
 	cancel() // Cancel before Run starts — simulates shutdown.
 
 	Run(ctx, repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-1", RunbookID: "rb-1"},
-		Source:      "test",
-		StepTimeout: 1 * time.Second,
-		RunTimeout:  1 * time.Second,
+		Job:           store.OpsRunbookRun{ID: "run-1", RunbookID: "rb-1"},
+		Source:        "test",
+		StepTimeout:   1 * time.Second,
+		RunTimeout:    1 * time.Second,
+		CommandRunner: successfulTestCommandRunner,
 	})
 
 	// The final update must have a terminal status and finished_at,
@@ -122,10 +132,11 @@ func TestRunPersistsTerminalStateOnTimeout(t *testing.T) {
 
 	// Use a very short RunTimeout so it expires mid-execution.
 	Run(context.Background(), repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-2", RunbookID: "rb-2"},
-		Source:      "test",
-		StepTimeout: 5 * time.Second,
-		RunTimeout:  100 * time.Millisecond,
+		Job:           store.OpsRunbookRun{ID: "run-2", RunbookID: "rb-2"},
+		Source:        "test",
+		StepTimeout:   5 * time.Second,
+		RunTimeout:    100 * time.Millisecond,
+		CommandRunner: blockingTestCommandRunner,
 	})
 
 	last := repo.lastUpdate()
@@ -161,10 +172,11 @@ func TestRunOnFinishReceivesFinalizeContext(t *testing.T) {
 	var onFinishStatus string
 
 	Run(ctx, repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-3", RunbookID: "rb-3"},
-		Source:      "test",
-		StepTimeout: 1 * time.Second,
-		RunTimeout:  1 * time.Second,
+		Job:           store.OpsRunbookRun{ID: "run-3", RunbookID: "rb-3"},
+		Source:        "test",
+		StepTimeout:   1 * time.Second,
+		RunTimeout:    1 * time.Second,
+		CommandRunner: successfulTestCommandRunner,
 		OnFinish: func(ctx context.Context, status string) {
 			onFinishCtxErr = ctx.Err()
 			onFinishStatus = status
@@ -201,10 +213,11 @@ func TestRunSuccessfulEndToEnd(t *testing.T) {
 
 	var onFinishStatus string
 	Run(context.Background(), repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-ok", RunbookID: "rb-ok"},
-		Source:      "test",
-		StepTimeout: 5 * time.Second,
-		RunTimeout:  10 * time.Second,
+		Job:           store.OpsRunbookRun{ID: "run-ok", RunbookID: "rb-ok"},
+		Source:        "test",
+		StepTimeout:   5 * time.Second,
+		RunTimeout:    10 * time.Second,
+		CommandRunner: successfulTestCommandRunner,
 		OnFinish: func(_ context.Context, status string) {
 			onFinishStatus = status
 		},
@@ -235,10 +248,11 @@ func TestRunGetRunbookError(t *testing.T) {
 	emit := func(_ string, _ map[string]any) {}
 
 	Run(context.Background(), repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-fail", RunbookID: "rb-missing"},
-		Source:      "test",
-		StepTimeout: 1 * time.Second,
-		RunTimeout:  1 * time.Second,
+		Job:           store.OpsRunbookRun{ID: "run-fail", RunbookID: "rb-missing"},
+		Source:        "test",
+		StepTimeout:   1 * time.Second,
+		RunTimeout:    1 * time.Second,
+		CommandRunner: successfulTestCommandRunner,
 	})
 
 	last := repo.lastUpdate()
@@ -280,10 +294,11 @@ func TestRunWithWebhookURL(t *testing.T) {
 	emit := func(_ string, _ map[string]any) {}
 
 	Run(context.Background(), repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-wh", RunbookID: "rb-wh", RunbookName: "webhook-runbook"},
-		Source:      "test",
-		StepTimeout: 1 * time.Second,
-		RunTimeout:  5 * time.Second,
+		Job:           store.OpsRunbookRun{ID: "run-wh", RunbookID: "rb-wh", RunbookName: "webhook-runbook"},
+		Source:        "test",
+		StepTimeout:   1 * time.Second,
+		RunTimeout:    5 * time.Second,
+		CommandRunner: successfulTestCommandRunner,
 	})
 
 	if receivedPayload.Event != "runbook.completed" {
@@ -312,8 +327,9 @@ func TestRunDefaultTimeouts(t *testing.T) {
 
 	// Zero timeouts — should use defaults and still succeed.
 	Run(context.Background(), repo, emit, RunParams{
-		Job:    store.OpsRunbookRun{ID: "run-defaults", RunbookID: "rb-defaults"},
-		Source: "test",
+		Job:           store.OpsRunbookRun{ID: "run-defaults", RunbookID: "rb-defaults"},
+		Source:        "test",
+		CommandRunner: successfulTestCommandRunner,
 	})
 
 	last := repo.lastUpdate()
@@ -602,12 +618,12 @@ func TestFireWebhookHandlesServerError(t *testing.T) {
 func TestFireWebhookHandlesInvalidURL(t *testing.T) {
 	t.Parallel()
 
-	// Use a short-lived context so we don't wait for full retry timeouts.
+	// Use a malformed URL so the request fails before any network access.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	// Should not panic on an unreachable URL.
-	fireWebhook(ctx, "http://192.0.2.1:1/webhook", map[string]string{"test": "true"})
+	// Should not panic when request construction fails.
+	fireWebhook(ctx, "://invalid-webhook", map[string]string{"test": "true"})
 }
 
 func TestRunApprovalStepPauses(t *testing.T) {
@@ -629,10 +645,11 @@ func TestRunApprovalStepPauses(t *testing.T) {
 	emit := func(_ string, _ map[string]any) {}
 
 	Run(context.Background(), repo, emit, RunParams{
-		Job:         store.OpsRunbookRun{ID: "run-approval", RunbookID: "rb-approval"},
-		Source:      "test",
-		StepTimeout: 5 * time.Second,
-		RunTimeout:  10 * time.Second,
+		Job:           store.OpsRunbookRun{ID: "run-approval", RunbookID: "rb-approval"},
+		Source:        "test",
+		StepTimeout:   5 * time.Second,
+		RunTimeout:    10 * time.Second,
+		CommandRunner: successfulTestCommandRunner,
 	})
 
 	// The run should be paused at waiting_approval, not finished.

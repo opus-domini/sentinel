@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+var hostname = os.Hostname
+
 const manifestAppName = "Sentinel"
 
 // errBundleMissing is returned when the SPA bundle was not built into the
@@ -125,13 +127,13 @@ func (s *spa) serveManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hostname, err := os.Hostname()
+	host, err := hostname()
 	if err != nil {
-		hostname = ""
+		host = ""
 	}
 
-	manifest["name"] = formatManifestAppName(hostname)
-	manifest["short_name"] = formatManifestAppShortName(hostname)
+	manifest["name"] = formatManifestAppName(host)
+	manifest["short_name"] = formatManifestAppShortName(host)
 
 	encodedManifest, err := json.Marshal(manifest)
 	if err != nil {

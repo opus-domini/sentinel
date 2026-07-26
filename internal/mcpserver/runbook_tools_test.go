@@ -18,7 +18,9 @@ func TestRunbookToolsLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	manager := runbook.NewManager(st, nil, 2)
+	manager := runbook.NewManager(st, nil, 2, func(context.Context, string, ...string) (string, error) {
+		return "0123456789", nil
+	})
 	t.Cleanup(func() { manager.Shutdown(context.Background()) })
 	toolset := &tools{runbooks: manager}
 
@@ -100,7 +102,9 @@ func TestRunbookWaitStopsForHumanApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	manager := runbook.NewManager(st, nil, 1)
+	manager := runbook.NewManager(st, nil, 1, func(context.Context, string, ...string) (string, error) {
+		return "", nil
+	})
 	t.Cleanup(func() { manager.Shutdown(context.Background()) })
 	toolset := &tools{runbooks: manager}
 

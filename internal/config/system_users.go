@@ -3,7 +3,6 @@ package config
 import (
 	"bufio"
 	"os"
-	"os/user"
 	"slices"
 	"strconv"
 	"strings"
@@ -40,7 +39,7 @@ func ReadSystemUsers() []string {
 	}
 
 	// Always include the current process user as a fallback.
-	if current, err := user.Current(); err == nil && current != nil {
+	if current, err := osCurrentUser(); err == nil && current != nil {
 		name := strings.TrimSpace(current.Username)
 		if name != "" {
 			seen[name] = struct{}{}

@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -104,14 +106,32 @@ func TestTailLogArgs(t *testing.T) {
 func TestRunLogCommand(t *testing.T) {
 	t.Parallel()
 
-	if err := runLogCommand(exec.Command("sh", "-c", "exit 0")); err != nil {
+	if err := runLogCommand(logCommandHelper(t, "0")); err != nil {
 		t.Fatalf("successful command error = %v", err)
 	}
-	if err := runLogCommand(exec.Command("sh", "-c", "exit 7")); err != nil {
+	if err := runLogCommand(logCommandHelper(t, "7")); err != nil {
 		t.Fatalf("exit status should be ignored: %v", err)
 	}
 	cmd := &exec.Cmd{Path: "/definitely/missing/sentinel-log-command"}
 	if err := runLogCommand(cmd); err == nil || !strings.Contains(err.Error(), "run sentinel-log-command") {
 		t.Fatalf("start failure error = %v", err)
 	}
+}
+
+func TestRunLogCommandHelperProcess(_ *testing.T) {
+	if os.Getenv("GO_WANT_SENTINEL_LOG_HELPER") == "" {
+		return
+	}
+	code, err := strconv.Atoi(os.Getenv("GO_WANT_SENTINEL_LOG_HELPER"))
+	if err != nil {
+		os.Exit(2)
+	}
+	os.Exit(code)
+}
+
+func logCommandHelper(t *testing.T, exitCode string) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunLogCommandHelperProcess$")
+	cmd.Env = append(os.Environ(), "GO_WANT_SENTINEL_LOG_HELPER="+exitCode)
+	return cmd
 }

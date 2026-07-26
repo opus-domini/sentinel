@@ -8,6 +8,10 @@ import (
 	"github.com/opus-domini/sentinel/internal/services"
 )
 
+type metricsProvider interface {
+	Metrics(context.Context) services.HostMetrics
+}
+
 // loopTicker runs tick every interval until ctx is cancelled. The returned
 // channel closes once the loop has stopped, so shutdown can wait on it.
 func loopTicker(ctx context.Context, interval time.Duration, tick func()) <-chan struct{} {
@@ -28,14 +32,14 @@ func loopTicker(ctx context.Context, interval time.Duration, tick func()) <-chan
 	return done
 }
 
-func startMetricsTicker(ctx context.Context, mgr *services.Manager, hub *events.Hub) <-chan struct{} {
+func startMetricsTicker(ctx context.Context, mgr metricsProvider, hub *events.Hub) <-chan struct{} {
 	return loopTicker(ctx, 2*time.Second, func() {
 		publishMetrics(ctx, mgr, hub)
 	})
 }
 
 // publishMetrics samples host metrics and broadcasts them on the event hub.
-func publishMetrics(ctx context.Context, mgr *services.Manager, hub *events.Hub) {
+func publishMetrics(ctx context.Context, mgr metricsProvider, hub *events.Hub) {
 	collectCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	m := mgr.Metrics(collectCtx)
 	cancel()

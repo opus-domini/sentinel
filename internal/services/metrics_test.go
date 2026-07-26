@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -10,7 +12,7 @@ import (
 func TestCollectMetricsCollectedAt(t *testing.T) {
 	t.Parallel()
 
-	m := CollectMetrics(context.Background(), "/")
+	m := collectTestMetrics()
 	if m.CollectedAt == "" {
 		t.Fatal("CollectedAt is empty")
 	}
@@ -22,7 +24,7 @@ func TestCollectMetricsCollectedAt(t *testing.T) {
 func TestCollectMetricsGoroutines(t *testing.T) {
 	t.Parallel()
 
-	m := CollectMetrics(context.Background(), "/")
+	m := collectTestMetrics()
 	if m.NumGoroutines <= 0 {
 		t.Fatalf("NumGoroutines = %d, want > 0", m.NumGoroutines)
 	}
@@ -31,7 +33,7 @@ func TestCollectMetricsGoroutines(t *testing.T) {
 func TestCollectMetricsGoMemAlloc(t *testing.T) {
 	t.Parallel()
 
-	m := CollectMetrics(context.Background(), "/")
+	m := collectTestMetrics()
 	if m.GoMemAllocMB <= 0 {
 		t.Fatalf("GoMemAllocMB = %f, want > 0", m.GoMemAllocMB)
 	}
@@ -40,11 +42,7 @@ func TestCollectMetricsGoMemAlloc(t *testing.T) {
 func TestCollectMetricsMemTotal(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("memory info only tested on linux and darwin")
-	}
-
-	m := CollectMetrics(context.Background(), "/")
+	m := collectTestMetrics()
 	if m.MemTotalBytes <= 0 {
 		t.Fatalf("MemTotalBytes = %d, want > 0", m.MemTotalBytes)
 	}
@@ -53,7 +51,7 @@ func TestCollectMetricsMemTotal(t *testing.T) {
 func TestCollectMetricsCPURange(t *testing.T) {
 	t.Parallel()
 
-	m := CollectMetrics(context.Background(), "/")
+	m := collectTestMetrics()
 	// -1 is the sentinel for unsupported platforms.
 	if m.CPUPercent != -1 && (m.CPUPercent < 0 || m.CPUPercent > 100) {
 		t.Fatalf("CPUPercent = %f, want in [0,100] or -1", m.CPUPercent)
@@ -63,9 +61,9 @@ func TestCollectMetricsCPURange(t *testing.T) {
 func TestCollectMetricsExtendedHostSignals(t *testing.T) {
 	t.Parallel()
 
-	m := CollectMetrics(context.Background(), "/")
-	if m.CPUCount != runtime.NumCPU() {
-		t.Fatalf("CPUCount = %d, want %d", m.CPUCount, runtime.NumCPU())
+	m := collectTestMetrics()
+	if m.CPUCount != 4 {
+		t.Fatalf("CPUCount = %d, want 4", m.CPUCount)
 	}
 	if m.LoadAvg1 >= 0 && m.LoadPerCPU < 0 {
 		t.Fatalf("LoadPerCPU = %f, want non-negative when load is available", m.LoadPerCPU)
@@ -81,14 +79,10 @@ func TestCollectMetricsExtendedHostSignals(t *testing.T) {
 	}
 }
 
-func TestCollectMetricsLinuxHostSignals(t *testing.T) {
+func TestCollectMetricsHostSignals(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != "linux" {
-		t.Skip("linux /proc metrics only tested on linux")
-	}
-
-	m := CollectMetrics(context.Background(), "/")
+	m := collectTestMetrics()
 	if m.ProcessCount <= 0 {
 		t.Fatalf("ProcessCount = %d, want > 0", m.ProcessCount)
 	}
@@ -101,6 +95,84 @@ func TestCollectMetricsLinuxHostSignals(t *testing.T) {
 	if m.CPUPressureAvg10 < 0 && m.CPUPressureAvg10 != -1 {
 		t.Fatalf("CPUPressureAvg10 = %f, want >= 0 or -1", m.CPUPressureAvg10)
 	}
+}
+
+func TestDefaultMetricCollectorsUseIsolatedProc(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux collector fixture")
+	}
+
+	root := t.TempDir()
+	writeProcFixture(t, root, "stat", "cpu  10 0 5 80 5 0 0 0\nbtime 1760000000\n")
+	writeProcFixture(t, root, "meminfo", "MemTotal: 1000 kB\nMemAvailable: 600 kB\nSwapTotal: 200 kB\nSwapFree: 150 kB\n")
+	writeProcFixture(t, root, "loadavg", "1.25 0.75 0.50 1/100 123\n")
+	writeProcFixture(t, root, "net/dev", "Inter-| Receive | Transmit\n  lo: 10 0 0 0 0 0 0 0 10 0 0 0 0 0 0 0\neth0: 100 0 0 0 0 0 0 0 200 0 0 0 0 0 0 0\n")
+	writeProcFixture(t, root, "uptime", "3600.50 100.00\n")
+	writeProcFixture(t, root, "pressure/cpu", "some avg10=1.50 avg60=1.00 avg300=0.50 total=100\n")
+	writeProcFixture(t, root, "pressure/memory", "some avg10=2.50 avg60=2.00 avg300=1.50 total=200\n")
+	writeProcFixture(t, root, "pressure/io", "some avg10=3.50 avg60=3.00 avg300=2.50 total=300\n")
+	writeProcFixture(t, root, "123/status", "Name:\ttest\nThreads:\t7\n")
+
+	originalProcRoot := procRootPath
+	t.Cleanup(func() { procRootPath = originalProcRoot })
+	procRootPath = root
+
+	if idle, total, err := readCPUStat(); err != nil || idle != 80 || total != 100 {
+		t.Fatalf("readCPUStat() = idle %d, total %d, err %v", idle, total, err)
+	}
+	mem := collectMemInfo(context.Background())
+	if mem.totalBytes != 1000*1024 || mem.usedBytes != 400*1024 || mem.swapUsedBytes != 50*1024 {
+		t.Fatalf("collectMemInfo() = %+v", mem)
+	}
+	if one, five, fifteen := collectLoadAvg(context.Background()); one != 1.25 || five != 0.75 || fifteen != 0.5 {
+		t.Fatalf("collectLoadAvg() = %f, %f, %f", one, five, fifteen)
+	}
+	network := collectNetworkIO()
+	if network.rxBytes != 100 || network.txBytes != 200 || network.interfaces != 1 {
+		t.Fatalf("collectNetworkIO() = %+v", network)
+	}
+	processes := collectProcessInfo(context.Background())
+	if processes.processes != 1 || processes.threads != 7 || !processes.complete {
+		t.Fatalf("collectProcessInfo() = %+v", processes)
+	}
+	uptime := collectHostUptime()
+	if uptime.uptimeSec != 3600 || uptime.bootTime == "" {
+		t.Fatalf("collectHostUptime() = %+v", uptime)
+	}
+	pressure := collectPressure()
+	if pressure.cpuAvg10 != 1.5 || pressure.memAvg10 != 2.5 || pressure.ioAvg10 != 3.5 {
+		t.Fatalf("collectPressure() = %+v", pressure)
+	}
+	disk := collectDiskUsage(root)
+	if disk.totalBytes <= 0 || disk.freeBytes < 0 || disk.inodesTotal <= 0 {
+		t.Fatalf("collectDiskUsage() = %+v", disk)
+	}
+}
+
+func writeProcFixture(t *testing.T, root, relativePath, content string) {
+	t.Helper()
+	path := filepath.Join(root, relativePath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func collectTestMetrics() HostMetrics {
+	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+	collector := newMetricsCollectorWith(
+		func() time.Time { return now },
+		defaultMetricsCollectionIntervals(),
+		fakeMetricCollectors(
+			func(context.Context) processSample {
+				return processSample{processes: 10, threads: 20, complete: true}
+			},
+			func() float64 { return 42 },
+		),
+	)
+	return collector.Collect(context.Background(), "/isolated-test-filesystem")
 }
 
 func TestMetricsCollectorReusesRecentSnapshot(t *testing.T) {

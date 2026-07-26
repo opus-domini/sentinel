@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -37,6 +38,32 @@ const (
 	testSeenScopePane = "pane"
 	testMessageStatus = "status"
 )
+
+func TestUIShellHelperProcess(_ *testing.T) {
+	if len(os.Args) == 0 || !strings.HasPrefix(filepath.Base(os.Args[len(os.Args)-1]), "sentinel-test-ui-shell") {
+		return
+	}
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		if strings.HasPrefix(strings.TrimSpace(scanner.Text()), "exit") {
+			return
+		}
+	}
+}
+
+func isolatedUIShell(t *testing.T) string {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable(): %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "sentinel-test-ui-shell")
+	script := "#!" + executable + " -test.run=^TestUIShellHelperProcess$\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatalf("write UI shell helper: %v", err)
+	}
+	return path
+}
 
 func (f *fakePingConn) WritePing(_ []byte) error {
 	f.writes.Add(1)
@@ -278,6 +305,7 @@ func TestStartTmuxPTYContinuesWhenMouseEnableFails(t *testing.T) {
 }
 
 func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
+	shellPath := isolatedUIShell(t)
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
@@ -329,7 +357,7 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 		mu.Lock()
 		callOrder = append(callOrder, "attach")
 		mu.Unlock()
-		return term.StartShell(ctx, "/bin/sh", cols, rows)
+		return term.StartShell(ctx, shellPath, cols, rows)
 	}
 
 	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
@@ -364,6 +392,7 @@ func TestAttachWSIntegrationEnablesMouseBeforeAttach(t *testing.T) {
 }
 
 func TestAttachWSIntegrationUsesRequestedTerminalSize(t *testing.T) {
+	shellPath := isolatedUIShell(t)
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
@@ -386,7 +415,7 @@ func TestAttachWSIntegrationUsesRequestedTerminalSize(t *testing.T) {
 	gotSize := make(chan [2]int, 1)
 	startTmuxAttachFn = func(ctx context.Context, _ string, cols, rows int) (*term.PTY, error) {
 		gotSize <- [2]int{cols, rows}
-		return term.StartShell(ctx, "/bin/sh", cols, rows)
+		return term.StartShell(ctx, shellPath, cols, rows)
 	}
 
 	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
@@ -417,6 +446,7 @@ func TestAttachWSIntegrationUsesRequestedTerminalSize(t *testing.T) {
 }
 
 func TestAttachWSClosesInternalOnControlError(t *testing.T) {
+	shellPath := isolatedUIShell(t)
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
@@ -436,7 +466,7 @@ func TestAttachWSClosesInternalOnControlError(t *testing.T) {
 	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error { return nil }
 	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error { return nil }
 	startTmuxAttachFn = func(ctx context.Context, _ string, cols, rows int) (*term.PTY, error) {
-		return term.StartShell(ctx, "/bin/sh", cols, rows)
+		return term.StartShell(ctx, shellPath, cols, rows)
 	}
 
 	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
@@ -481,6 +511,7 @@ func TestAttachWSClosesInternalOnControlError(t *testing.T) {
 }
 
 func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
+	shellPath := isolatedUIShell(t)
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
@@ -517,7 +548,7 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 		mu.Lock()
 		callOrder = append(callOrder, "attach")
 		mu.Unlock()
-		return term.StartShell(ctx, "/bin/sh", cols, rows)
+		return term.StartShell(ctx, shellPath, cols, rows)
 	}
 
 	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
@@ -552,6 +583,7 @@ func TestAttachWSIntegrationContinuesWhenMouseEnableFails(t *testing.T) {
 }
 
 func TestAttachWSAllowsConcurrentClientsForSameSession(t *testing.T) {
+	shellPath := isolatedUIShell(t)
 	originalExists := tmuxSessionExistsFn
 	originalEnsureMouse := tmuxEnsureWebMouse
 	originalMouse := tmuxSetSessionMouse
@@ -574,7 +606,7 @@ func TestAttachWSAllowsConcurrentClientsForSameSession(t *testing.T) {
 	tmuxSetSessionMouse = func(_ context.Context, _ string, _ bool) error { return nil }
 	tmuxSetSessionStatus = func(_ context.Context, _ string, _ bool) error { return nil }
 	startTmuxAttachFn = func(ctx context.Context, _ string, cols, rows int) (*term.PTY, error) {
-		return term.StartShell(ctx, "/bin/sh", cols, rows)
+		return term.StartShell(ctx, shellPath, cols, rows)
 	}
 
 	h := &Handler{guard: security.New("", nil, security.CookieSecureAuto)}
