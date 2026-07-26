@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.13](https://github.com/opus-domini/sentinel/compare/v0.10.12...v0.10.13) (2026-07-26)
+
+
+### Refactors
+
+* **ui:** centralize contextual sidebar actions ([0fdc082](https://github.com/opus-domini/sentinel/commit/0fdc0827909b5a099b3b92d16b4ea360135a53f1))
+* **ui:** reorder primary navigation ([355b175](https://github.com/opus-domini/sentinel/commit/355b1752e52072ce62b0e429031c0ddeca4d6057))
+
+
+### CI
+
+* build frontend before coverage ([79a66db](https://github.com/opus-domini/sentinel/commit/79a66dbf155caca8907672dc615f2cdd12c143f0))
+* make test isolation check portable ([f1b50cc](https://github.com/opus-domini/sentinel/commit/f1b50cc025deabcd29c07ce2aab4adb18fee5d99))
+
 ## [0.10.12](https://github.com/opus-domini/sentinel/compare/v0.10.11...v0.10.12) (2026-07-23)
 
 
