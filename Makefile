@@ -85,7 +85,7 @@ test-integration: check-go test-isolation ## Run integration tests
 	$(GOCMD) test -tags=integration -run '^TestIntegration' $(PKG_LIST)
 
 .PHONY: test-coverage
-test-coverage: check-go test-isolation ## Run tests with race detection and the coverage gate
+test-coverage: check-go test-isolation build-frontend ## Run tests with race detection and the coverage gate
 	$(GOCMD) test -race -shuffle=on -covermode=atomic -coverpkg=$(COVERAGE_PKGS) -coverprofile="$(COVERAGE_PROFILE)" $(PKG_LIST)
 	COVERAGE_MIN=$(COVERAGE_MIN) $(COVERAGE_CHECK) "$(COVERAGE_PROFILE)"
 
