@@ -9,12 +9,6 @@ vi.mock('@/components/TooltipHelper', () => ({
   TooltipHelper: ({ children }: { children: ReactNode }) => children,
 }))
 
-vi.mock('@/components/TmuxHelpDialog', () => ({
-  default: ({ buttonSize }: { buttonSize?: string }) => (
-    <button type="button" aria-label="About Terminal" data-size={buttonSize} />
-  ),
-}))
-
 vi.mock('./CreateSessionDialog', () => ({
   default: ({ open }: { open: boolean }) => (open ? <div>Create Session Dialog</div> : null),
 }))
@@ -23,24 +17,17 @@ vi.mock('./SessionLaunchersDialog', () => ({
   default: ({ open }: { open: boolean }) => (open ? <div>Session Launchers Dialog</div> : null),
 }))
 
-vi.mock('./TokenDialog', () => ({
-  default: ({ open }: { open: boolean }) => (open ? <div>Token Dialog</div> : null),
-}))
-
 afterEach(() => {
   cleanup()
 })
 
 const baseProps = {
   sessionCount: 2,
-  tokenRequired: false,
-  authenticated: true,
   defaultCwd: '/srv',
   launchers: [],
   tmuxUnavailable: false,
   filter: '',
   onFilterChange: vi.fn(),
-  onTokenChange: vi.fn(),
   onCreate: vi.fn(),
   onLaunchLauncher: vi.fn(),
   onSaveLauncher: vi.fn().mockResolvedValue('launcher-id'),
@@ -49,7 +36,7 @@ const baseProps = {
 }
 
 describe('SessionControls', () => {
-  it('uses compact header controls to match the tmux window strip buttons', () => {
+  it('keeps session creation controls compact in the sidebar card', () => {
     render(<SessionControls {...baseProps} />)
 
     expect(screen.getByRole('button', { name: 'New session' }).getAttribute('data-size')).toBe(
@@ -58,12 +45,8 @@ describe('SessionControls', () => {
     expect(
       screen.getByRole('button', { name: 'Open session launcher menu' }).getAttribute('data-size'),
     ).toBe('icon-xs')
-    expect(screen.getByRole('button', { name: 'About Terminal' }).getAttribute('data-size')).toBe(
-      'icon-xs',
-    )
-    expect(screen.getByRole('button', { name: 'API token' }).getAttribute('data-size')).toBe(
-      'icon-xs',
-    )
+    expect(screen.queryByRole('button', { name: 'About Terminal' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'API token' })).toBeNull()
   })
 
   it('opens the create session dialog from the primary add button', () => {

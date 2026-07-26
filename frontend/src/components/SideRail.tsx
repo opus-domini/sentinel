@@ -1,8 +1,8 @@
-import { ChevronsLeft, ChevronsRight, Settings } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { Link, useRouterState } from '@tanstack/react-router'
+import SidebarContextActions from '@/components/sidebar/SidebarContextActions'
 import { Button } from '@/components/ui/button'
 import { TooltipHelper } from '@/components/TooltipHelper'
-import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useViewport } from '@/contexts/ViewportContext'
 import { PRIMARY_NAV_ITEMS } from '@/lib/primaryNav'
 import { cn } from '@/lib/utils'
@@ -18,7 +18,6 @@ export default function SideRail({
   onToggleSidebarCollapsed,
   showSidebarToggles = true,
 }: SideRailProps) {
-  const { setSettingsOpen } = useLayoutContext()
   const { compactLayout } = useViewport()
 
   const pathname = useRouterState({
@@ -57,17 +56,7 @@ export default function SideRail({
       </nav>
       <div className="flex-1" />
       <hr className="w-full border-t border-border-subtle" />
-      <TooltipHelper content="Settings" side="right">
-        <Button
-          variant="ghost"
-          size="icon-lg"
-          className="w-full text-secondary-foreground hover:text-foreground"
-          onClick={() => setSettingsOpen(true)}
-          aria-label="Settings"
-        >
-          <Settings className="size-4" />
-        </Button>
-      </TooltipHelper>
+      <SidebarContextActions pathname={pathname} />
       {showSidebarToggles && (
         <TooltipHelper
           content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -76,7 +65,7 @@ export default function SideRail({
           <Button
             variant="ghost"
             size="icon-lg"
-            className="w-full text-secondary-foreground hover:text-foreground"
+            className="w-full cursor-pointer text-secondary-foreground hover:text-foreground"
             onClick={onToggleSidebarCollapsed}
             aria-expanded={!sidebarCollapsed}
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}

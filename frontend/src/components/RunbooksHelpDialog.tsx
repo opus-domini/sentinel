@@ -9,21 +9,25 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { cn } from '@/lib/utils'
 
-export default function RunbooksHelpDialog() {
+export default function RunbooksHelpDialog({ triggerClassName }: { triggerClassName?: string }) {
   const [open, setOpen] = useState(false)
 
   return (
     <>
-      <TooltipHelper content="About Runbooks">
+      <TooltipHelper content="About Runbooks" side="right">
         <Button
-          variant="outline"
-          size="icon-xs"
-          className="cursor-pointer text-secondary-foreground"
+          variant="ghost"
+          size="icon-lg"
+          className={cn(
+            'w-full cursor-pointer text-secondary-foreground hover:text-foreground',
+            triggerClassName,
+          )}
           onClick={() => setOpen(true)}
           aria-label="About Runbooks"
         >
-          <CircleHelp className="h-3 w-3" />
+          <CircleHelp className="size-4" />
         </Button>
       </TooltipHelper>
       <Dialog open={open} onOpenChange={setOpen}>

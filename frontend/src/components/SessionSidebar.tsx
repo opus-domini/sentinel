@@ -4,7 +4,6 @@ import SessionControls from './sidebar/SessionControls'
 import SessionListPanel from './sidebar/SessionListPanel'
 import type { Session, SessionLauncher, SessionPreset } from '@/types'
 import { useLayoutContext } from '@/contexts/LayoutContext'
-import type { AuthCookieUpdateResult } from '@/lib/authToken'
 
 type SessionSidebarProps = {
   sessions: Array<Session>
@@ -13,15 +12,12 @@ type SessionSidebarProps = {
   activeSession: string
   isOpen: boolean
   collapsed: boolean
-  tokenRequired: boolean
-  authenticated: boolean
   defaultCwd: string
   presets: Array<SessionPreset>
   launchers: Array<SessionLauncher>
   filter: string
   tmuxUnavailable: boolean
   onFilterChange: (value: string) => void
-  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   onCreate: (name: string, cwd: string, user?: string) => Promise<void>
   onSaveLauncher: (input: {
     id: string
@@ -52,15 +48,12 @@ export default function SessionSidebar({
   activeSession,
   isOpen,
   collapsed,
-  tokenRequired,
-  authenticated,
   defaultCwd,
   presets,
   launchers,
   filter,
   tmuxUnavailable,
   onFilterChange,
-  onTokenChange,
   onCreate,
   onSaveLauncher,
   onDeleteLauncher,
@@ -83,14 +76,11 @@ export default function SessionSidebar({
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain no-scrollbar">
         <SessionControls
           sessionCount={totalSessions}
-          tokenRequired={tokenRequired}
-          authenticated={authenticated}
           defaultCwd={defaultCwd}
           launchers={launchers}
           filter={filter}
           tmuxUnavailable={tmuxUnavailable}
           onFilterChange={onFilterChange}
-          onTokenChange={onTokenChange}
           onCreate={onCreate}
           onSaveLauncher={onSaveLauncher}
           onLaunchLauncher={onLaunchLauncher}

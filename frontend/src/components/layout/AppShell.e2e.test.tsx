@@ -42,6 +42,19 @@ vi.mock('@/contexts/ViewportContext', () => ({
   }),
 }))
 
+vi.mock('@/contexts/MetaContext', () => ({
+  useMetaContext: () => ({
+    tokenRequired: false,
+  }),
+}))
+
+vi.mock('@/contexts/TokenContext', () => ({
+  useTokenContext: () => ({
+    authenticated: true,
+    setToken: vi.fn(),
+  }),
+}))
+
 function ShellHarness() {
   const layout = useShellLayout({
     storageKey: 'sentinel_e2e_sidebar',

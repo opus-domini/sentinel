@@ -1,10 +1,12 @@
 import { FocusScope } from '@radix-ui/react-focus-scope'
-import { Settings, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import { useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useViewport } from '@/contexts/ViewportContext'
 import { cn } from '@/lib/utils'
+import SidebarContextActions from './SidebarContextActions'
 
 type SidebarShellProps = {
   isOpen: boolean
@@ -14,35 +16,30 @@ type SidebarShellProps = {
 }
 
 function MobileNav() {
-  const { setSidebarOpen, setSettingsOpen } = useLayoutContext()
+  const { setSidebarOpen } = useLayoutContext()
   const { compactLayout } = useViewport()
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
 
   if (!compactLayout) {
     return null
   }
 
-  // Section navigation lives in the bottom tab bar; the drawer is just the
-  // master list, so it only needs Settings and Close here (no duplicate nav).
+  // Primary navigation lives in the bottom tab bar. The drawer header mirrors
+  // the desktop rail's contextual actions and adds only its close control.
   return (
-    <div className="flex items-center justify-end gap-1 border-b border-border pb-2">
+    <div className="flex items-center justify-start gap-0.5 border-b border-border pb-1.5">
       <Button
         variant="ghost"
-        size="icon"
-        className="size-7 text-secondary-foreground hover:text-foreground"
-        onClick={() => setSettingsOpen(true)}
-        aria-label="Settings"
-      >
-        <Settings className="size-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 text-secondary-foreground hover:text-foreground"
+        size="icon-lg"
+        className="size-8 w-8 cursor-pointer touch-manipulation text-secondary-foreground hover:text-foreground"
         onClick={() => setSidebarOpen(false)}
         aria-label="Close menu"
       >
         <X className="size-4" />
       </Button>
+      <SidebarContextActions pathname={pathname} mobile />
     </div>
   )
 }

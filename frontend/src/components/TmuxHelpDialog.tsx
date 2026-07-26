@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import { cn } from '@/lib/utils'
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -40,32 +41,23 @@ const shellShortcuts: ReadonlyArray<Shortcut> = [
   { keys: 'Ctrl-e', desc: 'Move cursor to end of line' },
 ]
 
-type TmuxHelpDialogProps = {
-  buttonVariant?: React.ComponentProps<typeof Button>['variant']
-  buttonSize?: React.ComponentProps<typeof Button>['size']
-  buttonClassName?: string
-  iconClassName?: string
-}
-
-export default function TmuxHelpDialog({
-  buttonVariant = 'ghost',
-  buttonSize = 'icon',
-  buttonClassName = 'cursor-pointer border border-border bg-surface-hover text-secondary-foreground hover:bg-accent hover:text-foreground',
-  iconClassName = 'h-4 w-4',
-}: TmuxHelpDialogProps) {
+export default function TmuxHelpDialog({ triggerClassName }: { triggerClassName?: string }) {
   const [open, setOpen] = useState(false)
 
   return (
     <>
-      <TooltipHelper content="About Terminal">
+      <TooltipHelper content="About Terminal" side="right">
         <Button
-          variant={buttonVariant}
-          size={buttonSize}
-          className={buttonClassName}
+          variant="ghost"
+          size="icon-lg"
+          className={cn(
+            'w-full cursor-pointer text-secondary-foreground hover:text-foreground',
+            triggerClassName,
+          )}
           onClick={() => setOpen(true)}
           aria-label="About Terminal"
         >
-          <CircleHelp className={iconClassName} />
+          <CircleHelp className="size-4" />
         </Button>
       </TooltipHelper>
       <Dialog open={open} onOpenChange={setOpen}>

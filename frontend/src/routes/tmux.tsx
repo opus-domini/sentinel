@@ -957,15 +957,12 @@ function TmuxPage() {
           activeSession={tabsState.activeSession}
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
-          tokenRequired={tokenRequired}
-          authenticated={authenticated}
           defaultCwd={defaultCwd}
           presets={orderedSessionPresets}
           launchers={orderedSessionLaunchers}
           filter={filter}
           tmuxUnavailable={tmuxUnavailable}
           onFilterChange={setFilter}
-          onTokenChange={setToken}
           onCreate={(name, cwd, user) => sessionCRUD.createSession(name, cwd, '', user)}
           onSaveLauncher={saveSessionLauncher}
           onDeleteLauncher={deleteSessionLauncher}

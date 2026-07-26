@@ -14,13 +14,11 @@ import RunbooksSidebar from '@/components/RunbooksSidebar'
 import { Button } from '@/components/ui/button'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
-import { useTokenContext } from '@/contexts/TokenContext'
 import { useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useRunbooksPage } from '@/hooks/useRunbooksPage'
 
 function RunbooksPage() {
-  const { tokenRequired, hostname } = useMetaContext()
-  const { authenticated, setToken } = useTokenContext()
+  const { hostname } = useMetaContext()
   const layout = useLayoutContext()
 
   const {
@@ -88,14 +86,11 @@ function RunbooksPage() {
         <RunbooksSidebar
           isOpen={layout.sidebarOpen}
           collapsed={layout.sidebarCollapsed}
-          tokenRequired={tokenRequired}
-          authenticated={authenticated}
           loading={runbooksLoading}
           runbooks={runbooks}
           jobs={jobs}
           schedules={schedules}
           selectedRunbookId={selectedRunbookId}
-          onTokenChange={setToken}
           onSelectRunbook={handleSelectRunbook}
           onCreateRunbook={startCreate}
         />

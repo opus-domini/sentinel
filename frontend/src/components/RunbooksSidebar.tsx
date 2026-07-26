@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Clock, Lock, LockOpen, Plus, Webhook } from 'lucide-react'
+import { Clock, Plus, Webhook } from 'lucide-react'
 import type { OpsRunbook, OpsRunbookRun, OpsSchedule } from '@/types'
-import RunbooksHelpDialog from '@/components/RunbooksHelpDialog'
 import SidebarShell from '@/components/sidebar/SidebarShell'
-import TokenDialog from '@/components/sidebar/TokenDialog'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
@@ -11,7 +9,6 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { useDateFormat } from '@/hooks/useDateFormat'
-import type { AuthCookieUpdateResult } from '@/lib/authToken'
 import { cn } from '@/lib/utils'
 import {
   formatRunbookDuration,
@@ -26,14 +23,11 @@ import {
 type RunbooksSidebarProps = {
   isOpen: boolean
   collapsed: boolean
-  tokenRequired: boolean
-  authenticated: boolean
   loading: boolean
   runbooks: Array<OpsRunbook>
   jobs: Array<OpsRunbookRun>
   schedules: Array<OpsSchedule>
   selectedRunbookId: string | null
-  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   onSelectRunbook: (id: string | null) => void
   onCreateRunbook?: () => void
 }
@@ -41,28 +35,17 @@ type RunbooksSidebarProps = {
 export default function RunbooksSidebar({
   isOpen,
   collapsed,
-  tokenRequired,
-  authenticated,
   loading,
   runbooks,
   jobs,
   schedules,
   selectedRunbookId,
-  onTokenChange,
   onSelectRunbook,
   onCreateRunbook,
 }: RunbooksSidebarProps) {
-  const [isTokenOpen, setIsTokenOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const debouncedFilter = useDebouncedValue(filter)
   const { formatDateTime } = useDateFormat()
-
-  const lockLabel = useMemo(() => {
-    if (tokenRequired) {
-      return authenticated ? 'Authenticated (required)' : 'Token required'
-    }
-    return authenticated ? 'Authenticated' : 'Authentication optional'
-  }, [authenticated, tokenRequired])
 
   const filteredRunbooks = useMemo(() => {
     const q = debouncedFilter.trim().toLowerCase()
@@ -89,7 +72,6 @@ export default function RunbooksSidebar({
               {runbooks.length}
             </span>
             <div className="ml-auto flex items-center gap-1">
-              <RunbooksHelpDialog />
               {onCreateRunbook && (
                 <TooltipHelper content="New runbook">
                   <Button
@@ -103,17 +85,6 @@ export default function RunbooksSidebar({
                   </Button>
                 </TooltipHelper>
               )}
-              <TooltipHelper content={lockLabel}>
-                <Button
-                  variant="outline"
-                  size="icon-xs"
-                  className="cursor-pointer text-secondary-foreground"
-                  onClick={() => setIsTokenOpen(true)}
-                  aria-label="API token"
-                >
-                  {authenticated ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
-                </Button>
-              </TooltipHelper>
             </div>
           </div>
           <Input
@@ -122,14 +93,6 @@ export default function RunbooksSidebar({
             placeholder="filter runbooks..."
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-          />
-
-          <TokenDialog
-            open={isTokenOpen}
-            onOpenChange={setIsTokenOpen}
-            authenticated={authenticated}
-            onTokenChange={onTokenChange}
-            tokenRequired={tokenRequired}
           />
         </section>
 

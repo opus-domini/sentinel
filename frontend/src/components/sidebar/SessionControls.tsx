@@ -2,10 +2,7 @@ import { ChevronDown, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import CreateSessionDialog from './CreateSessionDialog'
 import SessionLaunchersDialog from './SessionLaunchersDialog'
-import SidebarHeader from './SidebarHeader'
-import TokenDialog from './TokenDialog'
 import type { SessionLauncher } from '@/types'
-import TmuxHelpDialog from '@/components/TmuxHelpDialog'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,19 +14,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import type { AuthCookieUpdateResult } from '@/lib/authToken'
 import { getTmuxIcon } from '@/lib/tmuxIcons'
 
 type SessionControlsProps = {
   sessionCount: number
-  tokenRequired: boolean
-  authenticated: boolean
   defaultCwd: string
   launchers: Array<SessionLauncher>
   tmuxUnavailable: boolean
   filter: string
   onFilterChange: (value: string) => void
-  onTokenChange: (value: string) => Promise<AuthCookieUpdateResult>
   onCreate: (name: string, cwd: string, user?: string) => Promise<void>
   onLaunchLauncher: (id: string) => void
   onSaveLauncher: (input: {
@@ -53,14 +46,11 @@ function describeSessionLauncher(launcher: SessionLauncher) {
 
 export default function SessionControls({
   sessionCount,
-  tokenRequired,
-  authenticated,
   defaultCwd,
   launchers,
   tmuxUnavailable,
   filter,
   onFilterChange,
-  onTokenChange,
   onCreate,
   onLaunchLauncher,
   onSaveLauncher,
@@ -69,14 +59,6 @@ export default function SessionControls({
 }: SessionControlsProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isLaunchersOpen, setIsLaunchersOpen] = useState(false)
-  const [isTokenOpen, setIsTokenOpen] = useState(false)
-
-  const lockLabel = useMemo(() => {
-    if (tokenRequired) {
-      return authenticated ? 'Authenticated (required)' : 'Token required'
-    }
-    return authenticated ? 'Authenticated' : 'Authentication optional'
-  }, [authenticated, tokenRequired])
 
   const recentLauncher = useMemo(() => {
     const usedLaunchers = launchers.filter((launcher) =>
@@ -191,24 +173,15 @@ export default function SessionControls({
 
   return (
     <section className="grid gap-2 rounded-lg border border-border-subtle bg-secondary p-2">
-      <SidebarHeader
-        title="Sessions"
-        count={sessionCount}
-        hasToken={authenticated}
-        lockTitle={lockLabel}
-        canCreate={!tmuxUnavailable}
-        helpDialog={
-          <TmuxHelpDialog
-            buttonVariant="outline"
-            buttonSize="icon-xs"
-            buttonClassName="cursor-pointer text-secondary-foreground"
-            iconClassName="h-3 w-3"
-          />
-        }
-        addControl={addControl}
-        onToggleAdd={() => setIsCreateOpen(true)}
-        onToggleLock={() => setIsTokenOpen(true)}
-      />
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
+          Sessions
+        </span>
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border px-1.5 text-[11px] text-secondary-foreground">
+          {sessionCount}
+        </span>
+        <div className="ml-auto">{addControl}</div>
+      </div>
 
       {tmuxUnavailable && (
         <div className="rounded-md border border-warning/45 bg-warning/20 px-2.5 py-2 text-[11px] text-warning-foreground">
@@ -242,14 +215,6 @@ export default function SessionControls({
         onSave={onSaveLauncher}
         onDelete={onDeleteLauncher}
         onReorder={onReorderLaunchers}
-      />
-
-      <TokenDialog
-        open={isTokenOpen}
-        onOpenChange={setIsTokenOpen}
-        authenticated={authenticated}
-        onTokenChange={onTokenChange}
-        tokenRequired={tokenRequired}
       />
     </section>
   )

@@ -26,7 +26,6 @@ import type {
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
-import ServicesHelpDialog from '@/components/ServicesHelpDialog'
 import { ServiceBrowseRow } from '@/components/services/ServiceBrowseRow'
 import { ServiceLogsSheet } from '@/components/services/ServiceLogsSheet'
 import { ServicesOperationsSummary } from '@/components/services/ServicesOperationsSummary'
@@ -732,7 +731,6 @@ function ServicesPage() {
             <AppSectionTitle hostname={hostname} section="services" />
           </div>
           <div className="flex items-center gap-1.5">
-            <ServicesHelpDialog />
             <ConnectionBadge state={connectionState} onClick={resyncPage} />
           </div>
         </header>
