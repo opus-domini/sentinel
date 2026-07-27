@@ -5,7 +5,7 @@ import "context"
 const opsRunbookRunSelect = `
 	id, runbook_id, runbook_name, status, total_steps, completed_steps,
 	current_step, error, step_results, parameters_used, source, target_kind,
-	target_name, created_at, started_at, finished_at`
+	target_name, definition_snapshot, created_at, started_at, finished_at`
 
 // ListOpsRunbookActiveRuns returns every execution that can still change
 // state. Now applies its own display cap after approvals and active runs have

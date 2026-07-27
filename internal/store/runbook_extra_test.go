@@ -15,22 +15,21 @@ func TestGetOpsRunbook(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	ctx := context.Background()
 
-	// Seeded runbooks should exist.
-	runbooks, err := s.ListOpsRunbooks(ctx)
+	inserted, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID: "get.runbook", Name: "Get Runbook",
+		Steps: []OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	})
 	if err != nil {
-		t.Fatalf("ListOpsRunbooks: %v", err)
-	}
-	if len(runbooks) == 0 {
-		t.Fatal("expected at least one seeded runbook")
+		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
 
 	// Fetch by ID.
-	got, err := s.GetOpsRunbook(ctx, runbooks[0].ID)
+	got, err := s.GetOpsRunbook(ctx, inserted.ID)
 	if err != nil {
 		t.Fatalf("GetOpsRunbook: %v", err)
 	}
-	if got.ID != runbooks[0].ID {
-		t.Fatalf("id = %q, want %q", got.ID, runbooks[0].ID)
+	if got.ID != inserted.ID {
+		t.Fatalf("id = %q, want %q", got.ID, inserted.ID)
 	}
 	if got.Name == "" {
 		t.Fatal("name is empty")
@@ -174,8 +173,12 @@ func TestRunbookParametersBackwardCompatibility(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	ctx := context.Background()
 
-	// Seeded runbooks (inserted without explicit parameters column) should
-	// have empty parameters arrays.
+	inserted, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID: "without.parameters", Name: "Without Parameters", Steps: []OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
 	runbooks, err := s.ListOpsRunbooks(ctx)
 	if err != nil {
 		t.Fatalf("ListOpsRunbooks: %v", err)
@@ -190,7 +193,7 @@ func TestRunbookParametersBackwardCompatibility(t *testing.T) {
 	}
 
 	// Runs without parameters should also have empty map.
-	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite(runbooks[0].ID, time.Now().UTC(), nil))
+	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite(t, s, inserted.ID, time.Now().UTC(), nil))
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
@@ -228,7 +231,7 @@ func TestCreateOpsRunbookRunWithParameters(t *testing.T) {
 
 	t.Run("stores parameters in run", func(t *testing.T) {
 		params := map[string]string{"host": "server.example.com", "env": "prod"}
-		run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("run.params.test", now, params))
+		run, err := s.CreateOpsRunbookRun(ctx, testRunWrite(t, s, "run.params.test", now, params))
 		if err != nil {
 			t.Fatalf("CreateOpsRunbookRun: %v", err)
 		}
@@ -256,7 +259,7 @@ func TestCreateOpsRunbookRunWithParameters(t *testing.T) {
 	})
 
 	t.Run("nil params stored as empty map", func(t *testing.T) {
-		run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("run.params.test", now, nil))
+		run, err := s.CreateOpsRunbookRun(ctx, testRunWrite(t, s, "run.params.test", now, nil))
 		if err != nil {
 			t.Fatalf("CreateOpsRunbookRun: %v", err)
 		}
@@ -269,14 +272,14 @@ func TestCreateOpsRunbookRunWithParameters(t *testing.T) {
 	})
 
 	t.Run("empty runbook ID returns ErrNoRows", func(t *testing.T) {
-		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite("", now, nil))
+		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite(t, s, "", now, nil))
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("nonexistent runbook returns error", func(t *testing.T) {
-		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite("no.such.runbook", now, nil))
+		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite(t, s, "no.such.runbook", now, nil))
 		if err == nil {
 			t.Fatal("expected error for nonexistent runbook")
 		}

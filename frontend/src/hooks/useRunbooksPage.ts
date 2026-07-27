@@ -409,13 +409,9 @@ export function useRunbooksPage(focusJobId?: string) {
     (runbookId: string) => {
       const rb = runbooks.find((item) => item.id === runbookId)
       if (!rb) return
-      if (!rb.parameters || rb.parameters.length === 0) {
-        void runRunbook(runbookId)
-        return
-      }
       setRunTarget(rb)
     },
-    [runbooks, runRunbook],
+    [runbooks],
   )
 
   const cancelRun = useCallback(() => {

@@ -417,7 +417,14 @@ and is unique across Runbooks. Conflicts return
 New job objects include `source` (`runbooks`, `scheduler`, or `now`). Jobs
 derived from an associated definition also include `targetKind: "service"` and
 `targetName`. These fields are omitted from historical jobs where their stored
-values are empty.
+values are empty. New jobs include a versioned `definition` receipt containing
+the exact runbook metadata, steps, parameter definitions, webhook, and target
+used by the execution. `parametersUsed` values are persisted in clear text and
+visible to operators; they must not contain secrets.
+
+A service target can have only one queued, running, or waiting-for-approval
+execution. Competing starts return `409 RUNBOOK_TARGET_BUSY`. Sentinel installs
+no default runbooks; procedures must be authored explicitly for the host.
 
 ### Schedules
 
@@ -467,6 +474,7 @@ Allowed resources:
 - `STORE_ERROR`
 - `OPS_RUNBOOK_TARGET_NOT_FOUND`
 - `OPS_RUNBOOK_TARGET_CONFLICT`
+- `RUNBOOK_TARGET_BUSY` — 409 — Service target already has an active execution
 - `OPS_SERVICE_IN_USE`
 - `UNAVAILABLE`
 - `TMUX_*` (`TMUX_NOT_FOUND`, `SESSION_NOT_FOUND`, etc.)

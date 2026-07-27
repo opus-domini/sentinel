@@ -79,6 +79,8 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusTooManyRequests, "TOO_MANY_REQUESTS", err.Error(), nil)
 		case errors.Is(err, runbook.ErrInvalidParameters):
 			writeError(w, http.StatusBadRequest, "INVALID_PARAMETERS", err.Error(), nil)
+		case errors.Is(err, runbook.ErrTargetBusy):
+			writeError(w, http.StatusConflict, "RUNBOOK_TARGET_BUSY", err.Error(), nil)
 		default:
 			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to run runbook", nil)
 		}

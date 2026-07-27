@@ -95,4 +95,34 @@ describe('RunbookRunDialog', () => {
     expect(retries.getAttribute('aria-describedby')).toBe(retriesError.id)
     expect(onConfirm).not.toHaveBeenCalled()
   })
+
+  it('requires confirmation without parameters and explains target, steps, approvals, and persistence', () => {
+    const onConfirm = vi.fn()
+
+    render(
+      <RunbookRunDialog
+        open
+        runbook={runbook({
+          description: 'Recover the web service after review.',
+          targetService: 'nginx',
+          steps: [
+            { type: 'run', title: 'Inspect', command: 'systemctl status nginx' },
+            { type: 'approval', title: 'Approve restart', description: 'Review the status.' },
+            { type: 'run', title: 'Restart', command: 'systemctl restart nginx' },
+          ],
+        })}
+        onConfirm={onConfirm}
+        onCancel={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Recover the web service after review.')).toBeTruthy()
+    expect(screen.getByText('Service · nginx')).toBeTruthy()
+    expect(screen.getByText('Approve restart')).toBeTruthy()
+    expect(screen.getByText('approval required')).toBeTruthy()
+    expect(screen.getByText(/persisted in the execution receipt/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    expect(onConfirm).toHaveBeenCalledWith({})
+  })
 })

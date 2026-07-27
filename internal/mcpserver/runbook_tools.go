@@ -107,22 +107,23 @@ type runbookStepResultOutput struct {
 }
 
 type runbookRunOutput struct {
-	ID             string                    `json:"id"`
-	RunbookID      string                    `json:"runbookId"`
-	RunbookName    string                    `json:"runbookName"`
-	Status         string                    `json:"status"`
-	TotalSteps     int                       `json:"totalSteps"`
-	CompletedSteps int                       `json:"completedSteps"`
-	CurrentStep    string                    `json:"currentStep"`
-	Error          string                    `json:"error"`
-	StepResults    []runbookStepResultOutput `json:"stepResults"`
-	ParametersUsed map[string]string         `json:"parametersUsed"`
-	Source         string                    `json:"source,omitempty"`
-	TargetKind     string                    `json:"targetKind,omitempty"`
-	TargetName     string                    `json:"targetName,omitempty"`
-	CreatedAt      string                    `json:"createdAt"`
-	StartedAt      string                    `json:"startedAt,omitempty"`
-	FinishedAt     string                    `json:"finishedAt,omitempty"`
+	ID             string                             `json:"id"`
+	RunbookID      string                             `json:"runbookId"`
+	RunbookName    string                             `json:"runbookName"`
+	Status         string                             `json:"status"`
+	TotalSteps     int                                `json:"totalSteps"`
+	CompletedSteps int                                `json:"completedSteps"`
+	CurrentStep    string                             `json:"currentStep"`
+	Error          string                             `json:"error"`
+	StepResults    []runbookStepResultOutput          `json:"stepResults"`
+	ParametersUsed map[string]string                  `json:"parametersUsed"`
+	Source         string                             `json:"source,omitempty"`
+	TargetKind     string                             `json:"targetKind,omitempty"`
+	TargetName     string                             `json:"targetName,omitempty"`
+	Definition     *store.OpsRunbookExecutionSnapshot `json:"definition,omitempty"`
+	CreatedAt      string                             `json:"createdAt"`
+	StartedAt      string                             `json:"startedAt,omitempty"`
+	FinishedAt     string                             `json:"finishedAt,omitempty"`
 }
 
 type runbookRunResult struct {
@@ -396,6 +397,7 @@ func projectRun(item store.OpsRunbookRun, outputLimit int) runbookRunOutput {
 		Source:         item.Source,
 		TargetKind:     item.TargetKind,
 		TargetName:     item.TargetName,
+		Definition:     item.Definition,
 		CreatedAt:      item.CreatedAt,
 		StartedAt:      item.StartedAt,
 		FinishedAt:     item.FinishedAt,
@@ -440,6 +442,8 @@ func runbookToolError(action string, err error) error {
 		return errors.New("runbook target service is not tracked")
 	case errors.Is(err, runbook.ErrTargetServiceConflict):
 		return errors.New("runbook target service is already associated")
+	case errors.Is(err, runbook.ErrTargetBusy):
+		return errors.New("target service already has an active execution")
 	default:
 		return toolError(action, err)
 	}

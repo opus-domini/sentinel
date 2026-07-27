@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 18 || name != "runbook-service-context" {
-		t.Fatalf("latest migration = (%d, %q), want (18, %q)", version, name, "runbook-service-context")
+	if version != 19 || name != "runbook-execution-receipt" {
+		t.Fatalf("latest migration = (%d, %q), want (19, %q)", version, name, "runbook-execution-receipt")
 	}
 
 	// Spot-check that a few tables exist.
@@ -64,8 +64,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 15 {
-		t.Fatalf("schema_migrations rows = %d, want 15", count)
+	if count != 16 {
+		t.Fatalf("schema_migrations rows = %d, want 16", count)
 	}
 }
 
@@ -142,7 +142,7 @@ func TestBuiltinServicesMigrationRemovesOnlyReservedCollisions(t *testing.T) {
 	}
 }
 
-func TestRunMigrationsSeedData(t *testing.T) {
+func TestRunMigrationsFreshDatabaseHasNoDefaultRunbooks(t *testing.T) {
 	t.Parallel()
 
 	db := openTestDB(t)
@@ -152,37 +152,21 @@ func TestRunMigrationsSeedData(t *testing.T) {
 		t.Fatalf("runMigrations: %v", err)
 	}
 
-	// Default runbooks.
 	var runbookCount int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ops_runbooks").Scan(&runbookCount); err != nil {
 		t.Fatalf("count ops_runbooks: %v", err)
 	}
-	if runbookCount != 3 {
-		t.Fatalf("ops_runbooks count = %d, want 3", runbookCount)
-	}
-	targets := map[string]string{}
-	rows, err := db.QueryContext(ctx, "SELECT id, target_service FROM ops_runbooks")
-	if err != nil {
-		t.Fatalf("select runbook targets: %v", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var id, target string
-		if err := rows.Scan(&id, &target); err != nil {
-			t.Fatalf("scan runbook target: %v", err)
-		}
-		targets[id] = target
-	}
-	if targets["ops.service.recover"] != "sentinel" {
-		t.Fatalf("service recovery target = %q, want sentinel", targets["ops.service.recover"])
-	}
-	if targets["ops.autoupdate.verify"] != "sentinel-updater" {
-		t.Fatalf("autoupdate target = %q, want sentinel-updater", targets["ops.autoupdate.verify"])
-	}
-	if targets["ops.update.apply"] != "" {
-		t.Fatalf("update apply target = %q, want empty", targets["ops.update.apply"])
+	if runbookCount != 0 {
+		t.Fatalf("ops_runbooks count = %d, want 0", runbookCount)
 	}
 
+	if _, err := db.ExecContext(ctx, `INSERT INTO ops_runbooks (
+		id, name, description, steps_json, enabled, webhook_url, parameters,
+		target_service, created_at, updated_at
+	) VALUES ('first.target', 'First', '', '[]', 1, '', '[]',
+		'sentinel', datetime('now'), datetime('now'))`); err != nil {
+		t.Fatalf("first target_service insert: %v", err)
+	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO ops_runbooks (
 		id, name, description, steps_json, enabled, webhook_url, parameters,
 		target_service, created_at, updated_at
@@ -204,6 +188,116 @@ func TestRunMigrationsSeedData(t *testing.T) {
 	}
 	if globalRev != "0" {
 		t.Fatalf("global_rev = %q, want %q", globalRev, "0")
+	}
+}
+
+func TestRunbookExecutionReceiptMigrationPreservesEditedDataAndClosesLegacyActiveRuns(t *testing.T) {
+	t.Parallel()
+
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version INTEGER PRIMARY KEY,
+		name TEXT NOT NULL,
+		applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`); err != nil {
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+	all, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receiptMigration migration
+	for _, item := range all {
+		if item.version < 19 {
+			if err := applyMigration(ctx, db, item); err != nil {
+				t.Fatalf("apply migration %d: %v", item.version, err)
+			}
+			continue
+		}
+		receiptMigration = item
+		break
+	}
+
+	if _, err := db.ExecContext(ctx, `UPDATE ops_runbooks
+		SET description = 'User edited recovery', updated_at = '2099-01-01T00:00:00Z'
+		WHERE id = 'ops.service.recover'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		id        string
+		runbookID string
+		status    string
+		target    string
+	}{
+		{id: "terminal", runbookID: "ops.update.apply", status: "succeeded"},
+		{id: "active", runbookID: "ops.service.recover", status: "waiting_approval", target: "sentinel"},
+	} {
+		if _, err := db.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
+			id, runbook_id, runbook_name, status, total_steps, completed_steps,
+			current_step, error, step_results, parameters_used, source,
+			target_kind, target_name, created_at, started_at, finished_at
+		) VALUES (?, ?, 'Legacy', ?, 1, 0, '', '', '[]', '{}', 'runbooks',
+			CASE WHEN ? = '' THEN '' ELSE 'service' END, ?, datetime('now'), '', '')`,
+			row.id, row.runbookID, row.status, row.target, row.target,
+		); err != nil {
+			t.Fatalf("insert %s: %v", row.id, err)
+		}
+	}
+	for _, schedule := range []struct {
+		id        string
+		runbookID string
+	}{
+		{id: "edited-schedule", runbookID: "ops.service.recover"},
+		{id: "intact-schedule", runbookID: "ops.autoupdate.verify"},
+	} {
+		if _, err := db.ExecContext(ctx, `INSERT INTO ops_schedules (
+			id, runbook_id, name, schedule_type
+		) VALUES (?, ?, ?, 'once')`, schedule.id, schedule.runbookID, schedule.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := applyMigration(ctx, db, receiptMigration); err != nil {
+		t.Fatalf("apply receipt migration: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ops_runbooks`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("runbooks after migration = %d, want edited seed only", count)
+	}
+	var editedDescription string
+	if err := db.QueryRowContext(ctx, `SELECT description FROM ops_runbooks
+		WHERE id = 'ops.service.recover'`).Scan(&editedDescription); err != nil {
+		t.Fatal(err)
+	}
+	if editedDescription != "User edited recovery" {
+		t.Fatalf("edited description = %q", editedDescription)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ops_schedules`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("schedules after migration = %d, want edited seed schedule only", count)
+	}
+	var terminalStatus, terminalDefinition string
+	if err := db.QueryRowContext(ctx, `SELECT status, definition_snapshot
+		FROM ops_runbook_runs WHERE id = 'terminal'`).Scan(&terminalStatus, &terminalDefinition); err != nil {
+		t.Fatal(err)
+	}
+	if terminalStatus != "succeeded" || terminalDefinition != "" {
+		t.Fatalf("terminal legacy run = (%q, %q)", terminalStatus, terminalDefinition)
+	}
+	var activeStatus, activeError, finishedAt string
+	if err := db.QueryRowContext(ctx, `SELECT status, error, finished_at
+		FROM ops_runbook_runs WHERE id = 'active'`).Scan(&activeStatus, &activeError, &finishedAt); err != nil {
+		t.Fatal(err)
+	}
+	if activeStatus != "failed" || activeError != "execution predates immutable receipt" || finishedAt == "" {
+		t.Fatalf("active legacy run = (%q, %q, %q)", activeStatus, activeError, finishedAt)
 	}
 }
 

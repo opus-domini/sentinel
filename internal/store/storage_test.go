@@ -70,14 +70,13 @@ func seedStorageStatsData(ctx context.Context, t *testing.T, s *Store, base time
 	}); err != nil {
 		t.Fatalf("InsertWatchtowerJournal: %v", err)
 	}
-	runbooks, err := s.ListOpsRunbooks(ctx)
+	runbook, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID: "storage.stats", Name: "Storage Stats", Steps: []OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	})
 	if err != nil {
-		t.Fatalf("ListOpsRunbooks: %v", err)
+		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
-	if len(runbooks) == 0 {
-		t.Fatalf("expected at least one seeded runbook")
-	}
-	if _, err := s.CreateOpsRunbookRun(ctx, testRunWrite(runbooks[0].ID, base, nil)); err != nil {
+	if _, err := s.CreateOpsRunbookRun(ctx, testRunWrite(t, s, runbook.ID, base, nil)); err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
 }

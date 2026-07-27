@@ -265,17 +265,20 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, err := h.repo.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
-		RunbookID:  sched.RunbookID,
+		Definition: rb,
 		Source:     store.OpsRunbookRunSourceScheduler,
 		Parameters: params,
 		At:         now,
 	})
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
-			return
+		case errors.Is(err, store.ErrOpsRunbookTargetBusy):
+			writeError(w, http.StatusConflict, "RUNBOOK_TARGET_BUSY", "target service already has an active execution", nil)
+		default:
+			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to trigger schedule run", nil)
 		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to trigger schedule run", nil)
 		return
 	}
 
@@ -313,7 +316,6 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		runbook.Run(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
 			Job:         job,
 			StepTimeout: 30 * time.Second,
-			Parameters:  params,
 			OnFinish: func(ctx context.Context, status string) {
 				finished := time.Now().UTC()
 				// Update only last_run_*; next_run_at/enabled were set at dispatch

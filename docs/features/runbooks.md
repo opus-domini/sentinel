@@ -23,35 +23,11 @@ Each step supports optional fields that control execution behavior:
 - `retries` (int) — number of retry attempts on failure; approval steps are never retried
 - `retryDelay` (int, seconds) — delay between retries; defaults to 2 seconds
 
-## Built-in Runbooks
+## Explicit Procedures
 
-Sentinel seeds three runbooks on first startup:
-
-**Service Recovery** (`ops.service.recover`)
-
-Associated service: `sentinel`.
-
-1. `run` — Inspect service status (`sentinel service status`)
-2. `run` — Restart service (`sentinel service install --start=true`)
-3. `run` — Confirm healthy status
-
-**Autoupdate Verification** (`ops.autoupdate.verify`)
-
-Associated service: `sentinel-updater`.
-
-1. `run` — Check updater timer (`sentinel service autoupdate status`)
-2. `run` — Check release status (`sentinel update check`)
-3. `approval` — Review versions and update policy before apply
-
-**Apply Update** (`ops.update.apply`)
-
-No service association.
-
-1. `run` — Check for updates (`sentinel update check`)
-2. `run` — Apply update and restart (`sentinel update apply`)
-
-These runbooks are installed as defaults on first startup. They can be edited or deleted like any
-other runbook.
+Sentinel does not install default runbooks. Commands, service managers, PATH,
+permissions, and recovery policy are host-specific, so every procedure must be
+created explicitly for the environment where it will run.
 
 ## Parameters
 
@@ -64,7 +40,7 @@ Runbooks can define a `parameters` array. Each parameter has:
 - `required` — when `true`, the run fails validation if the value is empty
 - `options` — list of allowed values (for `select` type only)
 
-When a run is triggered, supplied parameter values are merged with defaults. `{{PARAM}}` placeholders in step commands and scripts are replaced with shell-escaped values before execution. The resolved parameter map is persisted in the `parametersUsed` field of the run record.
+When a run is triggered, supplied parameter values are merged with defaults. `{{PARAM}}` placeholders in step commands and scripts are replaced with shell-escaped values before execution. The resolved parameter map is persisted in the `parametersUsed` field of the run record and remains visible in the API, UI, and MCP output. Parameters are operational data, not secrets; do not put credentials or tokens in them.
 
 ## Custom Runbooks
 
@@ -153,12 +129,25 @@ Optional request body for parameterized runbooks:
 
 Returns `202` with the initial job object. Execution runs asynchronously in a background goroutine with a 5-minute overall timeout and 30-second per-step timeout (overridable per step).
 
+Every manual run opens a confirmation that shows the description, service
+target, ordered steps, approval boundaries, and parameter persistence before
+the job is created.
+
 Every new job persists its origin as `source=runbooks` for Runbooks/API/MCP,
 `source=scheduler` for periodic and manually triggered schedules, or
 `source=now` for procedures started from Now. When the definition has
 `targetService`, the job also records `targetKind=service` and a copy of the
 service name in `targetName`. Historical jobs created before this contract keep
 these fields empty; Sentinel does not infer values retroactively.
+
+Each new job also contains `definition`, an immutable, versioned receipt of the
+name, description, steps, parameter definitions, webhook, and target used for
+that execution. Running and approval resume use only this receipt, so later
+edits or deletion of the runbook cannot change an in-flight execution.
+
+Only one queued, running, or waiting-for-approval job may own a service target
+at a time. A competing start returns `409 RUNBOOK_TARGET_BUSY`; targetless jobs
+continue to use only the global concurrency limit.
 
 Job status lifecycle: `queued` -> `running` -> `succeeded` | `failed` | `waiting_approval`
 
@@ -178,7 +167,7 @@ Marks the run as `failed` with error "approval rejected". Returns `200`.
 
 Both endpoints return `409 INVALID_STATE` if the run is not in `waiting_approval` status.
 
-Runs paused at `waiting_approval` are persisted decision points. They remain pending across Sentinel restarts until an operator approves or rejects them.
+Runs paused at `waiting_approval` are persisted decision points. They remain pending across Sentinel restarts until an operator approves or rejects them, while continuing to reserve their service target.
 
 At each step completion, the job is updated in the store and an `ops.job.updated` event is emitted with the full job object including accumulated step results.
 

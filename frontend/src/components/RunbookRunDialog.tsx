@@ -22,7 +22,11 @@ import { cn } from '@/lib/utils'
 
 type RunbookRunDialogProps = {
   open: boolean
-  runbook: Pick<OpsRunbook, 'id' | 'name' | 'parameters'> | null
+  runbook:
+    | (Pick<OpsRunbook, 'id' | 'name' | 'steps' | 'parameters' | 'targetService'> & {
+        description?: string
+      })
+    | null
   confirming?: boolean
   onConfirm: (parameters: Record<string, string>) => void
   onCancel: () => void
@@ -53,6 +57,16 @@ function validateParams(
   return errors
 }
 
+function stepsWithStableKeys(steps: OpsRunbook['steps']) {
+  const occurrences = new Map<string, number>()
+  return steps.map((step) => {
+    const signature = JSON.stringify(step)
+    const occurrence = occurrences.get(signature) ?? 0
+    occurrences.set(signature, occurrence + 1)
+    return { key: `${signature}:${occurrence}`, step }
+  })
+}
+
 export function RunbookRunDialog({
   open,
   runbook,
@@ -62,6 +76,7 @@ export function RunbookRunDialog({
 }: RunbookRunDialogProps) {
   const id = useId()
   const params = useMemo(() => runbook?.parameters ?? [], [runbook])
+  const steps = useMemo(() => stepsWithStableKeys(runbook?.steps ?? []), [runbook])
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -98,11 +113,41 @@ export function RunbookRunDialog({
         <DialogHeader>
           <DialogTitle>Run {runbook.name}</DialogTitle>
           <DialogDescription>
-            {params.length > 0
-              ? 'Configure parameters before running this runbook.'
-              : 'This runbook has no parameters. Click Run to execute.'}
+            Review the target and execution steps before starting this runbook.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="grid gap-3 rounded-md border border-border-subtle bg-surface-raised p-3 text-[11px]">
+          {runbook.description && (
+            <p className="leading-relaxed text-secondary-foreground">{runbook.description}</p>
+          )}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Target
+            </p>
+            <p className="mt-0.5 font-medium">
+              {runbook.targetService ? `Service · ${runbook.targetService}` : 'No service target'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Steps and effects
+            </p>
+            <ol className="mt-1 grid gap-1">
+              {steps.map(({ key, step }, index) => (
+                <li key={key} className="flex items-start gap-2">
+                  <span className="text-muted-foreground">{index + 1}.</span>
+                  <span>
+                    {step.title}
+                    <span className="ml-1 text-[10px] uppercase text-muted-foreground">
+                      {step.type === 'approval' ? 'approval required' : step.type}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
 
         {params.length > 0 && (
           <div className="grid gap-3 py-1">
@@ -188,6 +233,10 @@ export function RunbookRunDialog({
             })}
           </div>
         )}
+
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          Parameter values are persisted in the execution receipt and remain visible to operators.
+        </p>
 
         <DialogFooter>
           <Button

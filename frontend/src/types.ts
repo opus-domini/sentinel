@@ -268,6 +268,18 @@ export type OpsRunbookStepResult = {
   durationMs: number
 }
 
+export type OpsRunbookExecutionSnapshot = {
+  schemaVersion: number
+  runbookId: string
+  name: string
+  description: string
+  steps: Array<OpsRunbookStep>
+  parameters: Array<RunbookParameter>
+  webhookURL: string
+  targetKind?: 'service'
+  targetName?: string
+}
+
 export type OpsRunbookRun = {
   id: string
   runbookId: string
@@ -282,6 +294,7 @@ export type OpsRunbookRun = {
   source?: 'runbooks' | 'scheduler' | 'now'
   targetKind?: 'service'
   targetName?: string
+  definition?: OpsRunbookExecutionSnapshot
   createdAt: string
   startedAt?: string
   finishedAt?: string
@@ -422,6 +435,8 @@ export type NowRunbookReference = {
   name: string
   description?: string
   parameters: Array<RunbookParameter>
+  targetService?: string
+  steps: Array<OpsRunbookStep>
 }
 
 export type NowRunReference = {

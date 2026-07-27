@@ -3,8 +3,10 @@ package runbook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	fastshot "github.com/opus-domini/fast-shot"
@@ -15,7 +17,6 @@ import (
 // Repo defines the store operations consumed by the runbook runner.
 type Repo interface {
 	UpdateOpsRunbookRun(ctx context.Context, update store.OpsRunbookRunUpdate) (store.OpsRunbookRun, error)
-	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
 	GetOpsRunbookRun(ctx context.Context, id string) (store.OpsRunbookRun, error)
 }
 
@@ -33,10 +34,6 @@ type RunParams struct {
 	// RunTimeout is the maximum wall-clock duration for the entire run.
 	// Defaults to 5 minutes if zero.
 	RunTimeout time.Duration
-
-	// Parameters holds the resolved parameter values to substitute into
-	// step commands before execution.
-	Parameters map[string]string
 
 	// CommandRunner executes run and script steps. Production callers leave it
 	// nil to use the real command runner; tests provide an isolated fake.
@@ -77,6 +74,13 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 
 	job := params.Job
 	now := time.Now().UTC()
+	definition, err := executionDefinition(job)
+	if err != nil {
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer finCancel()
+		finishRun(finCtx, repo, emit, params, 0, "", err.Error(), "[]", "")
+		return
+	}
 
 	// Mark as running (best-effort).
 	runningJob, err := repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
@@ -94,34 +98,13 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 		keyJob:       runningJob,
 	})
 
-	// Fetch runbook steps.
-	rb, err := repo.GetOpsRunbook(ctx, job.RunbookID)
-	if err != nil {
-		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer finCancel()
-		finishRun(finCtx, repo, emit, params, 0, "", err.Error(), "[]", "")
-		return
-	}
-	steps := make([]Step, len(rb.Steps))
-	for i, s := range rb.Steps {
-		steps[i] = Step{
-			Type:            s.Type,
-			Title:           s.Title,
-			Command:         s.Command,
-			Script:          s.Script,
-			Description:     s.Description,
-			ContinueOnError: s.ContinueOnError,
-			Timeout:         s.Timeout,
-			Retries:         s.Retries,
-			RetryDelay:      s.RetryDelay,
-		}
-	}
+	steps := executionSteps(definition.Steps)
 
 	stepTimeout := params.StepTimeout
 	if stepTimeout <= 0 {
 		stepTimeout = 30 * time.Second
 	}
-	executor := NewExecutor(params.CommandRunner, stepTimeout, params.Parameters)
+	executor := NewExecutor(params.CommandRunner, stepTimeout, job.ParametersUsed)
 	var accumulated []store.OpsRunbookStepResult
 
 	// beforeStep writes a preliminary step result to the DB before execution.
@@ -239,7 +222,7 @@ func Run(ctx context.Context, repo Repo, emit EmitFunc, params RunParams) {
 	// (trace IDs) while shedding the done channel.
 	finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer finCancel()
-	finishRun(finCtx, repo, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON), rb.WebhookURL)
+	finishRun(finCtx, repo, emit, params, len(results), lastStep, errMsg, string(stepResultsJSON), definition.WebhookURL)
 }
 
 func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, completed int, lastStep, errMsg, stepResultsJSON, webhookURL string) {
@@ -328,12 +311,18 @@ func buildWebhookPayload(params RunParams, job store.OpsRunbookRun) webhookPaylo
 		}
 	}
 
+	runbookID := params.Job.RunbookID
+	runbookName := params.Job.RunbookName
+	if params.Job.Definition != nil {
+		runbookID = params.Job.Definition.RunbookID
+		runbookName = params.Job.Definition.Name
+	}
 	return webhookPayload{
 		Event:  "runbook.completed",
 		SentAt: time.Now().UTC().Format(time.RFC3339),
 		Runbook: webhookRunbook{
-			ID:   params.Job.RunbookID,
-			Name: params.Job.RunbookName,
+			ID:   runbookID,
+			Name: runbookName,
 		},
 		Job: webhookJob{
 			ID:             job.ID,
@@ -377,9 +366,7 @@ func fireWebhook(ctx context.Context, webhookURL string, payload any) {
 	slog.Info("webhook delivered", "url", webhookURL, "status", resp.Status().Code())
 }
 
-// ResumeRun continues a paused runbook run from the step after the
-// approval step. It re-fetches the runbook, builds steps, and resumes
-// execution from resumeFromStep+1.
+// ResumeRun continues a paused runbook run from the immutable receipt.
 func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, resumeFromStep int) {
 	runTimeout := params.RunTimeout
 	if runTimeout <= 0 {
@@ -390,6 +377,13 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 
 	job := params.Job
 	now := time.Now().UTC()
+	definition, err := executionDefinition(job)
+	if err != nil {
+		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer finCancel()
+		finishRun(finCtx, repo, emit, params, resumeFromStep+1, "", err.Error(), "", "")
+		return
+	}
 
 	// Mark as running again.
 	runningJob, err := repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
@@ -407,34 +401,13 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		keyJob:       runningJob,
 	})
 
-	// Fetch runbook steps.
-	rb, err := repo.GetOpsRunbook(ctx, job.RunbookID)
-	if err != nil {
-		finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer finCancel()
-		finishRun(finCtx, repo, emit, params, resumeFromStep+1, "", err.Error(), "[]", "")
-		return
-	}
-	steps := make([]Step, len(rb.Steps))
-	for i, s := range rb.Steps {
-		steps[i] = Step{
-			Type:            s.Type,
-			Title:           s.Title,
-			Command:         s.Command,
-			Script:          s.Script,
-			Description:     s.Description,
-			ContinueOnError: s.ContinueOnError,
-			Timeout:         s.Timeout,
-			Retries:         s.Retries,
-			RetryDelay:      s.RetryDelay,
-		}
-	}
+	steps := executionSteps(definition.Steps)
 
 	stepTimeout := params.StepTimeout
 	if stepTimeout <= 0 {
 		stepTimeout = 30 * time.Second
 	}
-	executor := NewExecutor(params.CommandRunner, stepTimeout, params.Parameters)
+	executor := NewExecutor(params.CommandRunner, stepTimeout, job.ParametersUsed)
 
 	// Recover previous step results from the run record. If this read fails,
 	// continuing would start from an empty set and overwrite the pre-approval
@@ -560,5 +533,36 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 
 	finCtx, finCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer finCancel()
-	finishRun(finCtx, repo, emit, params, resumeFromStep+1+len(results), lastStep, errMsg, string(stepResultsJSON), rb.WebhookURL)
+	finishRun(finCtx, repo, emit, params, resumeFromStep+1+len(results), lastStep, errMsg, string(stepResultsJSON), definition.WebhookURL)
+}
+
+func executionDefinition(job store.OpsRunbookRun) (*store.OpsRunbookExecutionSnapshot, error) {
+	if job.Definition == nil {
+		return nil, errors.New("execution receipt is missing")
+	}
+	if job.Definition.SchemaVersion != 1 {
+		return nil, fmt.Errorf("unsupported execution receipt schema version %d", job.Definition.SchemaVersion)
+	}
+	if strings.TrimSpace(job.Definition.RunbookID) == "" || job.Definition.RunbookID != job.RunbookID {
+		return nil, errors.New("execution receipt does not match the runbook")
+	}
+	return job.Definition, nil
+}
+
+func executionSteps(source []store.OpsRunbookStep) []Step {
+	steps := make([]Step, len(source))
+	for i, step := range source {
+		steps[i] = Step{
+			Type:            step.Type,
+			Title:           step.Title,
+			Command:         step.Command,
+			Script:          step.Script,
+			Description:     step.Description,
+			ContinueOnError: step.ContinueOnError,
+			Timeout:         step.Timeout,
+			Retries:         step.Retries,
+			RetryDelay:      step.RetryDelay,
+		}
+	}
+	return steps
 }

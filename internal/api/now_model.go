@@ -58,10 +58,12 @@ type nowReliability struct {
 }
 
 type nowRunbookReference struct {
-	ID          string                   `json:"id"`
-	Name        string                   `json:"name"`
-	Description string                   `json:"description,omitempty"`
-	Parameters  []store.RunbookParameter `json:"parameters"`
+	ID            string                   `json:"id"`
+	Name          string                   `json:"name"`
+	Description   string                   `json:"description,omitempty"`
+	Parameters    []store.RunbookParameter `json:"parameters"`
+	TargetService string                   `json:"targetService,omitempty"`
+	Steps         []store.OpsRunbookStep   `json:"steps"`
 }
 
 type nowServiceReference struct {
@@ -440,11 +442,17 @@ func nowRunbookReferenceFromStore(runbook store.OpsRunbook) *nowRunbookReference
 	if parameters == nil {
 		parameters = []store.RunbookParameter{}
 	}
+	steps := runbook.Steps
+	if steps == nil {
+		steps = []store.OpsRunbookStep{}
+	}
 	return &nowRunbookReference{
-		ID:          runbook.ID,
-		Name:        runbook.Name,
-		Description: runbook.Description,
-		Parameters:  parameters,
+		ID:            runbook.ID,
+		Name:          runbook.Name,
+		Description:   runbook.Description,
+		Parameters:    parameters,
+		TargetService: runbook.TargetService,
+		Steps:         steps,
 	}
 }
 

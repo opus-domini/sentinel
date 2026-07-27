@@ -166,6 +166,10 @@ func (r *failingScheduleUpdateRepo) ListDueSchedules(context.Context, time.Time,
 	return nil, nil
 }
 
+func (r *failingScheduleUpdateRepo) GetOpsRunbook(_ context.Context, id string) (store.OpsRunbook, error) {
+	return store.OpsRunbook{ID: id, Name: "runbook"}, nil
+}
+
 func (r *failingScheduleUpdateRepo) CreateOpsRunbookRun(context.Context, store.OpsRunbookRunWrite) (store.OpsRunbookRun, error) {
 	return store.OpsRunbookRun{}, nil
 }
@@ -207,10 +211,67 @@ func TestExecuteRunbookHandlesScheduleUpdateError(t *testing.T) {
 	svc.executeRunbook(context.Background(), store.OpsRunbookRun{
 		ID:        "job-1",
 		RunbookID: "runbook-1",
-	}, "schedule-1", nil)
+		Definition: &store.OpsRunbookExecutionSnapshot{
+			SchemaVersion: 1,
+			RunbookID:     "runbook-1",
+		},
+	}, "schedule-1")
 
 	if repo.updateCalls != 1 {
 		t.Fatalf("UpdateScheduleLastRun calls = %d, want 1", repo.updateCalls)
+	}
+}
+
+type busyTargetScheduleRepo struct {
+	advancedStatus string
+	nextRunAt      string
+	lastStatus     string
+}
+
+func (r *busyTargetScheduleRepo) ListDueSchedules(context.Context, time.Time, int) ([]store.OpsSchedule, error) {
+	return nil, nil
+}
+
+func (r *busyTargetScheduleRepo) GetOpsRunbook(_ context.Context, id string) (store.OpsRunbook, error) {
+	return store.OpsRunbook{
+		ID: id, Name: "Busy", TargetService: "nginx",
+		Steps: []store.OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	}, nil
+}
+
+func (r *busyTargetScheduleRepo) CreateOpsRunbookRun(context.Context, store.OpsRunbookRunWrite) (store.OpsRunbookRun, error) {
+	return store.OpsRunbookRun{}, store.ErrOpsRunbookTargetBusy
+}
+
+func (r *busyTargetScheduleRepo) UpdateScheduleAfterRun(_ context.Context, _ string, _, status, nextRunAt string, _ bool) error {
+	r.advancedStatus = status
+	r.nextRunAt = nextRunAt
+	return nil
+}
+
+func (r *busyTargetScheduleRepo) UpdateScheduleLastRun(_ context.Context, _, _, status string) error {
+	r.lastStatus = status
+	return nil
+}
+
+func TestDueScheduleRecordsTargetBusyAfterAdvancingNextRun(t *testing.T) {
+	t.Parallel()
+
+	repo := &busyTargetScheduleRepo{}
+	svc := New(repo, schedulerRunbookRepo{}, Options{})
+	svc.executeDueSchedule(context.Background(), store.OpsSchedule{
+		ID:           "schedule-1",
+		RunbookID:    "runbook-1",
+		ScheduleType: "cron",
+		CronExpr:     "*/5 * * * *",
+		Timezone:     "UTC",
+	}, time.Now().UTC())
+
+	if repo.advancedStatus != "running" || repo.nextRunAt == "" {
+		t.Fatalf("advanced schedule = (%q, %q)", repo.advancedStatus, repo.nextRunAt)
+	}
+	if repo.lastStatus != "target_busy" {
+		t.Fatalf("last status = %q, want target_busy", repo.lastStatus)
 	}
 }
 

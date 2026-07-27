@@ -12,6 +12,22 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
+func TestRunbookToolErrorReportsBusyTarget(t *testing.T) {
+	t.Parallel()
+
+	err := runbookToolError("run runbook", runbook.ErrTargetBusy)
+	if err == nil || err.Error() != "target service already has an active execution" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func assertExecutionReceipt(t *testing.T, definition *store.OpsRunbookExecutionSnapshot, runbookID string) {
+	t.Helper()
+	if definition == nil || definition.SchemaVersion != 1 || definition.RunbookID != runbookID {
+		t.Fatalf("execution receipt = %#v", definition)
+	}
+}
+
 type runbookTargetCatalog struct {
 	services []opsplane.ServiceStatus
 }
@@ -78,6 +94,7 @@ func TestRunbookToolsLifecycle(t *testing.T) {
 	if len(waited.Run.StepResults) != 1 || waited.Run.StepResults[0].Output != "6789" || !waited.Run.StepResults[0].OutputTruncated {
 		t.Fatalf("bounded step output = %#v", waited.Run.StepResults)
 	}
+	assertExecutionReceipt(t, waited.Run.Definition, created.Runbook.ID)
 
 	_, runs, err := toolset.listRunbookRuns(context.Background(), nil, runbookListRunsInput{Limit: 1, OutputTailChars: 4})
 	if err != nil || len(runs.Runs) != 1 || runs.Runs[0].ID != started.Run.ID {

@@ -140,3 +140,57 @@ func TestManagerValidatesUniqueTrackedServiceTargets(t *testing.T) {
 		t.Fatalf("missing target error = %v, want ErrTargetServiceNotFound", err)
 	}
 }
+
+func TestManagerRejectsSecondActiveExecutionForSameTarget(t *testing.T) {
+	t.Parallel()
+
+	st, err := store.New(filepath.Join(t.TempDir(), "sentinel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	manager := NewManager(
+		st,
+		targetCatalogStub{services: []opsplane.ServiceStatus{{Name: "nginx"}}},
+		nil,
+		2,
+		func(ctx context.Context, _ string, _ ...string) (string, error) {
+			once.Do(func() { close(started) })
+			select {
+			case <-release:
+				return "ok", nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		},
+	)
+	t.Cleanup(func() {
+		close(release)
+		manager.Shutdown(context.Background())
+	})
+	rb, _, err := manager.Create(context.Background(), store.OpsRunbookWrite{
+		Name:          "Nginx recovery",
+		TargetService: "nginx",
+		Steps:         []store.OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Start(context.Background(), rb.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if _, err := manager.StartFromNow(context.Background(), rb.ID, nil); !errors.Is(err, ErrTargetBusy) {
+		t.Fatalf("second start error = %v, want ErrTargetBusy", err)
+	}
+	runs, err := manager.ListRuns(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("runs = %d, want 1", len(runs))
+	}
+}

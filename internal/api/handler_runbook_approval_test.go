@@ -183,9 +183,9 @@ func createWaitingApprovalRunWithSteps(
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
 	run, err := st.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
-		RunbookID: rb.ID,
-		Source:    store.OpsRunbookRunSourceRunbooks,
-		At:        time.Now().UTC(),
+		Definition: rb,
+		Source:     store.OpsRunbookRunSourceRunbooks,
+		At:         time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)

@@ -3606,6 +3606,15 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 
 	h, st := newTestHandler(t, nil)
 	ctx := context.Background()
+	runbook, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		ID:            "ops.test",
+		Name:          "Test",
+		TargetService: "sentinel",
+		Steps:         []store.OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/ops/runbooks", nil)
@@ -3616,10 +3625,10 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 	body := jsonBody(t, w)
 	data, _ := body["data"].(map[string]any)
 	runbooksRaw, _ := data["runbooks"].([]any)
-	if len(runbooksRaw) == 0 {
-		t.Fatalf("expected seeded runbooks")
+	if len(runbooksRaw) != 1 {
+		t.Fatalf("runbooks = %d, want 1", len(runbooksRaw))
 	}
-	const runbookID = "ops.service.recover"
+	runbookID := runbook.ID
 
 	eventHub := events.NewHub()
 	eventsCh, unsubscribe := eventHub.Subscribe(8)
@@ -3669,6 +3678,55 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 		loaded.TargetKind != store.OpsRunbookRunTargetService ||
 		loaded.TargetName != "sentinel" {
 		t.Fatalf("job context = (%q, %q, %q)", loaded.Source, loaded.TargetKind, loaded.TargetName)
+	}
+}
+
+func TestRunOpsRunbookReturnsTargetBusyConflict(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil)
+	h.runbooks.Shutdown(context.Background())
+	started := make(chan struct{})
+	release := make(chan struct{})
+	h.runbooks = runbook.NewManager(st, h.ops, h.emitEvent, 2, func(ctx context.Context, _ string, _ ...string) (string, error) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		select {
+		case <-release:
+			return "", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	})
+	t.Cleanup(func() { close(release) })
+
+	rb, err := st.InsertOpsRunbook(context.Background(), store.OpsRunbookWrite{
+		ID:            "busy.target",
+		Name:          "Busy target",
+		TargetService: "nginx",
+		Steps:         []store.OpsRunbookStep{{Type: "run", Title: "Hold", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.runbooks.Start(context.Background(), rb.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/runbooks/"+rb.ID+"/run", nil)
+	r.SetPathValue("runbook", rb.ID)
+	h.runOpsRunbook(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", w.Code, w.Body.String())
+	}
+	if code := errCode(jsonBody(t, w)); code != "RUNBOOK_TARGET_BUSY" {
+		t.Fatalf("code = %q, want RUNBOOK_TARGET_BUSY", code)
 	}
 }
 
@@ -4580,18 +4638,24 @@ func TestCreateOpsRunbookValidation(t *testing.T) {
 	}
 }
 
-func TestDeleteSeededOpsRunbook(t *testing.T) {
+func TestDeleteOpsRunbook(t *testing.T) {
 	t.Parallel()
 
 	h, st := newTestHandler(t, nil)
-	const runbookID = "ops.service.recover"
+	runbook, err := st.InsertOpsRunbook(context.Background(), store.OpsRunbookWrite{
+		ID: "ops.delete", Name: "Delete", Steps: []store.OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runbookID := runbook.ID
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodDelete, "/api/ops/runbooks/"+runbookID, nil)
 	r.SetPathValue("runbook", runbookID)
 	h.deleteOpsRunbook(w, r)
 	if w.Code != http.StatusOK {
-		t.Fatalf("delete seeded runbook status = %d, want 200; body = %s", w.Code, w.Body.String())
+		t.Fatalf("delete runbook status = %d, want 200; body = %s", w.Code, w.Body.String())
 	}
 
 	if _, err := st.GetOpsRunbook(context.Background(), runbookID); !errors.Is(err, sql.ErrNoRows) {
@@ -5468,9 +5532,9 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 			Steps: []store.OpsRunbookStep{{Type: "run", Title: "echo", Command: "echo ok"}},
 		})
 		job, err := st.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
-			RunbookID: rb.ID,
-			Source:    store.OpsRunbookRunSourceRunbooks,
-			At:        time.Now().UTC(),
+			Definition: rb,
+			Source:     store.OpsRunbookRunSourceRunbooks,
+			At:         time.Now().UTC(),
 		})
 		if err != nil {
 			t.Fatalf("CreateOpsRunbookRun: %v", err)

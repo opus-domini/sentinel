@@ -15,7 +15,11 @@ import (
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
-const keyJobID = "jobId"
+const (
+	keyAction   = "action"
+	keyJobID    = "jobId"
+	keySchedule = "schedule"
+)
 
 const (
 	defaultTickInterval  = 5 * time.Second
@@ -26,6 +30,7 @@ const (
 
 type schedulerRepo interface {
 	ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]store.OpsSchedule, error)
+	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
 	CreateOpsRunbookRun(ctx context.Context, write store.OpsRunbookRunWrite) (store.OpsRunbookRun, error)
 	UpdateScheduleAfterRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
 	UpdateScheduleLastRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus string) error
@@ -216,17 +221,17 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 	// Resolve the runbook's parameter defaults so scheduled runs substitute
 	// {{PARAM}} placeholders just like manual runs (which were running with the
 	// raw placeholders before).
-	rb, rbErr := s.runbookRepo.GetOpsRunbook(ctx, sched.RunbookID)
+	rb, rbErr := s.repo.GetOpsRunbook(ctx, sched.RunbookID)
 	if rbErr != nil {
 		s.releaseSchedule(sched.ID)
 		if errors.Is(rbErr, sql.ErrNoRows) {
-			slog.Warn("scheduler auto-heal: disabling orphan schedule", "schedule", sched.ID, "runbook", sched.RunbookID)
+			slog.Warn("scheduler auto-heal: disabling orphan schedule", keySchedule, sched.ID, "runbook", sched.RunbookID)
 			if healErr := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); healErr != nil {
-				slog.Warn("scheduler auto-heal: update failed", "schedule", sched.ID, "err", healErr)
+				slog.Warn("scheduler auto-heal: update failed", keySchedule, sched.ID, "err", healErr)
 			}
 			return
 		}
-		slog.Warn("scheduler load runbook failed", "schedule", sched.ID, "runbook", sched.RunbookID, "err", rbErr)
+		slog.Warn("scheduler load runbook failed", keySchedule, sched.ID, "runbook", sched.RunbookID, "err", rbErr)
 		return
 	}
 	params := runbook.ResolveParams(rb.Parameters, nil)
@@ -234,7 +239,7 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		// A required parameter has no default; running with placeholders would be
 		// worse than skipping. Surface it instead of executing.
 		s.releaseSchedule(sched.ID)
-		slog.Warn("scheduler skipping run: unmet required parameters", "schedule", sched.ID, "runbook", sched.RunbookID, "err", err)
+		slog.Warn("scheduler skipping run: unmet required parameters", keySchedule, sched.ID, "runbook", sched.RunbookID, "err", err)
 		return
 	}
 
@@ -245,28 +250,44 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 	nextRunAt, enabled := s.computeNextRun(sched)
 	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, now.Format(time.RFC3339), "running", nextRunAt, enabled); err != nil {
 		s.releaseSchedule(sched.ID)
-		slog.Warn("scheduler advance schedule failed", "schedule", sched.ID, "err", err)
+		slog.Warn("scheduler advance schedule failed", keySchedule, sched.ID, "err", err)
 		return
 	}
 
 	job, err := s.repo.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
-		RunbookID:  sched.RunbookID,
+		Definition: rb,
 		Source:     store.OpsRunbookRunSourceScheduler,
 		Parameters: params,
 		At:         now,
 	})
 	if err != nil {
 		s.releaseSchedule(sched.ID)
-		slog.Warn("scheduler create run failed", "schedule", sched.ID, "runbook", sched.RunbookID, "err", err)
+		if errors.Is(err, store.ErrOpsRunbookTargetBusy) {
+			if updateErr := s.repo.UpdateScheduleLastRun(
+				ctx,
+				sched.ID,
+				now.Format(time.RFC3339),
+				"target_busy",
+			); updateErr != nil {
+				slog.Warn("scheduler record busy target failed", keySchedule, sched.ID, "err", updateErr)
+			}
+			s.publish(events.TypeScheduleUpdated, map[string]any{
+				keyAction:   "run_skipped",
+				keySchedule: sched.ID,
+				"status":    "target_busy",
+			})
+			return
+		}
+		slog.Warn("scheduler create run failed", keySchedule, sched.ID, "runbook", sched.RunbookID, "err", err)
 		return
 	}
 
-	slog.Info("scheduler triggered run", "schedule", sched.ID, "runbook", sched.RunbookID, "job", job.ID)
+	slog.Info("scheduler triggered run", keySchedule, sched.ID, "runbook", sched.RunbookID, "job", job.ID)
 
 	s.publish(events.TypeScheduleUpdated, map[string]any{
-		"action":   "triggered",
-		"schedule": sched.ID,
-		keyJobID:   job.ID,
+		keyAction:   "triggered",
+		keySchedule: sched.ID,
+		keyJobID:    job.ID,
 	})
 
 	if !s.beginRun() {
@@ -283,15 +304,14 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		case <-s.runCtx.Done():
 			return
 		}
-		s.executeRunbook(s.runCtx, job, sched.ID, params)
+		s.executeRunbook(s.runCtx, job, sched.ID)
 	}()
 }
 
-func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string, params map[string]string) {
+func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string) {
 	runbook.Run(ctx, s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
 		StepTimeout: stepTimeout,
-		Parameters:  params,
 		OnFinish: func(ctx context.Context, status string) {
 			finished := time.Now().UTC()
 			// Update only last_run_*; next_run_at/enabled were set at dispatch and
@@ -300,10 +320,10 @@ func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, s
 				slog.Warn("scheduler: update schedule after run", "err", err)
 			}
 			s.publish(events.TypeScheduleUpdated, map[string]any{
-				"action":   "run_completed",
-				"schedule": scheduleID,
-				keyJobID:   job.ID,
-				"status":   status,
+				keyAction:   "run_completed",
+				keySchedule: scheduleID,
+				keyJobID:    job.ID,
+				"status":    status,
 			})
 		},
 	})
@@ -321,12 +341,12 @@ func (s *Service) computeNextRun(sched store.OpsSchedule) (string, bool) {
 	// type="cron": compute next run time.
 	loc, err := time.LoadLocation(sched.Timezone)
 	if err != nil {
-		slog.Warn("scheduler invalid timezone, using UTC", "schedule", sched.ID, "timezone", sched.Timezone)
+		slog.Warn("scheduler invalid timezone, using UTC", keySchedule, sched.ID, "timezone", sched.Timezone)
 		loc = time.UTC
 	}
 	cronSched, err := validate.ParseCron(sched.CronExpr)
 	if err != nil {
-		slog.Warn("scheduler invalid cron expression", "schedule", sched.ID, "expr", sched.CronExpr, "err", err)
+		slog.Warn("scheduler invalid cron expression", keySchedule, sched.ID, "expr", sched.CronExpr, "err", err)
 		return "", false
 	}
 	nextRun := cronSched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
@@ -353,7 +373,7 @@ func (s *Service) catchUpMissedRuns(ctx context.Context) {
 			continue
 		}
 
-		slog.Info("scheduler catching up missed run", "schedule", sched.ID, "missed_at", sched.NextRunAt)
+		slog.Info("scheduler catching up missed run", keySchedule, sched.ID, "missed_at", sched.NextRunAt)
 		s.executeDueSchedule(ctx, sched, now)
 	}
 }
@@ -362,7 +382,7 @@ func (s *Service) recomputeNextRun(ctx context.Context, sched store.OpsSchedule)
 	if sched.ScheduleType == "once" {
 		// One-time schedule that's past due and beyond catch-up: disable it.
 		if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); err != nil {
-			slog.Warn("scheduler: disable one-time schedule", "schedule", sched.ID, "err", err)
+			slog.Warn("scheduler: disable one-time schedule", keySchedule, sched.ID, "err", err)
 		}
 		return
 	}
@@ -373,12 +393,12 @@ func (s *Service) recomputeNextRun(ctx context.Context, sched store.OpsSchedule)
 	}
 	cronSched, err := validate.ParseCron(sched.CronExpr)
 	if err != nil {
-		slog.Warn("scheduler recompute failed", "schedule", sched.ID, "err", err)
+		slog.Warn("scheduler recompute failed", keySchedule, sched.ID, "err", err)
 		return
 	}
 	nextRun := cronSched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
 	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, sched.LastRunAt, sched.LastRunStatus, nextRun, true); err != nil {
-		slog.Warn("scheduler: recompute next run", "schedule", sched.ID, "err", err)
+		slog.Warn("scheduler: recompute next run", keySchedule, sched.ID, "err", err)
 	}
 }
 

@@ -123,13 +123,21 @@ A typical agent flow is:
 `runbook_wait` is a bounded long poll capped at 20 seconds. `runbook_get_run`,
 `runbook_wait`, and `runbook_list_runs` return only the trailing portion of each
 step's output (4,000 characters by default, configurable up to 32,768) and mark
-truncated output with `outputTruncated: true`.
+truncated output with `outputTruncated: true`. Their run objects also include
+the immutable `definition` receipt used by the execution. Resolved parameter
+values are persisted and visible; do not pass credentials or tokens as
+runbook parameters.
 
 `runbook_create` defaults `enabled` to `true`, performs the same definition
 validation as the HTTP API, and returns non-blocking shell syntax warnings.
 `runbook_delete` requires `confirmName` to exactly match the persisted name,
 refuses deletion while an execution is queued, running, or waiting for approval,
 and preserves historical executions.
+
+Starting a run whose service target already has a queued, running, or
+waiting-for-approval execution fails with `target service already has an active
+execution`. Runs without a service target remain governed only by the global
+concurrency limit.
 
 ## Interaction Model
 

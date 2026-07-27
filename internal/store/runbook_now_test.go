@@ -99,10 +99,14 @@ func createNowTestRunbook(t *testing.T, s *Store, name string) OpsRunbook {
 func createNowTestRun(t *testing.T, s *Store, runbookID string, at time.Time, status string) OpsRunbookRun {
 	t.Helper()
 
+	runbook, err := s.GetOpsRunbook(context.Background(), runbookID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbook() error = %v", err)
+	}
 	run, err := s.CreateOpsRunbookRun(context.Background(), OpsRunbookRunWrite{
-		RunbookID: runbookID,
-		Source:    OpsRunbookRunSourceRunbooks,
-		At:        at,
+		Definition: runbook,
+		Source:     OpsRunbookRunSourceRunbooks,
+		At:         at,
 	})
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun() error = %v", err)

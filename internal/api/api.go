@@ -114,6 +114,7 @@ type presenceRepo interface {
 }
 
 type opsJobRepo interface {
+	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
 	CreateOpsRunbookRun(ctx context.Context, write store.OpsRunbookRunWrite) (store.OpsRunbookRun, error)
 	DeleteOpsRunbookRun(ctx context.Context, runID string) error
 }

@@ -37,6 +37,9 @@ var ErrTargetServiceNotFound = errors.New("runbook target service is not tracked
 // service target.
 var ErrTargetServiceConflict = errors.New("runbook target service is already associated")
 
+// ErrTargetBusy is returned when a service already has an active run.
+var ErrTargetBusy = errors.New("runbook target service already has an active execution")
+
 // TargetCatalog exposes the tracked services accepted by runbook definitions.
 type TargetCatalog interface {
 	ListServices(ctx context.Context) ([]opsplane.ServiceStatus, error)
@@ -45,6 +48,7 @@ type TargetCatalog interface {
 // ManagerRepo is the complete persistence contract used by Manager.
 type ManagerRepo interface {
 	Repo
+	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
 	ListOpsRunbooks(ctx context.Context) ([]store.OpsRunbook, error)
 	ListOpsRunbookRuns(ctx context.Context, limit int) ([]store.OpsRunbookRun, error)
 	InsertOpsRunbook(ctx context.Context, write store.OpsRunbookWrite) (store.OpsRunbook, error)
@@ -208,12 +212,15 @@ func (m *Manager) start(ctx context.Context, runbookID string, params map[string
 	}
 	now := time.Now().UTC()
 	job, err := m.repo.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
-		RunbookID:  runbookID,
+		Definition: rb,
 		Source:     source,
 		Parameters: resolved,
 		At:         now,
 	})
 	if err != nil {
+		if errors.Is(err, store.ErrOpsRunbookTargetBusy) {
+			return store.OpsRunbookRun{}, ErrTargetBusy
+		}
 		return store.OpsRunbookRun{}, err
 	}
 
@@ -228,7 +235,6 @@ func (m *Manager) start(ctx context.Context, runbookID string, params map[string
 		Run(m.ctx, m.repo, m.emitEvent, RunParams{
 			Job:           job,
 			StepTimeout:   30 * time.Second,
-			Parameters:    resolved,
 			CommandRunner: m.commandRunner,
 		})
 	}()
@@ -289,7 +295,6 @@ func (m *Manager) Approve(ctx context.Context, runID string) (store.OpsRunbookRu
 		ResumeRun(m.ctx, m.repo, m.emitEvent, RunParams{
 			Job:           running,
 			StepTimeout:   30 * time.Second,
-			Parameters:    job.ParametersUsed,
 			CommandRunner: m.commandRunner,
 		}, approvalStep)
 	}()

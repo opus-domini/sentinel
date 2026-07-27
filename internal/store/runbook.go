@@ -76,6 +76,19 @@ type OpsRunbook struct {
 	UpdatedAt     string             `json:"updatedAt"`
 }
 
+// OpsRunbookExecutionSnapshot is the immutable definition persisted with a run.
+type OpsRunbookExecutionSnapshot struct {
+	SchemaVersion int                `json:"schemaVersion"`
+	RunbookID     string             `json:"runbookId"`
+	Name          string             `json:"name"`
+	Description   string             `json:"description"`
+	Steps         []OpsRunbookStep   `json:"steps"`
+	Parameters    []RunbookParameter `json:"parameters"`
+	WebhookURL    string             `json:"webhookURL"`
+	TargetKind    string             `json:"targetKind,omitempty"`
+	TargetName    string             `json:"targetName,omitempty"`
+}
+
 // OpsRunbookStepResult represents ops runbook step result data.
 type OpsRunbookStepResult struct {
 	StepIndex  int    `json:"stepIndex"`
@@ -88,22 +101,23 @@ type OpsRunbookStepResult struct {
 
 // OpsRunbookRun represents ops runbook run data.
 type OpsRunbookRun struct {
-	ID             string                 `json:"id"`
-	RunbookID      string                 `json:"runbookId"`
-	RunbookName    string                 `json:"runbookName"`
-	Status         string                 `json:"status"`
-	TotalSteps     int                    `json:"totalSteps"`
-	CompletedSteps int                    `json:"completedSteps"`
-	CurrentStep    string                 `json:"currentStep"`
-	Error          string                 `json:"error"`
-	StepResults    []OpsRunbookStepResult `json:"stepResults"`
-	ParametersUsed map[string]string      `json:"parametersUsed"`
-	Source         string                 `json:"source,omitempty"`
-	TargetKind     string                 `json:"targetKind,omitempty"`
-	TargetName     string                 `json:"targetName,omitempty"`
-	CreatedAt      string                 `json:"createdAt"`
-	StartedAt      string                 `json:"startedAt,omitempty"`
-	FinishedAt     string                 `json:"finishedAt,omitempty"`
+	ID             string                       `json:"id"`
+	RunbookID      string                       `json:"runbookId"`
+	RunbookName    string                       `json:"runbookName"`
+	Status         string                       `json:"status"`
+	TotalSteps     int                          `json:"totalSteps"`
+	CompletedSteps int                          `json:"completedSteps"`
+	CurrentStep    string                       `json:"currentStep"`
+	Error          string                       `json:"error"`
+	StepResults    []OpsRunbookStepResult       `json:"stepResults"`
+	ParametersUsed map[string]string            `json:"parametersUsed"`
+	Source         string                       `json:"source,omitempty"`
+	TargetKind     string                       `json:"targetKind,omitempty"`
+	TargetName     string                       `json:"targetName,omitempty"`
+	Definition     *OpsRunbookExecutionSnapshot `json:"definition,omitempty"`
+	CreatedAt      string                       `json:"createdAt"`
+	StartedAt      string                       `json:"startedAt,omitempty"`
+	FinishedAt     string                       `json:"finishedAt,omitempty"`
 }
 
 // OpsRunbookWrite represents ops runbook write data.
@@ -118,10 +132,10 @@ type OpsRunbookWrite struct {
 	TargetService string
 }
 
-// OpsRunbookRunWrite is the single input contract for creating a run. Target
-// context is always derived from the persisted runbook definition.
+// OpsRunbookRunWrite is the single input contract for creating a run. The
+// definition is the same validated read used to resolve parameters.
 type OpsRunbookRunWrite struct {
-	RunbookID  string
+	Definition OpsRunbook
 	Source     string
 	Parameters map[string]string
 	At         time.Time
@@ -156,6 +170,10 @@ var ErrOpsRunbookRunConflict = errors.New("ops runbook run status conflict")
 
 // ErrOpsRunbookRunSource is returned when a new run has no canonical source.
 var ErrOpsRunbookRunSource = errors.New("ops runbook run source must be runbooks, scheduler, or now")
+
+// ErrOpsRunbookTargetBusy is returned when a service already has a queued,
+// running, or approval-paused execution.
+var ErrOpsRunbookTargetBusy = errors.New("ops runbook target already has an active execution")
 
 // ErrOpsRunbookActive is returned when a queued, running, or approval-paused
 // execution prevents deletion of its runbook definition.
@@ -221,8 +239,7 @@ func (s *Store) ListOpsRunbookRuns(ctx context.Context, limit int) ([]OpsRunbook
 	if limit > 500 {
 		limit = 500
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, source, target_kind, target_name, created_at, started_at, finished_at
+	rows, err := s.db.QueryContext(ctx, `SELECT`+opsRunbookRunSelect+`
 	FROM ops_runbook_runs
 	ORDER BY created_at DESC, id DESC
 	LIMIT ?`, limit)
@@ -251,8 +268,7 @@ func (s *Store) GetOpsRunbookRun(ctx context.Context, runID string) (OpsRunbookR
 	if runID == "" {
 		return OpsRunbookRun{}, sql.ErrNoRows
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, source, target_kind, target_name, created_at, started_at, finished_at
+	rows, err := s.db.QueryContext(ctx, `SELECT`+opsRunbookRunSelect+`
 	FROM ops_runbook_runs
 	WHERE id = ?
 	LIMIT 1`, runID)
@@ -327,6 +343,7 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 		out            OpsRunbookRun
 		stepResultsRaw string
 		paramsUsedRaw  string
+		definitionRaw  string
 	)
 	if err := scanner.Scan(
 		&out.ID,
@@ -342,6 +359,7 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 		&out.Source,
 		&out.TargetKind,
 		&out.TargetName,
+		&definitionRaw,
 		&out.CreatedAt,
 		&out.StartedAt,
 		&out.FinishedAt,
@@ -353,6 +371,18 @@ func scanOpsRunbookRun(scanner opsRunbookRunScanner) (OpsRunbookRun, error) {
 	}
 	if err := json.Unmarshal([]byte(paramsUsedRaw), &out.ParametersUsed); err != nil || out.ParametersUsed == nil {
 		out.ParametersUsed = map[string]string{}
+	}
+	if strings.TrimSpace(definitionRaw) != "" {
+		var definition OpsRunbookExecutionSnapshot
+		if err := json.Unmarshal([]byte(definitionRaw), &definition); err == nil {
+			if definition.Steps == nil {
+				definition.Steps = []OpsRunbookStep{}
+			}
+			if definition.Parameters == nil {
+				definition.Parameters = []RunbookParameter{}
+			}
+			out.Definition = &definition
+		}
 	}
 	return out, nil
 }
@@ -550,7 +580,8 @@ func (s *Store) UpdateOpsRunbookRun(ctx context.Context, u OpsRunbookRunUpdate) 
 
 // CreateOpsRunbookRun creates a queued run from one canonical write contract.
 func (s *Store) CreateOpsRunbookRun(ctx context.Context, write OpsRunbookRunWrite) (OpsRunbookRun, error) {
-	runbookID := strings.TrimSpace(write.RunbookID)
+	runbook := write.Definition
+	runbookID := strings.TrimSpace(runbook.ID)
 	if runbookID == "" {
 		return OpsRunbookRun{}, sql.ErrNoRows
 	}
@@ -559,10 +590,6 @@ func (s *Store) CreateOpsRunbookRun(ctx context.Context, write OpsRunbookRunWrit
 		source != OpsRunbookRunSourceScheduler &&
 		source != OpsRunbookRunSourceNow {
 		return OpsRunbookRun{}, ErrOpsRunbookRunSource
-	}
-	runbook, err := s.getOpsRunbookByID(ctx, runbookID)
-	if err != nil {
-		return OpsRunbookRun{}, err
 	}
 	now := write.At.UTC()
 	if now.IsZero() {
@@ -587,15 +614,51 @@ func (s *Store) CreateOpsRunbookRun(ctx context.Context, write OpsRunbookRunWrit
 	if targetName != "" {
 		targetKind = OpsRunbookRunTargetService
 	}
+	steps := runbook.Steps
+	if steps == nil {
+		steps = []OpsRunbookStep{}
+	}
+	parameters := runbook.Parameters
+	if parameters == nil {
+		parameters = []RunbookParameter{}
+	}
+	definition := OpsRunbookExecutionSnapshot{
+		SchemaVersion: 1,
+		RunbookID:     runbook.ID,
+		Name:          runbook.Name,
+		Description:   runbook.Description,
+		Steps:         steps,
+		Parameters:    parameters,
+		WebhookURL:    runbook.WebhookURL,
+		TargetKind:    targetKind,
+		TargetName:    targetName,
+	}
+	definitionJSON, err := json.Marshal(definition)
+	if err != nil {
+		return OpsRunbookRun{}, fmt.Errorf("marshal execution definition: %w", err)
+	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
-		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, source, target_kind, target_name, created_at, started_at, finished_at
-	) VALUES (?, ?, ?, ?, ?, 0, ?, '', '[]', ?, ?, ?, ?, ?, '', '')`,
+		id, runbook_id, runbook_name, status, total_steps, completed_steps, current_step, error, step_results, parameters_used, source, target_kind, target_name, definition_snapshot, created_at, started_at, finished_at
+	) VALUES (?, ?, ?, ?, ?, 0, ?, '', '[]', ?, ?, ?, ?, ?, ?, '', '')`,
 		runID, runbook.ID, runbook.Name, opsRunbookStatusQueued, totalSteps, currentStep,
-		string(paramsJSON), source, targetKind, targetName, now.Format(time.RFC3339),
+		string(paramsJSON), source, targetKind, targetName, string(definitionJSON), now.Format(time.RFC3339),
 	); err != nil {
+		if isOpsRunbookTargetBusyConstraint(err) {
+			return OpsRunbookRun{}, ErrOpsRunbookTargetBusy
+		}
 		return OpsRunbookRun{}, err
 	}
 	return s.GetOpsRunbookRun(ctx, runID)
+}
+
+func isOpsRunbookTargetBusyConstraint(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(
+		strings.ToLower(err.Error()),
+		"unique constraint failed: ops_runbook_runs.target_kind, ops_runbook_runs.target_name",
+	)
 }
 
 // FailOrphanedRuns handles fail orphaned runs.
