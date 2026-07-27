@@ -131,7 +131,8 @@ Returns `202` with the initial job object. Execution runs asynchronously in a ba
 
 Every manual run opens a confirmation that shows the description, service
 target, ordered steps, approval boundaries, and parameter persistence before
-the job is created.
+the job is created. A successful start immediately changes the route to the
+returned `/runbooks?job=<id>` receipt.
 
 Every new job persists its origin as `source=runbooks` for Runbooks/API/MCP,
 `source=scheduler` for periodic and manually triggered schedules, or
@@ -144,6 +145,14 @@ Each new job also contains `definition`, an immutable, versioned receipt of the
 name, description, steps, parameter definitions, webhook, and target used for
 that execution. Running and approval resume use only this receipt, so later
 edits or deletion of the runbook cannot change an in-flight execution.
+
+The receipt remains addressable at `/runbooks?job=<id>`. The execution ID is
+the canonical navigation key: if the current definition still exists, the UI
+opens its history with that job expanded; if the definition was deleted, the
+same URL renders the receipt standalone. The receipt distinguishes the stored
+execution result from the current state of its service target. Current target
+state is fetched only while the receipt is open and carries its own
+`observedAt`; it never rewrites historical evidence.
 
 Only one queued, running, or waiting-for-approval job may own a service target
 at a time. A competing start returns `409 RUNBOOK_TARGET_BUSY`; targetless jobs
@@ -168,6 +177,8 @@ Marks the run as `failed` with error "approval rejected". Returns `200`.
 Both endpoints return `409 INVALID_STATE` if the run is not in `waiting_approval` status.
 
 Runs paused at `waiting_approval` are persisted decision points. They remain pending across Sentinel restarts until an operator approves or rejects them, while continuing to reserve their service target.
+Before the decision controls, the frontend shows the recorded target and the
+remaining steps from `definition`, not from the current editable runbook.
 
 At each step completion, the job is updated in the store and an `ops.job.updated` event is emitted with the full job object including accumulated step results.
 
@@ -277,6 +288,9 @@ Query a single job:
 GET /api/ops/jobs/{job}
 ```
 
+Returns the persisted execution receipt independently from the recent-job
+window and independently from whether its runbook definition still exists.
+
 Delete a job:
 
 ```
@@ -305,14 +319,19 @@ When a schedule is created, updated, or deleted, an `ops.schedule.updated` event
 The dedicated `/runbooks` route provides a standalone page for runbook execution and job history:
 
 - Sidebar listing all runbooks with run counts
-- Detail view showing step overview and a run button
-- Job history cards, expandable to reveal per-step results
-- Each step result is collapsible with output or "No output" indicator
+- Detail view showing step overview, typed service-target link, and a run button
+- Job history cards expandable into immutable execution receipts
+- Frozen steps correlated with stored output, errors, and duration
+- Separate **Execution result** and on-demand **Current target state**
+- Canonical `/runbooks?job=<id>` links that survive definition deletion
 - Job deletion with inline confirmation
 - Editor for creating and editing custom runbooks with drag-to-reorder steps
 - Optional tracked-service selector with unique association enforcement
 - Source and service target shown in history only when the run contains them
 - Schedule management: create, edit, and delete cron or one-shot schedules per runbook
+
+A typed `409 RUNBOOK_TARGET_BUSY` keeps the current procedure context open and
+asks the operator to review the active execution before retrying.
 
 ## API Endpoints
 

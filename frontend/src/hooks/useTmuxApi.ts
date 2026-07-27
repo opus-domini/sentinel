@@ -1,5 +1,19 @@
 import { useCallback } from 'react'
 
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string
+  readonly details: unknown
+
+  constructor(message: string, status: number, code = '', details?: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
+
 export function useTmuxApi() {
   return useCallback(async <T>(path: string, init?: RequestInit): Promise<T> => {
     const headers: Record<string, string> = {
@@ -33,7 +47,8 @@ export function useTmuxApi() {
         errorObj?.message != null && typeof errorObj.message === 'string'
           ? errorObj.message
           : `HTTP ${response.status}`
-      throw new Error(message)
+      const code = errorObj?.code != null && typeof errorObj.code === 'string' ? errorObj.code : ''
+      throw new ApiError(message, response.status, code, errorObj?.details)
     }
 
     if (typeof payload === 'object' && payload !== null && 'data' in payload) {

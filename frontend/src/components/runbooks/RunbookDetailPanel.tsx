@@ -1,4 +1,5 @@
 import cronstrue from 'cronstrue'
+import { Link } from '@tanstack/react-router'
 import {
   CheckCircle2,
   Clock,
@@ -17,6 +18,7 @@ import { RunbookScheduleEditor } from '@/components/RunbookScheduleEditor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/useDateFormat'
+import { serviceStatusSearch } from '@/lib/deepLinks'
 import { cn } from '@/lib/utils'
 import {
   formatRunbookDuration,
@@ -252,7 +254,14 @@ export function RunbookDetailPanel({
 
       {runbook.targetService && (
         <p className="text-[10px] text-muted-foreground">
-          Service target: <span className="font-mono text-foreground">{runbook.targetService}</span>
+          Service target:{' '}
+          <Link
+            to="/services"
+            search={serviceStatusSearch(runbook.targetService)}
+            className="font-mono text-primary-text no-underline hover:underline"
+          >
+            {runbook.targetService}
+          </Link>
         </p>
       )}
 

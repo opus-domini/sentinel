@@ -3,7 +3,8 @@ import { Activity, ArrowUpRight, CircleAlert, Play, ShieldAlert } from 'lucide-r
 import type { NowAttention as NowAttentionData, NowServiceFailedAttention } from '@/types'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/useDateFormat'
-import { nowAttentionHiddenCount, nowRunbookSearch, nowServiceSearch } from '@/lib/nowPresentation'
+import { runbookExecutionSearch, serviceStatusSearch } from '@/lib/deepLinks'
+import { nowAttentionHiddenCount } from '@/lib/nowPresentation'
 
 type NowAttentionProps = {
   attention: NowAttentionData
@@ -56,7 +57,7 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
                   <Link
                     key={`${item.type}:${item.run.runId}`}
                     to="/runbooks"
-                    search={nowRunbookSearch(item.run.runbookId, item.run.runId)}
+                    search={runbookExecutionSearch(item.run.runId)}
                     className="group flex items-start gap-3 rounded-lg border border-warning/25 bg-warning/6 px-3 py-2.5 no-underline transition-colors hover:bg-warning/10"
                   >
                     <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning-foreground" />
@@ -82,7 +83,7 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
                     <ShieldAlert className="mt-0.5 size-4 shrink-0 text-destructive-foreground" />
                     <Link
                       to="/services"
-                      search={nowServiceSearch(item.service.name)}
+                      search={serviceStatusSearch(item.service.name)}
                       className="group min-w-0 flex-1 no-underline"
                     >
                       <p className="truncate text-[12px] font-semibold text-foreground group-hover:text-primary-text">

@@ -109,15 +109,3 @@ export function markNowCurrentSourcesStale(snapshot: NowSnapshot): NowSnapshot {
 export function nowAttentionHiddenCount(attention: NowAttention): number {
   return attention.overflow.approvals + attention.overflow.services + attention.overflow.metrics
 }
-
-export function nowRunbookSearch(runbookId: string, runId: string) {
-  return { runbook: runbookId, job: runId }
-}
-
-export function nowServiceSearch(serviceName: string, panel: 'status' | 'logs' = 'status') {
-  return { service: serviceName, panel }
-}
-
-export function nowTmuxSearch(session: string) {
-  return { session }
-}

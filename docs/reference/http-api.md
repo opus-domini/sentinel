@@ -487,9 +487,18 @@ the exact runbook metadata, steps, parameter definitions, webhook, and target
 used by the execution. `parametersUsed` values are persisted in clear text and
 visible to operators; they must not contain secrets.
 
+`GET /api/ops/jobs/{job}` returns that persisted job directly, including the
+immutable `definition`, stored `parametersUsed`, correlated `stepResults`,
+origin, target, and timestamps. It does not require the current runbook
+definition to exist. The frontend uses `/runbooks?job=<id>` as the canonical
+execution URL and fetches the target's current service state separately while
+the receipt is expanded.
+
 A service target can have only one queued, running, or waiting-for-approval
-execution. Competing starts return `409 RUNBOOK_TARGET_BUSY`. Sentinel installs
-no default runbooks; procedures must be authored explicitly for the host.
+execution. Competing starts return typed `409 RUNBOOK_TARGET_BUSY`; callers
+should retain the current context so the operator can review the existing
+execution. Sentinel installs no default runbooks; procedures must be authored
+explicitly for the host.
 
 ### Schedules
 

@@ -4,9 +4,6 @@ import {
   NOW_QUERY_REFRESH_POLICY,
   markNowCurrentSourcesStale,
   nowAttentionHiddenCount,
-  nowRunbookSearch,
-  nowServiceSearch,
-  nowTmuxSearch,
   shouldPresentNowSnapshotAsStale,
 } from './nowPresentation'
 
@@ -72,7 +69,7 @@ describe('Now presentation', () => {
     })
   })
 
-  it('counts hidden items and builds canonical owner searches', () => {
+  it('counts hidden attention items', () => {
     expect(
       nowAttentionHiddenCount({
         total: 9,
@@ -80,8 +77,5 @@ describe('Now presentation', () => {
         overflow: { approvals: 1, services: 2, metrics: 1 },
       }),
     ).toBe(4)
-    expect(nowServiceSearch('sentinel')).toEqual({ service: 'sentinel', panel: 'status' })
-    expect(nowRunbookSearch('rb', 'run')).toEqual({ runbook: 'rb', job: 'run' })
-    expect(nowTmuxSearch('dev')).toEqual({ session: 'dev' })
   })
 })

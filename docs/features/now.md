@@ -49,7 +49,9 @@ Now does not restart services. A failed service opens its status in Services,
 where `View logs` continues to the live log panel. When exactly one enabled
 Runbook is associated with the failed service, `Run procedure` opens the normal
 parameter dialog and starts that procedure through the Runbook execution
-engine.
+engine. A successful start immediately opens the returned immutable execution
+receipt in Runbooks. A target already owned by another active execution keeps
+the dialog open and names that conflict instead of reporting a generic error.
 
 ## In Progress
 
@@ -66,15 +68,17 @@ Pinned remains session metadata; it does not make a quiet session current work.
 
 Owner links are reload-safe and validated against current data:
 
-| Owner    | Search parameters                                      |
-| -------- | ------------------------------------------------------ |
-| Services | `/services?service=<name>&panel=status\|logs`          |
-| Runbooks | `/runbooks?runbook=<id>&job=<id>`                     |
-| Tmux     | `/tmux?session=<name>`                                |
+| Owner             | Search parameters                             |
+| ----------------- | --------------------------------------------- |
+| Services          | `/services?service=<name>&panel=status\|logs` |
+| Runbook definition | `/runbooks?runbook=<id>`                     |
+| Runbook execution | `/runbooks?job=<id>`                          |
+| Tmux              | `/tmux?session=<name>`                        |
 
-Invalid or disappeared targets are removed from the URL with history
-replacement. Tmux never creates a tab from a URL target; the session must
-already exist.
+Invalid definitions and disappeared Services or Tmux targets are removed from
+the URL with history replacement. A missing execution keeps its canonical URL
+and shows an explicit unavailable state. Tmux never creates a tab from a URL
+target; the session must already exist.
 
 ## Refresh Model
 

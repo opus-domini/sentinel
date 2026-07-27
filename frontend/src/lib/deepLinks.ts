@@ -27,14 +27,28 @@ export function parseServicesSearch(search: Record<string, unknown>): ServicesSe
 
 export function parseRunbooksSearch(search: Record<string, unknown>): RunbooksSearch {
   const runbook = optionalSearchText(search.runbook)
-  if (runbook == null) return {}
-  return {
-    runbook,
-    job: optionalSearchText(search.job),
-  }
+  const job = optionalSearchText(search.job)
+  if (runbook == null && job == null) return {}
+  return { runbook, job }
 }
 
 export function parseTmuxSearch(search: Record<string, unknown>): TmuxSearch {
   const session = optionalSearchText(search.session)
   return session == null ? {} : { session }
+}
+
+export function runbookDefinitionSearch(runbook: string): RunbooksSearch {
+  return { runbook }
+}
+
+export function runbookExecutionSearch(job: string): RunbooksSearch {
+  return { job }
+}
+
+export function serviceStatusSearch(service: string): ServicesSearch {
+  return { service, panel: 'status' }
+}
+
+export function tmuxSessionSearch(session: string): TmuxSearch {
+  return { session }
 }

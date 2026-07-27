@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { RefreshCw } from 'lucide-react'
-import type { NowResponse, NowServiceFailedAttention } from '@/types'
+import type {
+  NowResponse,
+  NowServiceFailedAttention,
+  OpsRunbookRun,
+  OpsRunbookRunResponse,
+} from '@/types'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
@@ -14,19 +19,21 @@ import { Button } from '@/components/ui/button'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
-import { useTmuxApi } from '@/hooks/useTmuxApi'
+import { ApiError, useTmuxApi } from '@/hooks/useTmuxApi'
+import { runbookExecutionSearch } from '@/lib/deepLinks'
 import {
   NOW_QUERY_REFRESH_POLICY,
   markNowCurrentSourcesStale,
   shouldPresentNowSnapshotAsStale,
 } from '@/lib/nowPresentation'
-import { OPS_NOW_QUERY_KEY, OPS_RUNBOOKS_QUERY_KEY, isNowRelevantEvent } from '@/lib/opsQueryCache'
+import { OPS_NOW_QUERY_KEY, isNowRelevantEvent } from '@/lib/opsQueryCache'
 
 export const Route = createFileRoute('/')({
   component: IndexRoute,
 })
 
 function IndexRoute() {
+  const navigate = Route.useNavigate()
   const { hostname } = useMetaContext()
   const { pushToast } = useToastContext()
   const api = useTmuxApi()
@@ -87,31 +94,27 @@ function IndexRoute() {
       if (runTarget?.runbook == null) return
       setStartingProcedure(true)
       try {
-        await api(`/api/now/services/${encodeURIComponent(runTarget.service.name)}/runbook`, {
-          method: 'POST',
-          body: JSON.stringify({ parameters }),
+        await startNowServiceProcedure(api, runTarget.service.name, parameters, async (job) => {
+          setRunTarget(null)
+          await queryClient.invalidateQueries({ queryKey: OPS_NOW_QUERY_KEY, exact: true })
+          await navigate({ to: '/runbooks', search: runbookExecutionSearch(job.id) })
         })
-        pushToast({
-          level: 'success',
-          title: 'Procedure started',
-          message: runTarget.runbook.name,
-        })
-        setRunTarget(null)
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: OPS_NOW_QUERY_KEY, exact: true }),
-          queryClient.invalidateQueries({ queryKey: OPS_RUNBOOKS_QUERY_KEY, exact: true }),
-        ])
       } catch (error) {
+        const targetBusy = error instanceof ApiError && error.code === 'RUNBOOK_TARGET_BUSY'
         pushToast({
           level: 'error',
-          title: 'Procedure not started',
-          message: error instanceof Error ? error.message : 'failed to start procedure',
+          title: targetBusy ? 'Procedure already active' : 'Procedure not started',
+          message: targetBusy
+            ? 'Open Runbooks to review the active job before starting another procedure.'
+            : error instanceof Error
+              ? error.message
+              : 'failed to start procedure',
         })
       } finally {
         setStartingProcedure(false)
       }
     },
-    [api, pushToast, queryClient, runTarget],
+    [api, navigate, pushToast, queryClient, runTarget],
   )
 
   return (
@@ -209,4 +212,23 @@ export function NowError({ message, onRetry }: { message: string; onRetry: () =>
       </div>
     </div>
   )
+}
+
+type NowProcedureApi = <T>(path: string, init?: RequestInit) => Promise<T>
+
+export async function startNowServiceProcedure(
+  api: NowProcedureApi,
+  serviceName: string,
+  parameters: Record<string, string>,
+  onStarted: (job: OpsRunbookRun) => void | Promise<void>,
+): Promise<OpsRunbookRun> {
+  const data = await api<OpsRunbookRunResponse>(
+    `/api/now/services/${encodeURIComponent(serviceName)}/runbook`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ parameters }),
+    },
+  )
+  await onStarted(data.job)
+  return data.job
 }

@@ -1,10 +1,28 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
 import { RunbookDetailPanel } from './RunbookDetailPanel'
 import type { OpsRunbook } from '@/types'
 import { MetaContext } from '@/contexts/MetaContext'
 import { TooltipProvider } from '@/components/ui/tooltip'
+
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    children,
+    to,
+    search,
+    ...rest
+  }: {
+    children: ReactNode
+    to: string
+    search?: Record<string, string>
+  }) => (
+    <a href={`${to}?${new URLSearchParams(search)}`} {...rest}>
+      {children}
+    </a>
+  ),
+}))
 
 afterEach(() => {
   cleanup()
@@ -69,7 +87,9 @@ describe('RunbookDetailPanel', () => {
     const onDelete = renderRunbook(runbook)
     const deleteButton = screen.getByRole('button', { name: 'Delete' })
 
-    expect(screen.getByText('sentinel')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'sentinel' }).getAttribute('href')).toBe(
+      '/services?service=sentinel&panel=status',
+    )
     expect(deleteButton.hasAttribute('disabled')).toBe(false)
     fireEvent.click(deleteButton)
     expect(onDelete).toHaveBeenCalledWith(runbook)

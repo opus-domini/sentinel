@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useRunbooksPage } from './useRunbooksPage'
+import { ApiError } from './useTmuxApi'
 import type { ReactNode } from 'react'
 import type { OpsRunbook, OpsRunbookRun, OpsRunbooksResponse } from '@/types'
 
@@ -15,6 +16,18 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/hooks/useTmuxApi', () => ({
+  ApiError: class MockApiError extends Error {
+    status: number
+    code: string
+    details: unknown
+
+    constructor(message: string, status: number, code = '', details?: unknown) {
+      super(message)
+      this.status = status
+      this.code = code
+      this.details = details
+    }
+  },
   useTmuxApi: () => mocks.api,
 }))
 
@@ -231,5 +244,100 @@ describe('useRunbooksPage', () => {
 
     expect(getCount).toBe(2)
     expect(result.current.jobs[0]?.status).toBe('succeeded')
+  })
+
+  it('loads and updates a focused receipt independently from the definition list', async () => {
+    const focused = makeJob('running', {
+      id: 'orphan-job',
+      runbookId: 'deleted-runbook',
+      runbookName: 'Deleted definition',
+    })
+    const updated = makeJob('succeeded', {
+      ...focused,
+      status: 'succeeded',
+      completedSteps: 2,
+      finishedAt: '2026-05-01T10:00:02Z',
+    })
+
+    mocks.api.mockImplementation((url: string) => {
+      if (url === '/api/ops/runbooks') {
+        return Promise.resolve({ runbooks: [], jobs: [], schedules: [] })
+      }
+      if (url === '/api/ops/jobs/orphan-job') {
+        return Promise.resolve({ job: focused })
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { result } = renderHook(() => useRunbooksPage('orphan-job'), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(result.current.focusedJob?.id).toBe('orphan-job')
+      expect(result.current.jobs).toEqual([focused])
+    })
+
+    act(() => {
+      mocks.opsHandler?.({ type: 'ops.job.updated', payload: { job: updated } })
+    })
+
+    await waitFor(() => {
+      expect(result.current.focusedJob?.status).toBe('succeeded')
+    })
+  })
+
+  it('returns a started receipt and keeps run context open on a typed target conflict', async () => {
+    const queued = makeJob('queued')
+    let startCount = 0
+
+    mocks.api.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/ops/runbooks') return Promise.resolve(makeResponse(queued))
+      if (url === '/api/ops/runbooks/runbook-1/run' && init?.method === 'POST') {
+        startCount += 1
+        if (startCount === 1) return Promise.resolve({ job: queued })
+        return Promise.reject(
+          new ApiError(
+            'target service already has an active execution',
+            409,
+            'RUNBOOK_TARGET_BUSY',
+          ),
+        )
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { result } = renderHook(() => useRunbooksPage(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.runbooks).toHaveLength(1))
+
+    act(() => result.current.startRun('runbook-1'))
+    expect(result.current.runTarget?.id).toBe('runbook-1')
+
+    await act(async () => {
+      await expect(result.current.confirmRun({})).resolves.toEqual(queued)
+    })
+    expect(result.current.runTarget).toBeNull()
+
+    act(() => result.current.startRun('runbook-1'))
+
+    await act(async () => {
+      await expect(result.current.confirmRun({})).resolves.toBeNull()
+    })
+
+    expect(result.current.runTarget?.id).toBe('runbook-1')
+    expect(mocks.pushToast).toHaveBeenLastCalledWith({
+      level: 'error',
+      title: 'Procedure already active',
+      message: 'Review the active execution in this runbook before starting another.',
+    })
   })
 })

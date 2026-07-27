@@ -2,7 +2,7 @@
 import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useTmuxApi } from './useTmuxApi'
+import { ApiError, useTmuxApi } from './useTmuxApi'
 
 describe('useTmuxApi', () => {
   const originalFetch = globalThis.fetch
@@ -57,6 +57,26 @@ describe('useTmuxApi', () => {
 
     const { result } = renderHook(() => useTmuxApi())
     await expect(result.current('/api/tmux/sessions')).rejects.toThrow('invalid session name')
+  })
+
+  it('preserves status, code, and details from API errors', async () => {
+    mockFetch(409, {
+      error: {
+        code: 'RUNBOOK_TARGET_BUSY',
+        message: 'target is busy',
+        details: { job: 'job-1' },
+      },
+    })
+
+    const { result } = renderHook(() => useTmuxApi())
+    const error = await result.current('/api/test').catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'RUNBOOK_TARGET_BUSY',
+      details: { job: 'job-1' },
+    })
   })
 
   it('throws with HTTP status when no error message in body', async () => {

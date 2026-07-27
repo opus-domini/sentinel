@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   OpsRunbook,
+  OpsRunbookRun,
   OpsRunbookRunResponse,
   OpsRunbooksResponse,
   OpsSchedule,
@@ -16,7 +17,7 @@ import type { ScheduleDraft } from '@/components/RunbookScheduleEditor'
 import { createBlankStep } from '@/components/RunbookEditor'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useOpsEvents } from '@/hooks/useOpsEvents'
-import { useTmuxApi } from '@/hooks/useTmuxApi'
+import { ApiError, useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_RUNBOOKS_QUERY_KEY,
   OPS_SERVICES_QUERY_KEY,
@@ -345,6 +346,9 @@ export function useRunbooksPage(focusJobId?: string) {
               jobs: upsertOpsRunbookJob(previous.jobs, job),
             }
           })
+          if (job.id === focusJobId) {
+            queryClient.setQueryData([...OPS_RUNBOOKS_QUERY_KEY, 'job', focusJobId], job)
+          }
           if (!isActiveRunbookJob(job)) {
             cancelJobPoll(job.id)
           }
@@ -357,15 +361,18 @@ export function useRunbooksPage(focusJobId?: string) {
           break
       }
     },
-    [cancelJobPoll, queryClient, refreshRunbooks],
+    [cancelJobPoll, focusJobId, queryClient, refreshRunbooks],
   )
 
   const connectionState = useOpsEvents(handleWSMessage)
 
   const runRunbook = useCallback(
-    async (runbookID: string, parameters?: Record<string, string>) => {
+    async (
+      runbookID: string,
+      parameters?: Record<string, string>,
+    ): Promise<OpsRunbookRun | null> => {
       const runbook = runbooks.find((item) => item.id === runbookID)
-      if (!runbook) return
+      if (!runbook) return null
 
       try {
         const data = await api<OpsRunbookRunResponse>(
@@ -392,12 +399,19 @@ export function useRunbooksPage(focusJobId?: string) {
           title: 'Runbook queued',
           message: `${runbook.name} started as ${job.id.slice(0, 8)}`,
         })
+        return job
       } catch (error) {
+        const targetBusy = error instanceof ApiError && error.code === 'RUNBOOK_TARGET_BUSY'
         pushToast({
           level: 'error',
-          title: runbook.name,
-          message: error instanceof Error ? error.message : 'failed to run runbook',
+          title: targetBusy ? 'Procedure already active' : runbook.name,
+          message: targetBusy
+            ? 'Review the active execution in this runbook before starting another.'
+            : error instanceof Error
+              ? error.message
+              : 'failed to run runbook',
         })
+        return null
       }
     },
     [api, pushToast, queryClient, runbooks, trackJobUntilSettled],
@@ -419,10 +433,11 @@ export function useRunbooksPage(focusJobId?: string) {
   }, [])
 
   const confirmRun = useCallback(
-    (parameters: Record<string, string>) => {
-      if (runTarget == null) return
-      setRunTarget(null)
-      void runRunbook(runTarget.id, parameters)
+    async (parameters: Record<string, string>) => {
+      if (runTarget == null) return null
+      const job = await runRunbook(runTarget.id, parameters)
+      if (job != null) setRunTarget(null)
+      return job
     },
     [runTarget, runRunbook],
   )
@@ -774,6 +789,9 @@ export function useRunbooksPage(focusJobId?: string) {
     runbooksLoading,
     focusedJobLoading: focusJobId != null && focusedJobQuery.isLoading,
     focusedJobError: focusedJobQuery.error,
+    focusedJob:
+      focusedJobQuery.data ??
+      (focusJobId == null ? null : (jobs.find((job) => job.id === focusJobId) ?? null)),
     targetServices,
     targetServicesLoading,
     connectionState,

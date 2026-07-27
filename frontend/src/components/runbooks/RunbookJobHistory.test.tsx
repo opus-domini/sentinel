@@ -10,6 +10,12 @@ vi.mock('@/hooks/useDateFormat', () => ({
   }),
 }))
 
+vi.mock('@/components/runbooks/RunbookExecutionReceipt', () => ({
+  RunbookExecutionReceipt: ({ job: receiptJob }: { job: OpsRunbookRun }) => (
+    <div>Receipt {receiptJob.id}</div>
+  ),
+}))
+
 afterEach(() => {
   cleanup()
 })
@@ -105,6 +111,27 @@ describe('RunbookJobHistory', () => {
             totalSteps: 3,
             currentStep: 'Approve restart',
             finishedAt: '',
+            targetKind: 'service',
+            targetName: 'sentinel',
+            definition: {
+              schemaVersion: 1,
+              runbookId: 'rb-1',
+              name: 'Frozen recovery',
+              description: '',
+              parameters: [],
+              webhookURL: '',
+              targetKind: 'service',
+              targetName: 'sentinel',
+              steps: [
+                { type: 'run', title: 'Check status', command: 'status' },
+                {
+                  type: 'approval',
+                  title: 'Approve restart',
+                  description: 'Continue?',
+                },
+                { type: 'run', title: 'Restart frozen target', command: 'restart' },
+              ],
+            },
             stepResults: [
               {
                 stepIndex: 0,
@@ -132,6 +159,8 @@ describe('RunbookJobHistory', () => {
     )
 
     expect(screen.getByText('Waiting approval')).toBeTruthy()
+    expect(screen.getByText('Target:')).toBeTruthy()
+    expect(screen.getByText('3. run · Restart frozen target')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Delete job' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Approvals 1' }))
@@ -164,11 +193,32 @@ describe('RunbookJobHistory', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Waiting approval')).toBeTruthy()
+      expect(screen.getByText('Receipt approval')).toBeTruthy()
       expect(
         screen
           .getAllByRole('button', { name: 'Toggle job details' })
           .some((button) => button.getAttribute('aria-expanded') === 'true'),
       ).toBe(true)
     })
+  })
+
+  it('keeps the canonical execution target in sync with expansion', () => {
+    const onFocusJob = vi.fn()
+    render(
+      <RunbookJobHistory
+        jobs={[job()]}
+        onDeleteJob={vi.fn()}
+        onApproveJob={vi.fn()}
+        onRejectJob={vi.fn()}
+        onFocusJob={onFocusJob}
+      />,
+    )
+
+    const toggles = screen.getAllByRole('button', { name: 'Toggle job details' })
+    fireEvent.click(toggles[0])
+    expect(onFocusJob).toHaveBeenLastCalledWith('job-1')
+
+    fireEvent.click(toggles[0])
+    expect(onFocusJob).toHaveBeenLastCalledWith(null)
   })
 })

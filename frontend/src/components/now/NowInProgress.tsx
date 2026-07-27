@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { ArrowUpRight, Pin, ScrollText, SquareTerminal } from 'lucide-react'
 import type { NowInProgressRun, NowInProgressSession } from '@/types'
 import { useDateFormat } from '@/hooks/useDateFormat'
-import { nowRunbookSearch, nowTmuxSearch } from '@/lib/nowPresentation'
+import { runbookExecutionSearch, tmuxSessionSearch } from '@/lib/deepLinks'
 
 type NowInProgressProps = {
   runs: Array<NowInProgressRun>
@@ -61,7 +61,7 @@ export function NowInProgress({ runs, sessions }: NowInProgressProps) {
                     <Link
                       key={run.id}
                       to="/runbooks"
-                      search={nowRunbookSearch(run.runbookId, run.id)}
+                      search={runbookExecutionSearch(run.id)}
                       className="group rounded-lg border border-border-subtle bg-surface-elevated px-3 py-2.5 no-underline transition-colors hover:bg-surface-hover"
                     >
                       <div className="flex items-start gap-2">
@@ -105,7 +105,7 @@ export function NowInProgress({ runs, sessions }: NowInProgressProps) {
                   <Link
                     key={`${session.user ?? ''}:${session.name}`}
                     to="/tmux"
-                    search={nowTmuxSearch(session.name)}
+                    search={tmuxSessionSearch(session.name)}
                     className="group flex items-start gap-2 rounded-lg border border-border-subtle bg-surface-elevated px-3 py-2.5 no-underline transition-colors hover:bg-surface-hover"
                   >
                     <SquareTerminal className="mt-0.5 size-3.5 shrink-0 text-primary" />

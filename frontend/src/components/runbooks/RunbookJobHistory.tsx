@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, ChevronDown, ChevronRight, Trash2, XCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import type { OpsRunbookRun } from '@/types'
+import { RunbookExecutionReceipt } from '@/components/runbooks/RunbookExecutionReceipt'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +47,7 @@ type RunbookJobHistoryProps = {
   onApproveJob: (jobId: string) => Promise<void>
   onRejectJob: (jobId: string) => Promise<void>
   focusJobId?: string
+  onFocusJob?: (jobId: string | null) => void
 }
 
 type JobFilter = 'all' | 'active' | 'approval' | 'failed' | 'succeeded'
@@ -56,10 +58,10 @@ export function RunbookJobHistory({
   onApproveJob,
   onRejectJob,
   focusJobId,
+  onFocusJob,
 }: RunbookJobHistoryProps) {
   const { formatDateTime } = useDateFormat()
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
-  const [expandedStepIndices, setExpandedStepIndices] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState<JobFilter>('all')
   const [actingJobId, setActingJobId] = useState<string | null>(null)
 
@@ -67,7 +69,6 @@ export function RunbookJobHistory({
     if (!focusJobId || !jobs.some((job) => job.id === focusJobId)) return
     setFilter('all')
     setExpandedJobId(focusJobId)
-    setExpandedStepIndices(new Set())
   }, [focusJobId, jobs])
 
   const filteredJobs = useMemo(() => {
@@ -90,26 +91,24 @@ export function RunbookJobHistory({
     [jobs],
   )
 
-  const toggleJobExpand = useCallback((jobId: string) => {
-    setExpandedJobId((prev) => (prev === jobId ? null : jobId))
-    setExpandedStepIndices(new Set())
-  }, [])
-
-  const toggleStepExpand = useCallback((index: number) => {
-    setExpandedStepIndices((prev) => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
-  }, [])
+  const toggleJobExpand = useCallback(
+    (jobId: string) => {
+      const next = expandedJobId === jobId ? null : jobId
+      setExpandedJobId(next)
+      onFocusJob?.(next)
+    },
+    [expandedJobId, onFocusJob],
+  )
 
   const deleteJob = useCallback(
     async (jobId: string) => {
       await onDeleteJob(jobId)
-      if (expandedJobId === jobId) setExpandedJobId(null)
+      if (expandedJobId === jobId) {
+        setExpandedJobId(null)
+        onFocusJob?.(null)
+      }
     },
-    [expandedJobId, onDeleteJob],
+    [expandedJobId, onDeleteJob, onFocusJob],
   )
 
   const approveJob = useCallback(
@@ -176,12 +175,12 @@ export function RunbookJobHistory({
           </div>
           {filteredJobs.map((job) => {
             const isExpanded = expandedJobId === job.id
-            const steps = job.stepResults
             const isActive = isActiveRunbookJob(job)
             const isWaitingApproval = isWaitingApprovalRunbookJob(job)
             const isActing = actingJobId === job.id
             const progress = runbookJobProgress(job)
             const duration = formatRunbookDuration(runbookJobDurationMs(job))
+            const remainingSteps = job.definition?.steps.slice(job.completedSteps) ?? []
             return (
               <div
                 key={job.id}
@@ -242,9 +241,44 @@ export function RunbookJobHistory({
                       </p>
                     )}
                     {isWaitingApproval && (
-                      <p className="mt-1 text-[10px] text-warning-foreground">
-                        Review the recorded output and choose whether this run can continue.
-                      </p>
+                      <div className="mt-1 grid gap-1 rounded border border-warning/30 bg-warning/6 p-2">
+                        <p className="text-[10px] font-medium text-warning-foreground">
+                          Review the frozen execution context before deciding.
+                        </p>
+                        {(job.targetName || job.definition?.targetName) && (
+                          <p className="text-[9px] text-muted-foreground">
+                            Target:{' '}
+                            <span className="font-mono text-foreground">
+                              {job.targetName || job.definition?.targetName}
+                            </span>
+                          </p>
+                        )}
+                        {job.definition ? (
+                          <div className="grid gap-0.5">
+                            <p className="text-[9px] text-muted-foreground">
+                              Remaining after approval:
+                            </p>
+                            {remainingSteps.length > 0 ? (
+                              remainingSteps.map((step, index) => (
+                                <p
+                                  key={`${job.completedSteps + index}:${step.type}:${step.title}`}
+                                  className="truncate text-[9px] text-foreground"
+                                >
+                                  {job.completedSteps + index + 1}. {step.type} · {step.title}
+                                </p>
+                              ))
+                            ) : (
+                              <p className="text-[9px] text-muted-foreground">
+                                No additional steps.
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[9px] text-warning-foreground">
+                            Frozen steps are unavailable for this legacy execution.
+                          </p>
+                        )}
+                      </div>
                     )}
                     {job.error && (
                       <p className="mt-1 text-[10px] text-destructive-foreground">{job.error}</p>
@@ -339,70 +373,7 @@ export function RunbookJobHistory({
                     </AlertDialog>
                   )}
                 </div>
-                {isExpanded && steps.length > 0 && (
-                  <div className="grid min-w-0 gap-0.5 border-t border-border-subtle px-2.5 py-2">
-                    {steps.map((sr) => {
-                      const stepOpen = expandedStepIndices.has(sr.stepIndex)
-                      return (
-                        <div
-                          key={sr.stepIndex}
-                          className="min-w-0 overflow-hidden rounded border border-border-subtle bg-surface-overlay"
-                        >
-                          <button
-                            type="button"
-                            className="flex w-full cursor-pointer items-center justify-between gap-2 px-2 py-1.5 text-[11px]"
-                            onClick={() => toggleStepExpand(sr.stepIndex)}
-                          >
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              <span className="shrink-0 text-muted-foreground">
-                                {stepOpen ? (
-                                  <ChevronDown className="h-2.5 w-2.5" />
-                                ) : (
-                                  <ChevronRight className="h-2.5 w-2.5" />
-                                )}
-                              </span>
-                              {sr.error ? (
-                                <XCircle className="h-3 w-3 shrink-0 text-destructive-foreground" />
-                              ) : (
-                                <CheckCircle2 className="h-3 w-3 shrink-0 text-ok-foreground" />
-                              )}
-                              <span className="shrink-0 rounded border border-border-subtle px-1 text-[9px] uppercase text-muted-foreground">
-                                {sr.type}
-                              </span>
-                              <span className="truncate font-medium">{sr.title}</span>
-                            </div>
-                            <span className="shrink-0 text-[10px] text-muted-foreground">
-                              {sr.durationMs}ms
-                            </span>
-                          </button>
-                          {stepOpen && (
-                            <div className="border-t border-border-subtle px-2 py-1.5">
-                              {sr.output ? (
-                                <pre className="max-h-40 overflow-y-auto overscroll-contain whitespace-pre-wrap rounded bg-[var(--background)] px-2 py-1 font-mono text-[10px] text-secondary-foreground">
-                                  {sr.output}
-                                </pre>
-                              ) : !sr.error ? (
-                                <p className="px-1 text-[10px] italic text-muted-foreground">
-                                  No output
-                                </p>
-                              ) : null}
-                              {sr.error && (
-                                <p className="mt-1 text-[10px] text-destructive-foreground">
-                                  {sr.error}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-                {isExpanded && steps.length === 0 && (
-                  <div className="border-t border-border-subtle px-2.5 py-2">
-                    <p className="text-[10px] text-muted-foreground">No step output recorded.</p>
-                  </div>
-                )}
+                {isExpanded && <RunbookExecutionReceipt job={job} />}
               </div>
             )
           })}

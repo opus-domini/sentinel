@@ -140,9 +140,57 @@ describe('Now panels', () => {
 
     expect(screen.getByText('No action needed')).toBeTruthy()
 
-    rerender(<NowInProgress runs={[]} sessions={snapshot.inProgress.sessions} />)
+    rerender(
+      <NowInProgress
+        runs={[
+          {
+            id: 'job-running',
+            runbookId: 'runbook-1',
+            runbookName: 'Recover Sentinel',
+            status: 'running',
+            totalSteps: 2,
+            completedSteps: 1,
+            source: 'now',
+            createdAt: '2026-07-27T11:58:00Z',
+          },
+        ]}
+        sessions={snapshot.inProgress.sessions}
+      />,
+    )
+    expect(screen.getByRole('link', { name: /Recover Sentinel/ }).getAttribute('href')).toBe(
+      '/runbooks?job=job-running',
+    )
     expect(screen.getByRole('link', { name: /sentinel-dev/ }).getAttribute('href')).toBe(
       '/tmux?session=sentinel-dev',
+    )
+  })
+
+  it('opens a pending approval by its execution receipt alone', () => {
+    render(
+      <NowAttention
+        attention={{
+          total: 1,
+          visible: [
+            {
+              type: 'runbook_approval',
+              run: {
+                runbookId: 'runbook-1',
+                runbookName: 'Recover Sentinel',
+                runId: 'job-approval',
+                status: 'waiting_approval',
+                createdAt: '2026-07-27T11:58:00Z',
+              },
+            },
+          ],
+          overflow: { approvals: 0, services: 0, metrics: 0 },
+        }}
+        degraded={false}
+        onRunProcedure={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: /Approval waiting/ }).getAttribute('href')).toBe(
+      '/runbooks?job=job-approval',
     )
   })
 })
