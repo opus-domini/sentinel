@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   OPS_METRICS_QUERY_KEY,
+  OPS_NOW_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
   OPS_RUNBOOKS_QUERY_KEY,
   OPS_SERVICES_QUERY_KEY,
   OPS_STORAGE_STATS_QUERY_KEY,
   isOpsWsMessage,
+  isNowRelevantEvent,
   metricsCacheValueFromMessage,
   upsertOpsRunbookJob,
 } from './opsQueryCache'
@@ -33,7 +35,24 @@ describe('opsQueryCache', () => {
     expect(OPS_SERVICES_QUERY_KEY).toEqual(['ops', 'services'])
     expect(OPS_RUNBOOKS_QUERY_KEY).toEqual(['ops', 'runbooks'])
     expect(OPS_METRICS_QUERY_KEY).toEqual(['ops', 'metrics'])
+    expect(OPS_NOW_QUERY_KEY).toEqual(['ops', 'now'])
     expect(OPS_STORAGE_STATS_QUERY_KEY).toEqual(['ops', 'storage-stats'])
+  })
+
+  it.each([
+    'tmux.sessions.updated',
+    'ops.services.updated',
+    'ops.overview.updated',
+    'ops.metrics.updated',
+    'ops.job.updated',
+  ])('invalidates Now for %s', (type) => {
+    expect(isNowRelevantEvent({ type, payload: {} })).toBe(true)
+  })
+
+  it('does not invalidate Now for unrelated or malformed messages', () => {
+    expect(isNowRelevantEvent({ type: 'ops.schedule.updated', payload: {} })).toBe(false)
+    expect(isNowRelevantEvent({ payload: {} })).toBe(false)
+    expect(isNowRelevantEvent(null)).toBe(false)
   })
 
   it('validates ops websocket message shape', () => {

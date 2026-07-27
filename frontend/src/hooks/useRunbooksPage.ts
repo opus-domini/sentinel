@@ -182,7 +182,7 @@ function draftToPayload(draft: RunbookDraft) {
 
 const runbookJobRefreshDelays = [250, 750, 1500, 3000, 6000, 10000] as const
 
-export function useRunbooksPage() {
+export function useRunbooksPage(focusJobId?: string) {
   const { pushToast } = useToastContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
@@ -210,6 +210,17 @@ export function useRunbooksPage() {
     queryKey: OPS_RUNBOOKS_QUERY_KEY,
     queryFn: fetchRunbooks,
   })
+  const focusedJobQuery = useQuery({
+    queryKey: [...OPS_RUNBOOKS_QUERY_KEY, 'job', focusJobId ?? ''],
+    queryFn: async () => {
+      const data = await api<OpsRunbookRunResponse>(
+        `/api/ops/jobs/${encodeURIComponent(focusJobId ?? '')}`,
+      )
+      return data.job
+    },
+    enabled: focusJobId != null,
+    retry: false,
+  })
   const servicesQuery = useQuery({
     queryKey: OPS_SERVICES_QUERY_KEY,
     queryFn: async () => {
@@ -220,7 +231,14 @@ export function useRunbooksPage() {
   })
 
   const runbooks = runbooksQuery.data?.runbooks ?? EMPTY_RUNBOOKS
-  const jobs = runbooksQuery.data?.jobs ?? EMPTY_RUNBOOK_JOBS
+  const baseJobs = runbooksQuery.data?.jobs ?? EMPTY_RUNBOOK_JOBS
+  const jobs = useMemo(() => {
+    const focusedJob = focusedJobQuery.data
+    if (focusedJob == null || baseJobs.some((job) => job.id === focusedJob.id)) {
+      return baseJobs
+    }
+    return [focusedJob, ...baseJobs]
+  }, [baseJobs, focusedJobQuery.data])
   const schedules = runbooksQuery.data?.schedules ?? EMPTY_RUNBOOK_SCHEDULES
   const runbooksLoading = runbooksQuery.isLoading
   const targetServices = servicesQuery.data ?? []
@@ -758,6 +776,8 @@ export function useRunbooksPage() {
     jobs,
     schedules,
     runbooksLoading,
+    focusedJobLoading: focusJobId != null && focusedJobQuery.isLoading,
+    focusedJobError: focusedJobQuery.error,
     targetServices,
     targetServicesLoading,
     connectionState,

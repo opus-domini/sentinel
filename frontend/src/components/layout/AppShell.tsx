@@ -156,7 +156,7 @@ function MobilePrimaryNav({ onActiveItemClick }: MobilePrimaryNavProps) {
   return (
     <nav
       aria-label="Mobile primary navigation"
-      className="mobile-primary-nav fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-border bg-background/95 px-1 pt-1 pb-0.5 backdrop-blur"
+      className="mobile-primary-nav fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-border bg-background/95 px-1 pt-1 pb-0.5 backdrop-blur"
     >
       {PRIMARY_NAV_ITEMS.map(({ to, label, shortLabel, Icon }) => {
         const active = pathname === to

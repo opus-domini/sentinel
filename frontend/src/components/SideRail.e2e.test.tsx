@@ -111,7 +111,7 @@ describe('SideRail', () => {
       link.getAttribute('aria-label'),
     )
 
-    expect(links).toEqual(['Tmux', 'Runbooks', 'Services', 'Metrics'])
+    expect(links).toEqual(['Now', 'Tmux', 'Runbooks', 'Services', 'Metrics'])
   })
 
   it('groups authentication, page help, settings, and sidebar controls at the bottom', () => {

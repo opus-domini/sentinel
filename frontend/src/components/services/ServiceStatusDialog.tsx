@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import { formatOpsUnitName } from '@/lib/opsServices'
 
 type ServiceStatusDialogProps = {
@@ -15,6 +16,7 @@ type ServiceStatusDialogProps = {
   loading: boolean
   error: string
   data: OpsServiceInspect | null
+  onViewLogs?: () => void
 }
 
 export function ServiceStatusDialog({
@@ -23,6 +25,7 @@ export function ServiceStatusDialog({
   loading,
   error,
   data,
+  onViewLogs,
 }: ServiceStatusDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -50,10 +53,27 @@ export function ServiceStatusDialog({
             <ScrollArea className="max-h-[58vh] min-h-0">
               <div className="grid gap-2 pr-2">
                 <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                  <p className="text-[11px] font-semibold text-foreground">
-                    {formatOpsUnitName(data.service.unit)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">checked at {data.checkedAt}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-semibold text-foreground">
+                        {formatOpsUnitName(data.service.unit)}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        checked at {data.checkedAt}
+                      </p>
+                    </div>
+                    {onViewLogs && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 cursor-pointer text-[10px]"
+                        onClick={onViewLogs}
+                      >
+                        View logs
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {data.properties != null && Object.keys(data.properties).length > 0 && (

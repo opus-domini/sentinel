@@ -5,13 +5,15 @@
 </div>
 
 Sentinel is a host operations platform delivered as a single binary.
-It provides tmux session control, reusable session and window launchers, service monitoring, metrics, and runbooks in a realtime browser UI.
+Its Now home connects tmux activity, service health, host posture, and
+operational procedures in one current view, then hands each task to its owner
+module.
 
 ## What You Will Find Here
 
 - Installation and first-run flow.
 - Architecture and security model.
-- Deep feature guides for tmux, services, metrics, runbooks, and multi-user sessions.
+- Deep feature guides for Now, tmux, services, metrics, runbooks, and multi-user sessions.
 - Full CLI and API reference.
 - Operations runbooks for services, autoupdate, and storage management.
 - Mobile/PWA behavior and known troubleshooting patterns.
@@ -45,7 +47,7 @@ Suggested reading order:
 1. `Guide > Getting Started`
 2. `Guide > Architecture`
 3. `Features > Tmux Workspace`
-4. `Features > Ops Control Plane`
+4. `Features > Now`
 5. `Reference > CLI Reference`
 6. `Operations > Service and Autoupdate`
 
@@ -70,6 +72,10 @@ Tip: click any image to zoom.
 </p>
 
 ### Ops Control Plane
+
+> **Now:** See current reliability, decisions that need attention, and live operational context before entering an owner module.
+
+![Desktop Now](assets/images/desktop-now.png)
 
 > **Services:** Monitor and control systemd/launchd services with live status, logs, and one-click actions.
 

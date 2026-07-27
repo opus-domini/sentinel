@@ -48,10 +48,10 @@ export class ErrorBoundary extends Component<Props, State> {
               Try again
             </button>
             <a
-              href="/tmux"
+              href="/"
               className="rounded border border-border-subtle px-3 py-1.5 text-xs text-foreground no-underline hover:bg-surface-hover"
             >
-              Go to tmux
+              Go to Now
             </a>
             <button
               type="button"

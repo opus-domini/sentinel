@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, ChevronDown, ChevronRight, Trash2, XCircle } from 'lucide-react'
 import type { OpsRunbookRun } from '@/types'
 import {
@@ -45,6 +45,7 @@ type RunbookJobHistoryProps = {
   onDeleteJob: (jobId: string) => Promise<void>
   onApproveJob: (jobId: string) => Promise<void>
   onRejectJob: (jobId: string) => Promise<void>
+  focusJobId?: string
 }
 
 type JobFilter = 'all' | 'active' | 'approval' | 'failed' | 'succeeded'
@@ -54,12 +55,20 @@ export function RunbookJobHistory({
   onDeleteJob,
   onApproveJob,
   onRejectJob,
+  focusJobId,
 }: RunbookJobHistoryProps) {
   const { formatDateTime } = useDateFormat()
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
   const [expandedStepIndices, setExpandedStepIndices] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState<JobFilter>('all')
   const [actingJobId, setActingJobId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!focusJobId || !jobs.some((job) => job.id === focusJobId)) return
+    setFilter('all')
+    setExpandedJobId(focusJobId)
+    setExpandedStepIndices(new Set())
+  }, [focusJobId, jobs])
 
   const filteredJobs = useMemo(() => {
     if (filter === 'all') return jobs

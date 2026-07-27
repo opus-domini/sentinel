@@ -6,6 +6,7 @@
   - [Security Model](/guide/security.md)
 
 - Features
+  - [Now](/features/now.md)
   - [Tmux Workspace](/features/tmux-workspace.md)
   - [MCP Control](/features/mcp.md)
   - [Multi-User Sessions](/features/multi-user-sessions.md)

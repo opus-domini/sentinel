@@ -12,7 +12,9 @@
 </div>
 
 Sentinel is a host operations platform delivered as a single binary.
-It gives you a realtime browser interface to manage tmux sessions and reusable launchers, monitor services and host metrics, and run operational procedures — all on your own machine.
+Its Now home connects current tmux activity, service health, host posture, and
+operational procedures, then hands each task to the module that owns it — all
+on your own machine.
 
 No Electron. No cloud relay. Just your host and your shell.
 
@@ -34,6 +36,7 @@ No Electron. No cloud relay. Just your host and your shell.
 
 ## Core Capabilities
 
+- **Now** — Operational home at `/` for reliability, decisions that need attention, live work, and precise handoffs.
 - **Tmux** — Interactive PTY in the browser with tmux workspace management, window launchers, and reusable session launchers.
 - **Multi-user sessions** — Run tmux sessions as different OS users with a security allowlist and systemd-aware user switching on Linux.
 - **Services** — Monitor and control systemd/launchd units from `/services`.
@@ -103,6 +106,10 @@ If you expose Sentinel outside localhost (`0.0.0.0`), always configure:
 </p>
 
 ### Ops Control Plane
+
+> **Now:** Start with current reliability, operator attention, and work already in progress.
+
+![Desktop Now](docs/assets/images/desktop-now.png)
 
 > **Services:** Monitor and control systemd/launchd services with live status, logs, and one-click actions.
 

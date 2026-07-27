@@ -22,7 +22,8 @@ import { cn } from '@/lib/utils'
 
 type RunbookRunDialogProps = {
   open: boolean
-  runbook: OpsRunbook | null
+  runbook: Pick<OpsRunbook, 'id' | 'name' | 'parameters'> | null
+  confirming?: boolean
   onConfirm: (parameters: Record<string, string>) => void
   onCancel: () => void
 }
@@ -52,7 +53,13 @@ function validateParams(
   return errors
 }
 
-export function RunbookRunDialog({ open, runbook, onConfirm, onCancel }: RunbookRunDialogProps) {
+export function RunbookRunDialog({
+  open,
+  runbook,
+  confirming = false,
+  onConfirm,
+  onCancel,
+}: RunbookRunDialogProps) {
   const id = useId()
   const params = useMemo(() => runbook?.parameters ?? [], [runbook])
   const [values, setValues] = useState<Record<string, string>>({})
@@ -183,17 +190,24 @@ export function RunbookRunDialog({ open, runbook, onConfirm, onCancel }: Runbook
         )}
 
         <DialogFooter>
-          <Button variant="outline" size="sm" className="cursor-pointer" onClick={onCancel}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="cursor-pointer"
+            disabled={confirming}
+            onClick={onCancel}
+          >
             Cancel
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="cursor-pointer gap-1"
+            disabled={confirming}
             onClick={handleSubmit}
           >
             <Play className="h-3 w-3" />
-            Run
+            {confirming ? 'Starting...' : 'Run'}
           </Button>
         </DialogFooter>
       </DialogContent>

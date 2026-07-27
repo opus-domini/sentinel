@@ -60,6 +60,7 @@ import {
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
+import { parseServicesSearch } from '@/lib/deepLinks'
 
 const EMPTY_SERVICES: Array<OpsServiceStatus> = []
 const EMPTY_BROWSE_SERVICES: Array<OpsBrowsedService> = []
@@ -289,6 +290,8 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
 ServicesBrowseControls.displayName = 'ServicesBrowseControls'
 
 function ServicesPage() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const { tokenRequired, hostname } = useMetaContext()
   const { authenticated } = useTokenContext()
   const { pushToast } = useToastContext()
@@ -299,6 +302,7 @@ function ServicesPage() {
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [serviceStatusError, setServiceStatusError] = useState('')
   const [serviceStatusData, setServiceStatusData] = useState<OpsServiceInspect | null>(null)
+  const [serviceStatusTarget, setServiceStatusTarget] = useState<OpsBrowsedService | null>(null)
 
   const [serviceLogsOpen, setServiceLogsOpen] = useState(false)
   const [serviceLogsService, setServiceLogsService] = useState<OpsBrowsedService | null>(null)
@@ -315,6 +319,7 @@ function ServicesPage() {
   >({})
 
   const previousServiceRef = useRef(new Map<string, OpsServiceStatus>())
+  const appliedDeepLinkRef = useRef('')
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -582,6 +587,7 @@ function ServicesPage() {
 
   const inspectBrowsedService = useCallback(
     async (svc: OpsBrowsedService) => {
+      setServiceStatusTarget(svc)
       setServiceStatusOpen(true)
       setServiceStatusLoading(true)
       setServiceStatusError('')
@@ -626,6 +632,72 @@ function ServicesPage() {
       setServiceLogsService(null)
     }
   }, [])
+
+  const clearServiceTarget = useCallback(() => {
+    appliedDeepLinkRef.current = ''
+    void navigate({ search: {}, replace: true })
+  }, [navigate])
+
+  const handleStatusOpenChange = useCallback(
+    (open: boolean) => {
+      setServiceStatusOpen(open)
+      if (!open) {
+        setServiceStatusTarget(null)
+        if (search.panel === 'status') clearServiceTarget()
+      }
+    },
+    [clearServiceTarget, search.panel],
+  )
+
+  const handleDeepLinkedLogsOpenChange = useCallback(
+    (open: boolean) => {
+      handleLogsOpenChange(open)
+      if (!open && search.panel === 'logs') clearServiceTarget()
+    },
+    [clearServiceTarget, handleLogsOpenChange, search.panel],
+  )
+
+  const viewServiceLogs = useCallback(() => {
+    if (!serviceStatusTarget) return
+    setServiceStatusOpen(false)
+    setServiceStatusTarget(null)
+    openServiceLogs(serviceStatusTarget)
+    const trackedName = serviceStatusTarget.trackedName?.trim()
+    if (trackedName) {
+      appliedDeepLinkRef.current = `${trackedName}:logs`
+      void navigate({
+        search: { service: trackedName, panel: 'logs' },
+        replace: true,
+      })
+    }
+  }, [navigate, openServiceLogs, serviceStatusTarget])
+
+  useEffect(() => {
+    if (!browseQuery.isSuccess || !search.service || !search.panel) return
+    const key = `${search.service}:${search.panel}`
+    const target = browseServices.find(
+      (service) => service.tracked && service.trackedName === search.service,
+    )
+    if (!target) {
+      clearServiceTarget()
+      return
+    }
+    if (appliedDeepLinkRef.current === key) return
+    appliedDeepLinkRef.current = key
+    if (search.panel === 'logs') {
+      openServiceLogs(target)
+      return
+    }
+    void inspectBrowsedService(target)
+  }, [
+    browseQuery.isSuccess,
+    browseServices,
+    clearServiceTarget,
+    inspectBrowsedService,
+    openServiceLogs,
+    search.panel,
+    search.service,
+  ])
 
   const toggleTrack = useCallback(
     async (svc: OpsBrowsedService) => {
@@ -839,15 +911,16 @@ function ServicesPage() {
 
       <ServiceStatusDialog
         open={serviceStatusOpen}
-        onOpenChange={setServiceStatusOpen}
+        onOpenChange={handleStatusOpenChange}
         loading={serviceStatusLoading}
         error={serviceStatusError}
         data={serviceStatusData}
+        onViewLogs={serviceStatusData ? viewServiceLogs : undefined}
       />
 
       <ServiceLogsSheet
         open={serviceLogsOpen}
-        onOpenChange={handleLogsOpenChange}
+        onOpenChange={handleDeepLinkedLogsOpenChange}
         fetchKey={serviceLogsFetchKey}
         service={serviceLogsService}
         authenticated={authenticated}
@@ -859,5 +932,6 @@ function ServicesPage() {
 }
 
 export const Route = createFileRoute('/services')({
+  validateSearch: parseServicesSearch,
   component: ServicesPage,
 })

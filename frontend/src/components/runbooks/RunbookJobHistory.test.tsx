@@ -145,4 +145,30 @@ describe('RunbookJobHistory', () => {
 
     await waitFor(() => expect(onRejectJob).toHaveBeenCalledWith('approval'))
   })
+
+  it('expands a deep-linked job even when another filter was active', async () => {
+    const failed = job({ id: 'failed', status: 'failed' })
+    const approval = job({ id: 'approval', status: 'waiting_approval' })
+    const props = {
+      jobs: [failed, approval],
+      onDeleteJob: vi.fn(),
+      onApproveJob: vi.fn(),
+      onRejectJob: vi.fn(),
+    }
+    const { rerender } = render(<RunbookJobHistory {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Failed 1' }))
+    expect(screen.queryByText('Waiting approval')).toBeNull()
+
+    rerender(<RunbookJobHistory {...props} focusJobId="approval" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Waiting approval')).toBeTruthy()
+      expect(
+        screen
+          .getAllByRole('button', { name: 'Toggle job details' })
+          .some((button) => button.getAttribute('aria-expanded') === 'true'),
+      ).toBe(true)
+    })
+  })
 })

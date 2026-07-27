@@ -83,6 +83,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameSessionTarget, setRenameSessionTarget] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [sessionsLoaded, setSessionsLoaded] = useState(false)
 
   const clearPendingSessionRenamesForName = useCallback((session: string) => {
     const name = session.trim()
@@ -265,6 +266,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
       const data = await api<SessionsResponse>('/api/tmux/sessions')
       if (gen !== refreshGenerationRef.current) return
       setTmuxUnavailable(false)
+      setSessionsLoaded(true)
       const merged = mergePendingCreateSessions(
         data.sessions,
         pendingCreateSessionsRef.current,
@@ -794,6 +796,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     renameDialogOpen,
     renameSessionTarget,
     renameValue,
+    sessionsLoaded,
     // Refs
     lastSessionsRefreshAtRef,
     pendingRenameSessionsRef,

@@ -14,7 +14,7 @@ describe('ErrorBoundary', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows retry, tmux, and reload recovery actions', () => {
+  it('shows retry, Now, and reload recovery actions', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
     render(
@@ -25,7 +25,7 @@ describe('ErrorBoundary', () => {
 
     expect(screen.getByText('Something went wrong')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Try again' })).not.toBeNull()
-    expect(screen.getByRole('link', { name: 'Go to tmux' }).getAttribute('href')).toBe('/tmux')
+    expect(screen.getByRole('link', { name: 'Go to Now' }).getAttribute('href')).toBe('/')
     expect(screen.getByRole('button', { name: 'Reload page' })).not.toBeNull()
   })
 

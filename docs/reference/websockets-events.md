@@ -87,6 +87,14 @@ Server sends:
 }
 ```
 
+### Now invalidation
+
+Now does not publish or subscribe to a dedicated `now.updated` event. The
+frontend invalidates `GET /api/now` when it receives
+`tmux.sessions.updated`, `ops.services.updated`, `ops.overview.updated`,
+`ops.metrics.updated`, or `ops.job.updated`. No event means no periodic Now
+request; reconnect and explicit resync are the fallback paths.
+
 ### Client messages to `/ws/events`
 
 Presence update:

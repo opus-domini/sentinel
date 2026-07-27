@@ -1,16 +1,20 @@
 # Ops Control Plane
 
-![Desktop services](assets/images/desktop-services.png)
+![Desktop Now](assets/images/desktop-now.png)
 
-The ops control plane is Sentinel's host operations management layer. It provides visibility into system services, operational procedures, and runtime metrics through dedicated pages accessible from the side rail.
+The ops control plane is Sentinel's host operations management layer. Now
+connects the current evidence and hands each decision to its dedicated owner
+page.
 
 ## Pages
 
-| Route         | Feature             | Description                                                                       | Documentation                                               |
-| ------------- | ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `/services`   | Service Management  | Monitor, start/stop/restart, browse and register systemd/launchd services         | [Services](/features/services.md)                           |
-| `/runbooks`   | Runbook Execution   | Executable operational procedures with step-level output tracking and job history | [Runbooks](/features/runbooks.md)                           |
-| `/metrics`    | System Metrics      | System and runtime metrics dashboard                                              | [Metrics](/features/metrics.md)                             |
+| Route       | Feature            | Description                                                                        | Documentation                     |
+| ----------- | ------------------ | ---------------------------------------------------------------------------------- | --------------------------------- |
+| `/`         | Now                | Current reliability, operator attention, live work, and owner-module handoffs      | [Now](/features/now.md)            |
+| `/tmux`     | Tmux Workspace     | Existing sessions, terminals, windows, panes, unread state, and launchers           | [Tmux](/features/tmux-workspace.md) |
+| `/runbooks` | Runbook Execution  | Executable operational procedures with step-level output tracking and job history  | [Runbooks](/features/runbooks.md)  |
+| `/services` | Service Management | Monitor, start/stop/restart, browse, and register systemd/launchd services          | [Services](/features/services.md)  |
+| `/metrics`  | System Metrics     | Canonical host posture plus detailed system and runtime metrics                     | [Metrics](/features/metrics.md)    |
 
 ## Shared Infrastructure
 
@@ -18,6 +22,8 @@ The ops control plane is Sentinel's host operations management layer. It provide
 
 - Initial state loads from HTTP API.
 - Continuous updates come from `/ws/events`.
+- Now composes the existing owner resources and refreshes from relevant owner
+  events; it does not add a polling loop or a new event.
 - Primary events:
   - `ops.overview.updated`
   - `ops.services.updated`
@@ -29,6 +35,8 @@ The ops control plane is Sentinel's host operations management layer. It provide
 
 Overview and configuration:
 
+- `GET /api/now`
+- `POST /api/now/services/{service}/runbook`
 - `GET /api/ops/overview`
 - `GET /api/ops/config`
 - `PATCH /api/ops/config`
@@ -73,4 +81,5 @@ Schedules (see [Runbooks](/features/runbooks.md)):
 
 ## Navigation
 
-Use `/services`, `/metrics`, and `/runbooks` for the active operations workflows.
+Use `/` as the operational starting point. Follow its links into `/tmux`,
+`/runbooks`, `/services`, or `/metrics` for the owning workflow.

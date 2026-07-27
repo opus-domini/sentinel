@@ -45,6 +45,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { TMUX_SESSIONS_QUERY_KEY } from '@/lib/tmuxQueryCache'
 import { applySidebarOrder, moveSidebarItem, sortBySidebarOrder } from '@/lib/sessionSidebarOrder'
 import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName, slugifyTmuxName } from '@/lib/tmuxName'
+import { parseTmuxSearch } from '@/lib/deepLinks'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
 const LaunchersDialog = lazy(() => import('@/components/tmux/LaunchersDialog'))
@@ -122,6 +123,8 @@ function normalizeTmuxLauncher(
 }
 
 function TmuxPage() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const { tokenRequired, defaultCwd, hostname } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const { pushToast } = useToastContext()
@@ -173,6 +176,7 @@ function TmuxPage() {
     deltaSyncErrors: 0,
     deltaOverflowCount: 0,
   })
+  const appliedDeepLinkRef = useRef('')
 
   // Sync shared refs
   useEffect(() => {
@@ -363,6 +367,31 @@ function TmuxPage() {
   useEffect(() => {
     refreshSessionsRef.current = sessionCRUD.refreshSessions
   }, [sessionCRUD.refreshSessions])
+
+  const clearSessionTarget = useCallback(() => {
+    appliedDeepLinkRef.current = ''
+    void navigate({ search: {}, replace: true })
+  }, [navigate])
+
+  const activateSelectedSession = useCallback(
+    (session: string) => {
+      if (search.session) clearSessionTarget()
+      sessionCRUD.activateSession(session)
+    },
+    [clearSessionTarget, search.session, sessionCRUD],
+  )
+
+  useEffect(() => {
+    if (!sessionCRUD.sessionsLoaded || !search.session) return
+    const target = sessions.find((session) => session.name === search.session)
+    if (!target) {
+      clearSessionTarget()
+      return
+    }
+    if (appliedDeepLinkRef.current === target.name) return
+    appliedDeepLinkRef.current = target.name
+    sessionCRUD.activateSession(target.name, target.icon)
+  }, [clearSessionTarget, search.session, sessionCRUD, sessions])
 
   const saveSessionPreset = useCallback(
     async (input: {
@@ -979,7 +1008,7 @@ function TmuxPage() {
           }}
           onReorderPinned={reorderPinnedSessions}
           onReorderSession={reorderVisibleSessions}
-          onAttach={sessionCRUD.activateSession}
+          onAttach={activateSelectedSession}
           onRename={sessionCRUD.handleOpenRenameDialogForSession}
           onDetach={sessionCRUD.detachSession}
           onKill={(name) => {
@@ -1029,7 +1058,7 @@ function TmuxPage() {
         onKillTab={(name) => {
           void sessionCRUD.killSession(name)
         }}
-        onSelectTab={sessionCRUD.activateSession}
+        onSelectTab={activateSelectedSession}
         onCloseTab={sessionCRUD.closeTab}
         onReorderTabs={sessionCRUD.reorderTabs}
         onSendKey={sendKey}
@@ -1110,5 +1139,6 @@ function TmuxPage() {
 }
 
 export const Route = createFileRoute('/tmux')({
+  validateSearch: parseTmuxSearch,
   component: TmuxPage,
 })

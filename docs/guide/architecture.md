@@ -22,7 +22,7 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/config`: TOML configuration loading with environment variable overrides (`SENTINEL_*`).
 - `internal/security`: bearer token authentication and CORS origin validation.
 - `internal/daemon`: systemd/launchd service install and lifecycle management.
-- `frontend`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/tmux`, `/services`, `/ops`, `/runbooks`, `/metrics`.
+- `frontend`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/`, `/tmux`, `/runbooks`, `/services`, `/metrics`.
 
 ## Runtime Flow
 
@@ -34,7 +34,8 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
    - WebSocket for realtime updates (`/ws/events`)
    - PTY stream (`/ws/tmux`)
 5. UI uses optimistic mutations and reconciles with events/patches.
-6. UI routes provide dedicated pages: terminal workspace (`/tmux`), service management (`/services`), operations dashboard (`/ops`), runbook execution (`/runbooks`), and system metrics (`/metrics`).
+6. Now (`/`) composes the current operating picture and hands work to the
+   dedicated Tmux, Runbooks, Services, and Metrics routes.
 
 ## Now Read Model
 
@@ -51,6 +52,11 @@ rules. The procedure action reuses the Runbook Manager, so persistence and
 notifications continue through the existing `ops.job.updated` lifecycle. Owner
 modules remain responsible for status/log inspection, approvals, terminal
 interaction, and metric diagnosis.
+
+The frontend loads this model once over HTTP, then invalidates it from the
+existing owner events. It has no periodic polling. If the shared event socket
+disconnects while a snapshot is retained, the presentation marks current
+source envelopes stale until a successful refresh.
 
 ## Data Model (Operational)
 

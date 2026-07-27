@@ -127,7 +127,7 @@ describe('AppShell', () => {
     })
     const links = Array.from(nav.querySelectorAll('a'))
 
-    expect(nav.className).toContain('grid-cols-4')
+    expect(nav.className).toContain('grid-cols-5')
     expect(nav.className).toContain('inset-x-0')
     expect(nav.className).toContain('bottom-0')
     expect(nav.className).toContain('mobile-primary-nav')
@@ -135,12 +135,14 @@ describe('AppShell', () => {
     expect(nav.className).not.toContain('rounded-2xl')
     expect(nav.className).not.toContain('shadow-2xl')
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/',
       '/tmux',
       '/runbooks',
       '/services',
       '/metrics',
     ])
     expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Now',
       'Tmux',
       'Runbooks',
       'Services',

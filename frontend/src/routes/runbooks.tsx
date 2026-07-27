@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Menu } from 'lucide-react'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
@@ -16,8 +16,11 @@ import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useRunbooksPage } from '@/hooks/useRunbooksPage'
+import { parseRunbooksSearch } from '@/lib/deepLinks'
 
 function RunbooksPage() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const { hostname } = useMetaContext()
   const layout = useLayoutContext()
 
@@ -26,6 +29,8 @@ function RunbooksPage() {
     jobs,
     schedules,
     runbooksLoading,
+    focusedJobLoading,
+    focusedJobError,
     targetServices,
     targetServicesLoading,
     connectionState,
@@ -62,7 +67,8 @@ function RunbooksPage() {
     toggleScheduleEnabled,
     triggerSchedule,
     selectRunbook,
-  } = useRunbooksPage()
+  } = useRunbooksPage(search.job)
+  const appliedDeepLinkRef = useRef('')
   const forceReconnectOpsEvents = useOpsEventsReconnect()
   const resyncPage = useCallback(() => {
     forceReconnectOpsEvents()
@@ -75,9 +81,44 @@ function RunbooksPage() {
     (id: string | null) => {
       selectRunbook(id)
       layout.setSidebarOpen(false)
+      if (search.runbook) {
+        appliedDeepLinkRef.current = ''
+        void navigate({ search: {}, replace: true })
+      }
     },
-    [selectRunbook, layout],
+    [layout, navigate, search.runbook, selectRunbook],
   )
+
+  useEffect(() => {
+    if (runbooksLoading || focusedJobLoading || !search.runbook) return
+    const runbook = runbooks.find((item) => item.id === search.runbook)
+    const job = search.job ? jobs.find((item) => item.id === search.job) : undefined
+    if (
+      !runbook ||
+      focusedJobError != null ||
+      (search.job != null && (job == null || job.runbookId !== runbook.id))
+    ) {
+      appliedDeepLinkRef.current = ''
+      void navigate({ search: {}, replace: true })
+      return
+    }
+    const key = `${runbook.id}:${search.job ?? ''}`
+    if (appliedDeepLinkRef.current === key) return
+    appliedDeepLinkRef.current = key
+    selectRunbook(runbook.id)
+    layout.setSidebarOpen(false)
+  }, [
+    focusedJobError,
+    focusedJobLoading,
+    jobs,
+    layout,
+    navigate,
+    runbooks,
+    runbooksLoading,
+    search.job,
+    search.runbook,
+    selectRunbook,
+  ])
 
   const showEditor = editingDraft != null
   const showDetail = !showEditor && selectedRunbook != null
@@ -161,6 +202,7 @@ function RunbooksPage() {
                   />
                   <RunbookJobHistory
                     jobs={selectedJobs}
+                    focusJobId={search.job}
                     onDeleteJob={deleteJob}
                     onApproveJob={approveJob}
                     onRejectJob={rejectJob}
@@ -232,5 +274,6 @@ function RunbooksPage() {
 }
 
 export const Route = createFileRoute('/runbooks')({
+  validateSearch: parseRunbooksSearch,
   component: RunbooksPage,
 })

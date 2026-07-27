@@ -402,6 +402,137 @@ export type OpsMetricsResponse = {
   posture: MetricPosture
 }
 
+export type NowSourceStatus = 'current' | 'stale' | 'unavailable' | 'not_configured'
+
+export type NowSource = {
+  status: NowSourceStatus
+  checkedAt: string
+  message?: string
+}
+
+export type NowSources = {
+  tmux: NowSource
+  services: NowSource
+  metrics: NowSource
+  runbooks: NowSource
+}
+
+export type NowRunbookReference = {
+  id: string
+  name: string
+  description?: string
+  parameters: Array<RunbookParameter>
+}
+
+export type NowRunReference = {
+  runbookId: string
+  runbookName: string
+  runId: string
+  status: string
+  source?: 'runbooks' | 'scheduler' | 'now'
+  targetKind?: 'service'
+  targetName?: string
+  createdAt: string
+}
+
+export type NowServiceReference = {
+  name: string
+  displayName: string
+  trackingMode: 'builtin' | 'custom'
+  manager: string
+  scope: string
+  unit: string
+}
+
+export type NowRunbookApprovalAttention = {
+  type: 'runbook_approval'
+  run: NowRunReference
+}
+
+export type NowServiceFailedAttention = {
+  type: 'service_failed'
+  service: NowServiceReference
+  runbook?: NowRunbookReference
+  failure?: NowRunReference
+}
+
+export type NowRunbookFailedAttention = {
+  type: 'runbook_failed'
+  run: NowRunReference
+}
+
+export type NowMetricsPressureAttention = {
+  type: 'metrics_pressure'
+  severity: 'warning' | 'critical'
+  signals: Array<MetricPostureSignal>
+}
+
+export type NowAttentionItem =
+  | NowRunbookApprovalAttention
+  | NowServiceFailedAttention
+  | NowRunbookFailedAttention
+  | NowMetricsPressureAttention
+
+export type NowAttention = {
+  total: number
+  visible: Array<NowAttentionItem>
+  overflow: {
+    approvals: number
+    services: number
+    runbooks: number
+    metrics: number
+  }
+}
+
+export type NowInProgressRun = {
+  id: string
+  runbookId: string
+  runbookName: string
+  status: 'queued' | 'running'
+  totalSteps: number
+  completedSteps: number
+  currentStep?: string
+  source?: 'runbooks' | 'scheduler' | 'now'
+  targetKind?: 'service'
+  targetName?: string
+  createdAt: string
+  startedAt?: string
+}
+
+export type NowInProgressSession = {
+  name: string
+  user?: string
+  pinned: boolean
+  unreadWindows: number
+  unreadPanes: number
+  activityAt: string
+}
+
+export type NowSnapshot = {
+  generatedAt: string
+  reliability: {
+    state: 'normal' | 'attention' | 'degraded'
+    services: {
+      tracked: number
+      running: number
+      failed: number
+      inactive: number
+      unknown: number
+    }
+    metrics: MetricPosture
+  }
+  attention: NowAttention
+  inProgress: {
+    runs: Array<NowInProgressRun>
+    sessions: Array<NowInProgressSession>
+  }
+  sources: NowSources
+}
+
+export type NowResponse = {
+  now: NowSnapshot
+}
+
 export type OpsCustomServiceWrite = {
   name: string
   displayName: string
