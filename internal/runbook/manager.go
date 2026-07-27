@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -27,6 +29,19 @@ var ErrInvalidParameters = errors.New("invalid runbook parameters")
 // the current persisted run state.
 var ErrInvalidRunState = errors.New("invalid runbook run state")
 
+// ErrTargetServiceNotFound is returned when a runbook references a service
+// outside the tracked runtime catalog.
+var ErrTargetServiceNotFound = errors.New("runbook target service is not tracked")
+
+// ErrTargetServiceConflict is returned when another runbook already owns a
+// service target.
+var ErrTargetServiceConflict = errors.New("runbook target service is already associated")
+
+// TargetCatalog exposes the tracked services accepted by runbook definitions.
+type TargetCatalog interface {
+	ListServices(ctx context.Context) ([]opsplane.ServiceStatus, error)
+}
+
 // ManagerRepo is the complete persistence contract used by Manager.
 type ManagerRepo interface {
 	Repo
@@ -34,13 +49,14 @@ type ManagerRepo interface {
 	ListOpsRunbookRuns(ctx context.Context, limit int) ([]store.OpsRunbookRun, error)
 	InsertOpsRunbook(ctx context.Context, write store.OpsRunbookWrite) (store.OpsRunbook, error)
 	UpdateOpsRunbook(ctx context.Context, write store.OpsRunbookWrite) (store.OpsRunbook, error)
-	CreateOpsRunbookRunWithParams(ctx context.Context, runbookID string, at time.Time, params map[string]string) (store.OpsRunbookRun, error)
+	CreateOpsRunbookRun(ctx context.Context, write store.OpsRunbookRunWrite) (store.OpsRunbookRun, error)
 	DeleteOpsRunbook(ctx context.Context, id, expectedName string) (store.OpsRunbookDeleteResult, error)
 }
 
 // Manager owns the shared manual runbook control plane used by HTTP and MCP.
 type Manager struct {
 	repo          ManagerRepo
+	targets       TargetCatalog
 	emit          EmitFunc
 	commandRunner CommandRunner
 	ctx           context.Context
@@ -50,13 +66,14 @@ type Manager struct {
 }
 
 // NewManager creates a shared runbook manager.
-func NewManager(repo ManagerRepo, emit EmitFunc, maxConcurrent int, commandRunner CommandRunner) *Manager {
+func NewManager(repo ManagerRepo, targets TargetCatalog, emit EmitFunc, maxConcurrent int, commandRunner CommandRunner) *Manager {
 	if maxConcurrent <= 0 {
 		maxConcurrent = defaultMaxConcurrentRuns
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		repo:          repo,
+		targets:       targets,
 		emit:          emit,
 		commandRunner: commandRunner,
 		ctx:           ctx,
@@ -89,8 +106,16 @@ func (m *Manager) Create(ctx context.Context, write store.OpsRunbookWrite) (stor
 	if err := ValidateDefinition(write); err != nil {
 		return store.OpsRunbook{}, nil, fmt.Errorf("%w: %w", ErrInvalidDefinition, err)
 	}
+	targetService, err := m.validateTargetService(ctx, write.TargetService)
+	if err != nil {
+		return store.OpsRunbook{}, nil, err
+	}
+	write.TargetService = targetService
 	created, err := m.repo.InsertOpsRunbook(ctx, write)
 	if err != nil {
+		if isTargetServiceConstraint(err) {
+			return store.OpsRunbook{}, nil, ErrTargetServiceConflict
+		}
 		return store.OpsRunbook{}, nil, err
 	}
 	return created, ShellWarnings(write.Steps), nil
@@ -105,8 +130,16 @@ func (m *Manager) Update(ctx context.Context, write store.OpsRunbookWrite) (stor
 	if err := ValidateDefinition(write); err != nil {
 		return store.OpsRunbook{}, nil, fmt.Errorf("%w: %w", ErrInvalidDefinition, err)
 	}
+	targetService, err := m.validateTargetService(ctx, write.TargetService)
+	if err != nil {
+		return store.OpsRunbook{}, nil, err
+	}
+	write.TargetService = targetService
 	updated, err := m.repo.UpdateOpsRunbook(ctx, write)
 	if err != nil {
+		if isTargetServiceConstraint(err) {
+			return store.OpsRunbook{}, nil, ErrTargetServiceConflict
+		}
 		return store.OpsRunbook{}, nil, err
 	}
 	return updated, ShellWarnings(write.Steps), nil
@@ -138,7 +171,7 @@ func (m *Manager) GetRun(ctx context.Context, id string) (store.OpsRunbookRun, e
 }
 
 // Start validates parameters, persists a run, and launches it asynchronously.
-func (m *Manager) Start(ctx context.Context, runbookID string, params map[string]string, source string) (store.OpsRunbookRun, error) {
+func (m *Manager) Start(ctx context.Context, runbookID string, params map[string]string) (store.OpsRunbookRun, error) {
 	if m == nil || m.repo == nil {
 		return store.OpsRunbookRun{}, errors.New("runbook manager is unavailable")
 	}
@@ -164,7 +197,12 @@ func (m *Manager) Start(ctx context.Context, runbookID string, params map[string
 		return store.OpsRunbookRun{}, fmt.Errorf("%w: %w", ErrInvalidParameters, err)
 	}
 	now := time.Now().UTC()
-	job, err := m.repo.CreateOpsRunbookRunWithParams(ctx, runbookID, now, resolved)
+	job, err := m.repo.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
+		RunbookID:  runbookID,
+		Source:     store.OpsRunbookRunSourceRunbooks,
+		Parameters: resolved,
+		At:         now,
+	})
 	if err != nil {
 		return store.OpsRunbookRun{}, err
 	}
@@ -179,7 +217,6 @@ func (m *Manager) Start(ctx context.Context, runbookID string, params map[string
 		defer m.release()
 		Run(m.ctx, m.repo, m.emitEvent, RunParams{
 			Job:           job,
-			Source:        source,
 			StepTimeout:   30 * time.Second,
 			Parameters:    resolved,
 			CommandRunner: m.commandRunner,
@@ -190,7 +227,7 @@ func (m *Manager) Start(ctx context.Context, runbookID string, params map[string
 }
 
 // Approve atomically claims and resumes an approval-paused run.
-func (m *Manager) Approve(ctx context.Context, runID, source string) (store.OpsRunbookRun, error) {
+func (m *Manager) Approve(ctx context.Context, runID string) (store.OpsRunbookRun, error) {
 	if m == nil || m.repo == nil {
 		return store.OpsRunbookRun{}, errors.New("runbook manager is unavailable")
 	}
@@ -241,7 +278,6 @@ func (m *Manager) Approve(ctx context.Context, runID, source string) (store.OpsR
 		defer m.release()
 		ResumeRun(m.ctx, m.repo, m.emitEvent, RunParams{
 			Job:           running,
-			Source:        source,
 			StepTimeout:   30 * time.Second,
 			Parameters:    job.ParametersUsed,
 			CommandRunner: m.commandRunner,
@@ -294,6 +330,32 @@ func approvalStepIndex(job store.OpsRunbookRun) int {
 		}
 	}
 	return index
+}
+
+func (m *Manager) validateTargetService(ctx context.Context, raw string) (string, error) {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return "", nil
+	}
+	if m.targets == nil {
+		return "", fmt.Errorf("%w: %s", ErrTargetServiceNotFound, target)
+	}
+	services, err := m.targets.ListServices(ctx)
+	if err != nil {
+		return "", fmt.Errorf("load tracked service targets: %w", err)
+	}
+	for _, service := range services {
+		if service.Name == target {
+			return service.Name, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %s", ErrTargetServiceNotFound, target)
+}
+
+func isTargetServiceConstraint(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique constraint") &&
+		strings.Contains(message, "ops_runbooks.target_service")
 }
 
 func (m *Manager) acquire() bool {

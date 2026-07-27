@@ -97,7 +97,6 @@ func TestRunPersistsTerminalStateOnCancelledContext(t *testing.T) {
 
 	Run(ctx, repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-1", RunbookID: "rb-1"},
-		Source:        "test",
 		StepTimeout:   1 * time.Second,
 		RunTimeout:    1 * time.Second,
 		CommandRunner: successfulTestCommandRunner,
@@ -133,7 +132,6 @@ func TestRunPersistsTerminalStateOnTimeout(t *testing.T) {
 	// Use a very short RunTimeout so it expires mid-execution.
 	Run(context.Background(), repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-2", RunbookID: "rb-2"},
-		Source:        "test",
 		StepTimeout:   5 * time.Second,
 		RunTimeout:    100 * time.Millisecond,
 		CommandRunner: blockingTestCommandRunner,
@@ -173,7 +171,6 @@ func TestRunOnFinishReceivesFinalizeContext(t *testing.T) {
 
 	Run(ctx, repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-3", RunbookID: "rb-3"},
-		Source:        "test",
 		StepTimeout:   1 * time.Second,
 		RunTimeout:    1 * time.Second,
 		CommandRunner: successfulTestCommandRunner,
@@ -214,7 +211,6 @@ func TestRunSuccessfulEndToEnd(t *testing.T) {
 	var onFinishStatus string
 	Run(context.Background(), repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-ok", RunbookID: "rb-ok"},
-		Source:        "test",
 		StepTimeout:   5 * time.Second,
 		RunTimeout:    10 * time.Second,
 		CommandRunner: successfulTestCommandRunner,
@@ -249,7 +245,6 @@ func TestRunGetRunbookError(t *testing.T) {
 
 	Run(context.Background(), repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-fail", RunbookID: "rb-missing"},
-		Source:        "test",
 		StepTimeout:   1 * time.Second,
 		RunTimeout:    1 * time.Second,
 		CommandRunner: successfulTestCommandRunner,
@@ -295,7 +290,6 @@ func TestRunWithWebhookURL(t *testing.T) {
 
 	Run(context.Background(), repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-wh", RunbookID: "rb-wh", RunbookName: "webhook-runbook"},
-		Source:        "test",
 		StepTimeout:   1 * time.Second,
 		RunTimeout:    5 * time.Second,
 		CommandRunner: successfulTestCommandRunner,
@@ -328,7 +322,6 @@ func TestRunDefaultTimeouts(t *testing.T) {
 	// Zero timeouts — should use defaults and still succeed.
 	Run(context.Background(), repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-defaults", RunbookID: "rb-defaults"},
-		Source:        "test",
 		CommandRunner: successfulTestCommandRunner,
 	})
 
@@ -347,10 +340,12 @@ func TestBuildWebhookPayload(t *testing.T) {
 			RunbookID:   "rb-7",
 			RunbookName: "Deploy Service",
 		},
-		Source: "scheduler",
 	}
 	job := store.OpsRunbookRun{
 		ID:             "run-42",
+		Source:         store.OpsRunbookRunSourceScheduler,
+		TargetKind:     store.OpsRunbookRunTargetService,
+		TargetName:     "nginx",
 		Status:         "succeeded",
 		TotalSteps:     3,
 		CompletedSteps: 3,
@@ -385,6 +380,9 @@ func TestBuildWebhookPayload(t *testing.T) {
 	}
 	if payload.Job.Source != "scheduler" {
 		t.Fatalf("job.source = %q, want scheduler", payload.Job.Source)
+	}
+	if payload.Job.TargetKind != "service" || payload.Job.TargetName != "nginx" {
+		t.Fatalf("job target = (%q, %q), want service/nginx", payload.Job.TargetKind, payload.Job.TargetName)
 	}
 	if payload.Job.TotalSteps != 3 {
 		t.Fatalf("job.totalSteps = %d, want 3", payload.Job.TotalSteps)
@@ -429,10 +427,10 @@ func TestBuildWebhookPayloadFailedRun(t *testing.T) {
 			RunbookID:   "rb-1",
 			RunbookName: "Health Check",
 		},
-		Source: "runbook",
 	}
 	job := store.OpsRunbookRun{
 		ID:             "run-99",
+		Source:         store.OpsRunbookRunSourceRunbooks,
 		Status:         "failed",
 		TotalSteps:     2,
 		CompletedSteps: 1,
@@ -494,7 +492,6 @@ func TestResumeRunCompletesAfterApproval(t *testing.T) {
 				Type:      "approval",
 			}},
 		},
-		Source:      "runbook",
 		StepTimeout: 10 * time.Millisecond,
 		RunTimeout:  time.Second,
 	}, 0)
@@ -520,7 +517,6 @@ func TestBuildWebhookPayloadOmitsEmptyFields(t *testing.T) {
 			RunbookID:   "rb-0",
 			RunbookName: "Minimal",
 		},
-		Source: "runbook",
 	}
 	job := store.OpsRunbookRun{
 		ID:             "run-0",
@@ -646,7 +642,6 @@ func TestRunApprovalStepPauses(t *testing.T) {
 
 	Run(context.Background(), repo, emit, RunParams{
 		Job:           store.OpsRunbookRun{ID: "run-approval", RunbookID: "rb-approval"},
-		Source:        "test",
 		StepTimeout:   5 * time.Second,
 		RunTimeout:    10 * time.Second,
 		CommandRunner: successfulTestCommandRunner,

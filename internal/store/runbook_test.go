@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+func testRunWrite(runbookID string, at time.Time, parameters map[string]string) OpsRunbookRunWrite {
+	return OpsRunbookRunWrite{
+		RunbookID:  runbookID,
+		Source:     OpsRunbookRunSourceRunbooks,
+		Parameters: parameters,
+		At:         at,
+	}
+}
+
 func TestOpsRunbooksAndRuns(t *testing.T) {
 	t.Parallel()
 
@@ -23,18 +32,18 @@ func TestOpsRunbooksAndRuns(t *testing.T) {
 		t.Fatalf("expected seeded runbooks")
 	}
 
-	run, err := s.StartOpsRunbook(ctx, runbooks[0].ID, time.Now().UTC())
+	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite(runbooks[0].ID, time.Now().UTC(), nil))
 	if err != nil {
-		t.Fatalf("StartOpsRunbook: %v", err)
+		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
-	if run.Status != opsRunbookStatusSucceeded {
-		t.Fatalf("status = %q, want %q", run.Status, opsRunbookStatusSucceeded)
+	if run.Status != opsRunbookStatusQueued {
+		t.Fatalf("status = %q, want %q", run.Status, opsRunbookStatusQueued)
 	}
 	if run.TotalSteps < 1 {
 		t.Fatalf("total steps = %d, want >= 1", run.TotalSteps)
 	}
-	if run.CompletedSteps != run.TotalSteps {
-		t.Fatalf("completed=%d total=%d, want equal", run.CompletedSteps, run.TotalSteps)
+	if run.CompletedSteps != 0 {
+		t.Fatalf("completed=%d, want 0", run.CompletedSteps)
 	}
 
 	loaded, err := s.GetOpsRunbookRun(ctx, run.ID)
@@ -325,7 +334,7 @@ func TestDeleteOpsRunbook(t *testing.T) {
 		}
 
 		// Verify it's gone by trying to start it.
-		_, err := s.StartOpsRunbook(ctx, "delete.me", time.Now().UTC())
+		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite("delete.me", time.Now().UTC(), nil))
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("expected sql.ErrNoRows for deleted runbook, got: %v", err)
 		}
@@ -363,7 +372,7 @@ func TestDeleteOpsRunbook(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.CreateOpsRunbookRunWithParams(ctx, rb.ID, time.Now().UTC(), nil); err != nil {
+		if _, err := s.CreateOpsRunbookRun(ctx, testRunWrite(rb.ID, time.Now().UTC(), nil)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.DeleteOpsRunbook(ctx, rb.ID, rb.Name); !errors.Is(err, ErrOpsRunbookActive) {
@@ -381,7 +390,7 @@ func TestDeleteOpsRunbook(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		run, err := s.CreateOpsRunbookRunWithParams(ctx, rb.ID, time.Now().UTC(), nil)
+		run, err := s.CreateOpsRunbookRun(ctx, testRunWrite(rb.ID, time.Now().UTC(), nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -434,7 +443,7 @@ func TestCreateOpsRunbookRun(t *testing.T) {
 	}
 
 	t.Run("creates queued run with correct fields", func(t *testing.T) {
-		run, err := s.CreateOpsRunbookRun(ctx, "run.test", now)
+		run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("run.test", now, nil))
 		if err != nil {
 			t.Fatalf("CreateOpsRunbookRun: %v", err)
 		}
@@ -462,18 +471,102 @@ func TestCreateOpsRunbookRun(t *testing.T) {
 	})
 
 	t.Run("empty runbook ID returns ErrNoRows", func(t *testing.T) {
-		_, err := s.CreateOpsRunbookRun(ctx, "", now)
+		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite("", now, nil))
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("nonexistent runbook returns error", func(t *testing.T) {
-		_, err := s.CreateOpsRunbookRun(ctx, "no.such.runbook", now)
+		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite("no.such.runbook", now, nil))
 		if err == nil {
 			t.Fatalf("expected error for nonexistent runbook")
 		}
 	})
+}
+
+func TestCreateOpsRunbookRunPersistsSourceAndDerivedTarget(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	rb, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID:            "target.context",
+		Name:          "Target Context",
+		TargetService: "nginx",
+		Steps:         []OpsRunbookStep{{Type: "run", Title: "Check", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+	run, err := s.CreateOpsRunbookRun(ctx, OpsRunbookRunWrite{
+		RunbookID: rb.ID,
+		Source:    OpsRunbookRunSourceScheduler,
+		At:        now,
+	})
+	if err != nil {
+		t.Fatalf("CreateOpsRunbookRun: %v", err)
+	}
+	if run.Source != OpsRunbookRunSourceScheduler ||
+		run.TargetKind != OpsRunbookRunTargetService ||
+		run.TargetName != "nginx" {
+		t.Fatalf("run context = (%q, %q, %q)", run.Source, run.TargetKind, run.TargetName)
+	}
+
+	updated, err := s.UpdateOpsRunbook(ctx, OpsRunbookWrite{
+		ID:    rb.ID,
+		Name:  rb.Name,
+		Steps: rb.Steps,
+	})
+	if err != nil {
+		t.Fatalf("clear runbook target: %v", err)
+	}
+	if updated.TargetService != "" {
+		t.Fatalf("updated targetService = %q, want empty", updated.TargetService)
+	}
+	loaded, err := s.GetOpsRunbookRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetOpsRunbookRun: %v", err)
+	}
+	if loaded.TargetName != "nginx" {
+		t.Fatalf("persisted run target changed to %q, want nginx", loaded.TargetName)
+	}
+}
+
+func TestCreateOpsRunbookRunRejectsInvalidSource(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	_, err := s.CreateOpsRunbookRun(context.Background(), OpsRunbookRunWrite{
+		RunbookID: "ops.update.apply",
+		Source:    "other",
+	})
+	if !errors.Is(err, ErrOpsRunbookRunSource) {
+		t.Fatalf("CreateOpsRunbookRun error = %v, want ErrOpsRunbookRunSource", err)
+	}
+}
+
+func TestCreateOpsRunbookRunAcceptsCanonicalSources(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	for _, source := range []string{
+		OpsRunbookRunSourceRunbooks,
+		OpsRunbookRunSourceScheduler,
+		OpsRunbookRunSourceNow,
+	} {
+		run, err := s.CreateOpsRunbookRun(context.Background(), OpsRunbookRunWrite{
+			RunbookID: "ops.update.apply",
+			Source:    source,
+		})
+		if err != nil {
+			t.Fatalf("CreateOpsRunbookRun source %q: %v", source, err)
+		}
+		if run.Source != source {
+			t.Fatalf("run source = %q, want %q", run.Source, source)
+		}
+	}
 }
 
 func TestUpdateOpsRunbookRun(t *testing.T) {
@@ -495,7 +588,7 @@ func TestUpdateOpsRunbookRun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
-	run, err := s.CreateOpsRunbookRun(ctx, "update.run.rb", now)
+	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("update.run.rb", now, nil))
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
@@ -658,7 +751,7 @@ func TestUpdateOpsRunbookRunFromStatusGuard(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
-	run, err := s.CreateOpsRunbookRun(ctx, "guard.run.rb", now)
+	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("guard.run.rb", now, nil))
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
@@ -714,7 +807,7 @@ func TestDeleteOpsRunbookRun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
-	run, err := s.CreateOpsRunbookRun(ctx, "delete.run.rb", now)
+	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("delete.run.rb", now, nil))
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
@@ -745,27 +838,27 @@ func TestDeleteOpsRunbookRun(t *testing.T) {
 	})
 }
 
-func TestStartOpsRunbookErrorPaths(t *testing.T) {
+func TestCreateOpsRunbookRunErrorPaths(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	t.Run("empty runbook ID returns ErrNoRows", func(t *testing.T) {
-		_, err := s.StartOpsRunbook(ctx, "", time.Now().UTC())
+		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite("", time.Now().UTC(), nil))
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("error = %v, want sql.ErrNoRows", err)
 		}
 	})
 
 	t.Run("nonexistent runbook returns error", func(t *testing.T) {
-		_, err := s.StartOpsRunbook(ctx, "no.such.runbook", time.Now().UTC())
+		_, err := s.CreateOpsRunbookRun(ctx, testRunWrite("no.such.runbook", time.Now().UTC(), nil))
 		if err == nil {
 			t.Fatalf("expected error for nonexistent runbook")
 		}
 	})
 
-	t.Run("runbook with no steps succeeds", func(t *testing.T) {
+	t.Run("runbook with no steps is queued", func(t *testing.T) {
 		if _, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
 			ID:      "empty.steps",
 			Name:    "Empty Steps",
@@ -774,18 +867,18 @@ func TestStartOpsRunbookErrorPaths(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("InsertOpsRunbook: %v", err)
 		}
-		run, err := s.StartOpsRunbook(ctx, "empty.steps", time.Now().UTC())
+		run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("empty.steps", time.Now().UTC(), nil))
 		if err != nil {
-			t.Fatalf("StartOpsRunbook: %v", err)
+			t.Fatalf("CreateOpsRunbookRun: %v", err)
 		}
 		if run.TotalSteps != 0 {
 			t.Fatalf("totalSteps = %d, want 0", run.TotalSteps)
 		}
-		if run.Status != opsRunbookStatusSucceeded {
-			t.Fatalf("status = %q, want %q", run.Status, opsRunbookStatusSucceeded)
+		if run.Status != opsRunbookStatusQueued {
+			t.Fatalf("status = %q, want %q", run.Status, opsRunbookStatusQueued)
 		}
-		if run.CurrentStep != "completed" {
-			t.Fatalf("currentStep = %q, want completed", run.CurrentStep)
+		if run.CurrentStep != "" {
+			t.Fatalf("currentStep = %q, want empty", run.CurrentStep)
 		}
 	})
 }
@@ -805,7 +898,7 @@ func TestScanOpsRunbookRunMalformedJSON(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
-	run, err := s.CreateOpsRunbookRun(ctx, "malformed.test", now)
+	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("malformed.test", now, nil))
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
@@ -917,7 +1010,7 @@ func seedOrphanRunbook(ctx context.Context, t *testing.T, s *Store) {
 func createOrphanRun(ctx context.Context, t *testing.T, s *Store, now time.Time, label string) OpsRunbookRun {
 	t.Helper()
 
-	run, err := s.CreateOpsRunbookRun(ctx, "orphan.test", now)
+	run, err := s.CreateOpsRunbookRun(ctx, testRunWrite("orphan.test", now, nil))
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun(%s): %v", label, err)
 	}

@@ -8,8 +8,17 @@ import (
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/runbook"
+	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 )
+
+type runbookTargetCatalog struct {
+	services []opsplane.ServiceStatus
+}
+
+func (c runbookTargetCatalog) ListServices(context.Context) ([]opsplane.ServiceStatus, error) {
+	return c.services, nil
+}
 
 func TestRunbookToolsLifecycle(t *testing.T) {
 	t.Parallel()
@@ -18,7 +27,7 @@ func TestRunbookToolsLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	manager := runbook.NewManager(st, nil, 2, func(context.Context, string, ...string) (string, error) {
+	manager := runbook.NewManager(st, nil, nil, 2, func(context.Context, string, ...string) (string, error) {
 		return "0123456789", nil
 	})
 	t.Cleanup(func() { manager.Shutdown(context.Background()) })
@@ -95,6 +104,40 @@ func TestRunbookToolsLifecycle(t *testing.T) {
 	}
 }
 
+func TestRunbookCreateToolUsesCanonicalServiceTargetValidation(t *testing.T) {
+	t.Parallel()
+
+	st, err := store.New(filepath.Join(t.TempDir(), "sentinel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	manager := runbook.NewManager(st, runbookTargetCatalog{services: []opsplane.ServiceStatus{
+		{Name: "nginx"},
+	}}, nil, 1, nil)
+	t.Cleanup(func() { manager.Shutdown(context.Background()) })
+	toolset := &tools{runbooks: manager}
+
+	_, created, err := toolset.createRunbook(context.Background(), nil, runbookCreateInput{
+		Name:          "Recover Nginx",
+		TargetService: "nginx",
+		Steps:         []store.OpsRunbookStep{{Type: "run", Title: "Check", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatalf("createRunbook: %v", err)
+	}
+	if created.Runbook.TargetService != "nginx" {
+		t.Fatalf("targetService = %q, want nginx", created.Runbook.TargetService)
+	}
+	if _, _, err := toolset.createRunbook(context.Background(), nil, runbookCreateInput{
+		Name:          "Duplicate",
+		TargetService: "nginx",
+		Steps:         []store.OpsRunbookStep{{Type: "run", Title: "Check", Command: "true"}},
+	}); err == nil || !strings.Contains(err.Error(), "already associated") {
+		t.Fatalf("duplicate target error = %v", err)
+	}
+}
+
 func TestRunbookWaitStopsForHumanApproval(t *testing.T) {
 	t.Parallel()
 	st, err := store.New(filepath.Join(t.TempDir(), "sentinel.db"))
@@ -102,7 +145,7 @@ func TestRunbookWaitStopsForHumanApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	manager := runbook.NewManager(st, nil, 1, func(context.Context, string, ...string) (string, error) {
+	manager := runbook.NewManager(st, nil, nil, 1, func(context.Context, string, ...string) (string, error) {
 		return "", nil
 	})
 	t.Cleanup(func() { manager.Shutdown(context.Background()) })

@@ -26,6 +26,8 @@ function RunbooksPage() {
     jobs,
     schedules,
     runbooksLoading,
+    targetServices,
+    targetServicesLoading,
     connectionState,
     selectedRunbookId,
     selectedRunbook,
@@ -121,6 +123,8 @@ function RunbooksPage() {
               draft={editingDraft}
               saving={saving}
               errors={editorErrors}
+              services={targetServices}
+              servicesLoading={targetServicesLoading}
               onDraftChange={setEditingDraft}
               onSave={() => void saveDraft()}
               onCancel={cancelEdit}

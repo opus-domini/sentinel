@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
@@ -115,7 +114,7 @@ type presenceRepo interface {
 }
 
 type opsJobRepo interface {
-	CreateOpsRunbookRun(ctx context.Context, runbookID string, at time.Time) (store.OpsRunbookRun, error)
+	CreateOpsRunbookRun(ctx context.Context, write store.OpsRunbookRunWrite) (store.OpsRunbookRun, error)
 	DeleteOpsRunbookRun(ctx context.Context, runID string) error
 }
 
@@ -300,7 +299,7 @@ func Register(
 		runCtx:           runCtx,
 		runCancel:        runCancel,
 	}
-	h.runbooks = runbook.NewManager(st, h.emitEvent, runbookMaxConcurrent, nil)
+	h.runbooks = runbook.NewManager(st, ops, h.emitEvent, runbookMaxConcurrent, nil)
 	h.registerMetaRoutes(mux)
 	h.registerTmuxRoutes(mux)
 	h.registerServicesRoutes(mux)

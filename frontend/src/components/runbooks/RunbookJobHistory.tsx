@@ -225,6 +225,13 @@ export function RunbookJobHistory({
                       {` · ${duration}`}
                       {job.currentStep && ` · ${job.currentStep}`}
                     </p>
+                    {(job.source || job.targetName) && (
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {job.source && `Source: ${job.source}`}
+                        {job.source && job.targetName && ' · '}
+                        {job.targetName && `Service: ${job.targetName}`}
+                      </p>
+                    )}
                     {isWaitingApproval && (
                       <p className="mt-1 text-[10px] text-warning-foreground">
                         Review the recorded output and choose whether this run can continue.

@@ -306,7 +306,7 @@ func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 		runCtx:    runCtx,
 		runCancel: runCancel,
 	}
-	h.runbooks = runbook.NewManager(st, h.emitEvent, 5, testRunbookCommandRunner)
+	h.runbooks = runbook.NewManager(st, h.ops, h.emitEvent, 5, testRunbookCommandRunner)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -318,7 +318,7 @@ func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 func replaceRunbookManager(t *testing.T, h *Handler, st *store.Store, maxConcurrent int) {
 	t.Helper()
 	h.runbooks.Shutdown(context.Background())
-	h.runbooks = runbook.NewManager(st, h.emitEvent, maxConcurrent, testRunbookCommandRunner)
+	h.runbooks = runbook.NewManager(st, h.ops, h.emitEvent, maxConcurrent, testRunbookCommandRunner)
 }
 
 func testRunbookCommandRunner(_ context.Context, _ string, args ...string) (string, error) {
@@ -3619,11 +3619,7 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 	if len(runbooksRaw) == 0 {
 		t.Fatalf("expected seeded runbooks")
 	}
-	firstRunbook, _ := runbooksRaw[0].(map[string]any)
-	runbookID, _ := firstRunbook["id"].(string)
-	if runbookID == "" {
-		t.Fatalf("runbook id should not be empty")
-	}
+	const runbookID = "ops.service.recover"
 
 	eventHub := events.NewHub()
 	eventsCh, unsubscribe := eventHub.Subscribe(8)
@@ -3668,6 +3664,11 @@ func TestOpsRunbooksAndJobsHandlers(t *testing.T) {
 	}
 	if loaded.RunbookID != runbookID {
 		t.Fatalf("job runbook id = %q, want %q", loaded.RunbookID, runbookID)
+	}
+	if loaded.Source != store.OpsRunbookRunSourceRunbooks ||
+		loaded.TargetKind != store.OpsRunbookRunTargetService ||
+		loaded.TargetName != "sentinel" {
+		t.Fatalf("job context = (%q, %q, %q)", loaded.Source, loaded.TargetKind, loaded.TargetName)
 	}
 }
 
@@ -4015,6 +4016,69 @@ func TestRegisterAndUnregisterOpsService(t *testing.T) {
 	h.unregisterOpsService(w, r)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("double-unregister status = %d, want 404", w.Code)
+	}
+}
+
+func TestRunbookServiceTargetConflictAndProtectedRemoval(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil)
+	ops := h.ops.(*mockOpsControlPlane)
+	ops.listServicesFn = func(context.Context) ([]opsplane.ServiceStatus, error) {
+		return []opsplane.ServiceStatus{{
+			Name:         "myapp",
+			DisplayName:  "My App",
+			TrackingMode: opsplane.TrackingModeCustom,
+			Manager:      "systemd",
+			Scope:        "user",
+			Unit:         "myapp.service",
+			Exists:       true,
+		}}, nil
+	}
+	if _, err := st.InsertCustomService(context.Background(), store.CustomServiceWrite{
+		Name: "myapp", DisplayName: "My App", Manager: "systemd",
+		Unit: "myapp.service", Scope: "user",
+	}); err != nil {
+		t.Fatalf("InsertCustomService: %v", err)
+	}
+
+	createBody := `{
+		"name":"Recover My App",
+		"targetService":"myapp",
+		"steps":[{"type":"run","title":"Check","command":"true"}],
+		"enabled":true
+	}`
+	w := httptest.NewRecorder()
+	h.createOpsRunbook(w, httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(createBody)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create target runbook status = %d, want 201; body=%s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.createOpsRunbook(w, httptest.NewRequest(http.MethodPost, "/api/ops/runbooks", strings.NewReader(createBody)))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate target status = %d, want 409; body=%s", w.Code, w.Body.String())
+	}
+	if code := errCode(jsonBody(t, w)); code != "OPS_RUNBOOK_TARGET_CONFLICT" {
+		t.Fatalf("duplicate target code = %q, want OPS_RUNBOOK_TARGET_CONFLICT", code)
+	}
+
+	w = httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/api/ops/services/myapp", nil)
+	r.SetPathValue("service", "myapp")
+	h.unregisterOpsService(w, r)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("remove associated service status = %d, want 409; body=%s", w.Code, w.Body.String())
+	}
+	if code := errCode(jsonBody(t, w)); code != "OPS_SERVICE_IN_USE" {
+		t.Fatalf("remove associated service code = %q, want OPS_SERVICE_IN_USE", code)
+	}
+	custom, err := st.ListCustomServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListCustomServices: %v", err)
+	}
+	if len(custom) != 1 || custom[0].Name != "myapp" {
+		t.Fatalf("custom services = %+v, want myapp preserved", custom)
 	}
 }
 
@@ -4556,7 +4620,8 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 
 	// Create a runbook with a simple echo step.
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
-		Name: "trigger-test-rb",
+		Name:          "trigger-test-rb",
+		TargetService: "trigger-service",
 		Steps: []store.OpsRunbookStep{
 			{Type: "run", Title: "echo", Command: "echo ok"},
 		},
@@ -4628,6 +4693,16 @@ func TestTriggerScheduleFinalisesState(t *testing.T) {
 	}
 	if !recomputed.After(time.Now().UTC()) {
 		t.Fatalf("recomputed next_run_at %s should be in the future", got.NextRunAt)
+	}
+	runs, err := st.ListOpsRunbookRuns(ctx, 1)
+	if err != nil {
+		t.Fatalf("ListOpsRunbookRuns: %v", err)
+	}
+	if len(runs) != 1 ||
+		runs[0].Source != store.OpsRunbookRunSourceScheduler ||
+		runs[0].TargetKind != store.OpsRunbookRunTargetService ||
+		runs[0].TargetName != "trigger-service" {
+		t.Fatalf("manually triggered schedule context = %+v", runs)
 	}
 }
 
@@ -5387,7 +5462,11 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 			Name:  "del-job-rb",
 			Steps: []store.OpsRunbookStep{{Type: "run", Title: "echo", Command: "echo ok"}},
 		})
-		job, err := st.CreateOpsRunbookRun(ctx, rb.ID, time.Now().UTC())
+		job, err := st.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
+			RunbookID: rb.ID,
+			Source:    store.OpsRunbookRunSourceRunbooks,
+			At:        time.Now().UTC(),
+		})
 		if err != nil {
 			t.Fatalf("CreateOpsRunbookRun: %v", err)
 		}

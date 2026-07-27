@@ -5,6 +5,7 @@ import type {
   OpsRunbookRunResponse,
   OpsRunbooksResponse,
   OpsSchedule,
+  OpsServicesResponse,
   OpsWsMessage,
   RunbookParameterType,
 } from '@/types'
@@ -16,7 +17,11 @@ import { createBlankStep } from '@/components/RunbookEditor'
 import { useToastContext } from '@/contexts/ToastContext'
 import { useOpsEvents } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
-import { OPS_RUNBOOKS_QUERY_KEY, upsertOpsRunbookJob } from '@/lib/opsQueryCache'
+import {
+  OPS_RUNBOOKS_QUERY_KEY,
+  OPS_SERVICES_QUERY_KEY,
+  upsertOpsRunbookJob,
+} from '@/lib/opsQueryCache'
 import { isActiveRunbookJob } from '@/lib/runbookPresentation'
 import { randomId } from '@/lib/utils'
 
@@ -31,6 +36,7 @@ function runbookToDraft(runbook: OpsRunbook): RunbookDraft {
     description: runbook.description,
     enabled: runbook.enabled,
     webhookURL: runbook.webhookURL ?? '',
+    targetService: runbook.targetService ?? '',
     parameters: (runbook.parameters ?? []).map(
       (p): RunbookParameterDraft => ({
         key: randomId(),
@@ -74,6 +80,7 @@ function createBlankDraft(): RunbookDraft {
     description: '',
     enabled: true,
     webhookURL: '',
+    targetService: '',
     parameters: [],
     steps: [createBlankStep()],
   }
@@ -135,6 +142,7 @@ function draftToPayload(draft: RunbookDraft) {
     description: draft.description.trim(),
     enabled: draft.enabled,
     webhookURL: draft.webhookURL.trim(),
+    targetService: draft.targetService.trim(),
     parameters: draft.parameters.map((p) => {
       const param: Record<string, unknown> = {
         name: p.name.trim(),
@@ -202,11 +210,21 @@ export function useRunbooksPage() {
     queryKey: OPS_RUNBOOKS_QUERY_KEY,
     queryFn: fetchRunbooks,
   })
+  const servicesQuery = useQuery({
+    queryKey: OPS_SERVICES_QUERY_KEY,
+    queryFn: async () => {
+      const data = await api<OpsServicesResponse>('/api/ops/services')
+      return data.services
+    },
+    enabled: editingDraft != null,
+  })
 
   const runbooks = runbooksQuery.data?.runbooks ?? EMPTY_RUNBOOKS
   const jobs = runbooksQuery.data?.jobs ?? EMPTY_RUNBOOK_JOBS
   const schedules = runbooksQuery.data?.schedules ?? EMPTY_RUNBOOK_SCHEDULES
   const runbooksLoading = runbooksQuery.isLoading
+  const targetServices = servicesQuery.data ?? []
+  const targetServicesLoading = editingDraft != null && servicesQuery.isLoading
 
   const refreshRunbooks = useCallback(async () => {
     await queryClient.refetchQueries({
@@ -449,6 +467,9 @@ export function useRunbooksPage() {
       setEditingDraft(null)
       setEditorErrors({})
     } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes('already associated')) {
+        setEditorErrors({ targetService: 'This service is already associated with a runbook' })
+      }
       pushToast({
         level: 'error',
         title: 'Save failed',
@@ -737,6 +758,8 @@ export function useRunbooksPage() {
     jobs,
     schedules,
     runbooksLoading,
+    targetServices,
+    targetServicesLoading,
     connectionState,
     selectedRunbookId,
     selectedRunbook,

@@ -166,11 +166,7 @@ func (r *failingScheduleUpdateRepo) ListDueSchedules(context.Context, time.Time,
 	return nil, nil
 }
 
-func (r *failingScheduleUpdateRepo) CreateOpsRunbookRun(context.Context, string, time.Time) (store.OpsRunbookRun, error) {
-	return store.OpsRunbookRun{}, nil
-}
-
-func (r *failingScheduleUpdateRepo) CreateOpsRunbookRunWithParams(context.Context, string, time.Time, map[string]string) (store.OpsRunbookRun, error) {
+func (r *failingScheduleUpdateRepo) CreateOpsRunbookRun(context.Context, store.OpsRunbookRunWrite) (store.OpsRunbookRun, error) {
 	return store.OpsRunbookRun{}, nil
 }
 
@@ -228,8 +224,9 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 
 	// Create a runbook with 0 steps (completes instantly).
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
-		Name:    "tick-test",
-		Enabled: true,
+		Name:          "tick-test",
+		Enabled:       true,
+		TargetService: "nginx",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -262,6 +259,11 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 	}
 	if runs[0].RunbookID != rb.ID {
 		t.Fatalf("run runbook ID = %q, want %q", runs[0].RunbookID, rb.ID)
+	}
+	if runs[0].Source != store.OpsRunbookRunSourceScheduler ||
+		runs[0].TargetKind != store.OpsRunbookRunTargetService ||
+		runs[0].TargetName != "nginx" {
+		t.Fatalf("run context = (%q, %q, %q)", runs[0].Source, runs[0].TargetKind, runs[0].TargetName)
 	}
 
 	// Wait for the async goroutine to complete so the store can close cleanly.

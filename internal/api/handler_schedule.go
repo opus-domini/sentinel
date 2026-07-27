@@ -250,7 +250,26 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	job, err := h.repo.CreateOpsRunbookRun(ctx, sched.RunbookID, now)
+	rb, err := h.repo.GetOpsRunbook(ctx, sched.RunbookID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load runbook", nil)
+		return
+	}
+	params := runbook.ResolveParams(rb.Parameters, nil)
+	if err := runbook.ValidateParams(rb.Parameters, params); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_PARAMETERS", err.Error(), nil)
+		return
+	}
+	job, err := h.repo.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
+		RunbookID:  sched.RunbookID,
+		Source:     store.OpsRunbookRunSourceScheduler,
+		Parameters: params,
+		At:         now,
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
@@ -293,8 +312,8 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		defer h.wg.Done()
 		runbook.Run(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{
 			Job:         job,
-			Source:      keySchedule,
 			StepTimeout: 30 * time.Second,
+			Parameters:  params,
 			OnFinish: func(ctx context.Context, status string) {
 				finished := time.Now().UTC()
 				// Update only last_run_*; next_run_at/enabled were set at dispatch

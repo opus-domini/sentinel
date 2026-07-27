@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RunbookEditor } from './RunbookEditor'
@@ -11,6 +11,7 @@ const draft: RunbookDraft = {
   description: '',
   enabled: true,
   webhookURL: 'bad-url',
+  targetService: '',
   parameters: [],
   steps: [],
 }
@@ -28,6 +29,8 @@ describe('RunbookEditor', () => {
         draft={draft}
         saving={false}
         errors={{ name: 'Name is required', webhookURL: 'Webhook URL is invalid' }}
+        services={[]}
+        servicesLoading={false}
         onDraftChange={vi.fn()}
         onSave={vi.fn()}
         onCancel={vi.fn()}
@@ -48,6 +51,8 @@ describe('RunbookEditor', () => {
         draft={draft}
         saving={false}
         errors={{ parameters: 'Add at least one parameter', steps: 'Add at least one step' }}
+        services={[]}
+        servicesLoading={false}
         onDraftChange={vi.fn()}
         onSave={vi.fn()}
         onCancel={vi.fn()}
@@ -62,5 +67,53 @@ describe('RunbookEditor', () => {
     expect(screen.getByText('Add at least one parameter').getAttribute('role')).toBe('alert')
     expect(screen.getByText('Add at least one step').getAttribute('role')).toBe('alert')
     await waitFor(() => expect(document.activeElement).toBe(parameters))
+  })
+
+  it('selects an optional tracked service and explains an empty catalog', () => {
+    const onDraftChange = vi.fn()
+    const { rerender } = render(
+      <RunbookEditor
+        draft={draft}
+        saving={false}
+        errors={{}}
+        services={[]}
+        servicesLoading={false}
+        onDraftChange={onDraftChange}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Track a service in Services before associating it.')).toBeTruthy()
+
+    rerender(
+      <RunbookEditor
+        draft={draft}
+        saving={false}
+        errors={{}}
+        services={[
+          {
+            name: 'nginx',
+            displayName: 'Nginx',
+            trackingMode: 'custom',
+            manager: 'systemd',
+            scope: 'system',
+            unit: 'nginx.service',
+            exists: true,
+            activeState: 'active',
+            enabledState: 'enabled',
+            updatedAt: '2026-07-27T12:00:00Z',
+          },
+        ]}
+        servicesLoading={false}
+        onDraftChange={onDraftChange}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Service target'), {
+      target: { value: 'nginx' },
+    })
+    expect(onDraftChange).toHaveBeenCalledWith({ ...draft, targetService: 'nginx' })
   })
 })

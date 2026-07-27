@@ -70,7 +70,7 @@ func (h *Handler) runOpsRunbook(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
-	job, err := h.runbooks.Start(ctx, runbookID, reqParams, "runbook")
+	job, err := h.runbooks.Start(ctx, runbookID, reqParams)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -161,11 +161,16 @@ func (h *Handler) createOpsRunbook(w http.ResponseWriter, r *http.Request) {
 
 	rb, warnings, err := h.runbooks.Create(ctx, req)
 	if err != nil {
-		if errors.Is(err, runbook.ErrInvalidDefinition) {
+		switch {
+		case errors.Is(err, runbook.ErrInvalidDefinition):
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-			return
+		case errors.Is(err, runbook.ErrTargetServiceNotFound):
+			writeError(w, http.StatusBadRequest, "OPS_RUNBOOK_TARGET_NOT_FOUND", err.Error(), nil)
+		case errors.Is(err, runbook.ErrTargetServiceConflict):
+			writeError(w, http.StatusConflict, "OPS_RUNBOOK_TARGET_CONFLICT", err.Error(), nil)
+		default:
+			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create runbook", nil)
 		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to create runbook", nil)
 		return
 	}
 
@@ -204,6 +209,10 @@ func (h *Handler) updateOpsRunbook(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "OPS_RUNBOOK_NOT_FOUND", "runbook not found", nil)
 		case errors.Is(err, runbook.ErrInvalidDefinition):
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		case errors.Is(err, runbook.ErrTargetServiceNotFound):
+			writeError(w, http.StatusBadRequest, "OPS_RUNBOOK_TARGET_NOT_FOUND", err.Error(), nil)
+		case errors.Is(err, runbook.ErrTargetServiceConflict):
+			writeError(w, http.StatusConflict, "OPS_RUNBOOK_TARGET_CONFLICT", err.Error(), nil)
 		default:
 			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to update runbook", nil)
 		}
@@ -266,7 +275,7 @@ func (h *Handler) approveOpsRunbookRun(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
 
-	job, err := h.runbooks.Approve(ctx, runID, "runbook")
+	job, err := h.runbooks.Approve(ctx, runID)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):

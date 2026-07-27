@@ -33,6 +33,28 @@ function job(overrides: Partial<OpsRunbookRun> = {}): OpsRunbookRun {
 }
 
 describe('RunbookJobHistory', () => {
+  it('shows persisted source and target without inventing historical context', () => {
+    render(
+      <RunbookJobHistory
+        jobs={[
+          job({
+            id: 'contextual',
+            source: 'scheduler',
+            targetKind: 'service',
+            targetName: 'nginx',
+          }),
+          job({ id: 'historical' }),
+        ]}
+        onDeleteJob={vi.fn()}
+        onApproveJob={vi.fn()}
+        onRejectJob={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Source: scheduler · Service: nginx')).toBeTruthy()
+    expect(screen.getAllByText(/Source:/)).toHaveLength(1)
+  })
+
   it('filters the operational history by job state', () => {
     render(
       <RunbookJobHistory

@@ -258,6 +258,7 @@ Runbook create/update payload:
   "description": "Verify service health",
   "enabled": true,
   "webhookURL": "https://hooks.example.com/sentinel",
+  "targetService": "myapp",
   "steps": [
     { "type": "run", "title": "Check status", "command": "systemctl --user is-active myapp" },
     {
@@ -291,6 +292,16 @@ Per-step options (all optional):
 | `retryDelay`      | int  | Delay between retries in seconds     |
 
 The optional `webhookURL` field configures a webhook endpoint that receives a POST with run results on completion. Must be `http` or `https`. See [Runbooks — Webhooks](/features/runbooks.md#webhooks) for payload details.
+
+`targetService` is optional, must be present in the tracked Services catalog,
+and is unique across Runbooks. Conflicts return
+`409 OPS_RUNBOOK_TARGET_CONFLICT`. Deleting an associated custom service returns
+`409 OPS_SERVICE_IN_USE`.
+
+New job objects include `source` (`runbooks`, `scheduler`, or `now`). Jobs
+derived from an associated definition also include `targetKind: "service"` and
+`targetName`. These fields are omitted from historical jobs where their stored
+values are empty.
 
 ### Schedules
 
@@ -338,6 +349,9 @@ Allowed resources:
 - `UNAUTHORIZED`
 - `ORIGIN_DENIED`
 - `STORE_ERROR`
+- `OPS_RUNBOOK_TARGET_NOT_FOUND`
+- `OPS_RUNBOOK_TARGET_CONFLICT`
+- `OPS_SERVICE_IN_USE`
 - `UNAVAILABLE`
 - `TMUX_*` (`TMUX_NOT_FOUND`, `SESSION_NOT_FOUND`, etc.)
 - `OPS_RUNBOOK_NOT_FOUND`, `OPS_JOB_NOT_FOUND`

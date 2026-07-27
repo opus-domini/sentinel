@@ -46,6 +46,11 @@ func TestRejectOpsRunbookRun(t *testing.T) {
 	if updated.StepResults[0].Type != stepTypeApproval {
 		t.Fatalf("step result type = %q, want approval", updated.StepResults[0].Type)
 	}
+	if updated.Source != run.Source ||
+		updated.TargetKind != run.TargetKind ||
+		updated.TargetName != run.TargetName {
+		t.Fatalf("approval changed run context from %+v to %+v", run, updated)
+	}
 }
 
 func TestApproveOpsRunbookRunResumesRun(t *testing.T) {
@@ -80,6 +85,11 @@ func TestApproveOpsRunbookRunResumesRun(t *testing.T) {
 	}
 	if updated.StepResults[0].Type != stepTypeApproval {
 		t.Fatalf("step result type = %q, want approval", updated.StepResults[0].Type)
+	}
+	if updated.Source != run.Source ||
+		updated.TargetKind != run.TargetKind ||
+		updated.TargetName != run.TargetName {
+		t.Fatalf("approval changed run context from %+v to %+v", run, updated)
 	}
 }
 
@@ -165,13 +175,18 @@ func createWaitingApprovalRunWithSteps(
 
 	ctx := context.Background()
 	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
-		Name:  "approval-test",
-		Steps: steps,
+		Name:          "approval-test",
+		TargetService: "approval-service",
+		Steps:         steps,
 	})
 	if err != nil {
 		t.Fatalf("InsertOpsRunbook: %v", err)
 	}
-	run, err := st.CreateOpsRunbookRun(ctx, rb.ID, time.Now().UTC())
+	run, err := st.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
+		RunbookID: rb.ID,
+		Source:    store.OpsRunbookRunSourceRunbooks,
+		At:        time.Now().UTC(),
+	})
 	if err != nil {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}

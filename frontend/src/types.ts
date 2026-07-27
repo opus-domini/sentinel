@@ -252,6 +252,7 @@ export type OpsRunbook = {
   description: string
   enabled: boolean
   webhookURL?: string
+  targetService?: string
   parameters?: Array<RunbookParameter>
   steps: Array<OpsRunbookStep>
   createdAt: string
@@ -278,6 +279,9 @@ export type OpsRunbookRun = {
   error: string
   stepResults: Array<OpsRunbookStepResult>
   parametersUsed?: Record<string, string>
+  source?: 'runbooks' | 'scheduler' | 'now'
+  targetKind?: 'service'
+  targetName?: string
   createdAt: string
   startedAt?: string
   finishedAt?: string

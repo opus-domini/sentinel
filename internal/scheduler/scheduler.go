@@ -26,8 +26,7 @@ const (
 
 type schedulerRepo interface {
 	ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]store.OpsSchedule, error)
-	CreateOpsRunbookRun(ctx context.Context, runbookID string, now time.Time) (store.OpsRunbookRun, error)
-	CreateOpsRunbookRunWithParams(ctx context.Context, runbookID string, now time.Time, params map[string]string) (store.OpsRunbookRun, error)
+	CreateOpsRunbookRun(ctx context.Context, write store.OpsRunbookRunWrite) (store.OpsRunbookRun, error)
 	UpdateScheduleAfterRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus, nextRunAt string, enabled bool) error
 	UpdateScheduleLastRun(ctx context.Context, scheduleID, lastRunAt, lastRunStatus string) error
 }
@@ -250,7 +249,12 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		return
 	}
 
-	job, err := s.repo.CreateOpsRunbookRunWithParams(ctx, sched.RunbookID, now, params)
+	job, err := s.repo.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
+		RunbookID:  sched.RunbookID,
+		Source:     store.OpsRunbookRunSourceScheduler,
+		Parameters: params,
+		At:         now,
+	})
 	if err != nil {
 		s.releaseSchedule(sched.ID)
 		slog.Warn("scheduler create run failed", "schedule", sched.ID, "runbook", sched.RunbookID, "err", err)
@@ -286,7 +290,6 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 func (s *Service) executeRunbook(ctx context.Context, job store.OpsRunbookRun, scheduleID string, params map[string]string) {
 	runbook.Run(ctx, s.runbookRepo, s.emitEvent, runbook.RunParams{
 		Job:         job,
-		Source:      "scheduler",
 		StepTimeout: stepTimeout,
 		Parameters:  params,
 		OnFinish: func(ctx context.Context, status string) {

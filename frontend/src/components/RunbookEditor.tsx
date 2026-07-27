@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo } from 'react'
 import { ArrowLeft, Plus, Save } from 'lucide-react'
-import type { RunbookParameterType } from '@/types'
+import type { OpsServiceStatus, RunbookParameterType } from '@/types'
 import type { RunbookParameterDraft } from '@/components/RunbookParameterEditor'
 import type { RunbookStepDraft } from '@/components/RunbookStepEditor'
 import { RunbookParameterEditor } from '@/components/RunbookParameterEditor'
@@ -17,6 +17,7 @@ export type RunbookDraft = {
   description: string
   enabled: boolean
   webhookURL: string
+  targetService: string
   parameters: Array<RunbookParameterDraft>
   steps: Array<RunbookStepDraft>
 }
@@ -25,6 +26,8 @@ type RunbookEditorProps = {
   draft: RunbookDraft
   saving: boolean
   errors: Record<string, string>
+  services: Array<OpsServiceStatus>
+  servicesLoading: boolean
   onDraftChange: (draft: RunbookDraft) => void
   onSave: () => void
   onCancel: () => void
@@ -63,6 +66,8 @@ export function RunbookEditor({
   draft,
   saving,
   errors,
+  services,
+  servicesLoading,
   onDraftChange,
   onSave,
   onCancel,
@@ -75,6 +80,8 @@ export function RunbookEditor({
   const enabledId = `${id}-enabled`
   const webhookURLId = `${id}-webhook-url`
   const webhookURLErrorId = `${id}-webhook-url-error`
+  const targetServiceId = `${id}-target-service`
+  const targetServiceErrorId = `${id}-target-service-error`
   const parametersId = `${id}-parameters`
   const parametersErrorId = `${id}-parameters-error`
   const stepsId = `${id}-steps`
@@ -89,17 +96,20 @@ export function RunbookEditor({
   const firstInvalidId = useMemo(() => {
     if (errors.name) return nameId
     if (errors.webhookURL) return webhookURLId
+    if (errors.targetService) return targetServiceId
     if (hasParameterErrors) return parametersId
     if (hasStepErrors) return stepsId
     return null
   }, [
     errors.name,
     errors.webhookURL,
+    errors.targetService,
     hasParameterErrors,
     hasStepErrors,
     nameId,
     parametersId,
     stepsId,
+    targetServiceId,
     webhookURLId,
   ])
 
@@ -246,6 +256,59 @@ export function RunbookEditor({
               />
               <span className="text-muted-foreground">Enabled</span>
             </label>
+            <div>
+              <label
+                htmlFor={targetServiceId}
+                className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
+                Service target
+              </label>
+              <select
+                id={targetServiceId}
+                className={cn(
+                  'mt-0.5 h-8 w-full rounded-md border border-input bg-surface-overlay px-2 text-[12px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30',
+                  errors.targetService && 'border-destructive',
+                )}
+                value={draft.targetService}
+                disabled={servicesLoading}
+                aria-invalid={errors.targetService ? true : undefined}
+                aria-describedby={errors.targetService ? targetServiceErrorId : undefined}
+                onChange={(event) => onDraftChange({ ...draft, targetService: event.target.value })}
+              >
+                <option value="">
+                  {servicesLoading
+                    ? 'Loading tracked services...'
+                    : services.length === 0
+                      ? 'No tracked service'
+                      : 'No service target'}
+                </option>
+                {draft.targetService !== '' &&
+                  !services.some((service) => service.name === draft.targetService) && (
+                    <option value={draft.targetService} disabled>
+                      {draft.targetService} (unavailable)
+                    </option>
+                  )}
+                {services.map((service) => (
+                  <option key={service.name} value={service.name}>
+                    {service.displayName || service.name}
+                  </option>
+                ))}
+              </select>
+              {errors.targetService && (
+                <p
+                  id={targetServiceErrorId}
+                  role="alert"
+                  className="mt-0.5 text-[10px] text-destructive-foreground"
+                >
+                  {errors.targetService}
+                </p>
+              )}
+              {!servicesLoading && services.length === 0 && (
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  Track a service in Services before associating it.
+                </p>
+              )}
+            </div>
             <div>
               <label
                 htmlFor={webhookURLId}

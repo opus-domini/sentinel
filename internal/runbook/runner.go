@@ -27,9 +27,6 @@ type RunParams struct {
 	// Job is the run record created before calling Run.
 	Job store.OpsRunbookRun
 
-	// Source identifies the caller for notifications ("runbook", "scheduler").
-	Source string
-
 	// StepTimeout is the per-step execution timeout.
 	StepTimeout time.Duration
 
@@ -299,6 +296,8 @@ type webhookJob struct {
 	ID             string        `json:"id"`
 	Status         string        `json:"status"`
 	Source         string        `json:"source"`
+	TargetKind     string        `json:"targetKind,omitempty"`
+	TargetName     string        `json:"targetName,omitempty"`
 	TotalSteps     int           `json:"totalSteps"`
 	CompletedSteps int           `json:"completedSteps"`
 	Error          string        `json:"error,omitempty"`
@@ -339,7 +338,9 @@ func buildWebhookPayload(params RunParams, job store.OpsRunbookRun) webhookPaylo
 		Job: webhookJob{
 			ID:             job.ID,
 			Status:         job.Status,
-			Source:         params.Source,
+			Source:         job.Source,
+			TargetKind:     job.TargetKind,
+			TargetName:     job.TargetName,
 			TotalSteps:     job.TotalSteps,
 			CompletedSteps: job.CompletedSteps,
 			Error:          job.Error,

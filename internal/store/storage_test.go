@@ -77,8 +77,8 @@ func seedStorageStatsData(ctx context.Context, t *testing.T, s *Store, base time
 	if len(runbooks) == 0 {
 		t.Fatalf("expected at least one seeded runbook")
 	}
-	if _, err := s.StartOpsRunbook(ctx, runbooks[0].ID, base); err != nil {
-		t.Fatalf("StartOpsRunbook: %v", err)
+	if _, err := s.CreateOpsRunbookRun(ctx, testRunWrite(runbooks[0].ID, base, nil)); err != nil {
+		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
 }
 

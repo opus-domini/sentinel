@@ -31,6 +31,7 @@ type runbookSummary struct {
 	Enabled          bool                     `json:"enabled"`
 	TotalSteps       int                      `json:"totalSteps"`
 	Parameters       []store.RunbookParameter `json:"parameters"`
+	TargetService    string                   `json:"targetService,omitempty"`
 	RequiresApproval bool                     `json:"requiresApproval"`
 }
 
@@ -47,12 +48,13 @@ type runbookGetOutput struct {
 }
 
 type runbookCreateInput struct {
-	Name        string                   `json:"name" jsonschema:"runbook name"`
-	Description string                   `json:"description,omitempty" jsonschema:"purpose and operational context"`
-	Steps       []store.OpsRunbookStep   `json:"steps" jsonschema:"ordered run, script, or approval steps"`
-	Parameters  []store.RunbookParameter `json:"parameters,omitempty" jsonschema:"typed parameters accepted by this runbook"`
-	Enabled     *bool                    `json:"enabled,omitempty" jsonschema:"whether the runbook can be executed; defaults to true"`
-	WebhookURL  string                   `json:"webhookURL,omitempty" jsonschema:"optional HTTP or HTTPS completion webhook"`
+	Name          string                   `json:"name" jsonschema:"runbook name"`
+	Description   string                   `json:"description,omitempty" jsonschema:"purpose and operational context"`
+	Steps         []store.OpsRunbookStep   `json:"steps" jsonschema:"ordered run, script, or approval steps"`
+	Parameters    []store.RunbookParameter `json:"parameters,omitempty" jsonschema:"typed parameters accepted by this runbook"`
+	Enabled       *bool                    `json:"enabled,omitempty" jsonschema:"whether the runbook can be executed; defaults to true"`
+	WebhookURL    string                   `json:"webhookURL,omitempty" jsonschema:"optional HTTP or HTTPS completion webhook"`
+	TargetService string                   `json:"targetService,omitempty" jsonschema:"optional tracked service associated with this runbook"`
 }
 
 type runbookCreateOutput struct {
@@ -115,6 +117,9 @@ type runbookRunOutput struct {
 	Error          string                    `json:"error"`
 	StepResults    []runbookStepResultOutput `json:"stepResults"`
 	ParametersUsed map[string]string         `json:"parametersUsed"`
+	Source         string                    `json:"source,omitempty"`
+	TargetKind     string                    `json:"targetKind,omitempty"`
+	TargetName     string                    `json:"targetName,omitempty"`
 	CreatedAt      string                    `json:"createdAt"`
 	StartedAt      string                    `json:"startedAt,omitempty"`
 	FinishedAt     string                    `json:"finishedAt,omitempty"`
@@ -212,12 +217,13 @@ func (t *tools) createRunbook(ctx context.Context, _ *mcp.CallToolRequest, input
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	created, warnings, err := t.runbooks.Create(ctx, store.OpsRunbookWrite{
-		Name:        input.Name,
-		Description: input.Description,
-		Steps:       input.Steps,
-		Parameters:  input.Parameters,
-		Enabled:     enabled,
-		WebhookURL:  input.WebhookURL,
+		Name:          input.Name,
+		Description:   input.Description,
+		Steps:         input.Steps,
+		Parameters:    input.Parameters,
+		Enabled:       enabled,
+		WebhookURL:    input.WebhookURL,
+		TargetService: input.TargetService,
 	})
 	if err != nil {
 		return nil, runbookCreateOutput{}, runbookToolError("create runbook", err)
@@ -254,7 +260,7 @@ func (t *tools) runRunbook(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	}
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
-	run, err := t.runbooks.Start(ctx, id, input.Parameters, "mcp")
+	run, err := t.runbooks.Start(ctx, id, input.Parameters)
 	if err != nil {
 		return nil, runbookRunResult{}, runbookToolError("run runbook", err)
 	}
@@ -357,6 +363,7 @@ func summarizeRunbook(item store.OpsRunbook) runbookSummary {
 		Enabled:          item.Enabled,
 		TotalSteps:       len(item.Steps),
 		Parameters:       item.Parameters,
+		TargetService:    item.TargetService,
 		RequiresApproval: requiresApproval,
 	}
 }
@@ -386,6 +393,9 @@ func projectRun(item store.OpsRunbookRun, outputLimit int) runbookRunOutput {
 		Error:          item.Error,
 		StepResults:    stepResults,
 		ParametersUsed: item.ParametersUsed,
+		Source:         item.Source,
+		TargetKind:     item.TargetKind,
+		TargetName:     item.TargetName,
 		CreatedAt:      item.CreatedAt,
 		StartedAt:      item.StartedAt,
 		FinishedAt:     item.FinishedAt,
@@ -426,6 +436,10 @@ func runbookToolError(action string, err error) error {
 		return errors.New("delete runbook: confirmName does not exactly match the persisted runbook name")
 	case errors.Is(err, store.ErrOpsRunbookActive):
 		return errors.New("delete runbook: runbook has a queued, running, or waiting-for-approval execution")
+	case errors.Is(err, runbook.ErrTargetServiceNotFound):
+		return errors.New("runbook target service is not tracked")
+	case errors.Is(err, runbook.ErrTargetServiceConflict):
+		return errors.New("runbook target service is already associated")
 	default:
 		return toolError(action, err)
 	}

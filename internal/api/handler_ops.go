@@ -262,6 +262,24 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
+	if h.runbooks == nil {
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "runbook manager is unavailable", nil)
+		return
+	}
+	runbooks, err := h.runbooks.List(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to verify service associations", nil)
+		return
+	}
+	for _, definition := range runbooks {
+		if definition.TargetService == serviceName {
+			writeError(w, http.StatusConflict, "OPS_SERVICE_IN_USE", "service is associated with a runbook", map[string]any{
+				"runbookId": definition.ID,
+			})
+			return
+		}
+	}
+
 	if err := h.repo.DeleteCustomService(ctx, serviceName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "custom service not found", nil)

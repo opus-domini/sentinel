@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 17 || name != "builtin-services" {
-		t.Fatalf("latest migration = (%d, %q), want (17, %q)", version, name, "builtin-services")
+	if version != 18 || name != "runbook-service-context" {
+		t.Fatalf("latest migration = (%d, %q), want (18, %q)", version, name, "runbook-service-context")
 	}
 
 	// Spot-check that a few tables exist.
@@ -64,8 +64,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 14 {
-		t.Fatalf("schema_migrations rows = %d, want 14", count)
+	if count != 15 {
+		t.Fatalf("schema_migrations rows = %d, want 15", count)
 	}
 }
 
@@ -160,6 +160,36 @@ func TestRunMigrationsSeedData(t *testing.T) {
 	if runbookCount != 3 {
 		t.Fatalf("ops_runbooks count = %d, want 3", runbookCount)
 	}
+	targets := map[string]string{}
+	rows, err := db.QueryContext(ctx, "SELECT id, target_service FROM ops_runbooks")
+	if err != nil {
+		t.Fatalf("select runbook targets: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id, target string
+		if err := rows.Scan(&id, &target); err != nil {
+			t.Fatalf("scan runbook target: %v", err)
+		}
+		targets[id] = target
+	}
+	if targets["ops.service.recover"] != "sentinel" {
+		t.Fatalf("service recovery target = %q, want sentinel", targets["ops.service.recover"])
+	}
+	if targets["ops.autoupdate.verify"] != "sentinel-updater" {
+		t.Fatalf("autoupdate target = %q, want sentinel-updater", targets["ops.autoupdate.verify"])
+	}
+	if targets["ops.update.apply"] != "" {
+		t.Fatalf("update apply target = %q, want empty", targets["ops.update.apply"])
+	}
+
+	if _, err := db.ExecContext(ctx, `INSERT INTO ops_runbooks (
+		id, name, description, steps_json, enabled, webhook_url, parameters,
+		target_service, created_at, updated_at
+	) VALUES ('duplicate.target', 'Duplicate', '', '[]', 1, '', '[]',
+		'sentinel', datetime('now'), datetime('now'))`); err == nil {
+		t.Fatal("duplicate target_service insert succeeded")
+	}
 
 	// Runbooks have webhook_url column.
 	var webhookURL string
@@ -174,6 +204,56 @@ func TestRunMigrationsSeedData(t *testing.T) {
 	}
 	if globalRev != "0" {
 		t.Fatalf("global_rev = %q, want %q", globalRev, "0")
+	}
+}
+
+func TestRunbookServiceContextMigrationPreservesHistoricalRunAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version INTEGER PRIMARY KEY,
+		name TEXT NOT NULL,
+		applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`); err != nil {
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+	all, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations: %v", err)
+	}
+	var contextMigration migration
+	for _, item := range all {
+		if item.version < 18 {
+			if err := applyMigration(ctx, db, item); err != nil {
+				t.Fatalf("apply migration %d: %v", item.version, err)
+			}
+			continue
+		}
+		contextMigration = item
+		break
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO ops_runbook_runs (
+		id, runbook_id, runbook_name, status, total_steps, completed_steps,
+		current_step, error, step_results, parameters_used, created_at,
+		started_at, finished_at
+	) VALUES ('historical', 'ops.update.apply', 'Apply Update', 'succeeded',
+		2, 2, 'done', '', '[]', '{}', datetime('now'), '', datetime('now'))`); err != nil {
+		t.Fatalf("insert historical run: %v", err)
+	}
+	if err := applyMigration(ctx, db, contextMigration); err != nil {
+		t.Fatalf("apply runbook context migration: %v", err)
+	}
+	var source, targetKind, targetName string
+	if err := db.QueryRowContext(ctx, `SELECT source, target_kind, target_name
+		FROM ops_runbook_runs WHERE id = 'historical'`).Scan(
+		&source, &targetKind, &targetName,
+	); err != nil {
+		t.Fatalf("read historical context: %v", err)
+	}
+	if source != "" || targetKind != "" || targetName != "" {
+		t.Fatalf("historical context = (%q, %q, %q), want empty", source, targetKind, targetName)
 	}
 }
 

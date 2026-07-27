@@ -60,6 +60,7 @@ describe('RunbookDetailPanel', () => {
       name: 'Service Recovery',
       description: 'Recover the Sentinel service',
       enabled: true,
+      targetService: 'sentinel',
       parameters: [],
       steps: [],
       createdAt: '2026-01-01T00:00:00Z',
@@ -68,6 +69,7 @@ describe('RunbookDetailPanel', () => {
     const onDelete = renderRunbook(runbook)
     const deleteButton = screen.getByRole('button', { name: 'Delete' })
 
+    expect(screen.getByText('sentinel')).toBeTruthy()
     expect(deleteButton.hasAttribute('disabled')).toBe(false)
     fireEvent.click(deleteButton)
     expect(onDelete).toHaveBeenCalledWith(runbook)

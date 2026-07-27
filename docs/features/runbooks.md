@@ -29,17 +29,23 @@ Sentinel seeds three runbooks on first startup:
 
 **Service Recovery** (`ops.service.recover`)
 
+Associated service: `sentinel`.
+
 1. `run` — Inspect service status (`sentinel service status`)
 2. `run` — Restart service (`sentinel service install --start=true`)
 3. `run` — Confirm healthy status
 
 **Autoupdate Verification** (`ops.autoupdate.verify`)
 
+Associated service: `sentinel-updater`.
+
 1. `run` — Check updater timer (`sentinel service autoupdate status`)
 2. `run` — Check release status (`sentinel update check`)
 3. `approval` — Review versions and update policy before apply
 
 **Apply Update** (`ops.update.apply`)
+
+No service association.
 
 1. `run` — Check for updates (`sentinel update check`)
 2. `run` — Apply update and restart (`sentinel update apply`)
@@ -75,6 +81,7 @@ POST /api/ops/runbooks
   "name": "My Runbook",
   "description": "Optional description",
   "enabled": true,
+  "targetService": "myapp",
   "parameters": [
     { "name": "SERVICE", "label": "Service name", "type": "string", "required": true }
   ],
@@ -104,6 +111,11 @@ POST /api/ops/runbooks
 ```
 
 Returns `201` with `{ runbook }`. The response may also include a `shellWarnings` array if any `run` or `script` steps contain shell syntax issues (validated via `mvdan.cc/sh`). Warnings are non-blocking — the runbook is still saved.
+
+`targetService` is optional and must match a service currently tracked by
+Sentinel. One service can belong to only one Runbook. A duplicate association
+returns `409 OPS_RUNBOOK_TARGET_CONFLICT`; removing an associated custom service
+returns `409 OPS_SERVICE_IN_USE`.
 
 **Update:**
 
@@ -140,6 +152,13 @@ Optional request body for parameterized runbooks:
 ```
 
 Returns `202` with the initial job object. Execution runs asynchronously in a background goroutine with a 5-minute overall timeout and 30-second per-step timeout (overridable per step).
+
+Every new job persists its origin as `source=runbooks` for Runbooks/API/MCP,
+`source=scheduler` for periodic and manually triggered schedules, or
+`source=now` for procedures started from Now. When the definition has
+`targetService`, the job also records `targetKind=service` and a copy of the
+service name in `targetName`. Historical jobs created before this contract keep
+these fields empty; Sentinel does not infer values retroactively.
 
 Job status lifecycle: `queued` -> `running` -> `succeeded` | `failed` | `waiting_approval`
 
@@ -198,6 +217,8 @@ When a run finishes (succeeded or failed), Sentinel sends a `POST` request to th
     "id": "run-42",
     "status": "succeeded",
     "source": "scheduler",
+    "targetKind": "service",
+    "targetName": "myapp",
     "totalSteps": 3,
     "completedSteps": 3,
     "startedAt": "2026-02-20T22:00:00Z",
@@ -224,7 +245,7 @@ Fields use `omitempty` — `error`, `startedAt`, `finishedAt`, and step-level `o
   "job": {
     "id": "run-43",
     "status": "failed",
-    "source": "runbook",
+    "source": "runbooks",
     "error": "step 1 failed: exit status 1",
     "totalSteps": 3,
     "completedSteps": 1,
@@ -300,6 +321,8 @@ The dedicated `/runbooks` route provides a standalone page for runbook execution
 - Each step result is collapsible with output or "No output" indicator
 - Job deletion with inline confirmation
 - Editor for creating and editing custom runbooks with drag-to-reorder steps
+- Optional tracked-service selector with unique association enforcement
+- Source and service target shown in history only when the run contains them
 - Schedule management: create, edit, and delete cron or one-shot schedules per runbook
 
 ## API Endpoints

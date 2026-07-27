@@ -250,6 +250,12 @@ export function RunbookDetailPanel({
         </div>
       </div>
 
+      {runbook.targetService && (
+        <p className="text-[10px] text-muted-foreground">
+          Service target: <span className="font-mono text-foreground">{runbook.targetService}</span>
+        </p>
+      )}
+
       <div className="grid gap-1">
         <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           Steps ({runbook.steps.length})
