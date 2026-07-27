@@ -45,7 +45,15 @@ const snapshot: NowSnapshot = {
       severity: 'warning',
       warningCount: 1,
       criticalCount: 0,
-      signals: [{ name: 'cpu', severity: 'warning', value: 82 }],
+      observedAt: '2026-07-27T12:00:00Z',
+      signals: [
+        {
+          name: 'cpu',
+          severity: 'warning',
+          value: 82,
+          since: '2026-07-27T11:59:50Z',
+        },
+      ],
     },
   },
   attention: {

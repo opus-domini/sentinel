@@ -59,7 +59,7 @@ type opsControlPlane interface {
 	Act(ctx context.Context, name, action string) (opsplane.ServiceActionResult, error)
 	Inspect(ctx context.Context, name string) (opsplane.ServiceInspect, error)
 	Logs(ctx context.Context, name string, lines int, since time.Time) (string, error)
-	Metrics(ctx context.Context) opsplane.HostMetrics
+	MetricsSnapshot(ctx context.Context) opsplane.MetricsSnapshot
 	DiscoverServices(ctx context.Context) ([]opsplane.AvailableService, error)
 	BrowseServices(ctx context.Context) ([]opsplane.BrowsedService, error)
 	ActByUnit(ctx context.Context, unit, scope, manager, action string) (opsplane.ServiceActionResult, error)

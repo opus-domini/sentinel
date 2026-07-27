@@ -77,7 +77,7 @@ connection invalidates it for:
 - `tmux.sessions.updated`
 - `ops.services.updated`
 - `ops.overview.updated`
-- `ops.metrics.updated`
+- `ops.posture.updated`
 - `ops.job.updated`
 
 There is no `now.updated` event and no periodic polling. Reconnect and the

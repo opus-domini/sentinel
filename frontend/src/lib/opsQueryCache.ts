@@ -12,7 +12,7 @@ const NOW_RELEVANT_EVENT_TYPES = new Set([
   'tmux.sessions.updated',
   'ops.services.updated',
   'ops.overview.updated',
-  'ops.metrics.updated',
+  'ops.posture.updated',
   'ops.job.updated',
 ])
 

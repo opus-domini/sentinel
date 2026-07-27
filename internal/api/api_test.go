@@ -191,7 +191,7 @@ type mockOpsControlPlane struct {
 	inspectFn         func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
 	logsFn            func(ctx context.Context, name string, lines int) (string, error)
 	logsSinceFn       func(ctx context.Context, name string, lines int, since time.Time) (string, error)
-	metricsFn         func(ctx context.Context) opsplane.HostMetrics
+	metricsSnapshotFn func(ctx context.Context) opsplane.MetricsSnapshot
 	discoverFn        func(ctx context.Context) ([]opsplane.AvailableService, error)
 	browseFn          func(ctx context.Context) ([]opsplane.BrowsedService, error)
 	actByUnitFn       func(ctx context.Context, unit, scope, manager, action string) error
@@ -270,11 +270,18 @@ func (m *mockOpsControlPlane) Logs(
 	return "", nil
 }
 
-func (m *mockOpsControlPlane) Metrics(ctx context.Context) opsplane.HostMetrics {
-	if m.metricsFn != nil {
-		return m.metricsFn(ctx)
+func (m *mockOpsControlPlane) MetricsSnapshot(ctx context.Context) opsplane.MetricsSnapshot {
+	if m.metricsSnapshotFn != nil {
+		return m.metricsSnapshotFn(ctx)
 	}
-	return opsplane.HostMetrics{}
+	return opsplane.MetricsSnapshot{
+		Posture: opsplane.MetricPosture{
+			State:      opsplane.MetricPostureStateNormal,
+			Severity:   opsplane.MetricPostureSeverityOK,
+			Signals:    []opsplane.MetricPostureSignal{},
+			ObservedAt: "2026-07-27T12:00:00Z",
+		},
+	}
 }
 
 func (m *mockOpsControlPlane) DiscoverServices(ctx context.Context) ([]opsplane.AvailableService, error) {
@@ -4513,13 +4520,21 @@ func TestOpsMetricsHandler(t *testing.T) {
 
 	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
-		metricsFn: func(context.Context) opsplane.HostMetrics {
-			return opsplane.HostMetrics{
-				CPUPercent:    42.5,
-				MemPercent:    65.2,
-				DiskPercent:   78.0,
-				LoadAvg1:      1.5,
-				NumGoroutines: 120,
+		metricsSnapshotFn: func(context.Context) opsplane.MetricsSnapshot {
+			return opsplane.MetricsSnapshot{
+				Metrics: opsplane.HostMetrics{
+					CPUPercent:    42.5,
+					MemPercent:    65.2,
+					DiskPercent:   78.0,
+					LoadAvg1:      1.5,
+					NumGoroutines: 120,
+				},
+				Posture: opsplane.MetricPosture{
+					State:      opsplane.MetricPostureStateNormal,
+					Severity:   opsplane.MetricPostureSeverityOK,
+					Signals:    []opsplane.MetricPostureSignal{},
+					ObservedAt: "2026-07-27T12:00:00Z",
+				},
 			}
 		},
 	}
@@ -4540,6 +4555,13 @@ func TestOpsMetricsHandler(t *testing.T) {
 	if posture["state"] != opsplane.MetricPostureStateNormal ||
 		posture["severity"] != opsplane.MetricPostureSeverityOK {
 		t.Fatalf("posture = %v, want normal/ok", posture)
+	}
+	if posture["observedAt"] != "2026-07-27T12:00:00Z" {
+		t.Fatalf("posture observedAt = %v", posture["observedAt"])
+	}
+	signals, ok := posture["signals"].([]any)
+	if !ok || len(signals) != 0 {
+		t.Fatalf("posture signals = %#v, want non-nil empty array", posture["signals"])
 	}
 }
 

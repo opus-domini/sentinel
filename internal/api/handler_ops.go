@@ -620,9 +620,5 @@ func (h *Handler) opsMetrics(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	metrics := h.ops.Metrics(ctx)
-	writeData(w, http.StatusOK, map[string]any{
-		keyMetrics: metrics,
-		"posture":  opsplane.EvaluateMetricPosture(metrics),
-	})
+	writeData(w, http.StatusOK, h.ops.MetricsSnapshot(ctx))
 }

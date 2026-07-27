@@ -207,7 +207,7 @@ func TestPublishMetrics(t *testing.T) {
 	hub := events.NewHub()
 	ch, unsub := hub.Subscribe(4)
 	defer unsub()
-	publishMetrics(context.Background(), staticMetricsProvider{}, hub)
+	publishMetrics(context.Background(), staticMetricsProvider{}, hub, &postureEventState{})
 	select {
 	case ev := <-ch:
 		if ev.Type != events.TypeOpsMetrics {
@@ -226,24 +226,132 @@ func TestPublishMetrics(t *testing.T) {
 	}
 }
 
+func TestPublishMetricsSeparatesRawSamplesFromSemanticPosture(t *testing.T) {
+	t.Parallel()
+
+	hub := events.NewHub()
+	ch, unsub := hub.Subscribe(8)
+	defer unsub()
+
+	provider := &sequenceMetricsProvider{
+		snapshots: []services.MetricsSnapshot{
+			metricsSnapshotWithCPU(81, services.MetricPostureSeverityWarning),
+			metricsSnapshotWithCPU(84, services.MetricPostureSeverityWarning),
+			metricsSnapshotWithCPU(92, services.MetricPostureSeverityCritical),
+		},
+	}
+	state := &postureEventState{}
+	for range 3 {
+		publishMetrics(context.Background(), provider, hub, state)
+	}
+
+	var metricsEvents, postureEvents int
+	for range 5 {
+		select {
+		case event := <-ch:
+			switch event.Type {
+			case events.TypeOpsMetrics:
+				metricsEvents++
+			case events.TypeOpsPosture:
+				postureEvents++
+			default:
+				t.Fatalf("unexpected event type %q", event.Type)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for metrics events")
+		}
+	}
+	if metricsEvents != 3 || postureEvents != 2 {
+		t.Fatalf(
+			"event counts metrics=%d posture=%d, want metrics=3 posture=2",
+			metricsEvents,
+			postureEvents,
+		)
+	}
+}
+
+func TestMetricPostureSignatureIgnoresValuesTimestampsAndSignalOrder(t *testing.T) {
+	t.Parallel()
+
+	first := services.MetricPosture{
+		State:      services.MetricPostureStatePressure,
+		Severity:   services.MetricPostureSeverityCritical,
+		ObservedAt: "2026-07-27T12:00:00Z",
+		Signals: []services.MetricPostureSignal{
+			{Name: "memory", Severity: services.MetricPostureSeverityCritical, Value: 95, Since: "2026-07-27T11:59:00Z"},
+			{Name: "cpu", Severity: services.MetricPostureSeverityWarning, Value: 81, Since: "2026-07-27T11:58:00Z"},
+		},
+	}
+	second := services.MetricPosture{
+		State:      services.MetricPostureStatePressure,
+		Severity:   services.MetricPostureSeverityCritical,
+		ObservedAt: "2026-07-27T12:00:02Z",
+		Signals: []services.MetricPostureSignal{
+			{Name: "cpu", Severity: services.MetricPostureSeverityWarning, Value: 88, Since: "2026-07-27T11:58:00Z"},
+			{Name: "memory", Severity: services.MetricPostureSeverityCritical, Value: 99, Since: "2026-07-27T11:59:00Z"},
+		},
+	}
+	if got, want := metricPostureSignature(second), metricPostureSignature(first); got != want {
+		t.Fatalf("signature = %q, want %q", got, want)
+	}
+}
+
 func TestTickHandlersWithClosedStore(t *testing.T) {
 	t.Parallel()
 
 	hub := events.NewHub()
 	ctx := context.Background()
 
-	publishMetrics(ctx, staticMetricsProvider{}, hub)
+	publishMetrics(ctx, staticMetricsProvider{}, hub, &postureEventState{})
 }
 
 type staticMetricsProvider struct{}
 
-func (staticMetricsProvider) Metrics(context.Context) services.HostMetrics {
-	return services.HostMetrics{
-		CPUPercent:       20,
-		CPUPressureAvg10: -1,
-		MemPressureAvg10: -1,
-		IOPressureAvg10:  -1,
-		CollectedAt:      "2026-07-24T12:00:00Z",
+func (staticMetricsProvider) MetricsSnapshot(context.Context) services.MetricsSnapshot {
+	return services.MetricsSnapshot{
+		Metrics: services.HostMetrics{
+			CPUPercent:       20,
+			CPUPressureAvg10: -1,
+			MemPressureAvg10: -1,
+			IOPressureAvg10:  -1,
+			CollectedAt:      "2026-07-24T12:00:00Z",
+		},
+		Posture: services.MetricPosture{
+			State:      services.MetricPostureStateNormal,
+			Severity:   services.MetricPostureSeverityOK,
+			Signals:    []services.MetricPostureSignal{},
+			ObservedAt: "2026-07-24T12:00:00Z",
+		},
+	}
+}
+
+type sequenceMetricsProvider struct {
+	snapshots []services.MetricsSnapshot
+	index     int
+}
+
+func (p *sequenceMetricsProvider) MetricsSnapshot(context.Context) services.MetricsSnapshot {
+	snapshot := p.snapshots[p.index]
+	p.index++
+	return snapshot
+}
+
+func metricsSnapshotWithCPU(value float64, severity string) services.MetricsSnapshot {
+	return services.MetricsSnapshot{
+		Metrics: services.HostMetrics{CPUPercent: value},
+		Posture: services.MetricPosture{
+			State:      services.MetricPostureStatePressure,
+			Severity:   severity,
+			ObservedAt: "2026-07-24T12:00:00Z",
+			Signals: []services.MetricPostureSignal{
+				{
+					Name:     "cpu",
+					Severity: severity,
+					Value:    value,
+					Since:    "2026-07-24T11:59:00Z",
+				},
+			},
+		},
 	}
 }
 

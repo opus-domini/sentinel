@@ -129,7 +129,7 @@ func (h *Handler) loadNowServices(ctx context.Context) nowServicesResult {
 }
 
 func (h *Handler) loadNowMetrics(ctx context.Context) nowMetricsResult {
-	posture := opsplane.EvaluateMetricPosture(h.ops.Metrics(ctx))
+	posture := h.ops.MetricsSnapshot(ctx).Posture
 	if posture.State == opsplane.MetricPostureStateUnavailable {
 		return nowMetricsResult{
 			posture: posture,

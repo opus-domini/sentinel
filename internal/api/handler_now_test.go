@@ -50,8 +50,16 @@ func TestNowIsolatesServiceFailureAsPartialResponse(t *testing.T) {
 		listServicesFn: func(context.Context) ([]opsplane.ServiceStatus, error) {
 			return nil, errors.New("sensitive provider failure")
 		},
-		metricsFn: func(context.Context) opsplane.HostMetrics {
-			return opsplane.HostMetrics{CPUPercent: 10}
+		metricsSnapshotFn: func(context.Context) opsplane.MetricsSnapshot {
+			return opsplane.MetricsSnapshot{
+				Metrics: opsplane.HostMetrics{CPUPercent: 10},
+				Posture: opsplane.MetricPosture{
+					State:      opsplane.MetricPostureStateNormal,
+					Severity:   opsplane.MetricPostureSeverityOK,
+					Signals:    []opsplane.MetricPostureSignal{},
+					ObservedAt: "2026-07-27T12:00:00Z",
+				},
+			}
 		},
 	}
 

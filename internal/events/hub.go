@@ -26,6 +26,8 @@ const (
 	TypeOpsJob = "ops.job.updated"
 	// TypeOpsMetrics announces that ops metrics changed.
 	TypeOpsMetrics = "ops.metrics.updated"
+	// TypeOpsPosture announces that the semantic host posture changed.
+	TypeOpsPosture = "ops.posture.updated"
 	// TypeScheduleUpdated announces that scheduler state changed.
 	TypeScheduleUpdated = "ops.schedule.updated"
 )

@@ -275,29 +275,45 @@ service directly.
 | `GET`    | `/api/ops/config`             | Read config file                   |
 | `PATCH`  | `/api/ops/config`             | Update config file                 |
 
-`GET /api/ops/metrics` returns the raw sample and the canonical posture
-evaluated from that same sample:
+`GET /api/ops/metrics` returns the raw sample and the canonical temporal
+posture maintained by the shared Metrics evaluator:
 
 ```json
 {
   "metrics": {
-    "cpuPercent": 42.5,
+    "cpuPercent": 85,
     "memPercent": 65.2,
-    "collectedAt": "2026-07-27T12:00:00Z"
+    "collectedAt": "2026-07-27T12:00:10Z"
   },
   "posture": {
-    "state": "normal",
-    "severity": "ok",
-    "warningCount": 0,
+    "state": "pressure",
+    "severity": "warning",
+    "warningCount": 1,
     "criticalCount": 0,
-    "signals": []
+    "signals": [
+      {
+        "name": "cpu",
+        "severity": "warning",
+        "value": 85,
+        "since": "2026-07-27T12:00:00Z"
+      }
+    ],
+    "observedAt": "2026-07-27T12:00:10Z"
   }
 }
 ```
 
 Posture state is `normal`, `pressure`, or `unavailable`; severity is `ok`,
 `warning`, `critical`, or `unknown`. `signals` contains only warning/critical
-entries, each with its canonical `name`, `severity`, and sampled `value`.
+entries, each with its canonical `name`, `severity`, sampled `value`, and
+threshold-crossing `since`. `observedAt` records when the shared evaluator last
+classified the posture. Arrays are always present, including `signals: []` for
+normal and unavailable states.
+
+Capacity signals (`rootDisk`, `inodes`) and PSI averages enter immediately.
+CPU, memory, and swap require ten continuous seconds above a threshold, as does
+their warning-to-critical escalation. Exit thresholds use the hysteresis
+documented in [Metrics](../features/metrics.md).
 
 ### Services
 

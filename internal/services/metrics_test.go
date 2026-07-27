@@ -204,9 +204,15 @@ func TestManagerMetricsUsesIsolatedCollector(t *testing.T) {
 		),
 	}
 
-	metrics := manager.Metrics(context.Background())
-	if metrics.CPUPercent != 25 || metrics.ProcessCount != 3 {
-		t.Fatalf("Metrics() = %+v", metrics)
+	snapshot := manager.MetricsSnapshot(context.Background())
+	if snapshot.Metrics.CPUPercent != 25 || snapshot.Metrics.ProcessCount != 3 {
+		t.Fatalf("MetricsSnapshot() = %+v", snapshot)
+	}
+	if snapshot.Posture.State != MetricPostureStatePressure ||
+		snapshot.Posture.Severity != MetricPostureSeverityWarning ||
+		len(snapshot.Posture.Signals) != 2 ||
+		snapshot.Posture.ObservedAt == "" {
+		t.Fatalf("MetricsSnapshot() posture = %+v", snapshot.Posture)
 	}
 
 	manager.metrics = nil
@@ -217,6 +223,52 @@ func TestManagerMetricsUsesIsolatedCollector(t *testing.T) {
 	var nilManager *Manager
 	if nilManager.metricsCollector() == nil {
 		t.Fatal("nil manager did not return a collector")
+	}
+	if nilManager.postureEvaluator() == nil {
+		t.Fatal("nil manager did not return a posture evaluator")
+	}
+}
+
+func TestManagerMetricsSnapshotRequestsDoNotAcceleratePosture(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	now := start
+	collectors := fakeMetricCollectors(
+		func(context.Context) processSample {
+			return processSample{processes: 3, threads: 5, complete: true}
+		},
+		func() float64 { return 85 },
+	)
+	collectors.pressure = func() pressureSample {
+		return pressureSample{cpuAvg10: -1, memAvg10: -1, ioAvg10: -1}
+	}
+	manager := &Manager{
+		nowFn: func() time.Time { return now },
+		metrics: newMetricsCollectorWith(
+			func() time.Time { return now },
+			defaultMetricsCollectionIntervals(),
+			collectors,
+		),
+	}
+
+	for range 25 {
+		snapshot := manager.MetricsSnapshot(context.Background())
+		if snapshot.Posture.State != MetricPostureStateNormal {
+			t.Fatalf("same-time request accelerated posture: %+v", snapshot.Posture)
+		}
+	}
+
+	now = start.Add(10 * time.Second)
+	snapshot := manager.MetricsSnapshot(context.Background())
+	signal := requirePostureSignal(
+		t,
+		snapshot.Posture,
+		"cpu",
+		MetricPostureSeverityWarning,
+	)
+	if signal.Since != start.Format(time.RFC3339) {
+		t.Fatalf("cpu since = %q, want %q", signal.Since, start.Format(time.RFC3339))
 	}
 }
 

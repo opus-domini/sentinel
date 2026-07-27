@@ -21,6 +21,7 @@ const snapshot: NowSnapshot = {
       warningCount: 0,
       criticalCount: 0,
       signals: [],
+      observedAt: '2026-07-27T12:00:00Z',
     },
   },
   attention: {

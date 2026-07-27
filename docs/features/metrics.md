@@ -59,13 +59,34 @@ Go runtime statistics for the Sentinel server process:
   `/api/ops/metrics` endpoint as `{ metrics, posture }`.
 - Overview data (host identity, Sentinel process info) is served by the `/api/ops/overview` endpoint.
 
+## Temporal Posture
+
+Raw metric values remain samples for visual history. The posture is stateful:
+
+- root disk and inode capacity enter warning at 85%/80% and critical at
+  95%/90% immediately; they recover below 83%/78%;
+- CPU and memory enter warning at 80% and critical at 90%; swap enters at
+  20%/60%. These volatile signals must remain above the threshold for ten
+  seconds, including warning-to-critical escalation;
+- CPU, memory, and swap recover after ten seconds below five percentage points
+  under their warning threshold;
+- CPU, memory, and I/O PSI `avg10` enter immediately at 2/10 and recover after
+  ten seconds below 1.5.
+
+Every active signal includes `since`, the start of the sustained threshold
+condition. The aggregate posture includes `observedAt`. A short CPU spike
+therefore remains visible in the raw sample without immediately becoming an
+operational pressure signal.
+
 ## Realtime Events
 
 Overview state is kept current via the `/ws/events` WebSocket:
 
 - `ops.overview.updated` — updated overview payload including host and Sentinel process info.
-- `ops.metrics.updated` — updated host/runtime metrics and the posture evaluated
-  from the same sample.
+- `ops.metrics.updated` — every raw host/runtime sample with its canonical
+  posture, used by the live Metrics view.
+- `ops.posture.updated` — emitted only when aggregate state/severity or the
+  active `name+severity` signal set changes.
 
 ## API Endpoints
 

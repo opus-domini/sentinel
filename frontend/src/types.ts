@@ -423,6 +423,7 @@ export type MetricPostureSignal = {
     | 'ioPressure'
   severity: 'warning' | 'critical'
   value: number
+  since: string
 }
 
 export type MetricPosture = {
@@ -431,6 +432,7 @@ export type MetricPosture = {
   warningCount: number
   criticalCount: number
   signals: Array<MetricPostureSignal>
+  observedAt: string
 }
 
 export type OpsMetricsResponse = {
@@ -641,5 +643,6 @@ export type OpsWsMessage =
       payload: { services: Array<OpsServiceStatus> }
     }
   | { type: 'ops.metrics.updated'; payload: OpsMetricsResponse }
+  | { type: 'ops.posture.updated'; payload: { posture: MetricPosture } }
   | { type: 'ops.job.updated'; payload: { job: OpsRunbookRun } }
   | { type: 'ops.schedule.updated'; payload: Record<string, unknown> }

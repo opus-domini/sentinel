@@ -62,6 +62,7 @@ Server sends:
 - `ops.overview.updated`
 - `ops.services.updated`
 - `ops.metrics.updated`
+- `ops.posture.updated`
 - `ops.schedule.updated`
 - `ops.job.updated`
 
@@ -81,18 +82,32 @@ Server sends:
       "severity": "warning",
       "warningCount": 1,
       "criticalCount": 0,
-      "signals": [{ "name": "cpu", "severity": "warning", "value": 85 }]
+      "signals": [
+        {
+          "name": "cpu",
+          "severity": "warning",
+          "value": 85,
+          "since": "2026-07-27T11:59:50Z"
+        }
+      ],
+      "observedAt": "2026-07-27T12:00:00Z"
     }
   }
 }
 ```
+
+`ops.metrics.updated` is emitted for every sample even when only numeric values
+change. `ops.posture.updated` carries `{ "posture": ... }` only when `state`,
+`severity`, or the active `name+severity` signal set changes. `since` and
+`observedAt` are evidence timestamps; numeric value changes alone do not create
+a semantic posture event.
 
 ### Now invalidation
 
 Now does not publish or subscribe to a dedicated `now.updated` event. The
 frontend invalidates `GET /api/now` when it receives
 `tmux.sessions.updated`, `ops.services.updated`, `ops.overview.updated`,
-`ops.metrics.updated`, or `ops.job.updated`. No event means no periodic Now
+`ops.posture.updated`, or `ops.job.updated`. No event means no periodic Now
 request; reconnect and explicit resync are the fallback paths.
 
 ### Client messages to `/ws/events`

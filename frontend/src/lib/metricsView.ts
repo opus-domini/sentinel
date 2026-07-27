@@ -7,20 +7,36 @@ export type MetricPosturePresentation = {
   severity: MetricSeverity
   label: string
   detail: string
+  observedAt: string | null
+  since: string | null
 }
 
 export function presentMetricPosture(posture: MetricPosture | null): MetricPosturePresentation {
   if (posture == null) {
-    return { severity: 'unknown', label: 'Waiting', detail: 'no posture received' }
+    return {
+      severity: 'unknown',
+      label: 'Waiting',
+      detail: 'no posture received',
+      observedAt: null,
+      since: null,
+    }
   }
   if (posture.state === 'unavailable') {
-    return { severity: 'unknown', label: 'Unavailable', detail: 'no evaluable key signals' }
+    return {
+      severity: 'unknown',
+      label: 'Unavailable',
+      detail: 'no evaluable key signals',
+      observedAt: posture.observedAt,
+      since: null,
+    }
   }
   if (posture.severity === 'critical') {
     return {
       severity: 'critical',
       label: 'Critical',
       detail: formatSignalCounts(posture.criticalCount, posture.warningCount),
+      observedAt: posture.observedAt,
+      since: earliestSignalSince(posture),
     }
   }
   if (posture.severity === 'warning') {
@@ -28,9 +44,17 @@ export function presentMetricPosture(posture: MetricPosture | null): MetricPostu
       severity: 'warn',
       label: 'Attention',
       detail: formatSignalCounts(0, posture.warningCount),
+      observedAt: posture.observedAt,
+      since: earliestSignalSince(posture),
     }
   }
-  return { severity: 'ok', label: 'Nominal', detail: 'all available key signals green' }
+  return {
+    severity: 'ok',
+    label: 'Nominal',
+    detail: 'all available key signals green',
+    observedAt: posture.observedAt,
+    since: null,
+  }
 }
 
 export function percentSeverity(value: number, warn: number, critical: number): MetricSeverity {
@@ -72,6 +96,12 @@ function formatSignalCounts(critical: number, warning: number): string {
     parts.push(`${warning} warning signal${warning === 1 ? '' : 's'}`)
   }
   return parts.join(' · ')
+}
+
+function earliestSignalSince(posture: MetricPosture): string | null {
+  const values = posture.signals.map((signal) => signal.since).filter((value) => value !== '')
+  if (values.length === 0) return null
+  return values.sort()[0]
 }
 
 export { formatDurationLong, formatPercentValue }

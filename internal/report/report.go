@@ -49,7 +49,7 @@ type HealthReport struct {
 
 // metricsCollector abstracts system metrics collection.
 type metricsCollector interface {
-	Metrics(ctx context.Context) services.HostMetrics
+	MetricsSnapshot(ctx context.Context) services.MetricsSnapshot
 	ListServices(ctx context.Context) ([]services.ServiceStatus, error)
 }
 
@@ -90,7 +90,7 @@ func (g *Generator) Generate(ctx context.Context) (*HealthReport, error) {
 
 	// Collect system metrics.
 	if g.metrics != nil {
-		m := g.metrics.Metrics(ctx)
+		m := g.metrics.MetricsSnapshot(ctx).Metrics
 		report.Metrics = SystemMetrics{
 			CPUPercent:     m.CPUPercent,
 			MemUsedBytes:   m.MemUsedBytes,

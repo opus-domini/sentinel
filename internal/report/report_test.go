@@ -16,8 +16,8 @@ type mockMetrics struct {
 	listErr      error
 }
 
-func (m *mockMetrics) Metrics(_ context.Context) services.HostMetrics {
-	return m.metrics
+func (m *mockMetrics) MetricsSnapshot(_ context.Context) services.MetricsSnapshot {
+	return services.MetricsSnapshot{Metrics: m.metrics}
 }
 
 func (m *mockMetrics) ListServices(_ context.Context) ([]services.ServiceStatus, error) {

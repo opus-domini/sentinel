@@ -197,6 +197,8 @@ type Manager struct {
 	customServices customServicesRepo
 	metricsMu      sync.Mutex
 	metrics        *metricsCollector
+	postureMu      sync.Mutex
+	posture        *metricPostureEvaluator
 
 	commandRunner commandRunner
 	sleepFn       sleepFunc
@@ -213,7 +215,7 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 	if startedAt.IsZero() {
 		startedAt = now
 	}
-	return &Manager{
+	manager := &Manager{
 		startedAt:      startedAt,
 		nowFn:          time.Now,
 		hostname:       defaultHostname,
@@ -224,11 +226,17 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 		commandRunner:  runCommand,
 		sleepFn:        sleepContext,
 	}
+	manager.posture = newMetricPostureEvaluator(manager.nowUTC)
+	return manager
 }
 
-// Metrics returns value.
-func (m *Manager) Metrics(ctx context.Context) HostMetrics {
-	return m.metricsCollector().Collect(ctx, "/")
+// MetricsSnapshot returns one host sample and its canonical temporal posture.
+func (m *Manager) MetricsSnapshot(ctx context.Context) MetricsSnapshot {
+	metrics := m.metricsCollector().Collect(ctx, "/")
+	return MetricsSnapshot{
+		Metrics: metrics,
+		Posture: m.postureEvaluator().Evaluate(metrics),
+	}
 }
 
 func (m *Manager) metricsCollector() *metricsCollector {
@@ -241,6 +249,18 @@ func (m *Manager) metricsCollector() *metricsCollector {
 		m.metrics = newMetricsCollector()
 	}
 	return m.metrics
+}
+
+func (m *Manager) postureEvaluator() *metricPostureEvaluator {
+	if m == nil {
+		return newMetricPostureEvaluator(time.Now)
+	}
+	m.postureMu.Lock()
+	defer m.postureMu.Unlock()
+	if m.posture == nil {
+		m.posture = newMetricPostureEvaluator(m.nowUTC)
+	}
+	return m.posture
 }
 
 // Overview returns value.

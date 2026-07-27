@@ -32,16 +32,34 @@ describe('metricsView', () => {
         severity: 'critical',
         warningCount: 1,
         criticalCount: 2,
+        observedAt: '2026-07-27T12:00:30Z',
         signals: [
-          { name: 'cpu', severity: 'warning', value: 85 },
-          { name: 'memory', severity: 'critical', value: 95 },
-          { name: 'ioPressure', severity: 'critical', value: 12 },
+          {
+            name: 'cpu',
+            severity: 'warning',
+            value: 85,
+            since: '2026-07-27T12:00:10Z',
+          },
+          {
+            name: 'memory',
+            severity: 'critical',
+            value: 95,
+            since: '2026-07-27T12:00:20Z',
+          },
+          {
+            name: 'ioPressure',
+            severity: 'critical',
+            value: 12,
+            since: '2026-07-27T12:00:15Z',
+          },
         ],
       }),
     ).toEqual({
       severity: 'critical',
       label: 'Critical',
       detail: '2 critical signals · 1 warning signal',
+      observedAt: '2026-07-27T12:00:30Z',
+      since: '2026-07-27T12:00:10Z',
     })
     expect(
       presentMetricPosture({
@@ -50,11 +68,14 @@ describe('metricsView', () => {
         warningCount: 0,
         criticalCount: 0,
         signals: [],
+        observedAt: '2026-07-27T12:01:00Z',
       }),
     ).toEqual({
       severity: 'unknown',
       label: 'Unavailable',
       detail: 'no evaluable key signals',
+      observedAt: '2026-07-27T12:01:00Z',
+      since: null,
     })
   })
 

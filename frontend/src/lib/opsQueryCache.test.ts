@@ -43,7 +43,7 @@ describe('opsQueryCache', () => {
     'tmux.sessions.updated',
     'ops.services.updated',
     'ops.overview.updated',
-    'ops.metrics.updated',
+    'ops.posture.updated',
     'ops.job.updated',
   ])('invalidates Now for %s', (type) => {
     expect(isNowRelevantEvent({ type, payload: {} })).toBe(true)
@@ -51,6 +51,7 @@ describe('opsQueryCache', () => {
 
   it('does not invalidate Now for unrelated or malformed messages', () => {
     expect(isNowRelevantEvent({ type: 'ops.schedule.updated', payload: {} })).toBe(false)
+    expect(isNowRelevantEvent({ type: 'ops.metrics.updated', payload: {} })).toBe(false)
     expect(isNowRelevantEvent({ payload: {} })).toBe(false)
     expect(isNowRelevantEvent(null)).toBe(false)
   })
@@ -74,7 +75,15 @@ describe('opsQueryCache', () => {
       severity: 'warning' as const,
       warningCount: 1,
       criticalCount: 0,
-      signals: [{ name: 'cpu' as const, severity: 'warning' as const, value: 85 }],
+      observedAt: '2026-07-27T12:00:00Z',
+      signals: [
+        {
+          name: 'cpu' as const,
+          severity: 'warning' as const,
+          value: 85,
+          since: '2026-07-27T11:59:50Z',
+        },
+      ],
     }
     const value = metricsCacheValueFromMessage({
       type: 'ops.metrics.updated',

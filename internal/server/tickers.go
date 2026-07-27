@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
@@ -9,7 +11,12 @@ import (
 )
 
 type metricsProvider interface {
-	Metrics(context.Context) services.HostMetrics
+	MetricsSnapshot(context.Context) services.MetricsSnapshot
+}
+
+type postureEventState struct {
+	initialized bool
+	signature   string
 }
 
 // loopTicker runs tick every interval until ctx is cancelled. The returned
@@ -33,18 +40,48 @@ func loopTicker(ctx context.Context, interval time.Duration, tick func()) <-chan
 }
 
 func startMetricsTicker(ctx context.Context, mgr metricsProvider, hub *events.Hub) <-chan struct{} {
+	state := &postureEventState{}
 	return loopTicker(ctx, 2*time.Second, func() {
-		publishMetrics(ctx, mgr, hub)
+		publishMetrics(ctx, mgr, hub, state)
 	})
 }
 
 // publishMetrics samples host metrics and broadcasts them on the event hub.
-func publishMetrics(ctx context.Context, mgr metricsProvider, hub *events.Hub) {
+func publishMetrics(
+	ctx context.Context,
+	mgr metricsProvider,
+	hub *events.Hub,
+	state *postureEventState,
+) {
 	collectCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-	m := mgr.Metrics(collectCtx)
+	snapshot := mgr.MetricsSnapshot(collectCtx)
 	cancel()
 	hub.Publish(events.NewEvent(events.TypeOpsMetrics, map[string]any{
-		"metrics": m,
-		"posture": services.EvaluateMetricPosture(m),
+		"metrics": snapshot.Metrics,
+		"posture": snapshot.Posture,
 	}))
+
+	signature := metricPostureSignature(snapshot.Posture)
+	if state != nil && state.initialized && state.signature == signature {
+		return
+	}
+	if state != nil {
+		state.initialized = true
+		state.signature = signature
+	}
+	hub.Publish(events.NewEvent(events.TypeOpsPosture, map[string]any{
+		"posture": snapshot.Posture,
+	}))
+}
+
+func metricPostureSignature(posture services.MetricPosture) string {
+	signals := make([]string, 0, len(posture.Signals))
+	for _, signal := range posture.Signals {
+		signals = append(signals, signal.Name+":"+signal.Severity)
+	}
+	sort.Strings(signals)
+	return strings.Join(
+		[]string{posture.State, posture.Severity, strings.Join(signals, ",")},
+		"|",
+	)
 }
