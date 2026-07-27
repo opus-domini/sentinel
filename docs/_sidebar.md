@@ -1,19 +1,21 @@
 - [Home](/)
 
-- Guide
+- Start
   - [Getting Started](/guide/getting-started.md)
   - [Architecture](/guide/architecture.md)
   - [Security Model](/guide/security.md)
 
-- Features
+- Daily Workflow
   - [Now](/features/now.md)
+  - [Operational Loop](/features/operational-loop.md)
   - [Tmux Workspace](/features/tmux-workspace.md)
-  - [MCP Control](/features/mcp.md)
-  - [Multi-User Sessions](/features/multi-user-sessions.md)
-  - [Ops Control Plane](/features/ops-control-plane.md)
   - [Services](/features/services.md)
-  - [Runbooks](/features/runbooks.md)
   - [Metrics](/features/metrics.md)
+  - [Runbooks](/features/runbooks.md)
+
+- Extensions
+  - [OS Account Targeting](/features/os-account-targeting.md)
+  - [MCP Control](/features/mcp.md)
   - [Mobile and PWA](/features/mobile-pwa.md)
 
 - Reference

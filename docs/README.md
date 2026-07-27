@@ -1,100 +1,63 @@
 <div align="center">
-  <img src="assets/images/logo.png" alt="Sentinel logo" width="520" />
+  <img src="assets/images/logo.png" alt="Sentinel logo" width="420" />
   <hr />
-  <p><strong>Your terminal watchtower</strong></p>
+  <p><strong>Local-first host operations, from signal to verified action.</strong></p>
 </div>
 
-Sentinel is a host operations platform delivered as a single binary.
-Its Now home connects tmux activity, service health, host posture, and
-operational procedures in one current view, then hands each task to its owner
-module.
+# Find the Right Operational Path
 
-## What You Will Find Here
+These docs are organized by intent. Sentinel starts in **Now**, then hands
+current evidence to one of four owners: Tmux, Services, Metrics, or Runbooks.
+Use the shortest path that answers the question in front of you.
 
-- Installation and first-run flow.
-- Architecture and security model.
-- Deep feature guides for Now, tmux, services, metrics, runbooks, and multi-user sessions.
-- Full CLI and API reference.
-- Operations runbooks for services, autoupdate, and storage management.
-- Mobile/PWA behavior and known troubleshooting patterns.
+## Start
 
-## Quick Start
+- [Getting Started](/guide/getting-started.md) — install, validate the service,
+  pass the auth gate when configured, and reach first value in Now.
+- [Architecture](/guide/architecture.md) — understand the local process,
+  composition boundary, owner modules, persistence, and event flow.
+- [Security Model](/guide/security.md) — understand the shared secret, origin
+  policy, host account boundary, and remote-access requirements.
 
-### Install
+## Work the Daily Loop
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/opus-domini/sentinel/main/install.sh | bash
-```
+| Intent | Go to | What owns the answer |
+| --- | --- | --- |
+| What requires attention now? | [Now](/features/now.md) | Current composition and typed handoff |
+| How does evidence become verified action? | [Operational Loop](/features/operational-loop.md) | Cross-module ownership, without a second workflow engine |
+| Open a terminal or inspect live shell context | [Tmux Workspace](/features/tmux-workspace.md) | Sessions, windows, panes, PTY, and unread context |
+| Investigate a service | [Services](/features/services.md) | Condition, logs, lifecycle action, and verification |
+| Understand host pressure | [Metrics](/features/metrics.md) | Live samples and canonical pressure posture |
+| Execute or audit a procedure | [Runbooks](/features/runbooks.md) | Confirmation, approval, execution, and receipt |
 
-### Open UI
+After investigation or action, return to **Now**. It recomposes current owner
+evidence instead of retaining a parallel incident or alert record.
 
-- Default URL: `http://127.0.0.1:4040`
-- If token is enabled, authenticate via the Settings dialog in the UI.
+## Operate Sentinel
 
-### Check Runtime
+- [Service and Autoupdate](/operations/service-and-autoupdate.md) — install,
+  inspect, restart, and update the daemon.
+- [Storage and Flush](/operations/storage-and-flush.md) — understand local
+  persistence and bounded cleanup.
+- [Common Issues](/troubleshooting/common-issues.md) — diagnose known runtime,
+  Tmux, auth, service, and browser failures.
 
-```bash
-sentinel doctor
-sentinel service status
-sentinel service autoupdate status
-```
+## Extend the Workspace
 
-## Navigation
+- [OS Account Targeting](/features/os-account-targeting.md) — run Tmux work
+  under allowed host accounts without creating Sentinel users.
+- [MCP Control](/features/mcp.md) — expose bounded tools inside the same trusted
+  operator boundary.
+- [Mobile and PWA](/features/mobile-pwa.md) — use the five primary destinations
+  from the mobile shell.
 
-Use the left sidebar as the primary index.
-Suggested reading order:
+## Look Up a Contract
 
-1. `Guide > Getting Started`
-2. `Guide > Architecture`
-3. `Features > Tmux Workspace`
-4. `Features > Now`
-5. `Reference > CLI Reference`
-6. `Operations > Service and Autoupdate`
+- [CLI Reference](/reference/cli.md)
+- [Configuration](/reference/configuration.md)
+- [HTTP API](/reference/http-api.md)
+- [WebSocket and Events](/reference/websockets-events.md)
 
-## Screenshots
-
-Tip: click any image to zoom.
-
-### Terminal Workspace
-
-> Manage tmux sessions, windows, and panes with realtime sync — no terminal tab juggling.
-
-![Desktop tmux sessions](assets/images/desktop-tmux-sessions.png)
-
-> Attach to any pane with a full interactive PTY, right in the browser.
-
-![Desktop tmux fullscreen](assets/images/desktop-tmux-fullscreen.png)
-
-> Full terminal control on mobile — touch-optimized with gesture-safe zones.
-
-<p align="center">
-  <img src="assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
-</p>
-
-### Ops Control Plane
-
-> **Now:** See host posture, evidence confidence, decisions that need attention, and live operational context before entering an owner module.
-
-![Desktop Now](assets/images/desktop-now.png)
-
-> **Services:** Follow current condition into transition-scoped logs, procedure context, and verified lifecycle actions.
-
-![Desktop services](assets/images/desktop-services.png)
-
-> **Metrics:** Inspect live samples and sustained posture signals, including focused handoffs from Now.
-
-![Desktop metrics](assets/images/desktop-metrics.png)
-
-> **Runbooks:** Confirm effects, handle approval boundaries, and retain immutable execution receipts with a current target recheck.
-
-![Desktop runbooks](assets/images/desktop-runbooks.png)
-
-### Settings
-
-> Theme, token auth, and storage management — all configurable from the UI.
-
-![Desktop settings theme](assets/images/desktop-settings-theme.png)
-
-> Secure your instance with token authentication and origin allowlists.
-
-![Desktop settings token](assets/images/desktop-settings-token.png)
+Sentinel is intentionally scoped to one trusted host. Fleet management, SaaS
+observability, an incident engine, an alert inbox, application identities/RBAC,
+and agent approval are current non-goals.

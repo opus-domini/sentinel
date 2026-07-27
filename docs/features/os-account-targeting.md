@@ -1,6 +1,14 @@
-# Multi-User Sessions
+# OS Account Targeting
 
-Sentinel supports running tmux sessions as different OS users. On Linux the default path uses `sudo -n systemd-run --user --machine=<user>@.host` so tmux servers inherit the target user's systemd user environment, including variables such as `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`. Each session tracks which user owns it through a session-user registry persisted in SQLite. This is useful for multi-tenant dev environments, CI agents, or managing services that run under dedicated system accounts.
+Sentinel can launch Tmux sessions and commands under a selected
+operating-system account. This is process targeting delegated to the host, not
+a Sentinel user, login, role, tenant, or permission model.
+
+On Linux the default path uses
+`sudo -n systemd-run --user --machine=<user>@.host` so Tmux servers inherit the
+target account's systemd user environment, including `XDG_RUNTIME_DIR` and
+`DBUS_SESSION_BUS_ADDRESS`. A local registry associates each session with its
+host account.
 
 ## Configuration
 
@@ -98,11 +106,16 @@ Session-user mappings are stored in the `session_users` SQLite table:
 
 Mappings are created on session creation, migrated on session rename, and deleted on session kill. The `ListSessionUsers` query provides the full map for Watchtower and the session list API.
 
-## Watchtower Integration
+## Tmux Projection Integration
 
-Watchtower discovers multi-user sessions through a `UserProvider` callback that returns the list of OS users with active sessions. The provider result is cached with a 10-second TTL to avoid excessive store queries.
+The internal Tmux activity projection discovers account-targeted sessions
+through a `UserProvider` callback that returns the OS accounts with active
+sessions. The provider result is cached with a 10-second TTL to avoid excessive
+store queries.
 
-Pane IDs from multi-user sessions are namespaced as `user:paneID` (e.g., `alice:%42`) to prevent collisions in the pane journal when the same tmux pane index exists under different users.
+Pane IDs from account-targeted sessions are namespaced as `user:paneID` (for
+example `alice:%42`) to prevent collisions in the pane journal when identical
+Tmux pane IDs exist under different accounts.
 
 ## Requirements
 

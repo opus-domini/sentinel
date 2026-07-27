@@ -2,7 +2,9 @@
 
 ![Desktop services](assets/images/desktop-services.png)
 
-Dedicated service management page at `/services`, part of the [Ops Control Plane](/features/ops-control-plane.md). Sentinel monitors and controls host services via systemd (Linux) and launchd (macOS).
+Dedicated service management page at `/services`, one owner in the
+[Operational Loop](/features/operational-loop.md). Sentinel monitors and
+controls host services via systemd (Linux) and launchd (macOS).
 
 ## Tracked Services
 

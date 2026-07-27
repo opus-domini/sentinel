@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Sentinel Docs</title>
+    <title>Sentinel — Local-first Host Operations</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
     <meta
       name="description"
-      content="Sentinel documentation - tmux workspace, watchtower, recovery, and operations guide."
+      content="Documentation for Sentinel, a local-first operational workspace that connects current host signals to verified action."
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
     <link
@@ -58,10 +58,13 @@
         },
         plugins: [
           function renderMermaid(hook) {
+            let renderGeneration = 0;
             hook.doneEach(function () {
+              const generation = ++renderGeneration;
+              const diagrams = [];
               window.mermaidReady
                 .then((mermaid) => {
-                  const diagrams = [];
+                  if (generation !== renderGeneration) return;
                   document.querySelectorAll('pre[data-lang="mermaid"]').forEach((block) => {
                     const source = block.querySelector("code");
                     if (!source) return;
@@ -72,11 +75,21 @@
                     block.replaceWith(diagram);
                     diagrams.push(diagram);
                   });
-                  if (diagrams.length > 0) {
+                  if (
+                    generation === renderGeneration &&
+                    diagrams.some((diagram) => diagram.isConnected)
+                  ) {
                     return mermaid.run({ nodes: diagrams });
                   }
                 })
-                .catch((error) => console.error("failed to render Mermaid", error));
+                .catch((error) => {
+                  const renderWasCancelled =
+                    generation !== renderGeneration ||
+                    diagrams.every((diagram) => !diagram.isConnected);
+                  if (!renderWasCancelled) {
+                    console.error("failed to render Mermaid", error);
+                  }
+                });
             });
           },
         ],

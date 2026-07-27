@@ -1,63 +1,39 @@
 # Architecture
 
-Sentinel is a single Go binary with embedded frontend assets and a local SQLite data plane.
+Sentinel is a local-first operational workspace for one host. A single Go
+binary serves an embedded React application, the HTTP and WebSocket surfaces,
+background owner services, and a local SQLite store.
 
-## High-Level Components
+## Product Boundaries
 
-- `cmd/sentinel`: thin entrypoint — wires args and the process exit code.
-- `internal/cli`: command parsing, help, completion, and formatted output.
-- `internal/server`: HTTP server bootstrap, background tickers, pinned-session restore.
-- `internal/ui`: SPA delivery, embedded frontend assets and WebSocket endpoints.
-- `internal/api`: authenticated HTTP API for Now, tmux, operations, and metadata.
-- `internal/tmux`: tmux command adapter and behavior patches.
-- `internal/watchtower`: activity collector and unread projection engine.
-- `internal/store`: SQLite schema and persistence (sessions metadata, watchtower activity, runbooks, schedules, and services).
-- `internal/notify`: webhook delivery with retry/backoff for runbook and health report notifications.
-- `internal/report`: scheduled health report generation and webhook dispatch.
-- `internal/runbook`: runbook definition parsing, step execution (run/script/approval), shell validation, and webhook dispatch.
-- `internal/scheduler`: cron-based job scheduling and execution engine.
-- `internal/term`: terminal abstraction and PTY lifecycle management.
-- `internal/updater`: binary self-update checks and apply logic.
-- `internal/validate`: shared input validators (session names, cron expressions, timezones).
-- `internal/config`: TOML configuration loading with environment variable overrides (`SENTINEL_*`).
-- `internal/security`: bearer token authentication and CORS origin validation.
-- `internal/daemon`: systemd/launchd service install and lifecycle management.
-- `frontend`: React/Vite frontend with file-based routing (TanStack Router), optimistic UX, and event-driven sync. Routes: `/`, `/tmux`, `/runbooks`, `/services`, `/metrics`.
+**Now** is the composition boundary. It reads current evidence from four owner
+modules and produces posture, confidence, a bounded decision queue, live
+context, and typed handoffs.
 
-## Runtime Flow
+| Owner | Responsibility | Durable workflow state |
+| --- | --- | --- |
+| Tmux | Sessions, windows, panes, PTY interaction, activity projection | Session metadata and projections, not a cross-module workflow |
+| Services | Unit discovery, tracked condition, logs, lifecycle action, post-condition verification | Tracked service definitions |
+| Metrics | Live host/runtime samples and canonical pressure posture | None; detailed samples are a live diagnostic view |
+| Runbooks | Procedure definition, target admission, parameters, schedules, approval, execution, receipt | Definitions, schedules, jobs, step results, and frozen receipts |
 
-1. Server starts and loads config.
-2. Security guard applies token/origin policy.
-3. Watchtower and operations services start.
-4. Frontend connects:
-   - REST for initial snapshot (`/api/...`)
-   - WebSocket for realtime updates (`/ws/events`)
-   - PTY stream (`/ws/tmux`)
-5. UI uses optimistic mutations and reconciles with events/patches.
-6. Now (`/`) composes the current operating picture and hands work to the
-   dedicated Tmux, Runbooks, Services, and Metrics routes.
+Now has no table, collector, timeline, or action executor of its own. A source
+failure degrades the composed read without discarding evidence from healthy
+owners. Action and verification stay in the owner responsible for them.
 
-## Now Read Model
+The conceptual flow is documented in
+[Operational Loop](/features/operational-loop.md); exact HTTP and event
+contracts live in [Reference](/reference/http-api.md).
 
-`GET /api/now` is a thin composition layer over the four owner modules. Each
-request fans out concurrently to the live Services probe, canonical Metrics
-posture, Runbooks definitions/executions, and the shared enriched Tmux
-projection. One failed source does not discard healthy results: the response
-keeps a source envelope with `current`, `stale`, `unavailable`, or
-`not_configured`. It derives evidence `confidence` from all four sources and
-host `posture` from current Services and Metrics evidence.
+## Runtime Shape
 
-Now has no database table, background collector, server cache, or independent
-event. Attention ordering, deduplication, and display limits are pure read-model
-rules. The procedure action reuses the Runbook Manager, so persistence and
-notifications continue through the existing `ops.job.updated` lifecycle. Owner
-modules remain responsible for status/log inspection, approvals, terminal
-interaction, and metric diagnosis.
-
-The frontend loads this model once over HTTP, then invalidates it from the
-existing owner events. It has no periodic polling. If the shared event socket
-disconnects while a snapshot is retained, the presentation marks current
-source envelopes stale until a successful refresh.
+1. The process loads TOML configuration and `SENTINEL_*` overrides.
+2. The server establishes origin and optional shared-token policy.
+3. SQLite-backed managers and live owner services start.
+4. The browser loads initial owner state over HTTP.
+5. Shared operational events and the dedicated Tmux stream keep routes current.
+6. Now recomposes owner evidence and returns the operator to a calm or
+   actionable current picture.
 
 ```mermaid
 ---
@@ -65,58 +41,80 @@ config:
   theme: dark
 ---
 flowchart LR
-  Now[Now: confidence, posture, attention] --> Owner[Owner module]
-  Owner --> Action[Action or runbook]
-  Action --> Receipt[Immutable execution receipt]
-  Receipt --> Recheck[Current target recheck]
-  Recheck --> Now
+  Host[One host] --> Owners[Tmux · Services · Metrics · Runbooks]
+  Owners --> Now[Now composition]
+  Now --> Handoff[Typed owner handoff]
+  Handoff --> Action[Owner action]
+  Action --> Verify[Receipt and current-state verification]
+  Verify --> Owners
 ```
 
-The arrows are ownership boundaries, not a shared workflow table. Now owns
-composition and handoff; Services owns current condition, logs, and lifecycle
-verification; Metrics owns temporal posture; Runbooks owns confirmation,
-target admission, approval, and immutable receipts; Tmux owns terminal context.
-Only Runbook executions are durable workflow records.
+The arrows describe ownership and information flow, not a shared incident state
+machine.
 
-## Data Model (Operational)
+## Implementation Components
 
-- Session metadata
-- Watchtower projections:
-  - session-level unread/activity state
-  - window unread flags
-  - pane revision/seen revision
-  - journal revisions (`global_rev`) for delta sync
-  - live presence
-- Ops runbooks, runs, schedules, and parameters
-- Session directory frequency tracking
-- Session users registry (`session_users`)
-- Tmux launchers with user targeting (`tmux_launchers`)
-- Session presets (`session_presets`)
+- `cmd/sentinel` — process entrypoint.
+- `internal/cli` — commands, help, completion, and formatted output.
+- `internal/server` — HTTP bootstrap, background lifecycle, and pinned-session
+  restore.
+- `internal/ui` — embedded SPA delivery.
+- `internal/api` — HTTP handlers for metadata, Now, Tmux, and operational
+  owners.
+- `internal/ws` — browser terminal transport.
+- `internal/events` — shared operational event hub.
+- `internal/tmux` — Tmux command and account-targeting adapter.
+- `internal/watchtower` — internal Tmux activity and unread projection.
+- `internal/services` — systemd/launchd discovery, inspection, and actions.
+- `internal/runbook` and `internal/scheduler` — definitions, execution,
+  approval, receipts, and scheduling.
+- `internal/store` — SQLite persistence.
+- `internal/security` — shared-token, target-account, and origin validation.
+- `internal/daemon` — systemd/launchd installation and lifecycle.
+- `internal/report`, `internal/notify`, and `internal/updater` — auxiliary
+  reporting, delivery, and installation maintenance.
+- `frontend` — React/Vite routes for `/`, `/tmux`, `/runbooks`, `/services`,
+  and `/metrics`.
 
-## Event-Driven UX Strategy
+Auxiliary packages support the core owners; they are not additional top-level
+product domains.
 
-Primary path is WS events:
+## State and Synchronization
 
-- `tmux.sessions.updated`
-- `tmux.inspector.updated`
-- `tmux.activity.updated`
-- `ops.overview.updated`
-- `ops.services.updated`
-- `ops.metrics.updated`
-- `ops.posture.updated`
-- `ops.runbooks.updated`
-- `ops.schedule.updated`
-- `ops.job.updated`
+HTTP establishes an initial snapshot. WebSocket events update owner caches and
+invalidate Now when semantic owner state changes. Tmux uses its own PTY and
+delta/event paths. Some owner workflows may use bounded polling while an active
+operation settles; the architecture is event-led, not event-exclusive.
 
-Fallback HTTP polling is used only when events channel is disconnected.
+The server remains the source of truth. Optimistic presentation is limited to
+the mutations whose owner contract can reconcile it safely.
 
-## Design Principles
+## Persistence
 
-- Single-binary deployment.
-- Independent tmux lifecycle: Sentinel may discover and control tmux, but its
-  service stopping must not terminate the tmux server, sessions, panes, or
-  their processes.
-- No cloud relay by default.
-- Optimistic frontend interactions for responsiveness.
-- Server remains source of truth through projections and event patches.
-- Dedicated pages per concern: each operational feature has its own route, sidebar, and help dialog for focused workflows.
+SQLite stores definitions and records that must survive a process restart:
+
+- Tmux session metadata, launchers, presets, and activity projections;
+- tracked services;
+- Runbook definitions, schedules, jobs, step results, parameters, and receipt
+  snapshots;
+- bounded operational metadata described in the storage reference.
+
+Now is computed on request. Detailed Metrics history is not a persisted
+observability database.
+
+## Deployment and Trust
+
+- One binary and one host are the deployment boundary.
+- Stopping Sentinel must not terminate the host's Tmux server or sessions.
+- The optional token is one shared operator secret, not identity or RBAC.
+- OS account targeting delegates process identity to the operating system.
+- MCP uses the same trusted boundary; it is an extension, not another tenant.
+- Cloud relay, fleet control, and SaaS storage are not part of the architecture.
+
+## Current Non-goals
+
+- Fleet or multi-host orchestration.
+- SaaS observability and durable telemetry analytics.
+- Incident, alert acknowledgement, or recovery-timeline engines.
+- Sentinel application identities, roles, RBAC, tenants, scopes, or agent
+  approval.

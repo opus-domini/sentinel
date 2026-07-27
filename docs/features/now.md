@@ -1,127 +1,82 @@
 # Now
 
-![Desktop Now](assets/images/desktop-now.png)
+Now is Sentinel's operational home at `/`. It is the entrance and return point
+for the daily loop, not another owner module.
 
-Now is Sentinel's operational home at `/`. It answers three questions from one
-current snapshot:
+## What Now Answers
 
-1. Is the host operational?
-2. What needs an operator decision?
-3. What work is already in progress?
+One current snapshot answers:
 
-It composes evidence from Services, Metrics, Runbooks, and Tmux without taking
-ownership away from those modules.
+1. Is current host evidence healthy, at risk, or unable to confirm posture?
+2. Which decisions need a trusted operator now?
+3. Which procedures or terminal contexts are already in progress?
+4. Which owner can answer the next question precisely?
+
+Now composes Services, Metrics, Runbooks, and Tmux concurrently. Partial failure
+preserves healthy owner evidence and identifies the source whose freshness
+could not be confirmed.
 
 ## Posture and Confidence
 
-The headline reports host posture separately from evidence confidence:
+Posture derives from current Services and Metrics evidence:
 
-- **Healthy** — current Services and Metrics evidence contains no failed
-  service or metric pressure.
-- **At risk** — current Services or Metrics evidence needs operator attention.
-- **Unknown** — Services or Metrics cannot confirm the current posture.
+- **Healthy** — no current failed tracked service or pressure signal.
+- **At risk** — current service or pressure evidence needs attention.
+- **Unknown** — Services or Metrics cannot confirm current posture.
 
-Confidence is **Current** only when all four owner sources are current. It is
-**Degraded** when Tmux, Services, Metrics, or Runbooks is stale, unavailable,
-or not configured. A Tmux or Runbooks problem degrades confidence without
-changing an otherwise confirmed host posture; a Services or Metrics problem
-makes posture unknown.
-
-Each source shows its owner-provided `observedAt` and remains a link to its
-owner page. A partial response preserves valid evidence and identifies the
-source that could not confirm current state. When the events connection drops
-after a snapshot was loaded, current source labels become stale, confidence
-becomes degraded, and posture becomes unknown until a successful refresh.
+Confidence describes all four sources. It is **Current** only when every owner
+is current and **Degraded** when any source is stale, unavailable, or not
+configured. A Tmux or Runbooks failure can degrade confidence without turning
+otherwise healthy service/metric evidence into risk.
 
 ## Needs Attention
 
-Now admits only current failed services, pending Runbook approvals, and current
-Metrics pressure. A terminal Runbook failure is execution history, not present
-urgency, so it never enters this queue.
+The decision queue admits only current evidence with a defined handoff:
 
-At most five items are visible. The first pass reserves representation for
-each non-empty category in operational order: failed service, critical Metrics,
-approval, then warning Metrics. Remaining capacity goes to failed services by
-canonical name and then the oldest approvals. Metrics contributes at most one
-item. Hidden counts are reported by owner module.
+- a failed tracked service opens its structured status in Services;
+- host pressure opens the highest-severity signal in Metrics;
+- a waiting approval opens the exact execution in Runbooks.
 
-Now does not restart services. A failed service opens its status in Services,
-where `View logs` preserves the observed transition time for the initial log
-slice and then continues to the live stream. Host pressure opens Metrics on the
-highest-severity signal and carries the attention item's own observation time;
-it never guesses a responsible Service or process. When exactly one enabled
-Runbook is associated with the failed service, `Run procedure` opens the normal
-parameter dialog and starts that procedure through the Runbook execution
-engine. A successful start immediately opens the returned immutable execution
-receipt in Runbooks. A target already owned by another active execution keeps
-the dialog open and names that conflict instead of reporting a generic error.
+The queue is bounded and reports hidden counts by owner. Historical terminal
+job failures do not become permanent urgency. Now does not infer which process
+caused pressure, restart a service, acknowledge an alert, or create an
+incident.
+
+When one enabled Runbook is associated with a failed service, Now may open the
+normal Runbook confirmation flow. Execution, target admission, approval,
+persistence, and receipt remain owned by Runbooks.
 
 ## In Progress
 
-The live-context panel shows:
+Live context includes bounded sets of:
 
-- Up to three queued or running Runbook executions.
-- Up to three existing Tmux sessions with unread windows or panes.
+- queued or running Runbook executions;
+- existing Tmux sessions with unread windows or panes.
 
-Each item opens the exact owner resource. Approvals stay in Needs attention
-because they require a decision rather than representing autonomous progress.
-Pinned remains session metadata; it does not make a quiet session current work.
+Each item opens the exact owner resource. An approval remains a decision, not
+autonomous progress. Pinned metadata alone does not make a quiet session active
+work.
 
-## Deep Links
+## Handoffs
 
-Owner links are reload-safe and validated against current data:
+Owner links are reload-safe and validated against current data. They can carry
+the service and panel, metric signal and observation time, Runbook or job ID,
+or existing Tmux session. Invalid or disappeared targets are handled by the
+owner route rather than creating synthetic state.
 
-| Owner              | Search parameters                                                    |
-| ------------------ | -------------------------------------------------------------------- |
-| Services           | `/services?service=<name>&panel=status`                              |
-| Service logs       | `/services?service=<name>&panel=logs&since=<RFC3339>`                 |
-| Metrics signal     | `/metrics?signal=<name>&focusAt=<RFC3339>`                           |
-| Runbook definition | `/runbooks?runbook=<id>`                                             |
-| Runbook execution  | `/runbooks?job=<id>`                                                  |
-| Tmux               | `/tmux?session=<name>`                                                |
-
-Invalid definitions and disappeared Services or Tmux targets are removed from
-the URL with history replacement. Invalid temporal fields are removed without
-discarding an otherwise valid owner target. A missing execution keeps its
-canonical URL and shows an explicit unavailable state. Tmux never creates a tab
-from a URL target; the session must already exist.
+See [Operational Loop](/features/operational-loop.md) for the cross-module
+journey and [HTTP API](/reference/http-api.md) for exact endpoint and search
+contracts.
 
 ## Refresh Model
 
-`GET /api/now` provides the initial snapshot. The shared `/ws/events`
-connection invalidates it for:
+HTTP provides the initial composition. Existing owner events invalidate Now;
+there is no independent `now.updated` event or periodic Now collector. If the
+shared event channel disconnects while a snapshot remains visible, current
+source labels are presented as stale until a successful refresh.
 
-- `tmux.sessions.updated`
-- `ops.services.updated`
-- `ops.posture.updated`
-- `ops.job.updated`
-- `ops.runbooks.updated`
+## Boundary
 
-There is no `now.updated` event and no periodic polling. Reconnect and the
-header resync control request a fresh snapshot explicitly.
-
-Services owns a five-second state watcher and emits only when its canonical
-fingerprint changes. Metrics emits `ops.metrics.updated` for every sample, but
-Now listens only to semantic `ops.posture.updated` changes. Runbook definition
-create, update, and delete operations emit `ops.runbooks.updated` through the
-shared manager used by HTTP and MCP.
-
-## Operational Loop
-
-Now is the entrance and the return point of one bounded loop:
-
-1. Observe host posture, evidence confidence, and the decision queue.
-2. Follow the typed handoff into the owner module for status, logs, pressure,
-   terminal context, or an approval.
-3. Start a procedure only after reviewing its target and effects.
-4. Use the immutable execution receipt to audit what actually ran.
-5. Recheck the current service target independently from the historical result.
-6. Return to Now, which recomposes from owner events and becomes calm when no
-   current evidence requires a decision.
-
-## Boundaries
-
-Now is a read and handoff layer. It has no table, durable state, background
-collector, timeline, alert engine, recovery engine, or duplicate dashboard.
-Services owns status, logs, and lifecycle actions; Runbooks owns execution and
-approvals; Metrics owns canonical host posture; Tmux owns session interaction.
+Now owns composition, prioritization, confidence, and handoff. It has no
+database table, durable workflow, background collector, alert engine, incident
+engine, recovery timeline, or duplicate owner controls.
