@@ -106,6 +106,19 @@ Now listens only to semantic `ops.posture.updated` changes. Runbook definition
 create, update, and delete operations emit `ops.runbooks.updated` through the
 shared manager used by HTTP and MCP.
 
+## Operational Loop
+
+Now is the entrance and the return point of one bounded loop:
+
+1. Observe host posture, evidence confidence, and the decision queue.
+2. Follow the typed handoff into the owner module for status, logs, pressure,
+   terminal context, or an approval.
+3. Start a procedure only after reviewing its target and effects.
+4. Use the immutable execution receipt to audit what actually ran.
+5. Recheck the current service target independently from the historical result.
+6. Return to Now, which recomposes from owner events and becomes calm when no
+   current evidence requires a decision.
+
 ## Boundaries
 
 Now is a read and handoff layer. It has no table, durable state, background

@@ -164,6 +164,12 @@ before manager properties and raw output. An associated procedure opens the
 exact definition at `/runbooks?runbook=<id>`, while the latest execution opens
 its immutable receipt at `/runbooks?job=<id>`.
 
+Services owns diagnosis in the operational loop. A failed item from Now opens
+this exact status view first; the operator can move from structured cause to a
+transition-scoped log slice, then to the associated procedure or latest
+receipt. If no procedure is associated, Now offers diagnosis but no speculative
+recovery action.
+
 **Logs**:
 
 ```

@@ -154,6 +154,12 @@ execution result from the current state of its service target. Current target
 state is fetched only while the receipt is open and carries its own
 `observedAt`; it never rewrites historical evidence.
 
+Runbooks owns action and proof in the operational loop. Now and Services can
+hand off a service target, but every manual execution still uses the same
+effect-review dialog. The resulting receipt freezes the accepted definition,
+source, parameters, and target; its live target recheck then closes the loop
+without turning current state into historical output.
+
 Only one queued, running, or waiting-for-approval job may own a service target
 at a time. A competing start returns `409 RUNBOOK_TARGET_BUSY`; targetless jobs
 continue to use only the global concurrency limit.

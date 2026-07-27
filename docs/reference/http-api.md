@@ -283,6 +283,11 @@ return `NOW_RUNBOOK_NOT_FOUND`, `NOW_RUNBOOK_DISABLED`, or
 `NOW_RUNBOOK_CONFLICT`. This endpoint never starts, stops, or restarts the
 service directly.
 
+The cross-module contract is directional: Now links to typed owner URLs,
+Services returns procedure/latest-run context, Runbook jobs persist immutable
+execution evidence, and the receipt probes current target state separately.
+No endpoint creates an Incident, timeline, or duplicate recovery record.
+
 ## Operations: Control Plane
 
 ### Overview and Metrics

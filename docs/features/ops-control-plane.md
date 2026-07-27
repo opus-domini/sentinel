@@ -39,6 +39,24 @@ its owner page and emits a separate posture event only when the semantic signal
 set changes. Runbooks publishes definition changes from the shared HTTP/MCP
 manager. Now recomposes from those events instead of duplicating collectors.
 
+### Operational Value Loop
+
+The four owner modules participate in one explicit flow:
+
+1. **Now** composes current posture, evidence confidence, and a bounded decision
+   queue.
+2. **Services**, **Metrics**, or **Tmux** explains the current evidence in the
+   module that owns it.
+3. **Runbooks** confirms the target and effects, enforces one active execution
+   per service target, and pauses at human approval boundaries.
+4. The immutable receipt records what was accepted and what actually ran.
+5. A separate current-target probe verifies the service after execution.
+6. Owner events recompose **Now**; resolved evidence leaves the queue instead of
+   becoming a permanent incident object.
+
+Sentinel deliberately does not add an Incident, recovery timeline, alert
+acknowledgement, or a second cross-module state machine for this loop.
+
 ### API Surface
 
 Overview and configuration:

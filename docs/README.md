@@ -77,15 +77,15 @@ Tip: click any image to zoom.
 
 ![Desktop Now](assets/images/desktop-now.png)
 
-> **Services:** Monitor and control systemd/launchd services with live status, logs, and one-click actions.
+> **Services:** Follow current condition into transition-scoped logs, procedure context, and verified lifecycle actions.
 
 ![Desktop services](assets/images/desktop-services.png)
 
-> **Metrics:** CPU, memory, disk, and runtime stats at a glance — no external agents needed.
+> **Metrics:** Inspect live samples and sustained posture signals, including focused handoffs from Now.
 
 ![Desktop metrics](assets/images/desktop-metrics.png)
 
-> **Runbooks:** Executable step-by-step procedures with job tracking and per-step output history.
+> **Runbooks:** Confirm effects, handle approval boundaries, and retain immutable execution receipts with a current target recheck.
 
 ![Desktop runbooks](assets/images/desktop-runbooks.png)
 

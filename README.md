@@ -28,20 +28,21 @@ No Electron. No cloud relay. Just your host and your shell.
 
 - One binary, fast setup, low operational overhead.
 - Realtime tmux control with session, window, and pane visibility.
-- Service monitoring and control for systemd and launchd.
-- Services and metrics for host-level observability.
-- Runbooks for executable operational procedures with job tracking.
-- Multi-user session support for shared hosts and team environments.
+- Current host posture and a bounded decision queue instead of an alert inbox.
+- Service diagnosis with structured condition, transition-scoped logs, and
+  verified actions for systemd and launchd.
+- Temporal host-pressure signals that distinguish a spike from sustained risk.
+- Explicit Runbooks with approval boundaries and immutable execution receipts.
 - Optimistic and responsive UI tuned for desktop and mobile.
 
 ## Core Capabilities
 
-- **Now** — Operational home at `/` for reliability, decisions that need attention, live work, and precise handoffs.
+- **Now** — Operational home at `/` for posture, evidence confidence, decisions that need attention, live work, and precise handoffs.
 - **Tmux** — Interactive PTY in the browser with tmux workspace management, window launchers, and reusable session launchers.
 - **Multi-user sessions** — Run tmux sessions as different OS users with a security allowlist and systemd-aware user switching on Linux.
-- **Services** — Monitor and control systemd/launchd units from `/services`.
-- **Metrics** — System and runtime resource dashboard at `/metrics`.
-- **Runbooks** — Step-by-step operational procedures with job history at `/runbooks`.
+- **Services** — Inspect current cause, logs, procedure context, and verified lifecycle actions from `/services`.
+- **Metrics** — Diagnose canonical host posture and live system/runtime signals at `/metrics`.
+- **Runbooks** — Confirm and execute operational procedures with approvals, target ownership, and immutable receipts at `/runbooks`.
 - Event-driven updates over WebSocket (`/ws/events`).
 - Service mode and daily autoupdate (Linux/macOS).
 - Optional token auth and origin allowlist.
@@ -107,19 +108,19 @@ If you expose Sentinel outside localhost (`0.0.0.0`), always configure:
 
 ### Ops Control Plane
 
-> **Now:** Start with current reliability, operator attention, and work already in progress.
+> **Now:** Start with host posture, evidence confidence, operator decisions, and work already in progress.
 
 ![Desktop Now](docs/assets/images/desktop-now.png)
 
-> **Services:** Monitor and control systemd/launchd services with live status, logs, and one-click actions.
+> **Services:** Move from a failed service to structured cause, transition-scoped logs, procedure context, and verified actions.
 
 ![Desktop services](docs/assets/images/desktop-services.png)
 
-> **Metrics:** CPU, memory, disk, and runtime stats at a glance — no external agents needed.
+> **Metrics:** Separate live samples from sustained host pressure and open the exact signal carried by a Now handoff.
 
 ![Desktop metrics](docs/assets/images/desktop-metrics.png)
 
-> **Runbooks:** Executable step-by-step procedures with job tracking and per-step output history.
+> **Runbooks:** Review effects before execution, pause at approval boundaries, and retain an immutable receipt plus current target recheck.
 
 ![Desktop runbooks](docs/assets/images/desktop-runbooks.png)
 

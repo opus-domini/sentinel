@@ -139,6 +139,11 @@ waiting-for-approval execution fails with `target service already has an active
 execution`. Runs without a service target remain governed only by the global
 concurrency limit.
 
+MCP uses the same Runbook Manager as Now, the HTTP API, and the Scheduler.
+Therefore target ownership, immutable receipts, persisted source metadata, and
+the prohibition on agent approval are identical across entry points; MCP does
+not create a parallel execution path.
+
 ## Interaction Model
 
 `tmux_attach` returns an `attachmentId`, active `paneId`, event `cursor`, and

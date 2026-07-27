@@ -72,6 +72,12 @@ flowchart LR
   Recheck --> Now
 ```
 
+The arrows are ownership boundaries, not a shared workflow table. Now owns
+composition and handoff; Services owns current condition, logs, and lifecycle
+verification; Metrics owns temporal posture; Runbooks owns confirmation,
+target admission, approval, and immutable receipts; Tmux owns terminal context.
+Only Runbook executions are durable workflow records.
+
 ## Data Model (Operational)
 
 - Session metadata

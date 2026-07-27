@@ -59,6 +59,12 @@ Go runtime statistics for the Sentinel server process:
 - Real-time overview updates via WebSocket (`ops.overview.updated`).
 - Help dialog (triggered via the `?` button) explaining the metrics system.
 
+Metrics owns pressure diagnosis in the operational loop. A Now handoff carries
+the canonical signal name and the attention item's `observedAt`; Metrics focuses
+that live card while clearly stating that it does not retain a historical
+sample for the handoff instant. It never infers a responsible Service or
+process from host-level pressure.
+
 ## Data Source
 
 - All metrics are collected locally by the Sentinel backend.
