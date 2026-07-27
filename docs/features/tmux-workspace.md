@@ -1,6 +1,9 @@
 # Tmux Workspace
 
-![Desktop tmux sessions](assets/images/desktop-tmux-sessions.png)
+<img src="assets/images/desktop-tmux-mission-control.png" alt="Tmux attached to an isolated flight-control session, with two real panes showing fictitious orbital telemetry, recovery evidence, and guidance context" />
+
+The Orbital Station terminal output is fictitious showcase data running in
+disposable tmux sessions; Sentinel has no satellite-specific behavior.
 
 Sentinel models tmux as:
 
@@ -21,8 +24,6 @@ The UI and API are built to keep this hierarchy consistent with realtime updates
 - Rename window and pane labels.
 - Session icon metadata.
 - Frequent directories endpoint (`GET /api/tmux/frequent-dirs`) powers quick-pick suggestions in the session creation dialog.
-
-![Desktop tmux fullscreen](assets/images/desktop-tmux-fullscreen.png)
 
 ## Realtime Interaction
 

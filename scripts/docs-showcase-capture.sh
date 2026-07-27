@@ -59,6 +59,7 @@ browser_session="sentinel-docs-showcase-$$-$(date +%s)"
 server_pid=""
 base_url=""
 tmux_isolated=0
+guidance_pane=""
 
 showcase_tmux() {
 	env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$tmux_dir" tmux -f /dev/null "$@"
@@ -118,7 +119,7 @@ send_tmux_command() {
 }
 
 create_tmux_scenario() {
-	local downlink_pane guidance_pane socket_path expected_socket
+	local downlink_pane telemetry_pane socket_path expected_socket
 	showcase_tmux new-session -d -s flight-control -n mission-control -c /tmp -x 160 -y 44 \
 		"env PS1='ORBITAL> ' bash --noprofile --norc"
 	socket_path="$(showcase_tmux display-message -p '#{socket_path}')"
@@ -143,8 +144,10 @@ create_tmux_scenario() {
 
 	showcase_tmux new-session -d -s telemetry -n stream -c /tmp -x 120 -y 36 \
 		"env PS1='ORBITAL> ' bash --noprofile --norc"
+	telemetry_pane="$(showcase_tmux display-message -p -t telemetry:stream '#{pane_id}')"
+	showcase_tmux select-pane -t "$telemetry_pane" -T telemetry
 	send_tmux_command telemetry:stream \
-		"clear; printf '%s\\n' 'ORBITAL TELEMETRY STREAM' 'frames verified: 1842' 'signal quality: nominal'"
+		"clear; printf '%s\\n' 'ORBITAL TELEMETRY STREAM' '------------------------' 'carrier         LOCKED' 'frames verified 1842' 'signal quality  NOMINAL' 'relay state     RECOVERED' '' 'next pass       18:32 UTC' '' 'ORBITAL> downlink current'"
 
 	showcase_tmux new-session -d -s maintenance -n checklist -c /tmp -x 120 -y 36 \
 		"env PS1='ORBITAL> ' bash --noprofile --norc"
@@ -324,6 +327,11 @@ browser eval \
 	>/dev/null
 wait_for_condition 'immutable execution receipt copy is rendered' \
 	"document.querySelector('[aria-label^=\"Execution receipt\"]')?.textContent?.includes('Immutable execution receipt') === true"
+browser mouse move 1400 880 >/dev/null
+browser eval "document.activeElement instanceof HTMLElement && document.activeElement.blur()" \
+	>/dev/null
+browser press Escape >/dev/null
+browser wait 500 >/dev/null
 browser screenshot "$staging_dir/desktop-runbooks-receipt.png" >/dev/null
 open_page '/tmux?session=flight-control' 'flight-control'
 browser wait '.xterm' >/dev/null
@@ -335,14 +343,16 @@ browser eval "localStorage.setItem('sentinel_docs_showcase_scene', 'healthy')" >
 capture_page / 'Healthy' desktop-now-healthy.png
 
 printf 'docs showcase: capturing mobile workflow\n'
+[[ -n "$guidance_pane" ]] || fail "isolated guidance pane was not recorded"
+showcase_tmux kill-pane -t "$guidance_pane"
 browser set viewport 390 844 2 >/dev/null
 browser eval "localStorage.setItem('sentinel_docs_showcase_scene', 'risk')" >/dev/null
 capture_page / 'Needs attention' mobile-now.png
 open_page '/tmux?session=flight-control' 'flight-control'
-browser find role button click --name 'Close menu' --exact >/dev/null || true
-browser wait '.xterm' >/dev/null
+wait_for_condition 'mobile terminal attached to flight-control' \
+	"document.querySelector('.xterm') !== null"
 wait_for_condition 'mobile terminal contains rendered output' \
-	"document.querySelector('.xterm-rows')?.textContent?.trim().length > 0"
+	"document.querySelector('.xterm-rows')?.textContent?.includes('ORBITAL') === true"
 browser screenshot "$staging_dir/mobile-tmux.png" >/dev/null
 
 browser network requests --filter /api/tmux >"$logs_dir/tmux-network.txt"

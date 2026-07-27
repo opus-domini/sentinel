@@ -1,6 +1,9 @@
 # Metrics
 
-![Desktop metrics](assets/images/desktop-metrics.png)
+<img src="assets/images/desktop-metrics-pressure.png" alt="Metrics focused on critical CPU pressure in the fictitious Orbital Station workload, with live saturation samples and no causal attribution" />
+
+The Orbital Station values are fictitious showcase samples captured from the
+real Metrics UI; Sentinel has no satellite-specific behavior.
 
 The Metrics page (`/metrics`) provides real-time system and runtime metrics for the host machine and the Sentinel process. All data is collected locally by Sentinel with no external monitoring agents required.
 

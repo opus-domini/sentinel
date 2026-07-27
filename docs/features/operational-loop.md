@@ -34,6 +34,11 @@ typed handoff, not shared ownership of the same state.
 6. **Return to Now.** Owner updates recompose the current picture. Resolved
    evidence leaves the decision queue.
 
+<img src="assets/images/desktop-runbooks-receipt.png" alt="Runbooks showing the immutable receipt for a successful fictitious telemetry recovery, with the accepted definition, target, result, and independent current-state recheck" />
+
+The fictitious Orbital Station receipt illustrates the boundary between action
+proof and current truth. Sentinel has no satellite-specific behavior.
+
 ```mermaid
 ---
 config:

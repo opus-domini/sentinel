@@ -16,6 +16,11 @@ Now composes Services, Metrics, Runbooks, and Tmux concurrently. Partial failure
 preserves healthy owner evidence and identifies the source whose freshness
 could not be confirmed.
 
+<img src="assets/images/desktop-now-risk.png" alt="Now showing an at-risk fictitious Orbital Station host, current evidence confidence, three operator decisions, and typed handoffs to Services, Metrics, Runbooks, and Tmux" />
+
+The fictitious Orbital Station data makes the handoffs easy to inspect without
+exposing a real host. Sentinel has no satellite-specific behavior.
+
 ## Posture and Confidence
 
 Posture derives from current Services and Metrics evidence:
@@ -74,6 +79,11 @@ HTTP provides the initial composition. Existing owner events invalidate Now;
 there is no independent `now.updated` event or periodic Now collector. If the
 shared event channel disconnects while a snapshot remains visible, current
 source labels are presented as stale until a successful refresh.
+
+<img src="assets/images/desktop-now-healthy.png" alt="Now after the fictitious Orbital Station recovery, showing healthy posture, current source confidence, an empty decision queue, and no work in flight" />
+
+The second frame is the return point: historical proof remains with Runbooks,
+while current owner evidence determines whether Now is calm.
 
 ## Boundary
 

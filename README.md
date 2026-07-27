@@ -44,6 +44,35 @@ and the tools already present on your host.
 Now coordinates this loop; it is not a fifth execution domain, alert inbox,
 incident record, or recovery timeline.
 
+## One Loop, End to End
+
+The screens below come from the real Sentinel frontend and an isolated,
+disposable daemon running the fictitious **Orbital Station** workload. The
+names and telemetry are demonstration data; Sentinel does not provide
+satellite-specific behavior.
+
+Now starts with a bounded decision queue and sends each signal to its owner:
+
+![Now showing an at-risk fictitious Orbital Station host, with current source confidence and a bounded queue that hands service, pressure, approval, and live-session evidence to their owner modules](docs/assets/images/desktop-now-risk.png)
+
+Services owns the condition and the path from structured evidence to the
+relevant procedure or prior execution:
+
+![Services inspecting the failed fictitious telemetry relay, with structured condition and handoffs to the recovery procedure and latest execution receipt](docs/assets/images/desktop-services-diagnosis.png)
+
+Runbooks keeps the accepted procedure, result, target, and current recheck
+together without confusing the historical receipt with present state:
+
+![Runbooks showing the immutable receipt for a successful fictitious telemetry recovery, alongside the procedure definition, approval boundary, and current target recheck](docs/assets/images/desktop-runbooks-receipt.png)
+
+Tmux remains the live workspace where the operator can continue daily work:
+
+![Tmux attached to an isolated flight-control session, with two live panes showing fictitious orbital telemetry and guidance context](docs/assets/images/desktop-tmux-mission-control.png)
+
+After current owner evidence is healthy, Now becomes calm again:
+
+![Now after the fictitious recovery, showing healthy posture, current source confidence, no pending decisions, and no work in flight](docs/assets/images/desktop-now-healthy.png)
+
 ## What Sentinel Owns
 
 ### Daily core

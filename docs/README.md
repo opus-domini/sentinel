@@ -10,6 +10,14 @@ These docs are organized by intent. Sentinel starts in **Now**, then hands
 current evidence to one of four owners: Tmux, Services, Metrics, or Runbooks.
 Use the shortest path that answers the question in front of you.
 
+<p align="center">
+  <img src="assets/images/mobile-now.png" alt="Mobile Now showing the at-risk fictitious Orbital Station workload, current owner confidence, the bounded decision queue, and all five primary destinations" width="390" />
+</p>
+
+The image uses the fictitious **Orbital Station** showcase workload. It was
+captured from the real app against a disposable local daemon; it does not imply
+satellite-specific capabilities.
+
 ## Start
 
 - [Getting Started](/guide/getting-started.md) — install, validate the service,

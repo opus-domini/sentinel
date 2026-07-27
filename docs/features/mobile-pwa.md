@@ -17,6 +17,13 @@ It is the same operational workspace at a smaller viewport, not a terminal-only
 mobile mode. Now remains the entry and return point; each owner keeps its normal
 route and responsibility.
 
+<p align="center">
+  <img src="assets/images/mobile-now.png" alt="Mobile Now showing the at-risk fictitious Orbital Station workload, current owner confidence, a bounded decision queue, and the five-destination bottom navigation" width="390" />
+</p>
+
+The Orbital Station workload is fictitious showcase data captured from the
+real mobile shell; Sentinel has no satellite-specific behavior.
+
 ## PWA Support
 
 - Manifest: `/manifest.webmanifest`
@@ -37,6 +44,13 @@ Service worker caches app shell and static assets.
 This keeps UI shell resilient without caching live terminal data paths.
 
 ## Mobile Terminal UX
+
+<p align="center">
+  <img src="assets/images/mobile-tmux.png" alt="Mobile Tmux attached to one isolated flight-control pane, with legible fictitious orbital telemetry, touch controls, pane status, and the five-destination bottom navigation" width="390" />
+</p>
+
+This frame uses a disposable isolated tmux server and synthetic terminal
+output, not a real host session.
 
 Implemented improvements include:
 

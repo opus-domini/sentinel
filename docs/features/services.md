@@ -1,6 +1,9 @@
 # Services
 
-![Desktop services](assets/images/desktop-services.png)
+<img src="assets/images/desktop-services-diagnosis.png" alt="Services inspecting the failed fictitious telemetry relay, with structured condition, transition evidence, and handoffs to the owning recovery procedure and latest receipt" />
+
+The Orbital Station unit and telemetry are fictitious showcase data captured
+from the real Services UI; Sentinel has no satellite-specific behavior.
 
 Dedicated service management page at `/services`, one owner in the
 [Operational Loop](/features/operational-loop.md). Sentinel monitors and

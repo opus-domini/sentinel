@@ -1,6 +1,9 @@
 # Runbooks
 
-![Desktop runbooks](assets/images/desktop-runbooks.png)
+<img src="assets/images/desktop-runbooks-receipt.png" alt="Runbooks showing the immutable receipt for a successful fictitious telemetry recovery, beside the accepted procedure, approval boundary, execution result, and current target recheck" />
+
+The Orbital Station procedure is fictitious showcase data captured from the
+real Runbooks UI; Sentinel has no satellite-specific behavior.
 
 Runbooks are executable operational procedures — sequences of steps that run against the host. Each execution is tracked as a job with step-level output persistence.
 
