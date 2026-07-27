@@ -73,7 +73,7 @@ Tip: click any image to zoom.
 
 ### Ops Control Plane
 
-> **Now:** See current reliability, decisions that need attention, and live operational context before entering an owner module.
+> **Now:** See host posture, evidence confidence, decisions that need attention, and live operational context before entering an owner module.
 
 ![Desktop Now](assets/images/desktop-now.png)
 

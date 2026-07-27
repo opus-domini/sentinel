@@ -15,25 +15,25 @@ const (
 	nowSourceUnavailable   = "unavailable"
 	nowSourceNotConfigured = "not_configured"
 
-	nowReliabilityNormal    = "normal"
-	nowReliabilityAttention = "attention"
-	nowReliabilityDegraded  = "degraded"
+	nowConfidenceCurrent  = "current"
+	nowConfidenceDegraded = "degraded"
+
+	nowPostureHealthy = "healthy"
+	nowPostureAtRisk  = "at_risk"
+	nowPostureUnknown = "unknown"
 
 	nowAttentionRunbookApproval = "runbook_approval"
 	nowAttentionServiceFailed   = "service_failed"
-	nowAttentionRunbookFailed   = "runbook_failed"
 	nowAttentionMetricsPressure = "metrics_pressure"
 
 	nowAttentionLimit  = 5
 	nowInProgressLimit = 3
-
-	nowCategoryApprovals = "approvals"
 )
 
 type nowSource struct {
-	Status    string `json:"status"`
-	CheckedAt string `json:"checkedAt"`
-	Message   string `json:"message,omitempty"`
+	Status     string `json:"status"`
+	ObservedAt string `json:"observedAt"`
+	Message    string `json:"message,omitempty"`
 }
 
 type nowSources struct {
@@ -41,6 +41,11 @@ type nowSources struct {
 	Services nowSource `json:"services"`
 	Metrics  nowSource `json:"metrics"`
 	Runbooks nowSource `json:"runbooks"`
+}
+
+type nowConfidence struct {
+	State   string     `json:"state"`
+	Sources nowSources `json:"sources"`
 }
 
 type nowServiceSummary struct {
@@ -51,7 +56,7 @@ type nowServiceSummary struct {
 	Unknown  int `json:"unknown"`
 }
 
-type nowReliability struct {
+type nowPosture struct {
 	State    string                 `json:"state"`
 	Services nowServiceSummary      `json:"services"`
 	Metrics  opsplane.MetricPosture `json:"metrics"`
@@ -87,22 +92,21 @@ type nowRunReference struct {
 }
 
 // nowAttentionItem is a discriminated union. Fields outside the selected Type
-// are omitted, keeping each API item compact while preserving one typed Go
-// representation for deterministic prioritization and overflow accounting.
+// are omitted, keeping each API item compact while preserving deterministic
+// prioritization and overflow accounting.
 type nowAttentionItem struct {
-	Type     string                         `json:"type"`
-	Service  *nowServiceReference           `json:"service,omitempty"`
-	Runbook  *nowRunbookReference           `json:"runbook,omitempty"`
-	Failure  *nowRunReference               `json:"failure,omitempty"`
-	Run      *nowRunReference               `json:"run,omitempty"`
-	Severity string                         `json:"severity,omitempty"`
-	Signals  []opsplane.MetricPostureSignal `json:"signals,omitempty"`
+	Type       string                         `json:"type"`
+	Service    *nowServiceReference           `json:"service,omitempty"`
+	Runbook    *nowRunbookReference           `json:"runbook,omitempty"`
+	Run        *nowRunReference               `json:"run,omitempty"`
+	Severity   string                         `json:"severity,omitempty"`
+	Signals    []opsplane.MetricPostureSignal `json:"signals,omitempty"`
+	ObservedAt string                         `json:"observedAt,omitempty"`
 }
 
 type nowAttentionOverflow struct {
 	Approvals int `json:"approvals"`
 	Services  int `json:"services"`
-	Runbooks  int `json:"runbooks"`
 	Metrics   int `json:"metrics"`
 }
 
@@ -142,31 +146,31 @@ type nowInProgress struct {
 }
 
 type nowResponse struct {
-	GeneratedAt string         `json:"generatedAt"`
-	Reliability nowReliability `json:"reliability"`
-	Attention   nowAttention   `json:"attention"`
-	InProgress  nowInProgress  `json:"inProgress"`
-	Sources     nowSources     `json:"sources"`
+	GeneratedAt string        `json:"generatedAt"`
+	Confidence  nowConfidence `json:"confidence"`
+	Posture     nowPosture    `json:"posture"`
+	Attention   nowAttention  `json:"attention"`
+	InProgress  nowInProgress `json:"inProgress"`
 }
 
 type nowModelInput struct {
-	GeneratedAt        time.Time
-	Services           []opsplane.ServiceStatus
-	Metrics            opsplane.MetricPosture
-	Runbooks           []store.OpsRunbook
-	ActiveRuns         []store.OpsRunbookRun
-	LatestTerminalRuns []store.OpsRunbookRun
-	Sessions           []enrichedSession
-	SessionPresets     []store.SessionPreset
-	Sources            nowSources
-}
-
-type nowAttentionCandidate struct {
-	category string
-	item     nowAttentionItem
+	GeneratedAt    time.Time
+	Services       []opsplane.ServiceStatus
+	Metrics        opsplane.MetricPosture
+	Runbooks       []store.OpsRunbook
+	ActiveRuns     []store.OpsRunbookRun
+	Sessions       []enrichedSession
+	SessionPresets []store.SessionPreset
+	Sources        nowSources
 }
 
 func buildNowModel(input nowModelInput) nowResponse {
+	generatedAt := input.GeneratedAt.UTC()
+	if generatedAt.IsZero() {
+		generatedAt = time.Now().UTC()
+	}
+	metrics := normalizeNowMetricPosture(input.Metrics, generatedAt)
+
 	runbooksByTarget := make(map[string]store.OpsRunbook, len(input.Runbooks))
 	for _, runbook := range input.Runbooks {
 		target := strings.TrimSpace(runbook.TargetService)
@@ -176,26 +180,10 @@ func buildNowModel(input nowModelInput) nowResponse {
 	}
 
 	serviceSummary, failedServices := summarizeNowServices(input.Services)
-	failedByName := make(map[string]int, len(failedServices))
-	candidates := make([]nowAttentionCandidate, 0, len(input.ActiveRuns)+len(failedServices)+len(input.LatestTerminalRuns)+1)
-
-	approvals := filterNowRunsByStatus(input.ActiveRuns, store.OpsRunbookStatusWaitingApproval)
-	sort.SliceStable(approvals, func(i, j int) bool {
-		return compareRunCreatedAt(approvals[i], approvals[j], true)
-	})
-	for _, run := range approvals {
-		candidates = append(candidates, nowAttentionCandidate{
-			category: nowCategoryApprovals,
-			item: nowAttentionItem{
-				Type: nowAttentionRunbookApproval,
-				Run:  nowRunReferenceFromStore(run),
-			},
-		})
-	}
-
 	sort.SliceStable(failedServices, func(i, j int) bool {
 		return canonicalServiceName(failedServices[i]) < canonicalServiceName(failedServices[j])
 	})
+	serviceItems := make([]nowAttentionItem, 0, len(failedServices))
 	for _, service := range failedServices {
 		runbook, hasRunbook := runbooksByTarget[service.Name]
 		item := nowAttentionItem{
@@ -205,91 +193,134 @@ func buildNowModel(input nowModelInput) nowResponse {
 		if hasRunbook && runbook.Enabled {
 			item.Runbook = nowRunbookReferenceFromStore(runbook)
 		}
-		failedByName[service.Name] = len(candidates)
-		candidates = append(candidates, nowAttentionCandidate{
-			category: keyServices,
-			item:     item,
-		})
+		serviceItems = append(serviceItems, item)
 	}
 
-	failedRuns := filterNowRunsByStatus(input.LatestTerminalRuns, store.OpsRunbookStatusFailed)
-	sort.SliceStable(failedRuns, func(i, j int) bool {
-		return compareRunCreatedAt(failedRuns[i], failedRuns[j], false)
+	approvals := filterNowRunsByStatus(input.ActiveRuns, store.OpsRunbookStatusWaitingApproval)
+	sort.SliceStable(approvals, func(i, j int) bool {
+		return compareRunCreatedAt(approvals[i], approvals[j], true)
 	})
-	for _, run := range failedRuns {
-		if run.TargetKind == store.OpsRunbookRunTargetService {
-			if candidateIndex, ok := failedByName[run.TargetName]; ok {
-				candidates[candidateIndex].item.Failure = nowRunReferenceFromStore(run)
-				continue
-			}
-		}
-		candidates = append(candidates, nowAttentionCandidate{
-			category: keyRunbooks,
-			item: nowAttentionItem{
-				Type: nowAttentionRunbookFailed,
-				Run:  nowRunReferenceFromStore(run),
-			},
+	approvalItems := make([]nowAttentionItem, 0, len(approvals))
+	for _, run := range approvals {
+		approvalItems = append(approvalItems, nowAttentionItem{
+			Type: nowAttentionRunbookApproval,
+			Run:  nowRunReferenceFromStore(run),
 		})
 	}
 
-	if input.Metrics.State == opsplane.MetricPostureStatePressure {
-		candidates = append(candidates, nowAttentionCandidate{
-			category: keyMetrics,
-			item: nowAttentionItem{
-				Type:     nowAttentionMetricsPressure,
-				Severity: input.Metrics.Severity,
-				Signals:  nonNilMetricSignals(input.Metrics.Signals),
-			},
-		})
-	}
-
-	visibleCount := min(len(candidates), nowAttentionLimit)
-	visible := make([]nowAttentionItem, 0, visibleCount)
-	for _, candidate := range candidates[:visibleCount] {
-		visible = append(visible, candidate.item)
-	}
-	overflow := nowAttentionOverflow{}
-	for _, candidate := range candidates[visibleCount:] {
-		switch candidate.category {
-		case nowCategoryApprovals:
-			overflow.Approvals++
-		case keyServices:
-			overflow.Services++
-		case keyRunbooks:
-			overflow.Runbooks++
-		case keyMetrics:
-			overflow.Metrics++
+	var metricsItem *nowAttentionItem
+	if metrics.State == opsplane.MetricPostureStatePressure {
+		item := nowAttentionItem{
+			Type:       nowAttentionMetricsPressure,
+			Severity:   metrics.Severity,
+			Signals:    nonNilMetricSignals(metrics.Signals),
+			ObservedAt: metrics.ObservedAt,
 		}
+		metricsItem = &item
 	}
 
-	reliabilityState := nowReliabilityNormal
+	attention := buildNowAttention(serviceItems, approvalItems, metricsItem)
+
+	confidenceState := nowConfidenceCurrent
 	if nowSourcesDegraded(input.Sources) {
-		reliabilityState = nowReliabilityDegraded
-	} else if serviceSummary.Failed > 0 || input.Metrics.State == opsplane.MetricPostureStatePressure {
-		reliabilityState = nowReliabilityAttention
+		confidenceState = nowConfidenceDegraded
 	}
 
-	generatedAt := input.GeneratedAt.UTC()
-	if generatedAt.IsZero() {
-		generatedAt = time.Now().UTC()
+	postureState := nowPostureHealthy
+	if input.Sources.Services.Status != nowSourceCurrent ||
+		input.Sources.Metrics.Status != nowSourceCurrent {
+		postureState = nowPostureUnknown
+	} else if serviceSummary.Failed > 0 ||
+		metrics.State == opsplane.MetricPostureStatePressure {
+		postureState = nowPostureAtRisk
 	}
+
 	return nowResponse{
 		GeneratedAt: generatedAt.Format(time.RFC3339),
-		Reliability: nowReliability{
-			State:    reliabilityState,
+		Confidence: nowConfidence{
+			State:   confidenceState,
+			Sources: input.Sources,
+		},
+		Posture: nowPosture{
+			State:    postureState,
 			Services: serviceSummary,
-			Metrics:  normalizeNowMetricPosture(input.Metrics),
+			Metrics:  metrics,
 		},
-		Attention: nowAttention{
-			Total:    len(candidates),
-			Visible:  visible,
-			Overflow: overflow,
-		},
+		Attention: attention,
 		InProgress: nowInProgress{
 			Runs:     buildNowInProgressRuns(input.ActiveRuns),
 			Sessions: buildNowInProgressSessions(input.Sessions, input.SessionPresets),
 		},
-		Sources: input.Sources,
+	}
+}
+
+func buildNowAttention(
+	services []nowAttentionItem,
+	approvals []nowAttentionItem,
+	metrics *nowAttentionItem,
+) nowAttention {
+	total := len(services) + len(approvals)
+	if metrics != nil {
+		total++
+	}
+
+	visible := make([]nowAttentionItem, 0, min(total, nowAttentionLimit))
+	serviceIndex := 0
+	approvalIndex := 0
+	metricsSelected := false
+
+	appendService := func() {
+		if serviceIndex >= len(services) || len(visible) >= nowAttentionLimit {
+			return
+		}
+		visible = append(visible, services[serviceIndex])
+		serviceIndex++
+	}
+	appendApproval := func() {
+		if approvalIndex >= len(approvals) || len(visible) >= nowAttentionLimit {
+			return
+		}
+		visible = append(visible, approvals[approvalIndex])
+		approvalIndex++
+	}
+	appendMetrics := func() {
+		if metrics == nil || metricsSelected || len(visible) >= nowAttentionLimit {
+			return
+		}
+		visible = append(visible, *metrics)
+		metricsSelected = true
+	}
+
+	// Reserve one slot per non-empty category in operational priority order.
+	appendService()
+	if metrics != nil && metrics.Severity == opsplane.MetricPostureSeverityCritical {
+		appendMetrics()
+	}
+	appendApproval()
+	if metrics != nil && metrics.Severity != opsplane.MetricPostureSeverityCritical {
+		appendMetrics()
+	}
+
+	// Remaining capacity favors concrete failed services, then oldest approvals.
+	for serviceIndex < len(services) && len(visible) < nowAttentionLimit {
+		appendService()
+	}
+	for approvalIndex < len(approvals) && len(visible) < nowAttentionLimit {
+		appendApproval()
+	}
+
+	metricsOverflow := 0
+	if metrics != nil && !metricsSelected {
+		metricsOverflow = 1
+	}
+	return nowAttention{
+		Total:   total,
+		Visible: visible,
+		Overflow: nowAttentionOverflow{
+			Approvals: len(approvals) - approvalIndex,
+			Services:  len(services) - serviceIndex,
+			Metrics:   metricsOverflow,
+		},
 	}
 }
 
@@ -345,40 +376,33 @@ func buildNowInProgressRuns(active []store.OpsRunbookRun) []nowInProgressRun {
 	return out
 }
 
-func buildNowInProgressSessions(sessions []enrichedSession, presets []store.SessionPreset) []nowInProgressSession {
-	presetOrder := make(map[string]int, len(presets))
+func buildNowInProgressSessions(
+	sessions []enrichedSession,
+	presets []store.SessionPreset,
+) []nowInProgressSession {
+	pinned := make(map[string]bool, len(presets))
 	for _, preset := range presets {
-		presetOrder[preset.Name] = preset.SortOrder
+		pinned[preset.Name] = true
 	}
 
-	type candidate struct {
-		session enrichedSession
-		pinned  bool
-		order   int
-	}
-	selected := make([]candidate, 0, len(sessions))
+	selected := make([]enrichedSession, 0, len(sessions))
 	for _, session := range sessions {
-		order, pinned := presetOrder[session.Name]
-		if !pinned && session.UnreadPanes <= 0 && session.UnreadWindows <= 0 {
+		if session.UnreadPanes <= 0 && session.UnreadWindows <= 0 {
 			continue
 		}
-		selected = append(selected, candidate{session: session, pinned: pinned, order: order})
+		selected = append(selected, session)
 	}
 	sort.SliceStable(selected, func(i, j int) bool {
 		left, right := selected[i], selected[j]
+		leftAt := parseRFC3339(left.ActivityAt)
+		rightAt := parseRFC3339(right.ActivityAt)
 		switch {
-		case left.session.UnreadPanes != right.session.UnreadPanes:
-			return left.session.UnreadPanes > right.session.UnreadPanes
-		case left.session.UnreadWindows != right.session.UnreadWindows:
-			return left.session.UnreadWindows > right.session.UnreadWindows
-		case left.pinned && right.pinned && left.order != right.order:
-			return left.order < right.order
-		case left.pinned != right.pinned:
-			return left.pinned
-		case left.session.ActivityAt != right.session.ActivityAt:
-			return parseRFC3339(left.session.ActivityAt).After(parseRFC3339(right.session.ActivityAt))
+		case !leftAt.Equal(rightAt):
+			return leftAt.After(rightAt)
+		case canonicalText(left.User) != canonicalText(right.User):
+			return canonicalText(left.User) < canonicalText(right.User)
 		default:
-			return strings.ToLower(left.session.Name) < strings.ToLower(right.session.Name)
+			return canonicalText(left.Name) < canonicalText(right.Name)
 		}
 	})
 	if len(selected) > nowInProgressLimit {
@@ -386,14 +410,14 @@ func buildNowInProgressSessions(sessions []enrichedSession, presets []store.Sess
 	}
 
 	out := make([]nowInProgressSession, 0, len(selected))
-	for _, candidate := range selected {
+	for _, session := range selected {
 		out = append(out, nowInProgressSession{
-			Name:          candidate.session.Name,
-			User:          candidate.session.User,
-			Pinned:        candidate.pinned,
-			UnreadWindows: candidate.session.UnreadWindows,
-			UnreadPanes:   candidate.session.UnreadPanes,
-			ActivityAt:    candidate.session.ActivityAt,
+			Name:          session.Name,
+			User:          session.User,
+			Pinned:        pinned[session.Name],
+			UnreadWindows: session.UnreadWindows,
+			UnreadPanes:   session.UnreadPanes,
+			ActivityAt:    session.ActivityAt,
 		})
 	}
 	return out
@@ -467,7 +491,10 @@ func nowServiceReferenceFromStatus(service opsplane.ServiceStatus) *nowServiceRe
 	}
 }
 
-func normalizeNowMetricPosture(posture opsplane.MetricPosture) opsplane.MetricPosture {
+func normalizeNowMetricPosture(
+	posture opsplane.MetricPosture,
+	fallback time.Time,
+) opsplane.MetricPosture {
 	if posture.State == "" {
 		posture = opsplane.MetricPosture{
 			State:    opsplane.MetricPostureStateUnavailable,
@@ -475,6 +502,9 @@ func normalizeNowMetricPosture(posture opsplane.MetricPosture) opsplane.MetricPo
 		}
 	}
 	posture.Signals = nonNilMetricSignals(posture.Signals)
+	if strings.TrimSpace(posture.ObservedAt) == "" {
+		posture.ObservedAt = fallback.UTC().Format(time.RFC3339)
+	}
 	return posture
 }
 
@@ -486,7 +516,12 @@ func nonNilMetricSignals(signals []opsplane.MetricPostureSignal) []opsplane.Metr
 }
 
 func nowSourcesDegraded(sources nowSources) bool {
-	for _, source := range []nowSource{sources.Tmux, sources.Services, sources.Metrics, sources.Runbooks} {
+	for _, source := range []nowSource{
+		sources.Tmux,
+		sources.Services,
+		sources.Metrics,
+		sources.Runbooks,
+	} {
 		if source.Status != nowSourceCurrent {
 			return true
 		}
@@ -495,7 +530,11 @@ func nowSourcesDegraded(sources nowSources) bool {
 }
 
 func canonicalServiceName(service opsplane.ServiceStatus) string {
-	return strings.ToLower(strings.TrimSpace(service.Name))
+	return canonicalText(service.Name)
+}
+
+func canonicalText(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func parseRFC3339(value string) time.Time {

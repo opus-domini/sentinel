@@ -182,8 +182,9 @@ func Serve(version string) int {
 		}
 	}
 
-	metricsCtx, stopMetrics := context.WithCancel(context.Background())
-	metricsDone := startMetricsTicker(metricsCtx, opsManager, eventHub)
+	opsTickersCtx, stopOpsTickers := context.WithCancel(context.Background())
+	metricsDone := startMetricsTicker(opsTickersCtx, opsManager, eventHub)
+	servicesDone := startServicesWatcher(opsTickersCtx, opsManager, eventHub)
 
 	exitCode := run(version, cfg, mux)
 
@@ -197,8 +198,9 @@ func Serve(version string) int {
 	mcpServer.Shutdown(mcpShutdownCtx)
 	cancelMCP()
 
-	stopMetrics()
+	stopOpsTickers()
 	<-metricsDone
+	<-servicesDone
 
 	stopReportCtx, cancelReport := context.WithTimeout(context.Background(), 2*time.Second)
 	reportGen.Stop(stopReportCtx)

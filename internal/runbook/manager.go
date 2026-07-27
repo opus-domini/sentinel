@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/events"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 )
@@ -122,6 +123,7 @@ func (m *Manager) Create(ctx context.Context, write store.OpsRunbookWrite) (stor
 		}
 		return store.OpsRunbook{}, nil, err
 	}
+	m.emitRunbookDefinition("create", created, store.OpsRunbookDeleteResult{})
 	return created, ShellWarnings(write.Steps), nil
 }
 
@@ -146,6 +148,7 @@ func (m *Manager) Update(ctx context.Context, write store.OpsRunbookWrite) (stor
 		}
 		return store.OpsRunbook{}, nil, err
 	}
+	m.emitRunbookDefinition("update", updated, store.OpsRunbookDeleteResult{})
 	return updated, ShellWarnings(write.Steps), nil
 }
 
@@ -155,7 +158,12 @@ func (m *Manager) Delete(ctx context.Context, id, expectedName string) (store.Op
 	if m == nil || m.repo == nil {
 		return store.OpsRunbookDeleteResult{}, errors.New("runbook manager is unavailable")
 	}
-	return m.repo.DeleteOpsRunbook(ctx, id, expectedName)
+	deleted, err := m.repo.DeleteOpsRunbook(ctx, id, expectedName)
+	if err != nil {
+		return store.OpsRunbookDeleteResult{}, err
+	}
+	m.emitRunbookDefinition("delete", store.OpsRunbook{}, deleted)
+	return deleted, nil
 }
 
 // ListRuns returns recent runbook executions.
@@ -390,6 +398,25 @@ func (m *Manager) emitEvent(eventType string, payload map[string]any) {
 	if m.emit != nil {
 		m.emit(eventType, payload)
 	}
+}
+
+func (m *Manager) emitRunbookDefinition(
+	action string,
+	runbook store.OpsRunbook,
+	deleted store.OpsRunbookDeleteResult,
+) {
+	now := time.Now().UTC()
+	payload := map[string]any{
+		keyGlobalRev: now.UnixMilli(),
+		"action":     action,
+	}
+	if action == "delete" {
+		payload["removed"] = deleted.ID
+		payload["runbookName"] = deleted.Name
+	} else {
+		payload["runbook"] = runbook
+	}
+	m.emitEvent(events.TypeOpsRunbooks, payload)
 }
 
 // WaitIdle waits until all manager-owned executions finish.

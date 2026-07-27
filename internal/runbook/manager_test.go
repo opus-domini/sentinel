@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/opus-domini/sentinel/internal/events"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 )
@@ -18,6 +20,53 @@ type targetCatalogStub struct {
 
 func (s targetCatalogStub) ListServices(context.Context) ([]opsplane.ServiceStatus, error) {
 	return s.services, s.err
+}
+
+func TestManagerEmitsRunbookDefinitionChanges(t *testing.T) {
+	t.Parallel()
+
+	st, err := store.New(filepath.Join(t.TempDir(), "sentinel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	var (
+		types   []string
+		actions []string
+	)
+	manager := NewManager(st, nil, func(eventType string, payload map[string]any) {
+		types = append(types, eventType)
+		action, _ := payload["action"].(string)
+		actions = append(actions, action)
+	}, 1, nil)
+	t.Cleanup(func() { manager.Shutdown(context.Background()) })
+
+	created, _, err := manager.Create(context.Background(), store.OpsRunbookWrite{
+		Name:  "Definition events",
+		Steps: []store.OpsRunbookStep{{Type: "run", Title: "check", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.Update(context.Background(), store.OpsRunbookWrite{
+		ID:      created.ID,
+		Name:    "Definition events updated",
+		Enabled: true,
+		Steps:   []store.OpsRunbookStep{{Type: "run", Title: "check", Command: "true"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Delete(context.Background(), created.ID, "Definition events updated"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := strings.Join(types, ","); got != strings.Repeat(events.TypeOpsRunbooks+",", 2)+events.TypeOpsRunbooks {
+		t.Fatalf("event types = %q", got)
+	}
+	if got := strings.Join(actions, ","); got != "create,update,delete" {
+		t.Fatalf("event actions = %q", got)
+	}
 }
 
 func TestManagerSharesValidationExecutionAndEventOrdering(t *testing.T) {

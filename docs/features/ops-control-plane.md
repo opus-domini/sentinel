@@ -10,7 +10,7 @@ page.
 
 | Route       | Feature            | Description                                                                        | Documentation                     |
 | ----------- | ------------------ | ---------------------------------------------------------------------------------- | --------------------------------- |
-| `/`         | Now                | Current reliability, operator attention, live work, and owner-module handoffs      | [Now](/features/now.md)            |
+| `/`         | Now                | Host posture, evidence confidence, operator attention, and owner-module handoffs   | [Now](/features/now.md)            |
 | `/tmux`     | Tmux Workspace     | Existing sessions, terminals, windows, panes, unread state, and launchers           | [Tmux](/features/tmux-workspace.md) |
 | `/runbooks` | Runbook Execution  | Executable operational procedures with step-level output tracking and job history  | [Runbooks](/features/runbooks.md)  |
 | `/services` | Service Management | Monitor, start/stop/restart, browse, and register systemd/launchd services          | [Services](/features/services.md)  |
@@ -22,14 +22,22 @@ page.
 
 - Initial state loads from HTTP API.
 - Continuous updates come from `/ws/events`.
-- Now composes the existing owner resources and refreshes from relevant owner
+- Now composes the existing owner resources and refreshes from semantic owner
   events; it does not add a polling loop or a new event.
 - Primary events:
   - `ops.overview.updated`
   - `ops.services.updated`
   - `ops.job.updated`
+  - `ops.runbooks.updated`
   - `ops.schedule.updated`
   - `ops.metrics.updated`
+  - `ops.posture.updated`
+
+Freshness remains owned by each module. Services watches its canonical state
+every five seconds and emits only on change. Metrics publishes every sample for
+its owner page and emits a separate posture event only when the semantic signal
+set changes. Runbooks publishes definition changes from the shared HTTP/MCP
+manager. Now recomposes from those events instead of duplicating collectors.
 
 ### API Surface
 

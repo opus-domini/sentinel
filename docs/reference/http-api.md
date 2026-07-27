@@ -187,8 +187,29 @@ structural dependency returns `503 NOW_UNAVAILABLE`.
 {
   "now": {
     "generatedAt": "2026-07-27T12:00:00Z",
-    "reliability": {
-      "state": "normal",
+    "confidence": {
+      "state": "current",
+      "sources": {
+        "tmux": {
+          "status": "current",
+          "observedAt": "2026-07-27T12:00:00Z"
+        },
+        "services": {
+          "status": "current",
+          "observedAt": "2026-07-27T12:00:00Z"
+        },
+        "metrics": {
+          "status": "current",
+          "observedAt": "2026-07-27T12:00:00Z"
+        },
+        "runbooks": {
+          "status": "current",
+          "observedAt": "2026-07-27T12:00:00Z"
+        }
+      }
+    },
+    "posture": {
+      "state": "healthy",
       "services": {
         "tracked": 1,
         "running": 1,
@@ -201,6 +222,7 @@ structural dependency returns `503 NOW_UNAVAILABLE`.
         "severity": "ok",
         "warningCount": 0,
         "criticalCount": 0,
+        "observedAt": "2026-07-27T12:00:00Z",
         "signals": []
       }
     },
@@ -210,39 +232,36 @@ structural dependency returns `503 NOW_UNAVAILABLE`.
       "overflow": {
         "approvals": 0,
         "services": 0,
-        "runbooks": 0,
         "metrics": 0
       }
     },
     "inProgress": {
       "runs": [],
       "sessions": []
-    },
-    "sources": {
-      "tmux": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" },
-      "services": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" },
-      "metrics": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" },
-      "runbooks": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" }
     }
   }
 }
 ```
 
 Source status is `current`, `stale`, `unavailable`, or `not_configured`.
-Reliability is `degraded` whenever any source is not current; otherwise it is
-`attention` for a failed tracked service or metrics pressure, and `normal`
-when neither condition exists.
+Every source includes the owner's evidence timestamp in `observedAt`.
+`confidence` is `degraded` whenever any source is not current. `posture` is
+`unknown` when Services or Metrics is not current; otherwise it is `at_risk`
+for a failed tracked service or metric pressure and `healthy` when neither
+condition exists.
 
 Attention items are discriminated by `type`: `runbook_approval`,
-`service_failed`, `runbook_failed`, or `metrics_pressure`. The response keeps
-at most five visible items in that priority order and reports hidden counts in
-`overflow`. A runbook failure targeting the same failed service is returned as
-`failure` evidence on the service item instead of as a duplicate item.
+`service_failed`, or `metrics_pressure`. Terminal Runbook failures never enter
+the current attention queue. The response keeps at most five visible items,
+reserves a first-pass slot for each non-empty category, and reports exact hidden
+counts in `overflow`. Failed services fill remaining slots by canonical name,
+then approvals from oldest to newest; Metrics contributes at most one item.
 
 In-progress runs include only `queued` and `running` executions. Pending
 approvals appear only in attention. In-progress Tmux data contains at most
-three live pinned or unread sessions and never includes pane output, preview,
-or command text.
+three live sessions with unread windows or panes, ordered by latest activity,
+user, and name. Pin is returned only as metadata. Pane output, preview, and
+command text are never included.
 
 The procedure action accepts the same optional parameter shape as the Runbooks
 execution endpoint:

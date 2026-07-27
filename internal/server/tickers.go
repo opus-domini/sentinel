@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,15 @@ type metricsProvider interface {
 type postureEventState struct {
 	initialized bool
 	signature   string
+}
+
+type servicesProvider interface {
+	ListServices(context.Context) ([]services.ServiceStatus, error)
+}
+
+type servicesEventState struct {
+	initialized bool
+	fingerprint string
 }
 
 // loopTicker runs tick every interval until ctx is cancelled. The returned
@@ -43,6 +53,17 @@ func startMetricsTicker(ctx context.Context, mgr metricsProvider, hub *events.Hu
 	state := &postureEventState{}
 	return loopTicker(ctx, 2*time.Second, func() {
 		publishMetrics(ctx, mgr, hub, state)
+	})
+}
+
+func startServicesWatcher(
+	ctx context.Context,
+	mgr servicesProvider,
+	hub *events.Hub,
+) <-chan struct{} {
+	state := &servicesEventState{}
+	return loopTicker(ctx, 5*time.Second, func() {
+		_ = publishServicesIfChanged(ctx, mgr, hub, state)
 	})
 }
 
@@ -84,4 +105,73 @@ func metricPostureSignature(posture services.MetricPosture) string {
 		[]string{posture.State, posture.Severity, strings.Join(signals, ",")},
 		"|",
 	)
+}
+
+func publishServicesIfChanged(
+	ctx context.Context,
+	mgr servicesProvider,
+	hub *events.Hub,
+	state *servicesEventState,
+) error {
+	collectCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	current, err := mgr.ListServices(collectCtx)
+	cancel()
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		current = []services.ServiceStatus{}
+	}
+
+	fingerprint := servicesFingerprint(current)
+	if state != nil && !state.initialized {
+		state.initialized = true
+		state.fingerprint = fingerprint
+		return nil
+	}
+	if state != nil && state.fingerprint == fingerprint {
+		return nil
+	}
+	if state != nil {
+		state.fingerprint = fingerprint
+	}
+	hub.Publish(events.NewEvent(events.TypeOpsServices, map[string]any{
+		"globalRev": time.Now().UTC().UnixMilli(),
+		"services":  current,
+	}))
+	return nil
+}
+
+func servicesFingerprint(current []services.ServiceStatus) string {
+	type fingerprintService struct {
+		Name         string `json:"name"`
+		Manager      string `json:"manager"`
+		Scope        string `json:"scope"`
+		Unit         string `json:"unit"`
+		TrackingMode string `json:"trackingMode"`
+		Exists       bool   `json:"exists"`
+		EnabledState string `json:"enabledState"`
+		ActiveState  string `json:"activeState"`
+	}
+
+	normalized := make([]fingerprintService, 0, len(current))
+	for _, service := range current {
+		normalized = append(normalized, fingerprintService{
+			Name:         service.Name,
+			Manager:      service.Manager,
+			Scope:        service.Scope,
+			Unit:         service.Unit,
+			TrackingMode: service.TrackingMode,
+			Exists:       service.Exists,
+			EnabledState: service.EnabledState,
+			ActiveState:  service.ActiveState,
+		})
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		left, _ := json.Marshal(normalized[i])
+		right, _ := json.Marshal(normalized[j])
+		return string(left) < string(right)
+	})
+	encoded, _ := json.Marshal(normalized)
+	return string(encoded)
 }

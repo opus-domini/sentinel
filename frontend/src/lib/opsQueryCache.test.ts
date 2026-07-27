@@ -42,9 +42,9 @@ describe('opsQueryCache', () => {
   it.each([
     'tmux.sessions.updated',
     'ops.services.updated',
-    'ops.overview.updated',
     'ops.posture.updated',
     'ops.job.updated',
+    'ops.runbooks.updated',
   ])('invalidates Now for %s', (type) => {
     expect(isNowRelevantEvent({ type, payload: {} })).toBe(true)
   })
@@ -52,6 +52,7 @@ describe('opsQueryCache', () => {
   it('does not invalidate Now for unrelated or malformed messages', () => {
     expect(isNowRelevantEvent({ type: 'ops.schedule.updated', payload: {} })).toBe(false)
     expect(isNowRelevantEvent({ type: 'ops.metrics.updated', payload: {} })).toBe(false)
+    expect(isNowRelevantEvent({ type: 'ops.overview.updated', payload: {} })).toBe(false)
     expect(isNowRelevantEvent({ payload: {} })).toBe(false)
     expect(isNowRelevantEvent(null)).toBe(false)
   })

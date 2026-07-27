@@ -208,10 +208,11 @@ func (h *Handler) loadSessionMetaMap(ctx context.Context) map[string]store.Sessi
 }
 
 type enrichedSessionsSnapshot struct {
-	Sessions []enrichedSession
-	Status   string
-	Message  string
-	Err      error
+	Sessions   []enrichedSession
+	Status     string
+	Message    string
+	ObservedAt time.Time
+	Err        error
 }
 
 // loadEnrichedSessions is the single session projection used by both the Tmux
@@ -260,8 +261,9 @@ func (h *Handler) loadEnrichedSessions(ctx context.Context) enrichedSessionsSnap
 	sortSessionsByStoredOrder(result)
 
 	snapshot := enrichedSessionsSnapshot{
-		Sessions: result,
-		Status:   nowSourceCurrent,
+		Sessions:   result,
+		Status:     nowSourceCurrent,
+		ObservedAt: time.Now().UTC(),
 	}
 	switch {
 	case runtimeErr == nil:
@@ -275,6 +277,15 @@ func (h *Handler) loadEnrichedSessions(ctx context.Context) enrichedSessionsSnap
 	case len(projected) > 0:
 		snapshot.Status = nowSourceStale
 		snapshot.Message = "tmux_projection_stale"
+		snapshot.ObservedAt = time.Time{}
+		for _, row := range projected {
+			if row.UpdatedAt.After(snapshot.ObservedAt) {
+				snapshot.ObservedAt = row.UpdatedAt.UTC()
+			}
+		}
+		if snapshot.ObservedAt.IsZero() {
+			snapshot.ObservedAt = time.Now().UTC()
+		}
 	default:
 		snapshot.Status = nowSourceUnavailable
 		snapshot.Message = "tmux_unavailable"

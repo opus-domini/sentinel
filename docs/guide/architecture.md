@@ -44,7 +44,8 @@ request fans out concurrently to the live Services probe, canonical Metrics
 posture, Runbooks definitions/executions, and the shared enriched Tmux
 projection. One failed source does not discard healthy results: the response
 keeps a source envelope with `current`, `stale`, `unavailable`, or
-`not_configured` and derives global reliability from those explicit states.
+`not_configured`. It derives evidence `confidence` from all four sources and
+host `posture` from current Services and Metrics evidence.
 
 Now has no database table, background collector, server cache, or independent
 event. Attention ordering, deduplication, and display limits are pure read-model
@@ -57,6 +58,19 @@ The frontend loads this model once over HTTP, then invalidates it from the
 existing owner events. It has no periodic polling. If the shared event socket
 disconnects while a snapshot is retained, the presentation marks current
 source envelopes stale until a successful refresh.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+flowchart LR
+  Now[Now: confidence, posture, attention] --> Owner[Owner module]
+  Owner --> Action[Action or runbook]
+  Action --> Receipt[Immutable execution receipt]
+  Receipt --> Recheck[Current target recheck]
+  Recheck --> Now
+```
 
 ## Data Model (Operational)
 
@@ -83,6 +97,8 @@ Primary path is WS events:
 - `ops.overview.updated`
 - `ops.services.updated`
 - `ops.metrics.updated`
+- `ops.posture.updated`
+- `ops.runbooks.updated`
 - `ops.schedule.updated`
 - `ops.job.updated`
 

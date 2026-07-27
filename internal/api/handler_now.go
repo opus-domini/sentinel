@@ -31,10 +31,9 @@ type nowMetricsResult struct {
 }
 
 type nowRunbooksResult struct {
-	runbooks       []store.OpsRunbook
-	active         []store.OpsRunbookRun
-	latestTerminal []store.OpsRunbookRun
-	source         nowSource
+	runbooks []store.OpsRunbook
+	active   []store.OpsRunbookRun
+	source   nowSource
 }
 
 func (h *Handler) now(w http.ResponseWriter, r *http.Request) {
@@ -71,14 +70,13 @@ func (h *Handler) now(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	model := buildNowModel(nowModelInput{
-		GeneratedAt:        time.Now().UTC(),
-		Services:           servicesResult.services,
-		Metrics:            metricsResult.posture,
-		Runbooks:           runbooksResult.runbooks,
-		ActiveRuns:         runbooksResult.active,
-		LatestTerminalRuns: runbooksResult.latestTerminal,
-		Sessions:           tmuxResult.sessions,
-		SessionPresets:     tmuxResult.presets,
+		GeneratedAt:    time.Now().UTC(),
+		Services:       servicesResult.services,
+		Metrics:        metricsResult.posture,
+		Runbooks:       runbooksResult.runbooks,
+		ActiveRuns:     runbooksResult.active,
+		Sessions:       tmuxResult.sessions,
+		SessionPresets: tmuxResult.presets,
 		Sources: nowSources{
 			Tmux:     tmuxResult.source,
 			Services: servicesResult.source,
@@ -93,7 +91,7 @@ func (h *Handler) loadNowTmux(ctx context.Context) nowTmuxResult {
 	snapshot := h.loadEnrichedSessions(ctx)
 	result := nowTmuxResult{
 		sessions: snapshot.Sessions,
-		source:   checkedNowSource(snapshot.Status, snapshot.Message),
+		source:   observedNowSource(snapshot.Status, snapshot.Message, snapshot.ObservedAt),
 		presets:  []store.SessionPreset{},
 	}
 	presets, err := h.repo.ListSessionPresets(ctx)
@@ -116,7 +114,7 @@ func (h *Handler) loadNowServices(ctx context.Context) nowServicesResult {
 	if err != nil {
 		return nowServicesResult{
 			services: []opsplane.ServiceStatus{},
-			source:   checkedNowSource(nowSourceUnavailable, "services_unavailable"),
+			source:   observedNowSource(nowSourceUnavailable, "services_unavailable", time.Now()),
 		}
 	}
 	if services == nil {
@@ -124,21 +122,29 @@ func (h *Handler) loadNowServices(ctx context.Context) nowServicesResult {
 	}
 	return nowServicesResult{
 		services: services,
-		source:   checkedNowSource(nowSourceCurrent, ""),
+		source: observedNowSource(
+			nowSourceCurrent,
+			"",
+			latestServiceObservation(services, time.Now()),
+		),
 	}
 }
 
 func (h *Handler) loadNowMetrics(ctx context.Context) nowMetricsResult {
 	posture := h.ops.MetricsSnapshot(ctx).Posture
+	observedAt := parseRFC3339(posture.ObservedAt)
+	if observedAt.IsZero() {
+		observedAt = time.Now()
+	}
 	if posture.State == opsplane.MetricPostureStateUnavailable {
 		return nowMetricsResult{
 			posture: posture,
-			source:  checkedNowSource(nowSourceUnavailable, "metrics_unavailable"),
+			source:  observedNowSource(nowSourceUnavailable, "metrics_unavailable", observedAt),
 		}
 	}
 	return nowMetricsResult{
 		posture: posture,
-		source:  checkedNowSource(nowSourceCurrent, ""),
+		source:  observedNowSource(nowSourceCurrent, "", observedAt),
 	}
 }
 
@@ -151,42 +157,50 @@ func (h *Handler) loadNowRunbooks(ctx context.Context) nowRunbooksResult {
 	if err != nil {
 		return unavailableNowRunbooks()
 	}
-	latestTerminal, err := h.repo.ListOpsRunbookLatestTerminalRuns(ctx)
-	if err != nil {
-		return unavailableNowRunbooks()
-	}
 	if runbooks == nil {
 		runbooks = []store.OpsRunbook{}
 	}
 	if active == nil {
 		active = []store.OpsRunbookRun{}
 	}
-	if latestTerminal == nil {
-		latestTerminal = []store.OpsRunbookRun{}
-	}
 	return nowRunbooksResult{
-		runbooks:       runbooks,
-		active:         active,
-		latestTerminal: latestTerminal,
-		source:         checkedNowSource(nowSourceCurrent, ""),
+		runbooks: runbooks,
+		active:   active,
+		source:   observedNowSource(nowSourceCurrent, "", time.Now()),
 	}
 }
 
 func unavailableNowRunbooks() nowRunbooksResult {
 	return nowRunbooksResult{
-		runbooks:       []store.OpsRunbook{},
-		active:         []store.OpsRunbookRun{},
-		latestTerminal: []store.OpsRunbookRun{},
-		source:         checkedNowSource(nowSourceUnavailable, "runbooks_unavailable"),
+		runbooks: []store.OpsRunbook{},
+		active:   []store.OpsRunbookRun{},
+		source:   observedNowSource(nowSourceUnavailable, "runbooks_unavailable", time.Now()),
 	}
 }
 
-func checkedNowSource(status, message string) nowSource {
-	return nowSource{
-		Status:    status,
-		CheckedAt: time.Now().UTC().Format(time.RFC3339),
-		Message:   message,
+func observedNowSource(status, message string, observedAt time.Time) nowSource {
+	if observedAt.IsZero() {
+		observedAt = time.Now()
 	}
+	return nowSource{
+		Status:     status,
+		ObservedAt: observedAt.UTC().Format(time.RFC3339),
+		Message:    message,
+	}
+}
+
+func latestServiceObservation(services []opsplane.ServiceStatus, fallback time.Time) time.Time {
+	latest := time.Time{}
+	for _, service := range services {
+		observed := parseRFC3339(service.UpdatedAt)
+		if observed.After(latest) {
+			latest = observed
+		}
+	}
+	if latest.IsZero() {
+		return fallback
+	}
+	return latest
 }
 
 func (h *Handler) runNowServiceRunbook(w http.ResponseWriter, r *http.Request) {

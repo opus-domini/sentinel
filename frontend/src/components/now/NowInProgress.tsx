@@ -36,7 +36,7 @@ export function NowInProgress({ runs, sessions }: NowInProgressProps) {
             <div>
               <p className="text-[12px] font-medium text-foreground">Nothing is in flight</p>
               <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-                Queued procedures and relevant Tmux sessions will appear here.
+                Queued procedures and Tmux sessions with unread activity will appear here.
               </p>
             </div>
           </div>

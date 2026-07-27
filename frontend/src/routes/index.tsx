@@ -8,7 +8,7 @@ import AppShell from '@/components/layout/AppShell'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { NowAttention } from '@/components/now/NowAttention'
 import { NowInProgress } from '@/components/now/NowInProgress'
-import { NowReliability } from '@/components/now/NowReliability'
+import { NowStatus } from '@/components/now/NowStatus'
 import { RunbookRunDialog } from '@/components/RunbookRunDialog'
 import { Button } from '@/components/ui/button'
 import { useMetaContext } from '@/contexts/MetaContext'
@@ -140,11 +140,11 @@ function IndexRoute() {
 
           {displaySnapshot && (
             <div className="mx-auto grid w-full max-w-[1180px] gap-3 md:gap-4">
-              <NowReliability snapshot={displaySnapshot} />
+              <NowStatus snapshot={displaySnapshot} />
               <div className="grid min-h-0 gap-3 md:gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(19rem,0.85fr)]">
                 <NowAttention
                   attention={displaySnapshot.attention}
-                  degraded={displaySnapshot.reliability.state === 'degraded'}
+                  degraded={displaySnapshot.confidence.state === 'degraded'}
                   onRunProcedure={setRunTarget}
                 />
                 <NowInProgress
@@ -184,7 +184,7 @@ function IndexRoute() {
   )
 }
 
-function NowLoading() {
+export function NowLoading() {
   return (
     <div aria-label="Loading Now" className="mx-auto grid w-full max-w-[1180px] gap-3 md:gap-4">
       <div className="h-56 motion-safe:animate-pulse rounded-xl border border-border-subtle bg-surface-raised" />
@@ -196,7 +196,7 @@ function NowLoading() {
   )
 }
 
-function NowError({ message, onRetry }: { message: string; onRetry: () => void }) {
+export function NowError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="mx-auto grid min-h-[55vh] w-full max-w-2xl place-items-center rounded-xl border border-destructive/35 bg-destructive/6 p-6 text-center">
       <div>

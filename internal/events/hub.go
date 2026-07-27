@@ -28,6 +28,8 @@ const (
 	TypeOpsMetrics = "ops.metrics.updated"
 	// TypeOpsPosture announces that the semantic host posture changed.
 	TypeOpsPosture = "ops.posture.updated"
+	// TypeOpsRunbooks announces that runbook definitions changed.
+	TypeOpsRunbooks = "ops.runbooks.updated"
 	// TypeScheduleUpdated announces that scheduler state changed.
 	TypeScheduleUpdated = "ops.schedule.updated"
 )

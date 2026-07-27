@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Activity, Blocks, RadioTower, ScrollText, SquareTerminal } from 'lucide-react'
+import { Activity, Blocks, ScrollText, ShieldCheck, SquareTerminal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { NowSnapshot } from '@/types'
 import { useDateFormat } from '@/hooks/useDateFormat'
@@ -7,7 +7,7 @@ import {
   NOW_SOURCE_ORDER,
   nowSourceLabel,
   nowSourceStatusLabel,
-  presentNowReliability,
+  presentNowPosture,
 } from '@/lib/nowPresentation'
 import type { NowSourceName } from '@/lib/nowPresentation'
 import { cn } from '@/lib/utils'
@@ -25,17 +25,20 @@ const sourceMeta: Record<
 function sourceTone(status: string): string {
   if (status === 'current') return 'border-ok/30 bg-ok/8 text-ok-foreground'
   if (status === 'stale') return 'border-warning/35 bg-warning/8 text-warning-foreground'
+  if (status === 'not_configured') {
+    return 'border-border-subtle bg-surface-overlay text-muted-foreground'
+  }
   return 'border-destructive/35 bg-destructive/8 text-destructive-foreground'
 }
 
-type NowReliabilityProps = {
+type NowStatusProps = {
   snapshot: NowSnapshot
 }
 
-export function NowReliability({ snapshot }: NowReliabilityProps) {
+export function NowStatus({ snapshot }: NowStatusProps) {
   const { formatRelativeTime } = useDateFormat()
-  const presentation = presentNowReliability(snapshot.reliability.state)
-  const reliabilityTone =
+  const presentation = presentNowPosture(snapshot.posture.state)
+  const postureTone =
     presentation.tone === 'ok'
       ? 'text-ok-foreground'
       : presentation.tone === 'warning'
@@ -44,20 +47,20 @@ export function NowReliability({ snapshot }: NowReliabilityProps) {
 
   return (
     <section
-      aria-labelledby="now-reliability-title"
+      aria-labelledby="now-status-title"
       className="relative overflow-hidden rounded-xl border border-border-subtle bg-[linear-gradient(118deg,rgba(36,200,242,0.08),transparent_36%),var(--surface-raised)]"
     >
       <div className="pointer-events-none absolute top-[41%] right-0 left-[33%] hidden h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent lg:block" />
       <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(15rem,0.9fr)_minmax(28rem,1.8fr)] lg:items-center">
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            <RadioTower className="size-3.5 text-primary" />
-            <span id="now-reliability-title">Reliability</span>
+            <ShieldCheck className="size-3.5 text-primary" />
+            <span id="now-status-title">Host posture</span>
           </div>
           <p
             className={cn(
               'text-[clamp(1.75rem,4vw,3.4rem)] font-semibold leading-none',
-              reliabilityTone,
+              postureTone,
             )}
           >
             {presentation.label}
@@ -66,13 +69,17 @@ export function NowReliability({ snapshot }: NowReliabilityProps) {
             {presentation.detail}
           </p>
           <p className="mt-3 text-[10px] text-muted-foreground">
-            Snapshot {formatRelativeTime(snapshot.generatedAt)}
+            Confidence{' '}
+            <span className="font-medium text-secondary-foreground">
+              {snapshot.confidence.state === 'current' ? 'Current' : 'Degraded'}
+            </span>{' '}
+            · Snapshot {formatRelativeTime(snapshot.generatedAt)}
           </p>
         </div>
 
         <div className="relative grid grid-cols-2 gap-2 lg:grid-cols-4">
           {NOW_SOURCE_ORDER.map((name) => {
-            const source = snapshot.sources[name]
+            const source = snapshot.confidence.sources[name]
             const { to, Icon } = sourceMeta[name]
             return (
               <Link
@@ -83,6 +90,7 @@ export function NowReliability({ snapshot }: NowReliabilityProps) {
                   sourceTone(source.status),
                 )}
                 aria-label={`${nowSourceLabel(name)}: ${nowSourceStatusLabel(source.status)}`}
+                title={source.message}
               >
                 <div className="flex items-center justify-between gap-2">
                   <Icon className="size-3.5" />
@@ -95,6 +103,9 @@ export function NowReliability({ snapshot }: NowReliabilityProps) {
                   <p className="truncate text-[9px] uppercase tracking-[0.08em]">
                     {nowSourceStatusLabel(source.status)}
                   </p>
+                  <p className="mt-0.5 truncate text-[9px] text-muted-foreground">
+                    Observed {formatRelativeTime(source.observedAt)}
+                  </p>
                 </div>
               </Link>
             )
@@ -104,11 +115,11 @@ export function NowReliability({ snapshot }: NowReliabilityProps) {
 
       <div className="grid grid-cols-2 border-t border-border-subtle bg-surface-inset/65 sm:grid-cols-5">
         {[
-          ['Tracked', snapshot.reliability.services.tracked],
-          ['Running', snapshot.reliability.services.running],
-          ['Failed', snapshot.reliability.services.failed],
-          ['Inactive', snapshot.reliability.services.inactive],
-          ['Metric signals', snapshot.reliability.metrics.signals.length],
+          ['Tracked', snapshot.posture.services.tracked],
+          ['Running', snapshot.posture.services.running],
+          ['Failed', snapshot.posture.services.failed],
+          ['Inactive', snapshot.posture.services.inactive],
+          ['Metric signals', snapshot.posture.metrics.signals.length],
         ].map(([label, value]) => (
           <div
             key={label}

@@ -16,32 +16,30 @@ export const NOW_QUERY_REFRESH_POLICY = {
   refetchOnReconnect: false,
 } as const
 
-export type NowReliabilityPresentation = {
+export type NowPosturePresentation = {
   label: string
   detail: string
   tone: 'ok' | 'warning' | 'critical'
 }
 
-export function presentNowReliability(
-  state: NowSnapshot['reliability']['state'],
-): NowReliabilityPresentation {
-  if (state === 'degraded') {
+export function presentNowPosture(state: NowSnapshot['posture']['state']): NowPosturePresentation {
+  if (state === 'unknown') {
     return {
-      label: 'Degraded',
-      detail: 'One or more sources cannot confirm current state.',
+      label: 'Unknown',
+      detail: 'Services or Metrics cannot confirm the current host posture.',
       tone: 'critical',
     }
   }
-  if (state === 'attention') {
+  if (state === 'at_risk') {
     return {
-      label: 'Needs attention',
-      detail: 'Current evidence has an actionable reliability signal.',
+      label: 'At risk',
+      detail: 'Current service or metric evidence needs operator attention.',
       tone: 'warning',
     }
   }
   return {
-    label: 'Operational',
-    detail: 'Available sources agree that the host is within expected state.',
+    label: 'Healthy',
+    detail: 'Current Services and Metrics evidence is within expected state.',
     tone: 'ok',
   }
 }
@@ -91,26 +89,25 @@ export function markNowCurrentSourcesStale(snapshot: NowSnapshot): NowSnapshot {
 
   return {
     ...snapshot,
-    reliability: {
-      ...snapshot.reliability,
+    confidence: {
+      ...snapshot.confidence,
       state: 'degraded',
+      sources: {
+        tmux: mark(snapshot.confidence.sources.tmux),
+        services: mark(snapshot.confidence.sources.services),
+        metrics: mark(snapshot.confidence.sources.metrics),
+        runbooks: mark(snapshot.confidence.sources.runbooks),
+      },
     },
-    sources: {
-      tmux: mark(snapshot.sources.tmux),
-      services: mark(snapshot.sources.services),
-      metrics: mark(snapshot.sources.metrics),
-      runbooks: mark(snapshot.sources.runbooks),
+    posture: {
+      ...snapshot.posture,
+      state: 'unknown',
     },
   }
 }
 
 export function nowAttentionHiddenCount(attention: NowAttention): number {
-  return (
-    attention.overflow.approvals +
-    attention.overflow.services +
-    attention.overflow.runbooks +
-    attention.overflow.metrics
-  )
+  return attention.overflow.approvals + attention.overflow.services + attention.overflow.metrics
 }
 
 export function nowRunbookSearch(runbookId: string, runId: string) {

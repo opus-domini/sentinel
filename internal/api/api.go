@@ -126,7 +126,6 @@ type opsServiceContextRepo interface {
 
 type nowRunbookRepo interface {
 	ListOpsRunbookActiveRuns(ctx context.Context) ([]store.OpsRunbookRun, error)
-	ListOpsRunbookLatestTerminalRuns(ctx context.Context) ([]store.OpsRunbookRun, error)
 }
 
 type opsScheduleRepo interface {

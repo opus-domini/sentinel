@@ -63,6 +63,7 @@ Server sends:
 - `ops.services.updated`
 - `ops.metrics.updated`
 - `ops.posture.updated`
+- `ops.runbooks.updated`
 - `ops.schedule.updated`
 - `ops.job.updated`
 
@@ -102,12 +103,18 @@ change. `ops.posture.updated` carries `{ "posture": ... }` only when `state`,
 `observedAt` are evidence timestamps; numeric value changes alone do not create
 a semantic posture event.
 
+`ops.services.updated` is emitted when the five-second Services watcher sees a
+different canonical state fingerprint, as well as after owner mutations.
+`ops.runbooks.updated` is emitted after a successful definition create, update,
+or delete through the shared HTTP/MCP Runbook manager.
+
 ### Now invalidation
 
 Now does not publish or subscribe to a dedicated `now.updated` event. The
 frontend invalidates `GET /api/now` when it receives
-`tmux.sessions.updated`, `ops.services.updated`, `ops.overview.updated`,
-`ops.posture.updated`, or `ops.job.updated`. No event means no periodic Now
+`tmux.sessions.updated`, `ops.services.updated`, `ops.posture.updated`,
+`ops.job.updated`, or `ops.runbooks.updated`. Raw `ops.metrics.updated` and
+`ops.overview.updated` do not invalidate Now. No event means no periodic Now
 request; reconnect and explicit resync are the fallback paths.
 
 ### Client messages to `/ws/events`

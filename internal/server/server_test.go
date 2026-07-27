@@ -162,6 +162,9 @@ func TestStartStoreTickersStopOnCancel(t *testing.T) {
 		"metrics": func(c context.Context) <-chan struct{} {
 			return startMetricsTicker(c, staticMetricsProvider{}, events.NewHub())
 		},
+		"services": func(c context.Context) <-chan struct{} {
+			return startServicesWatcher(c, staticServicesProvider{}, events.NewHub())
+		},
 	}
 	for name, start := range tickers {
 		t.Run(name, func(t *testing.T) {
@@ -296,6 +299,55 @@ func TestMetricPostureSignatureIgnoresValuesTimestampsAndSignalOrder(t *testing.
 	}
 }
 
+func TestServicesWatcherPublishesOnlyCanonicalStateChanges(t *testing.T) {
+	t.Parallel()
+
+	hub := events.NewHub()
+	ch, unsubscribe := hub.Subscribe(4)
+	defer unsubscribe()
+	state := &servicesEventState{}
+	provider := &sequenceServicesProvider{
+		snapshots: [][]services.ServiceStatus{
+			{
+				{Name: "sentinel", ActiveState: "active", EnabledState: "enabled"},
+				{Name: "redis", ActiveState: "active", EnabledState: "enabled"},
+			},
+			{
+				{Name: "sentinel", ActiveState: "failed", EnabledState: "enabled"},
+				{Name: "redis", ActiveState: "active", EnabledState: "enabled"},
+			},
+			{
+				{Name: "redis", ActiveState: "active", EnabledState: "enabled"},
+				{Name: "sentinel", ActiveState: "failed", EnabledState: "enabled"},
+			},
+		},
+	}
+
+	for range 3 {
+		if err := publishServicesIfChanged(context.Background(), provider, hub, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	select {
+	case event := <-ch:
+		if event.Type != events.TypeOpsServices {
+			t.Fatalf("event type = %q", event.Type)
+		}
+		observed, ok := event.Payload["services"].([]services.ServiceStatus)
+		if !ok || len(observed) != 2 || observed[0].ActiveState != "failed" {
+			t.Fatalf("event services = %#v", event.Payload["services"])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("service change event was not published")
+	}
+	select {
+	case event := <-ch:
+		t.Fatalf("unchanged canonical state published %q", event.Type)
+	default:
+	}
+}
+
 func TestTickHandlersWithClosedStore(t *testing.T) {
 	t.Parallel()
 
@@ -323,6 +375,23 @@ func (staticMetricsProvider) MetricsSnapshot(context.Context) services.MetricsSn
 			ObservedAt: "2026-07-24T12:00:00Z",
 		},
 	}
+}
+
+type staticServicesProvider struct{}
+
+func (staticServicesProvider) ListServices(context.Context) ([]services.ServiceStatus, error) {
+	return []services.ServiceStatus{}, nil
+}
+
+type sequenceServicesProvider struct {
+	snapshots [][]services.ServiceStatus
+	index     int
+}
+
+func (p *sequenceServicesProvider) ListServices(context.Context) ([]services.ServiceStatus, error) {
+	snapshot := p.snapshots[p.index]
+	p.index++
+	return snapshot, nil
 }
 
 type sequenceMetricsProvider struct {

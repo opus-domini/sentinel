@@ -2,49 +2,9 @@ package store
 
 import (
 	"context"
-	"slices"
 	"testing"
 	"time"
 )
-
-func TestListOpsRunbookLatestTerminalRunsUsesLatestTerminalPerRunbook(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	ctx := context.Background()
-	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-
-	failureThenSuccess := createNowTestRunbook(t, s, "failure-then-success")
-	failedFirst := createNowTestRun(t, s, failureThenSuccess.ID, base, OpsRunbookStatusFailed)
-	successLatest := createNowTestRun(t, s, failureThenSuccess.ID, base.Add(time.Minute), OpsRunbookStatusSucceeded)
-
-	failureThenActive := createNowTestRunbook(t, s, "failure-then-active")
-	failureLatest := createNowTestRun(t, s, failureThenActive.ID, base.Add(2*time.Minute), OpsRunbookStatusFailed)
-	activeLatest := createNowTestRun(t, s, failureThenActive.ID, base.Add(3*time.Minute), OpsRunbookStatusRunning)
-
-	onlyFailure := createNowTestRunbook(t, s, "only-failure")
-	onlyFailureRun := createNowTestRun(t, s, onlyFailure.ID, base.Add(4*time.Minute), OpsRunbookStatusFailed)
-
-	got, err := s.ListOpsRunbookLatestTerminalRuns(ctx)
-	if err != nil {
-		t.Fatalf("ListOpsRunbookLatestTerminalRuns() error = %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("len(runs) = %d, want 3", len(got))
-	}
-
-	gotIDs := []string{got[0].ID, got[1].ID, got[2].ID}
-	wantIDs := []string{onlyFailureRun.ID, failureLatest.ID, successLatest.ID}
-	if !slices.Equal(gotIDs, wantIDs) {
-		t.Fatalf("run ids = %v, want %v", gotIDs, wantIDs)
-	}
-	if slices.Contains(gotIDs, failedFirst.ID) {
-		t.Fatalf("superseded failure %q was returned", failedFirst.ID)
-	}
-	if slices.Contains(gotIDs, activeLatest.ID) {
-		t.Fatalf("active run %q was returned as terminal", activeLatest.ID)
-	}
-}
 
 func TestListOpsRunbookNowQueriesAreDeterministicAndUnbounded(t *testing.T) {
 	t.Parallel()

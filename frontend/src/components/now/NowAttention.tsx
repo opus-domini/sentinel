@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Activity, ArrowUpRight, CircleAlert, Play, ScrollText, ShieldAlert } from 'lucide-react'
+import { Activity, ArrowUpRight, CircleAlert, Play, ShieldAlert } from 'lucide-react'
 import type { NowAttention as NowAttentionData, NowServiceFailedAttention } from '@/types'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/useDateFormat'
@@ -91,11 +91,6 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
                       <p className="truncate text-[10px] text-secondary-foreground">
                         {item.service.scope} · {item.service.unit}
                       </p>
-                      {item.failure && (
-                        <p className="mt-1 truncate text-[9px] text-destructive-foreground">
-                          Latest procedure also failed {formatRelativeTime(item.failure.createdAt)}
-                        </p>
-                      )}
                     </Link>
                     {item.runbook && (
                       <Button
@@ -109,28 +104,6 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
                       </Button>
                     )}
                   </div>
-                )
-              }
-
-              if (item.type === 'runbook_failed') {
-                return (
-                  <Link
-                    key={`${item.type}:${item.run.runId}`}
-                    to="/runbooks"
-                    search={nowRunbookSearch(item.run.runbookId, item.run.runId)}
-                    className="group flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2.5 no-underline transition-colors hover:bg-destructive/9"
-                  >
-                    <ScrollText className="mt-0.5 size-4 shrink-0 text-destructive-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12px] font-semibold text-foreground">
-                        Procedure failed
-                      </p>
-                      <p className="truncate text-[10px] text-secondary-foreground">
-                        {item.run.runbookName} · {formatRelativeTime(item.run.createdAt)}
-                      </p>
-                    </div>
-                    <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-                  </Link>
                 )
               }
 
@@ -148,6 +121,9 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
                     <p className="truncate text-[10px] text-secondary-foreground">
                       {item.signals.map((signal) => signal.name).join(' · ')}
                     </p>
+                    <p className="mt-1 text-[9px] text-muted-foreground">
+                      Observed {formatRelativeTime(item.observedAt)}
+                    </p>
                   </div>
                   <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
                 </Link>
@@ -160,9 +136,9 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
       {hidden > 0 && (
         <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-subtle px-3 py-2 text-[9px] text-muted-foreground sm:px-4">
           <span>{hidden} more in owner modules:</span>
-          {attention.overflow.approvals + attention.overflow.runbooks > 0 && (
+          {attention.overflow.approvals > 0 && (
             <Link to="/runbooks" className="text-primary-text hover:underline">
-              Runbooks {attention.overflow.approvals + attention.overflow.runbooks}
+              Runbooks {attention.overflow.approvals}
             </Link>
           )}
           {attention.overflow.services > 0 && (

@@ -12,32 +12,38 @@ current snapshot:
 It composes evidence from Services, Metrics, Runbooks, and Tmux without taking
 ownership away from those modules.
 
-## Reliability
+## Posture and Confidence
 
-The top panel shows the overall state and the freshness of each source:
+The headline reports host posture separately from evidence confidence:
 
-- **Operational** — all available evidence is current and no actionable signal exists.
-- **Needs attention** — evidence is current, but at least one item needs action.
-- **Degraded** — one or more sources are stale, unavailable, or not configured.
+- **Healthy** — current Services and Metrics evidence contains no failed
+  service or metric pressure.
+- **At risk** — current Services or Metrics evidence needs operator attention.
+- **Unknown** — Services or Metrics cannot confirm the current posture.
 
-Each source remains a link to its owner page. A partial response keeps valid
-data visible and identifies the source that could not confirm current state.
-When the events connection drops after a snapshot was loaded, current source
-labels become stale until an explicit resync or successful reconnect refreshes
-the snapshot.
+Confidence is **Current** only when all four owner sources are current. It is
+**Degraded** when Tmux, Services, Metrics, or Runbooks is stale, unavailable,
+or not configured. A Tmux or Runbooks problem degrades confidence without
+changing an otherwise confirmed host posture; a Services or Metrics problem
+makes posture unknown.
+
+Each source shows its owner-provided `observedAt` and remains a link to its
+owner page. A partial response preserves valid evidence and identifies the
+source that could not confirm current state. When the events connection drops
+after a snapshot was loaded, current source labels become stale, confidence
+becomes degraded, and posture becomes unknown until a successful refresh.
 
 ## Needs Attention
 
-Now presents at most five items in this fixed order:
+Now admits only current failed services, pending Runbook approvals, and current
+Metrics pressure. A terminal Runbook failure is execution history, not present
+urgency, so it never enters this queue.
 
-1. Runbook approvals.
-2. Failed services.
-3. Latest failed Runbook executions.
-4. Metrics pressure.
-
-Items outside the visible limit are counted by owner module. A failed Runbook
-execution targeting the same failed service is folded into the service item
-instead of appearing twice.
+At most five items are visible. The first pass reserves representation for
+each non-empty category in operational order: failed service, critical Metrics,
+approval, then warning Metrics. Remaining capacity goes to failed services by
+canonical name and then the oldest approvals. Metrics contributes at most one
+item. Hidden counts are reported by owner module.
 
 Now does not restart services. A failed service opens its status in Services,
 where `View logs` continues to the live log panel. When exactly one enabled
@@ -50,10 +56,11 @@ engine.
 The live-context panel shows:
 
 - Up to three queued or running Runbook executions.
-- Up to three existing Tmux sessions that are pinned or have unread activity.
+- Up to three existing Tmux sessions with unread windows or panes.
 
 Each item opens the exact owner resource. Approvals stay in Needs attention
 because they require a decision rather than representing autonomous progress.
+Pinned remains session metadata; it does not make a quiet session current work.
 
 ## Deep Links
 
@@ -76,12 +83,18 @@ connection invalidates it for:
 
 - `tmux.sessions.updated`
 - `ops.services.updated`
-- `ops.overview.updated`
 - `ops.posture.updated`
 - `ops.job.updated`
+- `ops.runbooks.updated`
 
 There is no `now.updated` event and no periodic polling. Reconnect and the
 header resync control request a fresh snapshot explicitly.
+
+Services owns a five-second state watcher and emits only when its canonical
+fingerprint changes. Metrics emits `ops.metrics.updated` for every sample, but
+Now listens only to semantic `ops.posture.updated` changes. Runbook definition
+create, update, and delete operations emit `ops.runbooks.updated` through the
+shared manager used by HTTP and MCP.
 
 ## Boundaries
 

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import type { NowSnapshot } from '@/types'
 import { NowAttention } from './NowAttention'
 import { NowInProgress } from './NowInProgress'
-import { NowReliability } from './NowReliability'
+import { NowStatus } from './NowStatus'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
@@ -37,8 +37,21 @@ afterEach(cleanup)
 
 const snapshot: NowSnapshot = {
   generatedAt: '2026-07-27T12:00:00Z',
-  reliability: {
+  confidence: {
     state: 'degraded',
+    sources: {
+      services: { status: 'current', observedAt: '2026-07-27T12:00:00Z' },
+      metrics: {
+        status: 'unavailable',
+        observedAt: '2026-07-27T12:00:00Z',
+        message: 'collector unavailable',
+      },
+      runbooks: { status: 'stale', observedAt: '2026-07-27T12:00:00Z' },
+      tmux: { status: 'not_configured', observedAt: '2026-07-27T12:00:00Z' },
+    },
+  },
+  posture: {
+    state: 'unknown',
     services: { tracked: 3, running: 2, failed: 1, inactive: 0, unknown: 0 },
     metrics: {
       state: 'pressure',
@@ -71,7 +84,7 @@ const snapshot: NowSnapshot = {
         },
       },
     ],
-    overflow: { approvals: 1, services: 1, runbooks: 0, metrics: 4 },
+    overflow: { approvals: 1, services: 1, metrics: 4 },
   },
   inProgress: {
     runs: [],
@@ -86,22 +99,13 @@ const snapshot: NowSnapshot = {
       },
     ],
   },
-  sources: {
-    services: { status: 'current', checkedAt: '2026-07-27T12:00:00Z' },
-    metrics: {
-      status: 'unavailable',
-      checkedAt: '2026-07-27T12:00:00Z',
-      message: 'collector unavailable',
-    },
-    runbooks: { status: 'stale', checkedAt: '2026-07-27T12:00:00Z' },
-    tmux: { status: 'not_configured', checkedAt: '2026-07-27T12:00:00Z' },
-  },
 }
 
 describe('Now panels', () => {
   it('keeps valid data visible while naming every partial source state', () => {
-    render(<NowReliability snapshot={snapshot} />)
+    render(<NowStatus snapshot={snapshot} />)
 
+    expect(screen.getByText('Unknown')).toBeTruthy()
     expect(screen.getByText('Degraded')).toBeTruthy()
     expect(screen.getByLabelText('Services: Current')).toBeTruthy()
     expect(screen.getByLabelText('Metrics: Unavailable')).toBeTruthy()
@@ -127,7 +131,7 @@ describe('Now panels', () => {
         attention={{
           total: 0,
           visible: [],
-          overflow: { approvals: 0, services: 0, runbooks: 0, metrics: 0 },
+          overflow: { approvals: 0, services: 0, metrics: 0 },
         }}
         degraded={false}
         onRunProcedure={vi.fn()}

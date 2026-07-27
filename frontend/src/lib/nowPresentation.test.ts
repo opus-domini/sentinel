@@ -12,8 +12,17 @@ import {
 
 const snapshot: NowSnapshot = {
   generatedAt: '2026-07-27T12:00:00Z',
-  reliability: {
-    state: 'normal',
+  confidence: {
+    state: 'current',
+    sources: {
+      services: { status: 'current', observedAt: '2026-07-27T12:00:00Z' },
+      metrics: { status: 'unavailable', observedAt: '2026-07-27T12:00:00Z' },
+      runbooks: { status: 'current', observedAt: '2026-07-27T12:00:00Z' },
+      tmux: { status: 'not_configured', observedAt: '2026-07-27T12:00:00Z' },
+    },
+  },
+  posture: {
+    state: 'healthy',
     services: { tracked: 1, running: 1, failed: 0, inactive: 0, unknown: 0 },
     metrics: {
       state: 'normal',
@@ -27,26 +36,23 @@ const snapshot: NowSnapshot = {
   attention: {
     total: 0,
     visible: [],
-    overflow: { approvals: 0, services: 0, runbooks: 0, metrics: 0 },
+    overflow: { approvals: 0, services: 0, metrics: 0 },
   },
   inProgress: { runs: [], sessions: [] },
-  sources: {
-    services: { status: 'current', checkedAt: '2026-07-27T12:00:00Z' },
-    metrics: { status: 'unavailable', checkedAt: '2026-07-27T12:00:00Z' },
-    runbooks: { status: 'current', checkedAt: '2026-07-27T12:00:00Z' },
-    tmux: { status: 'not_configured', checkedAt: '2026-07-27T12:00:00Z' },
-  },
 }
 
 describe('Now presentation', () => {
-  it('marks only current sources stale and degrades reliability', () => {
+  it('marks only current sources stale and separates confidence from posture', () => {
     const stale = markNowCurrentSourcesStale(snapshot)
-    expect(stale.reliability.state).toBe('degraded')
-    expect(stale.sources.services.status).toBe('stale')
-    expect(stale.sources.runbooks.status).toBe('stale')
-    expect(stale.sources.metrics.status).toBe('unavailable')
-    expect(stale.sources.tmux.status).toBe('not_configured')
-    expect(snapshot.sources.services.status).toBe('current')
+    expect(stale.confidence.state).toBe('degraded')
+    expect(stale.posture.state).toBe('unknown')
+    expect(stale.confidence.sources.services.status).toBe('stale')
+    expect(stale.confidence.sources.runbooks.status).toBe('stale')
+    expect(stale.confidence.sources.metrics.status).toBe('unavailable')
+    expect(stale.confidence.sources.tmux.status).toBe('not_configured')
+    expect(stale.posture.services).toEqual(snapshot.posture.services)
+    expect(stale.posture.metrics).toEqual(snapshot.posture.metrics)
+    expect(snapshot.confidence.sources.services.status).toBe('current')
   })
 
   it('uses disconnect and refetch failure as stale signals', () => {
@@ -71,7 +77,7 @@ describe('Now presentation', () => {
       nowAttentionHiddenCount({
         total: 9,
         visible: [],
-        overflow: { approvals: 1, services: 2, runbooks: 0, metrics: 1 },
+        overflow: { approvals: 1, services: 2, metrics: 1 },
       }),
     ).toBe(4)
     expect(nowServiceSearch('sentinel')).toEqual({ service: 'sentinel', panel: 'status' })

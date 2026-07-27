@@ -4,9 +4,11 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
@@ -43,7 +45,17 @@ func TestRunbookToolsLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	manager := runbook.NewManager(st, nil, nil, 2, func(context.Context, string, ...string) (string, error) {
+	var eventMu sync.Mutex
+	var runbookActions []string
+	manager := runbook.NewManager(st, nil, func(eventType string, payload map[string]any) {
+		if eventType != events.TypeOpsRunbooks {
+			return
+		}
+		eventMu.Lock()
+		defer eventMu.Unlock()
+		action, _ := payload["action"].(string)
+		runbookActions = append(runbookActions, action)
+	}, 2, func(context.Context, string, ...string) (string, error) {
 		return "0123456789", nil
 	})
 	t.Cleanup(func() { manager.Shutdown(context.Background()) })
@@ -118,6 +130,11 @@ func TestRunbookToolsLifecycle(t *testing.T) {
 	}
 	if _, err := manager.GetRun(context.Background(), started.Run.ID); err != nil {
 		t.Fatalf("historical run was not preserved: %v", err)
+	}
+	eventMu.Lock()
+	defer eventMu.Unlock()
+	if got, want := strings.Join(runbookActions, ","), "create,delete"; got != want {
+		t.Fatalf("runbook event actions = %q, want %q", got, want)
 	}
 }
 

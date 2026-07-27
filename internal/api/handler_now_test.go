@@ -23,21 +23,26 @@ func TestNowReturnsHealthyEmptySnapshot(t *testing.T) {
 	h, _ := newTestHandler(t, &mockTmux{})
 	response := requestNow(t, h)
 
-	if response.Reliability.State != nowReliabilityNormal {
-		t.Fatalf("reliability = %q, want normal", response.Reliability.State)
+	if response.Confidence.State != nowConfidenceCurrent {
+		t.Fatalf("confidence = %q, want current", response.Confidence.State)
+	}
+	if response.Posture.State != nowPostureHealthy {
+		t.Fatalf("posture = %q, want healthy", response.Posture.State)
 	}
 	if response.Attention.Total != 0 || len(response.Attention.Visible) != 0 {
 		t.Fatalf("attention = %+v, want empty", response.Attention)
 	}
 	for name, source := range map[string]nowSource{
-		"tmux": response.Sources.Tmux, "services": response.Sources.Services,
-		"metrics": response.Sources.Metrics, "runbooks": response.Sources.Runbooks,
+		"tmux":     response.Confidence.Sources.Tmux,
+		"services": response.Confidence.Sources.Services,
+		"metrics":  response.Confidence.Sources.Metrics,
+		"runbooks": response.Confidence.Sources.Runbooks,
 	} {
 		if source.Status != nowSourceCurrent {
 			t.Fatalf("%s source = %+v, want current", name, source)
 		}
-		if _, err := time.Parse(time.RFC3339, source.CheckedAt); err != nil {
-			t.Fatalf("%s checkedAt = %q: %v", name, source.CheckedAt, err)
+		if _, err := time.Parse(time.RFC3339, source.ObservedAt); err != nil {
+			t.Fatalf("%s observedAt = %q: %v", name, source.ObservedAt, err)
 		}
 	}
 }
@@ -64,17 +69,23 @@ func TestNowIsolatesServiceFailureAsPartialResponse(t *testing.T) {
 	}
 
 	response := requestNow(t, h)
-	if response.Reliability.State != nowReliabilityDegraded {
-		t.Fatalf("reliability = %q, want degraded", response.Reliability.State)
+	if response.Confidence.State != nowConfidenceDegraded {
+		t.Fatalf("confidence = %q, want degraded", response.Confidence.State)
 	}
-	if response.Sources.Services.Status != nowSourceUnavailable ||
-		response.Sources.Services.Message != "services_unavailable" {
-		t.Fatalf("services source = %+v", response.Sources.Services)
+	if response.Posture.State != nowPostureUnknown {
+		t.Fatalf("posture = %q, want unknown", response.Posture.State)
 	}
-	if response.Sources.Tmux.Status != nowSourceCurrent ||
-		response.Sources.Metrics.Status != nowSourceCurrent ||
-		response.Sources.Runbooks.Status != nowSourceCurrent {
-		t.Fatalf("healthy sources were degraded: %+v", response.Sources)
+	if response.Confidence.Sources.Services.Status != nowSourceUnavailable ||
+		response.Confidence.Sources.Services.Message != "services_unavailable" {
+		t.Fatalf("services source = %+v", response.Confidence.Sources.Services)
+	}
+	if response.Confidence.Sources.Tmux.Status != nowSourceCurrent ||
+		response.Confidence.Sources.Metrics.Status != nowSourceCurrent ||
+		response.Confidence.Sources.Runbooks.Status != nowSourceCurrent {
+		t.Fatalf("healthy sources were degraded: %+v", response.Confidence.Sources)
+	}
+	if got, want := response.Confidence.Sources.Metrics.ObservedAt, "2026-07-27T12:00:00Z"; got != want {
+		t.Fatalf("metrics observedAt = %q, want %q", got, want)
 	}
 	encoded, err := json.Marshal(response)
 	if err != nil {
@@ -108,15 +119,21 @@ func TestNowReportsStaleTmuxProjection(t *testing.T) {
 	}
 
 	response := requestNow(t, h)
-	if response.Sources.Tmux.Status != nowSourceStale ||
-		response.Sources.Tmux.Message != "tmux_projection_stale" {
-		t.Fatalf("tmux source = %+v, want stale projection", response.Sources.Tmux)
+	if response.Confidence.Sources.Tmux.Status != nowSourceStale ||
+		response.Confidence.Sources.Tmux.Message != "tmux_projection_stale" {
+		t.Fatalf("tmux source = %+v, want stale projection", response.Confidence.Sources.Tmux)
 	}
 	if len(response.InProgress.Sessions) != 1 || response.InProgress.Sessions[0].Name != "dev" {
 		t.Fatalf("sessions = %+v, want projected dev", response.InProgress.Sessions)
 	}
-	if response.Reliability.State != nowReliabilityDegraded {
-		t.Fatalf("reliability = %q, want degraded", response.Reliability.State)
+	if response.Confidence.State != nowConfidenceDegraded {
+		t.Fatalf("confidence = %q, want degraded", response.Confidence.State)
+	}
+	if got, want := response.Confidence.Sources.Tmux.ObservedAt, now.Format(time.RFC3339); got != want {
+		t.Fatalf("tmux observedAt = %q, want %q", got, want)
+	}
+	if response.Posture.State != nowPostureHealthy {
+		t.Fatalf("posture = %q, want healthy despite stale tmux", response.Posture.State)
 	}
 }
 
@@ -134,8 +151,8 @@ func TestNowReportsTmuxNotConfiguredAndNoServer(t *testing.T) {
 			t.Fatal(err)
 		}
 		response := requestNow(t, h)
-		if response.Sources.Tmux.Status != nowSourceNotConfigured {
-			t.Fatalf("tmux source = %+v, want not_configured", response.Sources.Tmux)
+		if response.Confidence.Sources.Tmux.Status != nowSourceNotConfigured {
+			t.Fatalf("tmux source = %+v, want not_configured", response.Confidence.Sources.Tmux)
 		}
 		metadata, err := st.GetAll(context.Background())
 		if err != nil {
@@ -154,8 +171,8 @@ func TestNowReportsTmuxNotConfiguredAndNoServer(t *testing.T) {
 			},
 		})
 		response := requestNow(t, h)
-		if response.Sources.Tmux.Status != nowSourceCurrent {
-			t.Fatalf("tmux source = %+v, want current empty", response.Sources.Tmux)
+		if response.Confidence.Sources.Tmux.Status != nowSourceCurrent {
+			t.Fatalf("tmux source = %+v, want current empty", response.Confidence.Sources.Tmux)
 		}
 		if len(response.InProgress.Sessions) != 0 {
 			t.Fatalf("sessions = %+v, want empty", response.InProgress.Sessions)

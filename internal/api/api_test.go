@@ -4850,8 +4850,10 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 	t.Parallel()
 
 	h, _ := newTestHandler(t, nil)
-	ctx := context.Background()
-	_ = ctx
+	hub := events.NewHub()
+	eventChannel, unsubscribe := hub.Subscribe(8)
+	t.Cleanup(unsubscribe)
+	h.events = hub
 
 	// Create runbook.
 	w := httptest.NewRecorder()
@@ -4912,6 +4914,23 @@ func TestCreateUpdateDeleteOpsRunbook(t *testing.T) {
 	h.deleteOpsRunbook(w, r)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("double-delete status = %d, want 404", w.Code)
+	}
+
+	var actions []string
+	for {
+		select {
+		case event := <-eventChannel:
+			if event.Type != events.TypeOpsRunbooks {
+				t.Fatalf("event type = %q, want %q", event.Type, events.TypeOpsRunbooks)
+			}
+			action, _ := event.Payload["action"].(string)
+			actions = append(actions, action)
+		default:
+			if got, want := strings.Join(actions, ","), "create,update,delete"; got != want {
+				t.Fatalf("runbook event actions = %q, want %q", got, want)
+			}
+			return
+		}
 	}
 }
 

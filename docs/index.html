@@ -13,10 +13,29 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple-dark.css"
     />
+    <style>
+      .mermaid {
+        display: flex;
+        justify-content: center;
+        overflow-x: auto;
+      }
+
+      .mermaid svg {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
     <script>
+      window.mermaidReady = import(
+        "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"
+      ).then(({ default: mermaid }) => {
+        mermaid.initialize({ startOnLoad: false, theme: "dark" });
+        return mermaid;
+      });
+
       window.$docsify = {
         name: "Sentinel",
         repo: "https://github.com/opus-domini/sentinel",
@@ -37,6 +56,30 @@
           errorText: "Error",
           successText: "Copied",
         },
+        plugins: [
+          function renderMermaid(hook) {
+            hook.doneEach(function () {
+              window.mermaidReady
+                .then((mermaid) => {
+                  const diagrams = [];
+                  document.querySelectorAll('pre[data-lang="mermaid"]').forEach((block) => {
+                    const source = block.querySelector("code");
+                    if (!source) return;
+
+                    const diagram = document.createElement("pre");
+                    diagram.className = "mermaid";
+                    diagram.textContent = source.textContent;
+                    block.replaceWith(diagram);
+                    diagrams.push(diagram);
+                  });
+                  if (diagrams.length > 0) {
+                    return mermaid.run({ nodes: diagrams });
+                  }
+                })
+                .catch((error) => console.error("failed to render Mermaid", error));
+            });
+          },
+        ],
       };
     </script>
     <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>

@@ -444,7 +444,7 @@ export type NowSourceStatus = 'current' | 'stale' | 'unavailable' | 'not_configu
 
 export type NowSource = {
   status: NowSourceStatus
-  checkedAt: string
+  observedAt: string
   message?: string
 }
 
@@ -493,24 +493,18 @@ export type NowServiceFailedAttention = {
   type: 'service_failed'
   service: NowServiceReference
   runbook?: NowRunbookReference
-  failure?: NowRunReference
-}
-
-export type NowRunbookFailedAttention = {
-  type: 'runbook_failed'
-  run: NowRunReference
 }
 
 export type NowMetricsPressureAttention = {
   type: 'metrics_pressure'
   severity: 'warning' | 'critical'
   signals: Array<MetricPostureSignal>
+  observedAt: string
 }
 
 export type NowAttentionItem =
   | NowRunbookApprovalAttention
   | NowServiceFailedAttention
-  | NowRunbookFailedAttention
   | NowMetricsPressureAttention
 
 export type NowAttention = {
@@ -519,7 +513,6 @@ export type NowAttention = {
   overflow: {
     approvals: number
     services: number
-    runbooks: number
     metrics: number
   }
 }
@@ -550,8 +543,12 @@ export type NowInProgressSession = {
 
 export type NowSnapshot = {
   generatedAt: string
-  reliability: {
-    state: 'normal' | 'attention' | 'degraded'
+  confidence: {
+    state: 'current' | 'degraded'
+    sources: NowSources
+  }
+  posture: {
+    state: 'healthy' | 'at_risk' | 'unknown'
     services: {
       tracked: number
       running: number
@@ -566,7 +563,6 @@ export type NowSnapshot = {
     runs: Array<NowInProgressRun>
     sessions: Array<NowInProgressSession>
   }
-  sources: NowSources
 }
 
 export type NowResponse = {
@@ -644,5 +640,6 @@ export type OpsWsMessage =
     }
   | { type: 'ops.metrics.updated'; payload: OpsMetricsResponse }
   | { type: 'ops.posture.updated'; payload: { posture: MetricPosture } }
+  | { type: 'ops.runbooks.updated'; payload: Record<string, unknown> }
   | { type: 'ops.job.updated'; payload: { job: OpsRunbookRun } }
   | { type: 'ops.schedule.updated'; payload: Record<string, unknown> }
