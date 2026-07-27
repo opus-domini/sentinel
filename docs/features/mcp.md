@@ -34,6 +34,22 @@ Authorization: Bearer strong-secret
 The Sentinel login cookie is not an MCP credential. There is no separate MCP
 token.
 
+## Trust Boundary
+
+The Bearer value is the same shared `server.token` used by trusted browser
+operators. Sentinel does not derive an agent identity from it and has no
+per-agent users, roles, scopes, or resource grants. Every MCP client holding the
+secret enters the same trusted boundary.
+
+The optional `user` accepted by Tmux tools is an
+[OS account target](/features/os-account-targeting.md), not the identity of the
+calling agent. Target validation still applies, but it does not create an
+attributable Sentinel principal.
+
+Runbook approval and rejection are intentionally unavailable to MCP tools.
+`runbook_wait` can observe `waiting_approval`; only a human using the
+authenticated Sentinel UI can resolve that decision.
+
 ## Connect
 
 For a host named `azdrix` serving Sentinel at `https://azdrix.example.ts.net`:
@@ -103,11 +119,10 @@ uses the same `sentinel-<hostname>` identifier in every client format.
 
 There is deliberately no raw tmux-command tool.
 
-There is also deliberately no MCP tool to update a runbook or approve/reject an
-approval step. Agents can create a new explicit definition, but an approval step
-remains a human decision in the Sentinel UI. `runbook_wait` returns immediately
-when a run reaches `waiting_approval` so the agent can report that boundary
-instead of hanging.
+There is also deliberately no MCP tool to update a runbook. Agents can create a
+new explicit definition. As described by the trust boundary above,
+`runbook_wait` returns immediately when a run reaches `waiting_approval` so the
+agent can report that boundary instead of hanging.
 
 ## Runbook Model
 

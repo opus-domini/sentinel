@@ -1,103 +1,134 @@
 # Security Model
 
-Sentinel is local-first, but can be exposed remotely when properly configured.
+Sentinel is local-first and assumes one trusted operator boundary around one
+host. Remote access is supported only when the shared credential, origin policy,
+transport, and network exposure are configured together.
 
-![Desktop settings token](assets/images/desktop-settings-token.png)
+## Trust Boundary
 
-## Authentication
+- `server.token` is one shared operator secret. It authenticates access; it
+  does not identify an individual.
+- Sentinel has no application users, per-user sessions, roles, RBAC, tenants,
+  resource scopes, or attributable approval principals.
+- [OS Account Targeting](/features/os-account-targeting.md) chooses the host
+  account used by a Tmux process. An OS account is not a Sentinel identity.
+- MCP uses the same shared secret and trust boundary. It does not create an
+  agent identity or grant per-agent scopes.
 
-When `token` is configured, all HTTP and WS requests require authentication.
+Treat every client that knows the token as a trusted operator with access to
+the enabled Sentinel surfaces.
 
-### HTTP
+## Request Surfaces
 
-Authentication uses an HttpOnly cookie set via the token endpoint:
+When `server.token` is configured, the request boundaries are:
+
+| Surface | Origin policy | Credential |
+| --- | --- | --- |
+| SPA shell and `/manifest.webmanifest` | Required | None; these remain loadable so the browser can present the auth gate |
+| `PUT`/`DELETE /api/auth/token` | Required | Submitted token for login; no existing cookie required |
+| Other `/api/*` routes | Required | `sentinel_auth` cookie |
+| `/ws/tmux`, `/ws/events`, `/ws/logs` | Required | `sentinel_auth` cookie |
+| `/mcp` | Required | `Authorization: Bearer <server.token>` |
+
+When no token is configured, API and WebSocket credential checks are
+effectively open inside the configured origin/network boundary. MCP cannot be
+enabled without a token.
+
+## Browser Authentication
+
+The browser presents a dedicated authentication gate before the application.
+Enter the shared token there; Settings is not available until authentication
+succeeds.
 
 ```http
 PUT /api/auth/token
 Content-Type: application/json
 
-{ "token": "<token>" }
+{ "token": "<shared-token>" }
 ```
 
-On success, the server sets the `sentinel_auth` HttpOnly cookie. All subsequent HTTP requests are authenticated via this cookie.
+On success, Sentinel sets the `sentinel_auth` HttpOnly cookie. The browser sends
+that cookie automatically to protected HTTP and WebSocket routes. Clearing the
+credential uses `DELETE /api/auth/token`.
 
-### WebSocket
+WebSocket connections use subprotocol `sentinel.v1`; tokens never belong in WS
+query parameters.
 
-WS connections authenticate via the same `sentinel_auth` HttpOnly cookie. The browser includes the cookie automatically on connection.
+## MCP Authentication
 
-- Protocol: `sentinel.v1`
+Every `/mcp` request must send:
 
-### MCP
+```http
+Authorization: Bearer <server.token>
+```
 
-`/mcp` requires `Authorization: Bearer <server.token>` on every request. The
-browser authentication cookie is intentionally not accepted for MCP clients.
-The endpoint is absent (`404`) while `[mcp].enabled` is false, and Sentinel
-refuses to enable it when `server.token` is empty.
+The browser cookie is intentionally not accepted for MCP. The endpoint returns
+`404` while `[mcp].enabled` is false, and configuration validation refuses MCP
+when `server.token` is empty.
 
-MCP requests pass through the same origin policy and multi-user target checks
-as the rest of Sentinel. Exposing MCP gives an authenticated client the ability
-to create tmux sessions and send input to panes, so keep it on a private network
-overlay or behind an authenticated TLS endpoint.
+There is no separate MCP token, agent principal, role, or scope. MCP also has no
+tool for approving or rejecting a Runbook approval step; that decision remains
+in the authenticated Sentinel UI. See [MCP Control](/features/mcp.md).
 
 ## Origin Validation
 
-`allowed_origins` can be explicitly configured. If omitted, same-host origin checks apply on loopback binds.
-For non-loopback binds, Sentinel requires at least one explicit allowed origin at startup.
+`allowed_origins` can be configured explicitly. If omitted on a loopback bind,
+Sentinel checks for the same host and scheme. A non-loopback bind requires at
+least one explicit allowed origin at startup.
 
 Recommendations:
 
-- Set explicit origins when using reverse proxies.
-- Keep token required for any non-local binding.
+- Set explicit origins when using a reverse proxy.
+- Keep a token required for every non-local binding.
+- Do not confuse an allowed origin with authentication; both checks matter.
 
 ## Trusted Proxies
 
-Sentinel trusts `X-Forwarded-Proto` from IPv4 and IPv6 loopback proxies by
-default. Add IPs or CIDRs to `trusted_proxies` only when the direct proxy peer
-is not local.
+Sentinel trusts `X-Forwarded-Proto` only from IPv4 or IPv6 loopback proxies by
+default. Add IPs or CIDRs to `trusted_proxies` when the direct proxy peer is not
+local:
 
 ```toml
 [server]
 trusted_proxies = ["10.0.0.0/8"]
 ```
 
-Requests from untrusted remotes cannot force HTTPS origin/cookie decisions with forwarded headers.
+Requests from untrusted remotes cannot force HTTPS origin or cookie decisions
+with forwarded headers.
+
+## OS Account Targeting
+
+The `[multi_user]` config section controls process targeting, despite its
+historical internal name:
+
+1. When `allowed_users` is non-empty, a target must be in that allowlist.
+2. Otherwise, a target must be in the eligible OS-account inventory loaded at
+   startup.
+3. `root` remains blocked unless `allow_root_target = true`.
+4. An unavailable OS-account inventory blocks non-default account targeting
+   with `ErrNoSystemUsers`.
+
+These checks do not create a login, role, tenant, or per-user audit identity in
+Sentinel.
 
 ## Remote Exposure Baseline
 
-If `server.host = "0.0.0.0"`:
+For `server.host = "0.0.0.0"`:
 
-- Always set `token`.
-- Always set `allowed_origins`.
-- Sentinel refuses startup when `token` is missing on non-loopback binds.
-- Sentinel refuses startup when `allowed_origins` is missing on non-loopback binds.
-- Prefer private network overlay (VPN/Tailscale) or authenticated tunnel.
+- Set `token`.
+- Set `allowed_origins`.
+- Prefer a private overlay network, VPN, or authenticated tunnel.
+- Terminate TLS at a trusted reverse proxy when HTTPS is needed.
 - Avoid direct public exposure without additional network controls.
 
-## Transport Notes
-
-- Sentinel itself serves HTTP; TLS termination is typically handled by a reverse proxy.
-- Protect upstream with HTTPS and strict origin policy.
-
-## Multi-User Session Security
-
-When `[multi_user]` is enabled, session creation can target other OS users. Validation follows a two-tier model:
-
-1. **Allowlist**: if `allowed_users` is configured, only listed users are permitted.
-2. **System users fallback**: if no allowlist is set, users are validated against `/etc/passwd` entries with UID >= 1000.
-
-Additional controls:
-
-- `allow_root_target` gate (defaults to `false`) — must be explicitly enabled to allow targeting the root user.
-- `ErrNoSystemUsers` blocks all user switching when system users cannot be loaded from `/etc/passwd`.
-- Validation failure returns `403 USER_NOT_ALLOWED`.
-- All multi-user session creations are logged.
+Sentinel refuses a non-loopback startup when either the token or allowed origins
+are missing.
 
 ## Security-Related Error Codes
 
-Common API auth/origin responses:
+- `401 UNAUTHORIZED` — missing or invalid shared credential
+- `403 ORIGIN_DENIED` — browser origin is not allowed
+- `403 UNTRUSTED_PROXY` — forwarded HTTPS came from an untrusted direct peer
+- `403 USER_NOT_ALLOWED` — requested OS account failed target validation
 
-- `401 UNAUTHORIZED`
-- `403 ORIGIN_DENIED`
-- `403 USER_NOT_ALLOWED`
-
-Authorization failures are returned before protected HTTP and WebSocket handlers run.
+Authorization and origin failures are returned before protected handlers run.

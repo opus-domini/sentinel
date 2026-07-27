@@ -1,10 +1,21 @@
 # Mobile and PWA
 
-<p align="center">
-  <img src="assets/images/mobile-tmux.png" alt="Mobile tmux view" width="320" />
-</p>
-
 Sentinel includes mobile-focused terminal interaction and Progressive Web App support.
+
+## Shared Navigation
+
+Mobile uses the same five primary destinations as desktop, rendered in the
+bottom navigation:
+
+1. Now
+2. Tmux
+3. Runbooks
+4. Services
+5. Metrics
+
+It is the same operational workspace at a smaller viewport, not a terminal-only
+mobile mode. Now remains the entry and return point; each owner keeps its normal
+route and responsibility.
 
 ## PWA Support
 

@@ -32,7 +32,9 @@ When token is configured, auth uses HttpOnly cookies:
 2. Server validates and sets HttpOnly cookie `sentinel_auth`.
 3. All subsequent requests are authenticated via this cookie.
 
-Origin checks apply to all API routes.
+Origin checks apply to every API route. The two auth endpoints are public under
+that origin policy so a browser can set or clear its credential. Every other
+route in this reference requires the cookie when `server.token` is configured.
 
 ## Auth Endpoints
 
@@ -47,12 +49,13 @@ Origin checks apply to all API routes.
 { "token": "..." }
 ```
 
-## Metadata and Filesystem
+## Connection, Metadata, and Filesystem
 
-| Method | Path           | Purpose                                                                                                                                                                     |
-| ------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/meta`    | Runtime metadata (`tokenRequired`, `defaultCwd`, `version`, `timezone`, `locale`, `hostname`, `processUser`, `isRoot`, `canSwitchUser`, `allowedUsers`, `userSwitchMethod`) |
-| `GET`  | `/api/fs/dirs` | Directory suggestions for session creation                                                                                                                                  |
+| Method | Path                    | Purpose                                                                                                                                                                     |
+| ------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/connection/check` | Verify the authenticated origin/proxy path; returns `{ "status": "ready" }` after guards pass                                                                                |
+| `GET`  | `/api/meta`             | Runtime metadata (`tokenRequired`, `defaultCwd`, `version`, `timezone`, `locale`, `hostname`, `processUser`, `isRoot`, `canSwitchUser`, `allowedUsers`, `userSwitchMethod`) |
+| `GET`  | `/api/fs/dirs`          | Directory suggestions for session creation                                                                                                                                  |
 
 `/api/fs/dirs` query params: `prefix`, `limit`.
 
@@ -115,18 +118,29 @@ Session launchers are independent reusable presets shown in the session `+` spli
 
 ## Tmux Windows and Panes
 
-| Method | Path                                         | Purpose       |
-| ------ | -------------------------------------------- | ------------- |
-| `GET`  | `/api/tmux/sessions/{session}/windows`       | List windows  |
-| `GET`  | `/api/tmux/sessions/{session}/panes`         | List panes    |
-| `POST` | `/api/tmux/sessions/{session}/select-window` | Select window |
-| `POST` | `/api/tmux/sessions/{session}/select-pane`   | Select pane   |
-| `POST` | `/api/tmux/sessions/{session}/new-window`    | Create window |
-| `POST` | `/api/tmux/sessions/{session}/kill-window`   | Kill window   |
-| `POST` | `/api/tmux/sessions/{session}/kill-pane`     | Kill pane     |
-| `POST` | `/api/tmux/sessions/{session}/split-pane`    | Split pane    |
-| `POST` | `/api/tmux/sessions/{session}/rename-window` | Rename window |
-| `POST` | `/api/tmux/sessions/{session}/rename-pane`   | Rename pane   |
+| Method  | Path                                          | Purpose                  |
+| ------- | --------------------------------------------- | ------------------------ |
+| `GET`   | `/api/tmux/sessions/{session}/windows`        | List windows             |
+| `GET`   | `/api/tmux/sessions/{session}/panes`          | List panes               |
+| `PATCH` | `/api/tmux/sessions/{session}/windows/order`  | Reorder all live windows |
+| `POST`  | `/api/tmux/sessions/{session}/select-window`  | Select window            |
+| `POST`  | `/api/tmux/sessions/{session}/select-pane`    | Select pane              |
+| `POST`  | `/api/tmux/sessions/{session}/new-window`     | Create window            |
+| `POST`  | `/api/tmux/sessions/{session}/kill-window`    | Kill window              |
+| `POST`  | `/api/tmux/sessions/{session}/kill-pane`      | Kill pane                |
+| `POST`  | `/api/tmux/sessions/{session}/split-pane`     | Split pane               |
+| `POST`  | `/api/tmux/sessions/{session}/rename-window`  | Rename window            |
+| `POST`  | `/api/tmux/sessions/{session}/rename-pane`    | Rename pane              |
+
+Window reorder payload:
+
+```json
+{ "windowIds": ["@2", "@3", "@1"] }
+```
+
+The payload must contain every current stable Tmux window ID exactly once.
+Stale membership returns `409 WINDOW_ORDER_STALE`; success returns `204` and
+preserves the active window.
 
 Split payload:
 

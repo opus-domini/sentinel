@@ -2,6 +2,9 @@
 
 ## `watchtower collect failed` in service logs
 
+Watchtower is the internal Tmux activity/unread projection, not a separate
+Sentinel module.
+
 Cause:
 
 - `tmux` unavailable or no running server/session context for current runtime user.
@@ -13,7 +16,10 @@ which tmux
 sentinel doctor
 ```
 
-Watchtower now discovers multi-user sessions automatically via the `UserProvider` callback. If sessions are still not visible, verify that `[multi_user]` is configured and the target user exists on the system.
+The projection discovers account-targeted sessions from Sentinel's persisted
+session-to-account registry. If one is not visible, verify that the session was
+created through Sentinel, the target appears in the startup OS-account
+inventory, and the `[multi_user]` allowlist/root gate permits it.
 
 ## Service shows different listen address than config
 
@@ -59,7 +65,8 @@ If request volume is high:
 
 ## `401 UNAUTHORIZED` on API or WS
 
-- Check token value in Settings — authentication uses an HttpOnly cookie set via the UI.
+- Re-enter the shared token in the dedicated authentication gate. Settings is
+  available only after the gate succeeds.
 - For WS, ensure the `sentinel.v1` subprotocol is used and the auth cookie is present.
 
 ## `403 UNTRUSTED_PROXY` or `403 ORIGIN_DENIED`
@@ -88,29 +95,32 @@ If layout drifts:
 - confirm latest frontend assets are served
 - test PWA mode for more stable viewport behavior
 
-## `403 USER_NOT_ALLOWED` on session create
+## `403 USER_NOT_ALLOWED` on OS-account session create
 
 Cause:
 
-- The target user is not in the `[multi_user]` allowlist, or system user validation rejected the user.
+- The target OS account is not in the `[multi_user]` allowlist, or startup
+  account inventory validation rejected it.
 
 Checks:
 
-- Verify `[multi_user]` section exists in config with correct `allowed_users` or that the target user has UID >= 1000 in `/etc/passwd`.
+- Verify the effective `[multi_user].allowed_users`, or confirm that the target
+  has UID >= 1000 and an interactive shell in `/etc/passwd`.
 - If targeting root, ensure `allow_root_target = true` is set.
 
-## `ErrNoSystemUsers` preventing user switching
+## `ErrNoSystemUsers` preventing OS account targeting
 
 Cause:
 
-- System users could not be loaded from `/etc/passwd`.
+- Sentinel could not build an OS-account inventory from `/etc/passwd` or the
+  current-process fallback.
 
 Checks:
 
 - Verify `/etc/passwd` is readable by the sentinel process user.
 - Run `sentinel doctor` to confirm system user detection.
 
-## `sudo` failures for multi-user sessions
+## `sudo` failures for OS-account targeting
 
 Cause:
 

@@ -12,11 +12,15 @@ host account.
 
 ## Configuration
 
-The `[multi_user]` section in `config.toml` controls user switching behavior:
+The historically named `[multi_user]` section in `config.toml` controls account
+targeting. It has no `enabled` switch: eligibility is determined by the known
+OS-account inventory, the optional allowlist, the root gate, and the selected
+switch method.
 
 ```toml
 [multi_user]
-# List of OS users allowed as session targets. When empty, any system user is allowed.
+# List of OS users allowed as session targets. When empty, eligible known
+# OS accounts are allowed.
 # Environment variable: SENTINEL_ALLOWED_USERS (comma-separated)
 allowed_users = ["alice", "deploy", "postgres"]
 
@@ -29,7 +33,11 @@ allow_root_target = false
 user_switch_method = "systemd-run"
 ```
 
-When `allowed_users` is empty (the default), any system user with UID >= 1000 and an interactive login shell is permitted as a target. System users are loaded at startup from `/etc/passwd` and serve as the source of truth for the session lifetime.
+When `allowed_users` is empty (the default), any known account with UID >= 1000
+and an interactive login shell is permitted as a target. Root is also loaded
+into the inventory but remains subject to `allow_root_target`. The inventory is
+loaded at startup from `/etc/passwd` and serves as the source of truth for the
+process lifetime.
 
 The current process user is always included in the system user list as a fallback, even if `/etc/passwd` parsing yields no results.
 
@@ -38,13 +46,15 @@ The current process user is always included in the system user list as a fallbac
 Validation follows a two-tier approach:
 
 1. **Allowlist check** -- when `allowed_users` is configured, only those users are accepted.
-2. **System user check** -- when no allowlist is configured, the target must appear in the system user list loaded from `/etc/passwd`.
+2. **System user check** -- when no allowlist is configured, the target must
+   appear in the startup OS-account inventory.
 
 Additional rules:
 
 - **Root is always blocked** unless `allow_root_target = true`. If root appears in `allowed_users` but `allow_root_target` is false, it is silently removed at startup with a warning.
-- **Empty system users blocks all switching.** When `/etc/passwd` cannot be read or yields no users, `ValidateTargetUser` returns `ErrNoSystemUsers` and no user switching is possible.
-- **All user switch attempts are logged** via `slog` with `action`, `target_user`, `session`, and `source_ip` fields.
+- **An empty account inventory blocks non-default targeting.** If neither
+  `/etc/passwd` nor the current-process fallback yields an account,
+  `ValidateTargetUser` returns `ErrNoSystemUsers`.
 
 Allowlist entries that do not match any system user produce a startup warning but are not removed.
 
@@ -104,14 +114,17 @@ Session-user mappings are stored in the `session_users` SQLite table:
 | `user`         | TEXT     | OS username that owns the session          |
 | `updated_at`   | DATETIME | Last modification timestamp                |
 
-Mappings are created on session creation, migrated on session rename, and deleted on session kill. The `ListSessionUsers` query provides the full map for Watchtower and the session list API.
+Mappings are created on session creation, migrated on session rename, and
+deleted on session kill. The `ListSessionUsers` query provides the full map for
+the internal Tmux activity projection and the session list API.
 
 ## Tmux Projection Integration
 
-The internal Tmux activity projection discovers account-targeted sessions
-through a `UserProvider` callback that returns the OS accounts with active
-sessions. The provider result is cached with a 10-second TTL to avoid excessive
-store queries.
+The internal Tmux activity projection (implemented by the `watchtower` package)
+discovers account-targeted sessions through a `UserProvider` callback that
+returns the OS accounts with active sessions. The provider result is cached
+with a 10-second TTL to avoid excessive store queries. Watchtower is an
+implementation component, not a fifth user-facing domain.
 
 Pane IDs from account-targeted sessions are namespaced as `user:paneID` (for
 example `alice:%42`) to prevent collisions in the pane journal when identical

@@ -52,7 +52,7 @@ Go runtime statistics for the Sentinel server process:
 - `focusAt` identifies when the owner handoff evidence was observed. The page
   displays it as context while explicitly treating charts as current/live
   samples, not as a persisted historical sample for that instant.
-- Unified command-center dashboard with an always-visible host posture overview.
+- Owner-focused dashboard with an always-visible host posture overview.
 - Context tabs for saturation, network, and Sentinel runtime metrics, so dense widgets have enough room for labels, details, and trends.
 - Metrics uses the full available panel width and keeps help, token, refresh, and connection controls in the page header.
 - Metrics are pushed from the server every **2 seconds** over WebSocket.
@@ -64,6 +64,18 @@ the canonical signal name and the attention item's `observedAt`; Metrics focuses
 that live card while clearly stating that it does not retain a historical
 sample for the handoff instant. It never infers a responsible Service or
 process from host-level pressure.
+
+## In-Memory Chart History
+
+The trend charts use a browser-side ring buffer with capacity for 150 metric
+samples. The page seeds it from the initial API response and appends subsequent
+`ops.metrics.updated` events; older entries are overwritten when the buffer is
+full.
+
+This buffer belongs to the mounted Metrics page. Reloading the browser or
+remounting the route starts the charts again from the next current sample.
+Sentinel does not persist this visual history, query older chart samples, or
+turn correlation between live signals into a causal diagnosis.
 
 ## Data Source
 

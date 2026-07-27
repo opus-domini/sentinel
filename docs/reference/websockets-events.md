@@ -4,11 +4,12 @@ Sentinel exposes three WS endpoints.
 
 ## Endpoints
 
-| Endpoint                  | Purpose                      |
-| ------------------------- | ---------------------------- |
-| `/ws/tmux?session=<name>` | Attach to tmux session PTY   |
-| `/ws/events`              | Realtime state/event channel |
-| `/ws/logs?service=<name>` | Service log streaming        |
+| Endpoint | Purpose |
+| --- | --- |
+| `/ws/tmux?session=<name>` | Attach to a Tmux session PTY |
+| `/ws/events` | Realtime state/event channel |
+| `/ws/logs?service=<name>` | Stream logs for a tracked service |
+| `/ws/logs?unit=<unit>&scope=<scope>&manager=<manager>` | Stream logs for a direct unit |
 
 ## Authentication
 
@@ -55,67 +56,32 @@ Server sends:
 
 ### Published event types
 
-- `events.ready`
-- `tmux.sessions.updated`
-- `tmux.inspector.updated`
-- `tmux.activity.updated`
-- `ops.overview.updated`
-- `ops.services.updated`
-- `ops.metrics.updated`
-- `ops.posture.updated`
-- `ops.runbooks.updated`
-- `ops.schedule.updated`
-- `ops.job.updated`
+| Type | Payload responsibility |
+| --- | --- |
+| `events.ready` | Subscription acknowledgement |
+| `tmux.sessions.updated` | Session projection mutation or replacement |
+| `tmux.inspector.updated` | Window/pane projection mutation |
+| `tmux.activity.updated` | Tmux activity runtime statistics |
+| `ops.overview.updated` | Current overview resource |
+| `ops.services.updated` | Current tracked Services resource or invalidation |
+| `ops.metrics.updated` | One current `{ metrics, posture }` sample |
+| `ops.posture.updated` | Semantic posture transition |
+| `ops.runbooks.updated` | Runbook definition collection changed |
+| `ops.schedule.updated` | Schedule collection changed |
+| `ops.job.updated` | Full current job after a state/step transition |
 
-`ops.metrics.updated` carries the same cacheable shape as
-`GET /api/ops/metrics`, evaluated from one sample:
-
-```json
-{
-  "type": "ops.metrics.updated",
-  "payload": {
-    "metrics": {
-      "cpuPercent": 85,
-      "collectedAt": "2026-07-27T12:00:00Z"
-    },
-    "posture": {
-      "state": "pressure",
-      "severity": "warning",
-      "warningCount": 1,
-      "criticalCount": 0,
-      "signals": [
-        {
-          "name": "cpu",
-          "severity": "warning",
-          "value": 85,
-          "since": "2026-07-27T11:59:50Z"
-        }
-      ],
-      "observedAt": "2026-07-27T12:00:00Z"
-    }
-  }
-}
-```
-
-`ops.metrics.updated` is emitted for every sample even when only numeric values
-change. `ops.posture.updated` carries `{ "posture": ... }` only when `state`,
-`severity`, or the active `name+severity` signal set changes. `since` and
-`observedAt` are evidence timestamps; numeric value changes alone do not create
-a semantic posture event.
-
-`ops.services.updated` is emitted when the five-second Services watcher sees a
-different canonical state fingerprint, as well as after owner mutations.
-`ops.runbooks.updated` is emitted after a successful definition create, update,
-or delete through the shared HTTP/MCP Runbook manager.
+The event envelope and this type registry are canonical here. Owner semantics
+belong to [Tmux](/features/tmux-workspace.md),
+[Services](/features/services.md), [Metrics](/features/metrics.md), and
+[Runbooks](/features/runbooks.md). Exact HTTP resource shapes remain in the
+[HTTP API Reference](/reference/http-api.md).
 
 ### Now invalidation
 
-Now does not publish or subscribe to a dedicated `now.updated` event. The
-frontend invalidates `GET /api/now` when it receives
-`tmux.sessions.updated`, `ops.services.updated`, `ops.posture.updated`,
-`ops.job.updated`, or `ops.runbooks.updated`. Raw `ops.metrics.updated` and
-`ops.overview.updated` do not invalidate Now. No event means no periodic Now
-request; reconnect and explicit resync are the fallback paths.
+Now has no `now.updated` event. It invalidates its composed read only from
+semantic owner events; raw metric samples and overview refreshes do not create a
+second composition stream. See [Now](/features/now.md) and the
+[Operational Loop](/features/operational-loop.md) for the owner-level behavior.
 
 ### Client messages to `/ws/events`
 

@@ -65,17 +65,27 @@ Pinned sessions are separate from launchers. They are backed by `/api/tmux/sessi
 
 Session launchers are backed by `/api/tmux/session-launchers`. They are reusable session creation presets stored in the session launcher manager. Saving a launcher does not start tmux. Launching one creates a new session from the launcher name seed, working directory, icon, and optional target user. Launching the same preset repeatedly creates numbered sessions (`api`, `api-1`, `api-2`, ...).
 
-## Multi-User Sessions
+## OS Account Targeting
 
-Sessions can be created as different OS users via the `user` field in the create payload. This allows a single Sentinel instance to manage sessions across multiple system accounts.
+Sessions can be created under a selected operating-system account via the
+`user` field. This changes the host identity of the Tmux process; it does not
+create a Sentinel user, login, role, or tenant.
 
-- Launchers support `userMode` (`session` or `fixed`) and `userValue` for per-launcher user targeting.
-- The sidebar shows a user indicator when a session runs as a different user than the process user.
-- Requires `[multi_user]` configuration — see Configuration Reference.
+- Launchers support `userMode` (`session` or `fixed`) and `userValue` for
+  per-launcher account targeting.
+- The sidebar shows an account indicator when a session runs as someone other
+  than the Sentinel process user.
+- The `[multi_user]` configuration key has no enable flag. Its allowlist, root
+  gate, known OS accounts, and switch method determine which targets are valid.
+
+See [OS Account Targeting](/features/os-account-targeting.md) for the complete
+host-execution and sudo/systemd requirements.
 
 ## Unread and Activity Semantics
 
-Watchtower tracks revisions per pane and seen revisions per focus scope.
+The internal Tmux activity projection, implemented by the `watchtower` package,
+tracks revisions per pane and seen revisions per focus scope. Watchtower is not
+a separate product module or navigation destination.
 
 - Pane receives new output -> pane can become unread.
 - Window is considered unread when any pane in it is unread.

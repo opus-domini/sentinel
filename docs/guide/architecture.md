@@ -83,8 +83,10 @@ product domains.
 
 HTTP establishes an initial snapshot. WebSocket events update owner caches and
 invalidate Now when semantic owner state changes. Tmux uses its own PTY and
-delta/event paths. Some owner workflows may use bounded polling while an active
-operation settles; the architecture is event-led, not event-exclusive.
+delta/event paths. Runbooks uses a bounded refresh sequence after a job starts
+or resumes, and Tmux can fall back to polling while its events socket is
+disconnected. These are reconciliation paths; the architecture is event-led,
+not event-exclusive.
 
 The server remains the source of truth. Optimistic presentation is limited to
 the mutations whose owner contract can reconcile it safely.

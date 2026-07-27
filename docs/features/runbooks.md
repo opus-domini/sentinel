@@ -164,7 +164,17 @@ Only one queued, running, or waiting-for-approval job may own a service target
 at a time. A competing start returns `409 RUNBOOK_TARGET_BUSY`; targetless jobs
 continue to use only the global concurrency limit.
 
-Job status lifecycle: `queued` -> `running` -> `succeeded` | `failed` | `waiting_approval`
+Job status lifecycle:
+
+```text
+queued -> running -> succeeded
+                  -> failed
+                  -> waiting_approval -> running -> ...
+```
+
+Only `succeeded` and `failed` are terminal. `waiting_approval` is a persisted
+pause that can return to `running` after approval; rejection transitions it to
+`failed`.
 
 When an `approval` step is reached, the run transitions to `waiting_approval` and pauses. Use the approve/reject endpoints to continue or abort:
 
@@ -185,6 +195,10 @@ Both endpoints return `409 INVALID_STATE` if the run is not in `waiting_approval
 Runs paused at `waiting_approval` are persisted decision points. They remain pending across Sentinel restarts until an operator approves or rejects them, while continuing to reserve their service target.
 Before the decision controls, the frontend shows the recorded target and the
 remaining steps from `definition`, not from the current editable runbook.
+
+During startup, jobs left in `queued` or `running` by an interrupted process are
+reconciled to `failed`. Jobs in `waiting_approval` are deliberately preserved
+instead of being treated as orphaned execution.
 
 At each step completion, the job is updated in the store and an `ops.job.updated` event is emitted with the full job object including accumulated step results.
 
@@ -310,7 +324,10 @@ Runbooks can be executed on a schedule. Two schedule types are supported:
 - **Cron** — recurring execution using standard cron expressions (e.g. `0 */6 * * *`). Supports optional timezone via IANA identifiers (e.g. `America/New_York`); defaults to the host's local timezone.
 - **One-shot** — single future execution at a specific time, automatically removed after firing.
 
-Schedules are managed via the API and the frontend editor. A background scheduler engine evaluates pending schedules every minute and triggers runs as they come due. Scheduled runs use `"source": "scheduler"` in job objects and webhook payloads.
+Schedules are managed via the API and the frontend editor. A background
+scheduler evaluates pending schedules every five seconds and triggers runs as
+they come due. Scheduled runs use `"source": "scheduler"` in job objects and
+webhook payloads.
 
 When a schedule is created, updated, or deleted, an `ops.schedule.updated` event is emitted over the `/ws/events` WebSocket.
 
@@ -319,6 +336,12 @@ When a schedule is created, updated, or deleted, an `ops.schedule.updated` event
 - `ops.job.updated` — emitted on each state change (queued, running, per-step progress, waiting_approval, completion)
 - Each event payload includes `{ globalRev, job }` with the full job object and accumulated `stepResults`
 - `ops.schedule.updated` — emitted when a schedule is created, modified, or removed
+
+WebSocket events are the primary update path. After starting or approving a
+job, the frontend also runs a bounded settlement sequence at 250 ms, 750 ms,
+1.5 s, 3 s, 6 s, and 10 s. It stops when the job is no longer active, when the
+sequence is exhausted, or when a terminal WebSocket update supersedes it. This
+is short-lived reconciliation, not continuous background polling.
 
 ## Frontend
 

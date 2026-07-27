@@ -198,12 +198,19 @@ Service state changes emit events over the `/ws/events` WebSocket:
 
 ## UX Behavior
 
-- Service actions use optimistic updates. The UI reflects the expected state
-  immediately, then reconciles the cache with the observed post-condition or a
-  realtime refresh.
-- The UI reports success only for `verification.state=confirmed`; accepted commands with mismatched or unavailable post-conditions use neutral language.
-- Failed actions roll back the optimistic state and generate a toast notification.
-- The browse view supports filtering by state (active, inactive, failed), scope (user, system), and free-text search.
+- Name-based actions on tracked services update the tracked cache optimistically
+  and then reconcile it with the server's observed post-condition. A rejected
+  action restores the previous tracked state.
+- Direct unit actions show a pending row state but do not synthesize an
+  expected service state. The row changes only after the server returns its
+  bounded verification evidence.
+- Both paths report success only for `verification.state=confirmed`; accepted
+  commands with mismatched or unavailable post-conditions use neutral
+  language.
+- The browse view filters by unit type, runtime state, scope, tracking state,
+  and free-text search. The default systemd type selection focuses on
+  `service`; operators can include timers, sockets, targets, and other
+  discovered kinds.
 - Custom services can be pinned or unpinned directly from the browse list.
   Built-ins retain status, logs, inspect, and service actions but do not expose
   Unpin.
@@ -214,7 +221,8 @@ The dedicated `/services` route provides a full-page service management experien
 
 - Services uses the full application width without a secondary sidebar. Pinned/tracked units remain available through the `Pinned` browse filter, with live status indicators in the service list.
 - The main panel has a stats header showing total, active, and failed service counts, followed by a browse panel.
-- The browse panel discovers all host services and supports filtering by state (active/inactive/failed), scope (user/system), and free-text search.
+- The browse panel discovers host units and supports filtering by type, state,
+  scope, tracking (`Pinned`/`Unpinned`), and free-text search.
 - Per-service actions include start, stop, restart, status inspect, and logs
   view. Custom services can be pinned or unpinned directly from Browse;
   runtime-owned built-ins cannot.
