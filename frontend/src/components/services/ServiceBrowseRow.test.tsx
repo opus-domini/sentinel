@@ -96,6 +96,27 @@ describe('ServiceBrowseRow', () => {
     expect(mobile.getAllByRole('button')).toHaveLength(2)
   })
 
+  it('keeps runtime built-ins actionable without offering unpin', () => {
+    const onToggleTrack = vi.fn()
+    renderRow({
+      service: service({
+        unit: 'sentinel.service',
+        tracked: true,
+        trackedName: 'sentinel',
+        trackingMode: 'builtin',
+        activeState: 'active',
+        enabledState: 'enabled',
+      }),
+      onToggleTrack,
+    })
+
+    const desktop = within(screen.getByTestId('service-actions-desktop'))
+    expect(desktop.getByRole('button', { name: 'Inspect status' })).toBeTruthy()
+    expect(desktop.getByRole('button', { name: 'View logs' })).toBeTruthy()
+    expect(desktop.queryByRole('button', { name: 'Unpin service' })).toBeNull()
+    expect(onToggleTrack).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['Stop', 'stop'],
     ['Restart', 'restart'],

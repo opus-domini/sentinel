@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -47,7 +48,7 @@ const (
 	unitTypeJob     = "job"
 	unitTypeUnit    = "unit"
 
-	sentinelSystemdUnit = "sentinel"
+	sentinelSystemdUnit = "sentinel.service"
 	updaterSystemdUnit  = "sentinel-updater.timer"
 
 	sentinelLaunchdLabel = "io.opusdomini.sentinel"
@@ -58,6 +59,11 @@ const (
 	stateInactive = "inactive"
 	stateFailed   = "failed"
 	stateUnknown  = "unknown"
+
+	// TrackingModeBuiltin identifies services derived from the installed runtime.
+	TrackingModeBuiltin = "builtin"
+	// TrackingModeCustom identifies services explicitly registered by the operator.
+	TrackingModeCustom = "custom"
 )
 
 var (
@@ -67,6 +73,8 @@ var (
 	ErrInvalidAction = errors.New("ops invalid action")
 	// ErrInvalidUnit is returned when a service unit or launchd label is unsafe.
 	ErrInvalidUnit = errors.New("ops invalid unit")
+	// ErrBuiltinScopeConflict is returned when a built-in exists in multiple scopes.
+	ErrBuiltinScopeConflict = errors.New("ops built-in service scope conflict")
 
 	systemdBrowseUnitTypes = []string{
 		unitTypeService,
@@ -88,6 +96,7 @@ type commandRunner func(ctx context.Context, name string, args ...string) (strin
 type ServiceStatus struct {
 	Name         string `json:"name"`
 	DisplayName  string `json:"displayName"`
+	TrackingMode string `json:"trackingMode"`
 	Manager      string `json:"manager"`
 	Scope        string `json:"scope"`
 	Unit         string `json:"unit"`
@@ -236,24 +245,31 @@ func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 // ListServices lists services.
 func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
 	now := m.nowFn().UTC().Format(time.RFC3339)
-	var services []ServiceStatus
+	services, err := m.listBuiltinServices(ctx, now)
+	if err != nil {
+		return nil, err
+	}
 
 	if m.customServices != nil {
 		custom, err := m.customServices.ListCustomServices(ctx)
 		if err != nil {
 			return nil, err
 		}
+		sort.SliceStable(custom, func(i, j int) bool {
+			return strings.ToLower(custom[i].Name) < strings.ToLower(custom[j].Name)
+		})
 		for _, cs := range custom {
-			if !IsValidUnit(cs.Unit) {
+			if !IsValidUnit(cs.Unit) || IsBuiltinServiceReference(cs.Name, cs.Unit) {
 				continue
 			}
 			svc := ServiceStatus{
-				Name:        cs.Name,
-				DisplayName: cs.DisplayName,
-				Manager:     cs.Manager,
-				Unit:        cs.Unit,
-				Scope:       cs.Scope,
-				UpdatedAt:   now,
+				Name:         cs.Name,
+				DisplayName:  cs.DisplayName,
+				TrackingMode: TrackingModeCustom,
+				Manager:      cs.Manager,
+				Unit:         cs.Unit,
+				Scope:        cs.Scope,
+				UpdatedAt:    now,
 			}
 			m.probeCustomService(ctx, &svc)
 			services = append(services, svc)
@@ -263,7 +279,73 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceStatus, error) {
 	return services, nil
 }
 
+type builtinServiceDefinition struct {
+	name        string
+	displayName string
+	unit        string
+}
+
+func (m *Manager) listBuiltinServices(ctx context.Context, updatedAt string) ([]ServiceStatus, error) {
+	manager := detectManager(m.goos)
+	definitions := []builtinServiceDefinition{
+		{
+			name:        ServiceNameSentinel,
+			displayName: "Sentinel service",
+			unit:        unitForService(manager, ServiceNameSentinel),
+		},
+		{
+			name:        ServiceNameUpdater,
+			displayName: "Autoupdate timer",
+			unit:        unitForService(manager, ServiceNameUpdater),
+		},
+	}
+
+	out := make([]ServiceStatus, 0, len(definitions))
+	for _, definition := range definitions {
+		matches := make([]ServiceStatus, 0, 2)
+		scopes := m.systemdScopes()
+		if manager == managerLaunchd {
+			scopes = []string{scopeUser}
+			if m.uidFn != nil && m.uidFn() == 0 {
+				scopes[0] = scopeSystem
+			}
+		}
+		for _, scope := range scopes {
+			status := ServiceStatus{
+				Name:         definition.name,
+				DisplayName:  definition.displayName,
+				TrackingMode: TrackingModeBuiltin,
+				Manager:      manager,
+				Scope:        scope,
+				Unit:         definition.unit,
+				UpdatedAt:    updatedAt,
+			}
+			m.probeCustomService(ctx, &status)
+			if status.Exists {
+				matches = append(matches, status)
+			}
+		}
+		if len(matches) > 1 {
+			return nil, fmt.Errorf(
+				"%w: %s exists in user and system scopes",
+				ErrBuiltinScopeConflict,
+				definition.name,
+			)
+		}
+		if len(matches) == 1 {
+			out = append(out, matches[0])
+		}
+	}
+	return out, nil
+}
+
 func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
+	if m.commandRunner == nil {
+		svc.Exists = false
+		svc.ActiveState = stateUnknown
+		svc.EnabledState = stateUnknown
+		return
+	}
 	switch svc.Manager {
 	case managerSystemd:
 		args := make([]string, 0, 6)
@@ -280,7 +362,8 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 			return
 		}
 		props := parseSystemdShow(out)
-		svc.Exists = props["LoadState"] != "not-found"
+		loadState := strings.ToLower(strings.TrimSpace(props["LoadState"]))
+		svc.Exists = loadState != "" && loadState != "not-found"
 		svc.ActiveState = normalizeState(props["ActiveState"])
 		svc.EnabledState = normalizeState(props["UnitFileState"])
 	case managerLaunchd:
@@ -553,6 +636,25 @@ func unitForService(manager, serviceName string) string {
 		return updaterSystemdUnit
 	}
 	return sentinelSystemdUnit
+}
+
+// IsBuiltinServiceReference reports whether a name or unit/label belongs to a
+// runtime-owned Sentinel service and therefore cannot be registered as custom.
+func IsBuiltinServiceReference(name, unit string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case ServiceNameSentinel, ServiceNameUpdater:
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(unit)) {
+	case sentinelSystemdUnit,
+		ServiceNameSentinel,
+		updaterSystemdUnit,
+		sentinelLaunchdLabel,
+		updaterLaunchdLabel:
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeServiceName(raw string) (string, bool) {
@@ -896,6 +998,7 @@ type BrowsedService struct {
 	Scope        string `json:"scope"`
 	Tracked      bool   `json:"tracked"`
 	TrackedName  string `json:"trackedName,omitempty"`
+	TrackingMode string `json:"trackingMode,omitempty"`
 }
 
 // BrowseServices returns all manageable units discovered on the host,
@@ -907,11 +1010,14 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 		return nil, err
 	}
 
-	type trackedInfo struct{ Name string }
+	type trackedInfo struct {
+		Name         string
+		TrackingMode string
+	}
 	trackedMap := make(map[string]trackedInfo, len(tracked))
 	for _, s := range tracked {
 		key := serviceKey(s.Manager, s.Scope, s.Unit)
-		trackedMap[key] = trackedInfo{Name: s.Name}
+		trackedMap[key] = trackedInfo{Name: s.Name, TrackingMode: s.TrackingMode}
 	}
 
 	manager := detectManager(m.goos)
@@ -943,6 +1049,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 				if info, ok := trackedMap[key]; ok {
 					bs.Tracked = true
 					bs.TrackedName = info.Name
+					bs.TrackingMode = info.TrackingMode
 				}
 				result = append(result, bs)
 			}
@@ -974,6 +1081,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 			if info, ok := trackedMap[key]; ok {
 				bs.Tracked = true
 				bs.TrackedName = info.Name
+				bs.TrackingMode = info.TrackingMode
 			}
 			result = append(result, bs)
 		}
@@ -996,6 +1104,7 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 			Scope:        s.Scope,
 			Tracked:      true,
 			TrackedName:  s.Name,
+			TrackingMode: s.TrackingMode,
 		})
 	}
 

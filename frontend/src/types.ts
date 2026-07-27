@@ -174,6 +174,7 @@ export type OpsServiceAction = 'start' | 'stop' | 'restart' | 'enable' | 'disabl
 export type OpsServiceStatus = {
   name: string
   displayName: string
+  trackingMode: 'builtin' | 'custom'
   manager: string
   scope: string
   unit: string
@@ -406,6 +407,7 @@ export type OpsBrowsedService = {
   scope: string
   tracked: boolean
   trackedName?: string
+  trackingMode?: 'builtin' | 'custom'
 }
 
 export type OpsBrowseServicesResponse = {

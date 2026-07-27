@@ -4044,6 +4044,47 @@ func TestRegisterOpsServiceValidation(t *testing.T) {
 	}
 }
 
+func TestRegisterAndUnregisterOpsServiceRejectBuiltins(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil)
+	for _, body := range []string{
+		`{"name":"sentinel","unit":"other.service"}`,
+		`{"name":"other","unit":"sentinel.service"}`,
+		`{"name":"other","unit":"io.opusdomini.sentinel.updater"}`,
+	} {
+		w := httptest.NewRecorder()
+		h.registerOpsService(
+			w,
+			httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(body)),
+		)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("register body %s status = %d, want 409; response=%s", body, w.Code, w.Body.String())
+		}
+		if code := errCode(jsonBody(t, w)); code != "OPS_SERVICE_BUILTIN" {
+			t.Fatalf("register body %s code = %q, want OPS_SERVICE_BUILTIN", body, code)
+		}
+	}
+	custom, err := st.ListCustomServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListCustomServices: %v", err)
+	}
+	if len(custom) != 0 {
+		t.Fatalf("custom services = %+v, want empty", custom)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/api/ops/services/sentinel", nil)
+	r.SetPathValue("service", "sentinel")
+	h.unregisterOpsService(w, r)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("unregister builtin status = %d, want 409; response=%s", w.Code, w.Body.String())
+	}
+	if code := errCode(jsonBody(t, w)); code != "OPS_SERVICE_BUILTIN" {
+		t.Fatalf("unregister builtin code = %q, want OPS_SERVICE_BUILTIN", code)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Service logs handler tests
 // ---------------------------------------------------------------------------
@@ -4145,7 +4186,7 @@ func TestBrowseOpsServicesHandler(t *testing.T) {
 		browseFn: func(context.Context) ([]opsplane.BrowsedService, error) {
 			return []opsplane.BrowsedService{
 				{Unit: testNginxUnit, UnitType: "service", ActiveState: "active", Manager: "systemd", Scope: "system", Tracked: false},
-				{Unit: "sentinel", UnitType: "service", ActiveState: "active", Manager: "systemd", Scope: "user", Tracked: true, TrackedName: "sentinel"},
+				{Unit: "sentinel", UnitType: "service", ActiveState: "active", Manager: "systemd", Scope: "user", Tracked: true, TrackedName: "sentinel", TrackingMode: opsplane.TrackingModeBuiltin},
 			}, nil
 		},
 	}

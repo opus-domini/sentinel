@@ -154,14 +154,18 @@ export const ServiceBrowseRow = memo(function ServiceBrowseRow({
       onClick: () => onLogs(svc),
       disabled: rowBusy,
     },
-    {
-      key: 'track',
-      label: svc.tracked ? 'Unpin service' : 'Pin service',
-      icon: svc.tracked ? PinOff : Pin,
-      onClick: () => onToggleTrack(svc),
-      disabled: rowBusy,
-      highlight: svc.tracked,
-    },
+    ...(svc.trackingMode === 'builtin'
+      ? []
+      : [
+          {
+            key: 'track',
+            label: svc.tracked ? 'Unpin service' : 'Pin service',
+            icon: svc.tracked ? PinOff : Pin,
+            onClick: () => onToggleTrack(svc),
+            disabled: rowBusy,
+            highlight: svc.tracked,
+          },
+        ]),
   ]
 
   // On mobile the most relevant single action stays inline; the rest collapse

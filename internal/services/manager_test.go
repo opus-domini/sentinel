@@ -21,35 +21,69 @@ func (s *stubCustomServicesRepo) ListCustomServices(_ context.Context) ([]store.
 	return s.services, s.err
 }
 
-// builtinServicesRepo returns a stub repo with sentinel and sentinel-updater
-// registered as custom services, matching the systemd or launchd unit names.
-func builtinServicesRepo(goos string) *stubCustomServicesRepo {
-	manager := detectManager(goos)
-	return &stubCustomServicesRepo{
-		services: []store.CustomService{
-			{
-				Name:        ServiceNameSentinel,
-				DisplayName: "Sentinel service",
-				Manager:     manager,
-				Unit:        unitForService(manager, ServiceNameSentinel),
-				Scope:       scopeUser,
-			},
-			{
-				Name:        ServiceNameUpdater,
-				DisplayName: "Autoupdate timer",
-				Manager:     manager,
-				Unit:        unitForService(manager, ServiceNameUpdater),
-				Scope:       scopeUser,
-			},
-		},
-	}
-}
-
 const testHostname = "host-a"
 
 // probeActiveResponse is a canned systemctl show response indicating a
 // loaded, enabled and active unit. Used across multiple test files.
 const probeActiveResponse = "UnitFileState=enabled\nActiveState=active\nLoadState=loaded\n"
+
+const probeMissingResponse = "UnitFileState=disabled\nActiveState=inactive\nLoadState=not-found\n"
+
+func withSystemdBuiltinStates(
+	states map[string]string,
+	next commandRunner,
+) commandRunner {
+	return func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == cmdSystemctl && slices.Contains(args, "show") &&
+			slices.Contains(args, "--property=UnitFileState,ActiveState,LoadState") {
+			commandScope := scopeSystem
+			if slices.Contains(args, argUser) {
+				commandScope = scopeUser
+			}
+			for _, unit := range []string{sentinelSystemdUnit, updaterSystemdUnit} {
+				if !slices.Contains(args, unit) {
+					continue
+				}
+				response, installed := states[unit]
+				if installed && commandScope == scopeUser {
+					return response, nil
+				}
+				return probeMissingResponse, nil
+			}
+		}
+		if next != nil {
+			return next(ctx, name, args...)
+		}
+		return "", nil
+	}
+}
+
+func withSystemdBuiltins(next commandRunner) commandRunner {
+	return withSystemdBuiltinStates(map[string]string{
+		sentinelSystemdUnit: probeActiveResponse,
+		updaterSystemdUnit:  probeActiveResponse,
+	}, next)
+}
+
+func withLaunchdBuiltins(next commandRunner) commandRunner {
+	return func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == cmdLaunchctl && len(args) > 1 && args[0] == argPrint &&
+			(strings.HasSuffix(args[1], "/"+sentinelLaunchdLabel) ||
+				strings.HasSuffix(args[1], "/"+updaterLaunchdLabel)) {
+			if next != nil {
+				out, err := next(ctx, name, args...)
+				if out != "" || err != nil {
+					return out, err
+				}
+			}
+			return "state = running\nlast exit code = 0", nil
+		}
+		if next != nil {
+			return next(ctx, name, args...)
+		}
+		return "", nil
+	}
+}
 
 func TestListServices(t *testing.T) {
 	t.Parallel()
@@ -61,10 +95,10 @@ func TestListServices(t *testing.T) {
 		hostname:       func() (string, error) { return testHostname, nil },
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
-		customServices: builtinServicesRepo("linux"),
-		commandRunner: func(_ context.Context, _ string, _ ...string) (string, error) {
+		customServices: &stubCustomServicesRepo{},
+		commandRunner: withSystemdBuiltins(func(_ context.Context, _ string, _ ...string) (string, error) {
 			return probeActiveResponse, nil
-		},
+		}),
 	}
 
 	services, err := m.ListServices(context.Background())
@@ -76,6 +110,9 @@ func TestListServices(t *testing.T) {
 	}
 	if services[0].Name != ServiceNameSentinel || services[0].Scope != scopeUser {
 		t.Fatalf("unexpected sentinel status: %+v", services[0])
+	}
+	if services[0].TrackingMode != TrackingModeBuiltin {
+		t.Fatalf("sentinel trackingMode = %q, want builtin", services[0].TrackingMode)
 	}
 	if services[1].Name != ServiceNameUpdater || services[1].Unit != updaterSystemdUnit {
 		t.Fatalf("unexpected updater status: %+v", services[1])
@@ -95,13 +132,16 @@ func TestOverview(t *testing.T) {
 		hostname:       func() (string, error) { return testHostname, nil },
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
-		customServices: builtinServicesRepo("linux"),
-		commandRunner: func(_ context.Context, _ string, args ...string) (string, error) {
+		customServices: &stubCustomServicesRepo{},
+		commandRunner: withSystemdBuiltinStates(map[string]string{
+			sentinelSystemdUnit: probeActiveResponse,
+			updaterSystemdUnit:  "UnitFileState=enabled\nActiveState=failed\nLoadState=loaded\n",
+		}, func(_ context.Context, _ string, args ...string) (string, error) {
 			if slices.Contains(args, updaterSystemdUnit) {
 				return "UnitFileState=enabled\nActiveState=failed\nLoadState=loaded\n", nil
 			}
 			return probeActiveResponse, nil
-		},
+		}),
 	}
 
 	overview, err := m.Overview(context.Background())
@@ -128,12 +168,12 @@ func TestActSystemdUser(t *testing.T) {
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
 		hostname:       func() (string, error) { return testHostname, nil },
-		customServices: builtinServicesRepo("linux"),
-		commandRunner: func(_ context.Context, name string, args ...string) (string, error) {
+		customServices: &stubCustomServicesRepo{},
+		commandRunner: withSystemdBuiltins(func(_ context.Context, name string, args ...string) (string, error) {
 			row := append([]string{name}, args...)
 			calls = append(calls, row)
 			return "", nil
-		},
+		}),
 	}
 
 	status, err := m.Act(context.Background(), "sentinel", "restart")
@@ -165,12 +205,12 @@ func TestActSystemdUpdater(t *testing.T) {
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
 		hostname:       func() (string, error) { return testHostname, nil },
-		customServices: builtinServicesRepo("linux"),
-		commandRunner: func(_ context.Context, name string, args ...string) (string, error) {
+		customServices: &stubCustomServicesRepo{},
+		commandRunner: withSystemdBuiltins(func(_ context.Context, name string, args ...string) (string, error) {
 			row := append([]string{name}, args...)
 			calls = append(calls, row)
 			return "", nil
-		},
+		}),
 	}
 
 	_, err := m.Act(context.Background(), ServiceNameUpdater, ActionStop)
@@ -198,8 +238,8 @@ func TestInspectSystemdService(t *testing.T) {
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
 		hostname:       func() (string, error) { return testHostname, nil },
-		customServices: builtinServicesRepo("linux"),
-		commandRunner: func(_ context.Context, _ string, args ...string) (string, error) {
+		customServices: &stubCustomServicesRepo{},
+		commandRunner: withSystemdBuiltins(func(_ context.Context, _ string, args ...string) (string, error) {
 			if !slices.Contains(args, "show") {
 				return "", errors.New("unexpected non-show command")
 			}
@@ -213,7 +253,7 @@ func TestInspectSystemdService(t *testing.T) {
 				"FragmentPath=/home/dev/.config/systemd/user/sentinel.service",
 				"ExecMainPID=1234",
 			}, "\n"), nil
-		},
+		}),
 	}
 
 	details, err := m.Inspect(context.Background(), ServiceNameSentinel)
@@ -259,11 +299,10 @@ func TestListServicesMergesCustomServices(t *testing.T) {
 	t.Parallel()
 
 	fixedNow := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
-	builtins := builtinServicesRepo("linux")
 	repo := &stubCustomServicesRepo{
-		services: append(builtins.services,
-			store.CustomService{Name: "nginx", DisplayName: "Nginx", Manager: "systemd", Unit: "nginx.service", Scope: "system"},
-		),
+		services: []store.CustomService{
+			{Name: "nginx", DisplayName: "Nginx", Manager: "systemd", Unit: "nginx.service", Scope: "system"},
+		},
 	}
 	m := &Manager{
 		startedAt:      fixedNow.Add(-10 * time.Minute),
@@ -272,9 +311,9 @@ func TestListServicesMergesCustomServices(t *testing.T) {
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
 		customServices: repo,
-		commandRunner: func(_ context.Context, _ string, _ ...string) (string, error) {
+		commandRunner: withSystemdBuiltins(func(_ context.Context, _ string, _ ...string) (string, error) {
 			return probeActiveResponse, nil
-		},
+		}),
 	}
 
 	services, err := m.ListServices(context.Background())
@@ -289,6 +328,93 @@ func TestListServicesMergesCustomServices(t *testing.T) {
 	}
 	if services[2].Manager != "systemd" {
 		t.Fatalf("services[2].Manager = %q, want systemd", services[2].Manager)
+	}
+	if services[2].TrackingMode != TrackingModeCustom {
+		t.Fatalf("services[2].TrackingMode = %q, want custom", services[2].TrackingMode)
+	}
+}
+
+func TestListServicesSkipsMissingUpdater(t *testing.T) {
+	t.Parallel()
+
+	m := newTestManager("linux", nil)
+	m.commandRunner = withSystemdBuiltinStates(map[string]string{
+		sentinelSystemdUnit: probeActiveResponse,
+	}, nil)
+
+	services, err := m.ListServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if len(services) != 1 || services[0].Name != ServiceNameSentinel {
+		t.Fatalf("services = %+v, want only sentinel", services)
+	}
+}
+
+func TestListServicesRejectsBuiltinScopeConflict(t *testing.T) {
+	t.Parallel()
+
+	m := newTestManager("linux", nil)
+	m.commandRunner = func(_ context.Context, name string, args ...string) (string, error) {
+		if name == cmdSystemctl && slices.Contains(args, "show") &&
+			slices.Contains(args, sentinelSystemdUnit) {
+			return probeActiveResponse, nil
+		}
+		return probeMissingResponse, nil
+	}
+
+	_, err := m.ListServices(context.Background())
+	if !errors.Is(err, ErrBuiltinScopeConflict) {
+		t.Fatalf("ListServices error = %v, want ErrBuiltinScopeConflict", err)
+	}
+}
+
+func TestListServicesRootUsesOnlySystemScope(t *testing.T) {
+	t.Parallel()
+
+	var userCall bool
+	m := newTestManager("linux", nil)
+	m.uidFn = func() int { return 0 }
+	m.commandRunner = func(_ context.Context, name string, args ...string) (string, error) {
+		if name != cmdSystemctl || !slices.Contains(args, "show") {
+			return "", nil
+		}
+		if slices.Contains(args, argUser) {
+			userCall = true
+		}
+		if slices.Contains(args, sentinelSystemdUnit) {
+			return probeActiveResponse, nil
+		}
+		return probeMissingResponse, nil
+	}
+
+	services, err := m.ListServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if userCall {
+		t.Fatal("root probing must not call systemctl --user")
+	}
+	if len(services) != 1 || services[0].Scope != scopeSystem {
+		t.Fatalf("services = %+v, want system-scoped sentinel", services)
+	}
+}
+
+func TestListServicesLaunchdUsesProcessDomain(t *testing.T) {
+	t.Parallel()
+
+	m := newTestManager("darwin", nil)
+	services, err := m.ListServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if len(services) != 2 {
+		t.Fatalf("services = %+v, want two launchd built-ins", services)
+	}
+	for _, service := range services {
+		if service.Manager != managerLaunchd || service.Scope != scopeUser {
+			t.Fatalf("service = %+v, want user launchd service", service)
+		}
 	}
 }
 
@@ -332,13 +458,18 @@ func newTestManager(goos string, runner commandRunner) *Manager {
 			return "", nil
 		}
 	}
+	if goos == "darwin" {
+		runner = withLaunchdBuiltins(runner)
+	} else {
+		runner = withSystemdBuiltins(runner)
+	}
 	return &Manager{
 		startedAt:      time.Date(2026, 2, 15, 11, 0, 0, 0, time.UTC),
 		nowFn:          func() time.Time { return time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC) },
 		hostname:       func() (string, error) { return testHostname, nil },
 		uidFn:          func() int { return 1000 },
 		goos:           goos,
-		customServices: builtinServicesRepo(goos),
+		customServices: &stubCustomServicesRepo{},
 		commandRunner:  runner,
 	}
 }
@@ -524,8 +655,15 @@ func TestInspectLaunchdService(t *testing.T) {
 func TestInspectLaunchdError(t *testing.T) {
 	t.Parallel()
 
+	var sentinelProbes int
 	m := newTestManager("darwin", func(_ context.Context, name string, args ...string) (string, error) {
 		if name == cmdLaunchctl && len(args) > 0 && args[0] == argPrint {
+			if len(args) > 1 && strings.HasSuffix(args[1], "/"+sentinelLaunchdLabel) {
+				sentinelProbes++
+				if sentinelProbes == 1 {
+					return "state = running\nlast exit code = 0", nil
+				}
+			}
 			return "", errors.New("launchctl failed")
 		}
 		return "", nil
@@ -734,6 +872,9 @@ func TestBrowseServicesSystemd(t *testing.T) {
 			if bs.TrackedName != "nginx" {
 				t.Fatalf("TrackedName = %q, want nginx", bs.TrackedName)
 			}
+			if bs.TrackingMode != TrackingModeCustom {
+				t.Fatalf("TrackingMode = %q, want custom", bs.TrackingMode)
+			}
 		}
 		if bs.Unit == "redis.service" && !bs.Tracked {
 			foundUntracked = true
@@ -746,8 +887,9 @@ func TestBrowseServicesSystemd(t *testing.T) {
 		t.Fatal("expected redis.service to be untracked")
 	}
 	for _, bs := range result {
-		if bs.UnitType != unitTypeService {
-			t.Fatalf("UnitType(%s) = %q, want service", bs.Unit, bs.UnitType)
+		want := browseUnitType(bs.Manager, bs.Unit)
+		if bs.UnitType != want {
+			t.Fatalf("UnitType(%s) = %q, want %q", bs.Unit, bs.UnitType, want)
 		}
 	}
 }
@@ -842,6 +984,32 @@ func TestBrowseServicesInjectsTracked(t *testing.T) {
 		if !bs.Tracked {
 			t.Fatalf("expected all injected services to be tracked, %q is not", bs.Unit)
 		}
+		if bs.TrackingMode != TrackingModeBuiltin {
+			t.Fatalf("trackingMode(%s) = %q, want builtin", bs.Unit, bs.TrackingMode)
+		}
+	}
+}
+
+func TestIsBuiltinServiceReference(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		unit string
+	}{
+		{name: ServiceNameSentinel},
+		{name: ServiceNameUpdater},
+		{unit: "sentinel.service"},
+		{unit: updaterSystemdUnit},
+		{unit: sentinelLaunchdLabel},
+		{unit: updaterLaunchdLabel},
+	} {
+		if !IsBuiltinServiceReference(test.name, test.unit) {
+			t.Fatalf("IsBuiltinServiceReference(%q, %q) = false", test.name, test.unit)
+		}
+	}
+	if IsBuiltinServiceReference("nginx", "nginx.service") {
+		t.Fatal("custom service classified as builtin")
 	}
 }
 

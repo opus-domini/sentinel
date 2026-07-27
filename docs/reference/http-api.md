@@ -199,6 +199,12 @@ Payload:
 | `GET`    | `/api/ops/services/unit/status`      | Inspect unit directly                     |
 | `GET`    | `/api/ops/services/unit/logs`        | Unit logs directly                        |
 
+Tracked service and Browse entries expose `trackingMode` as `builtin` or
+`custom`. Built-ins are resolved from canonical systemd units or launchd labels
+at request time and are not persisted in `ops_custom_services`. Registering a
+reserved built-in name/unit or deleting a built-in identity returns
+`409 OPS_SERVICE_BUILTIN`.
+
 Service action payload:
 
 ```json

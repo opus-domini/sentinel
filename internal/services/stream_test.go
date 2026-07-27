@@ -86,7 +86,7 @@ func TestStreamLogsRejectsInvalidAndUnavailableServices(t *testing.T) {
 		{
 			name:    "unsupported manager",
 			service: ServiceNameSentinel,
-			repo:    builtinServicesRepo("darwin"),
+			repo:    &stubCustomServicesRepo{},
 			goos:    "darwin",
 			runner: func(context.Context, string, ...string) (string, error) {
 				return "state = running\nlast exit code = 0", nil
@@ -124,10 +124,12 @@ func TestStreamLogsBuildsJournalctlCommand(t *testing.T) {
 		nowFn:          time.Now,
 		uidFn:          func() int { return 1000 },
 		goos:           "linux",
-		customServices: builtinServicesRepo("linux"),
-		commandRunner: func(context.Context, string, ...string) (string, error) {
+		customServices: &stubCustomServicesRepo{},
+		commandRunner: withSystemdBuiltinStates(map[string]string{
+			sentinelSystemdUnit: probeActiveResponse,
+		}, func(context.Context, string, ...string) (string, error) {
 			return probeActiveResponse, nil
-		},
+		}),
 	}
 
 	reader, err := manager.StreamLogs(context.Background(), ServiceNameSentinel)

@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 16 || name != "update-apply-runbook" {
-		t.Fatalf("latest migration = (%d, %q), want (16, %q)", version, name, "update-apply-runbook")
+	if version != 17 || name != "builtin-services" {
+		t.Fatalf("latest migration = (%d, %q), want (17, %q)", version, name, "builtin-services")
 	}
 
 	// Spot-check that a few tables exist.
@@ -64,8 +64,81 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 13 {
-		t.Fatalf("schema_migrations rows = %d, want 13", count)
+	if count != 14 {
+		t.Fatalf("schema_migrations rows = %d, want 14", count)
+	}
+}
+
+func TestBuiltinServicesMigrationRemovesOnlyReservedCollisions(t *testing.T) {
+	t.Parallel()
+
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version INTEGER PRIMARY KEY,
+		name TEXT NOT NULL,
+		applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`); err != nil {
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+
+	all, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations: %v", err)
+	}
+	var builtinMigration migration
+	for _, item := range all {
+		if item.version < 17 {
+			if err := applyMigration(ctx, db, item); err != nil {
+				t.Fatalf("apply migration %d: %v", item.version, err)
+			}
+			continue
+		}
+		if item.version == 17 {
+			builtinMigration = item
+			break
+		}
+	}
+
+	rows := []struct {
+		name string
+		unit string
+	}{
+		{name: "sentinel", unit: "other.service"},
+		{name: "updater-copy", unit: "sentinel-updater.timer"},
+		{name: "launchd-copy", unit: "io.opusdomini.sentinel"},
+		{name: "nginx", unit: "nginx.service"},
+	}
+	for _, row := range rows {
+		if _, err := db.ExecContext(
+			ctx,
+			`INSERT INTO ops_custom_services (name, display_name, manager, unit, scope)
+			 VALUES (?, ?, 'systemd', ?, 'user')`,
+			row.name,
+			row.name,
+			row.unit,
+		); err != nil {
+			t.Fatalf("insert %s: %v", row.name, err)
+		}
+	}
+
+	if err := applyMigration(ctx, db, builtinMigration); err != nil {
+		t.Fatalf("apply builtin migration: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ops_custom_services").Scan(&count); err != nil {
+		t.Fatalf("count custom services: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("custom services count = %d, want 1", count)
+	}
+	var name string
+	if err := db.QueryRowContext(ctx, "SELECT name FROM ops_custom_services").Scan(&name); err != nil {
+		t.Fatalf("read surviving custom service: %v", err)
+	}
+	if name != "nginx" {
+		t.Fatalf("surviving custom service = %q, want nginx", name)
 	}
 }
 

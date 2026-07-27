@@ -22,6 +22,7 @@ function buildService(partial: Partial<OpsServiceStatus>): OpsServiceStatus {
   return {
     name: 'sentinel',
     displayName: 'Sentinel service',
+    trackingMode: 'builtin',
     manager: 'systemd',
     scope: 'user',
     unit: 'sentinel',

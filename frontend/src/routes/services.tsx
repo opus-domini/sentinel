@@ -629,6 +629,9 @@ function ServicesPage() {
 
   const toggleTrack = useCallback(
     async (svc: OpsBrowsedService) => {
+      if (svc.trackingMode === 'builtin') {
+        return
+      }
       if (svc.tracked && svc.trackedName) {
         await unregisterService(svc.trackedName)
       } else {

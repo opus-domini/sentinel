@@ -15,12 +15,19 @@ const (
 )
 
 func newLogsTestManager(goos string, runner commandRunner) *Manager {
+	if goos == "darwin" {
+		runner = withLaunchdBuiltins(runner)
+	} else {
+		runner = withSystemdBuiltinStates(map[string]string{
+			sentinelSystemdUnit: probeActiveResponse,
+		}, runner)
+	}
 	return &Manager{
 		nowFn:          time.Now,
 		hostname:       func() (string, error) { return "test-host", nil },
 		uidFn:          func() int { return 1000 },
 		goos:           goos,
-		customServices: builtinServicesRepo(goos),
+		customServices: &stubCustomServicesRepo{},
 		commandRunner:  runner,
 	}
 }

@@ -194,6 +194,10 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is invalid", nil)
 		return
 	}
+	if opsplane.IsBuiltinServiceReference(req.Name, req.Unit) {
+		writeError(w, http.StatusConflict, "OPS_SERVICE_BUILTIN", "built-in services are tracked from the runtime", nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -248,6 +252,10 @@ func (h *Handler) unregisterOpsService(w http.ResponseWriter, r *http.Request) {
 	serviceName := strings.TrimSpace(r.PathValue(keyService))
 	if serviceName == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "service name is required", nil)
+		return
+	}
+	if opsplane.IsBuiltinServiceReference(serviceName, "") {
+		writeError(w, http.StatusConflict, "OPS_SERVICE_BUILTIN", "built-in services cannot be unregistered", nil)
 		return
 	}
 

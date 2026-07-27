@@ -6,12 +6,20 @@ Dedicated service management page at `/services`, part of the [Ops Control Plane
 
 ## Tracked Services
 
-Sentinel tracks two built-in services automatically:
+Sentinel tracks these built-in identities directly from the installed runtime:
 
 - `sentinel` — the Sentinel server process
 - `sentinel-updater` — the autoupdate timer
 
-Custom services can be registered via API or the UI to add them to the tracked set.
+A built-in appears only when its canonical systemd unit or launchd label exists in
+the scope observable by the Sentinel process. A non-root Linux installation
+checks user and system scopes; root checks only system scope. If the same
+built-in exists in both Linux scopes, Sentinel reports a deployment conflict
+instead of choosing one silently.
+
+Built-ins are never stored in `ops_custom_services` and cannot be unpinned or
+deleted. Custom services can be registered via API or the UI to add them to the
+tracked set.
 
 ## Service Browse
 
@@ -28,6 +36,8 @@ Browse discovers manageable units on the host and annotates them with tracking s
 - `scope` — `user` or `system`
 - `tracked` — whether this unit is in the tracked set
 - `trackedName` — the registered name, if tracked
+- `trackingMode` — `builtin` for runtime-owned identities or `custom` for
+  explicitly registered services
 
 From the browse view, any service can be started, stopped, restarted, inspected, or have its logs viewed without needing to track it first.
 
@@ -53,11 +63,17 @@ Defaults: `manager` defaults to `systemd`, `scope` defaults to `user`, `displayN
 
 Stored in the `ops_custom_services` table.
 
+The reserved names and units/labels for `sentinel` and `sentinel-updater` cannot
+be registered as custom services. The API returns
+`409 OPS_SERVICE_BUILTIN` for those attempts.
+
 Remove a tracked custom service:
 
 ```
 DELETE /api/ops/services/{service}
 ```
+
+Deleting a built-in identity returns `409 OPS_SERVICE_BUILTIN`.
 
 ## Unit-Level Controls
 
@@ -130,7 +146,9 @@ Service state changes emit events over the `/ws/events` WebSocket:
 - Service actions use optimistic updates. The UI reflects the expected state immediately and reconciles when the server responds or a realtime event arrives.
 - Failed actions roll back the optimistic state and generate a toast notification.
 - The browse view supports filtering by state (active, inactive, failed), scope (user, system), and free-text search.
-- Services can be pinned (tracked) or unpinned directly from the browse list.
+- Custom services can be pinned or unpinned directly from the browse list.
+  Built-ins retain status, logs, inspect, and service actions but do not expose
+  Unpin.
 
 ## Frontend
 
@@ -139,7 +157,9 @@ The dedicated `/services` route provides a full-page service management experien
 - Services uses the full application width without a secondary sidebar. Pinned/tracked units remain available through the `Pinned` browse filter, with live status indicators in the service list.
 - The main panel has a stats header showing total, active, and failed service counts, followed by a browse panel.
 - The browse panel discovers all host services and supports filtering by state (active/inactive/failed), scope (user/system), and free-text search.
-- Per-service actions include start, stop, restart, status inspect, and logs view. Services can be pinned or unpinned directly from the browse list.
+- Per-service actions include start, stop, restart, status inspect, and logs
+  view. Custom services can be pinned or unpinned directly from Browse;
+  runtime-owned built-ins cannot.
 - Service status and logs open in modal dialogs.
 - Real-time updates arrive via WebSocket events (`ops.services.updated`, `ops.overview.updated`), keeping the browse panel in sync without polling.
 
