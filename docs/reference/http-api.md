@@ -308,7 +308,7 @@ entries, each with its canonical `name`, `severity`, and sampled `value`.
 | `GET`    | `/api/ops/services/discover`         | Discover available services               |
 | `POST`   | `/api/ops/services`                  | Register custom service                   |
 | `DELETE` | `/api/ops/services/{service}`        | Unregister custom service                 |
-| `POST`   | `/api/ops/services/{service}/action` | Execute `start`, `stop`, or `restart`     |
+| `POST`   | `/api/ops/services/{service}/action` | Execute a service action and verify it    |
 | `GET`    | `/api/ops/services/{service}/status` | Detailed manager status for one service   |
 | `GET`    | `/api/ops/services/{service}/logs`   | Service logs                              |
 | `POST`   | `/api/ops/services/unit/action`      | Act on unit directly by name              |
@@ -326,6 +326,28 @@ Service action payload:
 ```json
 { "action": "restart" }
 ```
+
+Actions accept `start`, `stop`, `restart`, `enable`, or `disable`. An accepted
+command returns HTTP `200` with bounded post-condition evidence:
+
+```json
+{
+  "verification": {
+    "state": "confirmed",
+    "field": "activeState",
+    "expected": "active",
+    "observed": "active",
+    "observedAt": "2026-07-27T15:30:01Z",
+    "attempts": 2
+  }
+}
+```
+
+`state` is `confirmed`, `mismatch`, or `unavailable`. `mismatch` and
+`unavailable` still return HTTP `200` because the manager accepted the command;
+only `confirmed` proves its post-condition. Start/restart expect
+`activeState=active`, stop expects `activeState=inactive`, enable expects
+`enabledState=enabled`, and disable expects `enabledState=disabled`.
 
 Custom service registration payload:
 
@@ -350,7 +372,15 @@ Unit action payload:
 }
 ```
 
+Status responses expose `status.observedAt` and a structured
+`status.condition` with manager-supported values among `activeState`,
+`subState`, `result`, `exitCode`, `exitStatus`, and `transitionedAt`. Tracked
+status also returns `context.runbook` and `context.latestRun`; absent values are
+JSON `null`.
+
 Unit query params (status and logs): `unit`, `scope`, `manager`, `lines`.
+Tracked and unit log endpoints also accept optional `since=<RFC3339>`. Invalid
+timestamps return `400 INVALID_REQUEST`.
 
 ### Runbooks
 

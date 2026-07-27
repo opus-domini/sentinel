@@ -188,9 +188,17 @@ export type OpsServiceStatus = {
 export type OpsServiceInspect = {
   service: OpsServiceStatus
   summary: string
+  condition: {
+    activeState?: string
+    subState?: string
+    result?: string
+    exitCode?: number
+    exitStatus?: number
+    transitionedAt?: string
+  }
   properties?: Record<string, string>
   output?: string
-  checkedAt: string
+  observedAt: string
 }
 
 export type OpsOverview = {
@@ -336,16 +344,31 @@ export type OpsServiceActionResponse = {
   services: Array<OpsServiceStatus>
   overview: OpsOverview
   globalRev: number
+  verification: OpsServiceActionVerification
 }
 
 export type OpsServiceStatusResponse = {
   status: OpsServiceInspect
+  context: {
+    runbook: OpsRunbook | null
+    latestRun: OpsRunbookRun | null
+  }
 }
 
 export type OpsServiceLogsResponse = {
   service: string
   lines: number
   output: string
+  since?: string
+}
+
+export type OpsServiceActionVerification = {
+  state: 'confirmed' | 'mismatch' | 'unavailable'
+  field: 'activeState' | 'enabledState'
+  expected: string
+  observed: string
+  observedAt: string
+  attempts: number
 }
 
 export type OpsHostMetrics = {
@@ -588,14 +611,17 @@ export type OpsBrowseServicesResponse = {
 }
 
 export type OpsUnitActionResponse = {
+  service: OpsServiceStatus
   overview: OpsOverview
   globalRev: number
+  verification: OpsServiceActionVerification
 }
 
 export type OpsUnitLogsResponse = {
   unit: string
   lines: number
   output: string
+  since?: string
 }
 
 export type WebhookSettings = {

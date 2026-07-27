@@ -36,6 +36,7 @@ const (
 	keySession       = "session"
 	keyStatus        = "status"
 	keyType          = "type"
+	keyVerification  = "verification"
 )
 
 // Action values carried by the "action" field of event payloads.

@@ -42,6 +42,7 @@ import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
   defaultOpsBrowseUnitTypes,
+  actionVerificationToast,
   deriveOpsTrackedServiceName,
   formatOpsUnitName,
   listOpsBrowseUnitTypes,
@@ -484,10 +485,11 @@ function ServicesPage() {
           )
         }
         queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
+        const toast = actionVerificationToast(action, data.verification)
         pushToast({
-          level: 'success',
+          level: toast.level,
           title: `${previous.displayName}`,
-          message: `${action} completed`,
+          message: toast.message,
         })
       } catch (error) {
         const fallback = previousServiceRef.current.get(serviceName)
@@ -561,10 +563,11 @@ function ServicesPage() {
             }),
           })
           queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
+          const toast = actionVerificationToast(action, data.verification)
           pushToast({
-            level: 'success',
+            level: toast.level,
             title: svc.unit,
-            message: `${action} completed`,
+            message: toast.message,
           })
         }
         void refreshBrowse()

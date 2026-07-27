@@ -12,7 +12,8 @@ describe('ServiceStatusDialog', () => {
     const data = {
       service: { unit: 'sentinel.service' },
       summary: 'active',
-      checkedAt: '2026-07-27T12:00:00Z',
+      condition: { activeState: 'active' },
+      observedAt: '2026-07-27T12:00:00Z',
       properties: {},
       output: '',
     } as OpsServiceInspect

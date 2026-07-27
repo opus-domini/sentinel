@@ -59,7 +59,7 @@ export function ServiceStatusDialog({
                         {formatOpsUnitName(data.service.unit)}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        checked at {data.checkedAt}
+                        observed at {data.observedAt}
                       </p>
                     </div>
                     {onViewLogs && (

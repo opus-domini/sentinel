@@ -1,4 +1,9 @@
-import type { OpsBrowsedService, OpsServiceAction, OpsServiceStatus } from '@/types'
+import type {
+  OpsBrowsedService,
+  OpsServiceAction,
+  OpsServiceActionVerification,
+  OpsServiceStatus,
+} from '@/types'
 
 const opsBrowseUnitTypeOrder = [
   'service',
@@ -138,6 +143,26 @@ export function withOptimisticServiceAction(
         ...service,
         enabledState: 'disabled',
       }
+  }
+}
+
+export function actionVerificationToast(
+  action: OpsServiceAction,
+  verification: OpsServiceActionVerification,
+) {
+  if (verification.state === 'confirmed') {
+    return { level: 'success' as const, message: `${action} confirmed` }
+  }
+  if (verification.state === 'mismatch') {
+    const observed = verification.observed || 'unknown'
+    return {
+      level: 'info' as const,
+      message: `${action} accepted; expected ${verification.field}=${verification.expected}, observed ${observed}`,
+    }
+  }
+  return {
+    level: 'info' as const,
+    message: `${action} accepted; post-condition unavailable`,
   }
 }
 

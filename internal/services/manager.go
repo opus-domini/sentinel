@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,13 @@ const (
 	stateFailed   = "failed"
 	stateUnknown  = "unknown"
 
+	verificationConfirmed   = "confirmed"
+	verificationMismatch    = "mismatch"
+	verificationUnavailable = "unavailable"
+
+	verificationFieldActive  = "activeState"
+	verificationFieldEnabled = "enabledState"
+
 	// TrackingModeBuiltin identifies services derived from the installed runtime.
 	TrackingModeBuiltin = "builtin"
 	// TrackingModeCustom identifies services explicitly registered by the operator.
@@ -91,6 +99,7 @@ var (
 )
 
 type commandRunner func(ctx context.Context, name string, args ...string) (string, error)
+type sleepFunc func(ctx context.Context, delay time.Duration) error
 
 // ServiceStatus represents service status data.
 type ServiceStatus struct {
@@ -111,9 +120,41 @@ type ServiceStatus struct {
 type ServiceInspect struct {
 	Service    ServiceStatus     `json:"service"`
 	Summary    string            `json:"summary"`
+	Condition  ServiceCondition  `json:"condition"`
 	Properties map[string]string `json:"properties,omitempty"`
 	Output     string            `json:"output,omitempty"`
-	CheckedAt  string            `json:"checkedAt"`
+	ObservedAt string            `json:"observedAt"`
+}
+
+// ServiceCondition exposes the structured cause reported by the service
+// manager. Unsupported or absent properties remain omitted.
+type ServiceCondition struct {
+	ActiveState    string `json:"activeState,omitempty"`
+	SubState       string `json:"subState,omitempty"`
+	Result         string `json:"result,omitempty"`
+	ExitCode       *int   `json:"exitCode,omitempty"`
+	ExitStatus     *int   `json:"exitStatus,omitempty"`
+	TransitionedAt string `json:"transitionedAt,omitempty"`
+}
+
+// ServiceActionVerification records the bounded post-condition check performed
+// after a service manager accepts an action.
+type ServiceActionVerification struct {
+	State      string `json:"state"`
+	Field      string `json:"field"`
+	Expected   string `json:"expected"`
+	Observed   string `json:"observed"`
+	ObservedAt string `json:"observedAt"`
+	Attempts   int    `json:"attempts"`
+}
+
+// ServiceActionResult combines the final observed service state with its
+// post-condition evidence.
+type ServiceActionResult struct {
+	Service      ServiceStatus             `json:"service"`
+	Verification ServiceActionVerification `json:"verification"`
+	Services     []ServiceStatus           `json:"-"`
+	Overview     Overview                  `json:"-"`
 }
 
 // HostOverview represents host overview data.
@@ -158,6 +199,7 @@ type Manager struct {
 	metrics        *metricsCollector
 
 	commandRunner commandRunner
+	sleepFn       sleepFunc
 }
 
 var (
@@ -180,6 +222,7 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 		customServices: csRepo,
 		metrics:        newMetricsCollector(),
 		commandRunner:  runCommand,
+		sleepFn:        sleepContext,
 	}
 }
 
@@ -206,9 +249,15 @@ func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 	if err != nil {
 		return Overview{}, err
 	}
+	return m.overviewFromServices(services), nil
+}
 
-	now := m.nowFn().UTC()
-	hostname, _ := m.hostname()
+func (m *Manager) overviewFromServices(services []ServiceStatus) Overview {
+	now := m.nowUTC()
+	var hostname string
+	if m != nil && m.hostname != nil {
+		hostname, _ = m.hostname()
+	}
 	uptime := now.Sub(m.startedAt)
 	if uptime < 0 {
 		uptime = 0
@@ -239,7 +288,7 @@ func (m *Manager) Overview(ctx context.Context) (Overview, error) {
 		}
 	}
 
-	return out, nil
+	return out
 }
 
 // ListServices lists services.
@@ -384,7 +433,7 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 		}
 		svc.Exists = true
 		svc.ActiveState = launchdActiveState(out)
-		svc.EnabledState = "enabled"
+		svc.EnabledState = "-"
 	default:
 		svc.Exists = false
 		svc.ActiveState = stateUnknown
@@ -392,40 +441,55 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 	}
 }
 
-// Act runs value.
-func (m *Manager) Act(ctx context.Context, name, action string) (ServiceStatus, error) {
+// Act executes an action and verifies its post-condition against the tracked
+// service catalog.
+func (m *Manager) Act(ctx context.Context, name, action string) (ServiceActionResult, error) {
 	serviceName, ok := normalizeServiceName(name)
 	if !ok {
-		return ServiceStatus{}, ErrServiceNotFound
+		return ServiceActionResult{}, ErrServiceNotFound
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
 	if !isValidAction(action) {
-		return ServiceStatus{}, ErrInvalidAction
+		return ServiceActionResult{}, ErrInvalidAction
 	}
 
 	services, err := m.ListServices(ctx)
 	if err != nil {
-		return ServiceStatus{}, err
+		return ServiceActionResult{}, err
 	}
 	target, ok := findServiceStatus(services, serviceName)
 	if !ok {
-		return ServiceStatus{}, ErrServiceNotFound
+		return ServiceActionResult{}, ErrServiceNotFound
 	}
 	switch target.Manager {
 	case managerSystemd:
 		if err := m.actSystemd(ctx, target.Scope, target.Unit, action); err != nil {
-			return ServiceStatus{}, err
+			return ServiceActionResult{}, err
 		}
 	case managerLaunchd:
 		if err := m.actLaunchd(ctx, target.Scope, target.Unit, action); err != nil {
-			return ServiceStatus{}, err
+			return ServiceActionResult{}, err
 		}
 	default:
-		return ServiceStatus{}, fmt.Errorf("unsupported service manager: %s", target.Manager)
+		return ServiceActionResult{}, fmt.Errorf("unsupported service manager: %s", target.Manager)
 	}
 
-	m.probeCustomService(ctx, &target)
-	return target, nil
+	latestServices := services
+	result := m.verifyAction(ctx, action, target, func(observeCtx context.Context) (ServiceStatus, error) {
+		current, listErr := m.ListServices(observeCtx)
+		if listErr != nil {
+			return ServiceStatus{}, listErr
+		}
+		latestServices = current
+		observed, found := findServiceStatus(current, serviceName)
+		if !found {
+			return ServiceStatus{}, ErrServiceNotFound
+		}
+		return observed, nil
+	})
+	result.Services = latestServices
+	result.Overview = m.overviewFromServices(latestServices)
+	return result, nil
 }
 
 // Inspect inspects value.
@@ -445,9 +509,9 @@ func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, err
 	}
 
 	inspect := ServiceInspect{
-		Service:   target,
-		Summary:   fmt.Sprintf("enabled=%s active=%s", target.EnabledState, target.ActiveState),
-		CheckedAt: m.nowFn().UTC().Format(time.RFC3339),
+		Service:    target,
+		Summary:    fmt.Sprintf("enabled=%s active=%s", target.EnabledState, target.ActiveState),
+		ObservedAt: m.nowUTC().Format(time.RFC3339),
 	}
 
 	switch target.Manager {
@@ -458,6 +522,8 @@ func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, err
 		}
 		inspect.Properties = props
 		inspect.Output = output
+		inspect.Condition = systemdCondition(props)
+		applySystemdProperties(&inspect.Service, props)
 		if summary := strings.TrimSpace(buildInspectSummary(props)); summary != "" {
 			inspect.Summary = summary
 		}
@@ -467,6 +533,8 @@ func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, err
 			return ServiceInspect{}, inspectErr
 		}
 		inspect.Output = output
+		inspect.Properties, inspect.Condition = launchdCondition(output)
+		applyLaunchdCondition(&inspect.Service, inspect.Condition)
 	default:
 		return ServiceInspect{}, fmt.Errorf("unsupported service manager: %s", target.Manager)
 	}
@@ -499,7 +567,7 @@ func (m *Manager) inspectSystemd(ctx context.Context, target ServiceStatus) (map
 		"show",
 		target.Unit,
 		"--no-pager",
-		"--property=Id,Description,LoadState,UnitFileState,ActiveState,SubState,FragmentPath,ExecMainPID",
+		"--property=Id,Description,LoadState,UnitFileState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,StateChangeTimestampUSec,StateChangeTimestamp,FragmentPath,ExecMainPID",
 	)
 	out, err := m.commandRunner(ctx, "systemctl", args...)
 	if err != nil {
@@ -556,6 +624,118 @@ func (m *Manager) actLaunchd(ctx context.Context, scope, label, action string) e
 		return nil
 	default:
 		return ErrInvalidAction
+	}
+}
+
+func (m *Manager) verifyAction(
+	ctx context.Context,
+	action string,
+	initial ServiceStatus,
+	observe func(context.Context) (ServiceStatus, error),
+) ServiceActionResult {
+	field, expected := actionExpectation(action)
+	result := ServiceActionResult{
+		Service: initial,
+		Verification: ServiceActionVerification{
+			State:      verificationUnavailable,
+			Field:      field,
+			Expected:   expected,
+			ObservedAt: m.nowUTC().Format(time.RFC3339),
+		},
+	}
+
+	delays := [...]time.Duration{0, 250 * time.Millisecond, 500 * time.Millisecond, 750 * time.Millisecond}
+	var observed bool
+	for _, delay := range delays {
+		if delay > 0 {
+			if err := m.wait(ctx, delay); err != nil {
+				break
+			}
+		}
+
+		result.Verification.Attempts++
+		current, err := observe(ctx)
+		if err != nil {
+			result.Verification.ObservedAt = m.nowUTC().Format(time.RFC3339)
+			continue
+		}
+
+		result.Service = current
+		result.Verification.Observed = serviceField(current, field)
+		result.Verification.ObservedAt = observedAt(current, m.nowUTC())
+		if result.Verification.Observed == "" ||
+			result.Verification.Observed == "-" ||
+			strings.EqualFold(result.Verification.Observed, stateUnknown) {
+			continue
+		}
+		observed = true
+		if strings.EqualFold(result.Verification.Observed, expected) {
+			result.Verification.State = verificationConfirmed
+			return result
+		}
+	}
+
+	if observed {
+		result.Verification.State = verificationMismatch
+	}
+	return result
+}
+
+func actionExpectation(action string) (string, string) {
+	switch action {
+	case ActionStart, ActionRestart:
+		return verificationFieldActive, stateActive
+	case ActionStop:
+		return verificationFieldActive, stateInactive
+	case ActionEnable:
+		return verificationFieldEnabled, "enabled"
+	case ActionDisable:
+		return verificationFieldEnabled, "disabled"
+	default:
+		return verificationFieldActive, stateUnknown
+	}
+}
+
+func serviceField(service ServiceStatus, field string) string {
+	if field == verificationFieldEnabled {
+		return strings.TrimSpace(service.EnabledState)
+	}
+	value := strings.TrimSpace(service.ActiveState)
+	if strings.EqualFold(value, stateRunning) {
+		return stateActive
+	}
+	return value
+}
+
+func observedAt(service ServiceStatus, fallback time.Time) string {
+	if value := strings.TrimSpace(service.UpdatedAt); value != "" {
+		return value
+	}
+	return fallback.UTC().Format(time.RFC3339)
+}
+
+func (m *Manager) nowUTC() time.Time {
+	if m != nil && m.nowFn != nil {
+		return m.nowFn().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func (m *Manager) wait(ctx context.Context, delay time.Duration) error {
+	if m != nil && m.sleepFn != nil {
+		return m.sleepFn(ctx, delay)
+	}
+	return nil
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
@@ -781,6 +961,120 @@ func parseSystemdShow(raw string) map[string]string {
 		props[key] = value
 	}
 	return props
+}
+
+func systemdCondition(props map[string]string) ServiceCondition {
+	return ServiceCondition{
+		ActiveState:    strings.TrimSpace(props["ActiveState"]),
+		SubState:       strings.TrimSpace(props["SubState"]),
+		Result:         strings.TrimSpace(props["Result"]),
+		ExitCode:       parseOptionalInt(props["ExecMainCode"]),
+		ExitStatus:     parseOptionalInt(props["ExecMainStatus"]),
+		TransitionedAt: parseSystemdTransition(props),
+	}
+}
+
+func applySystemdProperties(service *ServiceStatus, props map[string]string) {
+	if service == nil {
+		return
+	}
+	loadState := strings.ToLower(strings.TrimSpace(props["LoadState"]))
+	if loadState != "" {
+		service.Exists = loadState != "not-found"
+	}
+	if active := strings.TrimSpace(props["ActiveState"]); active != "" {
+		service.ActiveState = active
+	}
+	if enabled := strings.TrimSpace(props["UnitFileState"]); enabled != "" {
+		service.EnabledState = enabled
+	}
+}
+
+func launchdCondition(raw string) (map[string]string, ServiceCondition) {
+	rawProps := parseLaunchdPrint(raw)
+	properties := make(map[string]string, 3)
+	condition := ServiceCondition{}
+	if state := strings.TrimSpace(rawProps["state"]); state != "" {
+		properties["state"] = state
+		condition.ActiveState = state
+	}
+	if pid := strings.TrimSpace(rawProps["pid"]); pid != "" {
+		properties["pid"] = pid
+	}
+	if exit := strings.TrimSpace(rawProps["last exit code"]); exit != "" {
+		properties["lastExitStatus"] = exit
+		condition.ExitStatus = parseOptionalInt(exit)
+	}
+	if len(properties) == 0 {
+		return nil, condition
+	}
+	return properties, condition
+}
+
+func applyLaunchdCondition(service *ServiceStatus, condition ServiceCondition) {
+	if service == nil {
+		return
+	}
+	service.Exists = true
+	service.EnabledState = "-"
+	state := strings.ToLower(strings.TrimSpace(condition.ActiveState))
+	switch state {
+	case stateRunning, stateActive:
+		service.ActiveState = stateRunning
+	case "", stateInactive, "waiting", "exited", "stopped", "not running":
+		if condition.ExitStatus != nil && *condition.ExitStatus != 0 {
+			service.ActiveState = stateFailed
+		} else {
+			service.ActiveState = stateInactive
+		}
+	default:
+		if condition.ExitStatus != nil && *condition.ExitStatus != 0 {
+			service.ActiveState = stateFailed
+		} else {
+			service.ActiveState = stateUnknown
+		}
+	}
+}
+
+func parseOptionalInt(raw string) *int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return nil
+	}
+	return &value
+}
+
+func parseSystemdTransition(props map[string]string) string {
+	if raw := strings.TrimSpace(props["StateChangeTimestampUSec"]); raw != "" {
+		if micros, err := strconv.ParseInt(raw, 10, 64); err == nil && micros > 0 {
+			return time.UnixMicro(micros).UTC().Format(time.RFC3339)
+		}
+		if parsed, ok := parseSystemdTimestamp(raw); ok {
+			return parsed
+		}
+	}
+	if parsed, ok := parseSystemdTimestamp(strings.TrimSpace(props["StateChangeTimestamp"])); ok {
+		return parsed
+	}
+	return ""
+}
+
+func parseSystemdTimestamp(raw string) (string, bool) {
+	if raw == "" || strings.EqualFold(raw, "n/a") {
+		return "", false
+	}
+	layouts := [...]string{
+		"Mon 2006-01-02 15:04:05 -07",
+		"Mon 2006-01-02 15:04:05 MST",
+		time.RFC3339Nano,
+	}
+	for _, layout := range layouts {
+		value, err := time.Parse(layout, raw)
+		if err == nil {
+			return value.UTC().Format(time.RFC3339), true
+		}
+	}
+	return "", false
 }
 
 // AvailableService represents a manageable systemd/launchd unit discovered on
@@ -1113,23 +1407,39 @@ func (m *Manager) BrowseServices(ctx context.Context) ([]BrowsedService, error) 
 
 // ActByUnit performs a service action using unit/scope/manager directly,
 // without requiring the service to be tracked in the store.
-func (m *Manager) ActByUnit(ctx context.Context, unit, scope, manager, action string) error {
+func (m *Manager) ActByUnit(
+	ctx context.Context,
+	unit, scope, manager, action string,
+) (ServiceActionResult, error) {
 	if !IsValidUnit(unit) {
-		return ErrInvalidUnit
+		return ServiceActionResult{}, ErrInvalidUnit
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
 	if !isValidAction(action) {
-		return ErrInvalidAction
+		return ServiceActionResult{}, ErrInvalidAction
 	}
 
+	var err error
 	switch manager {
 	case managerSystemd:
-		return m.actSystemdUnit(ctx, scope, unit, action)
+		err = m.actSystemdUnit(ctx, scope, unit, action)
 	case managerLaunchd:
-		return m.actLaunchdUnit(ctx, scope, unit, action)
+		err = m.actLaunchdUnit(ctx, scope, unit, action)
 	default:
-		return fmt.Errorf("unsupported service manager: %s", manager)
+		return ServiceActionResult{}, fmt.Errorf("unsupported service manager: %s", manager)
 	}
+	if err != nil {
+		return ServiceActionResult{}, err
+	}
+
+	initial := ServiceStatus{Unit: unit, Scope: scope, Manager: manager}
+	return m.verifyAction(ctx, action, initial, func(observeCtx context.Context) (ServiceStatus, error) {
+		inspect, inspectErr := m.InspectByUnit(observeCtx, unit, scope, manager)
+		if inspectErr != nil {
+			return ServiceStatus{}, inspectErr
+		}
+		return inspect.Service, nil
+	}), nil
 }
 
 func (m *Manager) actSystemdUnit(ctx context.Context, scope, unit, action string) error {
@@ -1194,9 +1504,9 @@ func (m *Manager) InspectByUnit(ctx context.Context, unit, scope, manager string
 	}
 
 	inspect := ServiceInspect{
-		Service:   target,
-		Summary:   fmt.Sprintf("unit=%s scope=%s", unit, scope),
-		CheckedAt: m.nowFn().UTC().Format(time.RFC3339),
+		Service:    target,
+		Summary:    fmt.Sprintf("unit=%s scope=%s", unit, scope),
+		ObservedAt: m.nowUTC().Format(time.RFC3339),
 	}
 
 	switch manager {
@@ -1207,6 +1517,8 @@ func (m *Manager) InspectByUnit(ctx context.Context, unit, scope, manager string
 		}
 		inspect.Properties = props
 		inspect.Output = output
+		inspect.Condition = systemdCondition(props)
+		applySystemdProperties(&inspect.Service, props)
 		if summary := strings.TrimSpace(buildInspectSummary(props)); summary != "" {
 			inspect.Summary = summary
 		}
@@ -1217,6 +1529,8 @@ func (m *Manager) InspectByUnit(ctx context.Context, unit, scope, manager string
 			return ServiceInspect{}, fmt.Errorf("launchd inspect failed: %w", err)
 		}
 		inspect.Output = out
+		inspect.Properties, inspect.Condition = launchdCondition(out)
+		applyLaunchdCondition(&inspect.Service, inspect.Condition)
 	default:
 		return ServiceInspect{}, fmt.Errorf("unsupported service manager: %s", manager)
 	}

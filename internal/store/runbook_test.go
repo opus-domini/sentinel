@@ -612,6 +612,66 @@ func TestCreateOpsRunbookRunPersistsSourceAndDerivedTarget(t *testing.T) {
 	}
 }
 
+func TestGetLatestOpsRunbookRunByTarget(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	rb, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID:            "target.latest",
+		Name:          "Target Latest",
+		TargetService: "nginx",
+		Steps:         []OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstAt := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	first, err := s.CreateOpsRunbookRun(ctx, OpsRunbookRunWrite{
+		Definition: rb,
+		Source:     OpsRunbookRunSourceRunbooks,
+		At:         firstAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:      first.ID,
+		Status:     OpsRunbookStatusSucceeded,
+		FinishedAt: firstAt.Add(time.Minute).Format(time.RFC3339),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.CreateOpsRunbookRun(ctx, OpsRunbookRunWrite{
+		Definition: rb,
+		Source:     OpsRunbookRunSourceNow,
+		At:         firstAt.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	latest, err := s.GetLatestOpsRunbookRunByTarget(
+		ctx,
+		OpsRunbookRunTargetService,
+		"nginx",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.ID != second.ID || latest.Definition == nil {
+		t.Fatalf("latest = %#v, want run %s with receipt", latest, second.ID)
+	}
+
+	if _, err := s.GetLatestOpsRunbookRunByTarget(
+		ctx,
+		OpsRunbookRunTargetService,
+		"missing",
+	); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing target error = %v, want sql.ErrNoRows", err)
+	}
+}
+
 func TestCreateOpsRunbookRunRejectsInvalidSource(t *testing.T) {
 	t.Parallel()
 

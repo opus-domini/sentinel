@@ -92,7 +92,7 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	serviceStatus, err := h.ops.Act(ctx, serviceName, req.Action)
+	actionResult, err := h.ops.Act(ctx, serviceName, req.Action)
 	if err != nil {
 		switch {
 		case errors.Is(err, opsplane.ErrServiceNotFound):
@@ -105,25 +105,23 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	serviceStatus := actionResult.Service
 
-	services, err := h.ops.ListServices(ctx)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to refresh ops services", nil)
-		return
+	services := actionResult.Services
+	if services == nil {
+		services = []opsplane.ServiceStatus{serviceStatus}
 	}
-	overview, err := h.ops.Overview(ctx)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "OPS_UNAVAILABLE", "failed to refresh ops overview", nil)
-		return
-	}
+	overview := actionResult.Overview
 
 	now := time.Now().UTC()
 	globalRev := now.UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
-		keyGlobalRev: globalRev,
-		keyService:   serviceStatus.Name,
-		keyAction:    req.Action,
-		keyServices:  services,
+		keyGlobalRev:    globalRev,
+		keyService:      serviceStatus.Name,
+		keyAction:       req.Action,
+		keyServices:     services,
+		"observed":      serviceStatus,
+		keyVerification: actionResult.Verification,
 	})
 	h.emit(events.TypeOpsOverview, map[string]any{
 		keyGlobalRev: globalRev,
@@ -131,16 +129,17 @@ func (h *Handler) opsServiceAction(w http.ResponseWriter, r *http.Request) {
 	})
 
 	response := map[string]any{
-		keyService:   serviceStatus,
-		keyServices:  services,
-		keyOverview:  overview,
-		keyGlobalRev: globalRev,
+		keyService:      serviceStatus,
+		keyServices:     services,
+		keyOverview:     overview,
+		keyGlobalRev:    globalRev,
+		keyVerification: actionResult.Verification,
 	}
 	writeData(w, http.StatusOK, response)
 }
 
 func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
-	if h.ops == nil {
+	if h.ops == nil || h.runbooks == nil || h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "OPS_UNAVAILABLE", "ops control plane unavailable", nil)
 		return
 	}
@@ -165,8 +164,41 @@ func (h *Handler) opsServiceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var associated *store.OpsRunbook
+	runbooks, err := h.runbooks.List(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load service runbook context", nil)
+		return
+	}
+	for i := range runbooks {
+		if runbooks[i].TargetService == serviceName {
+			runbook := runbooks[i]
+			associated = &runbook
+			break
+		}
+	}
+
+	var latest *store.OpsRunbookRun
+	run, err := h.repo.GetLatestOpsRunbookRunByTarget(
+		ctx,
+		store.OpsRunbookRunTargetService,
+		serviceName,
+	)
+	switch {
+	case err == nil:
+		latest = &run
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to load service run context", nil)
+		return
+	}
+
 	writeData(w, http.StatusOK, map[string]any{
 		keyStatus: status,
+		"context": map[string]any{
+			"runbook":   associated,
+			"latestRun": latest,
+		},
 	})
 }
 
@@ -319,11 +351,16 @@ func (h *Handler) opsServiceLogs(w http.ResponseWriter, r *http.Request) {
 			lines = parsed
 		}
 	}
+	since, err := parseLogsSince(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	output, err := h.ops.Logs(ctx, serviceName, lines)
+	output, err := h.ops.Logs(ctx, serviceName, lines, since)
 	if err != nil {
 		if errors.Is(err, opsplane.ErrServiceNotFound) {
 			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
@@ -334,11 +371,15 @@ func (h *Handler) opsServiceLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeData(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		keyService: serviceName,
 		"lines":    lines,
 		"output":   output,
-	})
+	}
+	if !since.IsZero() {
+		response["since"] = since.Format(time.RFC3339)
+	}
+	writeData(w, http.StatusOK, response)
 }
 
 func (h *Handler) discoverOpsServices(w http.ResponseWriter, r *http.Request) {
@@ -427,7 +468,8 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	if err := h.ops.ActByUnit(ctx, req.Unit, req.Scope, req.Manager, req.Action); err != nil {
+	actionResult, err := h.ops.ActByUnit(ctx, req.Unit, req.Scope, req.Manager, req.Action)
+	if err != nil {
 		if errors.Is(err, opsplane.ErrInvalidAction) {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid action", nil)
 		} else {
@@ -445,17 +487,21 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 
 	globalRev := time.Now().UTC().UnixMilli()
 	h.emit(events.TypeOpsServices, map[string]any{
-		keyGlobalRev: globalRev,
-		keyService:   req.Unit,
-		keyAction:    req.Action,
+		keyGlobalRev:    globalRev,
+		keyService:      req.Unit,
+		keyAction:       req.Action,
+		"observed":      actionResult.Service,
+		keyVerification: actionResult.Verification,
 	})
 	h.emit(events.TypeOpsOverview, map[string]any{
 		keyGlobalRev: globalRev,
 		keyOverview:  overview,
 	})
 	response := map[string]any{
-		keyOverview:  overview,
-		keyGlobalRev: globalRev,
+		keyService:      actionResult.Service,
+		keyOverview:     overview,
+		keyGlobalRev:    globalRev,
+		keyVerification: actionResult.Verification,
 	}
 	writeData(w, http.StatusOK, response)
 }
@@ -527,22 +573,43 @@ func (h *Handler) opsUnitLogs(w http.ResponseWriter, r *http.Request) {
 			lines = parsed
 		}
 	}
+	since, err := parseLogsSince(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	output, err := h.ops.LogsByUnit(ctx, unit, scope, manager, lines)
+	output, err := h.ops.LogsByUnit(ctx, unit, scope, manager, lines, since)
 	if err != nil {
 		slog.Warn("ops unit logs failed", "unit", unit, "err", err)
 		writeError(w, http.StatusInternalServerError, "OPS_LOGS_FAILED", "failed to fetch unit logs", nil)
 		return
 	}
 
-	writeData(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"unit":   unit,
 		"lines":  lines,
 		"output": output,
-	})
+	}
+	if !since.IsZero() {
+		response["since"] = since.Format(time.RFC3339)
+	}
+	writeData(w, http.StatusOK, response)
+}
+
+func parseLogsSince(r *http.Request) (time.Time, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("since"))
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	value, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, errors.New("since must be an RFC3339 timestamp")
+	}
+	return value.UTC(), nil
 }
 
 func (h *Handler) opsMetrics(w http.ResponseWriter, r *http.Request) {

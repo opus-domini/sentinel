@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
@@ -55,15 +56,15 @@ type tmuxService interface {
 type opsControlPlane interface {
 	Overview(ctx context.Context) (opsplane.Overview, error)
 	ListServices(ctx context.Context) ([]opsplane.ServiceStatus, error)
-	Act(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
+	Act(ctx context.Context, name, action string) (opsplane.ServiceActionResult, error)
 	Inspect(ctx context.Context, name string) (opsplane.ServiceInspect, error)
-	Logs(ctx context.Context, name string, lines int) (string, error)
+	Logs(ctx context.Context, name string, lines int, since time.Time) (string, error)
 	Metrics(ctx context.Context) opsplane.HostMetrics
 	DiscoverServices(ctx context.Context) ([]opsplane.AvailableService, error)
 	BrowseServices(ctx context.Context) ([]opsplane.BrowsedService, error)
-	ActByUnit(ctx context.Context, unit, scope, manager, action string) error
+	ActByUnit(ctx context.Context, unit, scope, manager, action string) (opsplane.ServiceActionResult, error)
 	InspectByUnit(ctx context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error)
-	LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error)
+	LogsByUnit(ctx context.Context, unit, scope, manager string, lines int, since time.Time) (string, error)
 }
 
 type mcpSettings interface {
@@ -117,6 +118,10 @@ type opsJobRepo interface {
 	GetOpsRunbook(ctx context.Context, id string) (store.OpsRunbook, error)
 	CreateOpsRunbookRun(ctx context.Context, write store.OpsRunbookRunWrite) (store.OpsRunbookRun, error)
 	DeleteOpsRunbookRun(ctx context.Context, runID string) error
+}
+
+type opsServiceContextRepo interface {
+	GetLatestOpsRunbookRunByTarget(ctx context.Context, kind, name string) (store.OpsRunbookRun, error)
 }
 
 type nowRunbookRepo interface {
@@ -206,6 +211,7 @@ type handlerRepo interface {
 	watchtowerMarkRepo
 	presenceRepo
 	opsJobRepo
+	opsServiceContextRepo
 	nowRunbookRepo
 	opsScheduleRepo
 	customServicesRepo

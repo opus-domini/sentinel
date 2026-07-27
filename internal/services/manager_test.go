@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -180,8 +181,8 @@ func TestActSystemdUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Act: %v", err)
 	}
-	if status.Name != ServiceNameSentinel {
-		t.Fatalf("status.Name = %q, want %q", status.Name, ServiceNameSentinel)
+	if status.Service.Name != ServiceNameSentinel {
+		t.Fatalf("status.Service.Name = %q, want %q", status.Service.Name, ServiceNameSentinel)
 	}
 	want := []string{"systemctl", "--user", "restart", sentinelSystemdUnit}
 	found := false
@@ -230,6 +231,103 @@ func TestActSystemdUpdater(t *testing.T) {
 	}
 }
 
+func TestVerifyActionUsesBoundedObservations(t *testing.T) {
+	t.Parallel()
+
+	fixed := time.Date(2026, 7, 27, 16, 0, 0, 0, time.UTC)
+	var delays []time.Duration
+	m := &Manager{
+		nowFn: func() time.Time { return fixed },
+		sleepFn: func(_ context.Context, delay time.Duration) error {
+			delays = append(delays, delay)
+			return nil
+		},
+	}
+	attempts := 0
+	result := m.verifyAction(
+		context.Background(),
+		ActionRestart,
+		ServiceStatus{ActiveState: stateFailed},
+		func(context.Context) (ServiceStatus, error) {
+			attempts++
+			return ServiceStatus{
+				ActiveState: stateFailed,
+				UpdatedAt:   fixed.Add(time.Duration(attempts) * time.Second).Format(time.RFC3339),
+			}, nil
+		},
+	)
+
+	if result.Verification.State != verificationMismatch ||
+		result.Verification.Attempts != 4 ||
+		result.Verification.Expected != stateActive ||
+		result.Verification.Observed != stateFailed {
+		t.Fatalf("verification = %#v", result.Verification)
+	}
+	if !reflect.DeepEqual(delays, []time.Duration{
+		250 * time.Millisecond,
+		500 * time.Millisecond,
+		750 * time.Millisecond,
+	}) {
+		t.Fatalf("delays = %v", delays)
+	}
+}
+
+func TestVerifyActionConfirmsSecondObservation(t *testing.T) {
+	t.Parallel()
+
+	fixed := time.Date(2026, 7, 27, 16, 0, 0, 0, time.UTC)
+	m := &Manager{
+		nowFn:   func() time.Time { return fixed },
+		sleepFn: func(context.Context, time.Duration) error { return nil },
+	}
+	attempts := 0
+	result := m.verifyAction(
+		context.Background(),
+		ActionStart,
+		ServiceStatus{ActiveState: stateInactive},
+		func(context.Context) (ServiceStatus, error) {
+			attempts++
+			state := stateInactive
+			if attempts == 2 {
+				state = stateActive
+			}
+			return ServiceStatus{
+				ActiveState: state,
+				UpdatedAt:   fixed.Add(time.Duration(attempts) * time.Second).Format(time.RFC3339),
+			}, nil
+		},
+	)
+
+	if result.Verification.State != verificationConfirmed ||
+		result.Verification.Attempts != 2 ||
+		result.Verification.ObservedAt != "2026-07-27T16:00:02Z" {
+		t.Fatalf("verification = %#v", result.Verification)
+	}
+}
+
+func TestVerifyActionUnavailableWhenStateCannotBeObserved(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{
+		nowFn:   func() time.Time { return time.Date(2026, 7, 27, 16, 0, 0, 0, time.UTC) },
+		sleepFn: func(context.Context, time.Duration) error { return nil },
+	}
+	result := m.verifyAction(
+		context.Background(),
+		ActionDisable,
+		ServiceStatus{},
+		func(context.Context) (ServiceStatus, error) {
+			return ServiceStatus{}, errors.New("status unavailable")
+		},
+	)
+
+	if result.Verification.State != verificationUnavailable ||
+		result.Verification.Attempts != 4 ||
+		result.Verification.Field != verificationFieldEnabled {
+		t.Fatalf("verification = %#v", result.Verification)
+	}
+}
+
 func TestInspectSystemdService(t *testing.T) {
 	t.Parallel()
 
@@ -250,6 +348,10 @@ func TestInspectSystemdService(t *testing.T) {
 				"UnitFileState=enabled",
 				"ActiveState=active",
 				"SubState=running",
+				"Result=success",
+				"ExecMainCode=1",
+				"ExecMainStatus=0",
+				"StateChangeTimestamp=Sun 2026-02-15 12:00:00 -03",
 				"FragmentPath=/home/dev/.config/systemd/user/sentinel.service",
 				"ExecMainPID=1234",
 			}, "\n"), nil
@@ -269,8 +371,20 @@ func TestInspectSystemdService(t *testing.T) {
 	if details.Summary != "load=loaded active=active sub=running" {
 		t.Fatalf("summary = %q, want systemd summary", details.Summary)
 	}
-	if details.CheckedAt != "2026-02-15T12:00:00Z" {
-		t.Fatalf("checkedAt = %q, want fixed timestamp", details.CheckedAt)
+	if details.ObservedAt != "2026-02-15T12:00:00Z" {
+		t.Fatalf("observedAt = %q, want fixed timestamp", details.ObservedAt)
+	}
+	if details.Condition.ActiveState != stateActive ||
+		details.Condition.SubState != stateRunning ||
+		details.Condition.Result != "success" {
+		t.Fatalf("condition = %#v", details.Condition)
+	}
+	if details.Condition.ExitCode == nil || *details.Condition.ExitCode != 1 ||
+		details.Condition.ExitStatus == nil || *details.Condition.ExitStatus != 0 {
+		t.Fatalf("condition exits = %#v", details.Condition)
+	}
+	if details.Condition.TransitionedAt != "2026-02-15T15:00:00Z" {
+		t.Fatalf("transitionedAt = %q, want UTC timestamp", details.Condition.TransitionedAt)
 	}
 }
 
@@ -638,7 +752,7 @@ func TestInspectLaunchdService(t *testing.T) {
 
 	m := newTestManager("darwin", func(_ context.Context, name string, args ...string) (string, error) {
 		if name == cmdLaunchctl && len(args) > 0 && args[0] == argPrint {
-			return "launchd service detail output", nil
+			return "state = exited\npid = 4321\nlast exit code = 2\nprogram = /private/tool", nil
 		}
 		return "", nil
 	})
@@ -647,8 +761,49 @@ func TestInspectLaunchdService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
-	if details.Output != "launchd service detail output" {
-		t.Fatalf("Output = %q, want launchd output", details.Output)
+	if details.Condition.ActiveState != "exited" ||
+		details.Condition.ExitStatus == nil ||
+		*details.Condition.ExitStatus != 2 {
+		t.Fatalf("condition = %#v", details.Condition)
+	}
+	if details.Condition.Result != "" ||
+		details.Condition.ExitCode != nil ||
+		details.Condition.TransitionedAt != "" {
+		t.Fatalf("launchd invented unsupported condition fields: %#v", details.Condition)
+	}
+	if !reflect.DeepEqual(details.Properties, map[string]string{
+		"state":          "exited",
+		"pid":            "4321",
+		"lastExitStatus": "2",
+	}) {
+		t.Fatalf("properties = %#v", details.Properties)
+	}
+	if details.Service.ActiveState != stateFailed {
+		t.Fatalf("service.activeState = %q, want failed", details.Service.ActiveState)
+	}
+}
+
+func TestLaunchdConditionOmitsAbsentFields(t *testing.T) {
+	t.Parallel()
+
+	properties, condition := launchdCondition("state = running\nprogram = /private/tool")
+	if !reflect.DeepEqual(properties, map[string]string{"state": "running"}) {
+		t.Fatalf("properties = %#v", properties)
+	}
+	if condition.ActiveState != stateRunning || condition.ExitStatus != nil {
+		t.Fatalf("condition = %#v", condition)
+	}
+}
+
+func TestParseSystemdTransitionMicroseconds(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 7, 27, 16, 30, 0, 123000000, time.UTC)
+	got := parseSystemdTransition(map[string]string{
+		"StateChangeTimestampUSec": strconv.FormatInt(at.UnixMicro(), 10),
+	})
+	if got != "2026-07-27T16:30:00Z" {
+		t.Fatalf("transitionedAt = %q", got)
 	}
 }
 
@@ -1146,7 +1301,13 @@ func TestActByUnit(t *testing.T) {
 				uidFn:         func() int { return 1000 },
 				commandRunner: tc.runner,
 			}
-			err := m.ActByUnit(context.Background(), tc.unit, tc.scope, tc.manager, tc.action)
+			_, err := m.ActByUnit(
+				context.Background(),
+				tc.unit,
+				tc.scope,
+				tc.manager,
+				tc.action,
+			)
 			if tc.wantErr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q", tc.wantErr)
@@ -1246,8 +1407,8 @@ func TestInspectByUnit(t *testing.T) {
 			if result.Service.Unit != tc.unit {
 				t.Fatalf("Unit = %q, want %q", result.Service.Unit, tc.unit)
 			}
-			if result.CheckedAt == "" {
-				t.Fatal("CheckedAt is empty")
+			if result.ObservedAt == "" {
+				t.Fatal("ObservedAt is empty")
 			}
 		})
 	}
@@ -1465,13 +1626,13 @@ func TestUnitValidationRejectsUnsafeValuesBeforeExec(t *testing.T) {
 	ctx := context.Background()
 
 	for _, unit := range []string{"", "-bad.service", "bad service.service", "bad/service.service"} {
-		if err := m.ActByUnit(ctx, unit, scopeUser, managerSystemd, ActionStart); !errors.Is(err, ErrInvalidUnit) {
+		if _, err := m.ActByUnit(ctx, unit, scopeUser, managerSystemd, ActionStart); !errors.Is(err, ErrInvalidUnit) {
 			t.Fatalf("ActByUnit(%q) error = %v, want ErrInvalidUnit", unit, err)
 		}
 		if _, err := m.InspectByUnit(ctx, unit, scopeUser, managerSystemd); !errors.Is(err, ErrInvalidUnit) {
 			t.Fatalf("InspectByUnit(%q) error = %v, want ErrInvalidUnit", unit, err)
 		}
-		if _, err := m.LogsByUnit(ctx, unit, scopeUser, managerSystemd, 10); !errors.Is(err, ErrInvalidUnit) {
+		if _, err := m.LogsByUnit(ctx, unit, scopeUser, managerSystemd, 10, time.Time{}); !errors.Is(err, ErrInvalidUnit) {
 			t.Fatalf("LogsByUnit(%q) error = %v, want ErrInvalidUnit", unit, err)
 		}
 		if _, err := m.StreamLogsByUnit(ctx, unit, scopeUser, managerSystemd); !errors.Is(err, ErrInvalidUnit) {

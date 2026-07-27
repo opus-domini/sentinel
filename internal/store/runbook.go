@@ -290,6 +290,40 @@ func (s *Store) GetOpsRunbookRun(ctx context.Context, runID string) (OpsRunbookR
 	return item, nil
 }
 
+// GetLatestOpsRunbookRunByTarget returns the newest execution receipt for one
+// canonical target.
+func (s *Store) GetLatestOpsRunbookRunByTarget(
+	ctx context.Context,
+	kind, name string,
+) (OpsRunbookRun, error) {
+	kind = strings.TrimSpace(kind)
+	name = strings.TrimSpace(name)
+	if kind == "" || name == "" {
+		return OpsRunbookRun{}, sql.ErrNoRows
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT`+opsRunbookRunSelect+`
+	FROM ops_runbook_runs
+	WHERE target_kind = ? AND target_name = ?
+	ORDER BY created_at DESC, id DESC
+	LIMIT 1`, kind, name)
+	if err != nil {
+		return OpsRunbookRun{}, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		return OpsRunbookRun{}, sql.ErrNoRows
+	}
+	item, err := scanOpsRunbookRun(rows)
+	if err != nil {
+		return OpsRunbookRun{}, err
+	}
+	if err := rows.Err(); err != nil {
+		return OpsRunbookRun{}, err
+	}
+	return item, nil
+}
+
 // GetOpsRunbook returns a single runbook by ID using a direct DB lookup.
 func (s *Store) GetOpsRunbook(ctx context.Context, id string) (OpsRunbook, error) {
 	id = strings.TrimSpace(id)

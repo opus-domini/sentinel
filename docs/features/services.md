@@ -79,7 +79,7 @@ Deleting a built-in identity returns `409 OPS_SERVICE_BUILTIN`.
 
 Direct actions on any unit by reference, without requiring it to be tracked:
 
-**Action** — start, stop, or restart a unit:
+**Action** — start, stop, restart, enable, or disable a unit:
 
 ```
 POST /api/ops/services/unit/action
@@ -103,7 +103,7 @@ GET /api/ops/services/unit/status?unit=my-service.service&scope=user&manager=sys
 **Logs**:
 
 ```
-GET /api/ops/services/unit/logs?unit=my-service.service&scope=user&manager=systemd&lines=200
+GET /api/ops/services/unit/logs?unit=my-service.service&scope=user&manager=systemd&lines=200&since=2026-07-27T15:30:00Z
 ```
 
 ## Named Service Actions
@@ -118,7 +118,29 @@ POST /api/ops/services/{service}/action
 { "action": "restart" }
 ```
 
-Supported actions: `start`, `stop`, `restart`.
+Supported actions: `start`, `stop`, `restart`, `enable`, and `disable`.
+
+An accepted command is followed by at most four observations: immediately,
+after 250 ms, after 750 ms, and after 1500 ms. Both tracked and direct unit
+actions return the same evidence:
+
+```json
+{
+  "verification": {
+    "state": "confirmed",
+    "field": "activeState",
+    "expected": "active",
+    "observed": "active",
+    "observedAt": "2026-07-27T15:30:01Z",
+    "attempts": 2
+  }
+}
+```
+
+`confirmed` proves the requested post-condition. `mismatch` means the command
+was accepted but the final observed value differs. `unavailable` means Sentinel
+could not observe the required field. All three are HTTP `200`; command
+execution errors still return an error response.
 
 **Status inspect**:
 
@@ -126,13 +148,26 @@ Supported actions: `start`, `stop`, `restart`.
 GET /api/ops/services/{service}/status
 ```
 
-Returns service properties, summary, raw output, and a checked-at timestamp.
+Returns `observedAt`, a structured `condition`, manager properties, summary,
+and raw output. The condition can include `activeState`, `subState`, `result`,
+`exitCode`, `exitStatus`, and `transitionedAt`. systemd transitions are
+normalized to RFC3339 UTC. launchd exposes only state, PID, and last exit status
+when those values are actually present.
+
+Tracked status also includes `context.runbook` and `context.latestRun`. The
+definition and latest execution are independent: either is `null` when it does
+not exist, and historical execution context remains available after definition
+removal.
 
 **Logs**:
 
 ```
-GET /api/ops/services/{service}/logs?lines=50
+GET /api/ops/services/{service}/logs?lines=50&since=2026-07-27T15:30:00Z
 ```
+
+`since` is optional and must be RFC3339. Invalid values return
+`400 INVALID_REQUEST`. Sentinel maps it to `journalctl --since` on systemd and
+`log show --start` on launchd.
 
 ## Realtime Events
 
@@ -144,6 +179,7 @@ Service state changes emit events over the `/ws/events` WebSocket:
 ## UX Behavior
 
 - Service actions use optimistic updates. The UI reflects the expected state immediately and reconciles when the server responds or a realtime event arrives.
+- The UI reports success only for `verification.state=confirmed`; accepted commands with mismatched or unavailable post-conditions use neutral language.
 - Failed actions roll back the optimistic state and generate a toast notification.
 - The browse view supports filtering by state (active, inactive, failed), scope (user, system), and free-text search.
 - Custom services can be pinned or unpinned directly from the browse list.

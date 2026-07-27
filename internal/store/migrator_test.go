@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 19 || name != "runbook-execution-receipt" {
-		t.Fatalf("latest migration = (%d, %q), want (19, %q)", version, name, "runbook-execution-receipt")
+	if version != 20 || name != "runbook-target-latest" {
+		t.Fatalf("latest migration = (%d, %q), want (20, %q)", version, name, "runbook-target-latest")
 	}
 
 	// Spot-check that a few tables exist.
@@ -43,6 +43,17 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 		if n != 1 {
 			t.Fatalf("table %s not found", table)
 		}
+	}
+	var targetIndex int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type = 'index' AND name = 'idx_ops_runbook_runs_target_latest'
+	`).Scan(&targetIndex); err != nil {
+		t.Fatalf("check target latest index: %v", err)
+	}
+	if targetIndex != 1 {
+		t.Fatalf("target latest index count = %d, want 1", targetIndex)
 	}
 }
 
@@ -64,8 +75,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 16 {
-		t.Fatalf("schema_migrations rows = %d, want 16", count)
+	if count != 17 {
+		t.Fatalf("schema_migrations rows = %d, want 17", count)
 	}
 }
 

@@ -184,17 +184,29 @@ func (m *mockTmux) SendKeys(ctx context.Context, paneID, keys string, enter bool
 }
 
 type mockOpsControlPlane struct {
-	overviewFn      func(ctx context.Context) (opsplane.Overview, error)
-	listServicesFn  func(ctx context.Context) ([]opsplane.ServiceStatus, error)
-	actFn           func(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
-	inspectFn       func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
-	logsFn          func(ctx context.Context, name string, lines int) (string, error)
-	metricsFn       func(ctx context.Context) opsplane.HostMetrics
-	discoverFn      func(ctx context.Context) ([]opsplane.AvailableService, error)
-	browseFn        func(ctx context.Context) ([]opsplane.BrowsedService, error)
-	actByUnitFn     func(ctx context.Context, unit, scope, manager, action string) error
-	inspectByUnitFn func(ctx context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error)
-	logsByUnitFn    func(ctx context.Context, unit, scope, manager string, lines int) (string, error)
+	overviewFn        func(ctx context.Context) (opsplane.Overview, error)
+	listServicesFn    func(ctx context.Context) ([]opsplane.ServiceStatus, error)
+	actFn             func(ctx context.Context, name, action string) (opsplane.ServiceStatus, error)
+	actResultFn       func(ctx context.Context, name, action string) (opsplane.ServiceActionResult, error)
+	inspectFn         func(ctx context.Context, name string) (opsplane.ServiceInspect, error)
+	logsFn            func(ctx context.Context, name string, lines int) (string, error)
+	logsSinceFn       func(ctx context.Context, name string, lines int, since time.Time) (string, error)
+	metricsFn         func(ctx context.Context) opsplane.HostMetrics
+	discoverFn        func(ctx context.Context) ([]opsplane.AvailableService, error)
+	browseFn          func(ctx context.Context) ([]opsplane.BrowsedService, error)
+	actByUnitFn       func(ctx context.Context, unit, scope, manager, action string) error
+	actByUnitResultFn func(
+		ctx context.Context,
+		unit, scope, manager, action string,
+	) (opsplane.ServiceActionResult, error)
+	inspectByUnitFn   func(ctx context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error)
+	logsByUnitFn      func(ctx context.Context, unit, scope, manager string, lines int) (string, error)
+	logsByUnitSinceFn func(
+		ctx context.Context,
+		unit, scope, manager string,
+		lines int,
+		since time.Time,
+	) (string, error)
 }
 
 func (m *mockOpsControlPlane) Overview(ctx context.Context) (opsplane.Overview, error) {
@@ -211,11 +223,29 @@ func (m *mockOpsControlPlane) ListServices(ctx context.Context) ([]opsplane.Serv
 	return []opsplane.ServiceStatus{}, nil
 }
 
-func (m *mockOpsControlPlane) Act(ctx context.Context, name, action string) (opsplane.ServiceStatus, error) {
-	if m.actFn != nil {
-		return m.actFn(ctx, name, action)
+func (m *mockOpsControlPlane) Act(
+	ctx context.Context,
+	name, action string,
+) (opsplane.ServiceActionResult, error) {
+	if m.actResultFn != nil {
+		return m.actResultFn(ctx, name, action)
 	}
-	return opsplane.ServiceStatus{}, nil
+	if m.actFn != nil {
+		service, err := m.actFn(ctx, name, action)
+		return opsplane.ServiceActionResult{
+			Service:  service,
+			Services: []opsplane.ServiceStatus{service},
+			Verification: opsplane.ServiceActionVerification{
+				State:      "confirmed",
+				Field:      "activeState",
+				Expected:   service.ActiveState,
+				Observed:   service.ActiveState,
+				ObservedAt: service.UpdatedAt,
+				Attempts:   1,
+			},
+		}, err
+	}
+	return opsplane.ServiceActionResult{}, nil
 }
 
 func (m *mockOpsControlPlane) Inspect(ctx context.Context, name string) (opsplane.ServiceInspect, error) {
@@ -225,7 +255,15 @@ func (m *mockOpsControlPlane) Inspect(ctx context.Context, name string) (opsplan
 	return opsplane.ServiceInspect{}, nil
 }
 
-func (m *mockOpsControlPlane) Logs(ctx context.Context, name string, lines int) (string, error) {
+func (m *mockOpsControlPlane) Logs(
+	ctx context.Context,
+	name string,
+	lines int,
+	since time.Time,
+) (string, error) {
+	if m.logsSinceFn != nil {
+		return m.logsSinceFn(ctx, name, lines, since)
+	}
 	if m.logsFn != nil {
 		return m.logsFn(ctx, name, lines)
 	}
@@ -253,11 +291,17 @@ func (m *mockOpsControlPlane) BrowseServices(ctx context.Context) ([]opsplane.Br
 	return []opsplane.BrowsedService{}, nil
 }
 
-func (m *mockOpsControlPlane) ActByUnit(ctx context.Context, unit, scope, manager, action string) error {
-	if m.actByUnitFn != nil {
-		return m.actByUnitFn(ctx, unit, scope, manager, action)
+func (m *mockOpsControlPlane) ActByUnit(
+	ctx context.Context,
+	unit, scope, manager, action string,
+) (opsplane.ServiceActionResult, error) {
+	if m.actByUnitResultFn != nil {
+		return m.actByUnitResultFn(ctx, unit, scope, manager, action)
 	}
-	return nil
+	if m.actByUnitFn != nil {
+		return opsplane.ServiceActionResult{}, m.actByUnitFn(ctx, unit, scope, manager, action)
+	}
+	return opsplane.ServiceActionResult{}, nil
 }
 
 func (m *mockOpsControlPlane) InspectByUnit(ctx context.Context, unit, scope, manager string) (opsplane.ServiceInspect, error) {
@@ -267,7 +311,15 @@ func (m *mockOpsControlPlane) InspectByUnit(ctx context.Context, unit, scope, ma
 	return opsplane.ServiceInspect{}, nil
 }
 
-func (m *mockOpsControlPlane) LogsByUnit(ctx context.Context, unit, scope, manager string, lines int) (string, error) {
+func (m *mockOpsControlPlane) LogsByUnit(
+	ctx context.Context,
+	unit, scope, manager string,
+	lines int,
+	since time.Time,
+) (string, error) {
+	if m.logsByUnitSinceFn != nil {
+		return m.logsByUnitSinceFn(ctx, unit, scope, manager, lines, since)
+	}
 	if m.logsByUnitFn != nil {
 		return m.logsByUnitFn(ctx, unit, scope, manager, lines)
 	}
@@ -3477,10 +3529,84 @@ func TestOpsServiceActionHandler(t *testing.T) {
 	}
 }
 
+func TestOpsServiceActionReturnsNonConfirmedVerification(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []string{"mismatch", "unavailable"} {
+		t.Run(state, func(t *testing.T) {
+			t.Parallel()
+
+			h, _ := newTestHandler(t, nil)
+			service := opsplane.ServiceStatus{
+				Name:        "database",
+				ActiveState: "failed",
+				UpdatedAt:   "2026-07-27T16:00:00Z",
+			}
+			h.ops = &mockOpsControlPlane{
+				actResultFn: func(context.Context, string, string) (opsplane.ServiceActionResult, error) {
+					return opsplane.ServiceActionResult{
+						Service: service,
+						Verification: opsplane.ServiceActionVerification{
+							State:      state,
+							Field:      "activeState",
+							Expected:   "active",
+							Observed:   service.ActiveState,
+							ObservedAt: service.UpdatedAt,
+							Attempts:   4,
+						},
+					}, nil
+				},
+				listServicesFn: func(context.Context) ([]opsplane.ServiceStatus, error) {
+					return []opsplane.ServiceStatus{service}, nil
+				},
+				overviewFn: func(context.Context) (opsplane.Overview, error) {
+					return opsplane.Overview{}, nil
+				},
+			}
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(
+				http.MethodPost,
+				"/api/ops/services/database/action",
+				strings.NewReader(`{"action":"restart"}`),
+			)
+			r.SetPathValue("service", "database")
+			h.opsServiceAction(w, r)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+			}
+			data, _ := jsonBody(t, w)["data"].(map[string]any)
+			verification, _ := data["verification"].(map[string]any)
+			if verification["state"] != state || verification["attempts"] != float64(4) {
+				t.Fatalf("verification = %#v", verification)
+			}
+		})
+	}
+}
+
 func TestOpsServiceStatusHandler(t *testing.T) {
 	t.Parallel()
 
-	h, _ := newTestHandler(t, nil)
+	h, st := newTestHandler(t, nil)
+	rb, err := st.InsertOpsRunbook(context.Background(), store.OpsRunbookWrite{
+		ID:            "updater.recover",
+		Name:          "Recover updater",
+		TargetService: opsplane.ServiceNameUpdater,
+		Steps: []store.OpsRunbookStep{{
+			Type: "run", Title: "Recover", Command: "true",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := st.CreateOpsRunbookRun(context.Background(), store.OpsRunbookRunWrite{
+		Definition: rb,
+		Source:     store.OpsRunbookRunSourceRunbooks,
+		At:         time.Date(2026, 2, 15, 12, 0, 2, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	h.ops = &mockOpsControlPlane{
 		inspectFn: func(_ context.Context, name string) (opsplane.ServiceInspect, error) {
 			if name != opsplane.ServiceNameUpdater {
@@ -3504,8 +3630,8 @@ func TestOpsServiceStatusHandler(t *testing.T) {
 					"ActiveState": "active",
 					"SubState":    "waiting",
 				},
-				Output:    "Id=sentinel-updater.timer",
-				CheckedAt: "2026-02-15T12:00:01Z",
+				Output:     "Id=sentinel-updater.timer",
+				ObservedAt: "2026-02-15T12:00:01Z",
 			}, nil
 		},
 	}
@@ -3527,6 +3653,43 @@ func TestOpsServiceStatusHandler(t *testing.T) {
 	}
 	if status["summary"] != "load=loaded active=active sub=waiting" {
 		t.Fatalf("summary = %v, want expected summary", status["summary"])
+	}
+	serviceContext, _ := data["context"].(map[string]any)
+	runbookContext, _ := serviceContext["runbook"].(map[string]any)
+	if runbookContext["id"] != rb.ID {
+		t.Fatalf("context.runbook.id = %v, want %s", runbookContext["id"], rb.ID)
+	}
+	latestRun, _ := serviceContext["latestRun"].(map[string]any)
+	if latestRun["id"] != run.ID {
+		t.Fatalf("context.latestRun.id = %v, want %s", latestRun["id"], run.ID)
+	}
+}
+
+func TestOpsServiceStatusHandlerWithoutRunbookContext(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil)
+	h.ops = &mockOpsControlPlane{
+		inspectFn: func(context.Context, string) (opsplane.ServiceInspect, error) {
+			return opsplane.ServiceInspect{
+				Service:    opsplane.ServiceStatus{Name: "database"},
+				Condition:  opsplane.ServiceCondition{ActiveState: "active"},
+				ObservedAt: "2026-07-27T16:00:00Z",
+			}, nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/database/status", nil)
+	r.SetPathValue("service", "database")
+	h.opsServiceStatus(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	data, _ := jsonBody(t, w)["data"].(map[string]any)
+	serviceContext, _ := data["context"].(map[string]any)
+	if serviceContext["runbook"] != nil || serviceContext["latestRun"] != nil {
+		t.Fatalf("context = %#v, want null values", serviceContext)
 	}
 }
 
@@ -4241,6 +4404,87 @@ func TestOpsServiceLogsHandler(t *testing.T) {
 	}
 }
 
+func TestOpsServiceLogsSince(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHandler(t, nil)
+	h.ops = &mockOpsControlPlane{
+		logsSinceFn: func(_ context.Context, name string, lines int, since time.Time) (string, error) {
+			if name != "sentinel" || lines != 50 || since.Format(time.RFC3339) != "2026-07-27T18:30:00Z" {
+				t.Fatalf("logs args = (%q, %d, %s)", name, lines, since)
+			}
+			return "filtered", nil
+		},
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(
+		http.MethodGet,
+		"/api/ops/services/sentinel/logs?lines=50&since=2026-07-27T15%3A30%3A00-03%3A00",
+		nil,
+	)
+	r.SetPathValue("service", "sentinel")
+	h.opsServiceLogs(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	data, _ := jsonBody(t, w)["data"].(map[string]any)
+	if data["since"] != "2026-07-27T18:30:00Z" {
+		t.Fatalf("since = %v", data["since"])
+	}
+}
+
+func TestOpsLogsRejectInvalidSince(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		call func(*Handler, http.ResponseWriter, *http.Request)
+		req  func() *http.Request
+	}{
+		{
+			name: "tracked",
+			call: (*Handler).opsServiceLogs,
+			req: func() *http.Request {
+				r := httptest.NewRequest(
+					http.MethodGet,
+					"/api/ops/services/sentinel/logs?since=yesterday",
+					nil,
+				)
+				r.SetPathValue("service", "sentinel")
+				return r
+			},
+		},
+		{
+			name: "unit",
+			call: (*Handler).opsUnitLogs,
+			req: func() *http.Request {
+				return httptest.NewRequest(
+					http.MethodGet,
+					"/api/ops/services/unit/logs?unit=nginx.service&scope=system&manager=systemd&since=yesterday",
+					nil,
+				)
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h, _ := newTestHandler(t, nil)
+			h.ops = &mockOpsControlPlane{}
+			w := httptest.NewRecorder()
+			tc.call(h, w, tc.req())
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+			}
+			if code := errCode(jsonBody(t, w)); code != "INVALID_REQUEST" {
+				t.Fatalf("code = %q", code)
+			}
+		})
+	}
+}
+
 func TestOpsServiceLogsNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -4351,14 +4595,23 @@ func TestOpsUnitActionHandler(t *testing.T) {
 
 	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
-		actByUnitFn: func(_ context.Context, unit, _, _, action string) error {
+		actByUnitResultFn: func(
+			_ context.Context,
+			unit, _, _, action string,
+		) (opsplane.ServiceActionResult, error) {
 			if unit != testNginxUnit {
 				t.Fatalf("unit = %q, want %s", unit, testNginxUnit)
 			}
 			if action != "restart" {
 				t.Fatalf("action = %q, want restart", action)
 			}
-			return nil
+			return opsplane.ServiceActionResult{
+				Service: opsplane.ServiceStatus{Unit: unit, ActiveState: "active"},
+				Verification: opsplane.ServiceActionVerification{
+					State: "confirmed", Field: "activeState",
+					Expected: "active", Observed: "active", Attempts: 2,
+				},
+			}, nil
 		},
 		overviewFn: func(context.Context) (opsplane.Overview, error) {
 			return opsplane.Overview{Host: opsplane.HostOverview{Hostname: "test"}}, nil
@@ -4372,6 +4625,11 @@ func TestOpsUnitActionHandler(t *testing.T) {
 	h.opsUnitAction(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	data, _ := jsonBody(t, w)["data"].(map[string]any)
+	verification, _ := data["verification"].(map[string]any)
+	if verification["state"] != "confirmed" {
+		t.Fatalf("verification = %#v", verification)
 	}
 }
 
@@ -4426,19 +4684,32 @@ func TestOpsUnitLogsHandler(t *testing.T) {
 
 	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
-		logsByUnitFn: func(_ context.Context, unit, _, _ string, lines int) (string, error) {
+		logsByUnitSinceFn: func(
+			_ context.Context,
+			unit, _, _ string,
+			lines int,
+			since time.Time,
+		) (string, error) {
 			if unit != testNginxUnit {
 				t.Fatalf("unit = %q, want %s", unit, testNginxUnit)
 			}
 			if lines != 50 {
 				t.Fatalf("lines = %d, want 50", lines)
 			}
+			if since.Format(time.RFC3339) != "2026-07-27T16:00:00Z" {
+				t.Fatalf("since = %s", since)
+			}
 			return "log line 1\nlog line 2", nil
 		},
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/services/unit/logs?unit="+testNginxUnit+"&scope=system&manager=systemd&lines=50", nil)
+	r := httptest.NewRequest(
+		http.MethodGet,
+		"/api/ops/services/unit/logs?unit="+testNginxUnit+
+			"&scope=system&manager=systemd&lines=50&since=2026-07-27T16%3A00%3A00Z",
+		nil,
+	)
 	h.opsUnitLogs(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())

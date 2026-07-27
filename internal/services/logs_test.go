@@ -143,7 +143,7 @@ func TestLogs(t *testing.T) {
 			t.Parallel()
 
 			m := newLogsTestManager(tc.goos, tc.runner)
-			out, err := m.Logs(context.Background(), tc.svcName, tc.lines)
+			out, err := m.Logs(context.Background(), tc.svcName, tc.lines, time.Time{})
 			if tc.wantErr != nil {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tc.wantErr)
@@ -176,7 +176,7 @@ func TestLogsUnsupportedManager(t *testing.T) {
 	// We can't directly trigger "unsupported manager" for built-in services
 	// since detectManager always returns systemd or launchd based on goos.
 	// Instead, test via LogsByUnit with an unsupported manager.
-	_, err := m.LogsByUnit(context.Background(), "some.service", "user", "openrc", 50)
+	_, err := m.LogsByUnit(context.Background(), "some.service", "user", "openrc", 50, time.Time{})
 	if err == nil {
 		t.Fatal("expected error for unsupported manager")
 	}
@@ -300,7 +300,14 @@ func TestLogsByUnit(t *testing.T) {
 				commandRunner: tc.runner,
 			}
 
-			_, err := m.LogsByUnit(context.Background(), tc.unit, tc.scope, tc.manager, tc.lines)
+			_, err := m.LogsByUnit(
+				context.Background(),
+				tc.unit,
+				tc.scope,
+				tc.manager,
+				tc.lines,
+				time.Time{},
+			)
 			if tc.wantErr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tc.wantErr)
@@ -334,7 +341,7 @@ func TestLogsLaunchdTruncatesOutput(t *testing.T) {
 		return "", nil
 	})
 
-	out, err := m.Logs(context.Background(), "sentinel", 10)
+	out, err := m.Logs(context.Background(), "sentinel", 10, time.Time{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -342,4 +349,49 @@ func TestLogsLaunchdTruncatesOutput(t *testing.T) {
 	if len(outputLines) > 10 {
 		t.Fatalf("output has %d lines, want <= 10", len(outputLines))
 	}
+}
+
+func TestLogsApplySinceFilter(t *testing.T) {
+	t.Parallel()
+
+	since := time.Date(2026, 7, 27, 15, 30, 0, 0, time.FixedZone("BRT", -3*60*60))
+
+	t.Run("systemd", func(t *testing.T) {
+		t.Parallel()
+
+		m := newLogsTestManager("linux", func(_ context.Context, name string, args ...string) (string, error) {
+			if name != cmdJournalctl {
+				return "", nil
+			}
+			index := slices.Index(args, "--since")
+			if index < 0 || index+1 >= len(args) || args[index+1] != "2026-07-27T18:30:00Z" {
+				return "", errors.New("missing UTC --since")
+			}
+			return "filtered", nil
+		})
+		if _, err := m.Logs(context.Background(), ServiceNameSentinel, 20, since); err != nil {
+			t.Fatalf("Logs: %v", err)
+		}
+	})
+
+	t.Run("launchd", func(t *testing.T) {
+		t.Parallel()
+
+		m := newLogsTestManager("darwin", func(_ context.Context, name string, args ...string) (string, error) {
+			if name != cmdLog {
+				return "", nil
+			}
+			index := slices.Index(args, "--start")
+			if index < 0 || index+1 >= len(args) || args[index+1] != "2026-07-27 15:30:00-0300" {
+				return "", errors.New("missing offset-preserving --start")
+			}
+			if slices.Contains(args, "--last") {
+				return "", errors.New("--last must not accompany --start")
+			}
+			return "filtered", nil
+		})
+		if _, err := m.Logs(context.Background(), ServiceNameSentinel, 20, since); err != nil {
+			t.Fatalf("Logs: %v", err)
+		}
+	})
 }

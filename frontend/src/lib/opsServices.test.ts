@@ -3,6 +3,7 @@ import type { OpsBrowsedService, OpsServiceStatus } from '@/types'
 import {
   canStartOpsService,
   canStopOpsService,
+  actionVerificationToast,
   defaultOpsBrowseUnitTypes,
   deriveOpsTrackedServiceName,
   filterOpsServicesByQuery,
@@ -96,6 +97,27 @@ describe('opsServices', () => {
     expect(withOptimisticServiceAction(buildService({}), 'start').activeState).toBe('activating')
     expect(withOptimisticServiceAction(buildService({}), 'stop').activeState).toBe('stopping')
     expect(withOptimisticServiceAction(buildService({}), 'restart').activeState).toBe('restarting')
+  })
+
+  it('uses success language only for confirmed post-conditions', () => {
+    const base = {
+      field: 'activeState' as const,
+      expected: 'active',
+      observed: 'failed',
+      observedAt: '2026-07-27T16:00:00Z',
+      attempts: 4,
+    }
+    expect(actionVerificationToast('restart', { ...base, state: 'confirmed' }).level).toBe(
+      'success',
+    )
+    expect(actionVerificationToast('restart', { ...base, state: 'mismatch' })).toEqual({
+      level: 'info',
+      message: 'restart accepted; expected activeState=active, observed failed',
+    })
+    expect(actionVerificationToast('restart', { ...base, state: 'unavailable' })).toEqual({
+      level: 'info',
+      message: 'restart accepted; post-condition unavailable',
+    })
   })
 
   it('upserts a service by name', () => {
