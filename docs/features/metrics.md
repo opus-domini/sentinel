@@ -18,6 +18,18 @@ Host-level resource metrics collected from the OS:
 - **Pressure stall information** — CPU, memory, and I/O PSI `avg10` values on Linux.
 
 Visual indicators use green/amber/red thresholds to highlight resource pressure at a glance.
+The backend also evaluates one canonical host posture, shared by Metrics and
+Now:
+
+- `normal/ok` when every available key signal is below its warning threshold;
+- `pressure/warning` or `pressure/critical` when at least one key signal crosses
+  a threshold;
+- `unavailable/unknown` when no key signal can be evaluated.
+
+The posture evaluates CPU (80/90%), memory (80/90%), root disk (85/95%),
+inodes (80/90%), swap when configured (20/60%), and CPU/memory/I/O PSI avg10
+(2/10). Missing individual signals are ignored; an entirely unevaluable sample
+is never reported as nominal.
 
 ## Runtime Metrics
 
@@ -43,7 +55,8 @@ Go runtime statistics for the Sentinel server process:
 
 - All metrics are collected locally by the Sentinel backend.
 - No external monitoring agents or services are required.
-- Host resource metrics are served by the `/api/ops/metrics` endpoint.
+- Host resource metrics and their canonical posture are served together by the
+  `/api/ops/metrics` endpoint as `{ metrics, posture }`.
 - Overview data (host identity, Sentinel process info) is served by the `/api/ops/overview` endpoint.
 
 ## Realtime Events
@@ -51,9 +64,10 @@ Go runtime statistics for the Sentinel server process:
 Overview state is kept current via the `/ws/events` WebSocket:
 
 - `ops.overview.updated` — updated overview payload including host and Sentinel process info.
-- `ops.metrics.updated` — updated host and runtime metrics.
+- `ops.metrics.updated` — updated host/runtime metrics and the posture evaluated
+  from the same sample.
 
 ## API Endpoints
 
-- `GET /api/ops/metrics` — host and Sentinel runtime metrics
+- `GET /api/ops/metrics` — `{ metrics, posture }` for host and Sentinel runtime
 - `GET /api/ops/overview` — host + Sentinel + services summary

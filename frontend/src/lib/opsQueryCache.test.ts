@@ -7,9 +7,10 @@ import {
   OPS_SERVICES_QUERY_KEY,
   OPS_STORAGE_STATS_QUERY_KEY,
   isOpsWsMessage,
+  metricsCacheValueFromMessage,
   upsertOpsRunbookJob,
 } from './opsQueryCache'
-import type { OpsRunbookRun } from '@/types'
+import type { OpsHostMetrics, OpsRunbookRun } from '@/types'
 
 function buildJob(id: string): OpsRunbookRun {
   return {
@@ -45,6 +46,23 @@ describe('opsQueryCache', () => {
     expect(isOpsWsMessage({ type: 'ops.overview.updated' })).toBe(false)
     expect(isOpsWsMessage({ payload: { overview: {} } })).toBe(false)
     expect(isOpsWsMessage(null)).toBe(false)
+  })
+
+  it('keeps the HTTP metrics cache shape when applying websocket updates', () => {
+    const metrics = { cpuPercent: 85 } as OpsHostMetrics
+    const posture = {
+      state: 'pressure' as const,
+      severity: 'warning' as const,
+      warningCount: 1,
+      criticalCount: 0,
+      signals: [{ name: 'cpu' as const, severity: 'warning' as const, value: 85 }],
+    }
+    const value = metricsCacheValueFromMessage({
+      type: 'ops.metrics.updated',
+      payload: { metrics, posture },
+    })
+
+    expect(value).toEqual({ metrics, posture })
   })
 
   it('upserts runbook jobs and keeps latest first', () => {

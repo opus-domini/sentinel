@@ -183,6 +183,30 @@ Payload:
 | `GET`    | `/api/ops/config`             | Read config file                   |
 | `PATCH`  | `/api/ops/config`             | Update config file                 |
 
+`GET /api/ops/metrics` returns the raw sample and the canonical posture
+evaluated from that same sample:
+
+```json
+{
+  "metrics": {
+    "cpuPercent": 42.5,
+    "memPercent": 65.2,
+    "collectedAt": "2026-07-27T12:00:00Z"
+  },
+  "posture": {
+    "state": "normal",
+    "severity": "ok",
+    "warningCount": 0,
+    "criticalCount": 0,
+    "signals": []
+  }
+}
+```
+
+Posture state is `normal`, `pressure`, or `unavailable`; severity is `ok`,
+`warning`, `critical`, or `unknown`. `signals` contains only warning/critical
+entries, each with its canonical `name`, `severity`, and sampled `value`.
+
 ### Services
 
 | Method   | Path                                 | Purpose                                   |

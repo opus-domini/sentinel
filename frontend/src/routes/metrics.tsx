@@ -32,7 +32,12 @@ import { useMetaContext } from '@/contexts/MetaContext'
 import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { MetricsHistory } from '@/lib/MetricsHistory'
-import { OPS_METRICS_QUERY_KEY, OPS_OVERVIEW_QUERY_KEY, isOpsWsMessage } from '@/lib/opsQueryCache'
+import {
+  OPS_METRICS_QUERY_KEY,
+  OPS_OVERVIEW_QUERY_KEY,
+  isOpsWsMessage,
+  metricsCacheValueFromMessage,
+} from '@/lib/opsQueryCache'
 import { formatBytes, toErrorMessage } from '@/lib/opsUtils'
 import { ProgressBar } from '@/lib/ProgressBar'
 import { Sparkline } from '@/lib/Sparkline'
@@ -42,6 +47,7 @@ import {
   formatDurationLong,
   formatPercentValue,
   percentSeverity,
+  presentMetricPosture,
   pressureSeverity,
 } from '@/lib/metricsView'
 import { cn } from '@/lib/utils'
@@ -171,56 +177,6 @@ function formatCount(value: number): string {
 function formatMaybeBytes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '-'
   return formatBytes(value)
-}
-
-function severityRank(severity: MetricSeverity): number {
-  if (severity === 'critical') return 3
-  if (severity === 'warn') return 2
-  if (severity === 'unknown') return 1
-  return 0
-}
-
-function buildRisk(metrics: OpsHostMetrics | null): {
-  severity: MetricSeverity
-  label: string
-  detail: string
-} {
-  if (metrics == null) {
-    return { severity: 'unknown', label: 'Waiting', detail: 'no sample' }
-  }
-
-  const signals: Array<MetricSeverity> = [
-    percentSeverity(metrics.cpuPercent, 80, 90),
-    percentSeverity(metrics.memPercent, 80, 90),
-    percentSeverity(metrics.diskPercent, 85, 95),
-    percentSeverity(metrics.diskInodesPercent, 80, 90),
-    metrics.swapTotalBytes > 0 ? percentSeverity(metrics.swapPercent, 20, 60) : 'ok',
-    pressureSeverity(metrics.cpuPressureAvg10),
-    pressureSeverity(metrics.memPressureAvg10),
-    pressureSeverity(metrics.ioPressureAvg10),
-  ]
-  const critical = signals.filter((signal) => signal === 'critical').length
-  const warn = signals.filter((signal) => signal === 'warn').length
-  const severity = signals.reduce<MetricSeverity>(
-    (worst, signal) => (severityRank(signal) > severityRank(worst) ? signal : worst),
-    'ok',
-  )
-
-  if (critical > 0) {
-    return {
-      severity,
-      label: 'Critical',
-      detail: `${critical} hard signal${critical === 1 ? '' : 's'}`,
-    }
-  }
-  if (warn > 0) {
-    return {
-      severity,
-      label: 'Attention',
-      detail: `${warn} warm signal${warn === 1 ? '' : 's'}`,
-    }
-  }
-  return { severity, label: 'Nominal', detail: 'all key signals green' }
 }
 
 function trendFor(
@@ -555,12 +511,13 @@ function MetricsPage() {
     queryKey: OPS_METRICS_QUERY_KEY,
     queryFn: async () => {
       const data = await api<OpsMetricsResponse>('/api/ops/metrics')
-      return data.metrics
+      return data
     },
   })
 
   const overview = overviewQuery.data ?? null
-  const metrics = metricsQuery.data ?? null
+  const metrics = metricsQuery.data?.metrics ?? null
+  const posture = metricsQuery.data?.posture ?? null
   const overviewLoading = overviewQuery.isLoading
   const metricsLoading = metricsQuery.isLoading
   const overviewError =
@@ -609,9 +566,10 @@ function MetricsPage() {
           queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, message.payload.overview)
           break
         case 'ops.metrics.updated': {
-          const m = message.payload.metrics
-          historyRef.current.push(toSnapshot(m))
-          queryClient.setQueryData(OPS_METRICS_QUERY_KEY, m)
+          const next = metricsCacheValueFromMessage(message)
+          if (next == null) break
+          historyRef.current.push(toSnapshot(next.metrics))
+          queryClient.setQueryData(OPS_METRICS_QUERY_KEY, next)
           break
         }
         default:
@@ -657,7 +615,7 @@ function MetricsPage() {
 
   const rxRate = computeByteRate(trends.rx.values, trends.rx.timestamps)
   const txRate = computeByteRate(trends.tx.values, trends.tx.timestamps)
-  const risk = buildRisk(metrics)
+  const risk = presentMetricPosture(posture)
   const activeTabMeta = METRICS_TABS.find((tab) => tab.id === activeTab) ?? METRICS_TABS[0]
 
   return (

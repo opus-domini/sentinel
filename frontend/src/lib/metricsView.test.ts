@@ -6,6 +6,7 @@ import {
   formatDurationLong,
   formatPercentValue,
   percentSeverity,
+  presentMetricPosture,
   pressureSeverity,
 } from './metricsView'
 
@@ -22,6 +23,39 @@ describe('metricsView', () => {
     expect(pressureSeverity(2)).toBe('warn')
     expect(pressureSeverity(10)).toBe('critical')
     expect(pressureSeverity(-1)).toBe('unknown')
+  })
+
+  it('presents the canonical backend posture without recomputing host thresholds', () => {
+    expect(
+      presentMetricPosture({
+        state: 'pressure',
+        severity: 'critical',
+        warningCount: 1,
+        criticalCount: 2,
+        signals: [
+          { name: 'cpu', severity: 'warning', value: 85 },
+          { name: 'memory', severity: 'critical', value: 95 },
+          { name: 'ioPressure', severity: 'critical', value: 12 },
+        ],
+      }),
+    ).toEqual({
+      severity: 'critical',
+      label: 'Critical',
+      detail: '2 critical signals · 1 warning signal',
+    })
+    expect(
+      presentMetricPosture({
+        state: 'unavailable',
+        severity: 'unknown',
+        warningCount: 0,
+        criticalCount: 0,
+        signals: [],
+      }),
+    ).toEqual({
+      severity: 'unknown',
+      label: 'Unavailable',
+      detail: 'no evaluable key signals',
+    })
   })
 
   it('formats percent values', () => {

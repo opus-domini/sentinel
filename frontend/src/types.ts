@@ -375,8 +375,31 @@ export type OpsHostMetrics = {
   collectedAt: string
 }
 
+export type MetricPostureSignal = {
+  name:
+    | 'cpu'
+    | 'memory'
+    | 'rootDisk'
+    | 'inodes'
+    | 'swap'
+    | 'cpuPressure'
+    | 'memoryPressure'
+    | 'ioPressure'
+  severity: 'warning' | 'critical'
+  value: number
+}
+
+export type MetricPosture = {
+  state: 'normal' | 'pressure' | 'unavailable'
+  severity: 'ok' | 'warning' | 'critical' | 'unknown'
+  warningCount: number
+  criticalCount: number
+  signals: Array<MetricPostureSignal>
+}
+
 export type OpsMetricsResponse = {
   metrics: OpsHostMetrics
+  posture: MetricPosture
 }
 
 export type OpsCustomServiceWrite = {
@@ -445,6 +468,6 @@ export type OpsWsMessage =
       type: 'ops.services.updated'
       payload: { services: Array<OpsServiceStatus> }
     }
-  | { type: 'ops.metrics.updated'; payload: { metrics: OpsHostMetrics } }
+  | { type: 'ops.metrics.updated'; payload: OpsMetricsResponse }
   | { type: 'ops.job.updated'; payload: { job: OpsRunbookRun } }
   | { type: 'ops.schedule.updated'; payload: Record<string, unknown> }

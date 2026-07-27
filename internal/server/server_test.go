@@ -213,6 +213,14 @@ func TestPublishMetrics(t *testing.T) {
 		if ev.Type != events.TypeOpsMetrics {
 			t.Fatalf("event type = %q, want %q", ev.Type, events.TypeOpsMetrics)
 		}
+		posture, ok := ev.Payload["posture"].(services.MetricPosture)
+		if !ok {
+			t.Fatalf("event posture = %T, want services.MetricPosture", ev.Payload["posture"])
+		}
+		if posture.State != services.MetricPostureStateNormal ||
+			posture.Severity != services.MetricPostureSeverityOK {
+			t.Fatalf("event posture = %+v, want normal/ok", posture)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("no metrics event published")
 	}
@@ -230,7 +238,13 @@ func TestTickHandlersWithClosedStore(t *testing.T) {
 type staticMetricsProvider struct{}
 
 func (staticMetricsProvider) Metrics(context.Context) services.HostMetrics {
-	return services.HostMetrics{CollectedAt: "2026-07-24T12:00:00Z"}
+	return services.HostMetrics{
+		CPUPercent:       20,
+		CPUPressureAvg10: -1,
+		MemPressureAvg10: -1,
+		IOPressureAvg10:  -1,
+		CollectedAt:      "2026-07-24T12:00:00Z",
+	}
 }
 
 func TestRunFailsOnInvalidListenAddr(t *testing.T) {

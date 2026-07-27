@@ -4234,6 +4234,11 @@ func TestOpsMetricsHandler(t *testing.T) {
 	if metrics["cpuPercent"] != 42.5 {
 		t.Fatalf("cpuPercent = %v, want 42.5", metrics["cpuPercent"])
 	}
+	posture, _ := data["posture"].(map[string]any)
+	if posture["state"] != opsplane.MetricPostureStateNormal ||
+		posture["severity"] != opsplane.MetricPostureSeverityOK {
+		t.Fatalf("posture = %v, want normal/ok", posture)
+	}
 }
 
 // ---------------------------------------------------------------------------

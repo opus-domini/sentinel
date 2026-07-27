@@ -45,5 +45,6 @@ func publishMetrics(ctx context.Context, mgr metricsProvider, hub *events.Hub) {
 	cancel()
 	hub.Publish(events.NewEvent(events.TypeOpsMetrics, map[string]any{
 		"metrics": m,
+		"posture": services.EvaluateMetricPosture(m),
 	}))
 }

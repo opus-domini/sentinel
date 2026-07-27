@@ -1,4 +1,4 @@
-import type { OpsRunbookRun, OpsWsMessage } from '@/types'
+import type { OpsMetricsResponse, OpsRunbookRun, OpsWsMessage } from '@/types'
 
 export const OPS_BROWSE_QUERY_KEY = ['ops', 'browse'] as const
 export const OPS_OVERVIEW_QUERY_KEY = ['ops', 'overview'] as const
@@ -22,4 +22,9 @@ export function upsertOpsRunbookJob(
   next: OpsRunbookRun,
 ): Array<OpsRunbookRun> {
   return [next, ...jobs.filter((item) => item.id !== next.id)]
+}
+
+export function metricsCacheValueFromMessage(message: OpsWsMessage): OpsMetricsResponse | null {
+  if (message.type !== 'ops.metrics.updated') return null
+  return message.payload
 }
