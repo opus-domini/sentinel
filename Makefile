@@ -9,6 +9,7 @@ ENTRY    := ./cmd/sentinel
 PKG_LIST := ./...
 FRONTEND := frontend
 DOCS_CHECK := ./scripts/docs-check.sh
+DOCS_SHOWCASE_OUTPUT := $(if $(strip $(SENTINEL_DOCS_SHOWCASE_OUTPUT)),$(SENTINEL_DOCS_SHOWCASE_OUTPUT),.artifacts/docs-showcase)
 WEB_URL    := http://127.0.0.1:4040
 
 VERSION ?= dev
@@ -159,7 +160,16 @@ vuln: check-go check-govulncheck ## Run vulnerability scanner
 
 .PHONY: docs-check
 docs-check: ## Validate docs navigation and file references
+	$(DOCS_CHECK) --self-test
 	$(DOCS_CHECK)
+
+.PHONY: docs-showcase
+docs-showcase: ## Capture the isolated Orbital Station documentation showcase
+	SENTINEL_DOCS_SHOWCASE_OUTPUT="$(abspath $(DOCS_SHOWCASE_OUTPUT))" ./scripts/docs-showcase-capture.sh
+
+.PHONY: docs-showcase-check
+docs-showcase-check: ## Validate the captured documentation showcase
+	./scripts/docs-showcase-check.sh "$(abspath $(DOCS_SHOWCASE_OUTPUT))"
 
 .PHONY: smoke-frontend-terminal
 smoke-frontend-terminal: check-go check-npm ## Run browser smoke for tmux terminal rendering
