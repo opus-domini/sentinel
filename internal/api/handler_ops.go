@@ -555,7 +555,7 @@ func (h *Handler) opsMetrics(w http.ResponseWriter, r *http.Request) {
 
 	metrics := h.ops.Metrics(ctx)
 	writeData(w, http.StatusOK, map[string]any{
-		"metrics": metrics,
-		"posture": opsplane.EvaluateMetricPosture(metrics),
+		keyMetrics: metrics,
+		"posture":  opsplane.EvaluateMetricPosture(metrics),
 	})
 }

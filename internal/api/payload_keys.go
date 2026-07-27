@@ -18,6 +18,7 @@ const (
 	keyJobID         = "jobId"
 	keyLauncher      = "launcher"
 	keyMessage       = "message"
+	keyMetrics       = "metrics"
 	keyName          = "name"
 	keyOverview      = "overview"
 	keyPaneID        = "paneId"

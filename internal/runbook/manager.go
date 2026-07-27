@@ -172,6 +172,16 @@ func (m *Manager) GetRun(ctx context.Context, id string) (store.OpsRunbookRun, e
 
 // Start validates parameters, persists a run, and launches it asynchronously.
 func (m *Manager) Start(ctx context.Context, runbookID string, params map[string]string) (store.OpsRunbookRun, error) {
+	return m.start(ctx, runbookID, params, store.OpsRunbookRunSourceRunbooks)
+}
+
+// StartFromNow validates parameters, persists a run attributed to Now, and
+// launches it through the same execution path as every other manual run.
+func (m *Manager) StartFromNow(ctx context.Context, runbookID string, params map[string]string) (store.OpsRunbookRun, error) {
+	return m.start(ctx, runbookID, params, store.OpsRunbookRunSourceNow)
+}
+
+func (m *Manager) start(ctx context.Context, runbookID string, params map[string]string, source string) (store.OpsRunbookRun, error) {
 	if m == nil || m.repo == nil {
 		return store.OpsRunbookRun{}, errors.New("runbook manager is unavailable")
 	}
@@ -199,7 +209,7 @@ func (m *Manager) Start(ctx context.Context, runbookID string, params map[string
 	now := time.Now().UTC()
 	job, err := m.repo.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
 		RunbookID:  runbookID,
-		Source:     store.OpsRunbookRunSourceRunbooks,
+		Source:     source,
 		Parameters: resolved,
 		At:         now,
 	})

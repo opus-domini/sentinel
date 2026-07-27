@@ -26,6 +26,8 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 	routes := []contractRoute{
 		{name: "meta", method: http.MethodGet, path: "/api/meta"},
 		{name: "dirs", method: http.MethodGet, path: "/api/fs/dirs?prefix=/tmp"},
+		{name: "now", method: http.MethodGet, path: "/api/now"},
+		{name: "now-service-runbook", method: http.MethodPost, path: "/api/now/services/sentinel/runbook", body: `{}`},
 
 		{name: "tmux-sessions", method: http.MethodGet, path: "/api/tmux/sessions"},
 		{name: "tmux-create", method: http.MethodPost, path: "/api/tmux/sessions", body: `{"name":"dev","cwd":"/tmp"}`},

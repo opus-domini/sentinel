@@ -15,6 +15,14 @@ const (
 	opsRunbookStatusRunning   = "running"
 	opsRunbookStatusSucceeded = "succeeded"
 	opsRunbookStatusFailed    = "failed"
+	// OpsRunbookStatusQueued identifies a run waiting to start.
+	OpsRunbookStatusQueued = opsRunbookStatusQueued
+	// OpsRunbookStatusRunning identifies a run currently executing.
+	OpsRunbookStatusRunning = opsRunbookStatusRunning
+	// OpsRunbookStatusSucceeded identifies a completed successful run.
+	OpsRunbookStatusSucceeded = opsRunbookStatusSucceeded
+	// OpsRunbookStatusFailed identifies a completed failed run.
+	OpsRunbookStatusFailed = opsRunbookStatusFailed
 	// OpsRunbookStatusWaitingApproval identifies the ops runbook status waiting approval value.
 	OpsRunbookStatusWaitingApproval = "waiting_approval"
 

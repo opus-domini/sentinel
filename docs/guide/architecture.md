@@ -8,7 +8,7 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
 - `internal/cli`: command parsing, help, completion, and formatted output.
 - `internal/server`: HTTP server bootstrap, background tickers, pinned-session restore.
 - `internal/ui`: SPA delivery, embedded frontend assets and WebSocket endpoints.
-- `internal/api`: authenticated HTTP API for tmux, operations, and metadata.
+- `internal/api`: authenticated HTTP API for Now, tmux, operations, and metadata.
 - `internal/tmux`: tmux command adapter and behavior patches.
 - `internal/watchtower`: activity collector and unread projection engine.
 - `internal/store`: SQLite schema and persistence (sessions metadata, watchtower activity, runbooks, schedules, and services).
@@ -35,6 +35,22 @@ Sentinel is a single Go binary with embedded frontend assets and a local SQLite 
    - PTY stream (`/ws/tmux`)
 5. UI uses optimistic mutations and reconciles with events/patches.
 6. UI routes provide dedicated pages: terminal workspace (`/tmux`), service management (`/services`), operations dashboard (`/ops`), runbook execution (`/runbooks`), and system metrics (`/metrics`).
+
+## Now Read Model
+
+`GET /api/now` is a thin composition layer over the four owner modules. Each
+request fans out concurrently to the live Services probe, canonical Metrics
+posture, Runbooks definitions/executions, and the shared enriched Tmux
+projection. One failed source does not discard healthy results: the response
+keeps a source envelope with `current`, `stale`, `unavailable`, or
+`not_configured` and derives global reliability from those explicit states.
+
+Now has no database table, background collector, server cache, or independent
+event. Attention ordering, deduplication, and display limits are pure read-model
+rules. The procedure action reuses the Runbook Manager, so persistence and
+notifications continue through the existing `ops.job.updated` lifecycle. Owner
+modules remain responsible for status/log inspection, approvals, terminal
+interaction, and metric diagnosis.
 
 ## Data Model (Operational)
 

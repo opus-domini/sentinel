@@ -172,6 +172,98 @@ Payload:
 }
 ```
 
+## Now
+
+| Method | Path                                          | Purpose                                      |
+| ------ | --------------------------------------------- | -------------------------------------------- |
+| `GET`  | `/api/now`                                    | Compose the current operational read model   |
+| `POST` | `/api/now/services/{service}/runbook`         | Start the associated recovery procedure (202) |
+
+`GET /api/now` fans out concurrently to Tmux, Services, Metrics, and Runbooks.
+It returns `200` with every usable result when one source fails; only a missing
+structural dependency returns `503 NOW_UNAVAILABLE`.
+
+```json
+{
+  "now": {
+    "generatedAt": "2026-07-27T12:00:00Z",
+    "reliability": {
+      "state": "normal",
+      "services": {
+        "tracked": 1,
+        "running": 1,
+        "failed": 0,
+        "inactive": 0,
+        "unknown": 0
+      },
+      "metrics": {
+        "state": "normal",
+        "severity": "ok",
+        "warningCount": 0,
+        "criticalCount": 0,
+        "signals": []
+      }
+    },
+    "attention": {
+      "total": 0,
+      "visible": [],
+      "overflow": {
+        "approvals": 0,
+        "services": 0,
+        "runbooks": 0,
+        "metrics": 0
+      }
+    },
+    "inProgress": {
+      "runs": [],
+      "sessions": []
+    },
+    "sources": {
+      "tmux": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" },
+      "services": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" },
+      "metrics": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" },
+      "runbooks": { "status": "current", "checkedAt": "2026-07-27T12:00:00Z" }
+    }
+  }
+}
+```
+
+Source status is `current`, `stale`, `unavailable`, or `not_configured`.
+Reliability is `degraded` whenever any source is not current; otherwise it is
+`attention` for a failed tracked service or metrics pressure, and `normal`
+when neither condition exists.
+
+Attention items are discriminated by `type`: `runbook_approval`,
+`service_failed`, `runbook_failed`, or `metrics_pressure`. The response keeps
+at most five visible items in that priority order and reports hidden counts in
+`overflow`. A runbook failure targeting the same failed service is returned as
+`failure` evidence on the service item instead of as a duplicate item.
+
+In-progress runs include only `queued` and `running` executions. Pending
+approvals appear only in attention. In-progress Tmux data contains at most
+three live pinned or unread sessions and never includes pane output, preview,
+or command text.
+
+The procedure action accepts the same optional parameter shape as the Runbooks
+execution endpoint:
+
+```json
+{
+  "parameters": {
+    "MODE": "safe"
+  }
+}
+```
+
+The backend reloads the service and requires its current state to remain
+`failed`, resolves its unique enabled `targetService` association, validates
+parameters, and creates the job with `source: "now"` and the target copied from
+the Runbook definition. A recovered service returns
+`409 NOW_SERVICE_NOT_FAILED`; missing, disabled, or conflicting associations
+return `NOW_RUNBOOK_NOT_FOUND`, `NOW_RUNBOOK_DISABLED`, or
+`NOW_RUNBOOK_CONFLICT`. This endpoint never starts, stops, or restarts the
+service directly.
+
 ## Operations: Control Plane
 
 ### Overview and Metrics

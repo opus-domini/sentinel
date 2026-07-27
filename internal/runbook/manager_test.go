@@ -80,6 +80,18 @@ func TestManagerSharesValidationExecutionAndEventOrdering(t *testing.T) {
 		finished.TargetName != "nginx" {
 		t.Fatalf("run context = (%q, %q, %q)", finished.Source, finished.TargetKind, finished.TargetName)
 	}
+	nowRun, err := manager.StartFromNow(context.Background(), rb.ID, map[string]string{"ENV": "staging"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.WaitIdle()
+	nowFinished, err := manager.GetRun(context.Background(), nowRun.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nowFinished.Source != store.OpsRunbookRunSourceNow {
+		t.Fatalf("Now run source = %q, want %q", nowFinished.Source, store.OpsRunbookRunSourceNow)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()

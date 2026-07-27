@@ -183,18 +183,16 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	stored := h.loadSessionMetaMap(ctx)
-	if sessions, ok := h.listSessionsFromProjection(ctx, stored); ok {
-		writeData(w, http.StatusOK, map[string]any{"sessions": sessions})
+	snapshot := h.loadEnrichedSessions(ctx)
+	if len(snapshot.Sessions) > 0 || snapshot.Status == nowSourceCurrent || snapshot.Status == nowSourceStale {
+		writeData(w, http.StatusOK, map[string]any{"sessions": snapshot.Sessions})
 		return
 	}
-
-	sessions, err := h.listSessionsFromTmux(ctx, stored)
-	if err != nil {
-		writeTmuxError(w, err)
+	if snapshot.Err != nil {
+		writeTmuxError(w, snapshot.Err)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]any{"sessions": sessions})
+	writeError(w, http.StatusInternalServerError, string(tmux.ErrKindCommandFailed), "tmux command failed", nil)
 }
 
 func (h *Handler) loadSessionMetaMap(ctx context.Context) map[string]store.SessionMeta {
@@ -209,17 +207,27 @@ func (h *Handler) loadSessionMetaMap(ctx context.Context) map[string]store.Sessi
 	return meta
 }
 
-func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[string]store.SessionMeta) ([]enrichedSession, bool) {
-	if h.repo == nil {
-		return nil, false
-	}
-	projected, err := h.repo.ListWatchtowerSessions(ctx)
-	if err != nil {
-		slog.Warn("store.ListWatchtowerSessions failed", "err", err)
-		return nil, false
-	}
-	if len(projected) == 0 {
-		return nil, false
+type enrichedSessionsSnapshot struct {
+	Sessions []enrichedSession
+	Status   string
+	Message  string
+	Err      error
+}
+
+// loadEnrichedSessions is the single session projection used by both the Tmux
+// owner page and Now. It preserves Watchtower unread state, overlays live
+// runtime sessions, and reports whether the result is fresh or only a usable
+// persisted projection.
+func (h *Handler) loadEnrichedSessions(ctx context.Context) enrichedSessionsSnapshot {
+	stored := h.loadSessionMetaMap(ctx)
+	projected := []store.WatchtowerSession{}
+	if h.repo != nil {
+		rows, err := h.repo.ListWatchtowerSessions(ctx)
+		if err != nil {
+			slog.Warn("store.ListWatchtowerSessions failed", "err", err)
+		} else {
+			projected = rows
+		}
 	}
 
 	seen := make(map[string]struct{}, len(projected))
@@ -231,13 +239,8 @@ func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[str
 		result = append(result, h.projectedSessionToEnriched(ctx, row, stored[row.SessionName]))
 	}
 
-	// The watchtower projection can lag immediately after a tmux session is
-	// created. Overlay live tmux sessions so creation convergence follows tmux
-	// truth instead of waiting for the next watchtower collection.
-	liveSessions, listErr := h.tmux.ListSessions(ctx)
-	if listErr != nil {
-		slog.Warn("tmux session overlay failed", "err", listErr)
-	} else {
+	liveSessions, runtimeErr := h.tmux.ListSessions(ctx)
+	if runtimeErr == nil {
 		snapshots := h.loadActivePaneSnapshots(ctx)
 		for _, sess := range liveSessions {
 			if _, exists := seen[sess.Name]; exists {
@@ -249,8 +252,44 @@ func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[str
 		}
 	}
 
-	// Append sessions from multi-user tmux servers not covered by
-	// the watchtower projection (which only monitors the default user).
+	result, activeNames = h.appendKnownUserSessions(ctx, result, activeNames, seen, stored)
+
+	if runtimeErr == nil || len(projected) > 0 {
+		h.purgeStoredSessionsBestEffort(ctx, activeNames)
+	}
+	sortSessionsByStoredOrder(result)
+
+	snapshot := enrichedSessionsSnapshot{
+		Sessions: result,
+		Status:   nowSourceCurrent,
+	}
+	switch {
+	case runtimeErr == nil:
+		return snapshot
+	case tmux.IsKind(runtimeErr, tmux.ErrKindNotFound):
+		snapshot.Status = nowSourceNotConfigured
+		snapshot.Message = "tmux_not_installed"
+	case tmux.IsKind(runtimeErr, tmux.ErrKindServerNotRunning) && len(projected) == 0:
+		// An installed tmux binary with no server is a fresh, empty runtime.
+		snapshot.Status = nowSourceCurrent
+	case len(projected) > 0:
+		snapshot.Status = nowSourceStale
+		snapshot.Message = "tmux_projection_stale"
+	default:
+		snapshot.Status = nowSourceUnavailable
+		snapshot.Message = "tmux_unavailable"
+	}
+	snapshot.Err = runtimeErr
+	return snapshot
+}
+
+func (h *Handler) appendKnownUserSessions(
+	ctx context.Context,
+	result []enrichedSession,
+	activeNames []string,
+	seen map[string]struct{},
+	stored map[string]store.SessionMeta,
+) ([]enrichedSession, []string) {
 	for _, user := range h.knownSessionUsers() {
 		svc := tmux.Service{User: user}
 		userSessions, listErr := svc.ListSessions(ctx)
@@ -271,10 +310,7 @@ func (h *Handler) listSessionsFromProjection(ctx context.Context, stored map[str
 			result = append(result, enriched)
 		}
 	}
-
-	h.purgeStoredSessionsBestEffort(ctx, activeNames)
-	sortSessionsByStoredOrder(result)
-	return result, true
+	return result, activeNames
 }
 
 func (h *Handler) projectedSessionToEnriched(ctx context.Context, row store.WatchtowerSession, meta store.SessionMeta) enrichedSession {
@@ -312,52 +348,6 @@ func projectedCreatedAt(row store.WatchtowerSession) time.Time {
 		return row.LastPreviewAt
 	}
 	return createdAt
-}
-
-func (h *Handler) listSessionsFromTmux(ctx context.Context, stored map[string]store.SessionMeta) ([]enrichedSession, error) {
-	// Warmup fallback: projections may still be empty right after startup.
-	sessions, err := h.tmux.ListSessions(ctx)
-	if err != nil {
-		return nil, err
-	}
-	snapshots := h.loadActivePaneSnapshots(ctx)
-
-	// Collect sessions from the default user's tmux server.
-	seen := make(map[string]struct{}, len(sessions))
-	activeNames := make([]string, 0, len(sessions))
-	result := make([]enrichedSession, 0, len(sessions))
-	for _, sess := range sessions {
-		seen[sess.Name] = struct{}{}
-		activeNames = append(activeNames, sess.Name)
-		enriched := h.tmuxSessionToEnriched(ctx, sess, snapshots[sess.Name], stored[sess.Name])
-		result = append(result, enriched)
-	}
-
-	// Also query each known multi-user tmux server.
-	for _, user := range h.knownSessionUsers() {
-		svc := tmux.Service{User: user}
-		userSessions, listErr := svc.ListSessions(ctx)
-		if listErr != nil {
-			slog.Warn("multi-user session list failed", "user", user, "err", listErr)
-			continue
-		}
-		userSnapshots, _ := svc.ListActivePaneCommands(ctx)
-		for _, sess := range userSessions {
-			if _, exists := seen[sess.Name]; exists {
-				continue
-			}
-			seen[sess.Name] = struct{}{}
-			activeNames = append(activeNames, sess.Name)
-			h.registerSessionUser(sess.Name, user)
-			enriched := h.tmuxSessionToEnriched(ctx, sess, userSnapshots[sess.Name], stored[sess.Name])
-			enriched.User = user
-			result = append(result, enriched)
-		}
-	}
-
-	h.purgeStoredSessionsBestEffort(ctx, activeNames)
-	sortSessionsByStoredOrder(result)
-	return result, nil
 }
 
 func (h *Handler) loadActivePaneSnapshots(ctx context.Context) map[string]tmux.PaneSnapshot {

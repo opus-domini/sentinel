@@ -118,6 +118,11 @@ type opsJobRepo interface {
 	DeleteOpsRunbookRun(ctx context.Context, runID string) error
 }
 
+type nowRunbookRepo interface {
+	ListOpsRunbookActiveRuns(ctx context.Context) ([]store.OpsRunbookRun, error)
+	ListOpsRunbookLatestTerminalRuns(ctx context.Context) ([]store.OpsRunbookRun, error)
+}
+
 type opsScheduleRepo interface {
 	ListOpsSchedules(ctx context.Context) ([]store.OpsSchedule, error)
 	InsertOpsSchedule(ctx context.Context, w store.OpsScheduleWrite) (store.OpsSchedule, error)
@@ -200,6 +205,7 @@ type handlerRepo interface {
 	watchtowerMarkRepo
 	presenceRepo
 	opsJobRepo
+	nowRunbookRepo
 	opsScheduleRepo
 	customServicesRepo
 	storageRepo
@@ -301,6 +307,7 @@ func Register(
 	}
 	h.runbooks = runbook.NewManager(st, ops, h.emitEvent, runbookMaxConcurrent, nil)
 	h.registerMetaRoutes(mux)
+	h.registerNowRoutes(mux)
 	h.registerTmuxRoutes(mux)
 	h.registerServicesRoutes(mux)
 	h.registerRunbooksRoutes(mux)
