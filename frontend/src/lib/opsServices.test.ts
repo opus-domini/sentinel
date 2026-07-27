@@ -16,6 +16,7 @@ import {
   matchesOpsServiceStateFilter,
   matchesOpsServiceTrackFilter,
   upsertOpsService,
+  withObservedServiceState,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
 
@@ -116,8 +117,33 @@ describe('opsServices', () => {
     })
     expect(actionVerificationToast('restart', { ...base, state: 'unavailable' })).toEqual({
       level: 'info',
-      message: 'restart accepted; post-condition unavailable',
+      message: 'restart accepted; could not verify activeState=active',
     })
+  })
+
+  it('reconciles action state only when the post-condition was observed', () => {
+    const service = buildService({ activeState: 'restarting', enabledState: 'disabled' })
+    const base = {
+      field: 'activeState' as const,
+      expected: 'active',
+      observedAt: '2026-07-27T16:00:00Z',
+      attempts: 4,
+    }
+
+    expect(
+      withObservedServiceState(service, {
+        ...base,
+        state: 'mismatch',
+        observed: 'failed',
+      }).activeState,
+    ).toBe('failed')
+    expect(
+      withObservedServiceState(service, {
+        ...base,
+        state: 'unavailable',
+        observed: '',
+      }),
+    ).toBe(service)
   })
 
   it('upserts a service by name', () => {

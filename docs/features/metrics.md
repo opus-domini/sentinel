@@ -44,6 +44,14 @@ Go runtime statistics for the Sentinel server process:
 ## UI Features
 
 - Dedicated `/metrics` route with full-page metrics dashboard.
+- Typed handoffs use
+  `/metrics?signal=<canonical-signal>&focusAt=<RFC3339>`. The route selects
+  Saturation, scrolls to, focuses, and highlights the requested card. Canonical
+  signals are `cpu`, `memory`, `rootDisk`, `inodes`, `swap`, `cpuPressure`,
+  `memoryPressure`, and `ioPressure`.
+- `focusAt` identifies when the owner handoff evidence was observed. The page
+  displays it as context while explicitly treating charts as current/live
+  samples, not as a persisted historical sample for that instant.
 - Unified command-center dashboard with an always-visible host posture overview.
 - Context tabs for saturation, network, and Sentinel runtime metrics, so dense widgets have enough room for labels, details, and trends.
 - Metrics uses the full available panel width and keeps help, token, refresh, and connection controls in the page header.

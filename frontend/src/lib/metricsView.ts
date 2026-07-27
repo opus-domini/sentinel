@@ -1,5 +1,5 @@
 import { formatBytes, formatDurationLong, formatPercentValue } from './format'
-import type { MetricPosture } from '@/types'
+import type { MetricPosture, MetricPostureSignal } from '@/types'
 
 export type MetricSeverity = 'ok' | 'warn' | 'critical' | 'unknown'
 
@@ -9,6 +9,39 @@ export type MetricPosturePresentation = {
   detail: string
   observedAt: string | null
   since: string | null
+}
+
+export type MetricSignalPresentation = {
+  elementID: string
+  label: string
+  tab: 'saturation'
+}
+
+const METRIC_SIGNAL_PRESENTATIONS: Record<MetricPostureSignal['name'], MetricSignalPresentation> = {
+  cpu: { elementID: 'metric-signal-cpu', label: 'CPU', tab: 'saturation' },
+  memory: { elementID: 'metric-signal-memory', label: 'Memory', tab: 'saturation' },
+  rootDisk: { elementID: 'metric-signal-rootDisk', label: 'Root disk', tab: 'saturation' },
+  inodes: { elementID: 'metric-signal-inodes', label: 'Disk inodes', tab: 'saturation' },
+  swap: { elementID: 'metric-signal-swap', label: 'Swap', tab: 'saturation' },
+  cpuPressure: {
+    elementID: 'metric-signal-cpuPressure',
+    label: 'CPU pressure',
+    tab: 'saturation',
+  },
+  memoryPressure: {
+    elementID: 'metric-signal-memoryPressure',
+    label: 'Memory pressure',
+    tab: 'saturation',
+  },
+  ioPressure: {
+    elementID: 'metric-signal-ioPressure',
+    label: 'IO pressure',
+    tab: 'saturation',
+  },
+}
+
+export function presentMetricSignal(signal: MetricPostureSignal['name']): MetricSignalPresentation {
+  return METRIC_SIGNAL_PRESENTATIONS[signal]
 }
 
 export function presentMetricPosture(posture: MetricPosture | null): MetricPosturePresentation {

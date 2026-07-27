@@ -3,7 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import type { NowSnapshot } from '@/types'
-import { NowAttention } from './NowAttention'
+import { NowAttention, primaryMetricSignal } from './NowAttention'
 import { NowInProgress } from './NowInProgress'
 import { NowStatus } from './NowStatus'
 
@@ -192,5 +192,47 @@ describe('Now panels', () => {
     expect(screen.getByRole('link', { name: /Approval waiting/ }).getAttribute('href')).toBe(
       '/runbooks?job=job-approval',
     )
+  })
+
+  it('hands host pressure to the highest-severity Metrics signal without guessing an owner', () => {
+    const signals = [
+      {
+        name: 'cpu' as const,
+        severity: 'warning' as const,
+        value: 82,
+        since: '2026-07-27T11:58:00Z',
+      },
+      {
+        name: 'ioPressure' as const,
+        severity: 'critical' as const,
+        value: 64,
+        since: '2026-07-27T11:59:00Z',
+      },
+    ]
+    expect(primaryMetricSignal(signals)?.name).toBe('ioPressure')
+
+    render(
+      <NowAttention
+        attention={{
+          total: 1,
+          visible: [
+            {
+              type: 'metrics_pressure',
+              severity: 'critical',
+              signals,
+              observedAt: '2026-07-27T12:00:00Z',
+            },
+          ],
+          overflow: { approvals: 0, services: 0, metrics: 0 },
+        }}
+        degraded={false}
+        onRunProcedure={vi.fn()}
+      />,
+    )
+
+    const href = screen.getByRole('link', { name: /Host pressure/ }).getAttribute('href')
+    expect(href).toBe('/metrics?signal=ioPressure&focusAt=2026-07-27T12%3A00%3A00Z')
+    expect(href).not.toContain('service')
+    expect(href).not.toContain('process')
   })
 })

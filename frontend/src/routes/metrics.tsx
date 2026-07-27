@@ -18,7 +18,12 @@ import {
   Waves,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { OpsHostMetrics, OpsMetricsResponse, OpsOverviewResponse } from '@/types'
+import type {
+  MetricPostureSignal,
+  OpsHostMetrics,
+  OpsMetricsResponse,
+  OpsOverviewResponse,
+} from '@/types'
 import type { MetricsSnapshot } from '@/lib/MetricsHistory'
 import type { MetricSeverity } from '@/lib/metricsView'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
@@ -41,6 +46,7 @@ import {
 import { formatBytes, toErrorMessage } from '@/lib/opsUtils'
 import { ProgressBar } from '@/lib/ProgressBar'
 import { Sparkline } from '@/lib/Sparkline'
+import { parseMetricsSearch } from '@/lib/deepLinks'
 import {
   computeByteRate,
   formatByteRate,
@@ -48,6 +54,7 @@ import {
   formatPercentValue,
   percentSeverity,
   presentMetricPosture,
+  presentMetricSignal,
   pressureSeverity,
 } from '@/lib/metricsView'
 import { cn } from '@/lib/utils'
@@ -306,6 +313,8 @@ function MetricPanel({
   className,
   chartClassName,
   sampleRate,
+  signal,
+  focused = false,
 }: {
   title: string
   value: string
@@ -320,14 +329,21 @@ function MetricPanel({
   className?: string
   chartClassName?: string
   sampleRate?: string
+  signal?: MetricPostureSignal['name']
+  focused?: boolean
 }) {
   const showProgress = typeof percent === 'number' && Number.isFinite(percent)
 
   return (
     <div
+      id={signal ? presentMetricSignal(signal).elementID : undefined}
+      tabIndex={focused ? -1 : undefined}
+      data-focused={focused || undefined}
       className={cn(
         'grid min-h-[156px] grid-rows-[auto_auto_1fr] overflow-hidden rounded-lg border p-3',
         severity === 'ok' ? 'border-border-subtle bg-surface-elevated' : severityClass(severity),
+        focused &&
+          'ring-2 ring-brand-glow ring-offset-2 ring-offset-background motion-safe:transition-shadow',
         className,
       )}
     >
@@ -357,6 +373,34 @@ function MetricPanel({
         )}
       </div>
     </div>
+  )
+}
+
+function MetricFocusNotice({
+  signal,
+  focusAt,
+}: {
+  signal: MetricPostureSignal['name']
+  focusAt?: string
+}) {
+  const target = presentMetricSignal(signal)
+  return (
+    <section
+      role="status"
+      className="rounded-lg border border-brand-glow/35 bg-[color-mix(in_srgb,var(--brand-glow)_9%,var(--surface-elevated))] px-3 py-2 text-[11px] leading-4 text-secondary-foreground"
+    >
+      <p>
+        Now handed off <strong className="text-foreground">{target.label}</strong>
+        {focusAt ? (
+          <>
+            {' '}
+            from evidence observed at <time dateTime={focusAt}>{focusAt}</time>
+          </>
+        ) : null}
+        . This view shows current and live samples; it does not claim a historical sample at that
+        time.
+      </p>
+    </section>
   )
 }
 
@@ -491,6 +535,9 @@ function MetricsSkeleton() {
 }
 
 function MetricsPage() {
+  const routeSearch = Route.useSearch()
+  const search = parseMetricsSearch(routeSearch)
+  const navigate = Route.useNavigate()
   const { hostname } = useMetaContext()
   const api = useTmuxApi()
   const queryClient = useQueryClient()
@@ -526,6 +573,37 @@ function MetricsPage() {
       : ''
   const metricsError =
     metricsQuery.error != null ? toErrorMessage(metricsQuery.error, 'failed to load metrics') : ''
+  const focusedMetric = search.signal ? presentMetricSignal(search.signal) : null
+  const metricsAvailable = metrics != null
+
+  useEffect(() => {
+    const rawSearch = new URLSearchParams(window.location.search)
+    const canonicalSearch = new URLSearchParams()
+    if (search.signal) canonicalSearch.set('signal', search.signal)
+    if (search.focusAt) canonicalSearch.set('focusAt', search.focusAt)
+    if (rawSearch.toString() === canonicalSearch.toString()) return
+    void navigate({
+      search: search.signal
+        ? {
+            signal: search.signal,
+            ...(search.focusAt ? { focusAt: search.focusAt } : {}),
+          }
+        : {},
+      replace: true,
+    })
+  }, [navigate, search.focusAt, search.signal])
+
+  useEffect(() => {
+    if (!metricsAvailable || focusedMetric == null) return
+    setActiveTab(focusedMetric.tab)
+    const frame = window.requestAnimationFrame(() => {
+      const element = document.getElementById(focusedMetric.elementID)
+      if (element == null) return
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      element.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [focusedMetric, metricsAvailable])
 
   useEffect(() => {
     if (metrics != null && !seededRef.current) {
@@ -665,6 +743,9 @@ function MetricsPage() {
 
             {!metricsLoading && metrics != null && (
               <>
+                {search.signal && (
+                  <MetricFocusNotice signal={search.signal} focusAt={search.focusAt} />
+                )}
                 <section className="grid gap-3">
                   <div className="grid overflow-hidden rounded-lg border border-brand-glow/30 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--brand-glow)_13%,var(--surface-elevated)),var(--surface-elevated)_56%,color-mix(in_srgb,var(--brand-accent)_10%,var(--surface-overlay)))] p-3 sm:p-4">
                     <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr_1fr_1fr] lg:items-center">
@@ -711,6 +792,8 @@ function MetricsPage() {
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
                     <MetricPanel
                       title="CPU"
+                      signal="cpu"
+                      focused={search.signal === 'cpu'}
                       value={formatPercentValue(metrics.cpuPercent)}
                       detail={`${metrics.cpuCount} cores · load ${metrics.loadAvg1.toFixed(2)}`}
                       Icon={Cpu}
@@ -723,6 +806,8 @@ function MetricsPage() {
                     />
                     <MetricPanel
                       title="Memory"
+                      signal="memory"
+                      focused={search.signal === 'memory'}
                       value={formatPercentValue(metrics.memPercent)}
                       detail={`${formatBytes(metrics.memUsedBytes)} used · ${formatMaybeBytes(metrics.memAvailableBytes)} free`}
                       Icon={MemoryStick}
@@ -735,6 +820,8 @@ function MetricsPage() {
                     />
                     <MetricPanel
                       title="Root disk"
+                      signal="rootDisk"
+                      focused={search.signal === 'rootDisk'}
                       value={formatPercentValue(metrics.diskPercent)}
                       detail={`${formatMaybeBytes(metrics.diskFreeBytes)} free · ${formatBytes(metrics.diskTotalBytes)} total`}
                       Icon={HardDrive}
@@ -791,6 +878,8 @@ function MetricsPage() {
                       />
                       <MetricPanel
                         title="Swap"
+                        signal="swap"
+                        focused={search.signal === 'swap'}
                         value={
                           metrics.swapTotalBytes > 0
                             ? formatPercentValue(metrics.swapPercent)
@@ -817,6 +906,8 @@ function MetricsPage() {
                       />
                       <MetricPanel
                         title="Disk inodes"
+                        signal="inodes"
+                        focused={search.signal === 'inodes'}
                         value={
                           metrics.diskInodesTotal > 0
                             ? formatPercentValue(metrics.diskInodesPercent)
@@ -841,6 +932,8 @@ function MetricsPage() {
                       />
                       <MetricPanel
                         title="CPU pressure"
+                        signal="cpuPressure"
+                        focused={search.signal === 'cpuPressure'}
                         value={
                           metrics.cpuPressureAvg10 >= 0 ? metrics.cpuPressureAvg10.toFixed(2) : '-'
                         }
@@ -856,6 +949,8 @@ function MetricsPage() {
                       />
                       <MetricPanel
                         title="Memory pressure"
+                        signal="memoryPressure"
+                        focused={search.signal === 'memoryPressure'}
                         value={
                           metrics.memPressureAvg10 >= 0 ? metrics.memPressureAvg10.toFixed(2) : '-'
                         }
@@ -871,6 +966,8 @@ function MetricsPage() {
                       />
                       <MetricPanel
                         title="IO pressure"
+                        signal="ioPressure"
+                        focused={search.signal === 'ioPressure'}
                         value={
                           metrics.ioPressureAvg10 >= 0 ? metrics.ioPressureAvg10.toFixed(2) : '-'
                         }
@@ -1024,5 +1121,6 @@ function MetricsPage() {
 }
 
 export const Route = createFileRoute('/metrics')({
+  validateSearch: parseMetricsSearch,
   component: MetricsPage,
 })

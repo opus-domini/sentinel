@@ -27,6 +27,7 @@ type ServiceLogTarget = Pick<
 
 type ServiceLogRequest = {
   fetchKey: number
+  since?: string
   target: ServiceLogTarget
   url: string
 }
@@ -37,22 +38,22 @@ type ServiceLogsSheetProps = {
   /** Monotonically increasing counter; bump to re-fetch initial logs. */
   fetchKey: number
   service: OpsBrowsedService | null
+  since?: string
   authenticated: boolean
   tokenRequired: boolean
   api: <T>(url: string, init?: RequestInit) => Promise<T>
 }
 
-function buildServiceLogURL(service: ServiceLogTarget): string {
+function buildServiceLogURL(service: ServiceLogTarget, since?: string): string {
+  const params = new URLSearchParams({ lines: '200' })
+  if (since) params.set('since', since)
   if (service.tracked && service.trackedName) {
-    return `/api/ops/services/${encodeURIComponent(service.trackedName)}/logs?lines=200`
+    return `/api/ops/services/${encodeURIComponent(service.trackedName)}/logs?${params.toString()}`
   }
 
-  const params = new URLSearchParams({
-    unit: service.unit,
-    scope: service.scope,
-    manager: service.manager,
-    lines: '200',
-  })
+  params.set('unit', service.unit)
+  params.set('scope', service.scope)
+  params.set('manager', service.manager)
   return `/api/ops/services/unit/logs?${params.toString()}`
 }
 
@@ -61,6 +62,7 @@ export function ServiceLogsSheet({
   onOpenChange,
   fetchKey,
   service,
+  since,
   authenticated,
   tokenRequired,
   api,
@@ -74,6 +76,7 @@ export function ServiceLogsSheet({
   const [streamEnabled, setStreamEnabled] = useState(false)
   const lineCounterRef = useRef(0)
   const serviceRef = useRef<ServiceLogTarget | null>(null)
+  const sinceRef = useRef<string | undefined>(undefined)
   const streamBufferRef = useRef<Array<ParsedLogLine>>([])
   const flushFrameRef = useRef<number | null>(null)
 
@@ -110,15 +113,17 @@ export function ServiceLogsSheet({
     }
     return {
       fetchKey,
+      since,
       target,
-      url: buildServiceLogURL(target),
+      url: buildServiceLogURL(target, since),
     }
-  }, [fetchKey, open, service])
+  }, [fetchKey, open, service, since])
 
   // Fetch initial logs when fetchKey changes (i.e. when opened for a service)
   useEffect(() => {
     if (!initialLogRequest) return
     serviceRef.current = initialLogRequest.target
+    sinceRef.current = initialLogRequest.since
     setLoading(true)
     setLogLines([])
     setSearch('')
@@ -200,7 +205,9 @@ export function ServiceLogsSheet({
     setStreamEnabled(false)
     clearStreamBuffer()
     try {
-      const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(buildServiceLogURL(svc))
+      const data = await api<OpsServiceLogsResponse | OpsUnitLogsResponse>(
+        buildServiceLogURL(svc, sinceRef.current),
+      )
       const parsed = parseLogLines(data.output)
       lineCounterRef.current = parsed.length
       setLogLines(parsed)
@@ -217,6 +224,7 @@ export function ServiceLogsSheet({
       if (!nextOpen) {
         setStreamEnabled(false)
         serviceRef.current = null
+        sinceRef.current = undefined
         clearStreamBuffer()
       }
     },
@@ -228,18 +236,26 @@ export function ServiceLogsSheet({
       <SheetContent className="flex flex-col gap-0 p-0">
         <SheetHeader className="shrink-0 border-b border-border-subtle px-4 py-3">
           <SheetTitle>{service ? formatOpsUnitName(service.unit) : 'Service logs'}</SheetTitle>
-          <SheetDescription>
-            {streamEnabled && streamStatus === 'connected' ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
+          <SheetDescription asChild>
+            <span className="grid gap-0.5">
+              {streamEnabled && streamStatus === 'connected' ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
+                  </span>
+                  Streaming live
                 </span>
-                Streaming live
-              </span>
-            ) : (
-              'Recent log output'
-            )}
+              ) : (
+                <span>Recent log output</span>
+              )}
+              {since && (
+                <span className="text-[10px]">
+                  Initial slice since <time dateTime={since}>{since}</time>; live lines continue as
+                  they arrive.
+                </span>
+              )}
+            </span>
           </SheetDescription>
         </SheetHeader>
 

@@ -1,15 +1,25 @@
 import { Link } from '@tanstack/react-router'
 import { Activity, ArrowUpRight, CircleAlert, Play, ShieldAlert } from 'lucide-react'
-import type { NowAttention as NowAttentionData, NowServiceFailedAttention } from '@/types'
+import type {
+  MetricPostureSignal,
+  NowAttention as NowAttentionData,
+  NowServiceFailedAttention,
+} from '@/types'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/useDateFormat'
-import { runbookExecutionSearch, serviceStatusSearch } from '@/lib/deepLinks'
+import { metricsSignalSearch, runbookExecutionSearch, serviceStatusSearch } from '@/lib/deepLinks'
 import { nowAttentionHiddenCount } from '@/lib/nowPresentation'
 
 type NowAttentionProps = {
   attention: NowAttentionData
   degraded: boolean
   onRunProcedure: (item: NowServiceFailedAttention) => void
+}
+
+export function primaryMetricSignal(
+  signals: Array<MetricPostureSignal>,
+): MetricPostureSignal | undefined {
+  return signals.find((signal) => signal.severity === 'critical') ?? signals[0]
 }
 
 export function NowAttention({ attention, degraded, onRunProcedure }: NowAttentionProps) {
@@ -108,10 +118,16 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
                 )
               }
 
+              const primarySignal = primaryMetricSignal(item.signals)
               return (
                 <Link
                   key={item.type}
                   to="/metrics"
+                  search={
+                    primarySignal
+                      ? metricsSignalSearch(primarySignal.name, item.observedAt)
+                      : undefined
+                  }
                   className="group flex items-start gap-3 rounded-lg border border-warning/25 bg-warning/6 px-3 py-2.5 no-underline transition-colors hover:bg-warning/10"
                 >
                   <Activity className="mt-0.5 size-4 shrink-0 text-warning-foreground" />

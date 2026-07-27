@@ -50,6 +50,7 @@ import {
   matchesOpsServiceTrackFilter,
   sortOpsBrowseUnitTypes,
   upsertOpsService,
+  withObservedServiceState,
   withOptimisticServiceAction,
 } from '@/lib/opsServices'
 import type { OpsServiceStateFilter, OpsServiceTrackFilter } from '@/lib/opsServices'
@@ -61,7 +62,7 @@ import {
 } from '@/lib/opsQueryCache'
 import { toErrorMessage } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
-import { parseServicesSearch } from '@/lib/deepLinks'
+import { parseServicesSearch, serviceLogsSearch } from '@/lib/deepLinks'
 
 const EMPTY_SERVICES: Array<OpsServiceStatus> = []
 const EMPTY_BROWSE_SERVICES: Array<OpsBrowsedService> = []
@@ -291,7 +292,8 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
 ServicesBrowseControls.displayName = 'ServicesBrowseControls'
 
 function ServicesPage() {
-  const search = Route.useSearch()
+  const routeSearch = Route.useSearch()
+  const search = parseServicesSearch(routeSearch)
   const navigate = Route.useNavigate()
   const { tokenRequired, hostname } = useMetaContext()
   const { authenticated } = useTokenContext()
@@ -303,10 +305,14 @@ function ServicesPage() {
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [serviceStatusError, setServiceStatusError] = useState('')
   const [serviceStatusData, setServiceStatusData] = useState<OpsServiceInspect | null>(null)
+  const [serviceStatusContext, setServiceStatusContext] = useState<
+    OpsServiceStatusResponse['context'] | null
+  >(null)
   const [serviceStatusTarget, setServiceStatusTarget] = useState<OpsBrowsedService | null>(null)
 
   const [serviceLogsOpen, setServiceLogsOpen] = useState(false)
   const [serviceLogsService, setServiceLogsService] = useState<OpsBrowsedService | null>(null)
+  const [serviceLogsSince, setServiceLogsSince] = useState<string | undefined>(undefined)
   const [serviceLogsFetchKey, setServiceLogsFetchKey] = useState(0)
 
   const [svcStateFilter, setSvcStateFilter] = useState<OpsServiceStateFilter>('all')
@@ -321,6 +327,26 @@ function ServicesPage() {
 
   const previousServiceRef = useRef(new Map<string, OpsServiceStatus>())
   const appliedDeepLinkRef = useRef('')
+
+  useEffect(() => {
+    const rawSearch = new URLSearchParams(window.location.search)
+    const canonicalSearch = new URLSearchParams()
+    if (search.service) canonicalSearch.set('service', search.service)
+    if (search.panel) canonicalSearch.set('panel', search.panel)
+    if (search.since) canonicalSearch.set('since', search.since)
+    if (rawSearch.toString() === canonicalSearch.toString()) return
+    void navigate({
+      search:
+        search.service && search.panel
+          ? {
+              service: search.service,
+              panel: search.panel,
+              ...(search.since ? { since: search.since } : {}),
+            }
+          : {},
+      replace: true,
+    })
+  }, [navigate, search.panel, search.service, search.since])
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -459,7 +485,7 @@ function ServicesPage() {
   const runServiceAction = useCallback(
     async (serviceName: string, action: OpsServiceAction) => {
       const previous = services.find((item) => item.name === serviceName)
-      if (!previous) return
+      if (!previous) return null
 
       previousServiceRef.current.set(serviceName, previous)
       queryClient.setQueryData<Array<OpsServiceStatus>>(OPS_SERVICES_QUERY_KEY, (current = []) =>
@@ -476,14 +502,12 @@ function ServicesPage() {
             body: JSON.stringify({ action }),
           },
         )
-        if (Array.isArray(data.services) && data.services.length > 0) {
-          queryClient.setQueryData(OPS_SERVICES_QUERY_KEY, data.services)
-        } else {
-          queryClient.setQueryData<Array<OpsServiceStatus>>(
-            OPS_SERVICES_QUERY_KEY,
-            (current = []) => upsertOpsService(current, data.service),
-          )
-        }
+        queryClient.setQueryData<Array<OpsServiceStatus>>(OPS_SERVICES_QUERY_KEY, (current = []) =>
+          upsertOpsService(
+            Array.isArray(data.services) && data.services.length > 0 ? data.services : current,
+            data.service,
+          ),
+        )
         queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
         const toast = actionVerificationToast(action, data.verification)
         pushToast({
@@ -491,6 +515,7 @@ function ServicesPage() {
           title: `${previous.displayName}`,
           message: toast.message,
         })
+        return data
       } catch (error) {
         const fallback = previousServiceRef.current.get(serviceName)
         if (fallback) {
@@ -504,6 +529,7 @@ function ServicesPage() {
           title: `${previous.displayName}`,
           message: error instanceof Error ? error.message : `${action} failed`,
         })
+        return null
       } finally {
         previousServiceRef.current.delete(serviceName)
       }
@@ -551,7 +577,15 @@ function ServicesPage() {
       setBrowsePendingActions((prev) => ({ ...prev, [key]: action }))
       try {
         if (svc.tracked && svc.trackedName) {
-          await runServiceAction(svc.trackedName, action)
+          const data = await runServiceAction(svc.trackedName, action)
+          if (data == null) return
+          queryClient.setQueryData<Array<OpsBrowsedService>>(OPS_BROWSE_QUERY_KEY, (current = []) =>
+            current.map((item) =>
+              browseServiceKey(item) === key
+                ? withObservedServiceState(item, data.verification)
+                : item,
+            ),
+          )
         } else {
           const data = await api<OpsUnitActionResponse>('/api/ops/services/unit/action', {
             method: 'POST',
@@ -563,6 +597,13 @@ function ServicesPage() {
             }),
           })
           queryClient.setQueryData(OPS_OVERVIEW_QUERY_KEY, data.overview)
+          queryClient.setQueryData<Array<OpsBrowsedService>>(OPS_BROWSE_QUERY_KEY, (current = []) =>
+            current.map((item) =>
+              browseServiceKey(item) === key
+                ? withObservedServiceState(item, data.verification)
+                : item,
+            ),
+          )
           const toast = actionVerificationToast(action, data.verification)
           pushToast({
             level: toast.level,
@@ -594,12 +635,14 @@ function ServicesPage() {
       setServiceStatusOpen(true)
       setServiceStatusLoading(true)
       setServiceStatusError('')
+      setServiceStatusContext(null)
       try {
         if (svc.tracked && svc.trackedName) {
           const data = await api<OpsServiceStatusResponse>(
             `/api/ops/services/${encodeURIComponent(svc.trackedName)}/status`,
           )
           setServiceStatusData(data.status)
+          setServiceStatusContext(data.context ?? null)
         } else {
           const params = new URLSearchParams({
             unit: svc.unit,
@@ -610,9 +653,11 @@ function ServicesPage() {
             `/api/ops/services/unit/status?${params.toString()}`,
           )
           setServiceStatusData(data.status)
+          setServiceStatusContext(data.context ?? null)
         }
       } catch (error) {
         setServiceStatusData(null)
+        setServiceStatusContext(null)
         setServiceStatusError(
           error instanceof Error ? error.message : 'failed to load service status',
         )
@@ -623,8 +668,9 @@ function ServicesPage() {
     [api],
   )
 
-  const openServiceLogs = useCallback((svc: OpsBrowsedService) => {
+  const openServiceLogs = useCallback((svc: OpsBrowsedService, since?: string) => {
     setServiceLogsService(svc)
+    setServiceLogsSince(since)
     setServiceLogsOpen(true)
     setServiceLogsFetchKey((k) => k + 1)
   }, [])
@@ -633,6 +679,7 @@ function ServicesPage() {
     setServiceLogsOpen(open)
     if (!open) {
       setServiceLogsService(null)
+      setServiceLogsSince(undefined)
     }
   }, [])
 
@@ -646,6 +693,8 @@ function ServicesPage() {
       setServiceStatusOpen(open)
       if (!open) {
         setServiceStatusTarget(null)
+        setServiceStatusData(null)
+        setServiceStatusContext(null)
         if (search.panel === 'status') clearServiceTarget()
       }
     },
@@ -662,22 +711,26 @@ function ServicesPage() {
 
   const viewServiceLogs = useCallback(() => {
     if (!serviceStatusTarget) return
+    const since = serviceStatusData?.condition.transitionedAt
     setServiceStatusOpen(false)
     setServiceStatusTarget(null)
-    openServiceLogs(serviceStatusTarget)
+    setServiceStatusData(null)
+    setServiceStatusContext(null)
+    openServiceLogs(serviceStatusTarget, since)
     const trackedName = serviceStatusTarget.trackedName?.trim()
     if (trackedName) {
-      appliedDeepLinkRef.current = `${trackedName}:logs`
+      const targetSearch = serviceLogsSearch(trackedName, since)
+      appliedDeepLinkRef.current = `${trackedName}:logs:${targetSearch.since ?? ''}`
       void navigate({
-        search: { service: trackedName, panel: 'logs' },
+        search: targetSearch,
         replace: true,
       })
     }
-  }, [navigate, openServiceLogs, serviceStatusTarget])
+  }, [navigate, openServiceLogs, serviceStatusData, serviceStatusTarget])
 
   useEffect(() => {
     if (!browseQuery.isSuccess || !search.service || !search.panel) return
-    const key = `${search.service}:${search.panel}`
+    const key = `${search.service}:${search.panel}:${search.since ?? ''}`
     const target = browseServices.find(
       (service) => service.tracked && service.trackedName === search.service,
     )
@@ -688,7 +741,7 @@ function ServicesPage() {
     if (appliedDeepLinkRef.current === key) return
     appliedDeepLinkRef.current = key
     if (search.panel === 'logs') {
-      openServiceLogs(target)
+      openServiceLogs(target, search.since)
       return
     }
     void inspectBrowsedService(target)
@@ -700,6 +753,7 @@ function ServicesPage() {
     openServiceLogs,
     search.panel,
     search.service,
+    search.since,
   ])
 
   const toggleTrack = useCallback(
@@ -918,6 +972,7 @@ function ServicesPage() {
         loading={serviceStatusLoading}
         error={serviceStatusError}
         data={serviceStatusData}
+        context={serviceStatusContext}
         onViewLogs={serviceStatusData ? viewServiceLogs : undefined}
       />
 
@@ -926,6 +981,7 @@ function ServicesPage() {
         onOpenChange={handleDeepLinkedLogsOpenChange}
         fetchKey={serviceLogsFetchKey}
         service={serviceLogsService}
+        since={serviceLogsSince}
         authenticated={authenticated}
         tokenRequired={tokenRequired}
         api={api}

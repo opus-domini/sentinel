@@ -7,6 +7,7 @@ import {
   formatPercentValue,
   percentSeverity,
   presentMetricPosture,
+  presentMetricSignal,
   pressureSeverity,
 } from './metricsView'
 
@@ -23,6 +24,38 @@ describe('metricsView', () => {
     expect(pressureSeverity(2)).toBe('warn')
     expect(pressureSeverity(10)).toBe('critical')
     expect(pressureSeverity(-1)).toBe('unknown')
+  })
+
+  it('maps every canonical posture signal to a stable Saturation target', () => {
+    expect(
+      [
+        'cpu',
+        'memory',
+        'rootDisk',
+        'inodes',
+        'swap',
+        'cpuPressure',
+        'memoryPressure',
+        'ioPressure',
+      ].map((signal) => presentMetricSignal(signal as Parameters<typeof presentMetricSignal>[0])),
+    ).toEqual([
+      { elementID: 'metric-signal-cpu', label: 'CPU', tab: 'saturation' },
+      { elementID: 'metric-signal-memory', label: 'Memory', tab: 'saturation' },
+      { elementID: 'metric-signal-rootDisk', label: 'Root disk', tab: 'saturation' },
+      { elementID: 'metric-signal-inodes', label: 'Disk inodes', tab: 'saturation' },
+      { elementID: 'metric-signal-swap', label: 'Swap', tab: 'saturation' },
+      {
+        elementID: 'metric-signal-cpuPressure',
+        label: 'CPU pressure',
+        tab: 'saturation',
+      },
+      {
+        elementID: 'metric-signal-memoryPressure',
+        label: 'Memory pressure',
+        tab: 'saturation',
+      },
+      { elementID: 'metric-signal-ioPressure', label: 'IO pressure', tab: 'saturation' },
+    ])
   })
 
   it('presents the canonical backend posture without recomputing host thresholds', () => {

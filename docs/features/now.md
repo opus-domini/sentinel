@@ -46,7 +46,10 @@ canonical name and then the oldest approvals. Metrics contributes at most one
 item. Hidden counts are reported by owner module.
 
 Now does not restart services. A failed service opens its status in Services,
-where `View logs` continues to the live log panel. When exactly one enabled
+where `View logs` preserves the observed transition time for the initial log
+slice and then continues to the live stream. Host pressure opens Metrics on the
+highest-severity signal and carries the attention item's own observation time;
+it never guesses a responsible Service or process. When exactly one enabled
 Runbook is associated with the failed service, `Run procedure` opens the normal
 parameter dialog and starts that procedure through the Runbook execution
 engine. A successful start immediately opens the returned immutable execution
@@ -68,17 +71,20 @@ Pinned remains session metadata; it does not make a quiet session current work.
 
 Owner links are reload-safe and validated against current data:
 
-| Owner             | Search parameters                             |
-| ----------------- | --------------------------------------------- |
-| Services          | `/services?service=<name>&panel=status\|logs` |
-| Runbook definition | `/runbooks?runbook=<id>`                     |
-| Runbook execution | `/runbooks?job=<id>`                          |
-| Tmux              | `/tmux?session=<name>`                        |
+| Owner              | Search parameters                                                    |
+| ------------------ | -------------------------------------------------------------------- |
+| Services           | `/services?service=<name>&panel=status`                              |
+| Service logs       | `/services?service=<name>&panel=logs&since=<RFC3339>`                 |
+| Metrics signal     | `/metrics?signal=<name>&focusAt=<RFC3339>`                           |
+| Runbook definition | `/runbooks?runbook=<id>`                                             |
+| Runbook execution  | `/runbooks?job=<id>`                                                  |
+| Tmux               | `/tmux?session=<name>`                                                |
 
 Invalid definitions and disappeared Services or Tmux targets are removed from
-the URL with history replacement. A missing execution keeps its canonical URL
-and shows an explicit unavailable state. Tmux never creates a tab from a URL
-target; the session must already exist.
+the URL with history replacement. Invalid temporal fields are removed without
+discarding an otherwise valid owner target. A missing execution keeps its
+canonical URL and shows an explicit unavailable state. Tmux never creates a tab
+from a URL target; the session must already exist.
 
 ## Refresh Model
 

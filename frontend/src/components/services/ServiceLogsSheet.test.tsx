@@ -48,10 +48,12 @@ function renderSheet({
   api,
   fetchKey = 1,
   target = service(),
+  since,
 }: {
   api: ServiceLogsAPI
   fetchKey?: number
   target?: OpsBrowsedService
+  since?: string
 }) {
   return render(
     <TooltipProvider>
@@ -60,6 +62,7 @@ function renderSheet({
         onOpenChange={() => {}}
         fetchKey={fetchKey}
         service={target}
+        since={since}
         authenticated
         tokenRequired={false}
         api={api}
@@ -116,6 +119,26 @@ describe('ServiceLogsSheet', () => {
     expect(parsed.searchParams.get('scope')).toBe('user')
     expect(parsed.searchParams.get('manager')).toBe('systemd')
     expect(parsed.searchParams.get('lines')).toBe('200')
+  })
+
+  it('requests the initial temporal slice and labels the live continuation', async () => {
+    const { api, calls, spy } = createAPI()
+    const since = '2026-07-27T11:59:00Z'
+
+    renderSheet({
+      api,
+      since,
+      target: service({ tracked: true, trackedName: 'sentinel' }),
+    })
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+    const parsed = new URL(calls[0].url, 'http://sentinel.local')
+    expect(parsed.pathname).toBe('/api/ops/services/sentinel/logs')
+    expect(parsed.searchParams.get('since')).toBe(since)
+    expect(screen.getByText(/Initial slice since/).textContent).toContain(since)
+    expect(screen.getByText(/Initial slice since/).textContent).toContain(
+      'live lines continue as they arrive',
+    )
   })
 
   it('refetches only when fetchKey changes for the same service', async () => {

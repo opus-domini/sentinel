@@ -159,6 +159,11 @@ definition and latest execution are independent: either is `null` when it does
 not exist, and historical execution context remains available after definition
 removal.
 
+The status dialog presents the structured condition and operational context
+before manager properties and raw output. An associated procedure opens the
+exact definition at `/runbooks?runbook=<id>`, while the latest execution opens
+its immutable receipt at `/runbooks?job=<id>`.
+
 **Logs**:
 
 ```
@@ -169,6 +174,13 @@ GET /api/ops/services/{service}/logs?lines=50&since=2026-07-27T15:30:00Z
 `400 INVALID_REQUEST`. Sentinel maps it to `journalctl --since` on systemd and
 `log show --start` on launchd.
 
+For tracked Services, `View logs` preserves `condition.transitionedAt` in the
+reload-safe URL
+`/services?service=<name>&panel=logs&since=<RFC3339>`. The sheet labels that
+initial temporal slice and then continues with the existing live stream; the
+stream itself does not claim to replay history from `since`. Invalid `since`
+values are removed without discarding an otherwise valid Service log target.
+
 ## Realtime Events
 
 Service state changes emit events over the `/ws/events` WebSocket:
@@ -178,7 +190,9 @@ Service state changes emit events over the `/ws/events` WebSocket:
 
 ## UX Behavior
 
-- Service actions use optimistic updates. The UI reflects the expected state immediately and reconciles when the server responds or a realtime event arrives.
+- Service actions use optimistic updates. The UI reflects the expected state
+  immediately, then reconciles the cache with the observed post-condition or a
+  realtime refresh.
 - The UI reports success only for `verification.state=confirmed`; accepted commands with mismatched or unavailable post-conditions use neutral language.
 - Failed actions roll back the optimistic state and generate a toast notification.
 - The browse view supports filtering by state (active, inactive, failed), scope (user, system), and free-text search.

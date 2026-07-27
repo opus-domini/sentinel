@@ -417,6 +417,19 @@ Unit query params (status and logs): `unit`, `scope`, `manager`, `lines`.
 Tracked and unit log endpoints also accept optional `since=<RFC3339>`. Invalid
 timestamps return `400 INVALID_REQUEST`.
 
+Frontend owner handoffs use validated search contracts:
+
+- `/services?service=<name>&panel=status`
+- `/services?service=<name>&panel=logs&since=<RFC3339>`; `since` is valid only
+  for the logs panel
+- `/metrics?signal=<name>&focusAt=<RFC3339>`; `signal` is one of `cpu`,
+  `memory`, `rootDisk`, `inodes`, `swap`, `cpuPressure`, `memoryPressure`, or
+  `ioPressure`, and `focusAt` is optional
+
+`focusAt` is handoff context from Now, not an API promise of persisted metric
+history. Invalid temporal values are omitted while valid owner identity is
+retained.
+
 ### Runbooks
 
 | Method   | Path                              | Purpose                               |

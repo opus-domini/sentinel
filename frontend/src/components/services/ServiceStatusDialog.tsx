@@ -1,4 +1,5 @@
-import type { OpsServiceInspect } from '@/types'
+import { Link } from '@tanstack/react-router'
+import type { OpsServiceInspect, OpsServiceStatusResponse } from '@/types'
 import {
   Dialog,
   DialogContent,
@@ -8,6 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import { runbookDefinitionSearch, runbookExecutionSearch } from '@/lib/deepLinks'
 import { formatOpsUnitName } from '@/lib/opsServices'
 
 type ServiceStatusDialogProps = {
@@ -16,6 +18,7 @@ type ServiceStatusDialogProps = {
   loading: boolean
   error: string
   data: OpsServiceInspect | null
+  context: OpsServiceStatusResponse['context'] | null
   onViewLogs?: () => void
 }
 
@@ -25,8 +28,27 @@ export function ServiceStatusDialog({
   loading,
   error,
   data,
+  context,
   onViewLogs,
 }: ServiceStatusDialogProps) {
+  const conditionRows =
+    data == null
+      ? []
+      : [
+          ['Active state', data.condition.activeState],
+          ['Sub-state', data.condition.subState],
+          ['Result', data.condition.result],
+          [
+            'Exit code',
+            data.condition.exitCode == null ? undefined : String(data.condition.exitCode),
+          ],
+          [
+            'Exit status',
+            data.condition.exitStatus == null ? undefined : String(data.condition.exitStatus),
+          ],
+          ['Transitioned at', data.condition.transitionedAt],
+        ].filter((row): row is [string, string] => row[1] != null && row[1] !== '')
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-[calc(100vw-1rem)] overflow-hidden sm:max-w-3xl">
@@ -72,6 +94,62 @@ export function ServiceStatusDialog({
                       >
                         View logs
                       </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
+                  <p className="mb-1 text-[11px] font-semibold text-foreground">
+                    Current condition
+                  </p>
+                  {conditionRows.length > 0 ? (
+                    <div className="grid gap-1 text-[11px]">
+                      {conditionRows.map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="grid grid-cols-[6.5rem_1fr] gap-2 sm:grid-cols-[9rem_1fr]"
+                        >
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="break-all font-mono text-foreground">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      No structured condition was reported.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
+                  <p className="mb-1 text-[11px] font-semibold text-foreground">
+                    Operational context
+                  </p>
+                  <div className="grid gap-1.5 text-[11px]">
+                    {context?.runbook ? (
+                      <Link
+                        to="/runbooks"
+                        search={runbookDefinitionSearch(context.runbook.id)}
+                        className="rounded border border-primary/25 bg-primary/5 px-2 py-1.5 text-primary-text no-underline hover:bg-primary/10"
+                      >
+                        Procedure · {context.runbook.name}
+                      </Link>
+                    ) : (
+                      <p className="text-muted-foreground">No procedure is associated.</p>
+                    )}
+                    {context?.latestRun ? (
+                      <Link
+                        to="/runbooks"
+                        search={runbookExecutionSearch(context.latestRun.id)}
+                        className="rounded border border-border-subtle bg-background px-2 py-1.5 text-foreground no-underline hover:bg-surface-hover"
+                      >
+                        Latest execution · {context.latestRun.status} ·{' '}
+                        {context.latestRun.runbookName}
+                      </Link>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        No execution receipt exists for this target.
+                      </p>
                     )}
                   </div>
                 </div>

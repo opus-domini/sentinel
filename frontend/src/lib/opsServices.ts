@@ -162,7 +162,20 @@ export function actionVerificationToast(
   }
   return {
     level: 'info' as const,
-    message: `${action} accepted; post-condition unavailable`,
+    message: `${action} accepted; could not verify ${verification.field}=${verification.expected}`,
+  }
+}
+
+export function withObservedServiceState<T extends { activeState: string; enabledState: string }>(
+  service: T,
+  verification: OpsServiceActionVerification,
+): T {
+  if (verification.state === 'unavailable' || verification.observed.trim() === '') {
+    return service
+  }
+  return {
+    ...service,
+    [verification.field]: verification.observed,
   }
 }
 
