@@ -146,7 +146,9 @@ export type PanesResponse = {
 export type StorageResourceStat = {
   resource: string
   label: string
-  rows: number
+  totalRows: number
+  flushableRows: number
+  protectedRows: number
   approxBytes: number
 }
 
@@ -162,6 +164,7 @@ export type StorageStatsResponse = {
 export type StorageFlushResult = {
   resource: string
   removedRows: number
+  protectedRows: number
 }
 
 export type StorageFlushResponse = {

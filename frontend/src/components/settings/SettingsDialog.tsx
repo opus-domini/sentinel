@@ -1,26 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { StorageFlushResponse, StorageStatsResponse } from '@/types'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 
 import ThemeSelector from '@/components/settings/ThemeSelector'
 import MCPSettingsPanel from '@/components/settings/MCPSettingsPanel'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { useSettings } from '@/hooks/useSettings'
-import { useTmuxApi } from '@/hooks/useTmuxApi'
-import { OPS_STORAGE_STATS_QUERY_KEY } from '@/lib/opsQueryCache'
-import { formatBytes } from '@/lib/opsUtils'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -49,7 +36,6 @@ type SettingsSection = 'appearance' | 'app' | 'mcp' | 'data' | 'about'
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { version, timezone, locale, hostname } = useMetaContext()
-  const api = useTmuxApi()
   const queryClient = useQueryClient()
   const [savingTimezone, setSavingTimezone] = useState(false)
   const [savingLocale, setSavingLocale] = useState(false)
@@ -59,10 +45,6 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
-  const [storageError, setStorageError] = useState('')
-  const [storageNotice, setStorageNotice] = useState('')
-  const [storageFlushingResource, setStorageFlushingResource] = useState('')
-  const [flushConfirmResource, setFlushConfirmResource] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SettingsSection>('appearance')
   const {
     supportsPwa,
@@ -179,66 +161,6 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     },
     [pushToast, queryClient, settingsQuery],
   )
-
-  const storageStatsQuery = useQuery({
-    queryKey: OPS_STORAGE_STATS_QUERY_KEY,
-    queryFn: async () => {
-      return api<StorageStatsResponse>('/api/ops/storage/stats')
-    },
-    enabled: open && activeSection === 'data',
-  })
-
-  const storageStats = storageStatsQuery.data ?? null
-  const storageLoading = storageStatsQuery.isLoading
-  const storageErrorMessage =
-    storageError.trim() !== ''
-      ? storageError
-      : storageStatsQuery.error instanceof Error
-        ? storageStatsQuery.error.message
-        : ''
-
-  const loadStorageStats = useCallback(async () => {
-    setStorageError('')
-    await queryClient.refetchQueries({
-      queryKey: OPS_STORAGE_STATS_QUERY_KEY,
-      exact: true,
-    })
-  }, [queryClient])
-
-  const executeFlush = useCallback(
-    async (resource: string) => {
-      setStorageFlushingResource(resource)
-      setStorageNotice('')
-      try {
-        const data = await api<StorageFlushResponse>('/api/ops/storage/flush', {
-          method: 'POST',
-          body: JSON.stringify({ resource }),
-        })
-        const removedRows = data.results.reduce((acc, item) => {
-          return acc + item.removedRows
-        }, 0)
-        setStorageNotice(
-          `${data.results.length} resource(s) flushed (${removedRows} row(s) removed).`,
-        )
-        setStorageError('')
-        await queryClient.invalidateQueries({
-          queryKey: OPS_STORAGE_STATS_QUERY_KEY,
-          exact: true,
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'failed to flush storage'
-        setStorageError(message)
-      } finally {
-        setStorageFlushingResource('')
-      }
-    },
-    [api, queryClient],
-  )
-
-  const formatRows = (value: number) => {
-    if (!Number.isFinite(value) || value <= 0) return '0'
-    return new Intl.NumberFormat('en-US').format(Math.trunc(value))
-  }
 
   const sectionButtonClass = (section: SettingsSection) =>
     cn(
@@ -473,101 +395,28 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               aria-labelledby="settings-tab-data"
               className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-secondary p-3"
             >
-              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-medium">Data & Storage</h3>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      void loadStorageStats()
-                    }}
-                    disabled={storageLoading}
-                  >
-                    {storageLoading ? 'Loading...' : 'Refresh'}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setFlushConfirmResource('all')}
-                    disabled={
-                      storageLoading || storageFlushingResource !== '' || storageStats == null
-                    }
-                  >
-                    {storageFlushingResource === 'all' ? 'Flushing...' : 'Flush All'}
-                  </Button>
-                </div>
-              </div>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Monitor persisted data growth and flush historical resources when needed.
-              </p>
-
-              {storageErrorMessage.trim() !== '' && (
-                <div className="mb-2 rounded border border-destructive/45 bg-destructive/10 px-2 py-1 text-[11px] text-destructive-foreground">
-                  {storageErrorMessage}
-                </div>
-              )}
-              {storageNotice.trim() !== '' && (
-                <div className="mb-2 rounded border border-ok/45 bg-ok/10 px-2 py-1 text-[11px] text-ok-foreground">
-                  {storageNotice}
-                </div>
-              )}
-
-              <div className="mb-2 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                  <p className="text-[11px] text-muted-foreground">DB total</p>
-                  <p className="font-mono text-[12px] font-semibold text-foreground">
-                    {formatBytes(storageStats?.totalBytes ?? 0)}
+              <div className="grid gap-3">
+                <div>
+                  <h3 className="text-xs font-medium">Data & Storage</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Review persisted history, protected active jobs, and destructive cleanup in the
+                    dedicated maintenance workspace.
                   </p>
                 </div>
-                <div className="rounded-md border border-border-subtle bg-surface-overlay p-2">
-                  <p className="text-[11px] text-muted-foreground">SQLite files</p>
-                  <p className="font-mono text-[12px] text-secondary-foreground">
-                    db {formatBytes(storageStats?.databaseBytes ?? 0)} · wal{' '}
-                    {formatBytes(storageStats?.walBytes ?? 0)} · shm{' '}
-                    {formatBytes(storageStats?.shmBytes ?? 0)}
+                <div className="rounded-md border border-border-subtle bg-surface-overlay p-3">
+                  <p className="text-[11px] font-medium text-foreground">
+                    Active jobs are always preserved
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    Queued, running, and approval-waiting executions cannot be removed by storage
+                    cleanup.
                   </p>
                 </div>
-              </div>
-
-              <div className="grid min-w-0 gap-2 pr-1">
-                {(storageStats?.resources ?? []).map((resource) => (
-                  <div
-                    key={resource.resource}
-                    className="grid min-w-0 gap-2 rounded-md border border-border-subtle bg-surface-overlay p-2 md:grid-cols-[minmax(0,1fr)_7rem_7.5rem_auto] md:items-center"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-[12px] font-medium">{resource.label}</p>
-                      <p className="truncate font-mono text-[10px] text-muted-foreground">
-                        {resource.resource}
-                      </p>
-                    </div>
-                    <p className="font-mono text-[11px] text-secondary-foreground md:text-right">
-                      {formatRows(resource.rows)} rows
-                    </p>
-                    <p className="font-mono text-[11px] text-secondary-foreground md:text-right">
-                      {formatBytes(resource.approxBytes)}
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setFlushConfirmResource(resource.resource)}
-                      disabled={
-                        storageFlushingResource !== '' || storageLoading || resource.rows <= 0
-                      }
-                    >
-                      {storageFlushingResource === resource.resource ? 'Flushing...' : 'Flush'}
-                    </Button>
-                  </div>
-                ))}
-                {storageStats != null && storageStats.resources.length === 0 && (
-                  <p className="text-[12px] text-muted-foreground">
-                    No storage resources available.
-                  </p>
-                )}
+                <Button asChild variant="outline" className="min-h-11 w-full sm:w-fit">
+                  <Link to="/maintenance/storage" onClick={() => onOpenChange(false)}>
+                    Open storage maintenance
+                  </Link>
+                </Button>
               </div>
             </section>
           )}
@@ -604,38 +453,6 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
           )}
         </div>
       </DialogContent>
-
-      <AlertDialog
-        open={flushConfirmResource != null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setFlushConfirmResource(null)
-        }}
-      >
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm flush</AlertDialogTitle>
-            <AlertDialogDescription>
-              {flushConfirmResource === 'all'
-                ? 'Flush all persisted history data? This cannot be undone.'
-                : `Flush "${flushConfirmResource}" history data? This cannot be undone.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="default"
-              onClick={() => {
-                if (flushConfirmResource) {
-                  void executeFlush(flushConfirmResource)
-                }
-                setFlushConfirmResource(null)
-              }}
-            >
-              Flush
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Dialog>
   )
 }

@@ -2,10 +2,35 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 
 import SettingsDialog from './SettingsDialog'
 import { ApiError } from '@/hooks/useTmuxApi'
 import { createSettingsSnapshot } from '@/test/settings'
+
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    children,
+    to,
+    onClick,
+    ...props
+  }: {
+    children: ReactNode
+    to: string
+    onClick?: (event: ReactMouseEvent<HTMLAnchorElement>) => void
+  }) => (
+    <a
+      href={to}
+      onClick={(event) => {
+        event.preventDefault()
+        onClick?.(event)
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+}))
 
 const mocks = vi.hoisted(() => ({
   save: vi.fn(),
@@ -116,15 +141,27 @@ describe('SettingsDialog experience saves', () => {
       expect.objectContaining({ level: 'error', title: 'Timezone not saved' }),
     )
   })
+
+  it('moves destructive storage work to the maintenance route', () => {
+    const onOpenChange = vi.fn()
+    renderDialog(onOpenChange)
+    fireEvent.click(screen.getByRole('tab', { name: 'Data' }))
+
+    expect(screen.getByText('Active jobs are always preserved')).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'Open storage maintenance' })
+    expect(link.getAttribute('href')).toBe('/maintenance/storage')
+    fireEvent.click(link)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
 })
 
-function renderDialog() {
+function renderDialog(onOpenChange = vi.fn()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <SettingsDialog open onOpenChange={vi.fn()} />
+      <SettingsDialog open onOpenChange={onOpenChange} />
     </QueryClientProvider>,
   )
 }

@@ -110,7 +110,7 @@ func runDBStatus(ctx context.Context, app *App) error {
 	for _, stat := range stats.Resources {
 		rows = append(rows, outputRow{
 			Key:   stat.Resource,
-			Value: fmt.Sprintf("%d %s, %s approx", stat.Rows, humanize.Pluralize(stat.Rows, "row", ""), humanize.Bytes(stat.ApproxBytes)),
+			Value: fmt.Sprintf("%d %s, %s approx", stat.TotalRows, humanize.Pluralize(stat.TotalRows, "row", ""), humanize.Bytes(stat.ApproxBytes)),
 		})
 	}
 	reportHeader(app.Stdout, "db", "status")

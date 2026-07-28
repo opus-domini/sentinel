@@ -609,6 +609,9 @@ state and its new ETag.
 | `GET`  | `/api/ops/storage/stats` | Storage usage by resource |
 | `POST` | `/api/ops/storage/flush` | Flush resource data       |
 
+Stats report `totalRows`, `flushableRows`, `protectedRows`, and
+`approxBytes` for each resource.
+
 Flush payload:
 
 ```json
@@ -620,6 +623,12 @@ Allowed resources:
 - `activity-journal`
 - `ops-jobs`
 - `all`
+
+`activity-journal` rows are all eligible. For `ops-jobs`, only `succeeded` and
+`failed` rows are eligible; `queued`, `running`, and `waiting_approval` rows
+are protected. Flush results include both `removedRows` and `protectedRows`.
+An `all` request uses one SQLite transaction, so any resource failure rolls
+back the complete operation.
 
 ## Common Error Codes
 

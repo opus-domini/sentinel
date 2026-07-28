@@ -26,10 +26,12 @@ var ErrInvalidStorageResource = errors.New("invalid storage resource")
 
 // StorageResourceStat represents storage resource stat data.
 type StorageResourceStat struct {
-	Resource    string `json:"resource"`
-	Label       string `json:"label"`
-	Rows        int64  `json:"rows"`
-	ApproxBytes int64  `json:"approxBytes"`
+	Resource      string `json:"resource"`
+	Label         string `json:"label"`
+	TotalRows     int64  `json:"totalRows"`
+	FlushableRows int64  `json:"flushableRows"`
+	ProtectedRows int64  `json:"protectedRows"`
+	ApproxBytes   int64  `json:"approxBytes"`
 }
 
 // StorageStats represents storage stats data.
@@ -44,8 +46,9 @@ type StorageStats struct {
 
 // StorageFlushResult represents storage flush result data.
 type StorageFlushResult struct {
-	Resource    string `json:"resource"`
-	RemovedRows int64  `json:"removedRows"`
+	Resource      string `json:"resource"`
+	RemovedRows   int64  `json:"removedRows"`
+	ProtectedRows int64  `json:"protectedRows"`
 }
 
 // NormalizeStorageResource normalizes storage resource.
@@ -106,44 +109,73 @@ func (s *Store) GetStorageStats(ctx context.Context) (StorageStats, error) {
 // FlushStorageResource handles flush storage resource.
 func (s *Store) FlushStorageResource(ctx context.Context, resource string) ([]StorageFlushResult, error) {
 	resource = NormalizeStorageResource(resource)
-	if resource == StorageResourceAll {
-		results := make([]StorageFlushResult, 0, 2)
-		for _, key := range []string{
-			StorageResourceActivityLog,
-			StorageResourceOpsJobs,
-		} {
-			item, err := s.flushStorageResourceSingle(ctx, key)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, item)
-		}
-		_ = s.walCheckpoint(ctx)
-		return results, nil
+	if !IsStorageResource(resource) {
+		return nil, ErrInvalidStorageResource
 	}
 
-	item, err := s.flushStorageResourceSingle(ctx, resource)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	resources := []string{resource}
+	if resource == StorageResourceAll {
+		resources = []string{
+			StorageResourceActivityLog,
+			StorageResourceOpsJobs,
+		}
+	}
+	results := make([]StorageFlushResult, 0, len(resources))
+	for _, key := range resources {
+		item, flushErr := flushStorageResource(ctx, tx, key)
+		if flushErr != nil {
+			return nil, flushErr
+		}
+		results = append(results, item)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	_ = s.walCheckpoint(ctx)
-	return []StorageFlushResult{item}, nil
+	return results, nil
 }
 
-func (s *Store) flushStorageResourceSingle(ctx context.Context, resource string) (StorageFlushResult, error) {
+func flushStorageResource(
+	ctx context.Context,
+	tx *sql.Tx,
+	resource string,
+) (StorageFlushResult, error) {
 	switch resource {
 	case StorageResourceActivityLog:
-		removed, err := deleteRows(ctx, s.db, "DELETE FROM wt_journal")
+		removed, err := deleteRows(ctx, tx, "DELETE FROM wt_journal")
 		if err != nil {
 			return StorageFlushResult{}, err
 		}
 		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
 	case StorageResourceOpsJobs:
-		removed, err := deleteRows(ctx, s.db, "DELETE FROM ops_runbook_runs")
+		var protected int64
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*)
+			FROM ops_runbook_runs
+			WHERE status NOT IN (?, ?)`,
+			OpsRunbookStatusSucceeded,
+			OpsRunbookStatusFailed,
+		).Scan(&protected); err != nil {
+			return StorageFlushResult{}, err
+		}
+		removed, err := deleteRows(ctx, tx, `DELETE FROM ops_runbook_runs
+			WHERE status IN (?, ?)`,
+			OpsRunbookStatusSucceeded,
+			OpsRunbookStatusFailed,
+		)
 		if err != nil {
 			return StorageFlushResult{}, err
 		}
-		return StorageFlushResult{Resource: resource, RemovedRows: removed}, nil
+		return StorageFlushResult{
+			Resource:      resource,
+			RemovedRows:   removed,
+			ProtectedRows: protected,
+		}, nil
 	default:
 		return StorageFlushResult{}, ErrInvalidStorageResource
 	}
@@ -163,28 +195,39 @@ func (s *Store) resourceStorageStats(ctx context.Context, resource string) (Stor
 			return StorageResourceStat{}, err
 		}
 		return StorageResourceStat{
-			Resource:    resource,
-			Label:       storageResourceActivityLabel,
-			Rows:        rows,
-			ApproxBytes: approxBytes,
+			Resource:      resource,
+			Label:         storageResourceActivityLabel,
+			TotalRows:     rows,
+			FlushableRows: rows,
+			ApproxBytes:   approxBytes,
 		}, nil
 	case StorageResourceOpsJobs:
-		rows, approxBytes, err := queryRowsAndBytes(ctx, s.db, `SELECT
+		var rows, flushableRows, approxBytes int64
+		err := s.db.QueryRowContext(ctx, `SELECT
 			COUNT(*),
+			COALESCE(SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(
 				length(id) + length(runbook_id) + length(runbook_name) + length(status) +
 				length(current_step) + length(error) + length(created_at) +
 				length(started_at) + length(finished_at)
 			), 0)
-		FROM ops_runbook_runs`)
+		FROM ops_runbook_runs`,
+			OpsRunbookStatusSucceeded,
+			OpsRunbookStatusFailed,
+		).Scan(&rows, &flushableRows, &approxBytes)
 		if err != nil {
 			return StorageResourceStat{}, err
 		}
+		rows = max(rows, 0)
+		flushableRows = min(max(flushableRows, 0), rows)
+		approxBytes = max(approxBytes, 0)
 		return StorageResourceStat{
-			Resource:    resource,
-			Label:       storageResourceOpsJobsLbl,
-			Rows:        rows,
-			ApproxBytes: approxBytes,
+			Resource:      resource,
+			Label:         storageResourceOpsJobsLbl,
+			TotalRows:     rows,
+			FlushableRows: flushableRows,
+			ProtectedRows: rows - flushableRows,
+			ApproxBytes:   approxBytes,
 		}, nil
 	default:
 		return StorageResourceStat{}, ErrInvalidStorageResource
@@ -205,8 +248,8 @@ func queryRowsAndBytes(ctx context.Context, db *sql.DB, query string) (int64, in
 	return rows, approxBytes, nil
 }
 
-func deleteRows(ctx context.Context, db *sql.DB, query string) (int64, error) {
-	result, err := db.ExecContext(ctx, query)
+func deleteRows(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}

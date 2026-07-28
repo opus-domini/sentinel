@@ -20,7 +20,8 @@ Endpoint:
 Returns:
 
 - File size (`databaseBytes`, `walBytes`, `shmBytes`, `totalBytes`)
-- Resource-level rows and approximate bytes
+- Resource-level `totalRows`, `flushableRows`, `protectedRows`, and approximate
+  bytes
 - Collection timestamp
 
 Resources tracked:
@@ -48,20 +49,37 @@ Allowed values:
 
 Response includes removed row counts per resource and flush timestamp.
 
+Every flush runs inside one SQLite transaction. `all` clears both resources in
+that same transaction; if either resource fails, neither resource is changed.
+The response also includes `protectedRows` so the caller can confirm how many
+rows were deliberately preserved.
+
+For `ops-jobs`, only terminal executions are eligible:
+
+- `succeeded`
+- `failed`
+
+Queued, running, and approval-waiting executions are protected. Unknown or
+future non-terminal states are protected as well; cleanup never uses a blanket
+delete against the jobs table.
+
 ## Operational Guidance
 
 - Prefer targeted flush before full flush.
-- Use full flush (`all`) for hard reset/testing environments.
+- Use full flush (`all`) when all eligible historical rows should be removed
+  atomically.
 - Use `sentinel db reset --yes --force` when the intended operation is a full
   SQLite wipe and migration replay.
 - Flush triggers WAL checkpoint best-effort.
 
 ## UI Integration
 
-Settings includes:
+Settings links to `/maintenance/storage`, a dedicated workspace with:
 
-- Storage usage panel
-- Per-resource flush actions
-- Global flush action
+- storage footprint and resource counts;
+- explicit eligible/protected impact;
+- resource selection;
+- destructive confirmation before cleanup;
+- success and failure receipts.
 
-Use this to keep runtime history growth under control in long-running deployments.
+The Settings dialog itself does not execute destructive storage actions.

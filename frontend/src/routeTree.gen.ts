@@ -15,6 +15,7 @@ import { Route as OpsRouteImport } from './routes/ops'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as ServicesRouteImport } from './routes/services'
 import { Route as TmuxRouteImport } from './routes/tmux'
+import { Route as MaintenanceStorageRouteImport } from './routes/maintenance.storage'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,11 @@ const TmuxRoute = TmuxRouteImport.update({
   path: '/tmux',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MaintenanceStorageRoute = MaintenanceStorageRouteImport.update({
+  id: '/maintenance/storage',
+  path: '/maintenance/storage',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
   '/tmux': typeof TmuxRoute
+  '/maintenance/storage': typeof MaintenanceStorageRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
   '/tmux': typeof TmuxRoute
+  '/maintenance/storage': typeof MaintenanceStorageRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,14 +79,36 @@ export interface FileRoutesById {
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
   '/tmux': typeof TmuxRoute
+  '/maintenance/storage': typeof MaintenanceStorageRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/metrics' | '/ops' | '/runbooks' | '/services' | '/tmux'
+  fullPaths:
+    | '/'
+    | '/metrics'
+    | '/ops'
+    | '/runbooks'
+    | '/services'
+    | '/tmux'
+    | '/maintenance/storage'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/metrics' | '/ops' | '/runbooks' | '/services' | '/tmux'
+  to:
+    | '/'
+    | '/metrics'
+    | '/ops'
+    | '/runbooks'
+    | '/services'
+    | '/tmux'
+    | '/maintenance/storage'
   id:
-    '__root__' | '/' | '/metrics' | '/ops' | '/runbooks' | '/services' | '/tmux'
+    | '__root__'
+    | '/'
+    | '/metrics'
+    | '/ops'
+    | '/runbooks'
+    | '/services'
+    | '/tmux'
+    | '/maintenance/storage'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -88,6 +118,7 @@ export interface RootRouteChildren {
   RunbooksRoute: typeof RunbooksRoute
   ServicesRoute: typeof ServicesRoute
   TmuxRoute: typeof TmuxRoute
+  MaintenanceStorageRoute: typeof MaintenanceStorageRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -134,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TmuxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/maintenance/storage': {
+      id: '/maintenance/storage'
+      path: '/maintenance/storage'
+      fullPath: '/maintenance/storage'
+      preLoaderRoute: typeof MaintenanceStorageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -144,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   RunbooksRoute: RunbooksRoute,
   ServicesRoute: ServicesRoute,
   TmuxRoute: TmuxRoute,
+  MaintenanceStorageRoute: MaintenanceStorageRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
