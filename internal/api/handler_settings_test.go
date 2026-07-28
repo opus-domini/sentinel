@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/user"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
+	"github.com/opus-domini/sentinel/internal/security"
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 type settingsEnvelope struct {
@@ -635,6 +639,207 @@ func TestSettingsIntegrationSecretsOwnedByEnvironmentAreReadOnly(t *testing.T) {
 	}
 }
 
+func TestSettingsAccountsExposeReadOnlyInventoryAndCapabilities(t *testing.T) {
+	content := `[multi_user]
+allowed_users = ["deploy", "root"]
+allow_root_target = true
+user_switch_method = "sudo"
+`
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
+		AllowedUsers:    []string{"deploy", "root"},
+		AllowRootTarget: true,
+		SystemUsers:     []string{"root", "hugo", "deploy", "deploy"},
+	})
+	h.switchCapabilities = func() []userswitch.Capability {
+		return []userswitch.Capability{
+			{Method: userswitch.MethodSudo, Available: true, Detail: "sudo ready"},
+			{Method: userswitch.MethodSystemdRun, Available: false, Detail: "systemd-run missing"},
+		}
+	}
+	originalCurrentUser := osCurrentUser
+	originalGeteuid := osGeteuid
+	osCurrentUser = func() (*user.User, error) {
+		return &user.User{Username: "hugo"}, nil
+	}
+	osGeteuid = func() int { return 1000 }
+	t.Cleanup(func() {
+		osCurrentUser = originalCurrentUser
+		osGeteuid = originalGeteuid
+	})
+
+	rec := httptest.NewRecorder()
+	h.getSettings(rec, httptest.NewRequest(http.MethodGet, "/api/ops/settings", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET accounts = %d %s", rec.Code, rec.Body.String())
+	}
+	var body settingsEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	accounts := body.Data.Accounts
+	if accounts.ProcessUser != "hugo" || accounts.ProcessIsRoot || !accounts.InventoryAvailable {
+		t.Fatalf("process identity = %+v", accounts)
+	}
+	if got := settingsAccountNames(accounts.Users); !slices.Equal(got, []string{"deploy", "hugo", "root"}) {
+		t.Fatalf("system users = %v", got)
+	}
+	if !accounts.Users[0].Allowed || accounts.Users[1].Allowed || !accounts.Users[2].Allowed {
+		t.Fatalf("account authorization = %+v", accounts.Users)
+	}
+	if !slices.Equal(accounts.AllowedUsers.EffectiveValue, []string{"deploy", "root"}) ||
+		accounts.AllowedUsers.Validation.AllowCustom ||
+		accounts.AllowRootTarget.ApplyMode != config.ApplyModeRestart ||
+		accounts.UserSwitchMethod.EffectiveValue != userswitch.MethodSudo {
+		t.Fatalf("account settings = %+v", accounts)
+	}
+	if len(accounts.MethodCapabilities) != 2 ||
+		!accounts.MethodCapabilities[0].Available ||
+		accounts.MethodCapabilities[1].Available ||
+		accounts.PrivilegeGuidance == "" {
+		t.Fatalf("capabilities = %+v guidance=%q", accounts.MethodCapabilities, accounts.PrivilegeGuidance)
+	}
+}
+
+func TestSettingsAccountsPatchIsStrictAndKeepsRootPolicyConsistent(t *testing.T) {
+	content := `[multi_user]
+allowed_users = ["deploy"]
+allow_root_target = false
+user_switch_method = "systemd-run"
+`
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
+		AllowedUsers: []string{"deploy"},
+		SystemUsers:  []string{"root", "hugo", "deploy"},
+	})
+
+	enableRoot := patchSettingsRequestWithETag(
+		t,
+		h,
+		getSettingsETag(t, h),
+		`{"accounts":{"allowedUsers":["deploy"],"allowRootTarget":true,"userSwitchMethod":"sudo"}}`,
+	)
+	if enableRoot.Code != http.StatusOK {
+		t.Fatalf("enable root = %d %s", enableRoot.Code, enableRoot.Body.String())
+	}
+	var enabled settingsEnvelope
+	if err := json.Unmarshal(enableRoot.Body.Bytes(), &enabled); err != nil {
+		t.Fatal(err)
+	}
+	if !enabled.Data.Accounts.AllowRootTarget.EffectiveValue ||
+		!slices.Equal(enabled.Data.Accounts.AllowedUsers.EffectiveValue, []string{"deploy", "root"}) ||
+		enabled.Data.Accounts.UserSwitchMethod.EffectiveValue != userswitch.MethodSudo {
+		t.Fatalf("enabled account settings = %+v", enabled.Data.Accounts)
+	}
+
+	disableRoot := patchSettingsRequestWithETag(
+		t,
+		h,
+		quoteETag(enabled.Data.Revision),
+		`{"accounts":{"allowRootTarget":false}}`,
+	)
+	if disableRoot.Code != http.StatusOK {
+		t.Fatalf("disable root = %d %s", disableRoot.Code, disableRoot.Body.String())
+	}
+	var disabled settingsEnvelope
+	if err := json.Unmarshal(disableRoot.Body.Bytes(), &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if disabled.Data.Accounts.AllowRootTarget.EffectiveValue ||
+		slices.Contains(disabled.Data.Accounts.AllowedUsers.EffectiveValue, "root") {
+		t.Fatalf("root remained authorized = %+v", disabled.Data.Accounts)
+	}
+
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "unknown user",
+			body: `{"accounts":{"allowedUsers":["ghost"]}}`,
+			want: "unknown account ghost",
+		},
+		{
+			name: "duplicate user",
+			body: `{"accounts":{"allowedUsers":["deploy","deploy"]}}`,
+			want: "duplicate account deploy",
+		},
+		{
+			name: "root without gate",
+			body: `{"accounts":{"allowedUsers":["root"]}}`,
+			want: "cannot include root",
+		},
+		{
+			name: "invalid method",
+			body: `{"accounts":{"userSwitchMethod":"systemd"}}`,
+			want: "must be",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			before, err := os.ReadFile(service.Path())
+			if err != nil {
+				t.Fatal(err)
+			}
+			rec := patchSettingsRequestWithETag(t, h, getSettingsETag(t, h), test.body)
+			if rec.Code != http.StatusUnprocessableEntity ||
+				!strings.Contains(rec.Body.String(), test.want) {
+				t.Fatalf("strict account patch = %d %s", rec.Code, rec.Body.String())
+			}
+			after, err := os.ReadFile(service.Path())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) {
+				t.Fatal("rejected account patch changed config")
+			}
+		})
+	}
+}
+
+func TestSettingsAccountsEnvironmentOwnershipIsReadOnly(t *testing.T) {
+	t.Setenv("SENTINEL_ALLOWED_USERS", "deploy")
+	t.Setenv("SENTINEL_USER_SWITCH_METHOD", "sudo")
+	service, runtime := newTestSettings(t, nil)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
+		SystemUsers: []string{"root", "hugo", "deploy"},
+	})
+
+	rec := httptest.NewRecorder()
+	h.getSettings(rec, httptest.NewRequest(http.MethodGet, "/api/ops/settings", nil))
+	var body settingsEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Data.Accounts.AllowedUsers.Editable ||
+		body.Data.Accounts.AllowedUsers.Source != config.FieldSourceEnvironment ||
+		body.Data.Accounts.UserSwitchMethod.Editable ||
+		body.Data.Accounts.UserSwitchMethod.Source != config.FieldSourceEnvironment {
+		t.Fatalf("environment account settings = %+v", body.Data.Accounts)
+	}
+
+	for _, requestBody := range []string{
+		`{"accounts":{"allowedUsers":["hugo"]}}`,
+		`{"accounts":{"userSwitchMethod":"systemd-run"}}`,
+	} {
+		rejected := patchSettingsRequestWithETag(t, h, getSettingsETag(t, h), requestBody)
+		if rejected.Code != http.StatusConflict ||
+			!strings.Contains(rejected.Body.String(), "ENVIRONMENT_OWNED") {
+			t.Fatalf("environment-owned account patch = %d %s", rejected.Code, rejected.Body.String())
+		}
+	}
+}
+
 func TestSettingsPatchMapsLockAndRollsBackLiveFailure(t *testing.T) {
 	content := "[server]\nlocale = \"en-US\"\n"
 	service, runtime := newTestSettings(t, &content)
@@ -767,4 +972,12 @@ func slicesContain(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func settingsAccountNames(accounts []settingsSystemUser) []string {
+	names := make([]string, 0, len(accounts))
+	for _, account := range accounts {
+		names = append(names, account.Name)
+	}
+	return names
 }

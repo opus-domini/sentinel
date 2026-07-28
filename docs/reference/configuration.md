@@ -74,6 +74,9 @@ Validation is strict:
 - webhook URLs must be empty or absolute HTTP(S) URLs with a host and without
   userinfo or fragments;
 - `user_switch_method` accepts only `sudo` or `systemd-run`;
+- Settings accepts `allowed_users` only from the daemon's read-only startup
+  account inventory and rejects duplicate entries;
+- Settings rejects root in `allowed_users` while `allow_root_target` is false;
 - invalid non-empty cookie security or user-switch values are rejected rather
   than normalized to a fallback.
 
@@ -173,11 +176,20 @@ the typed PATCH endpoint:
 | `log.level` | `debug`, `info`, `warn`, or `error` |
 | `health_report.schedule` | empty, a valid five-field cron, or supported `@descriptor` |
 | `health_report.webhook_url` | empty or absolute HTTP(S), with host and no userinfo or fragment |
+| `multi_user.allowed_users` | empty or a unique closed selection from the startup OS-account inventory |
+| `multi_user.allow_root_target` | `true` or `false`; root membership follows the gate for a file-owned explicit allowlist |
+| `multi_user.user_switch_method` | `sudo` or `systemd-run` |
 
 These values are restart-based. Saving updates `config.toml` atomically and
 marks the changed keys as restart pending; it does not partially reload
 Watchtower, the Runbook manager, the logger, or the health-report scheduler.
 Environment-owned fields remain read-only and a forged PATCH is rejected.
+
+The Accounts section also returns the current process identity, the startup
+OS-account inventory, and executable capability for each switch method. These
+are read-only observations. Capability detection checks PATH only; it neither
+executes a switch command nor proves that passwordless sudo policy is correct.
+All `[multi_user]` changes are restart-based.
 
 Managed systemd and launchd definitions do not set `SENTINEL_LOG_LEVEL`.
 Therefore an explicit `[log].level` value is no longer shadowed by the service

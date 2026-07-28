@@ -24,6 +24,7 @@ import (
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 var (
@@ -231,16 +232,17 @@ var _ handlerRepo = (*store.Store)(nil)
 
 // Handler represents handler data.
 type Handler struct {
-	guard            *security.Guard
-	tmux             tmuxService
-	ops              opsControlPlane
-	events           *events.Hub
-	repo             handlerRepo
-	version          string
-	configService    *config.Service
-	settings         settingsRuntime
-	deployments      deploymentDetector
-	userSwitchMethod string
+	guard              *security.Guard
+	tmux               tmuxService
+	ops                opsControlPlane
+	events             *events.Hub
+	repo               handlerRepo
+	version            string
+	configService      *config.Service
+	settings           settingsRuntime
+	deployments        deploymentDetector
+	userSwitchMethod   string
+	switchCapabilities func() []userswitch.Capability
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).
@@ -294,18 +296,19 @@ func Register(
 	}
 	runCtx, runCancel := context.WithCancel(context.Background())
 	h := &Handler{
-		guard:            guard,
-		tmux:             tmux.Service{},
-		ops:              ops,
-		events:           eventsHub,
-		repo:             st,
-		version:          strings.TrimSpace(version),
-		configService:    configService,
-		settings:         settings,
-		deployments:      installedDeployments,
-		userSwitchMethod: tmux.UserSwitchMethod,
-		runCtx:           runCtx,
-		runCancel:        runCancel,
+		guard:              guard,
+		tmux:               tmux.Service{},
+		ops:                ops,
+		events:             eventsHub,
+		repo:               st,
+		version:            strings.TrimSpace(version),
+		configService:      configService,
+		settings:           settings,
+		deployments:        installedDeployments,
+		userSwitchMethod:   tmux.UserSwitchMethod,
+		switchCapabilities: userswitch.Capabilities,
+		runCtx:             runCtx,
+		runCancel:          runCancel,
 	}
 	h.runbooks = runbook.NewManager(st, ops, h.emitEvent, runbookMaxConcurrent, nil)
 	h.registerMetaRoutes(mux)

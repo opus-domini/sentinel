@@ -4,6 +4,7 @@ package userswitch
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 )
 
@@ -14,11 +15,49 @@ const (
 	MethodSystemdRun = "systemd-run"
 )
 
+// Capability reports whether a user switch method has the required local
+// executables. It does not verify sudo policy or execute any command.
+type Capability struct {
+	Method    string
+	Available bool
+	Detail    string
+}
+
 // execSudo and execTmux are the binaries used to launch commands as another user.
 const (
-	execSudo = "sudo"
-	execTmux = "tmux"
+	execSudo       = "sudo"
+	execSystemdRun = "systemd-run"
+	execTmux       = "tmux"
 )
+
+// Capabilities detects the local executables required by each supported method.
+func Capabilities() []Capability {
+	return capabilitiesWithLookPath(exec.LookPath)
+}
+
+func capabilitiesWithLookPath(lookPath func(string) (string, error)) []Capability {
+	_, sudoErr := lookPath(execSudo)
+	_, systemdRunErr := lookPath(execSystemdRun)
+	sudoAvailable := sudoErr == nil
+	systemdRunAvailable := sudoAvailable && systemdRunErr == nil
+
+	sudoDetail := "sudo is installed; passwordless policy must still be configured by the operator"
+	if !sudoAvailable {
+		sudoDetail = "sudo was not found in PATH"
+	}
+	systemdRunDetail := "sudo and systemd-run are installed; passwordless policy must still be configured by the operator"
+	switch {
+	case !sudoAvailable:
+		systemdRunDetail = "sudo was not found in PATH"
+	case systemdRunErr != nil:
+		systemdRunDetail = "systemd-run was not found in PATH"
+	}
+
+	return []Capability{
+		{Method: MethodSudo, Available: sudoAvailable, Detail: sudoDetail},
+		{Method: MethodSystemdRun, Available: systemdRunAvailable, Detail: systemdRunDetail},
+	}
+}
 
 // DefaultMethod returns the default method.
 func DefaultMethod(goos string) string {

@@ -8,12 +8,13 @@ describe('settings sections', () => {
       'experience',
       'operations',
       'integrations',
+      'accounts',
       'storage',
       'diagnostics',
     ])
     expect(isSettingsSection('experience')).toBe(true)
     expect(isSettingsSection('operations')).toBe(true)
-    expect(isSettingsSection('accounts')).toBe(false)
+    expect(isSettingsSection('accounts')).toBe(true)
   })
 
   it('derives a safe active section from a deep link', () => {

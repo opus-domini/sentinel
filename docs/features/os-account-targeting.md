@@ -41,6 +41,23 @@ process lifetime.
 
 The current process user is always included in the system user list as a fallback, even if `/etc/passwd` parsing yields no results.
 
+### Settings workspace
+
+Open `/settings/accounts` to view the current process identity and the
+startup OS-account inventory, then edit the allowlist, root gate, and switch
+method. The inventory is read-only: Sentinel does not create, delete, rename,
+or modify OS accounts.
+
+The Settings editor treats `allowed_users` as a closed selection. It rejects
+unknown and duplicate names before any write, and the backend enforces the same
+rules. An empty selection retains the documented wildcard behavior for detected
+accounts. Root uses a separate confirmation and gate; for a file-owned explicit
+allowlist, enabling root includes it and disabling root removes it.
+
+All three values apply after Sentinel restarts. The Settings save operation
+only updates `config.toml`; it never restarts Sentinel or changes a current tmux
+session. Environment-owned values remain read-only.
+
 ## Security Model
 
 Validation follows a two-tier approach:
@@ -57,6 +74,10 @@ Additional rules:
   `ValidateTargetUser` returns `ErrNoSystemUsers`.
 
 Allowlist entries that do not match any system user produce a startup warning but are not removed.
+
+That startup behavior exists for direct TOML or environment configuration.
+The typed Settings PATCH is intentionally stricter and rejects unknown or
+duplicate accounts instead of persisting them.
 
 ## Usage
 
@@ -147,6 +168,10 @@ Tmux pane IDs exist under different accounts.
   Fixed-user window launchers run the user switch command from inside the owning tmux session, so the session owner also needs the corresponding sudo permission when targeting a different user.
 
   With `user_switch_method = "systemd-run"`, sudo logs show `systemd-run` and tmux commands because Sentinel starts or inspects tmux through root-mediated user switching. That is expected; the resulting tmux server runs under the target user and inherits the user's systemd environment.
+
+  Settings reports whether `sudo` and `systemd-run` were found in the daemon
+  PATH. This is a read-only executable check, not a sudo-policy test; no command
+  runs during detection.
 
 - On Linux, target users need an active systemd user manager. Enable lingering for service-style accounts that are not normally logged in:
 

@@ -26,6 +26,21 @@ export type StringSetting = {
   }
 }
 
+export type StringListSetting = {
+  persistedValue?: Array<string>
+  effectiveValue: Array<string>
+  defaultValue: Array<string>
+  source: SettingSource
+  editable: boolean
+  applyMode: SettingApplyMode
+  restartPending: boolean
+  validation: {
+    required: boolean
+    allowCustom: boolean
+    options: Array<SettingOption>
+  }
+}
+
 export type BooleanSetting = {
   persistedValue?: boolean
   effectiveValue: boolean
@@ -121,6 +136,27 @@ export type SettingsResponse = {
       nextActivation?: string
     }
   }
+  accounts: {
+    processUser: string
+    processIsRoot: boolean
+    inventoryAvailable: boolean
+    users: Array<{
+      name: string
+      processUser: boolean
+      root: boolean
+      allowed: boolean
+    }>
+    allowedUsers: StringListSetting
+    allowRootTarget: BooleanSetting
+    userSwitchMethod: StringSetting
+    methodCapabilities: Array<{
+      value: string
+      label: string
+      available: boolean
+      detail: string
+    }>
+    privilegeGuidance: string
+  }
   diagnostics: {
     configExists: boolean
     environmentOwnedKeys: Array<string>
@@ -158,6 +194,11 @@ export type SettingsPatch = {
       schedule?: string
       webhookUrl?: SecretMutation
     }
+  }
+  accounts?: {
+    allowedUsers?: Array<string>
+    allowRootTarget?: boolean
+    userSwitchMethod?: string
   }
 }
 

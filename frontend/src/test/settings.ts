@@ -20,6 +20,26 @@ type SettingsFixtureOptions = {
   webhookEditable?: boolean
   webhookRestartPending?: boolean
   nextActivation?: string
+  accounts?: Partial<{
+    processUser: string
+    processIsRoot: boolean
+    inventoryAvailable: boolean
+    users: Array<{
+      name: string
+      processUser: boolean
+      root: boolean
+      allowed: boolean
+    }>
+    allowedUsers: Array<string>
+    allowedUsersSource: SettingSource
+    allowedUsersEditable: boolean
+    allowRootTarget: boolean
+    allowRootSource: SettingSource
+    allowRootEditable: boolean
+    userSwitchMethod: string
+    methodSource: SettingSource
+    methodEditable: boolean
+  }>
   operations?: Partial<{
     watchtowerEnabled: boolean
     tickInterval: string
@@ -259,6 +279,77 @@ export function createSettingsSnapshot(options: SettingsFixtureOptions = {}): Se
           },
           ...(options.nextActivation ? { nextActivation: options.nextActivation } : {}),
         },
+      },
+      accounts: {
+        processUser: options.accounts?.processUser ?? 'hugo',
+        processIsRoot: options.accounts?.processIsRoot ?? false,
+        inventoryAvailable: options.accounts?.inventoryAvailable ?? true,
+        users: options.accounts?.users ?? [
+          { name: 'deploy', processUser: false, root: false, allowed: true },
+          { name: 'hugo', processUser: true, root: false, allowed: true },
+          { name: 'root', processUser: false, root: true, allowed: false },
+        ],
+        allowedUsers: {
+          effectiveValue: options.accounts?.allowedUsers ?? [],
+          defaultValue: [],
+          source: options.accounts?.allowedUsersSource ?? 'file',
+          editable: options.accounts?.allowedUsersEditable ?? true,
+          applyMode: 'restart',
+          restartPending: false,
+          validation: {
+            required: false,
+            allowCustom: false,
+            options: [
+              { value: 'deploy', label: 'deploy' },
+              { value: 'hugo', label: 'hugo' },
+              { value: 'root', label: 'root' },
+            ],
+          },
+        },
+        allowRootTarget: {
+          effectiveValue: options.accounts?.allowRootTarget ?? false,
+          defaultValue: false,
+          source: options.accounts?.allowRootSource ?? 'file',
+          editable: options.accounts?.allowRootEditable ?? true,
+          applyMode: 'restart',
+          restartPending: false,
+          validation: {
+            required: true,
+          },
+        },
+        userSwitchMethod: {
+          effectiveValue: options.accounts?.userSwitchMethod ?? 'systemd-run',
+          defaultValue: 'systemd-run',
+          source: options.accounts?.methodSource ?? 'file',
+          editable: options.accounts?.methodEditable ?? true,
+          applyMode: 'restart',
+          restartPending: false,
+          validation: {
+            required: true,
+            allowCustom: false,
+            options: [
+              { value: 'sudo', label: 'sudo' },
+              { value: 'systemd-run', label: 'systemd-run' },
+            ],
+          },
+        },
+        methodCapabilities: [
+          {
+            value: 'sudo',
+            label: 'sudo',
+            available: true,
+            detail: 'sudo is installed; passwordless policy must still be configured',
+          },
+          {
+            value: 'systemd-run',
+            label: 'systemd-run',
+            available: true,
+            detail:
+              'sudo and systemd-run are installed; passwordless policy must still be configured',
+          },
+        ],
+        privilegeGuidance:
+          'Sentinel detects executables but cannot grant sudo permissions. Configure passwordless policy outside Sentinel.',
       },
       diagnostics: {
         configExists: true,

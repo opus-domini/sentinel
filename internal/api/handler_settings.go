@@ -13,10 +13,12 @@ import (
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/humanize"
+	"github.com/opus-domini/sentinel/internal/userswitch"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
 const settingsDeploymentStandalone = "standalone"
+const settingsRootAccount = "root"
 
 const (
 	secretActionKeep    = "keep"
@@ -38,6 +40,7 @@ type settingsResponse struct {
 	Experience   settingsExperience   `json:"experience"`
 	Operations   settingsOperations   `json:"operations"`
 	Integrations settingsIntegrations `json:"integrations"`
+	Accounts     settingsAccounts     `json:"accounts"`
 	Diagnostics  settingsDiagnostics  `json:"diagnostics"`
 }
 
@@ -104,6 +107,32 @@ type settingsHealthReport struct {
 	NextActivation string           `json:"nextActivation,omitempty"`
 }
 
+type settingsAccounts struct {
+	ProcessUser        string                     `json:"processUser"`
+	ProcessIsRoot      bool                       `json:"processIsRoot"`
+	InventoryAvailable bool                       `json:"inventoryAvailable"`
+	Users              []settingsSystemUser       `json:"users"`
+	AllowedUsers       stringListSetting          `json:"allowedUsers"`
+	AllowRootTarget    boolSetting                `json:"allowRootTarget"`
+	UserSwitchMethod   stringSetting              `json:"userSwitchMethod"`
+	MethodCapabilities []settingsMethodCapability `json:"methodCapabilities"`
+	PrivilegeGuidance  string                     `json:"privilegeGuidance"`
+}
+
+type settingsSystemUser struct {
+	Name        string `json:"name"`
+	ProcessUser bool   `json:"processUser"`
+	Root        bool   `json:"root"`
+	Allowed     bool   `json:"allowed"`
+}
+
+type settingsMethodCapability struct {
+	Value     string `json:"value"`
+	Label     string `json:"label"`
+	Available bool   `json:"available"`
+	Detail    string `json:"detail"`
+}
+
 type settingsDiagnostics struct {
 	ConfigExists         bool     `json:"configExists"`
 	EnvironmentOwnedKeys []string `json:"environmentOwnedKeys"`
@@ -147,6 +176,23 @@ type stringSetting struct {
 	Validation     stringValidation   `json:"validation"`
 }
 
+type stringListSetting struct {
+	PersistedValue *[]string            `json:"persistedValue,omitempty"`
+	EffectiveValue []string             `json:"effectiveValue"`
+	DefaultValue   []string             `json:"defaultValue"`
+	Source         config.FieldSource   `json:"source"`
+	Editable       bool                 `json:"editable"`
+	ApplyMode      config.ApplyMode     `json:"applyMode"`
+	RestartPending bool                 `json:"restartPending"`
+	Validation     stringListValidation `json:"validation"`
+}
+
+type stringListValidation struct {
+	Required    bool            `json:"required"`
+	AllowCustom bool            `json:"allowCustom"`
+	Options     []settingOption `json:"options"`
+}
+
 type boolSetting struct {
 	PersistedValue *bool              `json:"persistedValue,omitempty"`
 	EffectiveValue bool               `json:"effectiveValue"`
@@ -187,6 +233,7 @@ type patchSettingsRequest struct {
 	Experience   *patchExperience   `json:"experience,omitempty"`
 	Operations   *patchOperations   `json:"operations,omitempty"`
 	Integrations *patchIntegrations `json:"integrations,omitempty"`
+	Accounts     *patchAccounts     `json:"accounts,omitempty"`
 }
 
 type patchExperience struct {
@@ -236,6 +283,12 @@ type patchSecretMutation struct {
 	Value  string `json:"value,omitempty"`
 }
 
+type patchAccounts struct {
+	AllowedUsers     *[]string `json:"allowedUsers,omitempty"`
+	AllowRootTarget  *bool     `json:"allowRootTarget,omitempty"`
+	UserSwitchMethod *string   `json:"userSwitchMethod,omitempty"`
+}
+
 func (h *Handler) getSettings(w http.ResponseWriter, _ *http.Request) {
 	if h.configService == nil || h.settings == nil {
 		writeError(w, http.StatusServiceUnavailable, "SETTINGS_UNAVAILABLE", "settings are unavailable", nil)
@@ -272,7 +325,12 @@ func (h *Handler) patchSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	keys, mutate, err := h.settingsMutation(req)
+	current, err := h.configService.Read()
+	if err != nil {
+		writeSettingsError(w, err)
+		return
+	}
+	keys, mutate, err := h.settingsMutation(req, current)
 	if err != nil {
 		writeSettingsError(w, err)
 		return
@@ -287,11 +345,14 @@ func (h *Handler) patchSettings(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, response)
 }
 
-func (h *Handler) settingsMutation(req patchSettingsRequest) ([]string, func(*config.Config) error, error) {
+func (h *Handler) settingsMutation(
+	req patchSettingsRequest,
+	current config.State,
+) ([]string, func(*config.Config) error, error) {
 	if err := validateIntegrationSecretMutations(req.Integrations); err != nil {
 		return nil, nil, err
 	}
-	keys := settingsChangedKeys(req)
+	keys := settingsChangedKeys(req, current)
 	if len(keys) == 0 && !hasExplicitSecretKeep(req.Integrations) {
 		return nil, nil, errors.New("at least one supported settings field is required")
 	}
@@ -303,14 +364,18 @@ func (h *Handler) settingsMutation(req patchSettingsRequest) ([]string, func(*co
 		if err := h.applyOperationsSettings(candidate, req.Operations); err != nil {
 			return err
 		}
-		return h.applyIntegrationSettings(candidate, req.Integrations)
+		if err := h.applyIntegrationSettings(candidate, req.Integrations); err != nil {
+			return err
+		}
+		return h.applyAccountSettings(candidate, req.Accounts, current)
 	}, nil
 }
 
-func settingsChangedKeys(req patchSettingsRequest) []string {
+func settingsChangedKeys(req patchSettingsRequest, current config.State) []string {
 	keys := experienceSettingsKeys(req.Experience)
 	keys = append(keys, operationsSettingsKeys(req.Operations)...)
-	return append(keys, integrationSettingsKeys(req.Integrations)...)
+	keys = append(keys, integrationSettingsKeys(req.Integrations)...)
+	return append(keys, accountSettingsKeys(req.Accounts, current)...)
 }
 
 func experienceSettingsKeys(req *patchExperience) []string {
@@ -378,6 +443,25 @@ func integrationSettingsKeys(req *patchIntegrations) []string {
 		if secretMutationChangesValue(req.HealthReport.WebhookURL) {
 			keys = append(keys, config.FieldHealthReportWebhookURL)
 		}
+	}
+	return keys
+}
+
+func accountSettingsKeys(req *patchAccounts, current config.State) []string {
+	if req == nil {
+		return nil
+	}
+	var keys []string
+	allowedField, _ := current.Field(config.FieldMultiUserAllowedUsers)
+	if req.AllowedUsers != nil ||
+		req.AllowRootTarget != nil && allowedField.Editable && len(current.Effective.MultiUser.AllowedUsers) > 0 {
+		keys = append(keys, config.FieldMultiUserAllowedUsers)
+	}
+	if req.AllowRootTarget != nil {
+		keys = append(keys, config.FieldMultiUserAllowRootTarget)
+	}
+	if req.UserSwitchMethod != nil {
+		keys = append(keys, config.FieldMultiUserUserSwitchMethod)
 	}
 	return keys
 }
@@ -462,6 +546,106 @@ func (h *Handler) applyIntegrationSettings(candidate *config.Config, req *patchI
 		applySecretMutation(&candidate.HealthReport.WebhookURL, req.HealthReport.WebhookURL)
 	}
 	return nil
+}
+
+func (h *Handler) applyAccountSettings(
+	candidate *config.Config,
+	req *patchAccounts,
+	current config.State,
+) error {
+	if req == nil {
+		return nil
+	}
+
+	systemUsers := h.systemUsers()
+	finalRootAllowed := current.Effective.MultiUser.AllowRootTarget
+	if req.AllowRootTarget != nil {
+		finalRootAllowed = *req.AllowRootTarget
+		if finalRootAllowed && !slices.Contains(systemUsers, settingsRootAccount) {
+			return h.accountValidationError("multi_user.allow_root_target cannot be enabled because root was not detected")
+		}
+		candidate.MultiUser.AllowRootTarget = finalRootAllowed
+	}
+
+	allowedField, _ := current.Field(config.FieldMultiUserAllowedUsers)
+	switch {
+	case req.AllowedUsers != nil:
+		allowed, err := h.validateAllowedUsers(*req.AllowedUsers, systemUsers)
+		if err != nil {
+			return err
+		}
+		if slices.Contains(allowed, settingsRootAccount) && !finalRootAllowed {
+			if req.AllowRootTarget == nil || *req.AllowRootTarget {
+				return h.accountValidationError("multi_user.allowed_users cannot include root while multi_user.allow_root_target is false")
+			}
+			allowed = removeString(allowed, settingsRootAccount)
+		}
+		if req.AllowRootTarget != nil && *req.AllowRootTarget && len(allowed) > 0 &&
+			!slices.Contains(allowed, settingsRootAccount) {
+			allowed = append(allowed, settingsRootAccount)
+			slices.Sort(allowed)
+		}
+		candidate.MultiUser.AllowedUsers = allowed
+	case req.AllowRootTarget != nil && allowedField.Editable &&
+		len(current.Effective.MultiUser.AllowedUsers) > 0:
+		allowed := slices.Clone(candidate.MultiUser.AllowedUsers)
+		if *req.AllowRootTarget {
+			if !slices.Contains(allowed, settingsRootAccount) {
+				allowed = append(allowed, settingsRootAccount)
+				slices.Sort(allowed)
+			}
+		} else {
+			allowed = removeString(allowed, settingsRootAccount)
+		}
+		candidate.MultiUser.AllowedUsers = allowed
+	}
+
+	if req.UserSwitchMethod != nil {
+		method, err := userswitch.ParseMethod(*req.UserSwitchMethod)
+		if err != nil {
+			return h.accountValidationError("multi_user.user_switch_method " + err.Error())
+		}
+		candidate.MultiUser.UserSwitchMethod = method
+	}
+	return nil
+}
+
+func (h *Handler) validateAllowedUsers(values, systemUsers []string) ([]string, error) {
+	if len(values) > 0 && len(systemUsers) == 0 {
+		return nil, h.accountValidationError("multi_user.allowed_users cannot be changed because the system user inventory is unavailable")
+	}
+	seen := make(map[string]struct{}, len(values))
+	allowed := make([]string, 0, len(values))
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		if value == "" || value != raw {
+			return nil, h.accountValidationError("multi_user.allowed_users entries must be non-empty exact account names")
+		}
+		if _, duplicate := seen[value]; duplicate {
+			return nil, h.accountValidationError("multi_user.allowed_users contains duplicate account " + value)
+		}
+		if !slices.Contains(systemUsers, value) {
+			return nil, h.accountValidationError("multi_user.allowed_users contains unknown account " + value)
+		}
+		seen[value] = struct{}{}
+		allowed = append(allowed, value)
+	}
+	slices.Sort(allowed)
+	return allowed, nil
+}
+
+func (h *Handler) accountValidationError(issue string) error {
+	return config.ValidationError{Path: h.configService.Path(), Issues: []string{issue}}
+}
+
+func removeString(values []string, target string) []string {
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != target {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
 }
 
 func validateIntegrationSecretMutations(req *patchIntegrations) error {
@@ -558,6 +742,11 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 	mcpField, _ := state.Field(config.FieldMCPEnabled)
 	healthReportScheduleField, _ := state.Field(config.FieldHealthReportSchedule)
 	healthReportWebhookField, _ := state.Field(config.FieldHealthReportWebhookURL)
+	allowedUsersField, _ := state.Field(config.FieldMultiUserAllowedUsers)
+	allowRootField, _ := state.Field(config.FieldMultiUserAllowRootTarget)
+	switchMethodField, _ := state.Field(config.FieldMultiUserUserSwitchMethod)
+	systemUsers := h.systemUsers()
+	processUser, processIsRoot := settingsProcessIdentity()
 	return settingsResponse{
 		Revision:   state.Revision,
 		Metadata:   settingsMetadata{Version: h.settingsVersion()},
@@ -704,6 +893,50 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 				),
 			},
 		},
+		Accounts: settingsAccounts{
+			ProcessUser:        processUser,
+			ProcessIsRoot:      processIsRoot,
+			InventoryAvailable: len(systemUsers) > 0,
+			Users: settingsSystemUsers(
+				systemUsers,
+				processUser,
+				state.Effective.MultiUser.AllowedUsers,
+				state.Effective.MultiUser.AllowRootTarget,
+			),
+			AllowedUsers: buildStringListSetting(
+				allowedUsersField,
+				state.Persisted.MultiUser.AllowedUsers,
+				state.Effective.MultiUser.AllowedUsers,
+				state.Default.MultiUser.AllowedUsers,
+				stringListValidation{
+					Required:    false,
+					AllowCustom: false,
+					Options:     accountOptions(systemUsers),
+				},
+			),
+			AllowRootTarget: buildBoolSetting(
+				allowRootField,
+				state.Persisted.MultiUser.AllowRootTarget,
+				state.Effective.MultiUser.AllowRootTarget,
+				state.Default.MultiUser.AllowRootTarget,
+			),
+			UserSwitchMethod: buildStringSetting(
+				switchMethodField,
+				state.Persisted.MultiUser.UserSwitchMethod,
+				state.Effective.MultiUser.UserSwitchMethod,
+				state.Default.MultiUser.UserSwitchMethod,
+				stringValidation{
+					Required:    true,
+					AllowCustom: false,
+					Options: []settingOption{
+						{Value: userswitch.MethodSudo, Label: "sudo"},
+						{Value: userswitch.MethodSystemdRun, Label: "systemd-run"},
+					},
+				},
+			),
+			MethodCapabilities: h.settingsMethodCapabilities(),
+			PrivilegeGuidance:  "Sentinel detects executables but cannot grant sudo permissions. Configure passwordless policy for the process user and selected targets outside Sentinel.",
+		},
 		Diagnostics: settingsDiagnostics{
 			ConfigExists:         state.Exists,
 			EnvironmentOwnedKeys: environmentKeys,
@@ -711,6 +944,76 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 			DeploymentDetection:  detection,
 		},
 	}
+}
+
+func (h *Handler) systemUsers() []string {
+	if h == nil || h.guard == nil {
+		return []string{}
+	}
+	users := slices.Clone(h.guard.SystemUsers())
+	slices.Sort(users)
+	return slices.Compact(users)
+}
+
+func settingsProcessIdentity() (string, bool) {
+	isRoot := osGeteuid() == 0
+	current, err := osCurrentUser()
+	if err != nil || current == nil {
+		if isRoot {
+			return settingsRootAccount, true
+		}
+		return "", false
+	}
+	name := strings.TrimSpace(current.Username)
+	return name, isRoot
+}
+
+func settingsSystemUsers(
+	systemUsers []string,
+	processUser string,
+	explicitAllowed []string,
+	allowRoot bool,
+) []settingsSystemUser {
+	users := make([]settingsSystemUser, 0, len(systemUsers))
+	for _, name := range systemUsers {
+		allowed := len(explicitAllowed) == 0 || slices.Contains(explicitAllowed, name)
+		if name == settingsRootAccount && !allowRoot {
+			allowed = false
+		}
+		users = append(users, settingsSystemUser{
+			Name:        name,
+			ProcessUser: name == processUser,
+			Root:        name == settingsRootAccount,
+			Allowed:     allowed,
+		})
+	}
+	return users
+}
+
+func accountOptions(systemUsers []string) []settingOption {
+	options := make([]settingOption, 0, len(systemUsers))
+	for _, name := range systemUsers {
+		options = append(options, settingOption{Value: name, Label: name})
+	}
+	return options
+}
+
+func (h *Handler) settingsMethodCapabilities() []settingsMethodCapability {
+	provider := userswitch.Capabilities
+	if h != nil && h.switchCapabilities != nil {
+		provider = h.switchCapabilities
+	}
+	capabilities := provider()
+	result := make([]settingsMethodCapability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		result = append(result, settingsMethodCapability{
+			Value:     capability.Method,
+			Label:     capability.Method,
+			Available: capability.Available,
+			Detail:    capability.Detail,
+		})
+	}
+	return result
 }
 
 func (h *Handler) detectSettingsDeployment(configPath string) (settingsDeployment, string) {
@@ -785,6 +1088,29 @@ func buildStringSetting(
 	}
 	if field.Defined {
 		value := persisted
+		setting.PersistedValue = &value
+	}
+	return setting
+}
+
+func buildStringListSetting(
+	field config.FieldState,
+	persisted []string,
+	effective []string,
+	defaultValue []string,
+	validation stringListValidation,
+) stringListSetting {
+	setting := stringListSetting{
+		EffectiveValue: slices.Clone(effective),
+		DefaultValue:   slices.Clone(defaultValue),
+		Source:         field.Source,
+		Editable:       field.Editable,
+		ApplyMode:      field.ApplyMode,
+		RestartPending: field.RestartPending,
+		Validation:     validation,
+	}
+	if field.Defined {
+		value := slices.Clone(persisted)
 		setting.PersistedValue = &value
 	}
 	return setting

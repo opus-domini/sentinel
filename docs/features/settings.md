@@ -10,13 +10,15 @@ destination to the primary navigation.
 
 ## Sections
 
-The current workspace has five deep-linkable sections:
+The current workspace has six deep-linkable sections:
 
 - `/settings/experience` — terminal theme, timezone, and date format.
 - `/settings/operations` — Watchtower collection, Runbook concurrency, and
   daemon log level.
 - `/settings/integrations` — MCP access, shared token lifecycle, and scheduled
   health-report delivery.
+- `/settings/accounts` — read-only OS-account inventory, target allowlist, root
+  gate, and user-switch method.
 - `/settings/storage` — a read-only storage overview and a link to maintenance.
 - `/settings/diagnostics` — runtime, deployment, config path, restart state, and
   PWA install/update controls.
@@ -94,6 +96,30 @@ MCP disable remains live. MCP enable is live when the running process started
 with a token. When a token is newly replaced, Sentinel persists both the token
 and desired MCP state but keeps the endpoint unavailable until manual restart.
 The UI distinguishes `Available`, `Disabled`, and `Pending restart`.
+
+## OS-account targeting
+
+Accounts configures the existing `[multi_user]` process-targeting boundary
+without becoming an operating-system account manager. The process identity and
+eligible account inventory are loaded by the daemon at startup and displayed
+read-only. Settings never creates, deletes, renames, or changes an OS account.
+
+`allowed_users` is a closed selection from that inventory. An empty list means
+all detected accounts are eligible; it does not mean no accounts. Unknown and
+duplicate names are rejected by the browser and again by the typed PATCH
+endpoint. Environment-owned fields remain visible but read-only.
+
+Root is blocked independently by default. Enabling `allow_root_target` requires
+an explicit risk confirmation. For an explicit file-owned allowlist, enabling
+root includes it and disabling root removes it so the persisted policy cannot
+contradict the gate. If the allowlist belongs to the environment, Settings
+cannot rewrite it and the effective environment allowlist still applies.
+
+The switch method is a closed `sudo` or `systemd-run` choice. Settings reports
+whether the required executables were found in the daemon PATH, but that
+capability is advisory: Sentinel cannot inspect or grant sudo policy. All three
+account controls apply after a manual restart, and saving them never starts,
+stops, or changes a tmux session.
 
 ## Storage maintenance
 

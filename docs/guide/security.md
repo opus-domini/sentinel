@@ -141,6 +141,19 @@ historical internal name:
 These checks do not create a login, role, tenant, or per-user audit identity in
 Sentinel.
 
+`/settings/accounts` exposes that same boundary as configuration, not account
+administration. Detected accounts and the Sentinel process identity are
+read-only. The allowlist accepts only unique names from the startup inventory,
+root requires a separate confirmation and gate, and the switch method is
+closed to `sudo` or `systemd-run`. A save only writes the desired config and
+marks a restart pending; it never creates an account, grants sudo policy, or
+starts/stops a tmux session.
+
+Executable availability shown in Settings is advisory. Operators must configure
+and audit passwordless sudo policy outside Sentinel. An environment-owned
+allowlist, root gate, or switch method remains read-only in the browser and
+cannot be shadowed by a forged Settings PATCH.
+
 ## Remote Exposure Baseline
 
 For `server.host = "0.0.0.0"`:

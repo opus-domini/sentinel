@@ -46,6 +46,7 @@ describe('SettingsLayout', () => {
       '/settings/experience',
       '/settings/operations',
       '/settings/integrations',
+      '/settings/accounts',
       '/settings/storage',
       '/settings/diagnostics',
     ])

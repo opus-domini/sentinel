@@ -1,6 +1,7 @@
 package userswitch
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -51,6 +52,56 @@ func TestParseMethod(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCapabilities(t *testing.T) {
+	t.Run("all executables available", func(t *testing.T) {
+		got := capabilitiesWithLookPath(func(name string) (string, error) {
+			return "/usr/bin/" + name, nil
+		})
+		want := []Capability{
+			{
+				Method:    MethodSudo,
+				Available: true,
+				Detail:    "sudo is installed; passwordless policy must still be configured by the operator",
+			},
+			{
+				Method:    MethodSystemdRun,
+				Available: true,
+				Detail:    "sudo and systemd-run are installed; passwordless policy must still be configured by the operator",
+			},
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("capabilities = %#v, want %#v", got, want)
+		}
+	})
+
+	t.Run("systemd-run missing", func(t *testing.T) {
+		got := capabilitiesWithLookPath(func(name string) (string, error) {
+			if name == execSystemdRun {
+				return "", errors.New("not found")
+			}
+			return "/usr/bin/" + name, nil
+		})
+		if !got[0].Available || got[1].Available ||
+			got[1].Detail != "systemd-run was not found in PATH" {
+			t.Fatalf("capabilities = %#v", got)
+		}
+	})
+
+	t.Run("sudo missing blocks both methods", func(t *testing.T) {
+		got := capabilitiesWithLookPath(func(name string) (string, error) {
+			if name == execSudo {
+				return "", errors.New("not found")
+			}
+			return "/usr/bin/" + name, nil
+		})
+		if got[0].Available || got[1].Available ||
+			got[0].Detail != "sudo was not found in PATH" ||
+			got[1].Detail != "sudo was not found in PATH" {
+			t.Fatalf("capabilities = %#v", got)
+		}
+	})
 }
 
 func TestBuildTmuxCommandDefaultUser(t *testing.T) {

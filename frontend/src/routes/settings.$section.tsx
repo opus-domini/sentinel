@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import DiagnosticsSettings from '@/components/settings/DiagnosticsSettings'
+import AccountsSettings from '@/components/settings/AccountsSettings'
 import ExperienceSettings from '@/components/settings/ExperienceSettings'
 import IntegrationsSettings from '@/components/settings/IntegrationsSettings'
 import OperationsSettings from '@/components/settings/OperationsSettings'
@@ -31,6 +32,8 @@ function SettingsSectionRoute() {
       return <OperationsSettings />
     case 'integrations':
       return <IntegrationsSettings />
+    case 'accounts':
+      return <AccountsSettings />
     case 'storage':
       return <StorageSettings />
     case 'diagnostics':
