@@ -46,6 +46,17 @@ type LiveApplier interface {
 	ApplyConfig(context.Context, Config, Config, []string) error
 }
 
+// CandidatePreflight validates a complete, normalized candidate immediately
+// before persistence. Baseline is the effective configuration captured when
+// the service first read this process' startup state.
+type CandidatePreflight func(
+	current State,
+	baseline Config,
+	persistedCandidate Config,
+	effectiveCandidate Config,
+	actualKeys []string,
+) error
+
 // Service serializes canonical config reads and writes for one deployment.
 type Service struct {
 	path        string
@@ -122,6 +133,19 @@ func (s *Service) Update(
 	keys []string,
 	mutate func(*Config) error,
 ) (State, error) {
+	return s.UpdateWithPreflight(ctx, expectedRevision, keys, mutate, nil)
+}
+
+// UpdateWithPreflight validates, preflights, persists and applies a typed
+// mutation. The preflight runs while the config lock is held and before any
+// bytes are replaced.
+func (s *Service) UpdateWithPreflight(
+	ctx context.Context,
+	expectedRevision string,
+	keys []string,
+	mutate func(*Config) error,
+	preflight CandidatePreflight,
+) (State, error) {
 	if s == nil {
 		return State{}, errors.New("config service is nil")
 	}
@@ -192,6 +216,17 @@ func (s *Service) Update(
 	}
 	if len(actualKeys) == 0 {
 		return current, nil
+	}
+	if preflight != nil {
+		if err := preflight(
+			current,
+			s.baseline,
+			candidate,
+			effective,
+			slices.Clone(actualKeys),
+		); err != nil {
+			return State{}, err
+		}
 	}
 
 	replacement, err := replaceConfigFile(s.path, RenderTOML(candidate))

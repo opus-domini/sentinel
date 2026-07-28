@@ -110,23 +110,6 @@ export default function IntegrationsSettings() {
     [],
   )
 
-  const updateTokenIntent = useCallback((intent: SecretIntent) => {
-    setEditor((current) => {
-      if (current == null) return current
-      return {
-        ...current,
-        draft: {
-          ...current.draft,
-          tokenIntent: intent,
-          tokenValue: intent === 'replace' ? current.draft.tokenValue : '',
-          ...(intent === 'clear' ? { mcpEnabled: false } : {}),
-        },
-      }
-    })
-    setErrors((current) => ({ ...current, token: undefined }))
-    setFeedback(idleFeedback)
-  }, [])
-
   const updateWebhookIntent = useCallback((intent: SecretIntent) => {
     setEditor((current) =>
       current == null
@@ -161,9 +144,7 @@ export default function IntegrationsSettings() {
       return
     }
 
-    const includesSecret = changes.some(
-      (change) => change.key === 'token' || change.key === 'webhook',
-    )
+    const includesSecret = changes.some((change) => change.key === 'webhook')
     const patch = integrationsPatchFromChanges(editor.draft, changes)
     setFeedback({ status: 'saving', message: 'Saving integration settings…' })
     if (includesSecret) {
@@ -174,8 +155,6 @@ export default function IntegrationsSettings() {
               ...current,
               draft: {
                 ...current.draft,
-                tokenIntent: 'keep',
-                tokenValue: '',
                 webhookIntent: 'keep',
                 webhookValue: '',
               },
@@ -270,19 +249,8 @@ export default function IntegrationsSettings() {
           hostname={hostname}
           settings={integrations.mcp}
           enabled={editor.draft.mcpEnabled}
-          tokenIntent={editor.draft.tokenIntent}
-          tokenValue={editor.draft.tokenValue}
-          tokenError={errors.token}
           saving={settingsQuery.isSaving}
-          onEnabledChange={(enabled) => {
-            updateDraft('mcpEnabled', enabled)
-            setErrors((current) => ({ ...current, token: undefined }))
-          }}
-          onTokenIntentChange={updateTokenIntent}
-          onTokenValueChange={(value) => {
-            updateDraft('tokenValue', value)
-            setErrors((current) => ({ ...current, token: undefined }))
-          }}
+          onEnabledChange={(enabled) => updateDraft('mcpEnabled', enabled)}
         />
       </IntegrationGroup>
 
@@ -396,10 +364,6 @@ function preserveDraftValue(
   switch (key) {
     case 'mcpEnabled':
       target.mcpEnabled = source.mcpEnabled
-      break
-    case 'token':
-      target.tokenIntent = source.tokenIntent
-      target.tokenValue = source.tokenValue
       break
     case 'schedule':
       target.schedule = source.schedule

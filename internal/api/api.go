@@ -243,6 +243,7 @@ type Handler struct {
 	deployments        deploymentDetector
 	userSwitchMethod   string
 	switchCapabilities func() []userswitch.Capability
+	settingsBindCheck  func(string, string) error
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).
@@ -307,6 +308,7 @@ func Register(
 		deployments:        installedDeployments,
 		userSwitchMethod:   tmux.UserSwitchMethod,
 		switchCapabilities: userswitch.Capabilities,
+		settingsBindCheck:  preflightSettingsBind,
 		runCtx:             runCtx,
 		runCancel:          runCancel,
 	}

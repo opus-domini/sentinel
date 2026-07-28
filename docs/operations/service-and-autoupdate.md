@@ -189,3 +189,21 @@ sentinel service autoupdate status
 `sentinel doctor` includes an installed updater in its service checks and
 reports a failed last run. Re-running `sentinel service install --scope
 user|system` repairs the existing updater without replacing its schedule.
+
+## Settings access changes
+
+Settings can write a desired listener and authentication boundary, but it never
+restarts a managed service. The Access response reports the scope-specific
+restart command only when the active config path exactly matches an installed
+deployment:
+
+```bash
+sentinel service restart --scope user
+sudo sentinel service restart --scope system
+```
+
+Before running it, keep the Access recovery commands in a separate shell.
+Should the new endpoint be unreachable, restore `<configPath>.bak`, run
+`sentinel --config "<configPath>" config validate --effective`, and restart the
+same scope. This recovery is intentionally manual; Sentinel does not infer
+reachability from the old process or restart itself.

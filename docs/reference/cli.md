@@ -76,6 +76,17 @@ Validates the config file before a service restart or daemon start.
 contract used by the updater to check a candidate binary before installation.
 Invalid environment overrides make effective validation fail.
 
+For an Access-settings recovery, validate the exact restored deployment path
+before restart:
+
+```bash
+sentinel --config "/path/to/config.toml" config validate --effective
+```
+
+Use `sudo` when the system-scope config requires it. Settings displays this
+command together with the adjacent `.bak` restore command; it does not execute
+either command automatically.
+
 ### Show
 
 ```bash

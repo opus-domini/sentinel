@@ -13,6 +13,10 @@ vi.mock('@/lib/clipboardProvider', () => ({
   writeClipboardText: mocks.writeClipboardText,
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: React.ReactNode }) => <a href="/settings/access">{children}</a>,
+}))
+
 describe('MCPSettingsPanel', () => {
   afterEach(cleanup)
 
@@ -50,27 +54,25 @@ describe('MCPSettingsPanel', () => {
       }).settings.integrations.mcp,
     })
 
-    expect(screen.getByText(/Replace the shared token before enabling MCP/)).toBeTruthy()
+    expect(screen.getByText(/Configure the shared token in Access/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Open Access' })).toBeTruthy()
     expect((screen.getByLabelText('Enable MCP') as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('allows desired enable with a staged replacement and reports pending restart', () => {
+  it('reports pending restart when the desired endpoint lacks a runtime token', () => {
     const onEnabledChange = vi.fn()
     renderPanel({
       settings: createSettingsSnapshot({
-        tokenConfigured: false,
+        tokenConfigured: true,
         runtimeTokenConfigured: false,
       }).settings.integrations.mcp,
       enabled: true,
-      tokenIntent: 'replace',
-      tokenValue: 'new-secret',
       onEnabledChange,
     })
 
     expect(screen.getByText('Pending restart')).toBeTruthy()
     expect(screen.getByText(/started without the saved token/)).toBeTruthy()
     expect((screen.getByLabelText('Enable MCP') as HTMLButtonElement).disabled).toBe(false)
-    expect(document.body.textContent).not.toContain('new-secret')
   })
 
   it('confirms clipboard success only after the write resolves', async () => {
@@ -105,12 +107,8 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof MCPSettingsP
       hostname="azdrix"
       settings={settings}
       enabled={false}
-      tokenIntent="keep"
-      tokenValue=""
       saving={false}
       onEnabledChange={vi.fn()}
-      onTokenIntentChange={vi.fn()}
-      onTokenValueChange={vi.fn()}
       {...overrides}
     />,
   )

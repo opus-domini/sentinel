@@ -56,8 +56,8 @@ vi.mock('@/contexts/ToastContext', () => ({
 describe('IntegrationsSettings', () => {
   beforeEach(() => {
     mocks.settings = createSettingsSnapshot({
-      tokenConfigured: false,
-      runtimeTokenConfigured: false,
+      tokenConfigured: true,
+      runtimeTokenConfigured: true,
       webhookConfigured: false,
     }).settings
     mocks.save.mockReset()
@@ -75,7 +75,7 @@ describe('IntegrationsSettings', () => {
 
   afterEach(cleanup)
 
-  it('submits write-only replacements and removes them from the DOM before completion', async () => {
+  it('submits the write-only webhook and removes it from the DOM before completion', async () => {
     let resolveSave: ((snapshot: ReturnType<typeof createSettingsSnapshot>) => void) | undefined
     mocks.save.mockReturnValue(
       new Promise((resolve) => {
@@ -84,14 +84,9 @@ describe('IntegrationsSettings', () => {
     )
     render(<IntegrationsSettings />)
 
-    const tokenSection = screen.getByText('Shared token').closest('section')
     const webhookSection = screen.getByText('Delivery webhook').closest('section')
-    if (tokenSection == null || webhookSection == null) throw new Error('missing secret sections')
+    if (webhookSection == null) throw new Error('missing webhook section')
 
-    fireEvent.click(within(tokenSection).getByRole('button', { name: 'Replace' }))
-    fireEvent.change(screen.getByLabelText('New shared token'), {
-      target: { value: 'test-token-value' },
-    })
     fireEvent.click(screen.getByLabelText('Enable MCP'))
     fireEvent.change(screen.getByLabelText('Delivery schedule'), {
       target: { value: '0 * * * *' },
@@ -102,11 +97,9 @@ describe('IntegrationsSettings', () => {
     })
 
     const unsaved = screen.getByRole('complementary', { name: 'Unsaved settings' })
-    expect(unsaved.textContent).toContain('server.token · Not configured → Replacement staged')
     expect(unsaved.textContent).toContain(
       'health_report.webhook_url · Not configured → Replacement staged',
     )
-    expect(unsaved.textContent).not.toContain('test-token-value')
     expect(unsaved.textContent).not.toContain('test-webhook-value')
 
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -115,7 +108,6 @@ describe('IntegrationsSettings', () => {
         integrations: {
           mcp: {
             enabled: true,
-            token: { action: 'replace', value: 'test-token-value' },
           },
           healthReport: {
             schedule: '0 * * * *',
@@ -127,19 +119,14 @@ describe('IntegrationsSettings', () => {
         },
       }),
     )
-    expect(screen.queryByLabelText('New shared token')).toBeNull()
     expect(screen.queryByLabelText('New webhook url')).toBeNull()
-    expect(document.body.textContent).not.toContain('test-token-value')
     expect(document.body.textContent).not.toContain('test-webhook-value')
 
     resolveSave?.(
       createSettingsSnapshot({
         mcpEnabled: true,
         tokenConfigured: true,
-        runtimeTokenConfigured: false,
-        tokenRestartPending: true,
-        mcpApplyMode: 'restart',
-        mcpRestartPending: true,
+        runtimeTokenConfigured: true,
         webhookConfigured: true,
         webhookRestartPending: true,
         healthSchedule: '0 * * * *',
@@ -195,22 +182,16 @@ describe('IntegrationsSettings', () => {
     expect(mocks.save).not.toHaveBeenCalled()
   })
 
-  it('renders environment-owned secrets as read-only', () => {
+  it('renders the environment-owned webhook as read-only', () => {
     mocks.settings = createSettingsSnapshot({
-      tokenSource: 'environment',
-      tokenEditable: false,
       webhookSource: 'environment',
       webhookEditable: false,
     }).settings
     render(<IntegrationsSettings />)
 
-    expect(screen.getAllByText(/owned by the environment/)).toHaveLength(2)
-    const tokenSection = screen.getByText('Shared token').closest('section')
+    expect(screen.getAllByText(/owned by the environment/)).toHaveLength(1)
     const webhookSection = screen.getByText('Delivery webhook').closest('section')
-    if (tokenSection == null || webhookSection == null) throw new Error('missing secret sections')
-    expect(
-      (within(tokenSection).getByRole('button', { name: 'Replace' }) as HTMLButtonElement).disabled,
-    ).toBe(true)
+    if (webhookSection == null) throw new Error('missing webhook section')
     expect(
       (within(webhookSection).getByRole('button', { name: 'Replace' }) as HTMLButtonElement)
         .disabled,

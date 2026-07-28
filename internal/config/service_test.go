@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -203,6 +204,79 @@ func TestServiceUpdateRejectsRevisionConflict(t *testing.T) {
 	})
 	if !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("Update() error = %v, want ErrRevisionConflict", err)
+	}
+}
+
+func TestServiceUpdatePreflightReceivesValidatedCandidateBeforeWrite(t *testing.T) {
+	clearConfigEnv(t)
+	root := t.TempDir()
+	path := filepath.Join(root, "config.toml")
+	original := []byte("[server]\nport = 4040\n")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	applier := &recordingLiveApplier{}
+	service, err := NewService(
+		path,
+		DefaultForDeployment(filepath.Join(root, "data"), filepath.Join(root, "sentinel.log")),
+		applier,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := service.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	preflightErr := errors.New("candidate endpoint is occupied")
+	_, err = service.UpdateWithPreflight(
+		context.Background(),
+		state.Revision,
+		[]string{FieldServerPort},
+		func(cfg *Config) error {
+			cfg.Server.Port = 5050
+			return nil
+		},
+		func(
+			current State,
+			baseline Config,
+			persisted Config,
+			effective Config,
+			actualKeys []string,
+		) error {
+			if current.Revision != state.Revision ||
+				baseline.Server.Port != 4040 ||
+				persisted.Server.Port != 5050 ||
+				effective.Server.Port != 5050 ||
+				!slices.Equal(actualKeys, []string{FieldServerPort}) {
+				t.Fatalf(
+					"preflight state = revision:%q baseline:%d persisted:%d effective:%d keys:%v",
+					current.Revision,
+					baseline.Server.Port,
+					persisted.Server.Port,
+					effective.Server.Port,
+					actualKeys,
+				)
+			}
+			return preflightErr
+		},
+	)
+	if !errors.Is(err, preflightErr) {
+		t.Fatalf("UpdateWithPreflight() error = %v, want preflight error", err)
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(after) != string(original) {
+		t.Fatalf("preflight rejection changed config:\n%s", after)
+	}
+	if applier.calls != 0 {
+		t.Fatalf("live applier calls = %d, want 0", applier.calls)
+	}
+	if _, statErr := os.Stat(service.BackupPath()); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("preflight rejection created backup: %v", statErr)
 	}
 }
 

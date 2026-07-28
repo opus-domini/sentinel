@@ -564,6 +564,10 @@ revision as a quoted `ETag` header. Its current typed groups are:
   write-only shared-token metadata;
 - `integrations.healthReport`: cron, write-only webhook metadata, and the next
   server-calculated activation;
+- `accounts`: process identity, read-only OS inventory, target allowlist, root
+  gate, switch method, and executable capability;
+- `access`: listener, write-only auth-token metadata, origins, trusted proxies,
+  cookie policy, reconnect/recovery metadata;
 - `diagnostics`: config existence, environment-owned keys, read-only keys, and
   deployment detection result.
 
@@ -583,11 +587,7 @@ webhook values are never included; their DTOs expose only safe metadata.
   },
   "integrations": {
     "mcp": {
-      "enabled": true,
-      "token": {
-        "action": "replace",
-        "value": "<new shared token>"
-      }
+      "enabled": true
     },
     "healthReport": {
       "schedule": "0 9 * * 1-5",
@@ -596,6 +596,19 @@ webhook values are never included; their DTOs expose only safe metadata.
         "value": "https://hooks.example.test/sentinel"
       }
     }
+  },
+  "access": {
+    "reconnectOrigin": "https://sentinel.example.test:4040",
+    "host": "0.0.0.0",
+    "port": 4040,
+    "token": {
+      "action": "replace",
+      "value": "<new shared token>"
+    },
+    "allowedOrigins": ["https://sentinel.example.test"],
+    "trustedProxies": ["127.0.0.1"],
+    "cookieSecure": "auto",
+    "allowInsecureCookie": false
   }
 }
 ```
@@ -605,7 +618,14 @@ no value; `replace` requires one. Responses, conflicts, validation errors, and
 subsequent GETs never echo the submitted value. MCP enable is applied live only
 when the process started with a token; otherwise the desired state is persisted
 as restart pending. Health-report fields are restart-based, and cron parsing is
-owned by the backend.
+owned by the backend. `server.token` can be mutated only through `access`, so
+every rotation passes through reconnect and candidate validation.
+
+Every patch containing `access` must include `reconnectOrigin`, even when the
+listener itself is unchanged. Sentinel validates it against the complete
+effective candidate. A host or port change also runs a bind preflight before
+the config file is replaced. Access fields remain restart-based; the PATCH does
+not restart the daemon, redirect the response, or roll back automatically.
 
 Send the exact ETag from the latest GET:
 

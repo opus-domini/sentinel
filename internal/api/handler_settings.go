@@ -41,6 +41,7 @@ type settingsResponse struct {
 	Operations   settingsOperations   `json:"operations"`
 	Integrations settingsIntegrations `json:"integrations"`
 	Accounts     settingsAccounts     `json:"accounts"`
+	Access       settingsAccess       `json:"access"`
 	Diagnostics  settingsDiagnostics  `json:"diagnostics"`
 }
 
@@ -234,6 +235,7 @@ type patchSettingsRequest struct {
 	Operations   *patchOperations   `json:"operations,omitempty"`
 	Integrations *patchIntegrations `json:"integrations,omitempty"`
 	Accounts     *patchAccounts     `json:"accounts,omitempty"`
+	Access       *patchAccess       `json:"access,omitempty"`
 }
 
 type patchExperience struct {
@@ -269,8 +271,7 @@ type patchIntegrations struct {
 }
 
 type patchMCP struct {
-	Enabled *bool                `json:"enabled,omitempty"`
-	Token   *patchSecretMutation `json:"token,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type patchHealthReport struct {
@@ -330,12 +331,22 @@ func (h *Handler) patchSettings(w http.ResponseWriter, r *http.Request) {
 		writeSettingsError(w, err)
 		return
 	}
+	if err := h.validateAccessRequest(req.Access); err != nil {
+		writeSettingsError(w, err)
+		return
+	}
 	keys, mutate, err := h.settingsMutation(req, current)
 	if err != nil {
 		writeSettingsError(w, err)
 		return
 	}
-	state, err := h.configService.Update(r.Context(), revision, keys, mutate)
+	state, err := h.configService.UpdateWithPreflight(
+		r.Context(),
+		revision,
+		keys,
+		mutate,
+		h.accessCandidatePreflight(r, req.Access),
+	)
 	if err != nil {
 		writeSettingsError(w, err)
 		return
@@ -352,8 +363,11 @@ func (h *Handler) settingsMutation(
 	if err := validateIntegrationSecretMutations(req.Integrations); err != nil {
 		return nil, nil, err
 	}
+	if err := validateAccessSecretMutation(req.Access); err != nil {
+		return nil, nil, err
+	}
 	keys := settingsChangedKeys(req, current)
-	if len(keys) == 0 && !hasExplicitSecretKeep(req.Integrations) {
+	if len(keys) == 0 && !hasExplicitSecretKeep(req.Integrations, req.Access) {
 		return nil, nil, errors.New("at least one supported settings field is required")
 	}
 
@@ -367,7 +381,10 @@ func (h *Handler) settingsMutation(
 		if err := h.applyIntegrationSettings(candidate, req.Integrations); err != nil {
 			return err
 		}
-		return h.applyAccountSettings(candidate, req.Accounts, current)
+		if err := h.applyAccountSettings(candidate, req.Accounts, current); err != nil {
+			return err
+		}
+		return h.applyAccessSettings(candidate, req.Access)
 	}, nil
 }
 
@@ -375,7 +392,8 @@ func settingsChangedKeys(req patchSettingsRequest, current config.State) []strin
 	keys := experienceSettingsKeys(req.Experience)
 	keys = append(keys, operationsSettingsKeys(req.Operations)...)
 	keys = append(keys, integrationSettingsKeys(req.Integrations)...)
-	return append(keys, accountSettingsKeys(req.Accounts, current)...)
+	keys = append(keys, accountSettingsKeys(req.Accounts, current)...)
+	return append(keys, accessSettingsKeys(req.Access)...)
 }
 
 func experienceSettingsKeys(req *patchExperience) []string {
@@ -431,9 +449,6 @@ func integrationSettingsKeys(req *patchIntegrations) []string {
 	if req.MCP != nil {
 		if req.MCP.Enabled != nil {
 			keys = append(keys, config.FieldMCPEnabled)
-		}
-		if secretMutationChangesValue(req.MCP.Token) {
-			keys = append(keys, config.FieldServerToken)
 		}
 	}
 	if req.HealthReport != nil {
@@ -537,7 +552,6 @@ func (h *Handler) applyIntegrationSettings(candidate *config.Config, req *patchI
 		if req.MCP.Enabled != nil {
 			candidate.MCP.Enabled = *req.MCP.Enabled
 		}
-		applySecretMutation(&candidate.Server.Token, req.MCP.Token)
 	}
 	if req.HealthReport != nil {
 		if req.HealthReport.Schedule != nil {
@@ -652,11 +666,6 @@ func validateIntegrationSecretMutations(req *patchIntegrations) error {
 	if req == nil {
 		return nil
 	}
-	if req.MCP != nil {
-		if err := validateSecretMutation("integrations.mcp.token", req.MCP.Token); err != nil {
-			return err
-		}
-	}
 	if req.HealthReport != nil {
 		if err := validateSecretMutation("integrations.healthReport.webhookUrl", req.HealthReport.WebhookURL); err != nil {
 			return err
@@ -688,12 +697,15 @@ func secretMutationChangesValue(mutation *patchSecretMutation) bool {
 	return mutation != nil && (mutation.Action == secretActionReplace || mutation.Action == secretActionClear)
 }
 
-func hasExplicitSecretKeep(req *patchIntegrations) bool {
-	if req == nil {
-		return false
-	}
-	return req.MCP != nil && req.MCP.Token != nil && req.MCP.Token.Action == secretActionKeep ||
-		req.HealthReport != nil && req.HealthReport.WebhookURL != nil && req.HealthReport.WebhookURL.Action == secretActionKeep
+func hasExplicitSecretKeep(integrations *patchIntegrations, access *patchAccess) bool {
+	integrationKeep := integrations != nil &&
+		integrations.HealthReport != nil &&
+		integrations.HealthReport.WebhookURL != nil &&
+		integrations.HealthReport.WebhookURL.Action == secretActionKeep
+	accessKeep := access != nil &&
+		access.Token != nil &&
+		access.Token.Action == secretActionKeep
+	return integrationKeep || accessKeep
 }
 
 func applySecretMutation(target *string, mutation *patchSecretMutation) {
@@ -745,18 +757,25 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 	allowedUsersField, _ := state.Field(config.FieldMultiUserAllowedUsers)
 	allowRootField, _ := state.Field(config.FieldMultiUserAllowRootTarget)
 	switchMethodField, _ := state.Field(config.FieldMultiUserUserSwitchMethod)
+	serverHostField, _ := state.Field(config.FieldServerHost)
+	serverPortField, _ := state.Field(config.FieldServerPort)
+	allowedOriginsField, _ := state.Field(config.FieldServerAllowedOrigins)
+	trustedProxiesField, _ := state.Field(config.FieldServerTrustedProxies)
+	cookieSecureField, _ := state.Field(config.FieldServerCookieSecure)
+	allowInsecureCookieField, _ := state.Field(config.FieldServerAllowInsecureCookie)
 	systemUsers := h.systemUsers()
 	processUser, processIsRoot := settingsProcessIdentity()
+	deploymentRestart := settingsRestartForDeployment(
+		len(changedKeys) > 0,
+		changedKeys,
+		h.configService.BackupPath(),
+		deployment,
+	)
 	return settingsResponse{
 		Revision:   state.Revision,
 		Metadata:   settingsMetadata{Version: h.settingsVersion()},
 		Deployment: deployment,
-		Restart: settingsRestartForDeployment(
-			len(changedKeys) > 0,
-			changedKeys,
-			h.configService.BackupPath(),
-			deployment,
-		),
+		Restart:    deploymentRestart,
 		Experience: settingsExperience{
 			Timezone: buildStringSetting(
 				timezoneField,
@@ -936,6 +955,91 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 			),
 			MethodCapabilities: h.settingsMethodCapabilities(),
 			PrivilegeGuidance:  "Sentinel detects executables but cannot grant sudo permissions. Configure passwordless policy for the process user and selected targets outside Sentinel.",
+		},
+		Access: settingsAccess{
+			Listener: settingsListener{
+				Host: buildStringSetting(
+					serverHostField,
+					state.Persisted.Server.Host,
+					state.Effective.Server.Host,
+					state.Default.Server.Host,
+					stringValidation{
+						Required:    true,
+						Format:      "listen-host",
+						AllowCustom: true,
+						Options:     []settingOption{},
+					},
+				),
+				Port: buildIntegerSetting(
+					serverPortField,
+					state.Persisted.Server.Port,
+					state.Effective.Server.Port,
+					state.Default.Server.Port,
+					1,
+					65535,
+				),
+				Classification: settingsListenerClassification(state.Effective.Server.Host),
+				Address:        state.Effective.Address(),
+			},
+			Authentication: settingsAuthentication{
+				Token:                  buildSensitiveSetting(serverTokenField, ""),
+				RuntimeTokenConfigured: h.settings.TokenConfigured(),
+			},
+			Origins: settingsOrigins{
+				Allowed: buildStringListSetting(
+					allowedOriginsField,
+					state.Persisted.Server.AllowedOrigins,
+					state.Effective.Server.AllowedOrigins,
+					state.Default.Server.AllowedOrigins,
+					stringListValidation{
+						Required:    false,
+						AllowCustom: true,
+						Options:     []settingOption{},
+					},
+				),
+			},
+			Proxies: settingsProxies{
+				Trusted: buildStringListSetting(
+					trustedProxiesField,
+					state.Persisted.Server.TrustedProxies,
+					state.Effective.Server.TrustedProxies,
+					state.Default.Server.TrustedProxies,
+					stringListValidation{
+						Required:    false,
+						AllowCustom: true,
+						Options:     []settingOption{},
+					},
+				),
+			},
+			Cookies: settingsCookies{
+				Secure: buildStringSetting(
+					cookieSecureField,
+					state.Persisted.Server.CookieSecure,
+					state.Effective.Server.CookieSecure,
+					state.Default.Server.CookieSecure,
+					stringValidation{
+						Required:    true,
+						AllowCustom: false,
+						Options: []settingOption{
+							{Value: config.CookieSecureAuto, Label: "Auto"},
+							{Value: config.CookieSecureAlways, Label: "Always secure"},
+							{Value: config.CookieSecureNever, Label: "Never secure"},
+						},
+					},
+				),
+				AllowInsecure: buildBoolSetting(
+					allowInsecureCookieField,
+					state.Persisted.Server.AllowInsecureCookie,
+					state.Effective.Server.AllowInsecureCookie,
+					state.Default.Server.AllowInsecureCookie,
+				),
+			},
+			Recovery: settingsRecoveryForDeployment(
+				h.configService.Path(),
+				h.configService.BackupPath(),
+				deployment,
+				deploymentRestart,
+			),
 		},
 		Diagnostics: settingsDiagnostics{
 			ConfigExists:         state.Exists,

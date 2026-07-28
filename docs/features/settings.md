@@ -10,7 +10,7 @@ destination to the primary navigation.
 
 ## Sections
 
-The current workspace has six deep-linkable sections:
+The current workspace has seven deep-linkable sections:
 
 - `/settings/experience` — terminal theme, timezone, and date format.
 - `/settings/operations` — Watchtower collection, Runbook concurrency, and
@@ -19,6 +19,8 @@ The current workspace has six deep-linkable sections:
   health-report delivery.
 - `/settings/accounts` — read-only OS-account inventory, target allowlist, root
   gate, and user-switch method.
+- `/settings/access` — listener, shared token, browser origins, trusted proxies,
+  cookie policy, and manual anti-lockout recovery.
 - `/settings/storage` — a read-only storage overview and a link to maintenance.
 - `/settings/diagnostics` — runtime, deployment, config path, restart state, and
   PWA install/update controls.
@@ -71,12 +73,14 @@ manual restart.
 
 Integrations has two functional groups:
 
-- **MCP** controls the desired endpoint state, the shared `server.token`, and
-  ready-to-copy client snippets.
+- **MCP** controls the desired endpoint state, reports whether the shared token
+  is ready, and provides ready-to-copy client snippets. Token changes live in
+  Access so they always use the anti-lockout flow.
 - **Health report** controls the delivery cron and write-only webhook URL.
 
-The token and webhook controls never preload an existing value. They expose
-only `Configured` or `Not configured` and three explicit actions:
+The Access token and Integration webhook controls never preload an existing
+value. They expose only `Configured` or `Not configured` and three explicit
+actions:
 
 - `Keep` leaves the saved value unchanged and sends no secret.
 - `Replace` accepts a new value once.
@@ -93,9 +97,10 @@ implement a second cron parser. Both the health-report schedule and webhook
 apply after restart.
 
 MCP disable remains live. MCP enable is live when the running process started
-with a token. When a token is newly replaced, Sentinel persists both the token
-and desired MCP state but keeps the endpoint unavailable until manual restart.
-The UI distinguishes `Available`, `Disabled`, and `Pending restart`.
+with a token. If no token exists, Integrations links to Access and cannot stage
+a second token mutation path. After a token is configured in Access and the
+daemon restarts, MCP can be enabled from Integrations. The UI distinguishes
+`Available`, `Disabled`, and `Pending restart`.
 
 ## OS-account targeting
 
@@ -120,6 +125,46 @@ whether the required executables were found in the daemon PATH, but that
 capability is advisory: Sentinel cannot inspect or grant sudo policy. All three
 account controls apply after a manual restart, and saving them never starts,
 stops, or changes a tmux session.
+
+## Guarded access configuration
+
+Access edits the complete network and authentication boundary as one candidate:
+
+- listener host and port;
+- the shared write-only `server.token`;
+- allowed browser origins and trusted proxy IPs/CIDRs;
+- secure-cookie policy and the explicit insecure-cookie exception.
+
+Every Access PATCH includes an absolute `reconnectOrigin` calculated from the
+current browser scheme and the candidate listener. A loopback or specific
+listener uses the candidate host. A wildcard listener such as `0.0.0.0` or
+`::` preserves the current browser hostname and changes only the port.
+
+Before replacing the config, Sentinel validates the complete effective
+candidate, including environment overrides. When the listener changes, it also
+performs a bind preflight. A bind already held by the running Sentinel endpoint
+is distinguished from a conflict on another endpoint; an external conflict is
+rejected without changing the config revision, file, or live state.
+
+The review dialog lists every changed config key, the reconnect target, the
+manual restart requirement, and whether the browser must authenticate again.
+Replacing or clearing the shared token never returns the value to the browser.
+After a rotation is submitted, the replacement is removed from the form before
+the request completes. The current process and auth cookie continue using the
+startup token until restart; after restart the normal authentication gate asks
+for the new token.
+
+Remote candidates cannot omit or clear the token, cannot omit all allowed
+origins, and must satisfy the cookie policy. An `always` secure cookie is
+incompatible with an HTTP reconnect target. `cookie_secure = "never"` with
+remote token authentication requires the explicit
+`allow_insecure_cookie = true` exception.
+
+Settings never restarts Sentinel and never rolls back automatically. Before
+saving, the Access section displays the exact config path, adjacent `.bak`
+path, restore command, effective validation command, and scope-specific restart
+command when a managed deployment is detected. Keep those commands reachable
+outside the SPA before restarting.
 
 ## Storage maintenance
 

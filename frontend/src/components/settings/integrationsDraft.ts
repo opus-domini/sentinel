@@ -4,14 +4,12 @@ import type { SecretIntent } from './SecretSettingControl'
 
 export type IntegrationsDraft = {
   mcpEnabled: boolean
-  tokenIntent: SecretIntent
-  tokenValue: string
   schedule: string
   webhookIntent: SecretIntent
   webhookValue: string
 }
 
-export type IntegrationsDraftKey = 'mcpEnabled' | 'token' | 'schedule' | 'webhook'
+export type IntegrationsDraftKey = 'mcpEnabled' | 'schedule' | 'webhook'
 
 export type IntegrationsDraftChange = {
   key: IntegrationsDraftKey
@@ -20,15 +18,13 @@ export type IntegrationsDraftChange = {
   after: string
 }
 
-export type IntegrationsDraftErrors = Partial<Record<'token' | 'schedule' | 'webhook', string>>
+export type IntegrationsDraftErrors = Partial<Record<'schedule' | 'webhook', string>>
 
 export function integrationsDraftFromSettings(
   integrations: SettingsResponse['integrations'],
 ): IntegrationsDraft {
   return {
     mcpEnabled: integrations.mcp.enabled.effectiveValue,
-    tokenIntent: 'keep',
-    tokenValue: '',
     schedule: integrations.healthReport.schedule.effectiveValue,
     webhookIntent: 'keep',
     webhookValue: '',
@@ -47,14 +43,6 @@ export function diffIntegrationsDraft(
       configKey: 'mcp.enabled',
       before: base.mcpEnabled ? 'Enabled' : 'Disabled',
       after: draft.mcpEnabled ? 'Enabled' : 'Disabled',
-    })
-  }
-  if (draft.tokenIntent !== 'keep') {
-    changes.push({
-      key: 'token',
-      configKey: 'server.token',
-      before: integrations.mcp.token.configured ? 'Configured' : 'Not configured',
-      after: draft.tokenIntent === 'replace' ? 'Replacement staged' : 'Clear',
     })
   }
   if (base.schedule !== draft.schedule) {
@@ -78,9 +66,6 @@ export function diffIntegrationsDraft(
 
 export function validateIntegrationsDraft(draft: IntegrationsDraft): IntegrationsDraftErrors {
   const errors: IntegrationsDraftErrors = {}
-  if (draft.tokenIntent === 'replace' && draft.tokenValue.trim() === '') {
-    errors.token = 'Enter a non-empty replacement token.'
-  }
   if (draft.webhookIntent === 'replace' && draft.webhookValue.trim() === '') {
     errors.webhook = 'Enter a non-empty replacement webhook URL.'
   }
@@ -96,12 +81,6 @@ export function integrationsPatchFromChanges(
   const healthReport: NonNullable<NonNullable<SettingsPatch['integrations']>['healthReport']> = {}
 
   if (changed.has('mcpEnabled')) mcp.enabled = draft.mcpEnabled
-  if (changed.has('token')) {
-    mcp.token =
-      draft.tokenIntent === 'replace'
-        ? { action: 'replace', value: draft.tokenValue.trim() }
-        : { action: 'clear' }
-  }
   if (changed.has('schedule')) healthReport.schedule = draft.schedule.trim()
   if (changed.has('webhook')) {
     healthReport.webhookUrl =
@@ -124,7 +103,6 @@ export function integrationsErrorsFromAPI(error: ApiError): IntegrationsDraftErr
   for (const issue of issues) {
     if (issue.includes('health_report.schedule')) result.schedule = issue
     if (issue.includes('health_report.webhook_url')) result.webhook = issue
-    if (issue.includes('mcp.enabled requires server.token')) result.token = issue
   }
   return result
 }

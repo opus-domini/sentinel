@@ -39,6 +39,13 @@ to replay it.
 Environment-owned secrets are reported as configured and read-only. A forged
 PATCH is rejected by the canonical config service before any file write.
 
+Access-boundary PATCHes add an anti-lockout contract. The browser must send the
+exact origin it will use after restart, derived from its current scheme and the
+candidate listener. Sentinel validates that origin against the complete
+candidate and bind-checks a changed endpoint before writing. The old
+credential authorizes the response; the new credential is never echoed or
+retained for an automatic retry.
+
 ## Request Surfaces
 
 When `server.token` is configured, the request boundaries are:
@@ -95,6 +102,11 @@ Replacing the shared token does not change the credential held by the running
 process. The new value and MCP enablement remain restart pending until Sentinel
 restarts. Clearing the token requires a candidate configuration in which MCP is
 disabled and all remote-exposure rules remain valid.
+
+After a token rotation and restart, the previous HttpOnly cookie fails normal
+authentication and the SPA returns to the authentication gate. Sentinel does
+not cache, recover, or reuse the submitted replacement token. The operator must
+enter it again.
 
 Health-report webhook failures expose only a delivery category or HTTP status.
 The URL, path, query, userinfo, and fragments are never included in returned
@@ -172,6 +184,16 @@ validation, and managed configuration saves. A configuration that would expose
 Sentinel without the required token and origins is rejected before it is
 persisted. Environment-owned security fields must be changed in the process
 environment; file-based updates cannot shadow them.
+
+The Access UI additionally rejects an HTTP reconnect target with
+`cookie_secure = "always"` because a browser cannot return that Secure cookie
+over HTTP. A remote `cookie_secure = "never"` candidate still requires the
+explicit `allow_insecure_cookie` exception.
+
+Sentinel never auto-restarts or auto-rolls back an Access save. The UI exposes
+the adjacent config backup and exact restore, effective-validation, and restart
+commands. Keep them available in a separate shell before restarting a listener
+or token change.
 
 ## Security-Related Error Codes
 

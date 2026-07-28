@@ -157,6 +157,36 @@ export type SettingsResponse = {
     }>
     privilegeGuidance: string
   }
+  access: {
+    listener: {
+      host: StringSetting
+      port: IntegerSetting
+      classification: 'loopback' | 'wildcard' | 'specific'
+      address: string
+    }
+    authentication: {
+      token: SensitiveSetting
+      runtimeTokenConfigured: boolean
+    }
+    origins: {
+      allowed: StringListSetting
+    }
+    proxies: {
+      trusted: StringListSetting
+    }
+    cookies: {
+      secure: StringSetting
+      allowInsecure: BooleanSetting
+    }
+    recovery: {
+      configPath: string
+      backupPath: string
+      restoreCommand: string
+      validateCommand: string
+      restartCommand?: string
+      instruction: string
+    }
+  }
   diagnostics: {
     configExists: boolean
     environmentOwnedKeys: Array<string>
@@ -188,7 +218,6 @@ export type SettingsPatch = {
   integrations?: {
     mcp?: {
       enabled?: boolean
-      token?: SecretMutation
     }
     healthReport?: {
       schedule?: string
@@ -199,6 +228,16 @@ export type SettingsPatch = {
     allowedUsers?: Array<string>
     allowRootTarget?: boolean
     userSwitchMethod?: string
+  }
+  access?: {
+    reconnectOrigin: string
+    host?: string
+    port?: number
+    token?: SecretMutation
+    allowedOrigins?: Array<string>
+    trustedProxies?: Array<string>
+    cookieSecure?: string
+    allowInsecureCookie?: boolean
   }
 }
 

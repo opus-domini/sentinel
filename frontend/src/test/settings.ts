@@ -49,6 +49,26 @@ type SettingsFixtureOptions = {
     maxConcurrent: number
     logLevel: string
   }>
+  access?: Partial<{
+    host: string
+    port: number
+    tokenConfigured: boolean
+    tokenSource: SettingSource
+    tokenEditable: boolean
+    runtimeTokenConfigured: boolean
+    allowedOrigins: Array<string>
+    allowedOriginsSource: SettingSource
+    allowedOriginsEditable: boolean
+    trustedProxies: Array<string>
+    trustedProxiesSource: SettingSource
+    trustedProxiesEditable: boolean
+    cookieSecure: string
+    cookieSecureSource: SettingSource
+    cookieSecureEditable: boolean
+    allowInsecureCookie: boolean
+    allowInsecureCookieSource: SettingSource
+    allowInsecureCookieEditable: boolean
+  }>
 }
 
 export function createSettingsSnapshot(options: SettingsFixtureOptions = {}): SettingsSnapshot {
@@ -350,6 +370,127 @@ export function createSettingsSnapshot(options: SettingsFixtureOptions = {}): Se
         ],
         privilegeGuidance:
           'Sentinel detects executables but cannot grant sudo permissions. Configure passwordless policy outside Sentinel.',
+      },
+      access: {
+        listener: {
+          host: {
+            effectiveValue: options.access?.host ?? '127.0.0.1',
+            defaultValue: '127.0.0.1',
+            source: 'file',
+            editable: true,
+            applyMode: 'restart',
+            restartPending: false,
+            validation: {
+              required: true,
+              format: 'listen-host',
+              allowCustom: true,
+              options: [],
+            },
+          },
+          port: {
+            effectiveValue: options.access?.port ?? 4040,
+            defaultValue: 4040,
+            source: 'file',
+            editable: true,
+            applyMode: 'restart',
+            restartPending: false,
+            validation: {
+              required: true,
+              min: 1,
+              max: 65535,
+              step: 1,
+            },
+          },
+          classification:
+            options.access?.host === '0.0.0.0' || options.access?.host === '::'
+              ? 'wildcard'
+              : (options.access?.host ?? '127.0.0.1') === '127.0.0.1'
+                ? 'loopback'
+                : 'specific',
+          address: `${options.access?.host ?? '127.0.0.1'}:${options.access?.port ?? 4040}`,
+        },
+        authentication: {
+          token: {
+            configured: options.access?.tokenConfigured ?? tokenConfigured,
+            source: options.access?.tokenSource ?? options.tokenSource ?? 'file',
+            editable: options.access?.tokenEditable ?? options.tokenEditable ?? true,
+            applyMode: 'restart',
+            restartPending: options.tokenRestartPending ?? false,
+            validation: {
+              required: false,
+            },
+          },
+          runtimeTokenConfigured: options.access?.runtimeTokenConfigured ?? runtimeTokenConfigured,
+        },
+        origins: {
+          allowed: {
+            effectiveValue: options.access?.allowedOrigins ?? [],
+            defaultValue: [],
+            source: options.access?.allowedOriginsSource ?? 'file',
+            editable: options.access?.allowedOriginsEditable ?? true,
+            applyMode: 'restart',
+            restartPending: false,
+            validation: {
+              required: false,
+              allowCustom: true,
+              options: [],
+            },
+          },
+        },
+        proxies: {
+          trusted: {
+            effectiveValue: options.access?.trustedProxies ?? [],
+            defaultValue: [],
+            source: options.access?.trustedProxiesSource ?? 'file',
+            editable: options.access?.trustedProxiesEditable ?? true,
+            applyMode: 'restart',
+            restartPending: false,
+            validation: {
+              required: false,
+              allowCustom: true,
+              options: [],
+            },
+          },
+        },
+        cookies: {
+          secure: {
+            effectiveValue: options.access?.cookieSecure ?? 'auto',
+            defaultValue: 'auto',
+            source: options.access?.cookieSecureSource ?? 'file',
+            editable: options.access?.cookieSecureEditable ?? true,
+            applyMode: 'restart',
+            restartPending: false,
+            validation: {
+              required: true,
+              allowCustom: false,
+              options: [
+                { value: 'auto', label: 'Auto' },
+                { value: 'always', label: 'Always secure' },
+                { value: 'never', label: 'Never secure' },
+              ],
+            },
+          },
+          allowInsecure: {
+            effectiveValue: options.access?.allowInsecureCookie ?? false,
+            defaultValue: false,
+            source: options.access?.allowInsecureCookieSource ?? 'file',
+            editable: options.access?.allowInsecureCookieEditable ?? true,
+            applyMode: 'restart',
+            restartPending: false,
+            validation: {
+              required: true,
+            },
+          },
+        },
+        recovery: {
+          configPath: '/tmp/sentinel/config.toml',
+          backupPath: '/tmp/sentinel/config.toml.bak',
+          restoreCommand: "cp -- '/tmp/sentinel/config.toml.bak' '/tmp/sentinel/config.toml'",
+          validateCommand:
+            "sentinel --config '/tmp/sentinel/config.toml' config validate --effective",
+          instruction:
+            'If the new listener cannot be reached after restart, restore the adjacent backup, validate the effective configuration, then restart the same deployment manually.',
+        },
       },
       diagnostics: {
         configExists: true,

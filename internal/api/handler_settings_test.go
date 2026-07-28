@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -405,7 +406,7 @@ func TestSettingsMCPRequiresTokenAndUsesRuntimeCapability(t *testing.T) {
 		}
 	})
 
-	t.Run("new token waits for restart", func(t *testing.T) {
+	t.Run("token mutation belongs to access", func(t *testing.T) {
 		service, runtime := newTestSettings(t, nil)
 		h, _ := newTestHandler(t, nil)
 		h.configService = service
@@ -415,46 +416,29 @@ func TestSettingsMCPRequiresTokenAndUsesRuntimeCapability(t *testing.T) {
 			t,
 			h,
 			getSettingsETag(t, h),
-			`{"integrations":{"mcp":{"enabled":true,"token":{"action":"replace","value":"new-private-token"}}}}`,
+			`{"integrations":{"mcp":{"token":{"action":"replace","value":"must-not-echo"}}}}`,
 		)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("MCP token replace = %d %s", rec.Code, rec.Body.String())
+		if rec.Code != http.StatusBadRequest ||
+			!strings.Contains(rec.Body.String(), "INVALID_REQUEST") {
+			t.Fatalf("integration token mutation = %d %s", rec.Code, rec.Body.String())
 		}
-		var body settingsEnvelope
-		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-			t.Fatal(err)
-		}
-		mcp := body.Data.Integrations.MCP
-		if runtime.Enabled() ||
-			mcp.RuntimeTokenConfigured ||
-			!mcp.Token.Configured ||
-			!mcp.Token.RestartPending ||
-			mcp.Enabled.ApplyMode != config.ApplyModeRestart ||
-			!mcp.Enabled.RestartPending {
-			t.Fatalf("MCP deferred state = %+v runtime=%t", mcp, runtime.Enabled())
-		}
-		if strings.Contains(rec.Body.String(), "new-private-token") {
-			t.Fatal("MCP response leaked replacement token")
-		}
+		assertSettingsBodySecretSafe(t, rec.Body.String(), "must-not-echo")
 	})
 }
 
-func TestSettingsIntegrationSecretLifecycleIsWriteOnly(t *testing.T) {
+func TestSettingsHealthReportSecretLifecycleIsWriteOnly(t *testing.T) {
 	service, runtime := newTestSettings(t, nil)
 	h, _ := newTestHandler(t, nil)
 	h.configService = service
 	h.settings = runtime
 
-	const (
-		tokenSecret   = "mcp-write-only-secret"
-		webhookSecret = "webhook-write-only-secret"
-		webhookURL    = "https://hooks.example.test/private?token=" + webhookSecret
-	)
+	const webhookSecret = "webhook-write-only-secret"
+	const webhookURL = "https://hooks.example.test/private?token=" + webhookSecret
 	replace := patchSettingsRequestWithETag(
 		t,
 		h,
 		getSettingsETag(t, h),
-		`{"integrations":{"mcp":{"enabled":true,"token":{"action":"replace","value":"`+tokenSecret+`"}},"healthReport":{"schedule":"*/15 * * * *","webhookUrl":{"action":"replace","value":"`+webhookURL+`"}}}}`,
+		`{"integrations":{"healthReport":{"schedule":"*/15 * * * *","webhookUrl":{"action":"replace","value":"`+webhookURL+`"}}}}`,
 	)
 	if replace.Code != http.StatusOK {
 		t.Fatalf("replace integrations = %d %s", replace.Code, replace.Body.String())
@@ -463,33 +447,32 @@ func TestSettingsIntegrationSecretLifecycleIsWriteOnly(t *testing.T) {
 	if err := json.Unmarshal(replace.Body.Bytes(), &replaced); err != nil {
 		t.Fatal(err)
 	}
-	if !replaced.Data.Integrations.MCP.Token.Configured ||
-		!replaced.Data.Integrations.HealthReport.WebhookURL.Configured ||
+	if !replaced.Data.Integrations.HealthReport.WebhookURL.Configured ||
 		replaced.Data.Integrations.HealthReport.NextActivation == "" {
 		t.Fatalf("replace state = %+v", replaced.Data.Integrations)
 	}
-	assertSettingsBodySecretSafe(t, replace.Body.String(), tokenSecret, webhookSecret, webhookURL)
+	assertSettingsBodySecretSafe(t, replace.Body.String(), webhookSecret, webhookURL)
 
 	get := httptest.NewRecorder()
 	h.getSettings(get, httptest.NewRequest(http.MethodGet, "/api/ops/settings", nil))
 	if get.Code != http.StatusOK {
 		t.Fatalf("GET after replace = %d %s", get.Code, get.Body.String())
 	}
-	assertSettingsBodySecretSafe(t, get.Body.String(), tokenSecret, webhookSecret, webhookURL)
+	assertSettingsBodySecretSafe(t, get.Body.String(), webhookSecret, webhookURL)
 
 	persisted, err := os.ReadFile(service.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(persisted), tokenSecret) || !strings.Contains(string(persisted), webhookSecret) {
-		t.Fatal("replacement secrets were not persisted")
+	if !strings.Contains(string(persisted), webhookSecret) {
+		t.Fatal("replacement webhook was not persisted")
 	}
 
 	clearResponse := patchSettingsRequestWithETag(
 		t,
 		h,
 		quoteETag(replaced.Data.Revision),
-		`{"integrations":{"mcp":{"enabled":false,"token":{"action":"clear"}},"healthReport":{"schedule":"","webhookUrl":{"action":"clear"}}}}`,
+		`{"integrations":{"healthReport":{"schedule":"","webhookUrl":{"action":"clear"}}}}`,
 	)
 	if clearResponse.Code != http.StatusOK {
 		t.Fatalf("clear integrations = %d %s", clearResponse.Code, clearResponse.Body.String())
@@ -498,18 +481,17 @@ func TestSettingsIntegrationSecretLifecycleIsWriteOnly(t *testing.T) {
 	if err := json.Unmarshal(clearResponse.Body.Bytes(), &cleared); err != nil {
 		t.Fatal(err)
 	}
-	if cleared.Data.Integrations.MCP.Token.Configured ||
-		cleared.Data.Integrations.HealthReport.WebhookURL.Configured ||
+	if cleared.Data.Integrations.HealthReport.WebhookURL.Configured ||
 		cleared.Data.Integrations.HealthReport.NextActivation != "" {
 		t.Fatalf("clear state = %+v", cleared.Data.Integrations)
 	}
-	assertSettingsBodySecretSafe(t, clearResponse.Body.String(), tokenSecret, webhookSecret, webhookURL)
+	assertSettingsBodySecretSafe(t, clearResponse.Body.String(), webhookSecret, webhookURL)
 
 	keep := patchSettingsRequestWithETag(
 		t,
 		h,
 		quoteETag(cleared.Data.Revision),
-		`{"integrations":{"mcp":{"token":{"action":"keep"}},"healthReport":{"webhookUrl":{"action":"keep"}}}}`,
+		`{"integrations":{"healthReport":{"webhookUrl":{"action":"keep"}}}}`,
 	)
 	if keep.Code != http.StatusOK {
 		t.Fatalf("keep integrations = %d %s", keep.Code, keep.Body.String())
@@ -538,8 +520,8 @@ func TestSettingsIntegrationValidationDoesNotWriteOrEchoSecrets(t *testing.T) {
 		forbidden  string
 	}{
 		{
-			name:       "unknown action",
-			body:       `{"integrations":{"mcp":{"token":{"action":"reveal","value":"must-not-echo"}}}}`,
+			name:       "unknown webhook action",
+			body:       `{"integrations":{"healthReport":{"webhookUrl":{"action":"reveal","value":"must-not-echo"}}}}`,
 			statusCode: http.StatusBadRequest,
 			want:       "action must be keep, replace, or clear",
 			forbidden:  "must-not-echo",
@@ -583,7 +565,7 @@ func TestSettingsIntegrationValidationDoesNotWriteOrEchoSecrets(t *testing.T) {
 	}
 }
 
-func TestSettingsIntegrationSecretsOwnedByEnvironmentAreReadOnly(t *testing.T) {
+func TestSettingsSecretsOwnedByEnvironmentAreReadOnly(t *testing.T) {
 	t.Setenv("SENTINEL_SERVER_TOKEN", "environment-token-secret")
 	t.Setenv(
 		"SENTINEL_HEALTH_REPORT_WEBHOOK_URL",
@@ -622,7 +604,7 @@ func TestSettingsIntegrationSecretsOwnedByEnvironmentAreReadOnly(t *testing.T) {
 	}{
 		{
 			field: config.FieldServerToken,
-			body:  `{"integrations":{"mcp":{"token":{"action":"replace","value":"tampered-token"}}}}`,
+			body:  `{"access":{"reconnectOrigin":"http://127.0.0.1:4040","token":{"action":"replace","value":"tampered-token"}}}`,
 		},
 		{
 			field: config.FieldHealthReportWebhookURL,
@@ -702,6 +684,316 @@ user_switch_method = "sudo"
 		accounts.PrivilegeGuidance == "" {
 		t.Fatalf("capabilities = %+v guidance=%q", accounts.MethodCapabilities, accounts.PrivilegeGuidance)
 	}
+}
+
+func TestSettingsAccessResponseIsTypedSecretSafeAndActionable(t *testing.T) {
+	content := `[server]
+host = "127.0.0.1"
+port = 4545
+token = "access-private-token"
+allowed_origins = ["https://sentinel.example.test"]
+trusted_proxies = ["127.0.0.1", "10.0.0.0/8"]
+cookie_secure = "always"
+allow_insecure_cookie = false
+`
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.deployments = func() ([]daemon.Deployment, error) {
+		return []daemon.Deployment{{
+			Scope:      daemon.ScopeUser,
+			ConfigPath: service.Path(),
+		}}, nil
+	}
+
+	rec := httptest.NewRecorder()
+	h.getSettings(rec, httptest.NewRequest(http.MethodGet, "/api/ops/settings", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET access = %d %s", rec.Code, rec.Body.String())
+	}
+	var body settingsEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	access := body.Data.Access
+	if access.Listener.Host.EffectiveValue != "127.0.0.1" ||
+		access.Listener.Port.EffectiveValue != 4545 ||
+		access.Listener.Classification != "loopback" ||
+		access.Listener.Address != "127.0.0.1:4545" {
+		t.Fatalf("listener = %+v", access.Listener)
+	}
+	if !access.Authentication.Token.Configured ||
+		!access.Authentication.RuntimeTokenConfigured ||
+		access.Cookies.Secure.EffectiveValue != config.CookieSecureAlways ||
+		!slices.Equal(
+			access.Origins.Allowed.EffectiveValue,
+			[]string{"https://sentinel.example.test"},
+		) ||
+		!slices.Equal(
+			access.Proxies.Trusted.EffectiveValue,
+			[]string{"127.0.0.1", "10.0.0.0/8"},
+		) {
+		t.Fatalf("access = %+v", access)
+	}
+	if access.Recovery.ConfigPath != service.Path() ||
+		access.Recovery.BackupPath != service.BackupPath() ||
+		!strings.Contains(access.Recovery.RestoreCommand, "cp --") ||
+		!strings.Contains(access.Recovery.ValidateCommand, "config validate --effective") ||
+		access.Recovery.RestartCommand != "sentinel service restart --scope user" {
+		t.Fatalf("recovery = %+v", access.Recovery)
+	}
+	assertSettingsBodySecretSafe(t, rec.Body.String(), "access-private-token")
+}
+
+func TestSettingsAccessRequiresCompatibleReconnectOriginBeforeWrite(t *testing.T) {
+	content := "[server]\nhost = \"127.0.0.1\"\nport = 4040\n"
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	original, err := os.ReadFile(service.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := getSettingsETag(t, h)
+
+	for _, test := range []struct {
+		name   string
+		body   string
+		origin string
+		want   string
+	}{
+		{
+			name: "missing",
+			body: `{"access":{"port":5050}}`,
+			want: "access.reconnectOrigin is required",
+		},
+		{
+			name: "non canonical",
+			body: `{"access":{"reconnectOrigin":"http://127.0.0.1:5050/","port":5050}}`,
+			want: "canonical form",
+		},
+		{
+			name:   "incompatible specific listener",
+			body:   `{"access":{"reconnectOrigin":"http://localhost:5050","port":5050}}`,
+			origin: "http://localhost:4040",
+			want:   `http://127.0.0.1:5050`,
+		},
+		{
+			name:   "wildcard preserves browser hostname",
+			body:   `{"access":{"reconnectOrigin":"http://different.example:5050","host":"0.0.0.0","port":5050,"token":{"action":"replace","value":"secret"},"allowedOrigins":["http://sentinel.example:5050"]}}`,
+			origin: "http://sentinel.example:4040",
+			want:   `http://sentinel.example:5050`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rec := patchSettingsAccessRequestWithETag(t, h, revision, test.origin, test.body)
+			if rec.Code != http.StatusUnprocessableEntity ||
+				!strings.Contains(rec.Body.String(), test.want) {
+				t.Fatalf("reconnect validation = %d %s", rec.Code, rec.Body.String())
+			}
+			after, readErr := os.ReadFile(service.Path())
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(after) != string(original) || getSettingsETag(t, h) != revision {
+				t.Fatal("reconnect rejection changed file or revision")
+			}
+			assertSettingsBodySecretSafe(t, rec.Body.String(), "secret")
+		})
+	}
+}
+
+func TestSettingsAccessBindPreflightRejectsExternalConflictBeforeWrite(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+	_, rawPort, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := "[server]\nhost = \"127.0.0.1\"\nport = 4040\n"
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.settingsBindCheck = preflightSettingsBind
+	original, err := os.ReadFile(service.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := getSettingsETag(t, h)
+	body := `{"access":{"reconnectOrigin":"http://127.0.0.1:` + rawPort + `","port":` + rawPort + `}}`
+	rec := patchSettingsAccessRequestWithETag(t, h, revision, "", body)
+	if rec.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(rec.Body.String(), "could not bind candidate address") {
+		t.Fatalf("occupied bind = %d %s", rec.Code, rec.Body.String())
+	}
+	after, err := os.ReadFile(service.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(original) || getSettingsETag(t, h) != revision {
+		t.Fatal("occupied bind changed file or revision")
+	}
+}
+
+func TestSettingsAccessValidRemoteRotationIsWriteOnlyAndRestartBased(t *testing.T) {
+	content := "[server]\nhost = \"127.0.0.1\"\nport = 4040\n"
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.settingsBindCheck = func(current, candidate string) error {
+		if current != "127.0.0.1:4040" || candidate != "0.0.0.0:5050" {
+			t.Fatalf("bind preflight = current:%q candidate:%q", current, candidate)
+		}
+		return nil
+	}
+
+	const replacement = "rotated-access-private-token"
+	rec := patchSettingsAccessRequestWithETag(
+		t,
+		h,
+		getSettingsETag(t, h),
+		"http://sentinel.example:4040",
+		`{"access":{"reconnectOrigin":"http://sentinel.example:5050","host":"0.0.0.0","port":5050,"token":{"action":"replace","value":"`+replacement+`"},"allowedOrigins":["http://sentinel.example:5050"],"trustedProxies":["127.0.0.1","10.0.0.0/8"],"cookieSecure":"auto","allowInsecureCookie":false}}`,
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("remote access patch = %d %s", rec.Code, rec.Body.String())
+	}
+	var body settingsEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Data.Access.Listener.Classification != "wildcard" ||
+		body.Data.Access.Listener.Address != "0.0.0.0:5050" ||
+		!body.Data.Access.Authentication.Token.Configured ||
+		body.Data.Access.Authentication.RuntimeTokenConfigured ||
+		!body.Data.Restart.Required {
+		t.Fatalf("remote access response = %+v restart=%+v", body.Data.Access, body.Data.Restart)
+	}
+	for _, key := range []string{
+		config.FieldServerHost,
+		config.FieldServerPort,
+		config.FieldServerToken,
+		config.FieldServerAllowedOrigins,
+		config.FieldServerTrustedProxies,
+	} {
+		if !slices.Contains(body.Data.Restart.ChangedKeys, key) {
+			t.Fatalf("restart keys = %v, missing %q", body.Data.Restart.ChangedKeys, key)
+		}
+	}
+	assertSettingsBodySecretSafe(t, rec.Body.String(), replacement)
+	state, err := service.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Persisted.Server.Token != replacement ||
+		state.Persisted.Address() != "0.0.0.0:5050" {
+		t.Fatalf("persisted access = %+v", state.Persisted.Server)
+	}
+}
+
+func TestSettingsAccessRejectsUnsafeCandidateAndEnvironmentOwnership(t *testing.T) {
+	t.Run("remote without token and origin", func(t *testing.T) {
+		content := "[server]\nhost = \"127.0.0.1\"\nport = 4040\n"
+		service, runtime := newTestSettings(t, &content)
+		h, _ := newTestHandler(t, nil)
+		h.configService = service
+		h.settings = runtime
+		revision := getSettingsETag(t, h)
+		original, err := os.ReadFile(service.Path())
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := patchSettingsAccessRequestWithETag(
+			t,
+			h,
+			revision,
+			"http://sentinel.example:4040",
+			`{"access":{"reconnectOrigin":"http://sentinel.example:4040","host":"0.0.0.0"}}`,
+		)
+		if rec.Code != http.StatusUnprocessableEntity ||
+			!strings.Contains(rec.Body.String(), "token is required") {
+			t.Fatalf("unsafe remote = %d %s", rec.Code, rec.Body.String())
+		}
+		after, err := os.ReadFile(service.Path())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(after) != string(original) || getSettingsETag(t, h) != revision {
+			t.Fatal("unsafe remote candidate changed config")
+		}
+	})
+
+	t.Run("clear token while remote", func(t *testing.T) {
+		content := `[server]
+host = "0.0.0.0"
+port = 4040
+token = "current-private-token"
+allowed_origins = ["http://sentinel.example:4040"]
+`
+		service, runtime := newTestSettings(t, &content)
+		h, _ := newTestHandler(t, nil)
+		h.configService = service
+		h.settings = runtime
+		rec := patchSettingsAccessRequestWithETag(
+			t,
+			h,
+			getSettingsETag(t, h),
+			"http://sentinel.example:4040",
+			`{"access":{"reconnectOrigin":"http://sentinel.example:4040","token":{"action":"clear"}}}`,
+		)
+		if rec.Code != http.StatusUnprocessableEntity ||
+			!strings.Contains(rec.Body.String(), "token is required") {
+			t.Fatalf("remote token clear = %d %s", rec.Code, rec.Body.String())
+		}
+		assertSettingsBodySecretSafe(t, rec.Body.String(), "current-private-token")
+	})
+
+	t.Run("secure cookie over http", func(t *testing.T) {
+		content := "[server]\nhost = \"127.0.0.1\"\nport = 4040\ntoken = \"current-private-token\"\n"
+		service, runtime := newTestSettings(t, &content)
+		h, _ := newTestHandler(t, nil)
+		h.configService = service
+		h.settings = runtime
+		rec := patchSettingsAccessRequestWithETag(
+			t,
+			h,
+			getSettingsETag(t, h),
+			"http://127.0.0.1:4040",
+			`{"access":{"reconnectOrigin":"http://127.0.0.1:4040","cookieSecure":"always"}}`,
+		)
+		if rec.Code != http.StatusUnprocessableEntity ||
+			!strings.Contains(rec.Body.String(), "requires an HTTPS reconnect origin") {
+			t.Fatalf("http secure cookie = %d %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("environment owned", func(t *testing.T) {
+		t.Setenv("SENTINEL_SERVER_PORT", "5050")
+		service, runtime := newTestSettings(t, nil)
+		h, _ := newTestHandler(t, nil)
+		h.configService = service
+		h.settings = runtime
+		rec := patchSettingsAccessRequestWithETag(
+			t,
+			h,
+			getSettingsETag(t, h),
+			"",
+			`{"access":{"reconnectOrigin":"http://127.0.0.1:6060","port":6060}}`,
+		)
+		if rec.Code != http.StatusConflict ||
+			!strings.Contains(rec.Body.String(), "ENVIRONMENT_OWNED") ||
+			!strings.Contains(rec.Body.String(), config.FieldServerPort) {
+			t.Fatalf("environment access = %d %s", rec.Code, rec.Body.String())
+		}
+	})
 }
 
 func TestSettingsAccountsPatchIsStrictAndKeepsRootPolicyConsistent(t *testing.T) {
@@ -952,6 +1244,27 @@ func patchSettingsRequestWithETag(
 	req := httptest.NewRequest(http.MethodPatch, "/api/ops/settings", strings.NewReader(body))
 	req.Header.Set("If-Match", etag)
 	req.Header.Set("Content-Type", "application/json")
+	h.patchSettings(rec, req)
+	return rec
+}
+
+func patchSettingsAccessRequestWithETag(
+	t *testing.T,
+	h *Handler,
+	etag string,
+	origin string,
+	body string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/ops/settings", strings.NewReader(body))
+	req.Header.Set("If-Match", etag)
+	req.Header.Set("Content-Type", "application/json")
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+		req.Host = strings.TrimPrefix(origin, "http://")
+		req.Host = strings.TrimPrefix(req.Host, "https://")
+	}
 	h.patchSettings(rec, req)
 	return rec
 }

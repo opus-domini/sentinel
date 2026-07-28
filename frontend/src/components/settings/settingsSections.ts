@@ -1,4 +1,4 @@
-import { Activity, Database, Plug, Settings2, UsersRound, Wrench } from 'lucide-react'
+import { Activity, Database, LockKeyhole, Plug, Settings2, UsersRound, Wrench } from 'lucide-react'
 
 export const SETTINGS_SECTIONS = [
   {
@@ -24,6 +24,12 @@ export const SETTINGS_SECTIONS = [
     label: 'Accounts',
     description: 'OS targets and privilege boundary',
     Icon: UsersRound,
+  },
+  {
+    id: 'access',
+    label: 'Access',
+    description: 'Listener, auth, origins, and recovery',
+    Icon: LockKeyhole,
   },
   {
     id: 'storage',

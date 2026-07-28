@@ -36,6 +36,46 @@ sentinel service status
 
 Then restart managed service.
 
+## Sentinel is unreachable after an Access settings restart
+
+First try the reconnect target shown in the Access confirmation. Wildcard
+listeners preserve the browser hostname; a specific listener uses its candidate
+host.
+
+If that endpoint is still unreachable, use the recovery commands captured
+before restart:
+
+```bash
+cp -- "<configPath>.bak" "<configPath>"
+sentinel --config "<configPath>" config validate --effective
+sentinel service restart --scope user
+```
+
+For a system deployment, prefix restore/validate with `sudo` and restart with
+`sudo sentinel service restart --scope system`. For standalone mode, restart
+through its external supervisor.
+
+Sentinel does not roll Access changes back automatically. This avoids replacing
+a valid candidate merely because the old browser cannot reach a different
+network path.
+
+## Access settings rejects a changed port
+
+Cause:
+
+- another process already owns the candidate endpoint.
+
+The bind preflight runs before the config is written. Choose another port or
+stop the unrelated owner, then retry. The current Sentinel listener on an
+overlapping endpoint is recognized and is not reported as an external
+conflict.
+
+## Authentication gate appears after token rotation
+
+This is expected after restart. The old HttpOnly cookie authenticates only
+against the startup token. Enter the replacement token again; Sentinel never
+stores it in browser storage or returns it from Settings.
+
 ## Linux user-scope autoupdate install fails with DBUS/XDG errors
 
 Typical error references missing `$DBUS_SESSION_BUS_ADDRESS` or `$XDG_RUNTIME_DIR`.

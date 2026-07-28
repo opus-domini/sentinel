@@ -1,12 +1,11 @@
+import { Link } from '@tanstack/react-router'
 import { Check, Copy } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import SecretSettingControl from './SecretSettingControl'
-import type { SecretIntent } from './SecretSettingControl'
 import {
   EnvironmentOwnership,
-  SettingsField,
   SettingValueSummary,
+  SettingsField,
   ValidationError,
 } from './SettingsField'
 import type { SettingsResponse } from '@/api/settings'
@@ -20,13 +19,8 @@ type MCPSettingsPanelProps = {
   hostname: string
   settings: SettingsResponse['integrations']['mcp']
   enabled: boolean
-  tokenIntent: SecretIntent
-  tokenValue: string
-  tokenError?: string
   saving: boolean
   onEnabledChange: (enabled: boolean) => void
-  onTokenIntentChange: (intent: SecretIntent) => void
-  onTokenValueChange: (value: string) => void
 }
 
 function formatMCPServerName(hostname: string): string {
@@ -42,13 +36,8 @@ export default function MCPSettingsPanel({
   hostname,
   settings,
   enabled,
-  tokenIntent,
-  tokenValue,
-  tokenError = '',
   saving,
   onEnabledChange,
-  onTokenIntentChange,
-  onTokenValueChange,
 }: MCPSettingsPanelProps) {
   const [copyError, setCopyError] = useState('')
   const [snippetKind, setSnippetKind] = useState<SnippetKind>('codex')
@@ -105,8 +94,7 @@ export default function MCPSettingsPanel({
     window.setTimeout(() => setCopied((current) => (current === key ? '' : current)), 1600)
   }
 
-  const replacementReady = tokenIntent === 'replace' && tokenValue.trim() !== ''
-  const canEnable = (settings.token.configured && tokenIntent !== 'clear') || replacementReady
+  const canEnable = settings.token.configured
   const runtimeStatus = !enabled
     ? 'Disabled'
     : settings.runtimeTokenConfigured
@@ -164,8 +152,13 @@ export default function MCPSettingsPanel({
 
           {!canEnable && (
             <div className="rounded-md border border-warning/45 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-warning-foreground">
-              Replace the shared token before enabling MCP. A new token and MCP enablement become
-              available together after restart.
+              Configure the shared token in Access before enabling MCP. Token rotation uses the
+              guarded listener and recovery flow.
+              <Button asChild variant="link" className="ml-1 h-auto min-h-0 p-0 text-[11px]">
+                <Link to="/settings/$section" params={{ section: 'access' }}>
+                  Open Access
+                </Link>
+              </Button>
             </div>
           )}
           {enabled && !settings.runtimeTokenConfigured && (
@@ -210,24 +203,6 @@ export default function MCPSettingsPanel({
           </div>
           <ValidationError message={copyError} />
         </div>
-      </SettingsField>
-
-      <SettingsField
-        label="Shared token"
-        description="Manage the same server.token used by browser authentication and MCP clients. It is write-only and restart-based."
-        setting={settings.token}
-      >
-        <SecretSettingControl
-          id="settings-mcp-token"
-          label="Shared token"
-          setting={settings.token}
-          intent={tokenIntent}
-          value={tokenValue}
-          error={tokenError}
-          placeholder="Enter a new shared token"
-          onIntentChange={onTokenIntentChange}
-          onValueChange={onTokenValueChange}
-        />
       </SettingsField>
 
       <SettingsField

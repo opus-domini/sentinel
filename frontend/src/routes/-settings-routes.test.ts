@@ -13,6 +13,7 @@ describe('settings routes', () => {
     expect(() => guardSettingsSection('operations')).not.toThrow()
     expect(() => guardSettingsSection('integrations')).not.toThrow()
     expect(() => guardSettingsSection('accounts')).not.toThrow()
+    expect(() => guardSettingsSection('access')).not.toThrow()
     expect(() => guardSettingsSection('storage')).not.toThrow()
     expect(() => guardSettingsSection('diagnostics')).not.toThrow()
     expect(() => guardSettingsSection('not-real')).toThrow()

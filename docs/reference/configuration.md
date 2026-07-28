@@ -79,6 +79,11 @@ Validation is strict:
 - Settings rejects root in `allowed_users` while `allow_root_target` is false;
 - invalid non-empty cookie security or user-switch values are rejected rather
   than normalized to a fallback.
+- every typed Access update carries the candidate browser reconnect origin;
+  incompatible listener/origin and HTTP/secure-cookie combinations are
+  rejected before persistence;
+- a changed listener is bind-checked before the atomic replacement; the running
+  endpoint is not mistaken for an unrelated occupied port.
 
 ## Config File
 
@@ -179,6 +184,12 @@ the typed PATCH endpoint:
 | `multi_user.allowed_users` | empty or a unique closed selection from the startup OS-account inventory |
 | `multi_user.allow_root_target` | `true` or `false`; root membership follows the gate for a file-owned explicit allowlist |
 | `multi_user.user_switch_method` | `sudo` or `systemd-run` |
+| `server.host` | non-empty loopback, wildcard, hostname, or IP listener host |
+| `server.port` | `1` through `65535`, available at Access-save preflight |
+| `server.allowed_origins` | unique canonical HTTP(S) origins |
+| `server.trusted_proxies` | unique IP addresses or CIDRs |
+| `server.cookie_secure` | `auto`, `always`, or `never` |
+| `server.allow_insecure_cookie` | explicit boolean exception for remote never-secure auth cookies |
 
 These values are restart-based. Saving updates `config.toml` atomically and
 marks the changed keys as restart pending; it does not partially reload
@@ -218,10 +229,38 @@ next activation on the server using the same parser used at daemon startup and
 returns it only when both a valid schedule and webhook are configured.
 
 MCP uses `server.token`; there is no separate credential. Disabling MCP applies
-live. Enabling applies live only when the process started with a token. A token
-saved through Settings is persisted write-only, and a simultaneous MCP enable
-is marked restart pending until that token becomes part of the startup
-baseline.
+live. Enabling applies live only when the process started with a token. Settings
+mutates that token only through Access, where reconnect and candidate checks are
+mandatory. Integrations reports token readiness but cannot create a parallel
+rotation path.
+
+## Access saves and manual recovery
+
+`/settings/access` uses the same typed Settings PATCH rather than a raw TOML
+editor. It validates the complete effective candidate and a required
+`reconnectOrigin` before writing. If host or port changes, Sentinel attempts to
+bind the candidate endpoint first. A failed preflight does not create a backup,
+change the revision, or apply any live field.
+
+All Access fields are restart-based. The process continues serving its startup
+listener, token, origin, proxy, and cookie policy after Save. Restart remains a
+separate operator action.
+
+Every successful replacement after an existing config keeps the prior document
+at `<configPath>.bak`. If the new endpoint is unreachable after restart, use a
+shell outside the SPA:
+
+```bash
+cp -- "<configPath>.bak" "<configPath>"
+sentinel --config "<configPath>" config validate --effective
+sentinel service restart --scope user
+```
+
+Use `sudo` and `--scope system` for a system deployment. For standalone
+processes, restart through the external supervisor that owns the process.
+Sentinel intentionally does not attempt automatic rollback: only the operator
+knows whether the new endpoint is unreachable or merely reached through a
+different network path.
 
 ## Recommended Profiles
 
