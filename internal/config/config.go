@@ -275,13 +275,28 @@ func ValidateFile(path string) error {
 	return service.ValidatePersisted()
 }
 
-type configValidationError struct {
+// ValidationError reports one or more field-safe configuration problems.
+type ValidationError struct {
 	Path   string
 	Issues []string
 }
 
-func (e configValidationError) Error() string {
+func (e ValidationError) Error() string {
 	return fmt.Sprintf("invalid config %s: %s", e.Path, strings.Join(e.Issues, "; "))
+}
+
+// ValidationIssues returns config problems without the config path or values.
+func ValidationIssues(err error) []string {
+	var validationErr ValidationError
+	if !errors.As(err, &validationErr) {
+		return nil
+	}
+	return slices.Clone(validationErr.Issues)
+}
+
+// SupportedLocales returns the closed locale inventory accepted by config.
+func SupportedLocales() []string {
+	return slices.Clone(supportedLocales)
 }
 
 // Init creates the canonical config file. It refuses to overwrite existing

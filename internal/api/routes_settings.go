@@ -4,12 +4,8 @@ import "net/http"
 
 func (h *Handler) registerSettingsRoutes(mux *http.ServeMux) {
 	h.registerRoutes(mux, []routeBinding{
-		{pattern: "GET /api/ops/config", handler: h.opsConfig},
-		{pattern: "PATCH /api/ops/config", handler: h.patchOpsConfig},
-		{pattern: "PATCH /api/ops/settings/timezone", handler: h.patchTimezone},
-		{pattern: "PATCH /api/ops/settings/locale", handler: h.patchLocale},
-		{pattern: "GET /api/ops/settings/mcp", handler: h.getMCPSettings},
-		{pattern: "PATCH /api/ops/settings/mcp", handler: h.patchMCPSettings},
+		{pattern: "GET /api/ops/settings", handler: h.getSettings},
+		{pattern: "PATCH /api/ops/settings", handler: h.patchSettings},
 		{pattern: "GET /api/ops/storage/stats", handler: h.storageStats},
 		{pattern: "POST /api/ops/storage/flush", handler: h.flushStorage},
 	})

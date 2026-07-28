@@ -25,14 +25,18 @@ type Options struct {
 
 // Server owns the official MCP handler and tmux attachment manager.
 type Server struct {
-	state       *State
+	state       availability
 	guard       *security.Guard
 	attachments *AttachmentManager
 	handler     http.Handler
 }
 
+type availability interface {
+	Enabled() bool
+}
+
 // New constructs the official Streamable HTTP MCP server.
-func New(state *State, guard *security.Guard, opts Options) *Server {
+func New(state availability, guard *security.Guard, opts Options) *Server {
 	attachments := NewAttachmentManager()
 	toolset := &tools{
 		guard:       guard,

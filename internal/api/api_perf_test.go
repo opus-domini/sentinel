@@ -50,6 +50,7 @@ func newPerfMux(tb testing.TB) *http.ServeMux {
 	tb.Cleanup(func() { _ = st.Close() })
 
 	mux := http.NewServeMux()
+	configService, settings := newTestSettings(tb, nil)
 	Register(
 		mux,
 		security.New("", nil, security.CookieSecureAuto),
@@ -57,10 +58,8 @@ func newPerfMux(tb testing.TB) *http.ServeMux {
 		&mockOpsControlPlane{},
 		events.NewHub(),
 		"test",
-		"",
-		"UTC",
-		"",
-		nil,
+		configService,
+		settings,
 		5,
 	)
 	return mux

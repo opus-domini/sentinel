@@ -4,50 +4,50 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import MCPSettingsPanel from './MCPSettingsPanel'
+import { createSettingsSnapshot } from '@/test/settings'
 
 const mocks = vi.hoisted(() => ({
-  api: vi.fn(),
+  getSettings: vi.fn(),
+  patchSettings: vi.fn(),
+  writeClipboardText: vi.fn(),
 }))
 
-vi.mock('@/hooks/useTmuxApi', () => ({
-  useTmuxApi: () => mocks.api,
+vi.mock('@/api/settings', () => ({
+  getSettings: mocks.getSettings,
+  patchSettings: mocks.patchSettings,
+}))
+
+vi.mock('@/lib/clipboardProvider', () => ({
+  writeClipboardText: mocks.writeClipboardText,
 }))
 
 describe('MCPSettingsPanel', () => {
   afterEach(cleanup)
 
   beforeEach(() => {
-    mocks.api.mockReset()
-    mocks.api.mockImplementation((path: string, init?: RequestInit) => {
-      if (path === '/api/ops/settings/mcp' && init?.method === 'PATCH') {
-        return Promise.resolve({ enabled: true, tokenConfigured: true, endpoint: '/mcp' })
-      }
-      return Promise.resolve({ enabled: false, tokenConfigured: true, endpoint: '/mcp' })
-    })
+    mocks.getSettings.mockReset()
+    mocks.patchSettings.mockReset()
+    mocks.writeClipboardText.mockReset()
+    mocks.getSettings.mockResolvedValue(createSettingsSnapshot())
+    mocks.patchSettings.mockResolvedValue(createSettingsSnapshot({ mcpEnabled: true }))
+    mocks.writeClipboardText.mockResolvedValue(true)
   })
 
-  it('shows client hints and enables the live endpoint', async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-    const { container } = render(
-      <QueryClientProvider client={queryClient}>
-        <MCPSettingsPanel hostname="Azdrix.LAN" />
-      </QueryClientProvider>,
-    )
+  it('shows client hints and enables the live endpoint through the unified API', async () => {
+    renderPanel('Azdrix.LAN')
 
     expect(await screen.findByText('Remote agent access')).toBeTruthy()
     expect(screen.getByText(`${window.location.origin}/mcp`)).toBeTruthy()
     expect(screen.getByText(/codex mcp add sentinel-azdrix-lan/).textContent).toContain(
       '--bearer-token-env-var SENTINEL_TOKEN',
     )
-    expect(container.querySelector('pre')?.className).toContain('max-w-full')
 
     fireEvent.click(screen.getByLabelText('Enable MCP'))
     await waitFor(() =>
-      expect(mocks.api).toHaveBeenCalledWith('/api/ops/settings/mcp', {
-        method: 'PATCH',
-        body: JSON.stringify({ enabled: true }),
+      expect(mocks.patchSettings).toHaveBeenCalledWith(`"${'a'.repeat(64)}"`, {
+        integrations: {
+          mcp: { enabled: true },
+        },
       }),
     )
     expect(await screen.findByText('Available')).toBeTruthy()
@@ -62,13 +62,8 @@ describe('MCPSettingsPanel', () => {
   })
 
   it('blocks enable when server.token is missing', async () => {
-    mocks.api.mockResolvedValue({ enabled: false, tokenConfigured: false, endpoint: '/mcp' })
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MCPSettingsPanel hostname="azdrix" />
-      </QueryClientProvider>,
-    )
+    mocks.getSettings.mockResolvedValue(createSettingsSnapshot({ tokenConfigured: false }))
+    renderPanel('azdrix')
 
     const tokenCode = await screen.findByText('server.token')
     expect(tokenCode.parentElement?.textContent).toContain(
@@ -76,4 +71,41 @@ describe('MCPSettingsPanel', () => {
     )
     expect((screen.getByLabelText('Enable MCP') as HTMLInputElement).disabled).toBe(true)
   })
+
+  it('confirms clipboard success only after the write resolves', async () => {
+    let resolveClipboard: ((value: boolean) => void) | undefined
+    mocks.writeClipboardText.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolveClipboard = resolve
+      }),
+    )
+    renderPanel('azdrix')
+    await screen.findByText('Remote agent access')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0])
+    expect(screen.queryByText('Copied')).toBeNull()
+    resolveClipboard?.(true)
+    expect(await screen.findByText('Copied')).toBeTruthy()
+  })
+
+  it('reports clipboard denial without showing false success', async () => {
+    mocks.writeClipboardText.mockResolvedValue(false)
+    renderPanel('azdrix')
+    await screen.findByText('Remote agent access')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0])
+    expect(await screen.findByText(/Clipboard permission was denied/)).toBeTruthy()
+    expect(screen.queryByText('Copied')).toBeNull()
+  })
 })
+
+function renderPanel(hostname: string) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MCPSettingsPanel hostname={hostname} />
+    </QueryClientProvider>,
+  )
+}

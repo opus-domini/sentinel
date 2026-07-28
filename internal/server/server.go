@@ -36,7 +36,8 @@ import (
 // the process exit code. The Serve/run split keeps os.Exit out of any function
 // holding a defer (the exitAfterDefer lint issue): run returns the exit code.
 func Serve(version string) int {
-	configService, err := config.NewService(config.Path(), config.Default(), nil)
+	liveSettings := newSettingsRuntime()
+	configService, err := config.NewService(config.Path(), config.Default(), liveSettings)
 	if err != nil {
 		closeLogger, _ := initLogger(config.DefaultLogLevel, "")
 		defer closeLogger()
@@ -51,7 +52,7 @@ func Serve(version string) int {
 		return 1
 	}
 	cfg := configState.Effective
-	configPath := configState.Path
+	liveSettings.initialize(cfg)
 	closeLogger, err := initLogger(cfg.Log.Level, cfg.Log.Path)
 	if err != nil {
 		closeFallback, _ := initLogger(config.DefaultLogLevel, "")
@@ -109,9 +110,8 @@ func Serve(version string) int {
 	opsManager := services.NewManager(time.Now(), st)
 
 	mux := http.NewServeMux()
-	mcpState := mcpserver.NewState(cfg.MCP.Enabled, strings.TrimSpace(cfg.Server.Token) != "")
-	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configPath, cfg.Server.Timezone, cfg.Server.Locale, mcpState, cfg.Runbooks.MaxConcurrent)
-	mcpServer := mcpserver.New(mcpState, guard, mcpserver.Options{
+	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configService, liveSettings, cfg.Runbooks.MaxConcurrent)
+	mcpServer := mcpserver.New(liveSettings, guard, mcpserver.Options{
 		Version:             version,
 		SessionUser:         apiHandler.SessionUser,
 		KnownSessionUsers:   apiHandler.KnownSessionUsers,

@@ -319,6 +319,7 @@ func TestNowRoutesRequireAuthenticationAndRestrictMethods(t *testing.T) {
 	mux := http.NewServeMux()
 	guard := security.New("secret", nil, security.CookieSecureAuto)
 	st := newTestStore(t)
+	configService, settings := newTestSettings(t, nil)
 	h := Register(
 		mux,
 		guard,
@@ -326,10 +327,8 @@ func TestNowRoutesRequireAuthenticationAndRestrictMethods(t *testing.T) {
 		&mockOpsControlPlane{},
 		events.NewHub(),
 		"test",
-		"",
-		"UTC",
-		"en",
-		nil,
+		configService,
+		settings,
 		1,
 	)
 	h.tmux = &mockTmux{}

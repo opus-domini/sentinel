@@ -28,25 +28,4 @@ export const TIMEZONES = [
   'Pacific/Auckland',
 ] as const
 
-export const LOCALES = [
-  { value: 'auto', label: 'Browser default' },
-  { value: 'en-US', label: 'English (US)' },
-  { value: 'en-GB', label: 'English (UK)' },
-  { value: 'pt-BR', label: 'Português (Brasil)' },
-  { value: 'pt-PT', label: 'Português (Portugal)' },
-  { value: 'es-ES', label: 'Español (España)' },
-  { value: 'es-MX', label: 'Español (México)' },
-  { value: 'fr-FR', label: 'Français' },
-  { value: 'de-DE', label: 'Deutsch' },
-  { value: 'it-IT', label: 'Italiano' },
-  { value: 'nl-NL', label: 'Nederlands' },
-  { value: 'ja-JP', label: '日本語' },
-  { value: 'zh-CN', label: '中文 (简体)' },
-  { value: 'ko-KR', label: '한국어' },
-  { value: 'ru-RU', label: 'Русский' },
-  { value: 'tr-TR', label: 'Türkçe' },
-  { value: 'ar-SA', label: 'العربية' },
-  { value: 'hi-IN', label: 'हिन्दी' },
-] as const
-
 export { formatDateTime, formatDateTimeShort, formatRelativeTime, formatTimestamp } from './format'

@@ -324,7 +324,8 @@ func TestRegisterAddsRoutesAndShutsDown(t *testing.T) {
 	mux := http.NewServeMux()
 	guard := security.New("", nil, security.CookieSecureAuto)
 	st := newTestStore(t)
-	h := Register(mux, guard, st, &mockOpsControlPlane{}, events.NewHub(), "v1", "", "UTC", "", nil, 2)
+	configService, settings := newTestSettings(t, nil)
+	h := Register(mux, guard, st, &mockOpsControlPlane{}, events.NewHub(), "v1", configService, settings, 2)
 	if h == nil {
 		t.Fatal("Register returned nil handler")
 	}

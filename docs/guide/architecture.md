@@ -29,11 +29,13 @@ contracts live in [Reference](/reference/http-api.md).
 
 1. The configuration service loads deployment defaults, TOML definitions, and
    `SENTINEL_*` overrides while retaining each field's provenance.
-2. The server establishes origin and optional shared-token policy.
-3. SQLite-backed managers and live owner services start.
-4. The browser loads initial owner state over HTTP.
-5. Shared operational events and the dedicated Tmux stream keep routes current.
-6. Now recomposes owner evidence and returns the operator to a calm or
+2. One live settings adapter initializes from that effective state and is
+   shared by metadata, the Settings API, and MCP availability.
+3. The server establishes origin and optional shared-token policy.
+4. SQLite-backed managers and live owner services start.
+5. The browser loads initial owner state over HTTP.
+6. Shared operational events and the dedicated Tmux stream keep routes current.
+7. Now recomposes owner evidence and returns the operator to a calm or
    actionable current picture.
 
 ```mermaid
@@ -112,6 +114,14 @@ one canonical configuration service. File updates use an advisory lock,
 same-directory atomic replacement, a single adjacent `.bak`, and rollback when
 runtime application fails. Environment overrides remain authoritative and
 cannot be overwritten through a file mutation.
+
+The public Settings boundary is only `GET` and `PATCH /api/ops/settings`.
+Reads expose typed field state, provenance, lifecycle, and validation metadata,
+never raw TOML or secrets. Writes require the current ETag and are applied as
+one transaction; a revision conflict or live-application failure leaves the
+winning file and runtime state intact. The shared live adapter updates locale,
+timezone metadata, and MCP availability while restart-only consumers continue
+to use the immutable process baseline.
 
 ## Deployment and Trust
 

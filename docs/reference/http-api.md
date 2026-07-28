@@ -310,8 +310,6 @@ No endpoint creates an Incident, timeline, or duplicate recovery record.
 | -------- | ----------------------------- | ---------------------------------- |
 | `GET`    | `/api/ops/overview`           | Host + Sentinel + services summary |
 | `GET`    | `/api/ops/metrics`            | Host and Sentinel runtime metrics  |
-| `GET`    | `/api/ops/config`             | Read config file                   |
-| `PATCH`  | `/api/ops/config`             | Update config file                 |
 
 `GET /api/ops/metrics` returns the raw sample and the canonical temporal
 posture maintained by the shared Metrics evaluator:
@@ -542,16 +540,67 @@ explicitly for the host.
 | `DELETE` | `/api/ops/schedules/{schedule}`         | Delete schedule              |
 | `POST`   | `/api/ops/schedules/{schedule}/trigger` | Trigger schedule immediately |
 
-### Settings and Config
+### Settings
 
-| Method  | Path                         | Purpose                         |
-| ------- | ---------------------------- | ------------------------------- |
-| `GET`   | `/api/ops/config`            | Get redacted effective config   |
-| `PATCH` | `/api/ops/config`            | Update editable config sections |
-| `PATCH` | `/api/ops/settings/timezone` | Update timezone                 |
-| `PATCH` | `/api/ops/settings/locale`   | Update locale                   |
-| `GET`   | `/api/ops/settings/mcp`      | Read live MCP availability      |
-| `PATCH` | `/api/ops/settings/mcp`      | Enable or disable `/mcp` live   |
+| Method  | Path                | Purpose                                      |
+| ------- | ------------------- | -------------------------------------------- |
+| `GET`   | `/api/ops/settings` | Read typed Settings state and current ETag   |
+| `PATCH` | `/api/ops/settings` | Persist a typed patch against a current ETag |
+
+The raw TOML endpoint and the specialized timezone, locale, and MCP endpoints
+were removed. Settings never returns TOML or secret values.
+
+`GET /api/ops/settings` returns a `revision` in the body and the same SHA-256
+revision as a quoted `ETag` header. Its current typed groups are:
+
+- `metadata`: Sentinel version;
+- `deployment`: exact config path, `user`/`system`/`standalone` scope, and
+  service or standalone runtime mode;
+- `restart`: pending keys, adjacent backup path, and the manual command or
+  supervisor instruction;
+- `experience`: timezone and locale;
+- `integrations.mcp`: endpoint availability and non-secret token-configured
+  state;
+- `diagnostics`: config existence, environment-owned keys, read-only keys, and
+  deployment detection result.
+
+Every editable field includes its persisted value when explicitly defined,
+effective and default values, source (`default`, `file`, or `environment`),
+editability, apply mode (`live`, `partial`, or `restart`), restart state, and
+typed validation options. Environment-owned fields are read-only. Token and
+webhook values are never included; this API currently provides no token or
+webhook write action.
+
+`PATCH` accepts only the capabilities currently exposed:
+
+```json
+{
+  "experience": {
+    "timezone": "America/Sao_Paulo",
+    "locale": "pt-BR"
+  },
+  "integrations": {
+    "mcp": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Send the exact ETag from the latest GET:
+
+```http
+PATCH /api/ops/settings
+If-Match: "<current-revision>"
+Content-Type: application/json
+```
+
+A missing precondition returns `428 REVISION_REQUIRED`. A stale ETag returns
+`412 CONFIG_CONFLICT` without applying any part of the patch. Configuration
+validation returns `422 CONFIG_INVALID`; an environment-owned field returns
+`409 ENVIRONMENT_OWNED`; concurrent file ownership returns
+`423 CONFIG_LOCKED`. Successful PATCH responses contain the complete new typed
+state and its new ETag.
 
 ## Operations: Storage
 

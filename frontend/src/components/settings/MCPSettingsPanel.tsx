@@ -1,25 +1,16 @@
 import { Check, Copy } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Button } from '@/components/ui/button'
-import { useTmuxApi } from '@/hooks/useTmuxApi'
+import { useSettings } from '@/hooks/useSettings'
 import { writeClipboardText } from '@/lib/clipboardProvider'
 import { cn } from '@/lib/utils'
-
-type MCPSettings = {
-  enabled: boolean
-  tokenConfigured: boolean
-  endpoint: string
-}
 
 type SnippetKind = 'codex' | 'claude' | 'json'
 
 type MCPSettingsPanelProps = {
   hostname: string
 }
-
-const MCP_SETTINGS_QUERY_KEY = ['settings', 'mcp'] as const
 
 function formatMCPServerName(hostname: string): string {
   const normalized = hostname
@@ -31,19 +22,14 @@ function formatMCPServerName(hostname: string): string {
 }
 
 export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
-  const api = useTmuxApi()
-  const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [copyError, setCopyError] = useState('')
   const [snippetKind, setSnippetKind] = useState<SnippetKind>('codex')
   const [copied, setCopied] = useState('')
-
-  const settingsQuery = useQuery({
-    queryKey: MCP_SETTINGS_QUERY_KEY,
-    queryFn: () => api<MCPSettings>('/api/ops/settings/mcp'),
-  })
-
-  const settings = settingsQuery.data
+  const settingsQuery = useSettings()
+  const settings = settingsQuery.settings?.integrations.mcp
+  const enabled = settings?.enabled.effectiveValue ?? false
   const serverName = useMemo(() => formatMCPServerName(hostname), [hostname])
   const endpoint = useMemo(() => {
     const path = settings?.endpoint || '/mcp'
@@ -79,21 +65,32 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
     }
   }, [endpoint, serverName])
 
-  const copy = (key: string, value: string) => {
-    writeClipboardText(value)
+  const copy = async (key: string, value: string) => {
+    setCopyError('')
+    let copiedSuccessfully = false
+    try {
+      copiedSuccessfully = await writeClipboardText(value)
+    } catch {
+      copiedSuccessfully = false
+    }
+    if (!copiedSuccessfully) {
+      setCopied('')
+      setCopyError('Clipboard permission was denied. Select and copy the value manually.')
+      return
+    }
     setCopied(key)
     window.setTimeout(() => setCopied((current) => (current === key ? '' : current)), 1600)
   }
 
-  const setEnabled = async (enabled: boolean) => {
+  const setEnabled = async (nextEnabled: boolean) => {
     setSaving(true)
     setSaveError('')
     try {
-      const next = await api<MCPSettings>('/api/ops/settings/mcp', {
-        method: 'PATCH',
-        body: JSON.stringify({ enabled }),
+      await settingsQuery.save({
+        integrations: {
+          mcp: { enabled: nextEnabled },
+        },
       })
-      queryClient.setQueryData(MCP_SETTINGS_QUERY_KEY, next)
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Failed to update MCP')
     } finally {
@@ -101,7 +98,7 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
     }
   }
 
-  if (settingsQuery.isLoading) {
+  if (settingsQuery.isLoading && settings == null) {
     return <p className="text-xs text-muted-foreground">Loading MCP settings…</p>
   }
 
@@ -124,12 +121,12 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
             <span
               className={cn(
                 'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                settings.enabled
+                enabled
                   ? 'border-ok/45 bg-ok/10 text-ok-foreground'
                   : 'border-border-subtle bg-surface-overlay text-muted-foreground',
               )}
             >
-              {settings.enabled ? 'Available' : 'Disabled'}
+              {enabled ? 'Available' : 'Disabled'}
             </span>
           </div>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
@@ -141,8 +138,8 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
           <input
             type="checkbox"
             aria-label="Enable MCP"
-            checked={settings.enabled}
-            disabled={saving || !settings.tokenConfigured}
+            checked={enabled}
+            disabled={saving || !settings.tokenConfigured || !settings.enabled.editable}
             onChange={(event) => void setEnabled(event.target.checked)}
             className="h-3.5 w-3.5 rounded border-border accent-primary"
           />
@@ -161,6 +158,11 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
           {saveError}
         </div>
       )}
+      {copyError !== '' && (
+        <div className="rounded-md border border-destructive/45 bg-destructive/10 px-3 py-2 text-[11px] text-destructive-foreground">
+          {copyError}
+        </div>
+      )}
 
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -170,7 +172,7 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
           <span
             className={cn(
               'h-2 w-2 shrink-0 rounded-full',
-              settings.enabled ? 'bg-ok' : 'bg-muted-foreground/50',
+              enabled ? 'bg-ok' : 'bg-muted-foreground/50',
             )}
             aria-hidden="true"
           />
@@ -182,7 +184,7 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
             size="sm"
             variant="ghost"
             className="h-7 shrink-0 gap-1.5 px-2 text-[11px]"
-            onClick={() => copy('endpoint', endpoint)}
+            onClick={() => void copy('endpoint', endpoint)}
           >
             {copied === 'endpoint' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             {copied === 'endpoint' ? 'Copied' : 'Copy'}
@@ -229,7 +231,7 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
             size="sm"
             variant="outline"
             className="absolute top-2 right-2 h-7 gap-1.5 bg-surface-overlay px-2 text-[11px]"
-            onClick={() => copy('snippet', selectedSnippet)}
+            onClick={() => void copy('snippet', selectedSnippet)}
           >
             {copied === 'snippet' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             {copied === 'snippet' ? 'Copied' : 'Copy'}

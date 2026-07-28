@@ -20,6 +20,27 @@ var (
 	ErrEnvironmentOwned = errors.New("config field is owned by environment")
 )
 
+type environmentOwnedError struct {
+	field string
+}
+
+func (e environmentOwnedError) Error() string {
+	return fmt.Sprintf("%s: %s", ErrEnvironmentOwned, e.field)
+}
+
+func (e environmentOwnedError) Unwrap() error {
+	return ErrEnvironmentOwned
+}
+
+// EnvironmentOwnedField returns the safe field key rejected by Update.
+func EnvironmentOwnedField(err error) string {
+	var ownedErr environmentOwnedError
+	if !errors.As(err, &ownedErr) {
+		return ""
+	}
+	return ownedErr.field
+}
+
 // LiveApplier applies and compensates config fields supported by the process.
 type LiveApplier interface {
 	ApplyConfig(context.Context, Config, Config, []string) error
@@ -137,7 +158,7 @@ func (s *Service) Update(
 	}
 	for _, key := range keys {
 		if current.envFields[key] {
-			return State{}, fmt.Errorf("%w: %s", ErrEnvironmentOwned, key)
+			return State{}, environmentOwnedError{field: key}
 		}
 	}
 
@@ -146,21 +167,21 @@ func (s *Service) Update(
 		return State{}, err
 	}
 	if err := candidate.normalizeWithDefaults(s.defaults); err != nil {
-		return State{}, err
+		return State{}, s.validationError(err)
 	}
 	if err := validateConfigValues(candidate); err != nil {
-		return State{}, err
+		return State{}, s.validationError(err)
 	}
 	effective := candidate
 	_, envIssues := applyEnvironment(&effective)
 	if err := effective.normalizeWithDefaults(s.defaults); err != nil {
-		return State{}, err
+		return State{}, s.validationError(err)
 	}
 	if len(envIssues) > 0 {
-		return State{}, errors.New(strings.Join(envIssues, "; "))
+		return State{}, ValidationError{Path: s.path, Issues: envIssues}
 	}
 	if err := validateEffectiveConfig(effective); err != nil {
-		return State{}, err
+		return State{}, s.validationError(err)
 	}
 
 	actualKeys := diffConfigKeys(current.Persisted, candidate)
@@ -196,6 +217,16 @@ func (s *Service) Update(
 	return next, nil
 }
 
+func (s *Service) validationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if issues := ValidationIssues(err); len(issues) > 0 {
+		return err
+	}
+	return ValidationError{Path: s.path, Issues: []string{err.Error()}}
+}
+
 func (s *Service) readLocked() (State, error) {
 	raw, exists, err := readConfigBytes(s.path)
 	if err != nil {
@@ -211,10 +242,10 @@ func (s *Service) readLocked() (State, error) {
 		return State{}, err
 	}
 	if len(envIssues) > 0 {
-		return State{}, configValidationError{Path: s.path, Issues: envIssues}
+		return State{}, ValidationError{Path: s.path, Issues: envIssues}
 	}
 	if err := validateEffectiveConfig(effective); err != nil {
-		return State{}, configValidationError{Path: s.path, Issues: []string{err.Error()}}
+		return State{}, ValidationError{Path: s.path, Issues: []string{err.Error()}}
 	}
 	if !s.baselineSet {
 		s.baseline = effective
@@ -259,7 +290,7 @@ func decodeConfigBytes(path string, raw []byte, defaults Config, standalone bool
 		issues = append(issues, err.Error())
 	}
 	if len(issues) > 0 {
-		return cfg, nil, configValidationError{Path: path, Issues: issues}
+		return cfg, nil, ValidationError{Path: path, Issues: issues}
 	}
 	return cfg, fileFieldSet(meta), nil
 }

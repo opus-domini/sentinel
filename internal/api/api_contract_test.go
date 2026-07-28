@@ -85,10 +85,8 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "schedules-delete", method: http.MethodDelete, path: "/api/ops/schedules/noop"},
 		{name: "schedules-trigger", method: http.MethodPost, path: "/api/ops/schedules/noop/trigger"},
 
-		{name: "config-get", method: http.MethodGet, path: "/api/ops/config"},
-		{name: "config-patch", method: http.MethodPatch, path: "/api/ops/config", body: `{"logLevel":"info"}`},
-		{name: "settings-timezone", method: http.MethodPatch, path: "/api/ops/settings/timezone", body: `{"timezone":"UTC"}`},
-		{name: "settings-locale", method: http.MethodPatch, path: "/api/ops/settings/locale", body: `{"locale":"en-US"}`},
+		{name: "settings-get", method: http.MethodGet, path: "/api/ops/settings"},
+		{name: "settings-patch", method: http.MethodPatch, path: "/api/ops/settings", body: `{"experience":{"timezone":"UTC"}}`},
 		{name: "storage-stats", method: http.MethodGet, path: "/api/ops/storage/stats"},
 		{name: "storage-flush", method: http.MethodPost, path: "/api/ops/storage/flush", body: `{"resource":"activity-journal"}`},
 	}
@@ -118,9 +116,33 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 	}
 }
 
+func TestContractRemovedSettingsRoutesAreNotMounted(t *testing.T) {
+	t.Parallel()
+
+	mux := newContractMux(t)
+	removed := []contractRoute{
+		{name: "raw-config-get", method: http.MethodGet, path: "/api/ops/config"},
+		{name: "raw-config-patch", method: http.MethodPatch, path: "/api/ops/config"},
+		{name: "timezone", method: http.MethodPatch, path: "/api/ops/settings/timezone"},
+		{name: "locale", method: http.MethodPatch, path: "/api/ops/settings/locale"},
+		{name: "mcp-get", method: http.MethodGet, path: "/api/ops/settings/mcp"},
+		{name: "mcp-patch", method: http.MethodPatch, path: "/api/ops/settings/mcp"},
+	}
+	for _, tc := range removed {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("%s %s status = %d, want 404", tc.method, tc.path, rec.Code)
+			}
+		})
+	}
+}
+
 func newContractMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
+	configService, settings := newTestSettings(t, nil)
 	handler := Register(
 		mux,
 		security.New("", nil, security.CookieSecureAuto),
@@ -128,10 +150,8 @@ func newContractMux(t *testing.T) *http.ServeMux {
 		&mockOpsControlPlane{},
 		events.NewHub(),
 		"test",
-		"",
-		"UTC",
-		"",
-		nil,
+		configService,
+		settings,
 		5,
 	)
 	handler.tmux = &mockTmux{}

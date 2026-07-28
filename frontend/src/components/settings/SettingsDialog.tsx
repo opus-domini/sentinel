@@ -1,8 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { StorageFlushResponse, StorageStatsResponse } from '@/types'
 
-import { LOCALES, TIMEZONES } from '@/lib/dateFormat'
 import ThemeSelector from '@/components/settings/ThemeSelector'
 import MCPSettingsPanel from '@/components/settings/MCPSettingsPanel'
 import {
@@ -18,6 +17,7 @@ import {
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useToastContext } from '@/contexts/ToastContext'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
+import { useSettings } from '@/hooks/useSettings'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
 import { OPS_STORAGE_STATS_QUERY_KEY } from '@/lib/opsQueryCache'
 import { formatBytes } from '@/lib/opsUtils'
@@ -53,6 +53,9 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const queryClient = useQueryClient()
   const [savingTimezone, setSavingTimezone] = useState(false)
   const [savingLocale, setSavingLocale] = useState(false)
+  const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null)
+  const [localeDraft, setLocaleDraft] = useState<string | null>(null)
+  const [experienceSaveError, setExperienceSaveError] = useState('')
   const [themeId, setThemeId] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? 'sentinel',
   )
@@ -71,6 +74,20 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     updating,
   } = usePwaInstall()
   const { pushToast } = useToastContext()
+  const settingsQuery = useSettings({ enabled: open })
+  const settings = settingsQuery.settings
+  const timezoneSetting = settings?.experience.timezone
+  const localeSetting = settings?.experience.locale
+  const selectedTimezone = timezoneDraft ?? timezoneSetting?.effectiveValue ?? timezone
+  const selectedLocale = localeDraft ?? localeSetting?.effectiveValue ?? locale
+
+  useEffect(() => {
+    if (!open) {
+      setTimezoneDraft(null)
+      setLocaleDraft(null)
+      setExperienceSaveError('')
+    }
+  }, [open])
 
   const handleUpdateApp = useCallback(async () => {
     const result = await checkForUpdate()
@@ -103,38 +120,64 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
   const changeTimezone = useCallback(
     async (tz: string) => {
+      setTimezoneDraft(tz)
       setSavingTimezone(true)
+      setExperienceSaveError('')
       try {
-        await api('/api/ops/settings/timezone', {
-          method: 'PATCH',
-          body: JSON.stringify({ timezone: tz }),
+        await settingsQuery.save({
+          experience: { timezone: tz },
         })
+        setTimezoneDraft(null)
         await queryClient.invalidateQueries({ queryKey: ['meta'] })
-      } catch {
-        // best-effort — meta will still reflect the old value
+        pushToast({
+          level: 'success',
+          title: 'Timezone saved',
+          message: 'Displayed timestamps now use the new timezone.',
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to save timezone'
+        setExperienceSaveError(message)
+        pushToast({
+          level: 'error',
+          title: 'Timezone not saved',
+          message,
+        })
       } finally {
         setSavingTimezone(false)
       }
     },
-    [api, queryClient],
+    [pushToast, queryClient, settingsQuery],
   )
 
   const changeLocale = useCallback(
     async (loc: string) => {
+      setLocaleDraft(loc)
       setSavingLocale(true)
+      setExperienceSaveError('')
       try {
-        await api('/api/ops/settings/locale', {
-          method: 'PATCH',
-          body: JSON.stringify({ locale: loc }),
+        await settingsQuery.save({
+          experience: { locale: loc },
         })
+        setLocaleDraft(null)
         await queryClient.invalidateQueries({ queryKey: ['meta'] })
-      } catch {
-        // best-effort
+        pushToast({
+          level: 'success',
+          title: 'Date format saved',
+          message: 'Dates and numbers now use the selected locale.',
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to save date format'
+        setExperienceSaveError(message)
+        pushToast({
+          level: 'error',
+          title: 'Date format not saved',
+          message,
+        })
       } finally {
         setSavingLocale(false)
       }
     },
-    [api, queryClient],
+    [pushToast, queryClient, settingsQuery],
   )
 
   const storageStatsQuery = useQuery({
@@ -353,22 +396,40 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               </div>
 
               <div className="mt-5 border-t border-border-subtle pt-4">
+                {settingsQuery.isLoading && (
+                  <p className="mb-3 text-xs text-muted-foreground">Loading settings…</p>
+                )}
+                {settingsQuery.error instanceof Error && settings == null && (
+                  <div className="mb-3 rounded border border-destructive/45 bg-destructive/10 px-2 py-1 text-[11px] text-destructive-foreground">
+                    {settingsQuery.error.message}
+                  </div>
+                )}
+                {experienceSaveError !== '' && (
+                  <div className="mb-3 rounded border border-destructive/45 bg-destructive/10 px-2 py-1 text-[11px] text-destructive-foreground">
+                    {experienceSaveError}
+                  </div>
+                )}
                 <h3 className="mb-1 text-xs font-medium">Timezone</h3>
                 <p className="mb-2 text-xs text-muted-foreground">
                   IANA timezone used for all displayed timestamps.
                 </p>
                 <Select
-                  value={timezone}
+                  value={selectedTimezone}
                   onValueChange={(v) => void changeTimezone(v)}
-                  disabled={savingTimezone}
+                  disabled={
+                    savingTimezone ||
+                    settingsQuery.isLoading ||
+                    settings == null ||
+                    timezoneSetting?.editable === false
+                  }
                 >
                   <SelectTrigger className="w-full max-w-xs bg-surface-overlay text-[12px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TIMEZONES.map((tz) => (
-                      <SelectItem key={tz} value={tz}>
-                        {tz}
+                    {(timezoneSetting?.validation.options ?? []).map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -381,17 +442,22 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   Locale used for date and number formatting.
                 </p>
                 <Select
-                  value={locale || 'auto'}
+                  value={selectedLocale || 'auto'}
                   onValueChange={(v) => void changeLocale(v === 'auto' ? '' : v)}
-                  disabled={savingLocale}
+                  disabled={
+                    savingLocale ||
+                    settingsQuery.isLoading ||
+                    settings == null ||
+                    localeSetting?.editable === false
+                  }
                 >
                   <SelectTrigger className="w-full max-w-xs bg-surface-overlay text-[12px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {LOCALES.map((loc) => (
-                      <SelectItem key={loc.value} value={loc.value}>
-                        {loc.label}
+                    {(localeSetting?.validation.options ?? []).map((option) => (
+                      <SelectItem key={option.value || 'auto'} value={option.value || 'auto'}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

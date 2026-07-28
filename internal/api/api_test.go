@@ -13,9 +13,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/config"
+	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
@@ -348,6 +351,99 @@ func newTestStore(t *testing.T) *store.Store {
 	return s
 }
 
+type testSettingsRuntime struct {
+	mu              sync.RWMutex
+	timezone        string
+	locale          string
+	enabled         bool
+	tokenConfigured bool
+	failNext        bool
+}
+
+func (s *testSettingsRuntime) initialize(cfg config.Config) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.timezone = cfg.Server.Timezone
+	s.locale = cfg.Server.Locale
+	s.enabled = cfg.MCP.Enabled
+	s.tokenConfigured = strings.TrimSpace(cfg.Server.Token) != ""
+}
+
+func (s *testSettingsRuntime) ApplyConfig(
+	_ context.Context,
+	_ config.Config,
+	after config.Config,
+	keys []string,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failNext {
+		s.failNext = false
+		return errors.New("live apply failed")
+	}
+	for _, key := range keys {
+		switch key {
+		case config.FieldServerTimezone:
+			s.timezone = after.Server.Timezone
+		case config.FieldServerLocale:
+			s.locale = after.Server.Locale
+		case config.FieldMCPEnabled:
+			s.enabled = after.MCP.Enabled
+		}
+	}
+	return nil
+}
+
+func (s *testSettingsRuntime) Timezone() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.timezone
+}
+
+func (s *testSettingsRuntime) Locale() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.locale
+}
+
+func (s *testSettingsRuntime) Enabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.enabled
+}
+
+func (s *testSettingsRuntime) TokenConfigured() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tokenConfigured
+}
+
+func newTestSettings(t testing.TB, content *string) (*config.Service, *testSettingsRuntime) {
+	t.Helper()
+	root := t.TempDir()
+	path := filepath.Join(root, "config.toml")
+	if content != nil {
+		if err := os.WriteFile(path, []byte(*content), 0o600); err != nil {
+			t.Fatalf("write test config: %v", err)
+		}
+	}
+	runtime := &testSettingsRuntime{}
+	service, err := config.NewService(
+		path,
+		config.DefaultForDeployment(filepath.Join(root, "data"), filepath.Join(root, "sentinel.log")),
+		runtime,
+	)
+	if err != nil {
+		t.Fatalf("config.NewService() error = %v", err)
+	}
+	state, err := service.Read()
+	if err != nil {
+		t.Fatalf("config Service.Read() error = %v", err)
+	}
+	runtime.initialize(state.Effective)
+	return service, runtime
+}
+
 func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 	t.Helper()
 	guard := security.New("", nil, security.CookieSecureAuto)
@@ -357,11 +453,17 @@ func newTestHandler(t *testing.T, tm *mockTmux) (*Handler, *store.Store) {
 	}
 	runCtx, runCancel := context.WithCancel(context.Background())
 	t.Cleanup(runCancel)
+	configService, settings := newTestSettings(t, nil)
 	h := &Handler{
-		guard:     guard,
-		tmux:      tm,
-		ops:       &mockOpsControlPlane{},
-		repo:      st,
+		guard:         guard,
+		tmux:          tm,
+		ops:           &mockOpsControlPlane{},
+		repo:          st,
+		configService: configService,
+		settings:      settings,
+		deployments: func() ([]daemon.Deployment, error) {
+			return nil, nil
+		},
 		runCtx:    runCtx,
 		runCancel: runCancel,
 	}
@@ -393,6 +495,8 @@ func TestRegisterRoutesThroughMux(t *testing.T) {
 	mux := http.NewServeMux()
 	guard := security.New("secret", []string{"http://allowed.test"}, security.CookieSecureAuto)
 	st := newTestStore(t)
+	settingsContent := "[server]\ntimezone = \"America/Sao_Paulo\"\nlocale = \"pt-BR\"\n"
+	configService, settings := newTestSettings(t, &settingsContent)
 	h := Register(
 		mux,
 		guard,
@@ -400,10 +504,8 @@ func TestRegisterRoutesThroughMux(t *testing.T) {
 		&mockOpsControlPlane{},
 		events.NewHub(),
 		"test-version",
-		"/tmp/sentinel.yaml",
-		"America/Sao_Paulo",
-		"pt-BR",
-		nil,
+		configService,
+		settings,
 		1,
 	)
 	t.Cleanup(func() {
@@ -471,9 +573,14 @@ func TestConnectionCheckReturnsActionableUntrustedProxyError(t *testing.T) {
 	t.Parallel()
 
 	h := &Handler{
-		guard:      security.NewWithOptions("", nil, security.CookieSecureAuto, security.MultiUserConfig{}, nil),
-		configPath: "/root/.sentinel/config.toml",
+		guard: security.NewWithOptions("", nil, security.CookieSecureAuto, security.MultiUserConfig{}, nil),
 	}
+	configService, _ := config.NewService(
+		"/root/.sentinel/config.toml",
+		config.Default(),
+		nil,
+	)
+	h.configService = configService
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "http://sentinel.example/api/connection/check", nil)
 	r.Host = "sentinel.example"
@@ -4744,105 +4851,6 @@ func TestOpsUnitLogsHandler(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Config handler tests
-// ---------------------------------------------------------------------------
-
-func TestOpsConfigHandler(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	configPath := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(configPath, []byte("[server]\nport = 4040\n"), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	h.configPath = configPath
-
-	// GET config.
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
-	h.opsConfig(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET config status = %d, want 200", w.Code)
-	}
-	body := jsonBody(t, w)
-	data, _ := body["data"].(map[string]any)
-	if data["content"] != "[server]\nport = 4040\n" {
-		t.Fatalf("content = %q, want config content", data["content"])
-	}
-
-	// PATCH config.
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPatch, "/api/ops/config", strings.NewReader(`{"content":"[server]\nport = 5050\n"}`))
-	h.patchOpsConfig(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("PATCH config status = %d, want 200; body = %s", w.Code, w.Body.String())
-	}
-
-	// Verify written content.
-	got, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("read config: %v", err)
-	}
-	if string(got) != "[server]\nport = 5050\n" {
-		t.Fatalf("config file content = %q, want updated content", string(got))
-	}
-}
-
-func TestOpsConfigRedactsServerToken(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHandler(t, nil)
-	h.configPath = filepath.Join(t.TempDir(), "config.toml")
-	content := "[server] # comment\n  token = \"secret\" # keep hidden\nport = 4040\n[metadata]\ntoken = \"public\"\n"
-	if err := os.WriteFile(h.configPath, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
-	h.opsConfig(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d", w.Code)
-	}
-	body := jsonBody(t, w)
-	data := body["data"].(map[string]any)
-	got := data["content"].(string)
-	if strings.Contains(got, "secret") {
-		t.Fatalf("content leaked token: %q", got)
-	}
-	if !strings.Contains(got, `token = "[REDACTED]"`) || !strings.Contains(got, "[metadata]\ntoken = \"public\"") {
-		t.Fatalf("content = %q", got)
-	}
-}
-
-func TestOpsConfigNoPath(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	// configPath is empty by default.
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
-	h.opsConfig(w, r)
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503", w.Code)
-	}
-}
-
-func TestOpsPatchConfigValidation(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	h.configPath = filepath.Join(t.TempDir(), "config.toml")
-
-	// Empty content should fail.
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPatch, "/api/ops/config", strings.NewReader(`{"content":""}`))
-	h.patchOpsConfig(w, r)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", w.Code)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Runbook CRUD handler tests
 // ---------------------------------------------------------------------------
 
@@ -6427,44 +6435,6 @@ func TestOpsUnitActionHandlerInvalidActionFromService(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Storage handler – opsConfig and patchOpsConfig edge cases
-// ---------------------------------------------------------------------------
-
-func TestOpsConfigHandlerReadError(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	h.configPath = "/nonexistent/path/config.toml"
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/ops/config", nil)
-	h.opsConfig(w, r)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", w.Code)
-	}
-}
-
-func TestPatchOpsConfigHandlerEmptyContent(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	h.configPath = filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(h.configPath, []byte("# orig"), 0o600); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	body := `{"content":""}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPatch, "/api/ops/config", strings.NewReader(body))
-	h.patchOpsConfig(w, r)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", w.Code)
 	}
 }
 

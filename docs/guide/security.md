@@ -23,6 +23,13 @@ shared token and webhook URLs, and delivery logs report only whether a webhook
 is configured and whether delivery succeeded. Sentinel does not log the full
 webhook URL because its path or query may contain a credential.
 
+The Settings HTTP contract follows the same rule. `GET /api/ops/settings`
+returns only non-secret values and `configured` booleans; it never returns raw
+TOML, `server.token`, or a webhook URL. The current PATCH surface can change
+timezone, locale, and MCP availability, but cannot write either secret. Every
+PATCH requires the ETag from the latest GET so a stale browser tab cannot
+silently overwrite a concurrent CLI or browser change.
+
 ## Request Surfaces
 
 When `server.token` is configured, the request boundaries are:

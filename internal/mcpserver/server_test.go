@@ -26,7 +26,7 @@ func TestToolErrorAddsOperationContext(t *testing.T) {
 }
 
 func TestServerAvailabilityAndBearerAuthentication(t *testing.T) {
-	state := NewState(false, true)
+	state := &testAvailability{}
 	server := New(state, security.New("shared-token", nil, security.CookieSecureAuto), Options{})
 	t.Cleanup(func() { server.Shutdown(context.Background()) })
 
@@ -37,9 +37,7 @@ func TestServerAvailabilityAndBearerAuthentication(t *testing.T) {
 		t.Fatalf("disabled status = %d, want 404", res.Code)
 	}
 
-	if err := state.SetEnabled(true); err != nil {
-		t.Fatal(err)
-	}
+	state.enabled = true
 	req = httptest.NewRequest(http.MethodPost, "http://sentinel.test/mcp", nil)
 	req.AddCookie(&http.Cookie{Name: "sentinel_token", Value: "shared-token"})
 	res = httptest.NewRecorder()
@@ -61,7 +59,7 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	runbooks := runbook.NewManager(st, nil, nil, 5, nil)
 	t.Cleanup(func() { runbooks.Shutdown(context.Background()) })
 	server := New(
-		NewState(true, true),
+		&testAvailability{enabled: true},
 		security.New("shared-token", nil, security.CookieSecureAuto),
 		Options{Version: "test", Runbooks: runbooks},
 	)
@@ -116,6 +114,14 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("tool names = %q, want %q", got, want)
 	}
+}
+
+type testAvailability struct {
+	enabled bool
+}
+
+func (s *testAvailability) Enabled() bool {
+	return s != nil && s.enabled
 }
 
 type bearerTransport struct {

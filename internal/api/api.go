@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
@@ -67,10 +68,11 @@ type opsControlPlane interface {
 	LogsByUnit(ctx context.Context, unit, scope, manager string, lines int, since time.Time) (string, error)
 }
 
-type mcpSettings interface {
+type settingsRuntime interface {
+	Timezone() string
+	Locale() string
 	Enabled() bool
 	TokenConfigured() bool
-	SetEnabled(bool) error
 }
 
 // ---------------------------------------------------------------------------
@@ -235,13 +237,10 @@ type Handler struct {
 	events           *events.Hub
 	repo             handlerRepo
 	version          string
-	configPath       string
-	timezone         string
-	locale           string
-	mcpSettings      mcpSettings
+	configService    *config.Service
+	settings         settingsRuntime
+	deployments      deploymentDetector
 	userSwitchMethod string
-	mu               sync.Mutex // protects mutable settings (timezone, locale)
-	configMu         sync.Mutex // serializes config-file read-modify-write
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).
@@ -286,10 +285,8 @@ func Register(
 	ops opsControlPlane,
 	eventsHub *events.Hub,
 	version string,
-	configPath string,
-	timezone string,
-	locale string,
-	mcpSettings mcpSettings,
+	configService *config.Service,
+	settings settingsRuntime,
 	runbookMaxConcurrent int,
 ) *Handler {
 	if runbookMaxConcurrent <= 0 {
@@ -303,10 +300,9 @@ func Register(
 		events:           eventsHub,
 		repo:             st,
 		version:          strings.TrimSpace(version),
-		configPath:       configPath,
-		timezone:         timezone,
-		locale:           locale,
-		mcpSettings:      mcpSettings,
+		configService:    configService,
+		settings:         settings,
+		deployments:      installedDeployments,
 		userSwitchMethod: tmux.UserSwitchMethod,
 		runCtx:           runCtx,
 		runCancel:        runCancel,
@@ -366,10 +362,12 @@ func (h *Handler) meta(w http.ResponseWriter, _ *http.Request) {
 	if version == "" {
 		version = defaultMetaVersion
 	}
-	h.mu.Lock()
-	tz := h.timezone
-	loc := h.locale
-	h.mu.Unlock()
+	tz := defaultTimezoneUTC
+	loc := ""
+	if h.settings != nil {
+		tz = h.settings.Timezone()
+		loc = h.settings.Locale()
+	}
 	host, _ := osHostname()
 	data := map[string]any{
 		"tokenRequired": h.guard.TokenRequired(),
@@ -574,7 +572,7 @@ func (h *Handler) originFailure(err error) (string, string, map[string]any) {
 	code := "ORIGIN_DENIED"
 	message := "request origin is not allowed"
 	details := map[string]any{
-		"configPath": h.configPath,
+		"configPath": h.configPath(),
 	}
 
 	var originErr *security.OriginError
@@ -606,6 +604,13 @@ func (h *Handler) originFailure(err error) (string, string, map[string]any) {
 		details["configuration"] = "[server]\n" + strings.Join(lines, "\n")
 	}
 	return code, message, details
+}
+
+func (h *Handler) configPath() string {
+	if h == nil || h.configService == nil {
+		return ""
+	}
+	return h.configService.Path()
 }
 
 func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {
