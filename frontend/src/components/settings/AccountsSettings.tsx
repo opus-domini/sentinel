@@ -13,6 +13,7 @@ import type { AccountsDraft, AccountsDraftErrors, AccountsDraftKey } from './acc
 import RestartPendingNotice from './RestartPendingNotice'
 import { EnvironmentOwnership, SaveFeedback, SettingsField, ValidationError } from './SettingsField'
 import SettingsSectionHeader from './SettingsSectionHeader'
+import SettingsSwitch from './SettingsSwitch'
 import type { SettingsResponse } from '@/api/settings'
 import {
   AlertDialog,
@@ -393,34 +394,20 @@ export default function AccountsSettings() {
           htmlFor="settings-allow-root"
         >
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <SettingsSwitch
               id="settings-allow-root"
-              type="button"
-              role="switch"
-              aria-label="Allow root targeting"
-              aria-checked={editor.draft.allowRootTarget}
+              label="Allow root targeting"
+              checked={editor.draft.allowRootTarget}
               disabled={!accounts.allowRootTarget.editable}
-              onClick={() => {
-                if (editor.draft.allowRootTarget) {
+              tone="warning"
+              onCheckedChange={(checked) => {
+                if (!checked) {
                   setRootTargeting(false)
                 } else {
                   setRootConfirmationOpen(true)
                 }
               }}
-              className={cn(
-                'relative h-11 w-[4.5rem] rounded-full border transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
-                editor.draft.allowRootTarget
-                  ? 'border-warning/55 bg-warning/20'
-                  : 'border-border-subtle bg-surface-overlay',
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-1/2 size-5 -translate-y-1/2 rounded-full bg-foreground transition-transform',
-                  editor.draft.allowRootTarget ? 'translate-x-[2.65rem]' : 'translate-x-2',
-                )}
-              />
-            </button>
+            />
             <span className="text-[11px] text-secondary-foreground">
               {editor.draft.allowRootTarget ? 'Root eligible after restart' : 'Root blocked'}
             </span>

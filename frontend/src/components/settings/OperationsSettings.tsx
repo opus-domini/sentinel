@@ -18,6 +18,7 @@ import {
   ValidationError,
 } from './SettingsField'
 import SettingsSectionHeader from './SettingsSectionHeader'
+import SettingsSwitch from './SettingsSwitch'
 import type { BooleanSetting, IntegerSetting, StringSetting } from '@/api/settings'
 import {
   AlertDialog,
@@ -41,7 +42,6 @@ import {
 import { useToastContext } from '@/contexts/ToastContext'
 import { useSettings } from '@/hooks/useSettings'
 import { ApiError } from '@/hooks/useTmuxApi'
-import { cn } from '@/lib/utils'
 
 type EditorState = {
   base: OperationsDraft
@@ -442,26 +442,13 @@ function BooleanControl({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <button
+      <SettingsSwitch
         id={id}
-        type="button"
-        role="switch"
-        aria-label="Activity projection"
-        aria-checked={value}
+        label="Activity projection"
+        checked={value}
         disabled={!setting.editable}
-        onClick={() => onChange(!value)}
-        className={cn(
-          'relative h-11 w-[4.5rem] rounded-full border transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
-          value ? 'border-primary/50 bg-primary/25' : 'border-border-subtle bg-surface-overlay',
-        )}
-      >
-        <span
-          className={cn(
-            'absolute top-1/2 size-5 -translate-y-1/2 rounded-full bg-foreground transition-transform',
-            value ? 'translate-x-[2.65rem]' : 'translate-x-2',
-          )}
-        />
-      </button>
+        onCheckedChange={onChange}
+      />
       <span className="text-[11px] text-secondary-foreground">
         {value ? 'Enabled after restart' : 'Disabled after restart'}
       </span>

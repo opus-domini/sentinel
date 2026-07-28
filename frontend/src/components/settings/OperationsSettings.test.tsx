@@ -75,6 +75,17 @@ describe('OperationsSettings', () => {
 
   afterEach(cleanup)
 
+  it('toggles activity projection through the compact settings switch', async () => {
+    render(<OperationsSettings />)
+    const control = screen.getByRole('switch', { name: 'Activity projection' })
+
+    expect(control.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(control)
+
+    expect(control.getAttribute('aria-checked')).toBe('false')
+    expect(await screen.findByRole('complementary', { name: 'Unsaved settings' })).toBeTruthy()
+  })
+
   it('validates ranges before save and sends only changed typed fields', async () => {
     render(<OperationsSettings />)
     const input = screen.getByLabelText('Capture lines') as HTMLInputElement
