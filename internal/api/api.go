@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/opus-domini/sentinel/internal/config"
@@ -244,6 +245,9 @@ type Handler struct {
 	userSwitchMethod   string
 	switchCapabilities func() []userswitch.Capability
 	settingsBindCheck  func(string, string) error
+	settingsControl    func(action, scope string) error
+	settingsRestartIn  time.Duration
+	restartScheduled   atomic.Bool
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).
@@ -309,6 +313,8 @@ func Register(
 		userSwitchMethod:   tmux.UserSwitchMethod,
 		switchCapabilities: userswitch.Capabilities,
 		settingsBindCheck:  preflightSettingsBind,
+		settingsControl:    controlManagedService,
+		settingsRestartIn:  defaultSettingsRestartDelay,
 		runCtx:             runCtx,
 		runCancel:          runCancel,
 	}

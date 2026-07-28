@@ -51,8 +51,10 @@ sentinel service restart --scope auto
 sentinel service uninstall --scope auto
 ```
 
-Settings never restarts the service automatically. After saving restart-based
-fields, use the scope reported by `/settings/operations`:
+Settings never restarts the service merely because a field was saved. For an
+exact managed deployment, the restart notice offers a confirmed
+`Restart Sentinel` action and waits for the service to return. The reported
+scope commands remain available as recovery:
 
 ```bash
 sentinel service restart --scope user

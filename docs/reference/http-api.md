@@ -542,10 +542,11 @@ explicitly for the host.
 
 ### Settings
 
-| Method  | Path                | Purpose                                      |
-| ------- | ------------------- | -------------------------------------------- |
-| `GET`   | `/api/ops/settings` | Read typed Settings state and current ETag   |
-| `PATCH` | `/api/ops/settings` | Persist a typed patch against a current ETag |
+| Method   | Path                        | Purpose                                         |
+| -------- | --------------------------- | ----------------------------------------------- |
+| `GET`    | `/api/ops/settings`         | Read typed Settings state and current ETag      |
+| `PATCH`  | `/api/ops/settings`         | Persist a typed patch against a current ETag    |
+| `POST`   | `/api/ops/settings/restart` | Restart the exact managed deployment explicitly |
 
 Settings uses one typed read/write boundary. It never returns config-file
 contents or secret values.
@@ -556,8 +557,8 @@ revision as a quoted `ETag` header. Its current typed groups are:
 - `metadata`: Sentinel version;
 - `deployment`: exact config path, `user`/`system`/`standalone` scope, and
   service or standalone runtime mode;
-- `restart`: pending keys, adjacent backup path, and the manual command or
-  supervisor instruction;
+- `restart`: pending keys, managed-restart availability, adjacent backup path,
+  and the recovery command or supervisor instruction;
 - `experience`: timezone and locale;
 - `operations`: Watchtower, Runbook concurrency, and log level;
 - `integrations.mcp`: desired endpoint state, runtime token capability, and
@@ -641,6 +642,15 @@ validation returns `422 CONFIG_INVALID`; an environment-owned field returns
 `409 ENVIRONMENT_OWNED`; concurrent file ownership returns
 `423 CONFIG_LOCKED`. Successful PATCH responses contain the complete new typed
 state and its new ETag.
+
+`POST /api/ops/settings/restart` requires the same current ETag in `If-Match`.
+It returns `202 Accepted` only when restart-based changes are pending and the
+loaded config path exactly matches a user or system service visible to the
+process. The response is completed before Sentinel asks that supervisor to
+restart the service. A stale revision returns `412 CONFIG_CONFLICT`; no pending
+changes returns `409 RESTART_NOT_REQUIRED`; standalone or inaccessible
+deployments return `409 RESTART_UNAVAILABLE`; and a duplicate accepted request
+returns `409 RESTART_ALREADY_SCHEDULED`.
 
 ## Operations: Storage
 

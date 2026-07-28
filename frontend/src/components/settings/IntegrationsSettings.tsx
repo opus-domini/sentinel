@@ -238,7 +238,12 @@ export default function IntegrationsSettings() {
         icon={<Plug className="size-4" aria-hidden="true" />}
       />
       <SaveFeedback status={feedback.status} message={feedback.message} />
-      <RestartPendingNotice restart={settings.restart} deployment={settings.deployment} />
+      <RestartPendingNotice
+        revision={settings.revision}
+        restart={settings.restart}
+        deployment={settings.deployment}
+        onRestartComplete={() => setFeedback(idleFeedback)}
+      />
 
       <IntegrationGroup
         title="MCP"

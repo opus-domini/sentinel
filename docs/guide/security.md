@@ -190,8 +190,10 @@ The Access UI additionally rejects an HTTP reconnect target with
 over HTTP. A remote `cookie_secure = "never"` candidate still requires the
 explicit `allow_insecure_cookie` exception.
 
-Sentinel never auto-restarts or auto-rolls back an Access save. The UI exposes
-the adjacent config backup and exact restore, effective-validation, and restart
+Sentinel never restarts merely because Access was saved and never auto-rolls
+back. For an exact managed deployment, the pending notice can perform an
+explicitly confirmed restart and reconnect the SPA. The UI still exposes the
+adjacent config backup and exact restore, effective-validation, and restart
 commands. Keep them available in a separate shell before restarting a listener
 or token change.
 

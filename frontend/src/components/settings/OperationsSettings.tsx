@@ -200,7 +200,12 @@ export default function OperationsSettings() {
 
       {settings && operations && editor && (
         <>
-          <RestartPendingNotice restart={settings.restart} deployment={settings.deployment} />
+          <RestartPendingNotice
+            revision={settings.revision}
+            restart={settings.restart}
+            deployment={settings.deployment}
+            onRestartComplete={() => setFeedback(idleFeedback)}
+          />
 
           <SettingsGroup
             title="Watchtower"

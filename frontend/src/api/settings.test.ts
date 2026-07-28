@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { getSettings, patchSettings } from './settings'
+import { getSettings, patchSettings, restartSettings } from './settings'
 import { createSettingsSnapshot } from '@/test/settings'
 
 describe('settings API', () => {
@@ -52,6 +52,35 @@ describe('settings API', () => {
       code: 'CONFIG_CONFLICT',
       message: 'settings changed since they were loaded',
     })
+  })
+
+  it('sends the current revision when requesting a managed restart', async () => {
+    const revision = 'a'.repeat(64)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            status: 'accepted',
+            scope: 'user',
+            changedKeys: ['watchtower.tick_interval'],
+          },
+        }),
+        {
+          status: 202,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(restartSettings(revision)).resolves.toMatchObject({
+      status: 'accepted',
+      scope: 'user',
+    })
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/ops/settings/restart')
+    expect(init.method).toBe('POST')
+    expect(new Headers(init.headers).get('If-Match')).toBe(`"${revision}"`)
   })
 })
 

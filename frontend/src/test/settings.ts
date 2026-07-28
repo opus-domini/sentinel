@@ -92,6 +92,7 @@ export function createSettingsSnapshot(options: SettingsFixtureOptions = {}): Se
       },
       restart: {
         required: false,
+        available: false,
         changedKeys: [],
         backupPath: '/tmp/sentinel/config.toml.bak',
         instruction: 'Restart Sentinel with the external supervisor that owns this process.',

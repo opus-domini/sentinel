@@ -220,7 +220,7 @@ export default function AccessSettings() {
       setErrors({})
       setFeedback({
         status: 'success',
-        message: 'Access settings saved. Review recovery, then restart Sentinel manually.',
+        message: 'Access settings saved. Review recovery, then restart Sentinel from the notice.',
       })
       pushToast({
         level: 'success',
@@ -293,7 +293,13 @@ export default function AccessSettings() {
         icon={<ShieldCheck className="size-4" aria-hidden="true" />}
       />
       <SaveFeedback status={feedback.status} message={feedback.message} />
-      <RestartPendingNotice restart={settings.restart} deployment={settings.deployment} />
+      <RestartPendingNotice
+        revision={settings.revision}
+        restart={settings.restart}
+        deployment={settings.deployment}
+        reconnectOrigin={reconnectOrigin}
+        onRestartComplete={() => setFeedback(idleFeedback)}
+      />
 
       <AccessGroup
         title="Listener"
@@ -640,7 +646,7 @@ function AccessConfirmation({
           <AlertDialogTitle>Save this access boundary?</AlertDialogTitle>
           <AlertDialogDescription>
             Sentinel will validate the complete candidate and test a changed listener before
-            writing. The running endpoint does not change until a manual restart.
+            writing. The running endpoint does not change until Sentinel restarts.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="grid max-h-[45vh] gap-3 overflow-y-auto text-[10px]">
@@ -666,7 +672,7 @@ function AccessConfirmation({
             </p>
           )}
           <p className="rounded-md border border-primary/25 bg-primary/10 p-3 leading-relaxed text-primary-text">
-            Restart manually after reviewing the recovery commands.
+            After saving, use the pending restart notice or run the recovery command yourself.
             {restart.command ? ` Command: ${restart.command}` : ''}
           </p>
         </div>
@@ -765,7 +771,7 @@ function RecoveryPanel({ recovery }: { recovery: SettingsResponse['access']['rec
   return (
     <AccessGroup
       title="Manual recovery"
-      description="Sentinel never rolls back or restarts itself. Keep these commands reachable before changing access."
+      description="Sentinel never rolls back automatically. Keep these commands reachable before changing access or restarting the managed service."
       icon={<LifeBuoy className="size-4" aria-hidden="true" />}
     >
       <div className="grid gap-3 rounded-lg border border-warning/35 bg-warning/10 p-3 sm:p-4">

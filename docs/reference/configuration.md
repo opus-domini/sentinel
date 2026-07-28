@@ -244,7 +244,9 @@ change the revision, or apply any live field.
 
 All Access fields are restart-based. The process continues serving its startup
 listener, token, origin, proxy, and cookie policy after Save. Restart remains a
-separate operator action.
+separate, confirmed operator action. For an exact managed deployment, the
+pending notice can restart the service and reconnect the SPA; the commands
+below remain the recovery path.
 
 Every successful replacement after an existing config keeps the prior document
 at `<configPath>.bak`. If the new endpoint is unreachable after restart, use a

@@ -99,6 +99,7 @@ export type SettingsResponse = {
   }
   restart: {
     required: boolean
+    available: boolean
     changedKeys: Array<string>
     command?: string
     backupPath: string
@@ -246,8 +247,14 @@ export type SettingsSnapshot = {
   etag: string
 }
 
-type SettingsEnvelope = {
-  data?: SettingsResponse
+export type SettingsRestartAccepted = {
+  status: 'accepted'
+  scope: 'user' | 'system'
+  changedKeys: Array<string>
+}
+
+type SettingsEnvelope<T = SettingsResponse> = {
+  data?: T
   error?: {
     code?: string
     message?: string
@@ -305,4 +312,33 @@ export function patchSettings(etag: string, patch: SettingsPatch): Promise<Setti
     },
     body: JSON.stringify(patch),
   })
+}
+
+export async function restartSettings(revision: string): Promise<SettingsRestartAccepted> {
+  const response = await fetch('/api/ops/settings/restart', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      'If-Match': `"${revision}"`,
+    },
+  })
+  let payload: SettingsEnvelope<SettingsRestartAccepted> = {}
+  try {
+    payload = (await response.json()) as SettingsEnvelope<SettingsRestartAccepted>
+  } catch {
+    payload = {}
+  }
+  if (!response.ok) {
+    throw new ApiError(
+      payload.error?.message ?? `HTTP ${response.status}`,
+      response.status,
+      payload.error?.code ?? '',
+      payload.error?.details,
+    )
+  }
+  if (payload.data?.status !== 'accepted') {
+    throw new ApiError('Restart response was not accepted', response.status)
+  }
+  return payload.data
 }

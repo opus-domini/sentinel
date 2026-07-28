@@ -154,6 +154,127 @@ func TestSettingsPatchRequiresCurrentRevisionAndPreservesConflictWinner(t *testi
 	}
 }
 
+func TestSettingsRestartAcceptsCurrentManagedDeploymentOnce(t *testing.T) {
+	service, runtime := newTestSettings(t, nil)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.deployments = func() ([]daemon.Deployment, error) {
+		return []daemon.Deployment{{
+			Scope:      daemon.ScopeUser,
+			ConfigPath: service.Path(),
+		}}, nil
+	}
+	restartCall := make(chan [2]string, 1)
+	h.settingsControl = func(action, scope string) error {
+		restartCall <- [2]string{action, scope}
+		return nil
+	}
+	h.settingsRestartIn = time.Millisecond
+
+	saved := patchSettingsRequestWithETag(
+		t,
+		h,
+		getSettingsETag(t, h),
+		`{"operations":{"runbooks":{"maxConcurrent":9}}}`,
+	)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("save pending settings = %d %s", saved.Code, saved.Body.String())
+	}
+	var savedBody settingsEnvelope
+	if err := json.Unmarshal(saved.Body.Bytes(), &savedBody); err != nil {
+		t.Fatal(err)
+	}
+	if !savedBody.Data.Restart.Required || !savedBody.Data.Restart.Available {
+		t.Fatalf("restart = %+v", savedBody.Data.Restart)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/ops/settings/restart", nil)
+	request.Header.Set("If-Match", saved.Header().Get("ETag"))
+	accepted := httptest.NewRecorder()
+	h.restartSettings(accepted, request)
+	if accepted.Code != http.StatusAccepted {
+		t.Fatalf("restart = %d %s", accepted.Code, accepted.Body.String())
+	}
+	if !strings.Contains(accepted.Body.String(), `"status":"accepted"`) ||
+		!strings.Contains(accepted.Body.String(), config.FieldRunbooksMaxConcurrent) {
+		t.Fatalf("accepted restart body = %s", accepted.Body.String())
+	}
+
+	duplicate := httptest.NewRecorder()
+	h.restartSettings(duplicate, request)
+	if duplicate.Code != http.StatusConflict ||
+		!strings.Contains(duplicate.Body.String(), "RESTART_ALREADY_SCHEDULED") {
+		t.Fatalf("duplicate restart = %d %s", duplicate.Code, duplicate.Body.String())
+	}
+
+	select {
+	case call := <-restartCall:
+		if call != [2]string{"restart", daemon.ScopeUser} {
+			t.Fatalf("restart call = %v", call)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("managed service restart was not scheduled")
+	}
+}
+
+func TestSettingsRestartRejectsUnsafeOrStaleRequests(t *testing.T) {
+	service, runtime := newTestSettings(t, nil)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+	h.settingsControl = func(string, string) error {
+		t.Fatal("service control must not run")
+		return nil
+	}
+
+	missingRevision := httptest.NewRecorder()
+	h.restartSettings(
+		missingRevision,
+		httptest.NewRequest(http.MethodPost, "/api/ops/settings/restart", nil),
+	)
+	if missingRevision.Code != http.StatusPreconditionRequired {
+		t.Fatalf("missing revision = %d %s", missingRevision.Code, missingRevision.Body.String())
+	}
+
+	notRequiredRequest := httptest.NewRequest(http.MethodPost, "/api/ops/settings/restart", nil)
+	notRequiredRequest.Header.Set("If-Match", getSettingsETag(t, h))
+	notRequired := httptest.NewRecorder()
+	h.restartSettings(notRequired, notRequiredRequest)
+	if notRequired.Code != http.StatusConflict ||
+		!strings.Contains(notRequired.Body.String(), "RESTART_NOT_REQUIRED") {
+		t.Fatalf("not required = %d %s", notRequired.Code, notRequired.Body.String())
+	}
+
+	saved := patchSettingsRequestWithETag(
+		t,
+		h,
+		getSettingsETag(t, h),
+		`{"operations":{"runbooks":{"maxConcurrent":9}}}`,
+	)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("save pending settings = %d %s", saved.Code, saved.Body.String())
+	}
+
+	staleRequest := httptest.NewRequest(http.MethodPost, "/api/ops/settings/restart", nil)
+	staleRequest.Header.Set("If-Match", quoteETag(strings.Repeat("0", 64)))
+	stale := httptest.NewRecorder()
+	h.restartSettings(stale, staleRequest)
+	if stale.Code != http.StatusPreconditionFailed ||
+		!strings.Contains(stale.Body.String(), "CONFIG_CONFLICT") {
+		t.Fatalf("stale = %d %s", stale.Code, stale.Body.String())
+	}
+
+	standaloneRequest := httptest.NewRequest(http.MethodPost, "/api/ops/settings/restart", nil)
+	standaloneRequest.Header.Set("If-Match", saved.Header().Get("ETag"))
+	standalone := httptest.NewRecorder()
+	h.restartSettings(standalone, standaloneRequest)
+	if standalone.Code != http.StatusConflict ||
+		!strings.Contains(standalone.Body.String(), "RESTART_UNAVAILABLE") {
+		t.Fatalf("standalone = %d %s", standalone.Code, standalone.Body.String())
+	}
+}
+
 func TestSettingsPatchRejectsEnvironmentOwnershipAndInvalidFields(t *testing.T) {
 	t.Setenv("SENTINEL_SERVER_LOCALE", "pt-BR")
 	content := "[server]\nlocale = \"en-US\"\n"

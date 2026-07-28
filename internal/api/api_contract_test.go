@@ -87,6 +87,7 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 
 		{name: "settings-get", method: http.MethodGet, path: "/api/ops/settings"},
 		{name: "settings-patch", method: http.MethodPatch, path: "/api/ops/settings", body: `{"experience":{"timezone":"UTC"}}`},
+		{name: "settings-restart", method: http.MethodPost, path: "/api/ops/settings/restart"},
 		{name: "storage-stats", method: http.MethodGet, path: "/api/ops/storage/stats"},
 		{name: "storage-flush", method: http.MethodPost, path: "/api/ops/storage/flush", body: `{"resource":"activity-journal"}`},
 	}

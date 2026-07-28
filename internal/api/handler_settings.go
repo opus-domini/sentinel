@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -19,6 +20,7 @@ import (
 
 const settingsDeploymentStandalone = "standalone"
 const settingsRootAccount = "root"
+const defaultSettingsRestartDelay = 750 * time.Millisecond
 
 const (
 	secretActionKeep    = "keep"
@@ -31,6 +33,7 @@ var errInvalidSettingsRequest = errors.New("invalid settings request")
 type deploymentDetector func() ([]daemon.Deployment, error)
 
 var installedDeployments deploymentDetector = daemon.InstalledDeployments
+var controlManagedService = daemon.Control
 
 type settingsResponse struct {
 	Revision     string               `json:"revision"`
@@ -57,10 +60,17 @@ type settingsDeployment struct {
 
 type settingsRestart struct {
 	Required    bool     `json:"required"`
+	Available   bool     `json:"available"`
 	ChangedKeys []string `json:"changedKeys"`
 	Command     string   `json:"command,omitempty"`
 	BackupPath  string   `json:"backupPath"`
 	Instruction string   `json:"instruction"`
+}
+
+type settingsRestartAccepted struct {
+	Status      string   `json:"status"`
+	Scope       string   `json:"scope"`
+	ChangedKeys []string `json:"changedKeys"`
 }
 
 type settingsExperience struct {
@@ -354,6 +364,78 @@ func (h *Handler) patchSettings(w http.ResponseWriter, r *http.Request) {
 	response := h.settingsResponse(state)
 	w.Header().Set("ETag", quoteETag(state.Revision))
 	writeData(w, http.StatusOK, response)
+}
+
+func (h *Handler) restartSettings(w http.ResponseWriter, r *http.Request) {
+	if h.configService == nil || h.settings == nil {
+		writeError(w, http.StatusServiceUnavailable, "SETTINGS_UNAVAILABLE", "settings are unavailable", nil)
+		return
+	}
+	rawRevision := strings.TrimSpace(r.Header.Get("If-Match"))
+	if rawRevision == "" {
+		writeError(w, http.StatusPreconditionRequired, "REVISION_REQUIRED", "If-Match is required", nil)
+		return
+	}
+	revision, err := parseETag(rawRevision)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REVISION", "If-Match must contain the current Settings ETag", nil)
+		return
+	}
+	state, err := h.configService.Read()
+	if err != nil {
+		writeSettingsError(w, err)
+		return
+	}
+	if state.Revision != revision {
+		writeError(w, http.StatusPreconditionFailed, "CONFIG_CONFLICT", "settings changed since they were loaded", nil)
+		return
+	}
+	response := h.settingsResponse(state)
+	if !response.Restart.Required {
+		writeError(w, http.StatusConflict, "RESTART_NOT_REQUIRED", "no saved settings are waiting for restart", nil)
+		return
+	}
+	if !response.Restart.Available || h.settingsControl == nil {
+		writeError(
+			w,
+			http.StatusConflict,
+			"RESTART_UNAVAILABLE",
+			"Sentinel cannot restart this deployment from the SPA",
+			nil,
+		)
+		return
+	}
+	if !h.restartScheduled.CompareAndSwap(false, true) {
+		writeError(
+			w,
+			http.StatusConflict,
+			"RESTART_ALREADY_SCHEDULED",
+			"Sentinel restart is already scheduled",
+			nil,
+		)
+		return
+	}
+
+	accepted := settingsRestartAccepted{
+		Status:      "accepted",
+		Scope:       response.Deployment.Scope,
+		ChangedKeys: slices.Clone(response.Restart.ChangedKeys),
+	}
+	writeData(w, http.StatusAccepted, accepted)
+	h.scheduleSettingsRestart(response.Deployment.Scope)
+}
+
+func (h *Handler) scheduleSettingsRestart(scope string) {
+	delay := h.settingsRestartIn
+	if delay <= 0 {
+		delay = defaultSettingsRestartDelay
+	}
+	time.AfterFunc(delay, func() {
+		if err := h.settingsControl("restart", scope); err != nil {
+			h.restartScheduled.Store(false)
+			slog.Error("settings service restart failed", "scope", scope, "err", err)
+		}
+	})
 }
 
 func (h *Handler) settingsMutation(
@@ -1158,20 +1240,31 @@ func settingsRestartForDeployment(
 ) settingsRestart {
 	restart := settingsRestart{
 		Required:    required,
+		Available:   settingsDeploymentRestartAvailable(deployment),
 		ChangedKeys: slices.Clone(changedKeys),
 		BackupPath:  backupPath,
 	}
 	switch deployment.Scope {
 	case daemon.ScopeUser:
 		restart.Command = "sentinel service restart --scope user"
-		restart.Instruction = "Run the command after reviewing the saved configuration."
+		restart.Instruction = "Restart Sentinel here after reviewing the saved configuration."
 	case daemon.ScopeSystem:
 		restart.Command = "sudo sentinel service restart --scope system"
-		restart.Instruction = "Run the privileged command after reviewing the saved configuration."
+		restart.Instruction = "Restart Sentinel here after reviewing the saved configuration."
 	default:
 		restart.Instruction = "Restart Sentinel with the external supervisor that owns this process."
 	}
 	return restart
+}
+
+func settingsDeploymentRestartAvailable(deployment settingsDeployment) bool {
+	if deployment.RuntimeMode != "service" {
+		return false
+	}
+	if deployment.Scope != daemon.ScopeUser && deployment.Scope != daemon.ScopeSystem {
+		return false
+	}
+	return daemon.RequireScopeAccess(deployment.Scope) == nil
 }
 
 func buildStringSetting(

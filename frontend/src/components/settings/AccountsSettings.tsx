@@ -248,7 +248,12 @@ export default function AccountsSettings() {
         icon={<UsersRound className="size-4" aria-hidden="true" />}
       />
       <SaveFeedback status={feedback.status} message={feedback.message} />
-      <RestartPendingNotice restart={settings.restart} deployment={settings.deployment} />
+      <RestartPendingNotice
+        revision={settings.revision}
+        restart={settings.restart}
+        deployment={settings.deployment}
+        onRestartComplete={() => setFeedback(idleFeedback)}
+      />
 
       <SettingsGroup
         title="Process boundary"

@@ -40,9 +40,10 @@ the change applies:
 Environment-owned values are read-only. Theme is explicitly marked
 `This browser`; PWA state belongs to `This device`.
 
-Timezone accepts `Local` or a valid IANA name such as
-`America/Sao_Paulo`. Locale remains a closed selection supplied by the typed
-settings API.
+Timezone and locale use closed selections supplied by the typed settings API
+and save immediately when an option is chosen. The configuration file and API
+continue to validate timezone values as `Local` or a valid IANA name such as
+`America/Sao_Paulo`.
 
 ## Operational configuration
 
@@ -64,10 +65,12 @@ within Settings, leaving the workspace, using browser Back, or closing the page
 with an unsaved draft is guarded.
 
 After a successful save, Sentinel reports the changed keys and deployment
-scope. The restart command is displayed and can be copied when the config path
-matches an installed user or system service. Sentinel does not restart itself;
-the running process keeps its startup values until the operator performs the
-manual restart.
+scope. When the config path exactly matches an installed user or system
+service, the notice offers an explicit `Restart Sentinel` action after a
+confirmation that lists every pending key. The SPA waits for the service to
+return, adopts the new Settings snapshot, and reports success. The
+scope-specific command remains visible and copyable as recovery. Standalone
+deployments continue through their external supervisor.
 
 <img src="assets/images/desktop-settings-operations.png" alt="Desktop Settings Operations for the fictitious Orbital Station deployment, showing the local control-plane navigation, Watchtower fields, exact source badges, validation limits, and restart-based lifecycle" />
 
@@ -129,8 +132,8 @@ cannot rewrite it and the effective environment allowlist still applies.
 The switch method is a closed `sudo` or `systemd-run` choice. Settings reports
 whether the required executables were found in the daemon PATH, but that
 capability is advisory: Sentinel cannot inspect or grant sudo policy. All three
-account controls apply after a manual restart, and saving them never starts,
-stops, or changes a tmux session.
+account controls apply after restart. Saving or restarting Sentinel never
+starts, stops, or changes a tmux session.
 
 ## Guarded access configuration
 
@@ -153,7 +156,7 @@ is distinguished from a conflict on another endpoint; an external conflict is
 rejected without changing the config revision, file, or live state.
 
 The review dialog lists every changed config key, the reconnect target, the
-manual restart requirement, and whether the browser must authenticate again.
+restart requirement, and whether the browser must authenticate again.
 Replacing or clearing the shared token never returns the value to the browser.
 After a rotation is submitted, the replacement is removed from the form before
 the request completes. The current process and auth cookie continue using the
@@ -166,11 +169,12 @@ incompatible with an HTTP reconnect target. `cookie_secure = "never"` with
 remote token authentication requires the explicit
 `allow_insecure_cookie = true` exception.
 
-Settings never restarts Sentinel and never rolls back automatically. Before
-saving, the Access section displays the exact config path, adjacent `.bak`
-path, restore command, effective validation command, and scope-specific restart
-command when a managed deployment is detected. Keep those commands reachable
-outside the SPA before restarting.
+Settings never restarts Sentinel merely because a value was saved and never
+rolls back automatically. A confirmed restart from the pending notice is
+available only for the exact managed deployment. Before saving, the Access
+section displays the config path, adjacent `.bak` path, restore command,
+effective validation command, and scope-specific restart command. Keep those
+commands reachable outside the SPA before restarting.
 
 ## Storage maintenance
 
