@@ -12,6 +12,7 @@
   - [Services](/features/services.md)
   - [Metrics](/features/metrics.md)
   - [Runbooks](/features/runbooks.md)
+  - [Settings](/features/settings.md)
 
 - Extensions
   - [OS Account Targeting](/features/os-account-targeting.md)

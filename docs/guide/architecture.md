@@ -79,7 +79,7 @@ machine.
 - `internal/report`, `internal/notify`, and `internal/updater` — auxiliary
   reporting, delivery, and installation maintenance.
 - `frontend` — React/Vite routes for `/`, `/tmux`, `/runbooks`, `/services`,
-  and `/metrics`.
+  `/metrics`, `/settings`, and `/maintenance/storage`.
 
 Auxiliary packages support the core owners; they are not additional top-level
 product domains.
@@ -117,11 +117,31 @@ cannot be overwritten through a file mutation.
 
 The public Settings boundary is only `GET` and `PATCH /api/ops/settings`.
 Reads expose typed field state, provenance, lifecycle, and validation metadata,
-never raw TOML or secrets. Writes require the current ETag and are applied as
-one transaction; a revision conflict or live-application failure leaves the
-winning file and runtime state intact. The shared live adapter updates locale,
-timezone metadata, and MCP availability while restart-only consumers continue
-to use the immutable process baseline.
+never config-file contents or secret values. Writes require the current ETag and
+are applied as one transaction; a revision conflict or live-application failure
+leaves the winning file and runtime state intact. The shared live adapter
+updates locale, timezone metadata, and MCP availability while restart-only
+consumers continue to use the immutable process baseline.
+
+```mermaid
+---
+config:
+  theme: dark
+---
+flowchart LR
+  Defaults[Defaults] --> Config[Canonical config service]
+  File[config.toml] --> Config
+  Environment[SENTINEL environment] --> Config
+  Config --> CLI[CLI validation and inspection]
+  Config --> API[Typed Settings API]
+  API --> SPA[Settings workspace]
+  Config --> Live[Live settings adapter]
+  Config --> Restart[Restart-based consumers]
+```
+
+The environment remains authoritative. The API can persist file-owned values,
+but it cannot override an environment-owned field or make a restart-based
+consumer adopt a new value before process restart.
 
 ## Deployment and Trust
 

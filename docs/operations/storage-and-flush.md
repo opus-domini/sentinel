@@ -82,4 +82,4 @@ Settings links to `/maintenance/storage`, a dedicated workspace with:
 - destructive confirmation before cleanup;
 - success and failure receipts.
 
-The Settings dialog itself does not execute destructive storage actions.
+The Settings workspace itself does not execute destructive storage actions.

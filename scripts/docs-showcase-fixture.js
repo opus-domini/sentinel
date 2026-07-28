@@ -5,6 +5,7 @@
   const NativeWebSocket = window.WebSocket
   const observedAt = '2026-07-27T18:00:00Z'
   const pressureSince = '2026-07-27T17:42:00Z'
+  const settingsRevision = '7'.repeat(64)
 
   const service = (
     name,
@@ -267,6 +268,277 @@
     return { status, observedAt }
   }
 
+  function stringSetting(
+    effectiveValue,
+    defaultValue,
+    applyMode,
+    validation = {},
+  ) {
+    return {
+      persistedValue: effectiveValue,
+      effectiveValue,
+      defaultValue,
+      source: 'file',
+      editable: true,
+      applyMode,
+      restartPending: false,
+      validation: {
+        required: true,
+        allowCustom: true,
+        options: [],
+        ...validation,
+      },
+    }
+  }
+
+  function booleanSetting(effectiveValue, defaultValue = false) {
+    return {
+      persistedValue: effectiveValue,
+      effectiveValue,
+      defaultValue,
+      source: 'file',
+      editable: true,
+      applyMode: 'restart',
+      restartPending: false,
+      validation: { required: true },
+    }
+  }
+
+  function integerSetting(effectiveValue, defaultValue, min, max) {
+    return {
+      persistedValue: effectiveValue,
+      effectiveValue,
+      defaultValue,
+      source: 'file',
+      editable: true,
+      applyMode: 'restart',
+      restartPending: false,
+      validation: { required: true, min, max, step: 1 },
+    }
+  }
+
+  function listSetting(effectiveValue, options = [], allowCustom = true) {
+    return {
+      persistedValue: effectiveValue,
+      effectiveValue,
+      defaultValue: [],
+      source: 'file',
+      editable: true,
+      applyMode: 'restart',
+      restartPending: false,
+      validation: {
+        required: false,
+        allowCustom,
+        options,
+      },
+    }
+  }
+
+  function sensitiveSetting(configured) {
+    return {
+      configured,
+      source: 'file',
+      editable: true,
+      applyMode: 'restart',
+      restartPending: false,
+      validation: { required: false },
+    }
+  }
+
+  function settingsSnapshot() {
+    const configPath = '/opt/orbital-station/sentinel.toml'
+    const backupPath = `${configPath}.bak`
+    const accountOptions = [
+      { value: 'flight-operator', label: 'flight-operator' },
+      { value: 'payload-operator', label: 'payload-operator' },
+      { value: 'root', label: 'root' },
+    ]
+    return {
+      revision: settingsRevision,
+      metadata: { version: 'showcase' },
+      deployment: {
+        scope: 'standalone',
+        runtimeMode: 'standalone',
+        configPath,
+      },
+      restart: {
+        required: false,
+        changedKeys: [],
+        backupPath,
+        instruction:
+          'Restart Sentinel with the external supervisor that owns this process.',
+      },
+      experience: {
+        timezone: stringSetting('UTC', 'Local', 'partial', {
+          format: 'iana-timezone',
+          options: [
+            { value: 'Local', label: 'Local' },
+            { value: 'UTC', label: 'UTC' },
+            { value: 'America/Los_Angeles', label: 'America/Los_Angeles' },
+          ],
+        }),
+        locale: stringSetting('en-US', '', 'live', {
+          required: false,
+          allowCustom: false,
+          format: 'bcp-47',
+          options: [
+            { value: '', label: 'Browser default' },
+            { value: 'en-US', label: 'English (US)' },
+            { value: 'pt-BR', label: 'Português (Brasil)' },
+          ],
+        }),
+      },
+      operations: {
+        watchtower: {
+          enabled: booleanSetting(true, true),
+          tickInterval: stringSetting('2s', '1s', 'restart', {
+            format: 'duration',
+            min: '100ms',
+            max: '1m',
+          }),
+          captureLines: integerSetting(120, 80, 1, 2000),
+          captureTimeout: stringSetting('250ms', '150ms', 'restart', {
+            format: 'duration',
+            min: '10ms',
+            max: '10s',
+          }),
+          journalRows: integerSetting(8000, 5000, 100, 1_000_000),
+        },
+        runbooks: {
+          maxConcurrent: integerSetting(4, 5, 1, 64),
+        },
+        log: {
+          level: stringSetting('info', 'info', 'restart', {
+            allowCustom: false,
+            options: [
+              { value: 'debug', label: 'Debug' },
+              { value: 'info', label: 'Info' },
+              { value: 'warn', label: 'Warn' },
+              { value: 'error', label: 'Error' },
+            ],
+          }),
+        },
+      },
+      integrations: {
+        mcp: {
+          enabled: booleanSetting(true, false),
+          token: sensitiveSetting(true),
+          runtimeTokenConfigured: true,
+          endpoint: '/mcp',
+        },
+        healthReport: {
+          schedule: stringSetting('0 9 * * 1-5', '', 'restart', {
+            required: false,
+            format: 'cron',
+          }),
+          webhookUrl: sensitiveSetting(true),
+          nextActivation: '2026-07-28T09:00:00Z',
+        },
+      },
+      accounts: {
+        processUser: 'flight-operator',
+        processIsRoot: false,
+        inventoryAvailable: true,
+        users: [
+          {
+            name: 'flight-operator',
+            processUser: true,
+            root: false,
+            allowed: true,
+          },
+          {
+            name: 'payload-operator',
+            processUser: false,
+            root: false,
+            allowed: true,
+          },
+          { name: 'root', processUser: false, root: true, allowed: false },
+        ],
+        allowedUsers: listSetting(
+          ['flight-operator', 'payload-operator'],
+          accountOptions,
+          false,
+        ),
+        allowRootTarget: booleanSetting(false, false),
+        userSwitchMethod: stringSetting(
+          'systemd-run',
+          'systemd-run',
+          'restart',
+          {
+            allowCustom: false,
+            options: [
+              { value: 'sudo', label: 'sudo' },
+              { value: 'systemd-run', label: 'systemd-run' },
+            ],
+          },
+        ),
+        methodCapabilities: [
+          {
+            value: 'sudo',
+            label: 'sudo',
+            available: true,
+            detail:
+              'sudo is installed; passwordless policy must still be configured',
+          },
+          {
+            value: 'systemd-run',
+            label: 'systemd-run',
+            available: true,
+            detail:
+              'systemd-run is installed; policy must still be configured outside Sentinel',
+          },
+        ],
+        privilegeGuidance:
+          'Sentinel detects executables but cannot grant host privileges.',
+      },
+      access: {
+        listener: {
+          host: stringSetting('192.0.2.44', '127.0.0.1', 'restart', {
+            format: 'listen-host',
+          }),
+          port: integerSetting(4040, 4040, 1, 65535),
+          classification: 'specific',
+          address: '192.0.2.44:4040',
+        },
+        authentication: {
+          token: sensitiveSetting(true),
+          runtimeTokenConfigured: true,
+        },
+        origins: {
+          allowed: listSetting(['https://control.orbital.example']),
+        },
+        proxies: {
+          trusted: listSetting(['192.0.2.0/24']),
+        },
+        cookies: {
+          secure: stringSetting('always', 'auto', 'restart', {
+            allowCustom: false,
+            options: [
+              { value: 'auto', label: 'Auto' },
+              { value: 'always', label: 'Always secure' },
+              { value: 'never', label: 'Never secure' },
+            ],
+          }),
+          allowInsecure: booleanSetting(false, false),
+        },
+        recovery: {
+          configPath,
+          backupPath,
+          restoreCommand: `cp -- '${backupPath}' '${configPath}'`,
+          validateCommand: `sentinel --config '${configPath}' config validate --effective`,
+          instruction:
+            'Restore the adjacent backup, validate it, and restart the same deployment manually.',
+        },
+      },
+      diagnostics: {
+        configExists: true,
+        environmentOwnedKeys: [],
+        readOnlyKeys: ['version', 'storage.path', 'log.path'],
+        deploymentDetection: 'standalone',
+      },
+    }
+  }
+
   function nowSnapshot() {
     const healthy = localStorage.getItem('sentinel_docs_showcase_scene') === 'healthy'
     return {
@@ -430,6 +702,7 @@
         allowedUsers: [],
       }
     }
+    if (pathname === '/api/ops/settings') return settingsSnapshot()
     if (pathname === '/api/now') return { now: nowSnapshot() }
     if (pathname === '/api/ops/overview') return { overview }
     if (pathname === '/api/ops/metrics') return { metrics: metricsSample(), posture }
@@ -479,12 +752,16 @@
     if (method === 'GET') {
       const data = responseData(url.pathname)
       if (data !== null) {
+        const headers = {
+          'Content-Type': 'application/json',
+          'X-Sentinel-Showcase': 'orbital-station',
+        }
+        if (url.pathname === '/api/ops/settings') {
+          headers.ETag = `"${settingsRevision}"`
+        }
         return new Response(JSON.stringify({ data }), {
           status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Sentinel-Showcase': 'orbital-station',
-          },
+          headers,
         })
       }
     }

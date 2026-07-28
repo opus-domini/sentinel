@@ -21,17 +21,17 @@ token = "strong-secret"
 enabled = true
 ```
 
-The same setting is available in **Settings > Integrations > MCP** and through
-`SENTINEL_MCP_ENABLED=true`. The settings screen shows the endpoint, runtime
-availability, shared-token configured state, and ready-to-copy client
-configurations.
+The MCP enabled state is available in **Settings > Integrations > MCP** and
+through `SENTINEL_MCP_ENABLED=true`. Integrations shows the endpoint, runtime
+availability, shared-token readiness, and ready-to-copy client configurations.
+The shared token itself is configured only in **Settings > Access** so every
+rotation uses reconnect validation and the anti-lockout review.
 
 The shared token is write-only in Settings. Existing values are never
 displayed. Choose Keep, Replace, or Clear; a replacement is removed from the
 browser form immediately after submit and becomes active only after restart.
-If the process started without a token, saving a replacement together with MCP
-enablement produces `Pending restart` instead of claiming the endpoint is
-already available. MCP disable remains live.
+If the process started without a token, replace it in Access, restart Sentinel,
+and then enable MCP from Integrations. MCP disable remains live.
 
 Every MCP request must send:
 

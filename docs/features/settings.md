@@ -15,8 +15,8 @@ The current workspace has seven deep-linkable sections:
 - `/settings/experience` — terminal theme, timezone, and date format.
 - `/settings/operations` — Watchtower collection, Runbook concurrency, and
   daemon log level.
-- `/settings/integrations` — MCP access, shared token lifecycle, and scheduled
-  health-report delivery.
+- `/settings/integrations` — MCP endpoint state and scheduled health-report
+  delivery.
 - `/settings/accounts` — read-only OS-account inventory, target allowlist, root
   gate, and user-switch method.
 - `/settings/access` — listener, shared token, browser origins, trusted proxies,
@@ -68,6 +68,12 @@ scope. The restart command is displayed and can be copied when the config path
 matches an installed user or system service. Sentinel does not restart itself;
 the running process keeps its startup values until the operator performs the
 manual restart.
+
+<img src="assets/images/desktop-settings-operations.png" alt="Desktop Settings Operations for the fictitious Orbital Station deployment, showing the local control-plane navigation, Watchtower fields, exact source badges, validation limits, and restart-based lifecycle" />
+
+This capture comes from the reproducible Orbital Station fixture. Its values
+and deployment identity are fictional; no host configuration or session data
+is present.
 
 ## Integrations and write-only secrets
 
@@ -182,3 +188,21 @@ Desktop uses an internal side navigation. Compact viewports stack navigation
 above the active section and keep one vertical scroll owner. The workspace uses
 the existing visual viewport tracking, safe-area handling, and keyboard-aware
 mobile shell; all Settings actions have at least a 44 px target.
+
+<p align="center">
+  <img src="assets/images/mobile-settings-experience.png" alt="Mobile Settings Experience in the fictitious Orbital Station fixture, showing the seven-section control-plane navigation and browser-owned terminal theme controls" width="390" />
+</p>
+
+The mobile capture uses the same synthetic fixture and typed contract as the
+desktop view.
+
+## Related contracts
+
+- [Configuration](/reference/configuration.md) defines precedence, validation,
+  persistence, and field ownership.
+- [HTTP API](/reference/http-api.md) defines the typed Settings transaction and
+  ETag concurrency contract.
+- [Security Model](/guide/security.md) defines secret handling, remote exposure,
+  host accounts, and recovery boundaries.
+- [Service and Autoupdate](/operations/service-and-autoupdate.md) defines manual
+  restart ownership for managed and standalone deployments.

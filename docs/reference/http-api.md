@@ -547,8 +547,8 @@ explicitly for the host.
 | `GET`   | `/api/ops/settings` | Read typed Settings state and current ETag   |
 | `PATCH` | `/api/ops/settings` | Persist a typed patch against a current ETag |
 
-The raw TOML endpoint and the specialized timezone, locale, and MCP endpoints
-were removed. Settings never returns TOML or secret values.
+Settings uses one typed read/write boundary. It never returns config-file
+contents or secret values.
 
 `GET /api/ops/settings` returns a `revision` in the body and the same SHA-256
 revision as a quoted `ETag` header. Its current typed groups are:

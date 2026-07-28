@@ -236,8 +236,8 @@ rotation path.
 
 ## Access saves and manual recovery
 
-`/settings/access` uses the same typed Settings PATCH rather than a raw TOML
-editor. It validates the complete effective candidate and a required
+`/settings/access` uses the same typed Settings transaction as every other
+section. It validates the complete effective candidate and a required
 `reconnectOrigin` before writing. If host or port changes, Sentinel attempts to
 bind the candidate endpoint first. A failed preflight does not create a backup,
 change the revision, or apply any live field.

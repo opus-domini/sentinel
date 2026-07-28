@@ -41,8 +41,15 @@ satellite-specific capabilities.
 After investigation or action, return to **Now**. It recomposes current owner
 evidence instead of retaining a parallel incident or alert record.
 
+**[Settings](/features/settings.md)** is the global local-control-plane utility
+around that loop. Use it to shape Experience, Operations, Integrations,
+Accounts, Access, Storage, and Diagnostics without turning configuration into a
+sixth owner module.
+
 ## Operate Sentinel
 
+- [Settings](/features/settings.md) — configure this deployment with provenance,
+  typed validation, write-only secrets, restart boundaries, and recovery.
 - [Service and Autoupdate](/operations/service-and-autoupdate.md) — install,
   inspect, restart, and update the daemon.
 - [Storage and Flush](/operations/storage-and-flush.md) — understand local

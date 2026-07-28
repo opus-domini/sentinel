@@ -13,8 +13,10 @@ expected_files=(
 	desktop-runbooks-receipt.png
 	desktop-tmux-mission-control.png
 	desktop-now-healthy.png
+	desktop-settings-operations.png
 	mobile-now.png
 	mobile-tmux.png
+	mobile-settings-experience.png
 )
 
 fail() {
@@ -52,17 +54,24 @@ work_dir="$(mktemp -d)"
 staging_dir="$work_dir/staging"
 data_dir="$work_dir/data"
 tmux_dir="$work_dir/tmux"
+decoy_tmux_dir="$work_dir/tmux-decoy"
 logs_dir="$work_dir/logs"
-mkdir -p "$staging_dir" "$data_dir" "$tmux_dir" "$logs_dir"
+mkdir -p "$staging_dir" "$data_dir" "$tmux_dir" "$decoy_tmux_dir" "$logs_dir"
 
 browser_session="sentinel-docs-showcase-$$-$(date +%s)"
 server_pid=""
 base_url=""
 tmux_isolated=0
+decoy_tmux_isolated=0
+decoy_signature=""
 guidance_pane=""
 
 showcase_tmux() {
 	env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$tmux_dir" tmux -f /dev/null "$@"
+}
+
+decoy_tmux() {
+	env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$decoy_tmux_dir" tmux -f /dev/null "$@"
 }
 
 browser() {
@@ -82,6 +91,10 @@ cleanup() {
 				showcase_tmux kill-session -t "=$session_name" >/dev/null 2>&1 || true
 			fi
 		done
+	fi
+	if ((decoy_tmux_isolated == 1)) &&
+		decoy_tmux has-session -t '=docs-showcase-decoy' 2>/dev/null; then
+		decoy_tmux kill-session -t '=docs-showcase-decoy' >/dev/null 2>&1 || true
 	fi
 	rm -rf "$work_dir"
 	if ((status != 0)); then
@@ -116,6 +129,33 @@ send_tmux_command() {
 	local command="$2"
 	showcase_tmux send-keys -t "$target" -l -- "$command"
 	showcase_tmux send-keys -t "$target" Enter
+}
+
+create_decoy_scenario() {
+	local socket_path expected_socket decoy_ready
+	decoy_tmux new-session -d -s docs-showcase-decoy -n hold -c /tmp -x 80 -y 24 \
+		"printf '%s\\n' 'DECOY // KEEP THIS SESSION'; exec sleep 3600"
+	socket_path="$(decoy_tmux display-message -p '#{socket_path}')"
+	expected_socket="$decoy_tmux_dir/tmux-$(id -u)/default"
+	if [[ "$socket_path" != "$expected_socket" ]]; then
+		fail "decoy tmux isolation check failed before any cleanup was armed"
+	fi
+	decoy_tmux_isolated=1
+	decoy_signature="$(
+		decoy_tmux display-message -p -t 'docs-showcase-decoy:hold' \
+			'#{session_name}|#{session_id}|#{pane_pid}'
+	)"
+	decoy_ready=0
+	for _ in $(seq 1 40); do
+		if decoy_tmux capture-pane -p -t 'docs-showcase-decoy:hold' |
+			grep -Fq 'DECOY // KEEP THIS SESSION'; then
+			decoy_ready=1
+			break
+		fi
+		sleep 0.05
+	done
+	((decoy_ready == 1)) || fail "decoy tmux content was not initialized"
+	printf 'docs showcase: decoy socket isolated at %s\n' "$socket_path"
 }
 
 create_tmux_scenario() {
@@ -155,6 +195,31 @@ create_tmux_scenario() {
 		"clear; printf '%s\\n' 'ORBITAL MAINTENANCE' '[ok] antenna path' '[ok] telemetry relay' '[ok] payload link'"
 
 	showcase_tmux select-pane -t "$downlink_pane"
+	printf 'docs showcase: showcase socket isolated at %s\n' "$socket_path"
+}
+
+verify_decoy_unchanged() {
+	local current_signature
+	decoy_tmux has-session -t '=docs-showcase-decoy' 2>/dev/null ||
+		fail "decoy tmux session disappeared during capture"
+	current_signature="$(
+		decoy_tmux display-message -p -t 'docs-showcase-decoy:hold' \
+			'#{session_name}|#{session_id}|#{pane_pid}'
+	)"
+	[[ "$current_signature" == "$decoy_signature" ]] ||
+		fail "decoy tmux identity changed during capture"
+	decoy_tmux capture-pane -p -t 'docs-showcase-decoy:hold' |
+		grep -Fq 'DECOY // KEEP THIS SESSION' ||
+		fail "decoy tmux content changed during capture"
+	if showcase_tmux has-session -t '=docs-showcase-decoy' 2>/dev/null; then
+		fail "showcase socket unexpectedly contains the decoy session"
+	fi
+	for session_name in flight-control telemetry maintenance; do
+		if decoy_tmux has-session -t "=$session_name" 2>/dev/null; then
+			fail "decoy socket unexpectedly contains showcase session $session_name"
+		fi
+	done
+	printf 'docs showcase: decoy name, ID, pane PID and content remained unchanged\n'
 }
 
 wait_for_page() {
@@ -250,8 +315,10 @@ write_manifest() {
 		printf 'desktop-runbooks-receipt.png\t/runbooks?job=job-orbital-042\t1440x900@1x\tdark\tOrbital Station\t%s\t%s\n' "$source_commit" "$captured_at"
 		printf 'desktop-tmux-mission-control.png\t/tmux?session=flight-control\t1440x900@1x\tdark\tOrbital Station\t%s\t%s\n' "$source_commit" "$captured_at"
 		printf 'desktop-now-healthy.png\t/ (healthy)\t1440x900@1x\tdark\tOrbital Station\t%s\t%s\n' "$source_commit" "$captured_at"
+		printf 'desktop-settings-operations.png\t/settings/operations\t1440x900@1x\tdark\tOrbital Station\t%s\t%s\n' "$source_commit" "$captured_at"
 		printf 'mobile-now.png\t/ (at risk)\t390x844@2x\tdark\tOrbital Station\t%s\t%s\n' "$source_commit" "$captured_at"
 		printf 'mobile-tmux.png\t/tmux?session=flight-control\t390x844@2x\tdark\tOrbital Station\t%s\t%s\n' "$source_commit" "$captured_at"
+		printf 'mobile-settings-experience.png\t/settings/experience\t390x844@2x\tdark\tOrbital Station\t%s\t%s\n' "$source_commit" "$captured_at"
 	} >"$staging_dir/showcase-manifest.tsv"
 }
 
@@ -269,6 +336,9 @@ publish_staging() {
 
 printf 'docs showcase: building real frontend\n'
 npm --prefix "$repo_root/frontend" run build
+
+printf 'docs showcase: creating independent decoy tmux\n'
+create_decoy_scenario
 
 printf 'docs showcase: creating isolated Orbital Station tmux\n'
 create_tmux_scenario
@@ -339,6 +409,9 @@ wait_for_condition 'desktop terminal contains Orbital Station output' \
 	"document.querySelector('.xterm-rows')?.textContent?.includes('ORBITAL STATION') === true"
 browser screenshot "$staging_dir/desktop-tmux-mission-control.png" >/dev/null
 
+capture_page '/settings/operations' 'Control collection cadence' \
+	desktop-settings-operations.png
+
 browser eval "localStorage.setItem('sentinel_docs_showcase_scene', 'healthy')" >/dev/null
 capture_page / 'Healthy' desktop-now-healthy.png
 
@@ -354,14 +427,16 @@ wait_for_condition 'mobile terminal attached to flight-control' \
 wait_for_condition 'mobile terminal contains rendered output' \
 	"document.querySelector('.xterm-rows')?.textContent?.includes('ORBITAL') === true"
 browser screenshot "$staging_dir/mobile-tmux.png" >/dev/null
+capture_page '/settings/experience' 'Terminal theme' mobile-settings-experience.png
 
 browser network requests --filter /api/tmux >"$logs_dir/tmux-network.txt"
 grep -Fq '/api/tmux/' "$logs_dir/tmux-network.txt" ||
 	fail "Tmux did not use the isolated daemon API"
 validate_browser_diagnostics
+verify_decoy_unchanged
 write_manifest
 
 printf 'docs showcase: validating staging before publication\n'
 "$check_script" "$staging_dir"
 publish_staging
-printf 'docs showcase capture passed: published 8 validated PNGs to %s\n' "$output_dir"
+printf 'docs showcase capture passed: published 10 validated PNGs to %s\n' "$output_dir"

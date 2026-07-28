@@ -12,8 +12,10 @@ expected_files=(
 	desktop-runbooks-receipt.png
 	desktop-tmux-mission-control.png
 	desktop-now-healthy.png
+	desktop-settings-operations.png
 	mobile-now.png
 	mobile-tmux.png
+	mobile-settings-experience.png
 )
 
 fail() {
@@ -57,7 +59,7 @@ done < <(
 expected_sorted="$(printf '%s\n' "${expected_files[@]}" | LC_ALL=C sort)"
 actual_sorted="$(printf '%s\n' "${actual_files[@]}" | LC_ALL=C sort)"
 [[ "$actual_sorted" == "$expected_sorted" ]] ||
-	fail "expected exactly the eight canonical PNG filenames"
+	fail "expected exactly the ten canonical PNG filenames"
 
 ocr_dir="$(mktemp -d)"
 trap 'rm -rf "$ocr_dir"' EXIT
@@ -101,8 +103,12 @@ desktop-runbooks-receipt.png;recover telemetry;recovery procedure
 desktop-tmux-mission-control.png;orbital;orbital terminal
 desktop-tmux-mission-control.png;telemetry;terminal telemetry
 desktop-now-healthy.png;healthy;healthy posture
+desktop-settings-operations.png;operations;Settings Operations
+desktop-settings-operations.png;watchtower;Watchtower controls
 mobile-now.png;needs attention;mobile Now
 mobile-tmux.png;orbital;mobile terminal
+mobile-settings-experience.png;experience;mobile Settings Experience
+mobile-settings-experience.png;terminal theme;browser theme controls
 EOF
 
 deny_patterns=(
@@ -152,6 +158,6 @@ manifest_names="$(awk -F '\t' '
 	{ print $1 }
 ' "$manifest_file" | LC_ALL=C sort)"
 [[ "$manifest_names" == "$expected_sorted" ]] ||
-	fail "showcase manifest must contain exactly the eight canonical PNG filenames"
+	fail "showcase manifest must contain exactly the ten canonical PNG filenames"
 
-printf 'docs showcase check passed: 8 PNGs, dimensions, OCR and provenance verified\n'
+printf 'docs showcase check passed: 10 PNGs, dimensions, OCR and provenance verified\n'
