@@ -302,12 +302,12 @@
    When the on-screen keyboard is up the nav is hidden behind it, so collapse
    the reserve too. */
 .viewport-compact .app-shell {
-  padding-bottom: 2.75rem;
+  padding-bottom: 3.125rem;
 }
 
 .viewport-compact .mobile-primary-nav {
   bottom: calc(env(safe-area-inset-bottom, 0px) * -1);
-  min-height: 2.75rem;
+  min-height: 3.125rem;
   padding-bottom: calc(0.125rem + env(safe-area-inset-bottom, 0px));
 }
 

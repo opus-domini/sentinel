@@ -17,6 +17,11 @@ It is the same operational workspace at a smaller viewport, not a terminal-only
 mobile mode. Now remains the entry and return point; each owner keeps its normal
 route and responsibility.
 
+Settings remains a global utility instead of becoming a sixth primary
+destination. A 44 px Settings action is available in the header of every
+primary area. It opens the full-height `/settings` workspace while preserving
+the five-destination bottom navigation.
+
 <p align="center">
   <img src="assets/images/mobile-now.png" alt="Mobile Now showing the at-risk fictitious Orbital Station workload, current owner confidence, a bounded decision queue, and the five-destination bottom navigation" width="390" />
 </p>
@@ -31,7 +36,9 @@ real mobile shell; Sentinel has no satellite-specific behavior.
 - App install prompt support (`beforeinstallprompt`)
 - App update detection and apply flow
 
-In Settings, users can install app and apply pending PWA updates.
+In `/settings/diagnostics`, users can install the app and apply pending PWA
+updates. Every Settings section has a stable deep link, and compact viewports
+stack the section navigation above the content inside one scroll owner.
 
 ## Offline Strategy
 
@@ -70,6 +77,8 @@ Implemented improvements include:
   landscape orientations.
 - Bottom gesture gutter protection to avoid accidental system gestures.
 - Keyboard-aware viewport tracking (`visualViewport`) with CSS variables.
+- Settings reuses the tracked visual viewport and safe-area shell without fixed
+  minimum heights, including phone landscape and keyboard-visible states.
 - Touch lock zones using `data-sentinel-touch-lock`.
 - Keyboard-open behavior stabilization that hides secondary footer details and the bottom
   navigation to preserve terminal space.

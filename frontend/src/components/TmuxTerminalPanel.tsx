@@ -2,6 +2,7 @@ import { Loader2, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import AppSectionTitle from './layout/AppSectionTitle'
 import ConnectionBadge from './ConnectionBadge'
+import MobileSettingsLink from './settings/MobileSettingsLink'
 import SessionTabs from './SessionTabs'
 import { TooltipHelper } from './TooltipHelper'
 import TerminalControls from './terminal/TerminalControls'
@@ -404,11 +405,11 @@ export default function TmuxTerminalPanel({
         'grid min-h-0 min-w-0 grid-cols-1 overflow-hidden bg-background',
         showSessionTabs
           ? showControls
-            ? 'grid-rows-[40px_30px_1fr_auto_28px]'
-            : 'grid-rows-[40px_30px_1fr_28px]'
+            ? 'grid-rows-[44px_30px_1fr_auto_28px]'
+            : 'grid-rows-[44px_30px_1fr_28px]'
           : showControls
-            ? 'grid-rows-[40px_1fr_auto_28px]'
-            : 'grid-rows-[40px_1fr_28px]',
+            ? 'grid-rows-[44px_1fr_auto_28px]'
+            : 'grid-rows-[44px_1fr_28px]',
       )}
     >
       <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
@@ -426,6 +427,7 @@ export default function TmuxTerminalPanel({
         </div>
         <div className="flex items-center gap-1">
           <ConnectionBadge state={connectionState} detail={statusDetail} onClick={onResync} />
+          <MobileSettingsLink />
         </div>
       </header>
 

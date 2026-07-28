@@ -39,8 +39,6 @@ export function useShellLayout({
     }
     return defaultSidebarWidth
   })
-  const [settingsOpen, setSettingsOpen] = useState(false)
-
   const notifyResizeEnd = useCallback(() => {
     if (onResizeEnd) {
       window.requestAnimationFrame(onResizeEnd)
@@ -164,8 +162,6 @@ export function useShellLayout({
     sidebarWidth,
     sidebarMinWidth: minSidebarWidth,
     sidebarMaxWidth: maxSidebarWidth,
-    settingsOpen,
-    setSettingsOpen,
     shellStyle,
     layoutGridClass,
     startSidebarResize,

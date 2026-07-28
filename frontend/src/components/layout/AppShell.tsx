@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import SideRail from '@/components/SideRail'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
-import SettingsDialog from '@/components/settings/SettingsDialog'
 
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useViewport } from '@/contexts/ViewportContext'
@@ -26,8 +25,6 @@ export default function AppShell({ sidebar, children, disableEdgeSwipe = false }
     sidebarWidth,
     sidebarMinWidth,
     sidebarMaxWidth,
-    settingsOpen,
-    setSettingsOpen,
     shellStyle,
     layoutGridClass,
     startSidebarResize,
@@ -130,7 +127,6 @@ export default function AppShell({ sidebar, children, disableEdgeSwipe = false }
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }
@@ -168,7 +164,7 @@ function MobilePrimaryNav({ onActiveItemClick }: MobilePrimaryNavProps) {
             aria-current={active ? 'page' : undefined}
             onClick={(event) => handleLinkClick(event, active)}
             className={cn(
-              'grid min-h-10 min-w-0 place-items-center gap-0 px-1 py-0.5 text-[10px] no-underline transition-colors',
+              'grid min-h-11 min-w-0 place-items-center gap-0 px-1 py-0.5 text-[10px] no-underline transition-colors',
               active
                 ? 'text-primary hover:text-primary'
                 : 'text-secondary-foreground hover:bg-accent hover:text-foreground',

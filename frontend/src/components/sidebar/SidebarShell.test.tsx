@@ -55,8 +55,6 @@ const layoutValue = {
   sidebarWidth: 340,
   sidebarMinWidth: 240,
   sidebarMaxWidth: 440,
-  settingsOpen: false,
-  setSettingsOpen: () => {},
   shellStyle: {},
   layoutGridClass: '',
   startSidebarResize: () => {},
@@ -86,7 +84,7 @@ describe('SidebarShell', () => {
       Array.from(container.querySelectorAll('aside button')).map((button) =>
         button.getAttribute('aria-label'),
       ),
-    ).toEqual(['Close menu', 'Settings', 'About Terminal', 'API token'])
+    ).toEqual(['Close menu', 'About Terminal', 'API token'])
     for (const button of container.querySelectorAll('aside button')) {
       expect(button.className).toContain('size-8')
     }
@@ -127,6 +125,6 @@ describe('SidebarShell', () => {
 
     expect(screen.queryByRole('button', { name: 'API token' })).toBeNull()
     expect(screen.getByRole('button', { name: 'About Terminal' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull()
   })
 })

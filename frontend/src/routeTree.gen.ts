@@ -14,8 +14,11 @@ import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as OpsRouteImport } from './routes/ops'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as ServicesRouteImport } from './routes/services'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TmuxRouteImport } from './routes/tmux'
 import { Route as MaintenanceStorageRouteImport } from './routes/maintenance.storage'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -42,6 +45,11 @@ const ServicesRoute = ServicesRouteImport.update({
   path: '/services',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TmuxRoute = TmuxRouteImport.update({
   id: '/tmux',
   path: '/tmux',
@@ -52,6 +60,16 @@ const MaintenanceStorageRoute = MaintenanceStorageRouteImport.update({
   path: '/maintenance/storage',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsSectionRoute = SettingsSectionRouteImport.update({
+  id: '/$section',
+  path: '/$section',
+  getParentRoute: () => SettingsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -59,8 +77,11 @@ export interface FileRoutesByFullPath {
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/tmux': typeof TmuxRoute
   '/maintenance/storage': typeof MaintenanceStorageRoute
+  '/settings/$section': typeof SettingsSectionRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +91,8 @@ export interface FileRoutesByTo {
   '/services': typeof ServicesRoute
   '/tmux': typeof TmuxRoute
   '/maintenance/storage': typeof MaintenanceStorageRoute
+  '/settings/$section': typeof SettingsSectionRoute
+  '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -78,8 +101,11 @@ export interface FileRoutesById {
   '/ops': typeof OpsRoute
   '/runbooks': typeof RunbooksRoute
   '/services': typeof ServicesRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/tmux': typeof TmuxRoute
   '/maintenance/storage': typeof MaintenanceStorageRoute
+  '/settings/$section': typeof SettingsSectionRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -89,8 +115,11 @@ export interface FileRouteTypes {
     | '/ops'
     | '/runbooks'
     | '/services'
+    | '/settings'
     | '/tmux'
     | '/maintenance/storage'
+    | '/settings/$section'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -100,6 +129,8 @@ export interface FileRouteTypes {
     | '/services'
     | '/tmux'
     | '/maintenance/storage'
+    | '/settings/$section'
+    | '/settings'
   id:
     | '__root__'
     | '/'
@@ -107,8 +138,11 @@ export interface FileRouteTypes {
     | '/ops'
     | '/runbooks'
     | '/services'
+    | '/settings'
     | '/tmux'
     | '/maintenance/storage'
+    | '/settings/$section'
+    | '/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -117,6 +151,7 @@ export interface RootRouteChildren {
   OpsRoute: typeof OpsRoute
   RunbooksRoute: typeof RunbooksRoute
   ServicesRoute: typeof ServicesRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   TmuxRoute: typeof TmuxRoute
   MaintenanceStorageRoute: typeof MaintenanceStorageRoute
 }
@@ -158,6 +193,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ServicesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tmux': {
       id: '/tmux'
       path: '/tmux'
@@ -172,8 +214,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MaintenanceStorageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/$section': {
+      id: '/settings/$section'
+      path: '/$section'
+      fullPath: '/settings/$section'
+      preLoaderRoute: typeof SettingsSectionRouteImport
+      parentRoute: typeof SettingsRoute
+    }
   }
 }
+
+interface SettingsRouteChildren {
+  SettingsSectionRoute: typeof SettingsSectionRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsSectionRoute: SettingsSectionRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -181,6 +251,7 @@ const rootRouteChildren: RootRouteChildren = {
   OpsRoute: OpsRoute,
   RunbooksRoute: RunbooksRoute,
   ServicesRoute: ServicesRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   TmuxRoute: TmuxRoute,
   MaintenanceStorageRoute: MaintenanceStorageRoute,
 }

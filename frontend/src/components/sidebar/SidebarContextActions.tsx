@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { Lock, LockOpen, Settings } from 'lucide-react'
+import { Lock, LockOpen } from 'lucide-react'
 import MetricsHelpDialog from '@/components/MetricsHelpDialog'
 import RunbooksHelpDialog from '@/components/RunbooksHelpDialog'
 import ServicesHelpDialog from '@/components/ServicesHelpDialog'
 import TmuxHelpDialog from '@/components/TmuxHelpDialog'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { Button } from '@/components/ui/button'
-import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useTokenContext } from '@/contexts/TokenContext'
 import { cn } from '@/lib/utils'
@@ -21,7 +20,6 @@ export default function SidebarContextActions({
   pathname,
   mobile = false,
 }: SidebarContextActionsProps) {
-  const { setSettingsOpen } = useLayoutContext()
   const { tokenRequired } = useMetaContext()
   const { authenticated, setToken } = useTokenContext()
   const [tokenOpen, setTokenOpen] = useState(false)
@@ -45,25 +43,10 @@ export default function SidebarContextActions({
     </TooltipHelper>
   )
   const helpAction = <PageHelpDialog pathname={pathname} triggerClassName={buttonClassName} />
-  const settingsAction = (
-    <TooltipHelper content="Settings" side={mobile ? 'bottom' : 'right'}>
-      <Button
-        variant="ghost"
-        size="icon-lg"
-        className={buttonClassName}
-        onClick={() => setSettingsOpen(true)}
-        aria-label="Settings"
-      >
-        <Settings className="size-4" />
-      </Button>
-    </TooltipHelper>
-  )
-
   return (
     <>
       {mobile ? (
         <>
-          {settingsAction}
           {helpAction}
           {tokenAction}
         </>
@@ -71,7 +54,6 @@ export default function SidebarContextActions({
         <>
           {tokenAction}
           {helpAction}
-          {settingsAction}
         </>
       )}
       {tokenRequired && (

@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react'
 import type { OpsRunbook, OpsRunbookRun } from '@/types'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
+import MobileSettingsLink from '@/components/settings/MobileSettingsLink'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { RunbookDeleteDialog } from '@/components/RunbookDeleteDialog'
 import { RunbookEditor } from '@/components/RunbookEditor'
@@ -257,7 +258,7 @@ export function RunbooksPage() {
         />
       }
     >
-      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-background">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[44px_1fr_28px] bg-background">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Button
@@ -273,6 +274,7 @@ export function RunbooksPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <ConnectionBadge state={connectionState} onClick={resyncPage} />
+            <MobileSettingsLink />
           </div>
         </header>
 

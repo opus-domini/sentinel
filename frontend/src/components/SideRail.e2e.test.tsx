@@ -26,10 +26,6 @@ vi.mock('@tanstack/react-router', () => ({
     select({ location: { pathname: state.pathname } }),
 }))
 
-vi.mock('@/components/settings/SettingsDialog', () => ({
-  default: () => null,
-}))
-
 vi.mock('@/contexts/ViewportContext', () => ({
   useViewport: () => ({
     compactLayout: false,
@@ -60,8 +56,6 @@ const layoutValue = {
   sidebarWidth: 340,
   sidebarMinWidth: 240,
   sidebarMaxWidth: 440,
-  settingsOpen: false,
-  setSettingsOpen: () => {},
   shellStyle: {},
   layoutGridClass: '',
   startSidebarResize: () => {},
@@ -96,8 +90,8 @@ describe('SideRail', () => {
     expect((desktopTmuxLink.textContent || '').trim()).toBe('')
     expect(desktopTmuxLink.getAttribute('aria-label')).toBe('Tmux')
 
-    const desktopSettingsButton = aside?.querySelector('button[aria-label="Settings"]')
-    expect(desktopSettingsButton).not.toBeNull()
+    const desktopSettingsLink = aside?.querySelector('a[aria-label="Settings"]')
+    expect(desktopSettingsLink?.getAttribute('href')).toBe('/settings')
   })
 
   it('uses the shared primary nav order in the desktop rail', () => {
@@ -111,7 +105,7 @@ describe('SideRail', () => {
       link.getAttribute('aria-label'),
     )
 
-    expect(links).toEqual(['Now', 'Tmux', 'Runbooks', 'Services', 'Metrics'])
+    expect(links).toEqual(['Now', 'Tmux', 'Runbooks', 'Services', 'Metrics', 'Settings'])
   })
 
   it('groups authentication, page help, settings, and sidebar controls at the bottom', () => {
@@ -125,7 +119,7 @@ describe('SideRail', () => {
       button.getAttribute('aria-label'),
     )
 
-    expect(actions).toEqual(['API token', 'About Services', 'Settings', 'Collapse sidebar'])
+    expect(actions).toEqual(['API token', 'About Services', 'Collapse sidebar'])
   })
 
   it('hides authentication when the server does not require a token', () => {
@@ -141,7 +135,7 @@ describe('SideRail', () => {
       button.getAttribute('aria-label'),
     )
 
-    expect(actions).toEqual(['About Services', 'Settings', 'Collapse sidebar'])
+    expect(actions).toEqual(['About Services', 'Collapse sidebar'])
     expect(screen.queryByRole('button', { name: 'API token' })).toBeNull()
   })
 

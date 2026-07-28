@@ -28,6 +28,10 @@ vi.mock('./SessionTabs', () => ({
   default: () => <div>Session Tabs</div>,
 }))
 
+vi.mock('./settings/MobileSettingsLink', () => ({
+  default: () => <a href="/settings">Settings</a>,
+}))
+
 vi.mock('./TooltipHelper', () => ({
   TooltipHelper: ({ children }: { children: ReactNode }) => children,
 }))
@@ -101,7 +105,7 @@ describe('TmuxTerminalPanel', () => {
     const { container } = render(<TmuxTerminalPanel {...baseProps} />)
 
     expect(screen.queryByText('Session Tabs')).toBeNull()
-    expect(container.querySelector('main')?.className).toContain('grid-rows-[40px_1fr_28px]')
+    expect(container.querySelector('main')?.className).toContain('grid-rows-[44px_1fr_28px]')
     expect(screen.getByTestId('window-strip').parentElement?.className).toContain('items-center')
   })
 
@@ -109,7 +113,7 @@ describe('TmuxTerminalPanel', () => {
     const { container } = render(<TmuxTerminalPanel {...baseProps} sidebarCollapsed />)
 
     expect(screen.getByText('Session Tabs')).toBeTruthy()
-    expect(container.querySelector('main')?.className).toContain('grid-rows-[40px_30px_1fr_28px]')
+    expect(container.querySelector('main')?.className).toContain('grid-rows-[44px_30px_1fr_28px]')
   })
 
   it('keeps session tabs visible on mobile even when the sidebar is expanded', () => {

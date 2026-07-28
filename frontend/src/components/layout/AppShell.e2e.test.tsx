@@ -11,15 +11,6 @@ vi.mock('@/components/TooltipHelper', () => ({
   TooltipHelper: ({ children }: { children: ReactNode }) => children,
 }))
 
-vi.mock('@/components/settings/SettingsDialog', () => ({
-  default: ({ open }: { open: boolean }) =>
-    open ? (
-      <div role="dialog" aria-label="Settings">
-        Settings
-      </div>
-    ) : null,
-}))
-
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, ...rest }: { children: ReactNode; to: string }) => (
     <a href={to} {...rest}>
@@ -106,11 +97,10 @@ describe('AppShell integrated shell flow', () => {
     expect(window.localStorage.getItem('sentinel_e2e_sidebar_width')).toBe('400')
   })
 
-  it('opens settings from the side rail and removes the resizer when collapsed', () => {
+  it('links to settings from the side rail and removes the resizer when collapsed', () => {
     render(<ShellHarness />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/settings')
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
 

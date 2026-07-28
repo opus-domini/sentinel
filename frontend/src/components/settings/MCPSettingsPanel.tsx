@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useSettings } from '@/hooks/useSettings'
 import { writeClipboardText } from '@/lib/clipboardProvider'
 import { cn } from '@/lib/utils'
+import { SaveFeedback, SettingsField, ValidationError } from './SettingsField'
 
 type SnippetKind = 'codex' | 'claude' | 'json'
 
@@ -27,6 +28,7 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
   const [copyError, setCopyError] = useState('')
   const [snippetKind, setSnippetKind] = useState<SnippetKind>('codex')
   const [copied, setCopied] = useState('')
+  const [saveSuccess, setSaveSuccess] = useState('')
   const settingsQuery = useSettings()
   const settings = settingsQuery.settings?.integrations.mcp
   const enabled = settings?.enabled.effectiveValue ?? false
@@ -85,12 +87,14 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
   const setEnabled = async (nextEnabled: boolean) => {
     setSaving(true)
     setSaveError('')
+    setSaveSuccess('')
     try {
       await settingsQuery.save({
         integrations: {
           mcp: { enabled: nextEnabled },
         },
       })
+      setSaveSuccess(nextEnabled ? 'MCP access enabled.' : 'MCP access disabled.')
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Failed to update MCP')
     } finally {
@@ -113,131 +117,139 @@ export default function MCPSettingsPanel({ hostname }: MCPSettingsPanelProps) {
   const selectedSnippet = snippets[snippetKind]
 
   return (
-    <div className="grid min-w-0 gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-xs font-medium">Remote agent access</h3>
-            <span
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                enabled
-                  ? 'border-ok/45 bg-ok/10 text-ok-foreground'
-                  : 'border-border-subtle bg-surface-overlay text-muted-foreground',
-              )}
-            >
-              {enabled ? 'Available' : 'Disabled'}
-            </span>
-          </div>
-          <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            Let MCP clients list and create tmux sessions, inspect windows and panes, and interact
-            with a live terminal.
-          </p>
-        </div>
-        <label className="flex cursor-pointer items-center gap-2 text-[12px] select-none">
-          <input
-            type="checkbox"
-            aria-label="Enable MCP"
-            checked={enabled}
-            disabled={saving || !settings.tokenConfigured || !settings.enabled.editable}
-            onChange={(event) => void setEnabled(event.target.checked)}
-            className="h-3.5 w-3.5 rounded border-border accent-primary"
-          />
-          <span className="text-muted-foreground">{saving ? 'Saving…' : 'Enabled'}</span>
-        </label>
-      </div>
-
-      {!settings.tokenConfigured && (
-        <div className="rounded-md border border-warning/45 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-warning-foreground">
-          Configure <code className="font-mono">server.token</code> before enabling MCP. The
-          endpoint uses that same value as its Bearer token.
-        </div>
-      )}
-      {saveError !== '' && (
-        <div className="rounded-md border border-destructive/45 bg-destructive/10 px-3 py-2 text-[11px] text-destructive-foreground">
-          {saveError}
-        </div>
-      )}
-      {copyError !== '' && (
-        <div className="rounded-md border border-destructive/45 bg-destructive/10 px-3 py-2 text-[11px] text-destructive-foreground">
-          {copyError}
-        </div>
-      )}
-
-      <div>
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          Endpoint
-        </p>
-        <div className="flex min-w-0 items-center gap-2 rounded-md border border-border-subtle bg-surface-overlay px-3 py-2">
+    <SettingsField
+      label="Remote agent access"
+      description="Let trusted MCP clients inspect and operate this Sentinel through its authenticated HTTP endpoint."
+      setting={settings.enabled}
+    >
+      <div className="grid min-w-0 gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <span
             className={cn(
-              'h-2 w-2 shrink-0 rounded-full',
-              enabled ? 'bg-ok' : 'bg-muted-foreground/50',
+              'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+              enabled
+                ? 'border-ok/45 bg-ok/10 text-ok-foreground'
+                : 'border-border-subtle bg-surface-overlay text-muted-foreground',
             )}
-            aria-hidden="true"
-          />
-          <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] whitespace-nowrap text-secondary-foreground">
-            {endpoint}
-          </code>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 shrink-0 gap-1.5 px-2 text-[11px]"
-            onClick={() => void copy('endpoint', endpoint)}
           >
-            {copied === 'endpoint' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-            {copied === 'endpoint' ? 'Copied' : 'Copy'}
-          </Button>
-        </div>
-      </div>
-
-      <div className="min-w-0 border-t border-border-subtle pt-4">
-        <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-medium">Connect an MCP client</h3>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Keep the token in an environment variable instead of storing it in project files.
-            </p>
-          </div>
-          <div className="flex rounded-md border border-border-subtle bg-surface-overlay p-0.5">
-            {(['codex', 'claude', 'json'] as const).map((kind) => (
-              <button
-                key={kind}
-                type="button"
+            {enabled ? 'Available' : 'Disabled'}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label="Enable MCP"
+            disabled={saving || !settings.tokenConfigured || !settings.enabled.editable}
+            onClick={() => void setEnabled(!enabled)}
+            className="inline-flex min-h-11 min-w-24 items-center justify-between gap-3 rounded-md border border-border-subtle bg-surface-overlay px-3 text-[11px] text-secondary-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span>{saving ? 'Saving…' : 'Enabled'}</span>
+            <span
+              className={cn(
+                'relative h-5 w-9 rounded-full border transition-colors',
+                enabled ? 'border-primary/60 bg-primary/30' : 'border-border bg-background',
+              )}
+              aria-hidden="true"
+            >
+              <span
                 className={cn(
-                  'rounded px-2 py-1 text-[10px] font-medium transition-colors',
-                  snippetKind === kind
-                    ? 'bg-primary/15 text-primary-text'
-                    : 'text-muted-foreground hover:text-foreground',
+                  'absolute top-0.5 size-3.5 rounded-full bg-muted-foreground transition-transform',
+                  enabled && 'translate-x-4 bg-primary',
                 )}
-                onClick={() => {
-                  setSnippetKind(kind)
-                  setCopied('')
-                }}
-              >
-                {kind === 'json' ? 'mcpServers' : kind === 'codex' ? 'Codex' : 'Claude'}
-              </button>
-            ))}
+              />
+            </span>
+          </button>
+        </div>
+
+        <SaveFeedback
+          status={saving ? 'saving' : saveError !== '' ? 'error' : saveSuccess ? 'success' : 'idle'}
+          message={saving ? 'Saving MCP access…' : saveError || saveSuccess}
+        />
+
+        {!settings.tokenConfigured && (
+          <div className="rounded-md border border-warning/45 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-warning-foreground">
+            Configure <code className="font-mono">server.token</code> before enabling MCP. The
+            endpoint uses that same value as its Bearer token.
+          </div>
+        )}
+        <ValidationError message={saveError} />
+        <ValidationError message={copyError} />
+
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Endpoint
+          </p>
+          <div className="flex min-w-0 items-center gap-2 rounded-md border border-border-subtle bg-surface-overlay px-3 py-2">
+            <span
+              className={cn(
+                'h-2 w-2 shrink-0 rounded-full',
+                enabled ? 'bg-ok' : 'bg-muted-foreground/50',
+              )}
+              aria-hidden="true"
+            />
+            <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] whitespace-nowrap text-secondary-foreground">
+              {endpoint}
+            </code>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="min-h-11 shrink-0 gap-1.5 px-2 text-[11px]"
+              onClick={() => void copy('endpoint', endpoint)}
+            >
+              {copied === 'endpoint' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied === 'endpoint' ? 'Copied' : 'Copy'}
+            </Button>
           </div>
         </div>
 
-        <div className="relative min-w-0 max-w-full">
-          <pre className="max-h-64 w-full min-w-0 max-w-full overflow-auto rounded-md border border-border-subtle bg-background p-3 pr-20 font-mono text-[11px] leading-relaxed text-secondary-foreground">
-            <code>{selectedSnippet}</code>
-          </pre>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="absolute top-2 right-2 h-7 gap-1.5 bg-surface-overlay px-2 text-[11px]"
-            onClick={() => void copy('snippet', selectedSnippet)}
-          >
-            {copied === 'snippet' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-            {copied === 'snippet' ? 'Copied' : 'Copy'}
-          </Button>
+        <div className="min-w-0 border-t border-border-subtle pt-4">
+          <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-medium">Connect an MCP client</h3>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Keep the token in an environment variable instead of storing it in project files.
+              </p>
+            </div>
+            <div className="flex rounded-md border border-border-subtle bg-surface-overlay p-0.5">
+              {(['codex', 'claude', 'json'] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={cn(
+                    'min-h-11 rounded px-2 text-[10px] font-medium transition-colors',
+                    snippetKind === kind
+                      ? 'bg-primary/15 text-primary-text'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={() => {
+                    setSnippetKind(kind)
+                    setCopied('')
+                  }}
+                >
+                  {kind === 'json' ? 'mcpServers' : kind === 'codex' ? 'Codex' : 'Claude'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative min-w-0 max-w-full">
+            <pre className="max-h-64 w-full min-w-0 max-w-full overflow-auto rounded-md border border-border-subtle bg-background p-3 pr-20 font-mono text-[11px] leading-relaxed text-secondary-foreground">
+              <code>{selectedSnippet}</code>
+            </pre>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="absolute top-2 right-2 min-h-11 gap-1.5 bg-surface-overlay px-2 text-[11px]"
+              onClick={() => void copy('snippet', selectedSnippet)}
+            >
+              {copied === 'snippet' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied === 'snippet' ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </SettingsField>
   )
 }

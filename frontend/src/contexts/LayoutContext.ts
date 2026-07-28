@@ -12,8 +12,6 @@ type LayoutContextValue = {
   sidebarWidth: number
   sidebarMinWidth: number
   sidebarMaxWidth: number
-  settingsOpen: boolean
-  setSettingsOpen: (open: boolean | ((prev: boolean) => boolean)) => void
   shellStyle: CSSProperties
   layoutGridClass: string
   startSidebarResize: (event: ReactMouseEvent<HTMLElement>) => void

@@ -1,4 +1,4 @@
-import { ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Settings } from 'lucide-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import SidebarContextActions from '@/components/sidebar/SidebarContextActions'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,16 @@ export default function SideRail({
       <div className="flex-1" />
       <hr className="w-full border-t border-border-subtle" />
       <SidebarContextActions pathname={pathname} />
+      <TooltipHelper content="Settings" side="right">
+        <Link
+          to="/settings"
+          aria-label="Settings"
+          aria-current={pathname.startsWith('/settings') ? 'page' : undefined}
+          className={navItemClass(pathname.startsWith('/settings'))}
+        >
+          <Settings className="size-4" aria-hidden="true" />
+        </Link>
+      </TooltipHelper>
       {showSidebarToggles && (
         <TooltipHelper
           content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}

@@ -10,6 +10,7 @@ import type {
 } from '@/types'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
+import MobileSettingsLink from '@/components/settings/MobileSettingsLink'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { NowAttention } from '@/components/now/NowAttention'
 import { NowInProgress } from '@/components/now/NowInProgress'
@@ -119,12 +120,15 @@ function IndexRoute() {
 
   return (
     <AppShell>
-      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_17%_-8%,var(--section-glow-brand),transparent_32%),radial-gradient(circle_at_82%_8%,rgba(114,245,187,0.08),transparent_24%),var(--background)]">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[44px_1fr_28px] bg-[radial-gradient(circle_at_17%_-8%,var(--section-glow-brand),transparent_32%),radial-gradient(circle_at_82%_8%,rgba(114,245,187,0.08),transparent_24%),var(--background)]">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <AppSectionTitle hostname={hostname} section="now" />
           </div>
-          <ConnectionBadge state={connectionState} onClick={resync} actionLabel="Refresh Now" />
+          <div className="flex items-center gap-1">
+            <ConnectionBadge state={connectionState} onClick={resync} actionLabel="Refresh Now" />
+            <MobileSettingsLink />
+          </div>
         </header>
 
         <div className="min-h-0 overflow-y-auto p-2 pb-4 sm:p-3 md:p-4">

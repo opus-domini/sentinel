@@ -25,6 +25,7 @@ import type {
 } from '@/types'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
+import MobileSettingsLink from '@/components/settings/MobileSettingsLink'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { ServiceBrowseRow } from '@/components/services/ServiceBrowseRow'
 import { ServiceLogsSheet } from '@/components/services/ServiceLogsSheet'
@@ -857,13 +858,14 @@ function ServicesPage() {
 
   return (
     <AppShell>
-      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[40px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,var(--section-glow-brand),transparent_34%),var(--background)]">
+      <main className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[44px_1fr_28px] bg-[radial-gradient(circle_at_20%_-10%,var(--section-glow-brand),transparent_34%),var(--background)]">
         <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-card px-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <AppSectionTitle hostname={hostname} section="services" />
           </div>
           <div className="flex items-center gap-1.5">
             <ConnectionBadge state={connectionState} onClick={resyncPage} />
+            <MobileSettingsLink />
           </div>
         </header>
 

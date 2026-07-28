@@ -24,10 +24,6 @@ vi.mock('@/components/SideRail', () => ({
   default: () => <nav aria-label="side rail" />,
 }))
 
-vi.mock('@/components/settings/SettingsDialog', () => ({
-  default: () => null,
-}))
-
 vi.mock('@/hooks/useEdgeSwipe', () => ({
   useEdgeSwipe: useEdgeSwipeMock,
 }))
@@ -52,8 +48,6 @@ function renderShell(overrides = {}, shellProps: { disableEdgeSwipe?: boolean } 
     sidebarWidth: 340,
     sidebarMinWidth: 240,
     sidebarMaxWidth: 440,
-    settingsOpen: false,
-    setSettingsOpen: vi.fn(),
     shellStyle: {},
     layoutGridClass:
       'grid h-full grid-cols-[1fr] grid-rows-[minmax(0,1fr)] md:[grid-template-columns:48px_var(--sidebar-width)_6px_1fr]',
@@ -155,7 +149,7 @@ describe('AppShell', () => {
     expect(activeLink.className).toContain('text-primary')
     expect(activeLink.className).not.toContain('bg-primary')
     expect(activeLink.className).not.toContain('ring-primary')
-    expect(activeLink.className).toContain('min-h-10')
+    expect(activeLink.className).toContain('min-h-11')
     expect(activeIcon?.getAttribute('class')).not.toContain('text-primary-text-bright')
     expect(activeIcon?.getAttribute('class')).toContain('size-4')
 
