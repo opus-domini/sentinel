@@ -26,6 +26,7 @@ locale = "pt-BR"
 
 [health_report]
 webhook_url = "https://hooks.example.test/private-secret"
+schedule = "0 * * * *"
 `
 	service, runtime := newTestSettings(t, &content)
 	h, _ := newTestHandler(t, nil)
@@ -69,8 +70,13 @@ webhook_url = "https://hooks.example.test/private-secret"
 			body.Data.Integrations.MCP.Enabled.ApplyMode,
 		)
 	}
-	if !body.Data.Integrations.MCP.TokenConfigured {
+	if !body.Data.Integrations.MCP.Token.Configured ||
+		!body.Data.Integrations.MCP.RuntimeTokenConfigured {
 		t.Fatal("configured shared token was not reported")
+	}
+	if !body.Data.Integrations.HealthReport.WebhookURL.Configured ||
+		body.Data.Integrations.HealthReport.NextActivation == "" {
+		t.Fatalf("health report = %+v", body.Data.Integrations.HealthReport)
 	}
 	if strings.Contains(rec.Body.String(), "shared-secret") ||
 		strings.Contains(rec.Body.String(), "private-secret") ||
@@ -349,7 +355,7 @@ func TestSettingsOperationsPatchPersistsTypedDraftAndRejectsRanges(t *testing.T)
 	}
 }
 
-func TestSettingsMCPRequiresBaselineTokenAndChangesLive(t *testing.T) {
+func TestSettingsMCPRequiresTokenAndUsesRuntimeCapability(t *testing.T) {
 	t.Run("missing token", func(t *testing.T) {
 		service, runtime := newTestSettings(t, nil)
 		h, _ := newTestHandler(t, nil)
@@ -362,8 +368,8 @@ func TestSettingsMCPRequiresBaselineTokenAndChangesLive(t *testing.T) {
 			getSettingsETag(t, h),
 			`{"integrations":{"mcp":{"enabled":true}}}`,
 		)
-		if rec.Code != http.StatusConflict ||
-			!strings.Contains(rec.Body.String(), "MCP_TOKEN_REQUIRED") {
+		if rec.Code != http.StatusUnprocessableEntity ||
+			!strings.Contains(rec.Body.String(), "mcp.enabled requires server.token") {
 			t.Fatalf("MCP without token = %d %s", rec.Code, rec.Body.String())
 		}
 		if _, err := os.Stat(service.Path()); !errors.Is(err, os.ErrNotExist) {
@@ -394,6 +400,239 @@ func TestSettingsMCPRequiresBaselineTokenAndChangesLive(t *testing.T) {
 			t.Fatal("MCP response leaked token")
 		}
 	})
+
+	t.Run("new token waits for restart", func(t *testing.T) {
+		service, runtime := newTestSettings(t, nil)
+		h, _ := newTestHandler(t, nil)
+		h.configService = service
+		h.settings = runtime
+
+		rec := patchSettingsRequestWithETag(
+			t,
+			h,
+			getSettingsETag(t, h),
+			`{"integrations":{"mcp":{"enabled":true,"token":{"action":"replace","value":"new-private-token"}}}}`,
+		)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("MCP token replace = %d %s", rec.Code, rec.Body.String())
+		}
+		var body settingsEnvelope
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		mcp := body.Data.Integrations.MCP
+		if runtime.Enabled() ||
+			mcp.RuntimeTokenConfigured ||
+			!mcp.Token.Configured ||
+			!mcp.Token.RestartPending ||
+			mcp.Enabled.ApplyMode != config.ApplyModeRestart ||
+			!mcp.Enabled.RestartPending {
+			t.Fatalf("MCP deferred state = %+v runtime=%t", mcp, runtime.Enabled())
+		}
+		if strings.Contains(rec.Body.String(), "new-private-token") {
+			t.Fatal("MCP response leaked replacement token")
+		}
+	})
+}
+
+func TestSettingsIntegrationSecretLifecycleIsWriteOnly(t *testing.T) {
+	service, runtime := newTestSettings(t, nil)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+
+	const (
+		tokenSecret   = "mcp-write-only-secret"
+		webhookSecret = "webhook-write-only-secret"
+		webhookURL    = "https://hooks.example.test/private?token=" + webhookSecret
+	)
+	replace := patchSettingsRequestWithETag(
+		t,
+		h,
+		getSettingsETag(t, h),
+		`{"integrations":{"mcp":{"enabled":true,"token":{"action":"replace","value":"`+tokenSecret+`"}},"healthReport":{"schedule":"*/15 * * * *","webhookUrl":{"action":"replace","value":"`+webhookURL+`"}}}}`,
+	)
+	if replace.Code != http.StatusOK {
+		t.Fatalf("replace integrations = %d %s", replace.Code, replace.Body.String())
+	}
+	var replaced settingsEnvelope
+	if err := json.Unmarshal(replace.Body.Bytes(), &replaced); err != nil {
+		t.Fatal(err)
+	}
+	if !replaced.Data.Integrations.MCP.Token.Configured ||
+		!replaced.Data.Integrations.HealthReport.WebhookURL.Configured ||
+		replaced.Data.Integrations.HealthReport.NextActivation == "" {
+		t.Fatalf("replace state = %+v", replaced.Data.Integrations)
+	}
+	assertSettingsBodySecretSafe(t, replace.Body.String(), tokenSecret, webhookSecret, webhookURL)
+
+	get := httptest.NewRecorder()
+	h.getSettings(get, httptest.NewRequest(http.MethodGet, "/api/ops/settings", nil))
+	if get.Code != http.StatusOK {
+		t.Fatalf("GET after replace = %d %s", get.Code, get.Body.String())
+	}
+	assertSettingsBodySecretSafe(t, get.Body.String(), tokenSecret, webhookSecret, webhookURL)
+
+	persisted, err := os.ReadFile(service.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(persisted), tokenSecret) || !strings.Contains(string(persisted), webhookSecret) {
+		t.Fatal("replacement secrets were not persisted")
+	}
+
+	clearResponse := patchSettingsRequestWithETag(
+		t,
+		h,
+		quoteETag(replaced.Data.Revision),
+		`{"integrations":{"mcp":{"enabled":false,"token":{"action":"clear"}},"healthReport":{"schedule":"","webhookUrl":{"action":"clear"}}}}`,
+	)
+	if clearResponse.Code != http.StatusOK {
+		t.Fatalf("clear integrations = %d %s", clearResponse.Code, clearResponse.Body.String())
+	}
+	var cleared settingsEnvelope
+	if err := json.Unmarshal(clearResponse.Body.Bytes(), &cleared); err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Data.Integrations.MCP.Token.Configured ||
+		cleared.Data.Integrations.HealthReport.WebhookURL.Configured ||
+		cleared.Data.Integrations.HealthReport.NextActivation != "" {
+		t.Fatalf("clear state = %+v", cleared.Data.Integrations)
+	}
+	assertSettingsBodySecretSafe(t, clearResponse.Body.String(), tokenSecret, webhookSecret, webhookURL)
+
+	keep := patchSettingsRequestWithETag(
+		t,
+		h,
+		quoteETag(cleared.Data.Revision),
+		`{"integrations":{"mcp":{"token":{"action":"keep"}},"healthReport":{"webhookUrl":{"action":"keep"}}}}`,
+	)
+	if keep.Code != http.StatusOK {
+		t.Fatalf("keep integrations = %d %s", keep.Code, keep.Body.String())
+	}
+	var kept settingsEnvelope
+	if err := json.Unmarshal(keep.Body.Bytes(), &kept); err != nil {
+		t.Fatal(err)
+	}
+	if kept.Data.Revision != cleared.Data.Revision {
+		t.Fatalf("keep revision = %q, want %q", kept.Data.Revision, cleared.Data.Revision)
+	}
+}
+
+func TestSettingsIntegrationValidationDoesNotWriteOrEchoSecrets(t *testing.T) {
+	content := "[health_report]\nschedule = \"0 * * * *\"\n"
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		want       string
+		forbidden  string
+	}{
+		{
+			name:       "unknown action",
+			body:       `{"integrations":{"mcp":{"token":{"action":"reveal","value":"must-not-echo"}}}}`,
+			statusCode: http.StatusBadRequest,
+			want:       "action must be keep, replace, or clear",
+			forbidden:  "must-not-echo",
+		},
+		{
+			name:       "invalid cron",
+			body:       `{"integrations":{"healthReport":{"schedule":"not a cron"}}}`,
+			statusCode: http.StatusUnprocessableEntity,
+			want:       "health_report.schedule",
+		},
+		{
+			name:       "invalid webhook",
+			body:       `{"integrations":{"healthReport":{"webhookUrl":{"action":"replace","value":"https://user:private@example.test/hook#secret-fragment"}}}}`,
+			statusCode: http.StatusUnprocessableEntity,
+			want:       "health_report.webhook_url",
+			forbidden:  "secret-fragment",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			before, err := os.ReadFile(service.Path())
+			if err != nil {
+				t.Fatal(err)
+			}
+			revision := getSettingsETag(t, h)
+			rec := patchSettingsRequestWithETag(t, h, revision, test.body)
+			if rec.Code != test.statusCode || !strings.Contains(rec.Body.String(), test.want) {
+				t.Fatalf("invalid integration = %d %s", rec.Code, rec.Body.String())
+			}
+			if test.forbidden != "" && strings.Contains(rec.Body.String(), test.forbidden) {
+				t.Fatalf("validation response echoed secret: %s", rec.Body.String())
+			}
+			after, err := os.ReadFile(service.Path())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) || getSettingsETag(t, h) != revision {
+				t.Fatal("invalid integration changed file or revision")
+			}
+		})
+	}
+}
+
+func TestSettingsIntegrationSecretsOwnedByEnvironmentAreReadOnly(t *testing.T) {
+	t.Setenv("SENTINEL_SERVER_TOKEN", "environment-token-secret")
+	t.Setenv(
+		"SENTINEL_HEALTH_REPORT_WEBHOOK_URL",
+		"https://hooks.example.test/environment-webhook-secret",
+	)
+	service, runtime := newTestSettings(t, nil)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+
+	rec := httptest.NewRecorder()
+	h.getSettings(rec, httptest.NewRequest(http.MethodGet, "/api/ops/settings", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET = %d %s", rec.Code, rec.Body.String())
+	}
+	var body settingsEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Data.Integrations.MCP.Token.Source != config.FieldSourceEnvironment ||
+		body.Data.Integrations.MCP.Token.Editable ||
+		body.Data.Integrations.HealthReport.WebhookURL.Source != config.FieldSourceEnvironment ||
+		body.Data.Integrations.HealthReport.WebhookURL.Editable {
+		t.Fatalf("environment secret metadata = %+v", body.Data.Integrations)
+	}
+	assertSettingsBodySecretSafe(
+		t,
+		rec.Body.String(),
+		"environment-token-secret",
+		"environment-webhook-secret",
+	)
+
+	for _, test := range []struct {
+		field string
+		body  string
+	}{
+		{
+			field: config.FieldServerToken,
+			body:  `{"integrations":{"mcp":{"token":{"action":"replace","value":"tampered-token"}}}}`,
+		},
+		{
+			field: config.FieldHealthReportWebhookURL,
+			body:  `{"integrations":{"healthReport":{"webhookUrl":{"action":"clear"}}}}`,
+		},
+	} {
+		rec := patchSettingsRequestWithETag(t, h, getSettingsETag(t, h), test.body)
+		if rec.Code != http.StatusConflict ||
+			!strings.Contains(rec.Body.String(), "ENVIRONMENT_OWNED") ||
+			!strings.Contains(rec.Body.String(), test.field) {
+			t.Fatalf("environment-owned %s = %d %s", test.field, rec.Code, rec.Body.String())
+		}
+		assertSettingsBodySecretSafe(t, rec.Body.String(), "tampered-token")
+	}
 }
 
 func TestSettingsPatchMapsLockAndRollsBackLiveFailure(t *testing.T) {
@@ -510,6 +749,15 @@ func patchSettingsRequestWithETag(
 	req.Header.Set("Content-Type", "application/json")
 	h.patchSettings(rec, req)
 	return rec
+}
+
+func assertSettingsBodySecretSafe(t *testing.T, body string, secrets ...string) {
+	t.Helper()
+	for _, secret := range secrets {
+		if secret != "" && strings.Contains(body, secret) {
+			t.Fatalf("settings response exposed secret %q: %s", secret, body)
+		}
+	}
 }
 
 func slicesContain(values []string, target string) bool {

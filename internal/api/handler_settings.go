@@ -13,11 +13,18 @@ import (
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
 	"github.com/opus-domini/sentinel/internal/humanize"
+	"github.com/opus-domini/sentinel/internal/validate"
 )
 
 const settingsDeploymentStandalone = "standalone"
 
-var errMCPTokenRequired = errors.New("server.token must be available at process startup before MCP can be enabled")
+const (
+	secretActionKeep    = "keep"
+	secretActionReplace = "replace"
+	secretActionClear   = "clear"
+)
+
+var errInvalidSettingsRequest = errors.New("invalid settings request")
 
 type deploymentDetector func() ([]daemon.Deployment, error)
 
@@ -80,13 +87,21 @@ type settingsLog struct {
 }
 
 type settingsIntegrations struct {
-	MCP settingsMCP `json:"mcp"`
+	MCP          settingsMCP          `json:"mcp"`
+	HealthReport settingsHealthReport `json:"healthReport"`
 }
 
 type settingsMCP struct {
-	Enabled         boolSetting `json:"enabled"`
-	TokenConfigured bool        `json:"tokenConfigured"`
-	Endpoint        string      `json:"endpoint"`
+	Enabled                boolSetting      `json:"enabled"`
+	Token                  sensitiveSetting `json:"token"`
+	RuntimeTokenConfigured bool             `json:"runtimeTokenConfigured"`
+	Endpoint               string           `json:"endpoint"`
+}
+
+type settingsHealthReport struct {
+	Schedule       stringSetting    `json:"schedule"`
+	WebhookURL     sensitiveSetting `json:"webhookUrl"`
+	NextActivation string           `json:"nextActivation,omitempty"`
 }
 
 type settingsDiagnostics struct {
@@ -154,6 +169,20 @@ type integerSetting struct {
 	Validation     integerValidation  `json:"validation"`
 }
 
+type sensitiveValidation struct {
+	Required bool   `json:"required"`
+	Format   string `json:"format,omitempty"`
+}
+
+type sensitiveSetting struct {
+	Configured     bool                `json:"configured"`
+	Source         config.FieldSource  `json:"source"`
+	Editable       bool                `json:"editable"`
+	ApplyMode      config.ApplyMode    `json:"applyMode"`
+	RestartPending bool                `json:"restartPending"`
+	Validation     sensitiveValidation `json:"validation"`
+}
+
 type patchSettingsRequest struct {
 	Experience   *patchExperience   `json:"experience,omitempty"`
 	Operations   *patchOperations   `json:"operations,omitempty"`
@@ -188,11 +217,23 @@ type patchLog struct {
 }
 
 type patchIntegrations struct {
-	MCP *patchMCP `json:"mcp,omitempty"`
+	MCP          *patchMCP          `json:"mcp,omitempty"`
+	HealthReport *patchHealthReport `json:"healthReport,omitempty"`
 }
 
 type patchMCP struct {
-	Enabled *bool `json:"enabled,omitempty"`
+	Enabled *bool                `json:"enabled,omitempty"`
+	Token   *patchSecretMutation `json:"token,omitempty"`
+}
+
+type patchHealthReport struct {
+	Schedule   *string              `json:"schedule,omitempty"`
+	WebhookURL *patchSecretMutation `json:"webhookUrl,omitempty"`
+}
+
+type patchSecretMutation struct {
+	Action string `json:"action"`
+	Value  string `json:"value,omitempty"`
 }
 
 func (h *Handler) getSettings(w http.ResponseWriter, _ *http.Request) {
@@ -247,8 +288,11 @@ func (h *Handler) patchSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) settingsMutation(req patchSettingsRequest) ([]string, func(*config.Config) error, error) {
+	if err := validateIntegrationSecretMutations(req.Integrations); err != nil {
+		return nil, nil, err
+	}
 	keys := settingsChangedKeys(req)
-	if len(keys) == 0 {
+	if len(keys) == 0 && !hasExplicitSecretKeep(req.Integrations) {
 		return nil, nil, errors.New("at least one supported settings field is required")
 	}
 
@@ -315,10 +359,27 @@ func operationsSettingsKeys(req *patchOperations) []string {
 }
 
 func integrationSettingsKeys(req *patchIntegrations) []string {
-	if req == nil || req.MCP == nil || req.MCP.Enabled == nil {
+	if req == nil {
 		return nil
 	}
-	return []string{config.FieldMCPEnabled}
+	var keys []string
+	if req.MCP != nil {
+		if req.MCP.Enabled != nil {
+			keys = append(keys, config.FieldMCPEnabled)
+		}
+		if secretMutationChangesValue(req.MCP.Token) {
+			keys = append(keys, config.FieldServerToken)
+		}
+	}
+	if req.HealthReport != nil {
+		if req.HealthReport.Schedule != nil {
+			keys = append(keys, config.FieldHealthReportSchedule)
+		}
+		if secretMutationChangesValue(req.HealthReport.WebhookURL) {
+			keys = append(keys, config.FieldHealthReportWebhookURL)
+		}
+	}
+	return keys
 }
 
 func (h *Handler) applyExperienceSettings(candidate *config.Config, req *patchExperience) error {
@@ -385,15 +446,82 @@ func (h *Handler) applyWatchtowerSettings(candidate *config.Config, req *patchWa
 }
 
 func (h *Handler) applyIntegrationSettings(candidate *config.Config, req *patchIntegrations) error {
-	if req == nil || req.MCP == nil || req.MCP.Enabled == nil {
+	if req == nil {
 		return nil
 	}
-	enabled := *req.MCP.Enabled
-	if enabled && !h.settings.TokenConfigured() {
-		return errMCPTokenRequired
+	if req.MCP != nil {
+		if req.MCP.Enabled != nil {
+			candidate.MCP.Enabled = *req.MCP.Enabled
+		}
+		applySecretMutation(&candidate.Server.Token, req.MCP.Token)
 	}
-	candidate.MCP.Enabled = enabled
+	if req.HealthReport != nil {
+		if req.HealthReport.Schedule != nil {
+			candidate.HealthReport.Schedule = strings.TrimSpace(*req.HealthReport.Schedule)
+		}
+		applySecretMutation(&candidate.HealthReport.WebhookURL, req.HealthReport.WebhookURL)
+	}
 	return nil
+}
+
+func validateIntegrationSecretMutations(req *patchIntegrations) error {
+	if req == nil {
+		return nil
+	}
+	if req.MCP != nil {
+		if err := validateSecretMutation("integrations.mcp.token", req.MCP.Token); err != nil {
+			return err
+		}
+	}
+	if req.HealthReport != nil {
+		if err := validateSecretMutation("integrations.healthReport.webhookUrl", req.HealthReport.WebhookURL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSecretMutation(field string, mutation *patchSecretMutation) error {
+	if mutation == nil {
+		return nil
+	}
+	switch mutation.Action {
+	case secretActionKeep, secretActionClear:
+		if mutation.Value != "" {
+			return fmt.Errorf("%w: %s does not accept a value for action %q", errInvalidSettingsRequest, field, mutation.Action)
+		}
+	case secretActionReplace:
+		if strings.TrimSpace(mutation.Value) == "" {
+			return fmt.Errorf("%w: %s requires a non-empty replacement", errInvalidSettingsRequest, field)
+		}
+	default:
+		return fmt.Errorf("%w: %s action must be keep, replace, or clear", errInvalidSettingsRequest, field)
+	}
+	return nil
+}
+
+func secretMutationChangesValue(mutation *patchSecretMutation) bool {
+	return mutation != nil && (mutation.Action == secretActionReplace || mutation.Action == secretActionClear)
+}
+
+func hasExplicitSecretKeep(req *patchIntegrations) bool {
+	if req == nil {
+		return false
+	}
+	return req.MCP != nil && req.MCP.Token != nil && req.MCP.Token.Action == secretActionKeep ||
+		req.HealthReport != nil && req.HealthReport.WebhookURL != nil && req.HealthReport.WebhookURL.Action == secretActionKeep
+}
+
+func applySecretMutation(target *string, mutation *patchSecretMutation) {
+	if mutation == nil {
+		return
+	}
+	switch mutation.Action {
+	case secretActionReplace:
+		*target = strings.TrimSpace(mutation.Value)
+	case secretActionClear:
+		*target = ""
+	}
 }
 
 func (h *Handler) settingsResponse(state config.State) settingsResponse {
@@ -426,7 +554,10 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 	watchtowerJournalField, _ := state.Field(config.FieldWatchtowerJournalRows)
 	runbooksConcurrentField, _ := state.Field(config.FieldRunbooksMaxConcurrent)
 	logLevelField, _ := state.Field(config.FieldLogLevel)
+	serverTokenField, _ := state.Field(config.FieldServerToken)
 	mcpField, _ := state.Field(config.FieldMCPEnabled)
+	healthReportScheduleField, _ := state.Field(config.FieldHealthReportSchedule)
+	healthReportWebhookField, _ := state.Field(config.FieldHealthReportWebhookURL)
 	return settingsResponse{
 		Revision:   state.Revision,
 		Metadata:   settingsMetadata{Version: h.settingsVersion()},
@@ -548,8 +679,29 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 					state.Effective.MCP.Enabled,
 					state.Default.MCP.Enabled,
 				),
-				TokenConfigured: h.settings.TokenConfigured(),
-				Endpoint:        "/mcp",
+				Token:                  buildSensitiveSetting(serverTokenField, ""),
+				RuntimeTokenConfigured: h.settings.TokenConfigured(),
+				Endpoint:               "/mcp",
+			},
+			HealthReport: settingsHealthReport{
+				Schedule: buildStringSetting(
+					healthReportScheduleField,
+					state.Persisted.HealthReport.Schedule,
+					state.Effective.HealthReport.Schedule,
+					state.Default.HealthReport.Schedule,
+					stringValidation{
+						Required:    false,
+						Format:      "cron",
+						AllowCustom: true,
+						Options:     []settingOption{},
+					},
+				),
+				WebhookURL: buildSensitiveSetting(healthReportWebhookField, "url"),
+				NextActivation: nextHealthReportActivation(
+					state.Effective.HealthReport.Schedule,
+					state.Effective.Server.Timezone,
+					healthReportWebhookField.Configured,
+				),
 			},
 		},
 		Diagnostics: settingsDiagnostics{
@@ -684,6 +836,20 @@ func buildIntegerSetting(
 	return setting
 }
 
+func buildSensitiveSetting(field config.FieldState, format string) sensitiveSetting {
+	return sensitiveSetting{
+		Configured:     field.Configured,
+		Source:         field.Source,
+		Editable:       field.Editable,
+		ApplyMode:      field.ApplyMode,
+		RestartPending: field.RestartPending,
+		Validation: sensitiveValidation{
+			Required: false,
+			Format:   format,
+		},
+	}
+}
+
 func parseSettingsDuration(key, raw, path string) (time.Duration, error) {
 	value, err := time.ParseDuration(strings.TrimSpace(raw))
 	if err != nil || value <= 0 {
@@ -693,6 +859,22 @@ func parseSettingsDuration(key, raw, path string) (time.Duration, error) {
 		}
 	}
 	return value, nil
+}
+
+func nextHealthReportActivation(schedule, timezone string, webhookConfigured bool) string {
+	schedule = strings.TrimSpace(schedule)
+	if schedule == "" || !webhookConfigured {
+		return ""
+	}
+	parsed, err := validate.ParseCron(schedule)
+	if err != nil {
+		return ""
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		location = time.UTC
+	}
+	return parsed.Next(time.Now().In(location)).Format(time.RFC3339)
 }
 
 func (h *Handler) settingsVersion() string {
@@ -738,8 +920,8 @@ func writeSettingsError(w http.ResponseWriter, err error) {
 		)
 	case errors.Is(err, config.ErrConfigLocked):
 		writeError(w, http.StatusLocked, "CONFIG_LOCKED", "settings are being updated by another process", nil)
-	case errors.Is(err, errMCPTokenRequired):
-		writeError(w, http.StatusConflict, "MCP_TOKEN_REQUIRED", "configure server.token and restart Sentinel before enabling MCP", nil)
+	case errors.Is(err, errInvalidSettingsRequest):
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 	default:
 		if issues := config.ValidationIssues(err); len(issues) > 0 {
 			writeError(

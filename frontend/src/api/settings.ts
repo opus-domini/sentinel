@@ -55,6 +55,23 @@ export type IntegerSetting = {
   }
 }
 
+export type SensitiveSetting = {
+  configured: boolean
+  source: SettingSource
+  editable: boolean
+  applyMode: SettingApplyMode
+  restartPending: boolean
+  validation: {
+    required: boolean
+    format?: string
+  }
+}
+
+export type SecretMutation =
+  | { action: 'keep' }
+  | { action: 'replace'; value: string }
+  | { action: 'clear' }
+
 export type SettingsResponse = {
   revision: string
   metadata: {
@@ -94,8 +111,14 @@ export type SettingsResponse = {
   integrations: {
     mcp: {
       enabled: BooleanSetting
-      tokenConfigured: boolean
+      token: SensitiveSetting
+      runtimeTokenConfigured: boolean
       endpoint: string
+    }
+    healthReport: {
+      schedule: StringSetting
+      webhookUrl: SensitiveSetting
+      nextActivation?: string
     }
   }
   diagnostics: {
@@ -129,6 +152,11 @@ export type SettingsPatch = {
   integrations?: {
     mcp?: {
       enabled?: boolean
+      token?: SecretMutation
+    }
+    healthReport?: {
+      schedule?: string
+      webhookUrl?: SecretMutation
     }
   }
 }

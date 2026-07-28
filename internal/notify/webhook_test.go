@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -134,5 +135,23 @@ func TestSendJSONContextTimeout(t *testing.T) {
 	err := n.SendJSON(ctx, map[string]any{"ok": true})
 	if err == nil {
 		t.Error("expected error on context timeout")
+	}
+}
+
+func TestSendJSONDoesNotExposeWebhookURLInErrors(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	webhookURL := srv.URL + "/private-path?token=webhook-secret"
+	srv.Close()
+
+	err := New(webhookURL).SendJSON(context.Background(), map[string]any{"ok": true})
+	if err == nil {
+		t.Fatal("expected delivery error")
+	}
+	if strings.Contains(err.Error(), webhookURL) ||
+		strings.Contains(err.Error(), "private-path") ||
+		strings.Contains(err.Error(), "webhook-secret") {
+		t.Fatalf("delivery error exposed webhook URL: %v", err)
 	}
 }

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/opus-domini/sentinel/internal/config"
@@ -42,7 +41,7 @@ func TestSettingsRuntimeAppliesSharedLiveFields(t *testing.T) {
 	}
 }
 
-func TestSettingsRuntimeRejectsMCPEnableWithoutStartupToken(t *testing.T) {
+func TestSettingsRuntimeDefersMCPEnableWithoutStartupToken(t *testing.T) {
 	before := config.Default()
 	runtime := newSettingsRuntime()
 	runtime.initialize(before)
@@ -56,10 +55,13 @@ func TestSettingsRuntimeRejectsMCPEnableWithoutStartupToken(t *testing.T) {
 		after,
 		[]string{config.FieldServerToken, config.FieldMCPEnabled},
 	)
-	if !errors.Is(err, errMCPRuntimeTokenRequired) {
-		t.Fatalf("ApplyConfig() error = %v, want startup token requirement", err)
+	if err != nil {
+		t.Fatalf("ApplyConfig() error = %v", err)
 	}
 	if runtime.Enabled() {
 		t.Fatal("runtime enabled MCP without a startup token")
+	}
+	if runtime.TokenConfigured() {
+		t.Fatal("runtime adopted a token that requires restart")
 	}
 }

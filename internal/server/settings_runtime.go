@@ -10,8 +10,6 @@ import (
 	"github.com/opus-domini/sentinel/internal/config"
 )
 
-var errMCPRuntimeTokenRequired = errors.New("server.token was not available at process startup")
-
 // settingsRuntime is the live settings adapter shared by metadata, Settings,
 // and MCP. Fields not handled here remain restart-only.
 type settingsRuntime struct {
@@ -50,11 +48,6 @@ func (s *settingsRuntime) ApplyConfig(
 		return errors.New("live settings state is not initialized")
 	}
 
-	if slices.Contains(keys, config.FieldMCPEnabled) &&
-		after.MCP.Enabled &&
-		!s.tokenConfigured {
-		return errMCPRuntimeTokenRequired
-	}
 	if slices.Contains(keys, config.FieldServerTimezone) {
 		s.timezone = after.Server.Timezone
 	}
@@ -62,7 +55,9 @@ func (s *settingsRuntime) ApplyConfig(
 		s.locale = after.Server.Locale
 	}
 	if slices.Contains(keys, config.FieldMCPEnabled) {
-		s.mcpEnabled = after.MCP.Enabled
+		if !after.MCP.Enabled || s.tokenConfigured {
+			s.mcpEnabled = after.MCP.Enabled
+		}
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type {
   BooleanSetting,
   IntegerSetting,
+  SensitiveSetting,
   SettingApplyMode,
   SettingSource,
   StringSetting,
@@ -11,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 type SettingMetadata = Pick<
-  StringSetting | BooleanSetting | IntegerSetting,
+  StringSetting | BooleanSetting | IntegerSetting | SensitiveSetting,
   'source' | 'applyMode' | 'restartPending'
 >
 
@@ -136,6 +137,15 @@ export function ValidationError({ message, id }: { message: string; id?: string 
       className="rounded-md border border-destructive/45 bg-destructive/10 px-3 py-2 text-[11px] leading-relaxed text-destructive-foreground"
     >
       {message}
+    </p>
+  )
+}
+
+export function EnvironmentOwnership({ setting }: { setting: { editable: boolean } }) {
+  if (setting.editable) return null
+  return (
+    <p className="text-[10px] text-warning-foreground">
+      This value is owned by the environment and cannot be changed here.
     </p>
   )
 }

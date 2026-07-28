@@ -1,20 +1,12 @@
 // @vitest-environment jsdom
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import MCPSettingsPanel from './MCPSettingsPanel'
 import { createSettingsSnapshot } from '@/test/settings'
 
 const mocks = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  patchSettings: vi.fn(),
   writeClipboardText: vi.fn(),
-}))
-
-vi.mock('@/api/settings', () => ({
-  getSettings: mocks.getSettings,
-  patchSettings: mocks.patchSettings,
 }))
 
 vi.mock('@/lib/clipboardProvider', () => ({
@@ -25,32 +17,22 @@ describe('MCPSettingsPanel', () => {
   afterEach(cleanup)
 
   beforeEach(() => {
-    mocks.getSettings.mockReset()
-    mocks.patchSettings.mockReset()
     mocks.writeClipboardText.mockReset()
-    mocks.getSettings.mockResolvedValue(createSettingsSnapshot())
-    mocks.patchSettings.mockResolvedValue(createSettingsSnapshot({ mcpEnabled: true }))
     mocks.writeClipboardText.mockResolvedValue(true)
   })
 
-  it('shows client hints and enables the live endpoint through the unified API', async () => {
-    renderPanel('Azdrix.LAN')
+  it('shows client hints and exposes the desired enabled state', () => {
+    const onEnabledChange = vi.fn()
+    renderPanel({ hostname: 'Azdrix.LAN', onEnabledChange })
 
-    expect(await screen.findByText('Remote agent access')).toBeTruthy()
+    expect(screen.getByText('Remote agent access')).toBeTruthy()
     expect(screen.getByText(`${window.location.origin}/mcp`)).toBeTruthy()
     expect(screen.getByText(/codex mcp add sentinel-azdrix-lan/).textContent).toContain(
       '--bearer-token-env-var SENTINEL_TOKEN',
     )
 
     fireEvent.click(screen.getByLabelText('Enable MCP'))
-    await waitFor(() =>
-      expect(mocks.patchSettings).toHaveBeenCalledWith(`"${'a'.repeat(64)}"`, {
-        integrations: {
-          mcp: { enabled: true },
-        },
-      }),
-    )
-    expect(await screen.findByText('Available')).toBeTruthy()
+    expect(onEnabledChange).toHaveBeenCalledWith(true)
 
     fireEvent.click(screen.getByRole('button', { name: 'Claude' }))
     expect(screen.getByText(/claude mcp add-json/).textContent).toContain(
@@ -58,18 +40,37 @@ describe('MCPSettingsPanel', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'mcpServers' }))
     expect(screen.getByText(/"mcpServers"/)).toBeTruthy()
-    expect(screen.getByText(/"sentinel-azdrix-lan"/)).toBeTruthy()
   })
 
-  it('blocks enable when server.token is missing', async () => {
-    mocks.getSettings.mockResolvedValue(createSettingsSnapshot({ tokenConfigured: false }))
-    renderPanel('azdrix')
+  it('blocks enable without a configured or staged replacement token', () => {
+    renderPanel({
+      settings: createSettingsSnapshot({
+        tokenConfigured: false,
+        runtimeTokenConfigured: false,
+      }).settings.integrations.mcp,
+    })
 
-    const tokenCode = await screen.findByText('server.token')
-    expect(tokenCode.parentElement?.textContent).toContain(
-      'Configure server.token before enabling MCP',
-    )
-    expect((screen.getByLabelText('Enable MCP') as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByText(/Replace the shared token before enabling MCP/)).toBeTruthy()
+    expect((screen.getByLabelText('Enable MCP') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('allows desired enable with a staged replacement and reports pending restart', () => {
+    const onEnabledChange = vi.fn()
+    renderPanel({
+      settings: createSettingsSnapshot({
+        tokenConfigured: false,
+        runtimeTokenConfigured: false,
+      }).settings.integrations.mcp,
+      enabled: true,
+      tokenIntent: 'replace',
+      tokenValue: 'new-secret',
+      onEnabledChange,
+    })
+
+    expect(screen.getByText('Pending restart')).toBeTruthy()
+    expect(screen.getByText(/started without the saved token/)).toBeTruthy()
+    expect((screen.getByLabelText('Enable MCP') as HTMLButtonElement).disabled).toBe(false)
+    expect(document.body.textContent).not.toContain('new-secret')
   })
 
   it('confirms clipboard success only after the write resolves', async () => {
@@ -79,8 +80,7 @@ describe('MCPSettingsPanel', () => {
         resolveClipboard = resolve
       }),
     )
-    renderPanel('azdrix')
-    await screen.findByText('Remote agent access')
+    renderPanel()
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0])
     expect(screen.queryByText('Copied')).toBeNull()
@@ -88,10 +88,9 @@ describe('MCPSettingsPanel', () => {
     expect(await screen.findByText('Copied')).toBeTruthy()
   })
 
-  it('reports clipboard denial without showing false success', async () => {
+  it('reports clipboard denial without false success', async () => {
     mocks.writeClipboardText.mockResolvedValue(false)
-    renderPanel('azdrix')
-    await screen.findByText('Remote agent access')
+    renderPanel()
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0])
     expect(await screen.findByText(/Clipboard permission was denied/)).toBeTruthy()
@@ -99,13 +98,20 @@ describe('MCPSettingsPanel', () => {
   })
 })
 
-function renderPanel(hostname: string) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
+function renderPanel(overrides: Partial<React.ComponentProps<typeof MCPSettingsPanel>> = {}) {
+  const settings = createSettingsSnapshot().settings.integrations.mcp
   return render(
-    <QueryClientProvider client={queryClient}>
-      <MCPSettingsPanel hostname={hostname} />
-    </QueryClientProvider>,
+    <MCPSettingsPanel
+      hostname="azdrix"
+      settings={settings}
+      enabled={false}
+      tokenIntent="keep"
+      tokenValue=""
+      saving={false}
+      onEnabledChange={vi.fn()}
+      onTokenIntentChange={vi.fn()}
+      onTokenValueChange={vi.fn()}
+      {...overrides}
+    />,
   )
 }

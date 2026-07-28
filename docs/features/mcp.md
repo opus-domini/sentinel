@@ -21,9 +21,17 @@ token = "strong-secret"
 enabled = true
 ```
 
-The same setting is available in **Settings > MCP** and through
-`SENTINEL_MCP_ENABLED=true`. The settings screen shows the effective endpoint
-and ready-to-copy client configurations.
+The same setting is available in **Settings > Integrations > MCP** and through
+`SENTINEL_MCP_ENABLED=true`. The settings screen shows the endpoint, runtime
+availability, shared-token configured state, and ready-to-copy client
+configurations.
+
+The shared token is write-only in Settings. Existing values are never
+displayed. Choose Keep, Replace, or Clear; a replacement is removed from the
+browser form immediately after submit and becomes active only after restart.
+If the process started without a token, saving a replacement together with MCP
+enablement produces `Pending restart` instead of claiming the endpoint is
+already available. MCP disable remains live.
 
 Every MCP request must send:
 

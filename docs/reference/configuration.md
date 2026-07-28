@@ -157,7 +157,7 @@ user_switch_method = "systemd-run"
 Invalid environment overrides fail configuration loading. They are never
 silently ignored in favor of the file or a default.
 
-## Operational limits
+## Settings validation limits
 
 Settings exposes the same constraints enforced by startup, CLI validation, and
 the typed PATCH endpoint:
@@ -171,15 +171,45 @@ the typed PATCH endpoint:
 | `watchtower.journal_rows` | `100` through `1,000,000` |
 | `runbooks.max_concurrent` | `1` through `64` |
 | `log.level` | `debug`, `info`, `warn`, or `error` |
+| `health_report.schedule` | empty, a valid five-field cron, or supported `@descriptor` |
+| `health_report.webhook_url` | empty or absolute HTTP(S), with host and no userinfo or fragment |
 
 These values are restart-based. Saving updates `config.toml` atomically and
 marks the changed keys as restart pending; it does not partially reload
-Watchtower, the Runbook manager, or the logger. Environment-owned fields remain
-read-only and a forged PATCH is rejected.
+Watchtower, the Runbook manager, the logger, or the health-report scheduler.
+Environment-owned fields remain read-only and a forged PATCH is rejected.
 
 Managed systemd and launchd definitions do not set `SENTINEL_LOG_LEVEL`.
 Therefore an explicit `[log].level` value is no longer shadowed by the service
 template.
+
+## Write-only secrets and integrations
+
+Settings represents `server.token` and `health_report.webhook_url` with
+non-secret metadata only: configured state, source, editability, apply mode,
+and restart state. GET responses never include persisted, effective, or
+default secret values.
+
+PATCH uses an explicit action object:
+
+```json
+{ "action": "keep" }
+{ "action": "replace", "value": "<new value>" }
+{ "action": "clear" }
+```
+
+`keep` and `clear` reject an accompanying value. `replace` requires a non-empty
+value. Environment-owned secrets reject all file mutations.
+
+The health-report cron and webhook are restart-based. Sentinel calculates the
+next activation on the server using the same parser used at daemon startup and
+returns it only when both a valid schedule and webhook are configured.
+
+MCP uses `server.token`; there is no separate credential. Disabling MCP applies
+live. Enabling applies live only when the process started with a token. A token
+saved through Settings is persisted write-only, and a simultaneous MCP enable
+is marked restart pending until that token becomes part of the startup
+baseline.
 
 ## Recommended Profiles
 

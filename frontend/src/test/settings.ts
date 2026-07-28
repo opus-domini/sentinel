@@ -1,4 +1,4 @@
-import type { SettingsSnapshot } from '@/api/settings'
+import type { SettingApplyMode, SettingSource, SettingsSnapshot } from '@/api/settings'
 
 type SettingsFixtureOptions = {
   revision?: string
@@ -6,6 +6,20 @@ type SettingsFixtureOptions = {
   locale?: string
   mcpEnabled?: boolean
   tokenConfigured?: boolean
+  runtimeTokenConfigured?: boolean
+  tokenSource?: SettingSource
+  tokenEditable?: boolean
+  tokenRestartPending?: boolean
+  mcpApplyMode?: SettingApplyMode
+  mcpRestartPending?: boolean
+  healthSchedule?: string
+  healthScheduleSource?: SettingSource
+  healthScheduleEditable?: boolean
+  webhookConfigured?: boolean
+  webhookSource?: SettingSource
+  webhookEditable?: boolean
+  webhookRestartPending?: boolean
+  nextActivation?: string
   operations?: Partial<{
     watchtowerEnabled: boolean
     tickInterval: string
@@ -23,6 +37,7 @@ export function createSettingsSnapshot(options: SettingsFixtureOptions = {}): Se
   const locale = options.locale ?? 'en-US'
   const mcpEnabled = options.mcpEnabled ?? false
   const tokenConfigured = options.tokenConfigured ?? true
+  const runtimeTokenConfigured = options.runtimeTokenConfigured ?? tokenConfigured
   return {
     etag: `"${revision}"`,
     settings: {
@@ -197,14 +212,52 @@ export function createSettingsSnapshot(options: SettingsFixtureOptions = {}): Se
             defaultValue: false,
             source: 'file',
             editable: true,
-            applyMode: 'live',
-            restartPending: false,
+            applyMode: options.mcpApplyMode ?? 'live',
+            restartPending: options.mcpRestartPending ?? false,
             validation: {
               required: true,
             },
           },
-          tokenConfigured,
+          token: {
+            configured: tokenConfigured,
+            source: options.tokenSource ?? 'file',
+            editable: options.tokenEditable ?? true,
+            applyMode: 'restart',
+            restartPending: options.tokenRestartPending ?? false,
+            validation: {
+              required: false,
+            },
+          },
+          runtimeTokenConfigured,
           endpoint: '/mcp',
+        },
+        healthReport: {
+          schedule: {
+            effectiveValue: options.healthSchedule ?? '',
+            defaultValue: '',
+            source: options.healthScheduleSource ?? 'file',
+            editable: options.healthScheduleEditable ?? true,
+            applyMode: 'restart',
+            restartPending: false,
+            validation: {
+              required: false,
+              format: 'cron',
+              allowCustom: true,
+              options: [],
+            },
+          },
+          webhookUrl: {
+            configured: options.webhookConfigured ?? false,
+            source: options.webhookSource ?? 'file',
+            editable: options.webhookEditable ?? true,
+            applyMode: 'restart',
+            restartPending: options.webhookRestartPending ?? false,
+            validation: {
+              required: false,
+              format: 'url',
+            },
+          },
+          ...(options.nextActivation ? { nextActivation: options.nextActivation } : {}),
         },
       },
       diagnostics: {

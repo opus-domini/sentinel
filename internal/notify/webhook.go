@@ -3,6 +3,7 @@ package notify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -57,7 +58,7 @@ func (n *Notifier) SendJSON(ctx context.Context, payload any) error {
 	}).
 		Send()
 	if err != nil {
-		return fmt.Errorf("webhook delivery failed: %w", err)
+		return errors.New("webhook delivery failed")
 	}
 	defer resp.Body().Close()
 	if resp.Status().IsError() {

@@ -388,7 +388,9 @@ func (s *testSettingsRuntime) ApplyConfig(
 		case config.FieldServerLocale:
 			s.locale = after.Server.Locale
 		case config.FieldMCPEnabled:
-			s.enabled = after.MCP.Enabled
+			if !after.MCP.Enabled || s.tokenConfigured {
+				s.enabled = after.MCP.Enabled
+			}
 		}
 	}
 	return nil

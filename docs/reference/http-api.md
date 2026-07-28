@@ -559,8 +559,11 @@ revision as a quoted `ETag` header. Its current typed groups are:
 - `restart`: pending keys, adjacent backup path, and the manual command or
   supervisor instruction;
 - `experience`: timezone and locale;
-- `integrations.mcp`: endpoint availability and non-secret token-configured
-  state;
+- `operations`: Watchtower, Runbook concurrency, and log level;
+- `integrations.mcp`: desired endpoint state, runtime token capability, and
+  write-only shared-token metadata;
+- `integrations.healthReport`: cron, write-only webhook metadata, and the next
+  server-calculated activation;
 - `diagnostics`: config existence, environment-owned keys, read-only keys, and
   deployment detection result.
 
@@ -568,8 +571,7 @@ Every editable field includes its persisted value when explicitly defined,
 effective and default values, source (`default`, `file`, or `environment`),
 editability, apply mode (`live`, `partial`, or `restart`), restart state, and
 typed validation options. Environment-owned fields are read-only. Token and
-webhook values are never included; this API currently provides no token or
-webhook write action.
+webhook values are never included; their DTOs expose only safe metadata.
 
 `PATCH` accepts only the capabilities currently exposed:
 
@@ -581,11 +583,29 @@ webhook write action.
   },
   "integrations": {
     "mcp": {
-      "enabled": true
+      "enabled": true,
+      "token": {
+        "action": "replace",
+        "value": "<new shared token>"
+      }
+    },
+    "healthReport": {
+      "schedule": "0 9 * * 1-5",
+      "webhookUrl": {
+        "action": "replace",
+        "value": "https://hooks.example.test/sentinel"
+      }
     }
   }
 }
 ```
+
+Secret actions are `keep`, `replace`, and `clear`. `keep` and `clear` contain
+no value; `replace` requires one. Responses, conflicts, validation errors, and
+subsequent GETs never echo the submitted value. MCP enable is applied live only
+when the process started with a token; otherwise the desired state is persisted
+as restart pending. Health-report fields are restart-based, and cron parsing is
+owned by the backend.
 
 Send the exact ETag from the latest GET:
 

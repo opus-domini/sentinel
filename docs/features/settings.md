@@ -15,7 +15,8 @@ The current workspace has five deep-linkable sections:
 - `/settings/experience` — terminal theme, timezone, and date format.
 - `/settings/operations` — Watchtower collection, Runbook concurrency, and
   daemon log level.
-- `/settings/integrations` — MCP availability and connection instructions.
+- `/settings/integrations` — MCP access, shared token lifecycle, and scheduled
+  health-report delivery.
 - `/settings/storage` — a read-only storage overview and a link to maintenance.
 - `/settings/diagnostics` — runtime, deployment, config path, restart state, and
   PWA install/update controls.
@@ -63,6 +64,36 @@ scope. The restart command is displayed and can be copied when the config path
 matches an installed user or system service. Sentinel does not restart itself;
 the running process keeps its startup values until the operator performs the
 manual restart.
+
+## Integrations and write-only secrets
+
+Integrations has two functional groups:
+
+- **MCP** controls the desired endpoint state, the shared `server.token`, and
+  ready-to-copy client snippets.
+- **Health report** controls the delivery cron and write-only webhook URL.
+
+The token and webhook controls never preload an existing value. They expose
+only `Configured` or `Not configured` and three explicit actions:
+
+- `Keep` leaves the saved value unchanged and sends no secret.
+- `Replace` accepts a new value once.
+- `Clear` removes the saved value and sends no secret.
+
+Replacement values are removed from the form as soon as Save is submitted,
+including after validation errors or conflicts. They are not written to the
+Settings response, query cache, toast, clipboard snippet, or browser storage.
+Environment-owned secrets are configured but read-only.
+
+Cron expressions are parsed only by Sentinel. After a valid save, the response
+includes the next activation calculated by the backend; the browser does not
+implement a second cron parser. Both the health-report schedule and webhook
+apply after restart.
+
+MCP disable remains live. MCP enable is live when the running process started
+with a token. When a token is newly replaced, Sentinel persists both the token
+and desired MCP state but keeps the endpoint unavailable until manual restart.
+The UI distinguishes `Available`, `Disabled`, and `Pending restart`.
 
 ## Storage maintenance
 

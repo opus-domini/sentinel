@@ -25,10 +25,19 @@ webhook URL because its path or query may contain a credential.
 
 The Settings HTTP contract follows the same rule. `GET /api/ops/settings`
 returns only non-secret values and `configured` booleans; it never returns raw
-TOML, `server.token`, or a webhook URL. The current PATCH surface can change
-timezone, locale, and MCP availability, but cannot write either secret. Every
-PATCH requires the ETag from the latest GET so a stale browser tab cannot
-silently overwrite a concurrent CLI or browser change.
+TOML, `server.token`, or a webhook URL. PATCH can mutate secrets only through
+explicit `keep`, `replace`, and `clear` actions. `replace` is submitted once and
+removed from the form immediately; `keep` and `clear` carry no value. No secret
+is copied into the Settings response, query cache, toast, connection snippet,
+or browser storage.
+
+Every PATCH requires the ETag from the latest GET so a stale browser tab cannot
+silently overwrite a concurrent CLI or browser change. A conflict refetches
+safe metadata and discards any submitted replacement value instead of trying
+to replay it.
+
+Environment-owned secrets are reported as configured and read-only. A forged
+PATCH is rejected by the canonical config service before any file write.
 
 ## Request Surfaces
 
@@ -81,6 +90,15 @@ when `server.token` is empty.
 There is no separate MCP token, agent principal, role, or scope. MCP also has no
 tool for approving or rejecting a Runbook approval step; that decision remains
 in the authenticated Sentinel UI. See [MCP Control](/features/mcp.md).
+
+Replacing the shared token does not change the credential held by the running
+process. The new value and MCP enablement remain restart pending until Sentinel
+restarts. Clearing the token requires a candidate configuration in which MCP is
+disabled and all remote-exposure rules remain valid.
+
+Health-report webhook failures expose only a delivery category or HTTP status.
+The URL, path, query, userinfo, and fragments are never included in returned
+errors or logs.
 
 ## Origin Validation
 

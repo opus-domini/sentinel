@@ -10,7 +10,13 @@ import {
 } from './operationsDraft'
 import type { OperationsDraft, OperationsDraftErrors, OperationsDraftKey } from './operationsDraft'
 import RestartPendingNotice from './RestartPendingNotice'
-import { SaveFeedback, SettingsField, SettingValueSummary, ValidationError } from './SettingsField'
+import {
+  EnvironmentOwnership,
+  SaveFeedback,
+  SettingsField,
+  SettingValueSummary,
+  ValidationError,
+} from './SettingsField'
 import SettingsSectionHeader from './SettingsSectionHeader'
 import type { BooleanSetting, IntegerSetting, StringSetting } from '@/api/settings'
 import {
@@ -545,18 +551,5 @@ function IntegerField({
       <EnvironmentOwnership setting={setting} />
       <SettingValueSummary setting={setting} />
     </SettingsField>
-  )
-}
-
-function EnvironmentOwnership({
-  setting,
-}: {
-  setting: BooleanSetting | StringSetting | IntegerSetting
-}) {
-  if (setting.editable) return null
-  return (
-    <p className="text-[10px] text-warning-foreground">
-      This value is owned by the environment and cannot be changed here.
-    </p>
   )
 }
