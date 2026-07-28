@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.10.14](https://github.com/opus-domini/sentinel/compare/v0.10.13...v0.10.14) (2026-07-28)
+
+
+### Features
+
+* **api:** replace raw config settings endpoints ([6381e05](https://github.com/opus-domini/sentinel/commit/6381e057c2408ec768edb0c0f49d75884a46f513))
+* **config:** add transactional settings state ([80aeef3](https://github.com/opus-domini/sentinel/commit/80aeef36e42a019f5fa13411062c660f45c9320a))
+* **frontend:** make Now the operational home ([755e811](https://github.com/opus-domini/sentinel/commit/755e811bced2eced9d3dcba68e33bbe100b5e813))
+* **metrics:** stabilize operational posture ([ae8f854](https://github.com/opus-domini/sentinel/commit/ae8f854d367bdf4a6da5e1c6f03686e8aa1e64b3))
+* **now:** add the operational read model ([2f3a8d5](https://github.com/opus-domini/sentinel/commit/2f3a8d531d6dd6b80f68e20ce3b92ef1770a59f7))
+* **now:** separate confidence posture and attention ([0293d55](https://github.com/opus-domini/sentinel/commit/0293d550962ba8f17b0b78f417ae89e5fb12e0ba))
+* **ops:** connect owner investigation paths ([0eafb96](https://github.com/opus-domini/sentinel/commit/0eafb96bf3bba7542f3626cfe06856fa2d3fb267))
+* **runbooks:** make execution receipts navigable ([2d623ce](https://github.com/opus-domini/sentinel/commit/2d623ce8eb8511c2fe810a0784026b53931a283b))
+* **runbooks:** persist immutable execution receipts ([8a54232](https://github.com/opus-domini/sentinel/commit/8a542327ffb6b30160e96a20b2391cdc9dd12240))
+* **runbooks:** persist service execution context ([d278cd6](https://github.com/opus-domini/sentinel/commit/d278cd6eb6d13cf37e49df569706875287d8f3ba))
+* **services:** expose verified operational context ([73fad05](https://github.com/opus-domini/sentinel/commit/73fad051ce2e5a027a67c0700e30316278d824f4))
+* **settings:** add account privilege controls ([554c511](https://github.com/opus-domini/sentinel/commit/554c511a8daf0d24bc931adbe3fc57b1dbbe9251))
+* **settings:** add adaptive settings workspace ([0210214](https://github.com/opus-domini/sentinel/commit/0210214544ad9355610a30c25f5f5376c1e09a5d))
+* **settings:** add guarded access configuration ([0a1eb9c](https://github.com/opus-domini/sentinel/commit/0a1eb9c2215de94ff44c3869999581e7ea4e84fb))
+* **settings:** add integrations configuration ([72643cf](https://github.com/opus-domini/sentinel/commit/72643cf7f5c0971486312f9b0d07190bb12dc48c))
+* **settings:** expose operational configuration ([31aacd2](https://github.com/opus-domini/sentinel/commit/31aacd232253c61235a142cfcf4060cdc226294c))
+* **settings:** improve mobile settings experience ([2651628](https://github.com/opus-domini/sentinel/commit/2651628d2367a3c29ffb9442815c40d179c4ab3f))
+* **settings:** restart managed service from SPA ([b53072f](https://github.com/opus-domini/sentinel/commit/b53072f4c4887d822a4563194cc393b4e57abb2e))
+
+
+### Bug Fixes
+
+* **mobile:** restore settings access to drawer ([9c806b3](https://github.com/opus-domini/sentinel/commit/9c806b3240b496462dbdd221033f4234309e7778))
+* **navigation:** keep desktop rail actions visible ([36be5ef](https://github.com/opus-domini/sentinel/commit/36be5efd554ccbfcfe862eaae630c9a97247d943))
+* **services:** make built-in tracking runtime-native ([3801f64](https://github.com/opus-domini/sentinel/commit/3801f647bbcbedf723e69bdd17b6a82232b60cd4))
+* **settings:** correct switch geometry ([c674fd0](https://github.com/opus-domini/sentinel/commit/c674fd09461b2ba31ba12469089f5b0f5fa1d449))
+* **settings:** streamline timezone and storage navigation ([c9b5a09](https://github.com/opus-domini/sentinel/commit/c9b5a09e063c430cf64c4ecfbc49bec8444a1e98))
+* **storage:** protect active runbook history ([840c19b](https://github.com/opus-domini/sentinel/commit/840c19bdfabbfde8f7b44324c8c95cb1a97c8a63))
+
+
+### Refactors
+
+* **metrics:** centralize host posture ([d01ce81](https://github.com/opus-domini/sentinel/commit/d01ce811455ae232b3a545e3dfa9b0c1f5fca38b))
+
+
+### CI
+
+* adopt the transparent ductor runtime ([af45893](https://github.com/opus-domini/sentinel/commit/af458933f94e203b2f7f4537cb68b191ed5c650a))
+* align reusable workflow policy ([9a19366](https://github.com/opus-domini/sentinel/commit/9a1936642ea53075e2cf846cebef739a9c8575bc))
+* update reusable release workflows ([b0686f4](https://github.com/opus-domini/sentinel/commit/b0686f49d7556a0c5f6f54e4e97641d36c48437a))
+
+
+### Documentation
+
+* **ops:** document the operational value loop ([598bffc](https://github.com/opus-domini/sentinel/commit/598bffc6b1cf35b4c1a89fde2067a7875c4ba2be))
+* **product:** center the operational loop ([950da17](https://github.com/opus-domini/sentinel/commit/950da175519bd2f973a4173a96ec1dbd0b1eb409))
+* **readme:** remove obsolete external widgets ([fbbc170](https://github.com/opus-domini/sentinel/commit/fbbc170024fc4fa0739a6320f1bbbd907a6fd029))
+* **reference:** align contracts with runtime ([717cb50](https://github.com/opus-domini/sentinel/commit/717cb501f4794becbc6f33f0e0af8a06ab2a51f8))
+* **settings:** document the local control plane ([f5603bd](https://github.com/opus-domini/sentinel/commit/f5603bd4c0b6a81d3731b40231722832c2cbb6eb))
+* **showcase:** publish the orbital workflow ([5a4277f](https://github.com/opus-domini/sentinel/commit/5a4277f1e5b3fd673d8cac39a51e4d5d5225a318))
+
 ## [0.10.13](https://github.com/opus-domini/sentinel/compare/v0.10.12...v0.10.13) (2026-07-26)
 
 
