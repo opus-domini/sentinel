@@ -2,7 +2,6 @@ import { Loader2, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import AppSectionTitle from './layout/AppSectionTitle'
 import ConnectionBadge from './ConnectionBadge'
-import MobileSettingsLink from './settings/MobileSettingsLink'
 import SessionTabs from './SessionTabs'
 import { TooltipHelper } from './TooltipHelper'
 import TerminalControls from './terminal/TerminalControls'
@@ -425,10 +424,7 @@ export default function TmuxTerminalPanel({
           </Button>
           <AppSectionTitle hostname={hostname} section="tmux" />
         </div>
-        <div className="flex items-center gap-1">
-          <ConnectionBadge state={connectionState} detail={statusDetail} onClick={onResync} />
-          <MobileSettingsLink />
-        </div>
+        <ConnectionBadge state={connectionState} detail={statusDetail} onClick={onResync} />
       </header>
 
       {showSessionTabs && (

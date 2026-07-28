@@ -80,11 +80,17 @@ describe('SidebarShell', () => {
     )
 
     expect(screen.getByLabelText('Close menu')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/settings')
     expect(
       Array.from(container.querySelectorAll('aside button')).map((button) =>
         button.getAttribute('aria-label'),
       ),
     ).toEqual(['Close menu', 'About Terminal', 'API token'])
+    expect(
+      Array.from(container.querySelectorAll('aside button, aside a')).map((control) =>
+        control.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Close menu', 'Settings', 'About Terminal', 'API token'])
     for (const button of container.querySelectorAll('aside button')) {
       expect(button.className).toContain('size-8')
     }
@@ -125,6 +131,6 @@ describe('SidebarShell', () => {
 
     expect(screen.queryByRole('button', { name: 'API token' })).toBeNull()
     expect(screen.getByRole('button', { name: 'About Terminal' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeTruthy()
   })
 })

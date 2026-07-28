@@ -28,10 +28,6 @@ vi.mock('./SessionTabs', () => ({
   default: () => <div>Session Tabs</div>,
 }))
 
-vi.mock('./settings/MobileSettingsLink', () => ({
-  default: () => <a href="/settings">Settings</a>,
-}))
-
 vi.mock('./TooltipHelper', () => ({
   TooltipHelper: ({ children }: { children: ReactNode }) => children,
 }))

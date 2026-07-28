@@ -28,7 +28,6 @@ import type { MetricsSnapshot } from '@/lib/MetricsHistory'
 import type { MetricSeverity } from '@/lib/metricsView'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
-import MobileSettingsLink from '@/components/settings/MobileSettingsLink'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { Button } from '@/components/ui/button'
@@ -707,7 +706,6 @@ function MetricsPage() {
           <div className="flex items-center gap-1.5">
             <StatusPill severity={risk.severity} label={risk.label} />
             <ConnectionBadge state={connectionState} onClick={resyncPage} />
-            <MobileSettingsLink />
           </div>
         </header>
 

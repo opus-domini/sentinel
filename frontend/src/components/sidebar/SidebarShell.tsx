@@ -1,7 +1,8 @@
 import { FocusScope } from '@radix-ui/react-focus-scope'
-import { X } from 'lucide-react'
-import { useRouterState } from '@tanstack/react-router'
+import { Settings, X } from 'lucide-react'
+import { Link, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { TooltipHelper } from '@/components/TooltipHelper'
 import { Button } from '@/components/ui/button'
 import { useLayoutContext } from '@/contexts/LayoutContext'
 import { useViewport } from '@/contexts/ViewportContext'
@@ -39,6 +40,16 @@ function MobileNav() {
       >
         <X className="size-4" />
       </Button>
+      <TooltipHelper content="Settings" side="bottom">
+        <Link
+          to="/settings"
+          aria-label="Settings"
+          className="grid size-8 shrink-0 touch-manipulation place-items-center rounded-md text-secondary-foreground no-underline hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setSidebarOpen(false)}
+        >
+          <Settings className="size-4" aria-hidden="true" />
+        </Link>
+      </TooltipHelper>
       <SidebarContextActions pathname={pathname} mobile />
     </div>
   )

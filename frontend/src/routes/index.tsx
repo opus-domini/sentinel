@@ -10,7 +10,6 @@ import type {
 } from '@/types'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
-import MobileSettingsLink from '@/components/settings/MobileSettingsLink'
 import ConnectionBadge from '@/components/ConnectionBadge'
 import { NowAttention } from '@/components/now/NowAttention'
 import { NowInProgress } from '@/components/now/NowInProgress'
@@ -125,10 +124,7 @@ function IndexRoute() {
           <div className="flex min-w-0 items-center gap-2">
             <AppSectionTitle hostname={hostname} section="now" />
           </div>
-          <div className="flex items-center gap-1">
-            <ConnectionBadge state={connectionState} onClick={resync} actionLabel="Refresh Now" />
-            <MobileSettingsLink />
-          </div>
+          <ConnectionBadge state={connectionState} onClick={resync} actionLabel="Refresh Now" />
         </header>
 
         <div className="min-h-0 overflow-y-auto p-2 pb-4 sm:p-3 md:p-4">
