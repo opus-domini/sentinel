@@ -19,7 +19,7 @@ export default function SettingsSectionHeader({
   }, [])
 
   return (
-    <header className="flex items-start gap-3">
+    <header className="sr-only md:not-sr-only md:flex md:items-start md:gap-3">
       <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary-text">
         {icon}
       </span>

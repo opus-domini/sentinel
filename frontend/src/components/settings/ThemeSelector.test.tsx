@@ -30,4 +30,19 @@ describe('ThemeSelector', () => {
 
     expect(onSelect).toHaveBeenCalledWith(nextTheme.id)
   })
+
+  it('keeps the ANSI palette shrinkable inside narrow theme cards', () => {
+    const activeTheme = terminalThemes[0]
+
+    render(<ThemeSelector activeThemeId={activeTheme.id} onSelect={() => {}} />)
+
+    const card = screen.getByRole('button', { name: activeTheme.label })
+    const palette = card.querySelector('[aria-hidden="true"]')
+    const swatches = palette?.querySelectorAll('span')
+
+    expect(palette?.className).toContain('w-full')
+    expect(palette?.className).toContain('grid-cols-8')
+    expect(swatches).toHaveLength(8)
+    expect(swatches?.[0].className).toContain('w-full')
+  })
 })

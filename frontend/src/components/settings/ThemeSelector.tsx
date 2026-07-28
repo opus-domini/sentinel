@@ -37,11 +37,11 @@ function ThemeCard({
         className="flex h-16 w-full items-end rounded-md px-2 pb-2"
         style={{ backgroundColor: colors.background ?? '#000' }}
       >
-        <div className="flex gap-1">
+        <div aria-hidden="true" className="grid w-full min-w-0 max-w-[6.75rem] grid-cols-8 gap-1">
           {ansiKeys.map((key) => (
             <span
               key={key}
-              className="inline-block h-2.5 w-2.5 rounded-full"
+              className="aspect-square w-full min-w-0 rounded-full"
               style={{
                 backgroundColor: colors[key] ?? '#888',
               }}
