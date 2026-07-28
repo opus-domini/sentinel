@@ -36,13 +36,22 @@ import (
 // the process exit code. The Serve/run split keeps os.Exit out of any function
 // holding a defer (the exitAfterDefer lint issue): run returns the exit code.
 func Serve(version string) int {
-	cfg, configPath, err := config.Load()
+	configService, err := config.NewService(config.Path(), config.Default(), nil)
+	if err != nil {
+		closeLogger, _ := initLogger(config.DefaultLogLevel, "")
+		defer closeLogger()
+		slog.Error("config service init failed", "err", err)
+		return 1
+	}
+	configState, err := configService.Read()
 	if err != nil {
 		closeLogger, _ := initLogger(config.DefaultLogLevel, "")
 		defer closeLogger()
 		slog.Error("config load failed", "err", err)
 		return 1
 	}
+	cfg := configState.Effective
+	configPath := configState.Path
 	closeLogger, err := initLogger(cfg.Log.Level, cfg.Log.Path)
 	if err != nil {
 		closeFallback, _ := initLogger(config.DefaultLogLevel, "")
@@ -51,12 +60,6 @@ func Serve(version string) int {
 		return 1
 	}
 	defer closeLogger()
-
-	listenAddr := cfg.Address()
-	if err := security.ValidateRemoteExposure(listenAddr, cfg.Server.Token, cfg.Server.AllowedOrigins); err != nil {
-		slog.Error("security: remote listen address requires token and allowed_origins", "listen", listenAddr, "err", err)
-		return 1
-	}
 
 	cfg.SystemUsers = config.ReadSystemUsers()
 	if len(cfg.SystemUsers) > 0 {
@@ -77,14 +80,6 @@ func Serve(version string) int {
 		SystemUsers:     cfg.SystemUsers,
 	}, cfg.Server.TrustedProxies)
 
-	if security.ExposesBeyondLoopback(listenAddr) && cfg.Server.Token != "" && cookiePolicy == security.CookieSecureNever {
-		if cfg.Server.AllowInsecureCookie {
-			slog.Warn("cookie_secure=never with remote exposure and token auth; bypassed via SENTINEL_SERVER_ALLOW_INSECURE_COOKIE")
-		} else {
-			slog.Error("cookie_secure=never is not allowed with remote exposure and token auth; set cookie_secure=auto or cookie_secure=always, or set SENTINEL_SERVER_ALLOW_INSECURE_COOKIE=true to bypass")
-			return 1
-		}
-	}
 	eventHub := events.NewHub()
 
 	st, err := store.New(cfg.Storage.Path)
@@ -177,7 +172,7 @@ func Serve(version string) int {
 			if err := reportGen.StartSchedule(context.Background(), cfg.HealthReport.Schedule, cfg.Server.Timezone); err != nil {
 				slog.Warn("health report schedule failed to start", "error", err)
 			} else {
-				slog.Info("health report enabled", "url", cfg.HealthReport.WebhookURL, "schedule", cfg.HealthReport.Schedule)
+				slog.Info("health report enabled", "webhook_configured", true, "schedule", cfg.HealthReport.Schedule)
 			}
 		}
 	}

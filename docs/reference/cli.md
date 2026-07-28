@@ -49,6 +49,10 @@ Ensures `config.toml` exists, opens it with `$EDITOR`, `$VISUAL`, or `xdg-open`,
 and validates the file after blocking editors close. When `xdg-open` returns
 immediately, run `sentinel config validate` after saving.
 
+Validation uses the same canonical rules as daemon startup and the Settings
+API. Invalid non-empty values are reported with their configuration field
+instead of being replaced by a fallback.
+
 ### Path
 
 ```bash
@@ -70,6 +74,7 @@ sentinel config validate --effective
 Validates the config file before a service restart or daemon start.
 `--effective` validates the values after environment overrides and is also the
 contract used by the updater to check a candidate binary before installation.
+Invalid environment overrides make effective validation fail.
 
 ### Show
 
@@ -78,7 +83,9 @@ sentinel config show
 ```
 
 Prints the effective configuration as JSON after applying defaults, file values
-and environment overrides. Secret values such as `token` are redacted.
+and environment overrides. Secret values such as `token` and webhook URLs are
+redacted. The command reads through the same configuration boundary used by the
+daemon and does not rewrite the file.
 
 ## `sentinel db`
 

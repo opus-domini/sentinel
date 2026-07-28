@@ -123,7 +123,11 @@ func runConfigEdit(ctx context.Context, app *App, scope string) error {
 		empty(app.Stdout, "Run `sentinel config validate` after saving.")
 		return nil
 	}
-	if err := config.ValidateFile(path); err != nil {
+	service, err := configServiceForTarget(target)
+	if err != nil {
+		return failf("config validation failed: %w", err)
+	}
+	if err := service.ValidatePersisted(); err != nil {
 		return failf("config validation failed: %w", err)
 	}
 	done(app.Stdout, "ok:", path+" - config valid")
@@ -197,16 +201,19 @@ func newConfigValidateCmd(app *App, scope *string) *cobra.Command {
 			if err != nil {
 				return failf("config validation failed: %w", err)
 			}
-			path := target.path
+			service, err := configServiceForTarget(target)
+			if err != nil {
+				return failf("config validation failed: %w", err)
+			}
 			if effective {
-				_, path, err = config.LoadPathForDeployment(target.path, target.dataDir, target.logPath)
+				_, err = service.Read()
 			} else {
-				err = config.ValidateFile(path)
+				err = service.ValidatePersisted()
 			}
 			if err != nil {
 				return failf("config validation failed: %w", err)
 			}
-			done(app.Stdout, "ok:", path+" - config valid")
+			done(app.Stdout, "ok:", service.Path()+" - config valid")
 			return nil
 		},
 	}
@@ -248,8 +255,20 @@ func loadValidatedConfig() (config.Config, error) {
 }
 
 func loadValidatedConfigTarget(target configTarget) (config.Config, error) {
-	cfg, _, err := config.LoadPathForDeployment(target.path, target.dataDir, target.logPath)
-	return cfg, err
+	service, err := configServiceForTarget(target)
+	if err != nil {
+		return config.Config{}, err
+	}
+	state, err := service.Read()
+	return state.Effective, err
+}
+
+func configServiceForTarget(target configTarget) (*config.Service, error) {
+	return config.NewService(
+		target.path,
+		config.DefaultForDeployment(target.dataDir, target.logPath),
+		nil,
+	)
 }
 
 func resolveConfigTarget(scopeRaw string) (configTarget, error) {

@@ -27,7 +27,8 @@ contracts live in [Reference](/reference/http-api.md).
 
 ## Runtime Shape
 
-1. The process loads TOML configuration and `SENTINEL_*` overrides.
+1. The configuration service loads deployment defaults, TOML definitions, and
+   `SENTINEL_*` overrides while retaining each field's provenance.
 2. The server establishes origin and optional shared-token policy.
 3. SQLite-backed managers and live owner services start.
 4. The browser loads initial owner state over HTTP.
@@ -56,6 +57,8 @@ machine.
 
 - `cmd/sentinel` — process entrypoint.
 - `internal/cli` — commands, help, completion, and formatted output.
+- `internal/config` — canonical defaults, file/environment precedence,
+  validation, revision, transactional persistence, and runtime apply boundary.
 - `internal/server` — HTTP bootstrap, background lifecycle, and pinned-session
   restore.
 - `internal/ui` — embedded SPA delivery.
@@ -103,6 +106,12 @@ SQLite stores definitions and records that must survive a process restart:
 
 Now is computed on request. Detailed Metrics history is not a persisted
 observability database.
+
+`config.toml` is managed separately from SQLite. Startup, CLI, and API consume
+one canonical configuration service. File updates use an advisory lock,
+same-directory atomic replacement, a single adjacent `.bak`, and rollback when
+runtime application fails. Environment overrides remain authoritative and
+cannot be overwritten through a file mutation.
 
 ## Deployment and Trust
 

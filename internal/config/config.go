@@ -11,12 +11,13 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/opus-domini/sentinel/internal/humanize"
+	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/userswitch"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
@@ -35,6 +36,17 @@ const (
 	configFileName = "config.toml"
 	defaultHost    = "127.0.0.1"
 	defaultPort    = 4040
+
+	minWatchtowerTickInterval   = 100 * time.Millisecond
+	maxWatchtowerTickInterval   = time.Minute
+	minWatchtowerCaptureLines   = 1
+	maxWatchtowerCaptureLines   = 2000
+	minWatchtowerCaptureTimeout = 10 * time.Millisecond
+	maxWatchtowerCaptureTimeout = 10 * time.Second
+	minWatchtowerJournalRows    = 100
+	maxWatchtowerJournalRows    = 1_000_000
+	minRunbooksMaxConcurrent    = 1
+	maxRunbooksMaxConcurrent    = 64
 )
 
 // ManagedDefaultLogPathEnv supplies the scope-specific log default persisted
@@ -117,6 +129,27 @@ var (
 	osGeteuid     = os.Geteuid
 	osTempDir     = os.TempDir
 )
+
+var supportedLocales = []string{
+	"",
+	"en-US",
+	"en-GB",
+	"pt-BR",
+	"pt-PT",
+	"es-ES",
+	"es-MX",
+	"fr-FR",
+	"de-DE",
+	"it-IT",
+	"nl-NL",
+	"ja-JP",
+	"zh-CN",
+	"ko-KR",
+	"ru-RU",
+	"tr-TR",
+	"ar-SA",
+	"hi-IN",
+}
 
 // ErrConfigExists is returned when Init refuses to overwrite an existing file.
 var ErrConfigExists = errors.New("config file already exists")
@@ -225,70 +258,21 @@ func LoadPathForDeployment(path, dataDir, logPath string) (Config, string, error
 }
 
 func loadPathWithDefaults(path string, defaults Config) (Config, string, error) {
-	resolved, err := resolvePathOrDefault(path)
+	service, err := NewService(path, defaults, nil)
 	if err != nil {
-		cfg := defaults
-		return cfg, path, err
+		return defaults, path, err
 	}
-	if _, err := os.Stat(resolved); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			cfg := defaults
-			return cfg, resolved, fmt.Errorf("stat config file: %w", err)
-		}
-		cfg := defaults
-		applyEnv(&cfg)
-		return cfg, resolved, cfg.Resolve()
-	}
-	return loadExistingWithDefaults(resolved, true, defaults)
-}
-
-func loadExisting(path string, applyEnvironment bool) (Config, string, error) {
-	return loadExistingWithDefaults(path, applyEnvironment, Default())
-}
-
-func loadExistingWithDefaults(path string, applyEnvironment bool, defaults Config) (Config, string, error) {
-	cfg := defaults
-	meta, err := toml.DecodeFile(path, &cfg)
-	if err != nil {
-		return cfg, path, fmt.Errorf("decode config: %w", err)
-	}
-	var issues []string
-	for _, key := range meta.Undecoded() {
-		issues = append(issues, "unknown key: "+strings.Join(key, "."))
-	}
-	if err := cfg.Resolve(); err != nil {
-		issues = append(issues, err.Error())
-	}
-	if applyEnvironment {
-		applyEnv(&cfg)
-		if err := cfg.Resolve(); err != nil {
-			issues = append(issues, err.Error())
-		}
-	}
-	if len(issues) > 0 {
-		return cfg, path, configValidationError{Path: path, Issues: issues}
-	}
-	return cfg, path, nil
+	state, err := service.Read()
+	return state.Effective, service.Path(), err
 }
 
 // ValidateFile validates a Sentinel TOML config file.
 func ValidateFile(path string) error {
-	resolved, err := resolvePathOrDefault(path)
+	service, err := NewService(path, Default(), nil)
 	if err != nil {
 		return err
 	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("config file not found: %s", resolved)
-		}
-		return fmt.Errorf("stat config file: %w", err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("config path is a directory: %s", resolved)
-	}
-	_, _, err = loadExisting(resolved, false)
-	return err
+	return service.ValidatePersisted()
 }
 
 type configValidationError struct {
@@ -342,7 +326,7 @@ func InitPathForDeployment(path, dataDir, logPath string, force bool) (string, e
 		}
 		return path, fmt.Errorf("create config file: %w", err)
 	}
-	if _, err := file.Write(defaultConfigTOML(DefaultForDeployment(dataDir, logPath))); err != nil {
+	if _, err := file.Write(RenderTOML(DefaultForDeployment(dataDir, logPath))); err != nil {
 		_ = file.Close()
 		return path, fmt.Errorf("write config file: %w", err)
 	}
@@ -389,12 +373,21 @@ func EnsureDirs(cfg Config) error {
 	return nil
 }
 
-// Resolve expands paths, normalizes defaults, and validates configured values.
+// Resolve expands paths, normalizes defaults, and validates effective values.
 func (c *Config) Resolve() error {
 	if c == nil {
 		return nil
 	}
-	defaults := Default()
+	if err := c.normalizeWithDefaults(Default()); err != nil {
+		return err
+	}
+	return validateEffectiveConfig(*c)
+}
+
+func (c *Config) normalizeWithDefaults(defaults Config) error {
+	if c == nil {
+		return nil
+	}
 	if c.Version == 0 {
 		c.Version = defaults.Version
 	}
@@ -404,7 +397,11 @@ func (c *Config) Resolve() error {
 	if c.Server.Port == 0 {
 		c.Server.Port = defaults.Server.Port
 	}
-	c.Server.CookieSecure = normalizeCookieSecure(c.Server.CookieSecure, defaults.Server.CookieSecure)
+	if strings.TrimSpace(c.Server.CookieSecure) == "" {
+		c.Server.CookieSecure = defaults.Server.CookieSecure
+	} else {
+		c.Server.CookieSecure = strings.ToLower(strings.TrimSpace(c.Server.CookieSecure))
+	}
 	c.Server.AllowedOrigins = cleanStrings(c.Server.AllowedOrigins)
 	c.Server.TrustedProxies = cleanStrings(c.Server.TrustedProxies)
 	c.Server.Locale = strings.TrimSpace(c.Server.Locale)
@@ -440,8 +437,13 @@ func (c *Config) Resolve() error {
 	c.MultiUser.AllowedUsers = cleanStrings(c.MultiUser.AllowedUsers)
 	if strings.TrimSpace(c.MultiUser.UserSwitchMethod) == "" {
 		c.MultiUser.UserSwitchMethod = defaults.MultiUser.UserSwitchMethod
+	} else {
+		method, err := userswitch.ParseMethod(c.MultiUser.UserSwitchMethod)
+		if err != nil {
+			return fmt.Errorf("multi_user.user_switch_method %w", err)
+		}
+		c.MultiUser.UserSwitchMethod = method
 	}
-	c.MultiUser.UserSwitchMethod = userswitch.NormalizeMethod(c.MultiUser.UserSwitchMethod, defaults.MultiUser.UserSwitchMethod)
 
 	var err error
 	c.Storage.Path, err = ExpandPath(c.Storage.Path)
@@ -452,10 +454,10 @@ func (c *Config) Resolve() error {
 	if err != nil {
 		return err
 	}
-	return validateConfig(*c)
+	return nil
 }
 
-func validateConfig(cfg Config) error {
+func validateConfigValues(cfg Config) error {
 	var issues []string
 	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
 		issues = append(issues, "server.port must be between 1 and 65535")
@@ -491,31 +493,78 @@ func validateConfig(cfg Config) error {
 	if err := validate.Timezone(cfg.Server.Timezone); err != nil {
 		issues = append(issues, "server.timezone "+err.Error())
 	}
-	if cfg.Runbooks.MaxConcurrent <= 0 {
-		issues = append(issues, "runbooks.max_concurrent must be a positive integer")
+	if !slices.Contains(supportedLocales, cfg.Server.Locale) {
+		issues = append(issues, "server.locale must be one of the supported locales")
 	}
-	if cfg.Watchtower.TickInterval <= 0 {
-		issues = append(issues, "watchtower.tick_interval must be a positive duration")
+	if cfg.Runbooks.MaxConcurrent < minRunbooksMaxConcurrent || cfg.Runbooks.MaxConcurrent > maxRunbooksMaxConcurrent {
+		issues = append(issues, fmt.Sprintf("runbooks.max_concurrent must be between %d and %d", minRunbooksMaxConcurrent, maxRunbooksMaxConcurrent))
 	}
-	if cfg.Watchtower.CaptureLines <= 0 {
-		issues = append(issues, "watchtower.capture_lines must be a positive integer")
+	if cfg.Watchtower.TickInterval < minWatchtowerTickInterval || cfg.Watchtower.TickInterval > maxWatchtowerTickInterval {
+		issues = append(issues, fmt.Sprintf("watchtower.tick_interval must be between %s and %s", minWatchtowerTickInterval, maxWatchtowerTickInterval))
 	}
-	if cfg.Watchtower.CaptureTimeout <= 0 {
-		issues = append(issues, "watchtower.capture_timeout must be a positive duration")
+	if cfg.Watchtower.CaptureLines < minWatchtowerCaptureLines || cfg.Watchtower.CaptureLines > maxWatchtowerCaptureLines {
+		issues = append(issues, fmt.Sprintf("watchtower.capture_lines must be between %d and %d", minWatchtowerCaptureLines, maxWatchtowerCaptureLines))
 	}
-	if cfg.Watchtower.JournalRows <= 0 {
-		issues = append(issues, "watchtower.journal_rows must be a positive integer")
+	if cfg.Watchtower.CaptureTimeout < minWatchtowerCaptureTimeout || cfg.Watchtower.CaptureTimeout > maxWatchtowerCaptureTimeout {
+		issues = append(issues, fmt.Sprintf("watchtower.capture_timeout must be between %s and %s", minWatchtowerCaptureTimeout, maxWatchtowerCaptureTimeout))
 	}
-	if cfg.MCP.Enabled && strings.TrimSpace(cfg.Server.Token) == "" {
-		issues = append(issues, "mcp.enabled requires server.token")
+	if cfg.Watchtower.JournalRows < minWatchtowerJournalRows || cfg.Watchtower.JournalRows > maxWatchtowerJournalRows {
+		issues = append(issues, fmt.Sprintf("watchtower.journal_rows must be between %d and %d", minWatchtowerJournalRows, maxWatchtowerJournalRows))
 	}
 	if strings.TrimSpace(cfg.HealthReport.Schedule) != "" {
 		if err := validate.CronExpression(cfg.HealthReport.Schedule); err != nil {
 			issues = append(issues, "health_report.schedule "+err.Error())
 		}
 	}
+	if err := validateWebhookURL(cfg.HealthReport.WebhookURL); err != nil {
+		issues = append(issues, "health_report.webhook_url "+err.Error())
+	}
 	if len(issues) > 0 {
 		return errors.New(strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func validateEffectiveConfig(cfg Config) error {
+	var issues []string
+	if err := validateConfigValues(cfg); err != nil {
+		issues = append(issues, err.Error())
+	}
+	if cfg.MCP.Enabled && strings.TrimSpace(cfg.Server.Token) == "" {
+		issues = append(issues, "mcp.enabled requires server.token")
+	}
+	if err := security.ValidateRemoteExposure(cfg.Address(), cfg.Server.Token, cfg.Server.AllowedOrigins); err != nil {
+		issues = append(issues, "server remote exposure "+err.Error())
+	}
+	if security.ExposesBeyondLoopback(cfg.Address()) &&
+		strings.TrimSpace(cfg.Server.Token) != "" &&
+		cfg.Server.CookieSecure == CookieSecureNever &&
+		!cfg.Server.AllowInsecureCookie {
+		issues = append(issues, "server.cookie_secure=never requires server.allow_insecure_cookie=true for remote token authentication")
+	}
+	if len(issues) > 0 {
+		return errors.New(strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func validateWebhookURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return errors.New("must be an absolute HTTP or HTTPS URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("must use the http or https scheme")
+	}
+	if parsed.User != nil {
+		return errors.New("must not contain userinfo")
+	}
+	if parsed.Fragment != "" {
+		return errors.New("must not contain a fragment")
 	}
 	return nil
 }
@@ -550,6 +599,92 @@ func applyEnv(cfg *Config) {
 	applyMCPEnv(cfg)
 	applyRunbooksEnv(cfg)
 	applyMultiUserEnv(cfg)
+}
+
+func applyEnvironment(cfg *Config) (map[string]bool, []string) {
+	applyEnv(cfg)
+	fields := make(map[string]bool)
+	var issues []string
+
+	markStringEnv(fields, FieldServerHost, "SENTINEL_SERVER_HOST")
+	markParsedEnv(fields, &issues, FieldServerPort, "SENTINEL_SERVER_PORT", func(raw string) bool {
+		value, err := strconv.Atoi(strings.TrimSpace(raw))
+		return err == nil && value >= 1 && value <= 65535
+	})
+	markStringEnv(fields, FieldServerToken, "SENTINEL_SERVER_TOKEN")
+	markStringEnv(fields, FieldServerAllowedOrigins, "SENTINEL_SERVER_ALLOWED_ORIGINS")
+	markStringEnv(fields, FieldServerTrustedProxies, "SENTINEL_SERVER_TRUSTED_PROXIES")
+	markStringEnv(fields, FieldServerCookieSecure, "SENTINEL_SERVER_COOKIE_SECURE")
+	markParsedEnv(fields, &issues, FieldServerAllowInsecureCookie, "SENTINEL_SERVER_ALLOW_INSECURE_COOKIE", func(raw string) bool {
+		_, ok := parseBool(raw)
+		return ok
+	})
+	markStringEnv(fields, FieldServerTimezone, "SENTINEL_SERVER_TIMEZONE")
+	markStringEnv(fields, FieldServerLocale, "SENTINEL_SERVER_LOCALE")
+	markStringEnv(fields, FieldStoragePath, "SENTINEL_STORAGE_PATH")
+	markStringEnv(fields, FieldLogLevel, "SENTINEL_LOG_LEVEL")
+	markStringEnv(fields, FieldLogPath, "SENTINEL_LOG_PATH")
+	markStringEnv(fields, FieldHealthReportWebhookURL, "SENTINEL_HEALTH_REPORT_WEBHOOK_URL")
+	markStringEnv(fields, FieldHealthReportSchedule, "SENTINEL_HEALTH_REPORT_SCHEDULE")
+	markParsedEnv(fields, &issues, FieldWatchtowerEnabled, "SENTINEL_WATCHTOWER_ENABLED", func(raw string) bool {
+		_, ok := parseBool(raw)
+		return ok
+	})
+	markParsedEnv(fields, &issues, FieldWatchtowerTickInterval, "SENTINEL_WATCHTOWER_TICK_INTERVAL", func(raw string) bool {
+		_, ok := parseDuration(raw)
+		return ok
+	})
+	markParsedEnv(fields, &issues, FieldWatchtowerCaptureLines, "SENTINEL_WATCHTOWER_CAPTURE_LINES", func(raw string) bool {
+		_, ok := parsePositiveInt(raw)
+		return ok
+	})
+	markParsedEnv(fields, &issues, FieldWatchtowerCaptureTimeout, "SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT", func(raw string) bool {
+		_, ok := parseDuration(raw)
+		return ok
+	})
+	markParsedEnv(fields, &issues, FieldWatchtowerJournalRows, "SENTINEL_WATCHTOWER_JOURNAL_ROWS", func(raw string) bool {
+		_, ok := parsePositiveInt(raw)
+		return ok
+	})
+	markParsedEnv(fields, &issues, FieldMCPEnabled, "SENTINEL_MCP_ENABLED", func(raw string) bool {
+		_, ok := parseBool(raw)
+		return ok
+	})
+	markParsedEnv(fields, &issues, FieldRunbooksMaxConcurrent, "SENTINEL_RUNBOOK_MAX_CONCURRENT", func(raw string) bool {
+		_, ok := parsePositiveInt(raw)
+		return ok
+	})
+	markStringEnv(fields, FieldMultiUserAllowedUsers, "SENTINEL_ALLOWED_USERS")
+	markParsedEnv(fields, &issues, FieldMultiUserAllowRootTarget, "SENTINEL_ALLOW_ROOT_TARGET", func(raw string) bool {
+		_, ok := parseBool(raw)
+		return ok
+	})
+	markStringEnv(fields, FieldMultiUserUserSwitchMethod, "SENTINEL_USER_SWITCH_METHOD")
+	return fields, issues
+}
+
+func markStringEnv(fields map[string]bool, field, envName string) {
+	if strings.TrimSpace(os.Getenv(envName)) != "" {
+		fields[field] = true
+	}
+}
+
+func markParsedEnv(
+	fields map[string]bool,
+	issues *[]string,
+	field string,
+	envName string,
+	valid func(string) bool,
+) {
+	raw, ok := os.LookupEnv(envName)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return
+	}
+	if !valid(raw) {
+		*issues = append(*issues, fmt.Sprintf("%s has invalid value", envName))
+		return
+	}
+	fields[field] = true
 }
 
 func applyServerEnv(cfg *Config) {
@@ -818,15 +953,6 @@ func validateListenAddress(addr string) error {
 		return fmt.Errorf("port %d out of range", value)
 	}
 	return nil
-}
-
-func normalizeCookieSecure(value, fallback string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case CookieSecureAuto, CookieSecureAlways, CookieSecureNever:
-		return strings.ToLower(strings.TrimSpace(value))
-	default:
-		return fallback
-	}
 }
 
 func splitCSV(s string) []string {

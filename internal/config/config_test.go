@@ -418,7 +418,7 @@ func TestLoadRejectsEnabledMCPWithoutSharedToken(t *testing.T) {
 	}
 }
 
-func TestServerPortEnvInvalidPreservesConfig(t *testing.T) {
+func TestServerPortEnvInvalidIsRejected(t *testing.T) {
 	for _, value := range []string{"-1", "999999", "0"} {
 		t.Run(value, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
@@ -426,29 +426,22 @@ func TestServerPortEnvInvalidPreservesConfig(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("SENTINEL_SERVER_PORT", value)
-			cfg, _, err := LoadPath(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if cfg.Server.Port != 5050 {
-				t.Fatalf("port = %d, want 5050", cfg.Server.Port)
+			_, _, err := LoadPath(path)
+			if err == nil || !strings.Contains(err.Error(), "SENTINEL_SERVER_PORT has invalid value") {
+				t.Fatalf("LoadPath() error = %v, want invalid environment error", err)
 			}
 		})
 	}
 }
 
-func TestServerPortEnvInvalidPreservesDefault(t *testing.T) {
-	for _, value := range []string{"", "0"} {
-		t.Run(value, func(t *testing.T) {
-			t.Setenv("SENTINEL_SERVER_PORT", value)
-			cfg, _, err := LoadPath(filepath.Join(t.TempDir(), "missing.toml"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if cfg.Server.Port != defaultPort {
-				t.Fatalf("port = %d, want %d", cfg.Server.Port, defaultPort)
-			}
-		})
+func TestServerPortEmptyEnvPreservesDefault(t *testing.T) {
+	t.Setenv("SENTINEL_SERVER_PORT", "")
+	cfg, _, err := LoadPath(filepath.Join(t.TempDir(), "missing.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.Port != defaultPort {
+		t.Fatalf("port = %d, want %d", cfg.Server.Port, defaultPort)
 	}
 }
 

@@ -63,6 +63,6 @@ func (n *Notifier) SendJSON(ctx context.Context, payload any) error {
 	if resp.Status().IsError() {
 		return fmt.Errorf("webhook rejected: status %d", resp.Status().Code())
 	}
-	slog.Info("webhook delivered", "url", n.url, "status", resp.Status().Code())
+	slog.Info("webhook delivered", "status", resp.Status().Code())
 	return nil
 }

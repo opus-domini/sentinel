@@ -41,9 +41,9 @@ func TestMultiUserConfigFromEnvVars(t *testing.T) {
 			wantMethod: "sudo",
 		},
 		{
-			name:       "invalid switch method keeps default",
+			name:       "invalid switch method is rejected",
 			envVars:    map[string]string{"SENTINEL_USER_SWITCH_METHOD": "runas"},
-			wantMethod: defaultUserSwitchMethod(),
+			wantMethod: "runas",
 		},
 	}
 
@@ -58,7 +58,14 @@ func TestMultiUserConfigFromEnvVars(t *testing.T) {
 
 			cfg := Default()
 			applyEnv(&cfg)
-			if err := cfg.Resolve(); err != nil {
+			err := cfg.Resolve()
+			if tt.name == "invalid switch method is rejected" {
+				if err == nil {
+					t.Fatal("Resolve() = nil, want invalid method error")
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("Resolve() error = %v", err)
 			}
 

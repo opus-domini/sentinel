@@ -17,27 +17,37 @@ func TestDefaultMethod(t *testing.T) {
 	}
 }
 
-func TestNormalizeMethod(t *testing.T) {
+func TestParseMethod(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		method   string
-		fallback string
-		want     string
+		name    string
+		method  string
+		want    string
+		wantErr bool
 	}{
-		{name: "sudo", method: " sudo ", fallback: MethodSystemdRun, want: MethodSudo},
-		{name: "systemd alias", method: "systemd", fallback: MethodSudo, want: MethodSystemdRun},
-		{name: "systemd-run", method: "SYSTEMD-RUN", fallback: MethodSudo, want: MethodSystemdRun},
-		{name: "invalid uses fallback", method: "bad", fallback: MethodSystemdRun, want: MethodSystemdRun},
-		{name: "empty fallback defaults to sudo", method: "bad", fallback: "", want: MethodSudo},
+		{name: "sudo", method: " sudo ", want: MethodSudo},
+		{name: "systemd-run", method: "SYSTEMD-RUN", want: MethodSystemdRun},
+		{name: "systemd alias rejected", method: "systemd", wantErr: true},
+		{name: "invalid rejected", method: "bad", wantErr: true},
+		{name: "empty rejected", method: "", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := NormalizeMethod(tt.method, tt.fallback); got != tt.want {
-				t.Fatalf("NormalizeMethod(%q, %q) = %q, want %q", tt.method, tt.fallback, got, tt.want)
+			got, err := ParseMethod(tt.method)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("ParseMethod(%q) = %q, want error", tt.method, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseMethod(%q) error = %v", tt.method, err)
+			}
+			if got != tt.want {
+				t.Fatalf("ParseMethod(%q) = %q, want %q", tt.method, got, tt.want)
 			}
 		})
 	}

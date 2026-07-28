@@ -18,6 +18,11 @@ transport, and network exposure are configured together.
 Treat every client that knows the token as a trusted operator with access to
 the enabled Sentinel surfaces.
 
+Configuration secrets are never safe diagnostic data. CLI output redacts the
+shared token and webhook URLs, and delivery logs report only whether a webhook
+is configured and whether delivery succeeded. Sentinel does not log the full
+webhook URL because its path or query may contain a credential.
+
 ## Request Surfaces
 
 When `server.token` is configured, the request boundaries are:
@@ -123,6 +128,12 @@ For `server.host = "0.0.0.0"`:
 
 Sentinel refuses a non-loopback startup when either the token or allowed origins
 are missing.
+
+The same remote-exposure and cookie rules run during daemon startup, CLI
+validation, and managed configuration saves. A configuration that would expose
+Sentinel without the required token and origins is rejected before it is
+persisted. Environment-owned security fields must be changed in the process
+environment; file-based updates cannot shadow them.
 
 ## Security-Related Error Codes
 

@@ -175,17 +175,17 @@ func TestUpsertConfigKeyQuotesValues(t *testing.T) {
 	t.Parallel()
 
 	path := t.TempDir() + "/config.toml"
-	if err := os.WriteFile(path, []byte("[server]\n# locale = \"en-US\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[log]\n# path = \"/tmp/sentinel.log\"\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	if err := upsertConfigString(path, "server", "locale", `pt-"BR"\test`); err != nil {
+	if err := upsertConfigString(path, "log", "path", `/tmp/sentinel-"test"\log`); err != nil {
 		t.Fatalf("upsertConfigString: %v", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if !strings.Contains(string(content), `locale = "pt-\"BR\"\\test"`) {
+	if !strings.Contains(string(content), `path = "/tmp/sentinel-\"test\"\\log"`) {
 		t.Fatalf("config did not quote value safely:\n%s", string(content))
 	}
 }

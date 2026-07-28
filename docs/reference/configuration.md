@@ -6,6 +6,12 @@ Configuration precedence:
 2. `config.toml`
 3. Built-in defaults
 
+Sentinel resolves this precedence through one configuration boundary shared by
+daemon startup, `sentinel config`, and the Settings API. Each field retains its
+source (`environment`, `file`, or `default`) independently of its final value.
+An environment-owned field is effective but read-only to file-based updates;
+remove the corresponding `SENTINEL_*` variable before changing it in the file.
+
 ## Files and Directories
 
 Managed deployments use one layout selected by installation scope:
@@ -40,6 +46,20 @@ explicit. `sentinel config init --force` overwrites the selected config file.
 `sentinel config show` prints the effective runtime configuration as JSON with
 secret values redacted.
 
+Managed writes render the complete canonical TOML document. They do not
+preserve comments or custom ordering. A save:
+
+- locks the adjacent `<configPath>.lock` file to reject concurrent writers;
+- creates the config on first use with mode `0600`;
+- keeps the previous document as `<configPath>.bak`, also with mode `0600`;
+- writes through a same-directory temporary file, syncs it, and atomically
+  renames it into place;
+- restores the previous bytes if a subsequent live-application step fails.
+
+The revision used for optimistic concurrency is derived from the raw config
+bytes and whether the file exists, so a missing file and an empty file are
+different states.
+
 Validation is strict:
 
 - every `allowed_origins` entry must be a canonical `http://` or `https://`
@@ -47,6 +67,15 @@ Validation is strict:
 - every `trusted_proxies` entry must be an IP address or CIDR;
 - IPv4 and IPv6 loopback are trusted proxy peers by default; other TLS
   terminator addresses must be listed in `trusted_proxies`.
+- `locale` must be empty or one of the locales supported by the application;
+- `timezone` must be `Local` or a valid IANA timezone;
+- watchtower durations and limits, Runbook concurrency, and health-report cron
+  schedules must remain inside their documented runtime limits;
+- webhook URLs must be empty or absolute HTTP(S) URLs with a host and without
+  userinfo or fragments;
+- `user_switch_method` accepts only `sudo` or `systemd-run`;
+- invalid non-empty cookie security or user-switch values are rejected rather
+  than normalized to a fallback.
 
 ## Config File
 
@@ -124,6 +153,9 @@ user_switch_method = "systemd-run"
 | `SENTINEL_ALLOWED_USERS`                | empty                                    | Comma-separated OS users allowed as session targets             |
 | `SENTINEL_ALLOW_ROOT_TARGET`            | `false`                                  | Whether to allow targeting root                                 |
 | `SENTINEL_USER_SWITCH_METHOD`           | `systemd-run` on Linux, `sudo` elsewhere | User switch method                                              |
+
+Invalid environment overrides fail configuration loading. They are never
+silently ignored in favor of the file or a default.
 
 ## Recommended Profiles
 

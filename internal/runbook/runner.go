@@ -355,15 +355,15 @@ func fireWebhook(ctx context.Context, webhookURL string, payload any) {
 	}).
 		Send()
 	if err != nil {
-		slog.Warn("webhook delivery failed", "url", webhookURL, "error", err)
+		slog.Warn("webhook delivery failed", "error", err)
 		return
 	}
 	defer resp.Body().Close()
 	if resp.Status().IsError() {
-		slog.Warn("webhook delivery rejected", "url", webhookURL, "status", resp.Status().Code())
+		slog.Warn("webhook delivery rejected", "status", resp.Status().Code())
 		return
 	}
-	slog.Info("webhook delivered", "url", webhookURL, "status", resp.Status().Code())
+	slog.Info("webhook delivered", "status", resp.Status().Code())
 }
 
 // ResumeRun continues a paused runbook run from the immutable receipt.

@@ -3,6 +3,7 @@ package userswitch
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -27,18 +28,15 @@ func DefaultMethod(goos string) string {
 	return MethodSudo
 }
 
-// NormalizeMethod normalizes method.
-func NormalizeMethod(method, fallback string) string {
-	if fallback == "" {
-		fallback = MethodSudo
-	}
+// ParseMethod validates and canonicalizes a configured switch method.
+func ParseMethod(method string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(method)) {
 	case MethodSudo:
-		return MethodSudo
-	case MethodSystemdRun, "systemd":
-		return MethodSystemdRun
+		return MethodSudo, nil
+	case MethodSystemdRun:
+		return MethodSystemdRun, nil
 	default:
-		return fallback
+		return "", fmt.Errorf("must be %q or %q", MethodSudo, MethodSystemdRun)
 	}
 }
 
@@ -50,7 +48,11 @@ func BuildTmuxCommand(method, user string, tmuxArgs []string, interactive bool) 
 		return execTmux, args, nil
 	}
 
-	switch NormalizeMethod(method, MethodSudo) {
+	canonicalMethod, err := ParseMethod(method)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid user switch method: %w", err)
+	}
+	switch canonicalMethod {
 	case MethodSudo:
 		return execSudo, append([]string{"-n", "-u", user, execTmux}, args...), nil
 	case MethodSystemdRun:
@@ -68,7 +70,11 @@ func BuildShellCommand(method, user, command string) (string, error) {
 	}
 
 	var args []string
-	switch NormalizeMethod(method, MethodSudo) {
+	canonicalMethod, err := ParseMethod(method)
+	if err != nil {
+		return "", fmt.Errorf("invalid user switch method: %w", err)
+	}
+	switch canonicalMethod {
 	case MethodSudo:
 		if strings.TrimSpace(command) == "" {
 			args = []string{execSudo, "-n", "-i", "-u", user}
