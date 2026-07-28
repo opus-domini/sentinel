@@ -3,7 +3,6 @@
     <hr />
     <p><strong>Local-first host operations, from signal to verified action.</strong></p>
     <p>
-        <a href="https://goreportcard.com/report/github.com/opus-domini/sentinel"><img src="https://goreportcard.com/badge/github.com/opus-domini/sentinel" alt="Go Report Badge"></a>
         <a href="https://pkg.go.dev/github.com/opus-domini/sentinel"><img src="https://pkg.go.dev/badge/github.com/opus-domini/sentinel.svg" alt="Go Package Docs Badge"></a>
         <a href="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml"><img src="https://github.com/opus-domini/sentinel/actions/workflows/ci.yml/badge.svg" alt="CI Badge"></a>
         <a href="https://github.com/opus-domini/sentinel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/opus-domini/sentinel.svg" alt="License Badge"></a>
@@ -184,7 +183,3 @@ Sentinel is designed for a trusted operator boundary around one host.
 - [HTTP API](https://opus-domini.github.io/sentinel/#/reference/http-api)
 - [WebSocket and Events](https://opus-domini.github.io/sentinel/#/reference/websockets-events)
 - [Troubleshooting](https://opus-domini.github.io/sentinel/#/troubleshooting/common-issues)
-
-## Stargazers over time ⭐
-
-[![Stargazers over time](https://starchart.cc/opus-domini/sentinel.svg?variant=adaptive)](https://starchart.cc/opus-domini/sentinel)
