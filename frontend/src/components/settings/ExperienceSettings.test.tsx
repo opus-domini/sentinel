@@ -50,6 +50,7 @@ vi.mock('@/components/settings/ThemeSelector', () => ({
 
 describe('ExperienceSettings', () => {
   beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
     window.localStorage.clear()
     mocks.save.mockReset()
     mocks.refetch.mockReset()
@@ -63,22 +64,18 @@ describe('ExperienceSettings', () => {
 
   afterEach(cleanup)
 
-  it('validates custom IANA timezones before saving and announces success', async () => {
+  it('uses a closed timezone select and saves the selected option immediately', async () => {
     renderExperience()
-    const input = screen.getByLabelText('Timezone')
+    const timezone = screen.getByRole('combobox', { name: 'Timezone' })
 
-    fireEvent.change(input, { target: { value: 'Mars/Olympus' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply timezone' }))
-
-    expect((await screen.findByRole('alert')).textContent).toContain('valid IANA timezone')
-    expect(mocks.save).not.toHaveBeenCalled()
-
-    fireEvent.change(input, { target: { value: 'Europe/Lisbon' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply timezone' }))
+    expect(screen.queryByRole('textbox', { name: 'Timezone' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Apply timezone' })).toBeNull()
+    fireEvent.click(timezone)
+    fireEvent.click(await screen.findByRole('option', { name: 'America/Sao_Paulo' }))
 
     await waitFor(() =>
       expect(mocks.save).toHaveBeenCalledWith({
-        experience: { timezone: 'Europe/Lisbon' },
+        experience: { timezone: 'America/Sao_Paulo' },
       }),
     )
     expect(await screen.findByText('Timezone saved.')).toBeTruthy()
@@ -87,13 +84,13 @@ describe('ExperienceSettings', () => {
   it('keeps a rejected timezone draft visible', async () => {
     mocks.save.mockRejectedValue(new Error('settings changed since they were loaded'))
     renderExperience()
-    const input = screen.getByLabelText('Timezone') as HTMLInputElement
+    const timezone = screen.getByRole('combobox', { name: 'Timezone' })
 
-    fireEvent.change(input, { target: { value: 'America/Sao_Paulo' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply timezone' }))
+    fireEvent.click(timezone)
+    fireEvent.click(await screen.findByRole('option', { name: 'America/Sao_Paulo' }))
 
     expect(await screen.findByText('settings changed since they were loaded')).toBeTruthy()
-    expect(input.value).toBe('America/Sao_Paulo')
+    expect(timezone.textContent).toContain('America/Sao_Paulo')
   })
 
   it('renders reproducible loading and initial error states', () => {

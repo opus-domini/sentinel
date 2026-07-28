@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 
@@ -17,8 +17,17 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => () => ({}),
-  Link: ({ children, to, ...props }: { children: ReactNode; to: string }) => (
-    <a href={to} {...props}>
+  Link: ({
+    children,
+    to,
+    params,
+    ...props
+  }: {
+    children: ReactNode
+    to: string
+    params?: { section?: string }
+  }) => (
+    <a href={params?.section ? to.replace('$section', params.section) : to} {...props}>
       {children}
     </a>
   ),
@@ -64,6 +73,16 @@ describe('Storage maintenance route', () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn()
     mocks.api.mockReset()
+  })
+
+  it('returns to the Storage settings section from the introduction', async () => {
+    mocks.api.mockResolvedValue(stats)
+    renderPage()
+
+    const introduction = screen.getByRole('region', { name: 'Storage maintenance' })
+    const backLink = within(introduction).getByRole('link', { name: 'Back to Storage settings' })
+    expect(backLink.getAttribute('href')).toBe('/settings/storage')
+    expect(await screen.findByText('Activity journal')).toBeTruthy()
   })
 
   it('renders named loading and retryable error states', () => {

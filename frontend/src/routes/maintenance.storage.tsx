@@ -99,29 +99,38 @@ export function StorageMaintenancePage() {
         <div className="flex min-w-0 items-center gap-2">
           <AppSectionTitle hostname={hostname} section="storage maintenance" />
         </div>
-        <Button asChild variant="ghost" className="min-h-9">
-          <Link to="/" aria-label="Back to Now">
-            <ArrowLeft className="size-3.5" />
-            <span className="hidden sm:inline">Now</span>
-          </Link>
-        </Button>
       </header>
 
       <div className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-4">
         <div className="mx-auto grid w-full max-w-5xl gap-4 pb-4">
-          <section className="grid gap-2">
+          <section
+            aria-labelledby="storage-maintenance-title"
+            className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+          >
             <div className="flex items-start gap-3">
               <div className="grid size-9 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary-text">
                 <Database className="size-4" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-base font-semibold">Storage maintenance</h1>
+                <h1 id="storage-maintenance-title" className="text-base font-semibold">
+                  Storage maintenance
+                </h1>
                 <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
                   Remove historical runtime data deliberately. Active procedure executions remain
                   available and are never deleted by this operation.
                 </p>
               </div>
             </div>
+            <Button asChild variant="outline" className="min-h-11 w-full shrink-0 sm:w-auto">
+              <Link
+                to="/settings/$section"
+                params={{ section: 'storage' }}
+                aria-label="Back to Storage settings"
+              >
+                <ArrowLeft className="size-3.5" aria-hidden="true" />
+                Back to Storage
+              </Link>
+            </Button>
           </section>
 
           {statsQuery.isLoading && <StorageMaintenanceLoading />}
