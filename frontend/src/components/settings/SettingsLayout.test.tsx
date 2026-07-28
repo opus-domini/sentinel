@@ -36,7 +36,7 @@ vi.mock('@/contexts/MetaContext', () => ({
 afterEach(cleanup)
 
 describe('SettingsLayout', () => {
-  it('renders one scroll owner with four deep links and active state', () => {
+  it('renders one scroll owner with delivered deep links and active state', () => {
     render(<SettingsLayout />)
 
     expect(screen.getAllByTestId('settings-scroll-owner')).toHaveLength(1)
@@ -44,6 +44,7 @@ describe('SettingsLayout', () => {
     const links = within(navigation).getAllByRole('link')
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/settings/experience',
+      '/settings/operations',
       '/settings/integrations',
       '/settings/storage',
       '/settings/diagnostics',

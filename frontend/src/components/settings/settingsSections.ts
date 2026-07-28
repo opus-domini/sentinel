@@ -1,4 +1,4 @@
-import { Database, Plug, Settings2, Wrench } from 'lucide-react'
+import { Activity, Database, Plug, Settings2, Wrench } from 'lucide-react'
 
 export const SETTINGS_SECTIONS = [
   {
@@ -6,6 +6,12 @@ export const SETTINGS_SECTIONS = [
     label: 'Experience',
     description: 'Theme, timezone, and date format',
     Icon: Settings2,
+  },
+  {
+    id: 'operations',
+    label: 'Operations',
+    description: 'Watchtower, runbooks, and logs',
+    Icon: Activity,
   },
   {
     id: 'integrations',

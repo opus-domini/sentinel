@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
@@ -183,6 +184,168 @@ func TestSettingsPatchRejectsEnvironmentOwnershipAndInvalidFields(t *testing.T) 
 		!strings.Contains(invalid.Body.String(), "CONFIG_INVALID") ||
 		!strings.Contains(invalid.Body.String(), "server.timezone") {
 		t.Fatalf("invalid patch = %d %s", invalid.Code, invalid.Body.String())
+	}
+}
+
+func TestSettingsOperationsExposeConstraintsProvenanceAndRestartLifecycle(t *testing.T) {
+	t.Setenv("SENTINEL_LOG_LEVEL", "debug")
+	content := `[watchtower]
+enabled = false
+tick_interval = "2s"
+capture_lines = 120
+capture_timeout = "250ms"
+journal_rows = 8000
+
+[runbooks]
+max_concurrent = 7
+
+[log]
+level = "warn"
+`
+	service, runtime := newTestSettings(t, &content)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+
+	rec := httptest.NewRecorder()
+	h.getSettings(rec, httptest.NewRequest(http.MethodGet, "/api/ops/settings", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET settings = %d %s", rec.Code, rec.Body.String())
+	}
+	var body settingsEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	operations := body.Data.Operations
+	if operations.Watchtower.Enabled.EffectiveValue ||
+		operations.Watchtower.TickInterval.EffectiveValue != "2s" ||
+		operations.Watchtower.CaptureLines.EffectiveValue != 120 ||
+		operations.Watchtower.CaptureTimeout.EffectiveValue != "250ms" ||
+		operations.Watchtower.JournalRows.EffectiveValue != 8000 ||
+		operations.Runbooks.MaxConcurrent.EffectiveValue != 7 {
+		t.Fatalf("operations = %+v", operations)
+	}
+	if operations.Watchtower.TickInterval.Validation.Min != "100ms" ||
+		operations.Watchtower.TickInterval.Validation.Max != "1m" ||
+		operations.Watchtower.CaptureLines.Validation.Min != 1 ||
+		operations.Watchtower.CaptureLines.Validation.Max != 2000 ||
+		operations.Runbooks.MaxConcurrent.Validation.Min != 1 ||
+		operations.Runbooks.MaxConcurrent.Validation.Max != 64 {
+		t.Fatalf("operation constraints = %+v", operations)
+	}
+	if operations.Log.Level.Source != config.FieldSourceEnvironment ||
+		operations.Log.Level.Editable ||
+		operations.Log.Level.EffectiveValue != "debug" {
+		t.Fatalf("environment-owned log level = %+v", operations.Log.Level)
+	}
+	if operations.Watchtower.TickInterval.ApplyMode != config.ApplyModeRestart ||
+		operations.Runbooks.MaxConcurrent.ApplyMode != config.ApplyModeRestart {
+		t.Fatalf("operation apply modes = %+v", operations)
+	}
+}
+
+func TestSettingsOperationsPatchPersistsTypedDraftAndRejectsRanges(t *testing.T) {
+	service, runtime := newTestSettings(t, nil)
+	h, _ := newTestHandler(t, nil)
+	h.configService = service
+	h.settings = runtime
+
+	rec := patchSettingsRequestWithETag(
+		t,
+		h,
+		getSettingsETag(t, h),
+		`{"operations":{"watchtower":{"enabled":false,"tickInterval":"3s","captureLines":140,"captureTimeout":"300ms","journalRows":9000},"runbooks":{"maxConcurrent":8},"log":{"level":"warn"}}}`,
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("operations patch = %d %s", rec.Code, rec.Body.String())
+	}
+	var body settingsEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	wantChanged := []string{
+		config.FieldLogLevel,
+		config.FieldRunbooksMaxConcurrent,
+		config.FieldWatchtowerCaptureLines,
+		config.FieldWatchtowerCaptureTimeout,
+		config.FieldWatchtowerEnabled,
+		config.FieldWatchtowerJournalRows,
+		config.FieldWatchtowerTickInterval,
+	}
+	for _, key := range wantChanged {
+		if !slicesContain(body.Data.Restart.ChangedKeys, key) {
+			t.Fatalf("restart changed keys = %v, missing %q", body.Data.Restart.ChangedKeys, key)
+		}
+	}
+	state, err := service.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Persisted.Watchtower.Enabled ||
+		state.Persisted.Watchtower.TickInterval != 3*time.Second ||
+		state.Persisted.Watchtower.CaptureLines != 140 ||
+		state.Persisted.Watchtower.CaptureTimeout != 300*time.Millisecond ||
+		state.Persisted.Watchtower.JournalRows != 9000 ||
+		state.Persisted.Runbooks.MaxConcurrent != 8 ||
+		state.Persisted.Log.Level != "warn" {
+		t.Fatalf("persisted operations = %+v", state.Persisted)
+	}
+
+	for _, test := range []struct {
+		name string
+		body string
+		key  string
+	}{
+		{
+			name: "tick interval below minimum",
+			body: `{"operations":{"watchtower":{"tickInterval":"99ms"}}}`,
+			key:  config.FieldWatchtowerTickInterval,
+		},
+		{
+			name: "capture lines above maximum",
+			body: `{"operations":{"watchtower":{"captureLines":2001}}}`,
+			key:  config.FieldWatchtowerCaptureLines,
+		},
+		{
+			name: "capture timeout malformed",
+			body: `{"operations":{"watchtower":{"captureTimeout":"soon"}}}`,
+			key:  config.FieldWatchtowerCaptureTimeout,
+		},
+		{
+			name: "journal rows below minimum",
+			body: `{"operations":{"watchtower":{"journalRows":99}}}`,
+			key:  config.FieldWatchtowerJournalRows,
+		},
+		{
+			name: "runbook concurrency above maximum",
+			body: `{"operations":{"runbooks":{"maxConcurrent":65}}}`,
+			key:  config.FieldRunbooksMaxConcurrent,
+		},
+		{
+			name: "unsupported log level",
+			body: `{"operations":{"log":{"level":"verbose"}}}`,
+			key:  config.FieldLogLevel,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before, readErr := os.ReadFile(service.Path())
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			invalid := patchSettingsRequestWithETag(t, h, getSettingsETag(t, h), test.body)
+			if invalid.Code != http.StatusUnprocessableEntity ||
+				!strings.Contains(invalid.Body.String(), "CONFIG_INVALID") ||
+				!strings.Contains(invalid.Body.String(), test.key) {
+				t.Fatalf("invalid operations patch = %d %s", invalid.Code, invalid.Body.String())
+			}
+			after, readErr := os.ReadFile(service.Path())
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(after) != string(before) {
+				t.Fatal("invalid operations patch changed config")
+			}
+		})
 	}
 }
 

@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/opus-domini/sentinel/internal/config"
 	"github.com/opus-domini/sentinel/internal/daemon"
+	"github.com/opus-domini/sentinel/internal/humanize"
 )
 
 const settingsDeploymentStandalone = "standalone"
@@ -27,6 +29,7 @@ type settingsResponse struct {
 	Deployment   settingsDeployment   `json:"deployment"`
 	Restart      settingsRestart      `json:"restart"`
 	Experience   settingsExperience   `json:"experience"`
+	Operations   settingsOperations   `json:"operations"`
 	Integrations settingsIntegrations `json:"integrations"`
 	Diagnostics  settingsDiagnostics  `json:"diagnostics"`
 }
@@ -52,6 +55,28 @@ type settingsRestart struct {
 type settingsExperience struct {
 	Timezone stringSetting `json:"timezone"`
 	Locale   stringSetting `json:"locale"`
+}
+
+type settingsOperations struct {
+	Watchtower settingsWatchtower `json:"watchtower"`
+	Runbooks   settingsRunbooks   `json:"runbooks"`
+	Log        settingsLog        `json:"log"`
+}
+
+type settingsWatchtower struct {
+	Enabled        boolSetting    `json:"enabled"`
+	TickInterval   stringSetting  `json:"tickInterval"`
+	CaptureLines   integerSetting `json:"captureLines"`
+	CaptureTimeout stringSetting  `json:"captureTimeout"`
+	JournalRows    integerSetting `json:"journalRows"`
+}
+
+type settingsRunbooks struct {
+	MaxConcurrent integerSetting `json:"maxConcurrent"`
+}
+
+type settingsLog struct {
+	Level stringSetting `json:"level"`
 }
 
 type settingsIntegrations struct {
@@ -81,10 +106,19 @@ type stringValidation struct {
 	Format      string          `json:"format,omitempty"`
 	AllowCustom bool            `json:"allowCustom"`
 	Options     []settingOption `json:"options"`
+	Min         string          `json:"min,omitempty"`
+	Max         string          `json:"max,omitempty"`
 }
 
 type boolValidation struct {
 	Required bool `json:"required"`
+}
+
+type integerValidation struct {
+	Required bool `json:"required"`
+	Min      int  `json:"min"`
+	Max      int  `json:"max"`
+	Step     int  `json:"step"`
 }
 
 type stringSetting struct {
@@ -109,14 +143,48 @@ type boolSetting struct {
 	Validation     boolValidation     `json:"validation"`
 }
 
+type integerSetting struct {
+	PersistedValue *int               `json:"persistedValue,omitempty"`
+	EffectiveValue int                `json:"effectiveValue"`
+	DefaultValue   int                `json:"defaultValue"`
+	Source         config.FieldSource `json:"source"`
+	Editable       bool               `json:"editable"`
+	ApplyMode      config.ApplyMode   `json:"applyMode"`
+	RestartPending bool               `json:"restartPending"`
+	Validation     integerValidation  `json:"validation"`
+}
+
 type patchSettingsRequest struct {
 	Experience   *patchExperience   `json:"experience,omitempty"`
+	Operations   *patchOperations   `json:"operations,omitempty"`
 	Integrations *patchIntegrations `json:"integrations,omitempty"`
 }
 
 type patchExperience struct {
 	Timezone *string `json:"timezone,omitempty"`
 	Locale   *string `json:"locale,omitempty"`
+}
+
+type patchOperations struct {
+	Watchtower *patchWatchtower `json:"watchtower,omitempty"`
+	Runbooks   *patchRunbooks   `json:"runbooks,omitempty"`
+	Log        *patchLog        `json:"log,omitempty"`
+}
+
+type patchWatchtower struct {
+	Enabled        *bool   `json:"enabled,omitempty"`
+	TickInterval   *string `json:"tickInterval,omitempty"`
+	CaptureLines   *int    `json:"captureLines,omitempty"`
+	CaptureTimeout *string `json:"captureTimeout,omitempty"`
+	JournalRows    *int    `json:"journalRows,omitempty"`
+}
+
+type patchRunbooks struct {
+	MaxConcurrent *int `json:"maxConcurrent,omitempty"`
+}
+
+type patchLog struct {
+	Level *string `json:"level,omitempty"`
 }
 
 type patchIntegrations struct {
@@ -179,44 +247,153 @@ func (h *Handler) patchSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) settingsMutation(req patchSettingsRequest) ([]string, func(*config.Config) error, error) {
-	var keys []string
-	if req.Experience != nil {
-		if req.Experience.Timezone != nil {
-			keys = append(keys, config.FieldServerTimezone)
-		}
-		if req.Experience.Locale != nil {
-			keys = append(keys, config.FieldServerLocale)
-		}
-	}
-	if req.Integrations != nil && req.Integrations.MCP != nil && req.Integrations.MCP.Enabled != nil {
-		keys = append(keys, config.FieldMCPEnabled)
-	}
+	keys := settingsChangedKeys(req)
 	if len(keys) == 0 {
 		return nil, nil, errors.New("at least one supported settings field is required")
 	}
 
 	return keys, func(candidate *config.Config) error {
-		if req.Experience != nil {
-			if req.Experience.Timezone != nil {
-				timezone := strings.TrimSpace(*req.Experience.Timezone)
-				if timezone == "" {
-					return config.ValidationError{Path: h.configService.Path(), Issues: []string{"server.timezone is required"}}
-				}
-				candidate.Server.Timezone = timezone
-			}
-			if req.Experience.Locale != nil {
-				candidate.Server.Locale = strings.TrimSpace(*req.Experience.Locale)
-			}
+		if err := h.applyExperienceSettings(candidate, req.Experience); err != nil {
+			return err
 		}
-		if req.Integrations != nil && req.Integrations.MCP != nil && req.Integrations.MCP.Enabled != nil {
-			enabled := *req.Integrations.MCP.Enabled
-			if enabled && !h.settings.TokenConfigured() {
-				return errMCPTokenRequired
-			}
-			candidate.MCP.Enabled = enabled
+		if err := h.applyOperationsSettings(candidate, req.Operations); err != nil {
+			return err
 		}
-		return nil
+		return h.applyIntegrationSettings(candidate, req.Integrations)
 	}, nil
+}
+
+func settingsChangedKeys(req patchSettingsRequest) []string {
+	keys := experienceSettingsKeys(req.Experience)
+	keys = append(keys, operationsSettingsKeys(req.Operations)...)
+	return append(keys, integrationSettingsKeys(req.Integrations)...)
+}
+
+func experienceSettingsKeys(req *patchExperience) []string {
+	if req == nil {
+		return nil
+	}
+	var keys []string
+	if req.Timezone != nil {
+		keys = append(keys, config.FieldServerTimezone)
+	}
+	if req.Locale != nil {
+		keys = append(keys, config.FieldServerLocale)
+	}
+	return keys
+}
+
+func operationsSettingsKeys(req *patchOperations) []string {
+	if req == nil {
+		return nil
+	}
+	var keys []string
+	if req.Watchtower != nil {
+		if req.Watchtower.Enabled != nil {
+			keys = append(keys, config.FieldWatchtowerEnabled)
+		}
+		if req.Watchtower.TickInterval != nil {
+			keys = append(keys, config.FieldWatchtowerTickInterval)
+		}
+		if req.Watchtower.CaptureLines != nil {
+			keys = append(keys, config.FieldWatchtowerCaptureLines)
+		}
+		if req.Watchtower.CaptureTimeout != nil {
+			keys = append(keys, config.FieldWatchtowerCaptureTimeout)
+		}
+		if req.Watchtower.JournalRows != nil {
+			keys = append(keys, config.FieldWatchtowerJournalRows)
+		}
+	}
+	if req.Runbooks != nil && req.Runbooks.MaxConcurrent != nil {
+		keys = append(keys, config.FieldRunbooksMaxConcurrent)
+	}
+	if req.Log != nil && req.Log.Level != nil {
+		keys = append(keys, config.FieldLogLevel)
+	}
+	return keys
+}
+
+func integrationSettingsKeys(req *patchIntegrations) []string {
+	if req == nil || req.MCP == nil || req.MCP.Enabled == nil {
+		return nil
+	}
+	return []string{config.FieldMCPEnabled}
+}
+
+func (h *Handler) applyExperienceSettings(candidate *config.Config, req *patchExperience) error {
+	if req == nil {
+		return nil
+	}
+	if req.Timezone != nil {
+		timezone := strings.TrimSpace(*req.Timezone)
+		if timezone == "" {
+			return config.ValidationError{Path: h.configService.Path(), Issues: []string{"server.timezone is required"}}
+		}
+		candidate.Server.Timezone = timezone
+	}
+	if req.Locale != nil {
+		candidate.Server.Locale = strings.TrimSpace(*req.Locale)
+	}
+	return nil
+}
+
+func (h *Handler) applyOperationsSettings(candidate *config.Config, req *patchOperations) error {
+	if req == nil {
+		return nil
+	}
+	if err := h.applyWatchtowerSettings(candidate, req.Watchtower); err != nil {
+		return err
+	}
+	if req.Runbooks != nil && req.Runbooks.MaxConcurrent != nil {
+		candidate.Runbooks.MaxConcurrent = *req.Runbooks.MaxConcurrent
+	}
+	if req.Log != nil && req.Log.Level != nil {
+		candidate.Log.Level = strings.TrimSpace(*req.Log.Level)
+	}
+	return nil
+}
+
+func (h *Handler) applyWatchtowerSettings(candidate *config.Config, req *patchWatchtower) error {
+	if req == nil {
+		return nil
+	}
+	if req.Enabled != nil {
+		candidate.Watchtower.Enabled = *req.Enabled
+	}
+	if req.TickInterval != nil {
+		value, err := parseSettingsDuration(config.FieldWatchtowerTickInterval, *req.TickInterval, h.configService.Path())
+		if err != nil {
+			return err
+		}
+		candidate.Watchtower.TickInterval = value
+	}
+	if req.CaptureLines != nil {
+		candidate.Watchtower.CaptureLines = *req.CaptureLines
+	}
+	if req.CaptureTimeout != nil {
+		value, err := parseSettingsDuration(config.FieldWatchtowerCaptureTimeout, *req.CaptureTimeout, h.configService.Path())
+		if err != nil {
+			return err
+		}
+		candidate.Watchtower.CaptureTimeout = value
+	}
+	if req.JournalRows != nil {
+		candidate.Watchtower.JournalRows = *req.JournalRows
+	}
+	return nil
+}
+
+func (h *Handler) applyIntegrationSettings(candidate *config.Config, req *patchIntegrations) error {
+	if req == nil || req.MCP == nil || req.MCP.Enabled == nil {
+		return nil
+	}
+	enabled := *req.MCP.Enabled
+	if enabled && !h.settings.TokenConfigured() {
+		return errMCPTokenRequired
+	}
+	candidate.MCP.Enabled = enabled
+	return nil
 }
 
 func (h *Handler) settingsResponse(state config.State) settingsResponse {
@@ -242,6 +419,13 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 
 	timezoneField, _ := state.Field(config.FieldServerTimezone)
 	localeField, _ := state.Field(config.FieldServerLocale)
+	watchtowerEnabledField, _ := state.Field(config.FieldWatchtowerEnabled)
+	watchtowerTickField, _ := state.Field(config.FieldWatchtowerTickInterval)
+	watchtowerLinesField, _ := state.Field(config.FieldWatchtowerCaptureLines)
+	watchtowerTimeoutField, _ := state.Field(config.FieldWatchtowerCaptureTimeout)
+	watchtowerJournalField, _ := state.Field(config.FieldWatchtowerJournalRows)
+	runbooksConcurrentField, _ := state.Field(config.FieldRunbooksMaxConcurrent)
+	logLevelField, _ := state.Field(config.FieldLogLevel)
 	mcpField, _ := state.Field(config.FieldMCPEnabled)
 	return settingsResponse{
 		Revision:   state.Revision,
@@ -278,6 +462,83 @@ func (h *Handler) settingsResponse(state config.State) settingsResponse {
 					Options:     localeOptions(),
 				},
 			),
+		},
+		Operations: settingsOperations{
+			Watchtower: settingsWatchtower{
+				Enabled: buildBoolSetting(
+					watchtowerEnabledField,
+					state.Persisted.Watchtower.Enabled,
+					state.Effective.Watchtower.Enabled,
+					state.Default.Watchtower.Enabled,
+				),
+				TickInterval: buildStringSetting(
+					watchtowerTickField,
+					humanize.Duration(state.Persisted.Watchtower.TickInterval),
+					humanize.Duration(state.Effective.Watchtower.TickInterval),
+					humanize.Duration(state.Default.Watchtower.TickInterval),
+					stringValidation{
+						Required:    true,
+						Format:      "duration",
+						AllowCustom: true,
+						Options:     []settingOption{},
+						Min:         humanize.Duration(config.MinWatchtowerTickInterval),
+						Max:         humanize.Duration(config.MaxWatchtowerTickInterval),
+					},
+				),
+				CaptureLines: buildIntegerSetting(
+					watchtowerLinesField,
+					state.Persisted.Watchtower.CaptureLines,
+					state.Effective.Watchtower.CaptureLines,
+					state.Default.Watchtower.CaptureLines,
+					config.MinWatchtowerCaptureLines,
+					config.MaxWatchtowerCaptureLines,
+				),
+				CaptureTimeout: buildStringSetting(
+					watchtowerTimeoutField,
+					humanize.Duration(state.Persisted.Watchtower.CaptureTimeout),
+					humanize.Duration(state.Effective.Watchtower.CaptureTimeout),
+					humanize.Duration(state.Default.Watchtower.CaptureTimeout),
+					stringValidation{
+						Required:    true,
+						Format:      "duration",
+						AllowCustom: true,
+						Options:     []settingOption{},
+						Min:         humanize.Duration(config.MinWatchtowerCaptureTimeout),
+						Max:         humanize.Duration(config.MaxWatchtowerCaptureTimeout),
+					},
+				),
+				JournalRows: buildIntegerSetting(
+					watchtowerJournalField,
+					state.Persisted.Watchtower.JournalRows,
+					state.Effective.Watchtower.JournalRows,
+					state.Default.Watchtower.JournalRows,
+					config.MinWatchtowerJournalRows,
+					config.MaxWatchtowerJournalRows,
+				),
+			},
+			Runbooks: settingsRunbooks{
+				MaxConcurrent: buildIntegerSetting(
+					runbooksConcurrentField,
+					state.Persisted.Runbooks.MaxConcurrent,
+					state.Effective.Runbooks.MaxConcurrent,
+					state.Default.Runbooks.MaxConcurrent,
+					config.MinRunbooksMaxConcurrent,
+					config.MaxRunbooksMaxConcurrent,
+				),
+			},
+			Log: settingsLog{
+				Level: buildStringSetting(
+					logLevelField,
+					state.Persisted.Log.Level,
+					state.Effective.Log.Level,
+					state.Default.Log.Level,
+					stringValidation{
+						Required:    true,
+						AllowCustom: false,
+						Options:     logLevelOptions(),
+					},
+				),
+			},
 		},
 		Integrations: settingsIntegrations{
 			MCP: settingsMCP{
@@ -394,6 +655,46 @@ func buildBoolSetting(field config.FieldState, persisted, effective, defaultValu
 	return setting
 }
 
+func buildIntegerSetting(
+	field config.FieldState,
+	persisted int,
+	effective int,
+	defaultValue int,
+	minValue int,
+	maxValue int,
+) integerSetting {
+	setting := integerSetting{
+		EffectiveValue: effective,
+		DefaultValue:   defaultValue,
+		Source:         field.Source,
+		Editable:       field.Editable,
+		ApplyMode:      field.ApplyMode,
+		RestartPending: field.RestartPending,
+		Validation: integerValidation{
+			Required: true,
+			Min:      minValue,
+			Max:      maxValue,
+			Step:     1,
+		},
+	}
+	if field.Defined {
+		value := persisted
+		setting.PersistedValue = &value
+	}
+	return setting
+}
+
+func parseSettingsDuration(key, raw, path string) (time.Duration, error) {
+	value, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || value <= 0 {
+		return 0, config.ValidationError{
+			Path:   path,
+			Issues: []string{key + " must be a positive duration such as 150ms, 1s, or 1m"},
+		}
+	}
+	return value, nil
+}
+
 func (h *Handler) settingsVersion() string {
 	version := strings.TrimSpace(h.version)
 	if version == "" {
@@ -504,6 +805,15 @@ func localeOptions() []settingOption {
 		options = append(options, settingOption{Value: value, Label: localeLabel(value)})
 	}
 	return options
+}
+
+func logLevelOptions() []settingOption {
+	return []settingOption{
+		{Value: "debug", Label: "Debug"},
+		{Value: "info", Label: "Info"},
+		{Value: "warn", Label: "Warn"},
+		{Value: "error", Label: "Error"},
+	}
 }
 
 func localeLabel(value string) string {

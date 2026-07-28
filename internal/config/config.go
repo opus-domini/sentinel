@@ -37,16 +37,26 @@ const (
 	defaultHost    = "127.0.0.1"
 	defaultPort    = 4040
 
-	minWatchtowerTickInterval   = 100 * time.Millisecond
-	maxWatchtowerTickInterval   = time.Minute
-	minWatchtowerCaptureLines   = 1
-	maxWatchtowerCaptureLines   = 2000
-	minWatchtowerCaptureTimeout = 10 * time.Millisecond
-	maxWatchtowerCaptureTimeout = 10 * time.Second
-	minWatchtowerJournalRows    = 100
-	maxWatchtowerJournalRows    = 1_000_000
-	minRunbooksMaxConcurrent    = 1
-	maxRunbooksMaxConcurrent    = 64
+	// MinWatchtowerTickInterval is the shortest supported collection interval.
+	MinWatchtowerTickInterval = 100 * time.Millisecond
+	// MaxWatchtowerTickInterval is the longest supported collection interval.
+	MaxWatchtowerTickInterval = time.Minute
+	// MinWatchtowerCaptureLines is the smallest supported pane tail.
+	MinWatchtowerCaptureLines = 1
+	// MaxWatchtowerCaptureLines is the largest supported pane tail.
+	MaxWatchtowerCaptureLines = 2000
+	// MinWatchtowerCaptureTimeout is the shortest supported pane capture timeout.
+	MinWatchtowerCaptureTimeout = 10 * time.Millisecond
+	// MaxWatchtowerCaptureTimeout is the longest supported pane capture timeout.
+	MaxWatchtowerCaptureTimeout = 10 * time.Second
+	// MinWatchtowerJournalRows is the smallest supported activity journal.
+	MinWatchtowerJournalRows = 100
+	// MaxWatchtowerJournalRows is the largest supported activity journal.
+	MaxWatchtowerJournalRows = 1_000_000
+	// MinRunbooksMaxConcurrent is the smallest supported runbook concurrency.
+	MinRunbooksMaxConcurrent = 1
+	// MaxRunbooksMaxConcurrent is the largest supported runbook concurrency.
+	MaxRunbooksMaxConcurrent = 64
 )
 
 // ManagedDefaultLogPathEnv supplies the scope-specific log default persisted
@@ -511,20 +521,20 @@ func validateConfigValues(cfg Config) error {
 	if !slices.Contains(supportedLocales, cfg.Server.Locale) {
 		issues = append(issues, "server.locale must be one of the supported locales")
 	}
-	if cfg.Runbooks.MaxConcurrent < minRunbooksMaxConcurrent || cfg.Runbooks.MaxConcurrent > maxRunbooksMaxConcurrent {
-		issues = append(issues, fmt.Sprintf("runbooks.max_concurrent must be between %d and %d", minRunbooksMaxConcurrent, maxRunbooksMaxConcurrent))
+	if cfg.Runbooks.MaxConcurrent < MinRunbooksMaxConcurrent || cfg.Runbooks.MaxConcurrent > MaxRunbooksMaxConcurrent {
+		issues = append(issues, fmt.Sprintf("runbooks.max_concurrent must be between %d and %d", MinRunbooksMaxConcurrent, MaxRunbooksMaxConcurrent))
 	}
-	if cfg.Watchtower.TickInterval < minWatchtowerTickInterval || cfg.Watchtower.TickInterval > maxWatchtowerTickInterval {
-		issues = append(issues, fmt.Sprintf("watchtower.tick_interval must be between %s and %s", minWatchtowerTickInterval, maxWatchtowerTickInterval))
+	if cfg.Watchtower.TickInterval < MinWatchtowerTickInterval || cfg.Watchtower.TickInterval > MaxWatchtowerTickInterval {
+		issues = append(issues, fmt.Sprintf("watchtower.tick_interval must be between %s and %s", MinWatchtowerTickInterval, MaxWatchtowerTickInterval))
 	}
-	if cfg.Watchtower.CaptureLines < minWatchtowerCaptureLines || cfg.Watchtower.CaptureLines > maxWatchtowerCaptureLines {
-		issues = append(issues, fmt.Sprintf("watchtower.capture_lines must be between %d and %d", minWatchtowerCaptureLines, maxWatchtowerCaptureLines))
+	if cfg.Watchtower.CaptureLines < MinWatchtowerCaptureLines || cfg.Watchtower.CaptureLines > MaxWatchtowerCaptureLines {
+		issues = append(issues, fmt.Sprintf("watchtower.capture_lines must be between %d and %d", MinWatchtowerCaptureLines, MaxWatchtowerCaptureLines))
 	}
-	if cfg.Watchtower.CaptureTimeout < minWatchtowerCaptureTimeout || cfg.Watchtower.CaptureTimeout > maxWatchtowerCaptureTimeout {
-		issues = append(issues, fmt.Sprintf("watchtower.capture_timeout must be between %s and %s", minWatchtowerCaptureTimeout, maxWatchtowerCaptureTimeout))
+	if cfg.Watchtower.CaptureTimeout < MinWatchtowerCaptureTimeout || cfg.Watchtower.CaptureTimeout > MaxWatchtowerCaptureTimeout {
+		issues = append(issues, fmt.Sprintf("watchtower.capture_timeout must be between %s and %s", MinWatchtowerCaptureTimeout, MaxWatchtowerCaptureTimeout))
 	}
-	if cfg.Watchtower.JournalRows < minWatchtowerJournalRows || cfg.Watchtower.JournalRows > maxWatchtowerJournalRows {
-		issues = append(issues, fmt.Sprintf("watchtower.journal_rows must be between %d and %d", minWatchtowerJournalRows, maxWatchtowerJournalRows))
+	if cfg.Watchtower.JournalRows < MinWatchtowerJournalRows || cfg.Watchtower.JournalRows > MaxWatchtowerJournalRows {
+		issues = append(issues, fmt.Sprintf("watchtower.journal_rows must be between %d and %d", MinWatchtowerJournalRows, MaxWatchtowerJournalRows))
 	}
 	if strings.TrimSpace(cfg.HealthReport.Schedule) != "" {
 		if err := validate.CronExpression(cfg.HealthReport.Schedule); err != nil {

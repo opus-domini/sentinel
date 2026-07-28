@@ -157,6 +157,30 @@ user_switch_method = "systemd-run"
 Invalid environment overrides fail configuration loading. They are never
 silently ignored in favor of the file or a default.
 
+## Operational limits
+
+Settings exposes the same constraints enforced by startup, CLI validation, and
+the typed PATCH endpoint:
+
+| Field | Accepted value |
+| --- | --- |
+| `watchtower.enabled` | `true` or `false` |
+| `watchtower.tick_interval` | `100ms` through `1m` |
+| `watchtower.capture_lines` | `1` through `2000` |
+| `watchtower.capture_timeout` | `10ms` through `10s` |
+| `watchtower.journal_rows` | `100` through `1,000,000` |
+| `runbooks.max_concurrent` | `1` through `64` |
+| `log.level` | `debug`, `info`, `warn`, or `error` |
+
+These values are restart-based. Saving updates `config.toml` atomically and
+marks the changed keys as restart pending; it does not partially reload
+Watchtower, the Runbook manager, or the logger. Environment-owned fields remain
+read-only and a forged PATCH is rejected.
+
+Managed systemd and launchd definitions do not set `SENTINEL_LOG_LEVEL`.
+Therefore an explicit `[log].level` value is no longer shadowed by the service
+template.
+
 ## Recommended Profiles
 
 ### Local-only development

@@ -35,6 +35,9 @@ func TestRenderUserUnitIncludesExecStart(t *testing.T) {
 	if !strings.Contains(unit, "Environment=HOME=%h") {
 		t.Fatalf("rendered unit missing HOME environment: %s", unit)
 	}
+	if strings.Contains(unit, "SENTINEL_LOG_LEVEL") {
+		t.Fatalf("rendered unit must let config.toml own log.level: %s", unit)
+	}
 }
 
 func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
@@ -52,6 +55,9 @@ func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
 	}
 	if strings.Contains(unit, " update apply -scope=") {
 		t.Fatalf("rendered updater unit contains an invalid single-dash flag: %s", unit)
+	}
+	if strings.Contains(unit, "SENTINEL_LOG_LEVEL") {
+		t.Fatalf("rendered updater unit must not override log.level: %s", unit)
 	}
 }
 

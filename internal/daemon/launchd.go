@@ -619,8 +619,6 @@ func renderLaunchdUserServicePlist(execPath, configPath, dataDir, logPath, stdou
 	<string>%s</string>
 	<key>EnvironmentVariables</key>
 	<dict>
-		<key>SENTINEL_LOG_LEVEL</key>
-		<string>info</string>
 		<key>SENTINEL_DATA_DIR</key>
 		<string>%s</string>
 		<key>%s</key>

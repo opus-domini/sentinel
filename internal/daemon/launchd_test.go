@@ -22,6 +22,9 @@ func TestRenderLaunchdUserServicePlistIncludesExecStart(t *testing.T) {
 	if !strings.Contains(plist, "<string>"+launchdServiceLabel+"</string>") {
 		t.Fatalf("plist missing launchd label: %s", plist)
 	}
+	if strings.Contains(plist, "SENTINEL_LOG_LEVEL") {
+		t.Fatalf("plist must let config.toml own log.level: %s", plist)
+	}
 }
 
 func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
@@ -45,6 +48,9 @@ func TestRenderLaunchdUserAutoUpdatePlistIncludesApplyArgs(t *testing.T) {
 		if !strings.Contains(plist, fragment) {
 			t.Fatalf("plist missing %q: %s", fragment, plist)
 		}
+	}
+	if strings.Contains(plist, "SENTINEL_LOG_LEVEL") {
+		t.Fatalf("updater plist must not override log.level: %s", plist)
 	}
 }
 

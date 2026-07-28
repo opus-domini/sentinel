@@ -10,10 +10,11 @@ describe('settings routes', () => {
 
   it('accepts only sections delivered by the current workspace', () => {
     expect(() => guardSettingsSection('experience')).not.toThrow()
+    expect(() => guardSettingsSection('operations')).not.toThrow()
     expect(() => guardSettingsSection('integrations')).not.toThrow()
     expect(() => guardSettingsSection('storage')).not.toThrow()
     expect(() => guardSettingsSection('diagnostics')).not.toThrow()
-    expect(() => guardSettingsSection('operations')).toThrow()
+    expect(() => guardSettingsSection('accounts')).toThrow()
     expect(() => guardSettingsSection('not-real')).toThrow()
   })
 })

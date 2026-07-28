@@ -10,9 +10,11 @@ destination to the primary navigation.
 
 ## Sections
 
-The current workspace has four deep-linkable sections:
+The current workspace has five deep-linkable sections:
 
 - `/settings/experience` — terminal theme, timezone, and date format.
+- `/settings/operations` — Watchtower collection, Runbook concurrency, and
+  daemon log level.
 - `/settings/integrations` — MCP availability and connection instructions.
 - `/settings/storage` — a read-only storage overview and a link to maintenance.
 - `/settings/diagnostics` — runtime, deployment, config path, restart state, and
@@ -36,6 +38,31 @@ Environment-owned values are read-only. Theme is explicitly marked
 Timezone accepts `Local` or a valid IANA name such as
 `America/Sao_Paulo`. Locale remains a closed selection supplied by the typed
 settings API.
+
+## Operational configuration
+
+Operations groups restart-based controls into one draft:
+
+- Watchtower enabled state, collection interval, pane-tail line count, capture
+  timeout, and journal retention;
+- maximum concurrent Runbook executions;
+- daemon log level from the server-provided `debug`, `info`, `warn`, and
+  `error` options.
+
+Duration fields use compact values such as `150ms`, `1s`, and `1m`. Integer and
+duration limits come from the typed Settings response and are enforced again by
+the backend before any file write.
+
+The sticky save bar lists the exact config keys and old/new values. `Discard`
+returns every field to the current server snapshot without a PATCH. Navigating
+within Settings, leaving the workspace, using browser Back, or closing the page
+with an unsaved draft is guarded.
+
+After a successful save, Sentinel reports the changed keys and deployment
+scope. The restart command is displayed and can be copied when the config path
+matches an installed user or system service. Sentinel does not restart itself;
+the running process keeps its startup values until the operator performs the
+manual restart.
 
 ## Storage maintenance
 

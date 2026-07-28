@@ -22,6 +22,11 @@ configuration and data directory. Linux system installs use
 `/var/log/sentinel/sentinel.log`; user installs keep all three resources under
 `~/.sentinel`.
 
+Generated systemd units and launchd plists do not set
+`SENTINEL_LOG_LEVEL`. The effective daemon verbosity comes from
+`[log].level` in the deployment config, unless the operator explicitly supplies
+the environment override outside Sentinel's managed template.
+
 A deployment is either canonical or legacy; hybrid layouts are invalid.
 `service install` and `update apply` refuse a legacy or hybrid deployment and
 point to the migration command instead of silently changing one path:
@@ -45,6 +50,19 @@ sentinel service status
 sentinel service restart --scope auto
 sentinel service uninstall --scope auto
 ```
+
+Settings never restarts the service automatically. After saving restart-based
+fields, use the scope reported by `/settings/operations`:
+
+```bash
+sentinel service restart --scope user
+sudo sentinel service restart --scope system
+```
+
+Standalone deployments show no invented command; restart them through the
+external supervisor that owns the process. The restart notice lists the changed
+keys, keeps the adjacent `<config-path>.bak` available for recovery, and
+disappears after the new process boots with the saved config.
 
 ## Autoupdate Timer/Agent
 

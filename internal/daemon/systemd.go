@@ -965,7 +965,6 @@ ExecStart=%s%s daemon
 Restart=on-failure
 RestartSec=2
 KillMode=process
-Environment=SENTINEL_LOG_LEVEL=info
 Environment=HOME=%%h
 Environment="SENTINEL_DATA_DIR=%s"
 Environment="%s=%s"
@@ -993,7 +992,6 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=%s%s update apply --scope=%s
-Environment=SENTINEL_LOG_LEVEL=info
 Environment="SENTINEL_DATA_DIR=%s"
 
 [Install]

@@ -21,6 +21,8 @@ export type StringSetting = {
     format?: string
     allowCustom: boolean
     options: Array<SettingOption>
+    min?: string
+    max?: string
   }
 }
 
@@ -34,6 +36,22 @@ export type BooleanSetting = {
   restartPending: boolean
   validation: {
     required: boolean
+  }
+}
+
+export type IntegerSetting = {
+  persistedValue?: number
+  effectiveValue: number
+  defaultValue: number
+  source: SettingSource
+  editable: boolean
+  applyMode: SettingApplyMode
+  restartPending: boolean
+  validation: {
+    required: boolean
+    min: number
+    max: number
+    step: number
   }
 }
 
@@ -58,6 +76,21 @@ export type SettingsResponse = {
     timezone: StringSetting
     locale: StringSetting
   }
+  operations: {
+    watchtower: {
+      enabled: BooleanSetting
+      tickInterval: StringSetting
+      captureLines: IntegerSetting
+      captureTimeout: StringSetting
+      journalRows: IntegerSetting
+    }
+    runbooks: {
+      maxConcurrent: IntegerSetting
+    }
+    log: {
+      level: StringSetting
+    }
+  }
   integrations: {
     mcp: {
       enabled: BooleanSetting
@@ -77,6 +110,21 @@ export type SettingsPatch = {
   experience?: {
     timezone?: string
     locale?: string
+  }
+  operations?: {
+    watchtower?: {
+      enabled?: boolean
+      tickInterval?: string
+      captureLines?: number
+      captureTimeout?: string
+      journalRows?: number
+    }
+    runbooks?: {
+      maxConcurrent?: number
+    }
+    log?: {
+      level?: string
+    }
   }
   integrations?: {
     mcp?: {

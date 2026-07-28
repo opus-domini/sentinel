@@ -1,13 +1,21 @@
 import type { ReactNode } from 'react'
 
-import type { BooleanSetting, SettingApplyMode, SettingSource, StringSetting } from '@/api/settings'
+import type {
+  BooleanSetting,
+  IntegerSetting,
+  SettingApplyMode,
+  SettingSource,
+  StringSetting,
+} from '@/api/settings'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 type SettingMetadata = Pick<
-  StringSetting | BooleanSetting,
+  StringSetting | BooleanSetting | IntegerSetting,
   'source' | 'applyMode' | 'restartPending'
 >
+
+type SettingValue = StringSetting | BooleanSetting | IntegerSetting
 
 type SettingsFieldProps = {
   label: string
@@ -130,6 +138,30 @@ export function ValidationError({ message, id }: { message: string; id?: string 
       {message}
     </p>
   )
+}
+
+export function SettingValueSummary({ setting }: { setting: SettingValue }) {
+  const persisted =
+    setting.persistedValue === undefined ? 'Inherited' : formatSettingValue(setting.persistedValue)
+  return (
+    <dl className="grid gap-1.5 rounded-md border border-border-subtle bg-background/45 p-2.5 text-[10px] sm:grid-cols-2">
+      <div className="min-w-0">
+        <dt className="uppercase tracking-[0.08em] text-muted-foreground">Effective</dt>
+        <dd className="mt-0.5 break-words font-mono text-secondary-foreground">
+          {formatSettingValue(setting.effectiveValue)}
+        </dd>
+      </div>
+      <div className="min-w-0">
+        <dt className="uppercase tracking-[0.08em] text-muted-foreground">Persisted</dt>
+        <dd className="mt-0.5 break-words font-mono text-secondary-foreground">{persisted}</dd>
+      </div>
+    </dl>
+  )
+}
+
+function formatSettingValue(value: string | number | boolean): string {
+  if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled'
+  return String(value)
 }
 
 export function SaveFeedback({
