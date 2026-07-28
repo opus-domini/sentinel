@@ -159,9 +159,16 @@ func TestSettingsRestartAcceptsCurrentManagedDeploymentOnce(t *testing.T) {
 	h, _ := newTestHandler(t, nil)
 	h.configService = service
 	h.settings = runtime
+	scope := daemon.ScopeUser
+	if daemon.RequireScopeAccess(scope) != nil {
+		scope = daemon.ScopeSystem
+	}
+	if err := daemon.RequireScopeAccess(scope); err != nil {
+		t.Fatalf("test process has no accessible managed scope: %v", err)
+	}
 	h.deployments = func() ([]daemon.Deployment, error) {
 		return []daemon.Deployment{{
-			Scope:      daemon.ScopeUser,
+			Scope:      scope,
 			ConfigPath: service.Path(),
 		}}, nil
 	}
@@ -210,7 +217,7 @@ func TestSettingsRestartAcceptsCurrentManagedDeploymentOnce(t *testing.T) {
 
 	select {
 	case call := <-restartCall:
-		if call != [2]string{"restart", daemon.ScopeUser} {
+		if call != [2]string{"restart", scope} {
 			t.Fatalf("restart call = %v", call)
 		}
 	case <-time.After(time.Second):
