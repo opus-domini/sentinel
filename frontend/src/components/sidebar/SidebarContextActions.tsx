@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Lock, LockOpen } from 'lucide-react'
+import { CircleHelp, Lock, LockOpen } from 'lucide-react'
 import MetricsHelpDialog from '@/components/MetricsHelpDialog'
 import RunbooksHelpDialog from '@/components/RunbooksHelpDialog'
 import ServicesHelpDialog from '@/components/ServicesHelpDialog'
@@ -86,6 +86,21 @@ function PageHelpDialog({
     case '/metrics':
       return <MetricsHelpDialog triggerClassName={triggerClassName} />
     default:
-      return null
+      return (
+        <TooltipHelper content="Help is unavailable on this page" side="right">
+          <span className="block w-full">
+            <Button
+              variant="ghost"
+              size="icon-lg"
+              className={cn(triggerClassName, 'cursor-not-allowed')}
+              disabled
+              aria-label="Help"
+              aria-description="Help is unavailable on this page."
+            >
+              <CircleHelp className="size-4" aria-hidden="true" />
+            </Button>
+          </span>
+        </TooltipHelper>
+      )
   }
 }

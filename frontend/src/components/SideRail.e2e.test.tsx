@@ -156,6 +156,31 @@ describe('SideRail', () => {
     expect(screen.getByRole('button', { name: helperLabel })).toBeTruthy()
   })
 
+  it('keeps help, settings, and collapse visible when their page actions are unavailable', () => {
+    state.pathname = '/settings/operations'
+
+    render(
+      <LayoutContext.Provider value={layoutValue}>
+        <SideRail
+          sidebarCollapsed={false}
+          sidebarToggleAvailable={false}
+          onToggleSidebarCollapsed={() => {}}
+        />
+      </LayoutContext.Provider>,
+    )
+
+    const help = screen.getByRole('button', { name: 'Help' }) as HTMLButtonElement
+    const settings = screen.getByRole('link', { name: 'Settings' })
+    const collapse = screen.getByRole('button', {
+      name: 'Collapse sidebar',
+    }) as HTMLButtonElement
+
+    expect(help.disabled).toBe(true)
+    expect(settings.getAttribute('aria-current')).toBe('page')
+    expect(collapse.disabled).toBe(true)
+    expect(collapse.getAttribute('aria-expanded')).toBeNull()
+  })
+
   it('opens authentication from the rail and describes the current state', () => {
     render(
       <LayoutContext.Provider value={layoutValue}>

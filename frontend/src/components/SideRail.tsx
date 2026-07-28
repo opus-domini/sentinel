@@ -10,13 +10,13 @@ import { cn } from '@/lib/utils'
 type SideRailProps = {
   sidebarCollapsed: boolean
   onToggleSidebarCollapsed: () => void
-  showSidebarToggles?: boolean
+  sidebarToggleAvailable?: boolean
 }
 
 export default function SideRail({
   sidebarCollapsed,
   onToggleSidebarCollapsed,
-  showSidebarToggles = true,
+  sidebarToggleAvailable = true,
 }: SideRailProps) {
   const { compactLayout } = useViewport()
 
@@ -30,6 +30,31 @@ export default function SideRail({
         ? 'bg-primary/10 text-primary-text-bright before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
         : 'text-secondary-foreground hover:bg-accent hover:text-foreground',
     )
+  const sidebarToggleLabel = sidebarToggleAvailable
+    ? sidebarCollapsed
+      ? 'Expand sidebar'
+      : 'Collapse sidebar'
+    : 'Collapse sidebar'
+  const sidebarToggle = (
+    <Button
+      variant="ghost"
+      size="icon-lg"
+      className="w-full cursor-pointer text-secondary-foreground hover:text-foreground disabled:cursor-not-allowed"
+      disabled={!sidebarToggleAvailable}
+      onClick={onToggleSidebarCollapsed}
+      aria-expanded={sidebarToggleAvailable ? !sidebarCollapsed : undefined}
+      aria-label={sidebarToggleLabel}
+      aria-description={
+        sidebarToggleAvailable ? undefined : 'No sidebar is available on this page.'
+      }
+    >
+      {sidebarToggleAvailable && sidebarCollapsed ? (
+        <ChevronsRight className="size-4" />
+      ) : (
+        <ChevronsLeft className="size-4" />
+      )}
+    </Button>
+  )
 
   if (compactLayout) {
     return null
@@ -67,27 +92,16 @@ export default function SideRail({
           <Settings className="size-4" aria-hidden="true" />
         </Link>
       </TooltipHelper>
-      {showSidebarToggles && (
-        <TooltipHelper
-          content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          side="right"
-        >
-          <Button
-            variant="ghost"
-            size="icon-lg"
-            className="w-full cursor-pointer text-secondary-foreground hover:text-foreground"
-            onClick={onToggleSidebarCollapsed}
-            aria-expanded={!sidebarCollapsed}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {sidebarCollapsed ? (
-              <ChevronsRight className="size-4" />
-            ) : (
-              <ChevronsLeft className="size-4" />
-            )}
-          </Button>
-        </TooltipHelper>
-      )}
+      <TooltipHelper
+        content={sidebarToggleAvailable ? sidebarToggleLabel : 'No sidebar on this page'}
+        side="right"
+      >
+        {sidebarToggleAvailable ? (
+          sidebarToggle
+        ) : (
+          <span className="block w-full">{sidebarToggle}</span>
+        )}
+      </TooltipHelper>
     </aside>
   )
 }

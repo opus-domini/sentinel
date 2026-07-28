@@ -86,7 +86,7 @@ export default function AppShell({ sidebar, children, disableEdgeSwipe = false }
         <SideRail
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
-          showSidebarToggles={hasSidebar}
+          sidebarToggleAvailable={hasSidebar}
         />
 
         {hasSidebar && sidebar}
