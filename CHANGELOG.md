@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.15](https://github.com/opus-domini/sentinel/compare/v0.10.14...v0.10.15) (2026-07-29)
+
+
+### Bug Fixes
+
+* refine Now refresh feedback ([7d00e90](https://github.com/opus-domini/sentinel/commit/7d00e90e2aeabd3337487e3d5918e1d9136312a0))
+* simplify mobile terminal dimensions ([3434780](https://github.com/opus-domini/sentinel/commit/3434780b55cb2cc98d9ed55f2139818c96e784f8))
+
+
+### Documentation
+
+* **showcase:** refresh interface captures ([d4a9708](https://github.com/opus-domini/sentinel/commit/d4a9708b7a90abb9af31fa8131c6b30aaa487748))
+
 ## [0.10.14](https://github.com/opus-domini/sentinel/compare/v0.10.13...v0.10.14) (2026-07-28)
 
 
