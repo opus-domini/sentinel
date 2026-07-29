@@ -152,9 +152,6 @@ run_check() {
 
 		while IFS= read -r png; do
 			filename="$(basename "$png")"
-			if [[ "$filename" == "logo.png" ]]; then
-				continue
-			fi
 			if grep -Fqx "$png" "$references_file" ||
 				grep -Fqx "$filename" "$manifest_entries_file"; then
 				continue

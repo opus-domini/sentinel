@@ -52,7 +52,7 @@ actual_files=()
 while IFS= read -r filename; do
 	actual_files+=("$filename")
 done < <(
-	find "$output_dir" -maxdepth 1 -type f -name '*.png' ! -name 'logo.png' -printf '%f\n' |
+	find "$output_dir" -maxdepth 1 -type f -name '*.png' -printf '%f\n' |
 		LC_ALL=C sort
 )
 

@@ -21,7 +21,7 @@ mobile. Sentinel has no satellite-specific behavior.
 - `mobile-settings-experience.png`
 
 `showcase-manifest.tsv` records the route state, viewport, theme, scenario,
-source commit, and capture time for each image. `logo.png` is independent of
+source commit, and capture time for each image. `logo.svg` is independent of
 the showcase.
 
 ## Recapture
