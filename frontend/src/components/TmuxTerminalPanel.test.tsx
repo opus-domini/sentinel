@@ -120,6 +120,35 @@ describe('TmuxTerminalPanel', () => {
     expect(screen.getByText('Session Tabs')).toBeTruthy()
   })
 
+  it('moves terminal dimensions into an information menu on mobile', () => {
+    useTouchOptimizedMock.mockReturnValue(true)
+
+    render(<TmuxTerminalPanel {...baseProps} />)
+
+    expect(screen.queryByText('cols 120 rows 40')).toBeNull()
+    const dimensions = screen.getByRole('button', {
+      name: 'Terminal dimensions: 120 columns by 40 rows',
+    })
+    expect(dimensions.querySelector('.lucide-info')).not.toBeNull()
+
+    fireEvent.pointerDown(dimensions, { button: 0, ctrlKey: false })
+
+    expect(screen.getByText('Terminal size')).toBeTruthy()
+    expect(screen.getByText('Columns').nextElementSibling?.textContent).toBe('120')
+    expect(screen.getByText('Rows').nextElementSibling?.textContent).toBe('40')
+  })
+
+  it('keeps terminal dimensions visible in the desktop footer', () => {
+    render(<TmuxTerminalPanel {...baseProps} />)
+
+    expect(screen.getByText('cols 120 rows 40')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', {
+        name: 'Terminal dimensions: 120 columns by 40 rows',
+      }),
+    ).toBeNull()
+  })
+
   it('shows a loading overlay while tmux is still attaching', () => {
     render(
       <TmuxTerminalPanel {...baseProps} connectionState="connecting" statusDetail="opening dev" />,

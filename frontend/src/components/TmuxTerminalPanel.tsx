@@ -1,4 +1,4 @@
-import { Loader2, Menu, Minus, Plus } from 'lucide-react'
+import { Info, Loader2, Menu, Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import AppSectionTitle from './layout/AppSectionTitle'
 import ConnectionBadge from './ConnectionBadge'
@@ -12,6 +12,12 @@ import type { RefCallback } from 'react'
 import type { ConnectionState, PaneInfo, TmuxLauncher, WindowInfo } from '@/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { isEditableHotkeyTarget, useDocumentHotkeys } from '@/hooks/useHotkeys'
 import { useViewport } from '@/contexts/ViewportContext'
 import type { ModifierName, TerminalInput, TerminalModifiers } from '@/lib/terminalInput'
@@ -582,9 +588,40 @@ export default function TmuxTerminalPanel({
                 <Plus className="h-3 w-3" />
               </button>
             </TooltipHelper>
-            <span className="ml-0.5">
-              cols {termCols} rows {termRows}
-            </span>
+            {compactLayout ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded text-secondary-foreground hover:bg-surface-active"
+                    aria-label={`Terminal dimensions: ${termCols} columns by ${termRows} rows`}
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36">
+                  <DropdownMenuLabel className="px-2 py-1.5">
+                    <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                      Terminal size
+                    </span>
+                    <dl className="mt-1 grid gap-1 text-xs text-secondary-foreground">
+                      <div className="flex items-center justify-between gap-4">
+                        <dt>Columns</dt>
+                        <dd className="font-semibold text-foreground">{termCols}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <dt>Rows</dt>
+                        <dd className="font-semibold text-foreground">{termRows}</dd>
+                      </div>
+                    </dl>
+                  </DropdownMenuLabel>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <span className="ml-0.5">
+                cols {termCols} rows {termRows}
+              </span>
+            )}
           </div>
         )}
       </footer>
