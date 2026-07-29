@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="docs/assets/images/logo.svg" alt="Sentinel logo" width="420"/>
+    <img src="docs/assets/images/logo.svg" alt="Sentinel logo" width="320"/>
     <hr />
     <p><strong>Local-first host operations, from signal to verified action.</strong></p>
     <p>
