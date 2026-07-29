@@ -1,11 +1,11 @@
 filename	route_state	viewport	theme	scenario	source_commit	captured_at
-desktop-now-risk.png	/ (at risk)	1440x900@1x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-desktop-services-diagnosis.png	/services?service=telemetry-relay&panel=status	1440x900@1x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-desktop-metrics-pressure.png	/metrics?signal=cpuPressure	1440x900@1x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-desktop-runbooks-receipt.png	/runbooks?job=job-orbital-042	1440x900@1x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-desktop-tmux-mission-control.png	/tmux?session=flight-control	1440x900@1x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-desktop-now-healthy.png	/ (healthy)	1440x900@1x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-desktop-settings-operations.png	/settings/operations	1440x900@1x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-mobile-now.png	/ (at risk)	390x844@2x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-mobile-tmux.png	/tmux?session=flight-control	390x844@2x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
-mobile-settings-experience.png	/settings/experience	390x844@2x	dark	Orbital Station	0a1eb9c2215de94ff44c3869999581e7ea4e84fb	2026-07-28T05:43:18Z
+desktop-now-risk.png	/ (at risk)	1440x900@1x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+desktop-services-diagnosis.png	/services?service=telemetry-relay&panel=status	1440x900@1x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+desktop-metrics-pressure.png	/metrics?signal=cpuPressure	1440x900@1x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+desktop-runbooks-receipt.png	/runbooks?job=job-orbital-042	1440x900@1x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+desktop-tmux-mission-control.png	/tmux?session=flight-control	1440x900@1x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+desktop-now-healthy.png	/ (healthy)	1440x900@1x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+desktop-settings-operations.png	/settings/operations	1440x900@1x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+mobile-now.png	/ (at risk)	390x844@2x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+mobile-tmux.png	/tmux?session=flight-control	390x844@2x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
+mobile-settings-experience.png	/settings/experience	390x844@2x	dark	Orbital Station	91af24e7f466f1a6f723da7e31d760ac9abc4ada	2026-07-29T16:10:09Z
