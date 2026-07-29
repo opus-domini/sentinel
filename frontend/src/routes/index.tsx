@@ -165,12 +165,7 @@ function IndexRoute() {
               ? `${displaySnapshot.attention.total} attention · ${displaySnapshot.inProgress.runs.length} procedures · ${displaySnapshot.inProgress.sessions.length} sessions`
               : 'Operational read model'}
           </span>
-          {nowQuery.isFetching && !nowQuery.isLoading && (
-            <span className="inline-flex items-center gap-1 text-muted-foreground">
-              <RefreshCw className="size-2.5 motion-safe:animate-spin" />
-              Refreshing
-            </span>
-          )}
+          <NowRefreshStatus />
         </footer>
       </main>
 
@@ -184,6 +179,15 @@ function IndexRoute() {
         }}
       />
     </AppShell>
+  )
+}
+
+export function NowRefreshStatus() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+      <RefreshCw className="size-2.5" />
+      Live refresh · ~1s
+    </span>
   )
 }
 

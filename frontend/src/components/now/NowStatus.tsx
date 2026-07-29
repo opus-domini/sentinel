@@ -50,7 +50,6 @@ export function NowStatus({ snapshot }: NowStatusProps) {
       aria-labelledby="now-status-title"
       className="relative overflow-hidden rounded-xl border border-border-subtle bg-[linear-gradient(118deg,rgba(36,200,242,0.08),transparent_36%),var(--surface-raised)]"
     >
-      <div className="pointer-events-none absolute top-[41%] right-0 left-[33%] hidden h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent lg:block" />
       <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(15rem,0.9fr)_minmax(28rem,1.8fr)] lg:items-center">
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">

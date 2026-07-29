@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NowError, NowLoading, startNowServiceProcedure } from './index'
+import { NowError, NowLoading, NowRefreshStatus, startNowServiceProcedure } from './index'
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => () => ({}),
@@ -24,6 +24,13 @@ describe('Now route states', () => {
     expect(screen.getByText('snapshot unavailable')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the live refresh cadence visible without animation', () => {
+    render(<NowRefreshStatus />)
+
+    const status = screen.getByText('Live refresh · ~1s')
+    expect(status.querySelector('svg')?.getAttribute('class')).not.toContain('animate-spin')
   })
 
   it('hands a started Now procedure to canonical job navigation', async () => {
