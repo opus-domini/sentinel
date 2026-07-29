@@ -102,11 +102,13 @@ desktop-runbooks-receipt.png;(schema|receipt|execution|succeeded);execution rece
 desktop-runbooks-receipt.png;recover telemetry;recovery procedure
 desktop-tmux-mission-control.png;orbital;orbital terminal
 desktop-tmux-mission-control.png;telemetry;terminal telemetry
+desktop-tmux-mission-control.png;deep space network;deep-space network
 desktop-now-healthy.png;healthy;healthy posture
 desktop-settings-operations.png;operations;Settings Operations
 desktop-settings-operations.png;watchtower;Watchtower controls
 mobile-now.png;needs attention;mobile Now
 mobile-tmux.png;orbital;mobile terminal
+mobile-tmux.png;deep space network;mobile deep-space network
 mobile-settings-experience.png;experience;mobile Settings Experience
 mobile-settings-experience.png;terminal theme;browser theme controls
 EOF

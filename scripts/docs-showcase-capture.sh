@@ -131,6 +131,18 @@ send_tmux_command() {
 	showcase_tmux send-keys -t "$target" Enter
 }
 
+send_tmux_scene() {
+	local target="$1"
+	shift
+	local command="clear; printf '%s\\n'"
+	local line quoted
+	for line in "$@"; do
+		printf -v quoted '%q' "$line"
+		command+=" $quoted"
+	done
+	send_tmux_command "$target" "$command"
+}
+
 create_decoy_scenario() {
 	local socket_path expected_socket decoy_ready
 	decoy_tmux new-session -d -s docs-showcase-decoy -n hold -c /tmp -x 80 -y 24 \
@@ -177,10 +189,48 @@ create_tmux_scenario() {
 	showcase_tmux select-pane -t "$downlink_pane" -T downlink
 	showcase_tmux select-pane -t "$guidance_pane" -T guidance
 
-	send_tmux_command "$downlink_pane" \
-		"clear; printf '%s\\n' 'ORBITAL STATION // MISSION CONTROL' '-----------------------------------' 'DOWNLINK       TELEMETRY RELAY' 'carrier        LOCKED' 'frame stream   NOMINAL' 'latency        42 ms' '' 'RECOVERY RECEIPT VERIFIED' '' 'ORBITAL> monitoring telemetry'"
-	send_tmux_command "$guidance_pane" \
-		"clear; printf '%s\\n' 'FLIGHT VECTOR // GUIDANCE' '-------------------------' 'orbit          STABLE' 'navigation     SYNCHRONIZED' 'payload link   ACTIVE' '' 'next pass      18:32 UTC' '' 'ORBITAL> awaiting command'"
+	send_tmux_scene "$downlink_pane" \
+		$'\033[1;36mDEEP SPACE NETWORK // RELAY 07\033[0m' \
+		$'\033[2;34m----------------------------------------\033[0m' \
+		$'\033[2;34m            .              *\033[0m' \
+		$'\033[2;34m     *             \033[1;35m__|__\033[2;34m         .\033[0m' \
+		$'\033[1;35m          .-------/ 07 \\-------.\033[1;33m   ))) )))\033[0m' \
+		$'\033[1;35m                  \\___/\033[1;33m             GS-7\033[0m' \
+		$'\033[1;35m                    |\033[0m' \
+		$'\033[1;36m            .-~~~~~~~~~~~-.      \033[1;33mAOS 18:32\033[0m' \
+		$'\033[1;36m          .\'    ORBITAL    \'.\033[0m' \
+		$'\033[1;36m         /      STATION      \\\033[0m' \
+		$'\033[1;36m         \'._               _.\'\033[0m' \
+		$'\033[1;36m            \'-------------\'\033[0m' \
+		'' \
+		$'\033[2;37mCARRIER  \033[1;32mLOCKED\033[2;37m      SNR      \033[1;33m+18.4 dB\033[0m' \
+		$'\033[2;37mFRAMES   \033[1;32m1842/1842\033[2;37m   LATENCY  \033[1;33m42 ms\033[0m' \
+		$'\033[2;37mRELAY    \033[1;32mRECOVERED\033[2;37m   VECTOR   \033[1;36mSTABLE\033[0m' \
+		$'\033[2;34m----------------------------------------\033[0m' \
+		$'\033[1;32m[OK] RECOVERY RECEIPT VERIFIED\033[0m' \
+		$'\033[1;36mORBITAL>\033[0m monitoring deep-space downlink'
+	send_tmux_scene "$guidance_pane" \
+		$'\033[1;35mGROUND ARRAY // GS-7 TRACKING\033[0m' \
+		$'\033[2;34m--------------------------------\033[0m' \
+		$'\033[2;34m          .              *\033[0m' \
+		$'\033[1;33m      ))) )))\033[2;37m       signal acquired\033[0m' \
+		$'\033[1;33m             \\\033[0m' \
+		$'\033[1;33m              \\\033[1;36m    .-.\033[0m' \
+		$'\033[1;33m               \\\033[1;36m .\'   \'.\033[0m' \
+		$'\033[1;36m                /       \\\033[0m' \
+		$'\033[1;36m               /_________\\\033[0m' \
+		$'\033[1;36m                    ||\033[0m' \
+		$'\033[1;36m             _______||_______\033[0m' \
+		'' \
+		$'\033[2;37mAZIMUTH    \033[1;36m214.8 deg\033[0m' \
+		$'\033[2;37mELEVATION  \033[1;36m36.2 deg\033[0m' \
+		$'\033[2;37mDOPPLER    \033[1;33m-2.1 kHz\033[0m' \
+		$'\033[2;37mUPLINK     \033[1;33mSTANDBY\033[0m' \
+		$'\033[2;37mDOWNLINK   \033[1;32mACQUIRED\033[0m' \
+		$'\033[2;37mBEACON     \033[1;32m8/8\033[0m' \
+		'' \
+		$'\033[1;32m[##################\033[2;37m..\033[1;32m] 92%\033[0m' \
+		$'\033[1;35mGUIDANCE>\033[0m handshake confirmed'
 
 	showcase_tmux new-session -d -s telemetry -n stream -c /tmp -x 120 -y 36 \
 		"env PS1='ORBITAL> ' bash --noprofile --norc"
@@ -388,6 +438,13 @@ capture_page '/services?service=telemetry-relay&panel=status' 'Current condition
 open_page '/metrics?signal=cpuPressure&focusAt=2026-07-27T18%3A00%3A00Z' 'SATURATION'
 wait_for_condition 'Metrics contains at least four populated sparklines' \
 	"document.querySelectorAll('svg[aria-label=\"Metric trend\"]').length >= 4"
+wait_for_condition 'CPU pressure card received deep-link focus' \
+	"document.activeElement?.id === 'metric-signal-cpuPressure'"
+browser eval \
+	"(() => { const viewport = document.querySelector('[data-slot=\"scroll-area-viewport\"]'); if (viewport instanceof HTMLElement) viewport.scrollTop = Math.max(0, viewport.scrollTop - 16) })()" \
+	>/dev/null
+wait_for_condition 'Metrics context tabs are fully framed below the header' \
+	"(() => { const header = document.querySelector('main > header'); const tabs = document.querySelector('[role=\"tablist\"][aria-label=\"Metric contexts\"]'); return header instanceof HTMLElement && tabs instanceof HTMLElement && tabs.getBoundingClientRect().top >= header.getBoundingClientRect().bottom + 8 })()"
 browser screenshot "$staging_dir/desktop-metrics-pressure.png" >/dev/null
 browser open "${base_url}/runbooks?job=job-orbital-042" >/dev/null
 wait_for_condition 'focused immutable execution receipt exists' \
@@ -405,8 +462,8 @@ browser wait 500 >/dev/null
 browser screenshot "$staging_dir/desktop-runbooks-receipt.png" >/dev/null
 open_page '/tmux?session=flight-control' 'flight-control'
 browser wait '.xterm' >/dev/null
-wait_for_condition 'desktop terminal contains Orbital Station output' \
-	"document.querySelector('.xterm-rows')?.textContent?.includes('ORBITAL STATION') === true"
+wait_for_condition 'desktop terminal contains deep-space network output' \
+	"document.querySelector('.xterm-rows')?.textContent?.includes('DEEP SPACE NETWORK') === true"
 browser screenshot "$staging_dir/desktop-tmux-mission-control.png" >/dev/null
 
 capture_page '/settings/operations' 'Control collection cadence' \
@@ -425,7 +482,7 @@ open_page '/tmux?session=flight-control' 'flight-control'
 wait_for_condition 'mobile terminal attached to flight-control' \
 	"document.querySelector('.xterm') !== null"
 wait_for_condition 'mobile terminal contains rendered output' \
-	"document.querySelector('.xterm-rows')?.textContent?.includes('ORBITAL') === true"
+	"document.querySelector('.xterm-rows')?.textContent?.includes('DEEP SPACE NETWORK') === true"
 browser screenshot "$staging_dir/mobile-tmux.png" >/dev/null
 capture_page '/settings/experience' 'Terminal theme' mobile-settings-experience.png
 
