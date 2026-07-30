@@ -127,7 +127,7 @@ function IndexRoute() {
           <ConnectionBadge state={connectionState} onClick={resync} actionLabel="Refresh Now" />
         </header>
 
-        <div className="min-h-0 overflow-y-auto p-2 pb-4 sm:p-3 md:p-4">
+        <div className="min-h-0 overflow-y-auto p-2 pb-4 sm:p-3 md:p-4 lg:grid lg:grid-rows-[minmax(0,1fr)]">
           {nowQuery.isLoading && <NowLoading />}
 
           {nowQuery.isError && nowQuery.data == null && (
@@ -142,7 +142,7 @@ function IndexRoute() {
           )}
 
           {displaySnapshot && (
-            <div className="mx-auto grid w-full max-w-[1180px] gap-3 md:gap-4">
+            <div className="mx-auto grid w-full max-w-[1180px] gap-3 md:gap-4 lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
               <NowStatus snapshot={displaySnapshot} />
               <div className="grid min-h-0 gap-3 md:gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(19rem,0.85fr)]">
                 <NowAttention

@@ -47,7 +47,7 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
 
       <div className="min-h-0 overflow-y-auto p-2">
         {attention.visible.length === 0 ? (
-          <div className="grid min-h-36 place-items-center rounded-lg border border-dashed border-border-subtle bg-surface-sunken px-5 text-center">
+          <div className="grid h-full min-h-36 place-items-center rounded-lg border border-dashed border-border-subtle bg-surface-sunken px-5 text-center">
             <div>
               <p className="text-[12px] font-medium text-foreground">
                 {degraded ? 'No actionable item from available sources' : 'No action needed'}
