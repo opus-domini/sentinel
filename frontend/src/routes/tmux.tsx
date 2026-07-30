@@ -973,6 +973,7 @@ function TmuxPage() {
     () => new Map(sessions.map((session) => [session.name, session.icon])),
     [sessions],
   )
+  const sessionNames = useMemo(() => sessions.map((session) => session.name), [sessions])
 
   // ---- JSX ----
   return (
@@ -1023,6 +1024,8 @@ function TmuxPage() {
         connectionState={connectionState}
         statusDetail={statusDetail}
         sidebarCollapsed={layout.sidebarCollapsed}
+        allSessions={sessionNames}
+        sessionLaunchers={orderedSessionLaunchers}
         openTabs={tabsState.openTabs}
         activeSession={tabsState.activeSession}
         activitySessions={activitySessions}
@@ -1075,6 +1078,9 @@ function TmuxPage() {
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
         onOpenCreateSession={() => setCreateSessionOpen(true)}
+        onLaunchSessionLauncher={(launcherID) => {
+          void launchSessionLauncher(launcherID)
+        }}
         onResync={handleResync}
       />
 

@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   DndContext,
@@ -15,15 +15,19 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { X } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import type { ClientRect, DragEndEvent, Modifier } from '@dnd-kit/core'
 import type { Transform } from '@dnd-kit/utilities'
+import type { SessionLauncher } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { useViewport } from '@/contexts/ViewportContext'
@@ -32,6 +36,8 @@ import { hapticFeedback } from '@/lib/device'
 import { getTmuxIcon } from '@/lib/tmuxIcons'
 
 type SessionTabsProps = {
+  allSessions: Array<string>
+  sessionLaunchers: Array<SessionLauncher>
   openTabs: Array<string>
   activeSession: string
   activitySessions?: ReadonlySet<string>
@@ -41,6 +47,8 @@ type SessionTabsProps = {
   onRename?: (session: string) => void
   onKill?: (session: string) => void
   onReorder?: (from: number, to: number) => void
+  onCreateSession?: () => void
+  onLaunchSessionLauncher?: (launcherID: string) => void
   emptyLabel?: string
 }
 
@@ -229,6 +237,8 @@ function SortableTab({
 }
 
 export default function SessionTabs({
+  allSessions,
+  sessionLaunchers,
   openTabs,
   activeSession,
   activitySessions,
@@ -238,6 +248,8 @@ export default function SessionTabs({
   onRename,
   onKill,
   onReorder,
+  onCreateSession,
+  onLaunchSessionLauncher,
   emptyLabel = 'No open sessions',
 }: SessionTabsProps) {
   const { compactLayout, touchOptimized } = useViewport()
@@ -250,6 +262,10 @@ export default function SessionTabs({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
+  const closedSessions = useMemo(() => {
+    const openSessionNames = new Set(openTabs)
+    return allSessions.filter((session) => !openSessionNames.has(session))
+  }, [allSessions, openTabs])
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -315,6 +331,74 @@ export default function SessionTabs({
           </SortableContext>
         </DndContext>
       )}
+
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            aria-label="Session tab bar actions"
+            className="h-full min-w-0 flex-1"
+            data-sentinel-session-tabs-empty-space="true"
+          />
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
+          <ContextMenuItem onSelect={onCreateSession} disabled={!onCreateSession}>
+            New session
+          </ContextMenuItem>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger
+              className="flex items-center gap-2"
+              disabled={!onLaunchSessionLauncher || sessionLaunchers.length === 0}
+            >
+              <span className="flex-1">Launch</span>
+              <ChevronRight className="size-3 text-muted-foreground" />
+            </ContextMenuSubTrigger>
+            {sessionLaunchers.length > 0 && (
+              <ContextMenuSubContent className="max-h-80 w-52 overflow-y-auto">
+                {sessionLaunchers.map((launcher) => {
+                  const LauncherIcon = getTmuxIcon(launcher.icon)
+                  return (
+                    <ContextMenuItem
+                      key={launcher.id}
+                      className="flex items-center gap-2"
+                      onSelect={() => onLaunchSessionLauncher?.(launcher.id)}
+                    >
+                      <LauncherIcon className="size-3.5 shrink-0 text-secondary-foreground" />
+                      <span className="min-w-0 truncate">{launcher.name}</span>
+                    </ContextMenuItem>
+                  )
+                })}
+              </ContextMenuSubContent>
+            )}
+          </ContextMenuSub>
+          <ContextMenuSeparator />
+          <ContextMenuSub>
+            <ContextMenuSubTrigger
+              className="flex items-center gap-2"
+              disabled={closedSessions.length === 0}
+            >
+              <span className="flex-1">Open session</span>
+              <ChevronRight className="size-3 text-muted-foreground" />
+            </ContextMenuSubTrigger>
+            {closedSessions.length > 0 && (
+              <ContextMenuSubContent className="max-h-80 w-52 overflow-y-auto">
+                {closedSessions.map((session) => {
+                  const SessionIcon = getTmuxIcon(sessionIcons?.get(session) ?? '')
+                  return (
+                    <ContextMenuItem
+                      key={session}
+                      className="flex items-center gap-2"
+                      onSelect={() => onSelect(session)}
+                    >
+                      <SessionIcon className="size-3.5 shrink-0 text-secondary-foreground" />
+                      <span className="min-w-0 truncate">{session}</span>
+                    </ContextMenuItem>
+                  )
+                })}
+              </ContextMenuSubContent>
+            )}
+          </ContextMenuSub>
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   )
 }

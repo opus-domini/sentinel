@@ -9,7 +9,7 @@ import PaneStrip from './tmux/PaneStrip'
 import TerminalHost from './tmux/TerminalHost'
 import WindowStrip from './tmux/WindowStrip'
 import type { RefCallback } from 'react'
-import type { ConnectionState, PaneInfo, TmuxLauncher, WindowInfo } from '@/types'
+import type { ConnectionState, PaneInfo, SessionLauncher, TmuxLauncher, WindowInfo } from '@/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +27,8 @@ type TmuxTerminalPanelProps = {
   connectionState: ConnectionState
   statusDetail: string
   sidebarCollapsed: boolean
+  allSessions: Array<string>
+  sessionLaunchers: Array<SessionLauncher>
   openTabs: Array<string>
   activeSession: string
   activitySessions?: ReadonlySet<string>
@@ -75,6 +77,7 @@ type TmuxTerminalPanelProps = {
   onZoomIn?: () => void
   onZoomOut?: () => void
   onOpenCreateSession?: () => void
+  onLaunchSessionLauncher?: (launcherID: string) => void
   onResync?: () => void
 }
 
@@ -83,6 +86,8 @@ export default function TmuxTerminalPanel({
   connectionState,
   statusDetail,
   sidebarCollapsed,
+  allSessions,
+  sessionLaunchers,
   openTabs,
   activeSession,
   activitySessions,
@@ -131,6 +136,7 @@ export default function TmuxTerminalPanel({
   onZoomIn,
   onZoomOut,
   onOpenCreateSession,
+  onLaunchSessionLauncher,
   onResync,
 }: TmuxTerminalPanelProps) {
   const { compactLayout, touchOptimized } = useViewport()
@@ -435,6 +441,8 @@ export default function TmuxTerminalPanel({
 
       {showSessionTabs && (
         <SessionTabs
+          allSessions={allSessions}
+          sessionLaunchers={sessionLaunchers}
           openTabs={openTabs}
           activeSession={activeSession}
           activitySessions={activitySessions}
@@ -444,6 +452,8 @@ export default function TmuxTerminalPanel({
           onRename={onRenameTab}
           onKill={onKillTab}
           onReorder={onReorderTabs}
+          onCreateSession={onOpenCreateSession}
+          onLaunchSessionLauncher={onLaunchSessionLauncher}
         />
       )}
 

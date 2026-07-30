@@ -56,6 +56,8 @@ const baseProps = {
   connectionState: 'connected' as const,
   statusDetail: 'ready',
   sidebarCollapsed: false,
+  allSessions: ['dev', 'ops'],
+  sessionLaunchers: [],
   openTabs: ['dev', 'ops'],
   activeSession: 'dev',
   inspectorLoading: false,

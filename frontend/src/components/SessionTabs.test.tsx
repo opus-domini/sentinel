@@ -16,6 +16,8 @@ vi.mock('@/contexts/ViewportContext', () => ({
 
 function renderTabs(overrides = {}) {
   const props = {
+    allSessions: ['api', 'worker'],
+    sessionLaunchers: [],
     openTabs: ['api', 'worker'],
     activeSession: 'api',
     activitySessions: undefined as ReadonlySet<string> | undefined,
@@ -132,6 +134,71 @@ describe('SessionTabs', () => {
 
     expect(props.onClose).toHaveBeenCalledWith('worker')
     expect(props.onSelect).not.toHaveBeenCalled()
+  })
+
+  it('offers new and closed sessions from the unused strip space', async () => {
+    const onCreateSession = vi.fn()
+    const props = renderTabs({
+      allSessions: ['api', 'worker', 'database'],
+      onCreateSession,
+    })
+
+    fireEvent.contextMenu(screen.getByLabelText('Session tab bar actions'))
+
+    fireEvent.click(screen.getByText('New session'))
+    expect(onCreateSession).toHaveBeenCalledTimes(1)
+
+    fireEvent.contextMenu(screen.getByLabelText('Session tab bar actions'))
+
+    const openSession = screen.getByText('Open session')
+    expect(openSession.getAttribute('data-disabled')).toBeNull()
+
+    fireEvent.pointerMove(openSession, { pointerType: 'mouse' })
+    fireEvent.click(await screen.findByText('database'))
+
+    expect(props.onSelect).toHaveBeenCalledWith('database')
+  })
+
+  it('launches configured session launchers from the unused strip menu', async () => {
+    const onLaunchSessionLauncher = vi.fn()
+    renderTabs({
+      sessionLaunchers: [
+        {
+          id: 'workspace',
+          name: 'Workspace',
+          cwd: '/srv/workspace',
+          icon: 'code',
+          createdAt: '',
+          updatedAt: '',
+          lastUsedAt: '',
+          useCount: 0,
+        },
+      ],
+      onLaunchSessionLauncher,
+    })
+
+    fireEvent.contextMenu(screen.getByLabelText('Session tab bar actions'))
+
+    const launch = screen.getByText('Launch')
+    fireEvent.pointerMove(launch, { pointerType: 'mouse' })
+    fireEvent.click(await screen.findByText('Workspace'))
+
+    expect(onLaunchSessionLauncher).toHaveBeenCalledWith('workspace')
+  })
+
+  it('keeps tab actions separate from the unused strip menu', () => {
+    renderTabs({
+      allSessions: ['api', 'worker', 'database'],
+      onCreateSession: vi.fn(),
+      onRename: vi.fn(),
+      onKill: vi.fn(),
+    })
+
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'worker' }))
+
+    expect(screen.getByText('Rename session')).toBeTruthy()
+    expect(screen.getByText('Kill session')).toBeTruthy()
+    expect(screen.queryByText('New session')).toBeNull()
   })
 
   it('fits tabs inside the bordered row and marks only the session strip for drag scrolling', () => {
