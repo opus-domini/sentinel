@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.16](https://github.com/opus-domini/sentinel/compare/v0.10.15...v0.10.16) (2026-07-30)
+
+
+### Features
+
+* **tmux:** add session strip actions ([f8fe503](https://github.com/opus-domini/sentinel/commit/f8fe5035757432c955de21d4d5deebc5994b2aee))
+
+
+### Bug Fixes
+
+* **docs:** trim logo canvas ([9aa27ca](https://github.com/opus-domini/sentinel/commit/9aa27caeb749c00c5897d7c0c7f1d9d5c62eed8e))
+* **now:** fill available viewport height ([1f1ae6d](https://github.com/opus-domini/sentinel/commit/1f1ae6dfcee53f995061683c80786514c53cfee4))
+
+
+### Documentation
+
+* adopt orbital Sentinel logo ([2c85228](https://github.com/opus-domini/sentinel/commit/2c8522836a106e586a5523806485c3e1fba0f9d9))
+* adopt terminal wordmark ([8b04f68](https://github.com/opus-domini/sentinel/commit/8b04f684702f765daed20ffb49fd02394cf39fd2))
+* reduce README logo size ([a4cf361](https://github.com/opus-domini/sentinel/commit/a4cf361ccf89969c3c7cde9d31e936c68ad1c9f8))
+
 ## [0.10.15](https://github.com/opus-domini/sentinel/compare/v0.10.14...v0.10.15) (2026-07-29)
 
 
