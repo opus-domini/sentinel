@@ -1,7 +1,7 @@
 [tools]
 go = "1.26.5"
 # Keep npm before node so the pinned npm shim wins over Node's bundled npm.
-"npm:npm" = "12.0.1"
+"npm:npm" = "12.0.2"
 node = "26"
 
 # Keep in sync with .github/workflows/ci.yml
