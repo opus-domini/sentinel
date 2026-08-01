@@ -50,12 +50,11 @@ type Snapshot struct {
 
 // Use guards one targeted operation against concurrent cleanup.
 type Use struct {
-	leaseID string
-	managed bool
+	LeaseID string
 }
 
 // Managed reports whether this operation targets an ephemeral session.
-func (u Use) Managed() bool { return u.managed }
+func (u Use) Managed() bool { return u.LeaseID != "" }
 
 // Clock supplies deterministic server time.
 type Clock interface {

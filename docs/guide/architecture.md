@@ -32,7 +32,8 @@ contracts live in [Reference](/reference/http-api.md).
 2. One live settings adapter initializes from that effective state and is
    shared by metadata, the Settings API, and MCP availability.
 3. The server establishes origin and optional shared-token policy.
-4. SQLite-backed managers and live owner services start.
+4. SQLite-backed managers and live owner services start; the Tmux lifecycle
+   controller reconciles persisted ephemeral MCP leases before its reaper runs.
 5. The browser loads initial owner state over HTTP.
 6. Shared operational events and the dedicated Tmux stream keep routes current.
 7. Now recomposes owner evidence and returns the operator to a calm or
@@ -69,6 +70,8 @@ machine.
 - `internal/ws` — browser terminal transport.
 - `internal/events` — shared operational event hub.
 - `internal/tmux` — Tmux command and account-targeting adapter.
+- `internal/tmuxlifecycle` — persisted ephemeral MCP session leases,
+  reconciliation, renewal, and exact-runtime cleanup.
 - `internal/watchtower` — internal Tmux activity and unread projection.
 - `internal/services` — systemd/launchd discovery, inspection, and actions.
 - `internal/runbook` and `internal/scheduler` — definitions, execution,
@@ -101,6 +104,7 @@ the mutations whose owner contract can reconcile it safely.
 SQLite stores definitions and records that must survive a process restart:
 
 - Tmux session metadata, launchers, presets, and activity projections;
+- active ephemeral MCP session leases, keyed by stable Tmux runtime ID;
 - tracked services;
 - Runbook definitions, schedules, jobs, step results, parameters, and receipt
   snapshots;
@@ -150,6 +154,10 @@ consumer adopt a new value before process restart.
 - The optional token is one shared operator secret, not identity or RBAC.
 - OS account targeting delegates process identity to the operating system.
 - MCP uses the same trusted boundary; it is an extension, not another tenant.
+- MCP Streamable HTTP remains stateless; persisted session leases belong to the
+  Tmux resource lifecycle and survive transport/client reconnects.
+- Shutdown stops the lifecycle reaper and drains Sentinel-owned control clients
+  without terminating persistent or unrelated Tmux sessions.
 - Cloud relay, fleet control, and SaaS storage are not part of the architecture.
 
 ## Current Non-goals

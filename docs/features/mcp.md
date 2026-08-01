@@ -49,6 +49,11 @@ operators. Sentinel does not derive an agent identity from it and has no
 per-agent users, roles, scopes, or resource grants. Every MCP client holding the
 secret enters the same trusted boundary.
 
+An ephemeral Tmux session has an opaque lifecycle lease. That lease is a handle
+for one exact Tmux runtime ID; it is not an agent identity, credential, role, or
+ownership boundary. Any trusted MCP client with the shared token and the exact
+lease confirmation can keep or close that resource.
+
 The optional `user` accepted by Tmux tools is an
 [OS account target](/features/os-account-targeting.md), not the identity of the
 calling agent. Target validation still applies, but it does not create an
@@ -109,13 +114,15 @@ uses the same `sentinel-<hostname>` identifier in every client format.
 | Tool | Purpose |
 | --- | --- |
 | `tmux_list_sessions` | List sessions visible to Sentinel |
-| `tmux_create_session` | Create a detached session |
+| `tmux_create_session` | Create a detached session; ephemeral for 2 hours of idle time by default, or persistent by explicit override |
 | `tmux_list_windows` | Inspect stable window IDs and metadata |
 | `tmux_list_panes` | Inspect pane IDs, commands, paths, and geometry |
 | `tmux_attach` | Open a native tmux control-mode attachment and capture the active pane |
 | `tmux_interact` | Send ordered literal-text and named-key actions, then wait and capture the pane |
 | `tmux_read` | Long-poll incremental control events after a cursor |
 | `tmux_detach` | Release the MCP attachment without killing the tmux session |
+| `tmux_keep_session` | Promote one exact ephemeral session to persistent |
+| `tmux_close_session` | Close one exact ephemeral session by lease, confirmed name, and stable runtime ID |
 | `runbook_list` | List runbooks, parameters, step counts, and approval requirements |
 | `runbook_get` | Read a complete runbook definition |
 | `runbook_create` | Validate and create a runbook without executing it |
@@ -126,6 +133,67 @@ uses the same `sentinel-<hostname>` identifier in every client format.
 | `runbook_list_runs` | List recent executions with bounded trailing step output |
 
 There is deliberately no raw tmux-command tool.
+
+## Tmux Session Lifecycle
+
+`tmux_create_session` accepts an optional `lifetime` with only two values:
+
+- omitted or `ephemeral`: create a persisted lifecycle lease with a 2-hour
+  sliding idle deadline;
+- `persistent`: create an ordinary durable Tmux session with no lifecycle
+  lease.
+
+There is no per-session TTL input. Sessions created by the SPA, HTTP API,
+pinned presets, launchers, startup restore, or outside Sentinel remain
+persistent and are never adopted by the MCP lifecycle controller.
+
+An ephemeral create returns lifecycle data alongside the session:
+
+```json
+{
+  "lifecycle": {
+    "mode": "ephemeral",
+    "source": "mcp",
+    "leaseId": "lease_...",
+    "cleanupState": "active",
+    "idleTimeoutSeconds": 7200,
+    "expiresAt": "2026-08-01T18:00:00Z"
+  }
+}
+```
+
+`tmux_list_sessions` reports lifecycle data only when the persisted lease still
+matches the live session's stable Tmux ID. It does not renew any deadline.
+Sessions without lifecycle data are persistent or unmanaged.
+
+The deadline is renewed after these directed operations succeed:
+`tmux_attach`, `tmux_interact`, `tmux_read`, `tmux_list_windows`, and
+`tmux_list_panes`. A normal `tmux_read` timeout renews; a closed stream or a
+failed operation does not. Global listing, detach, runbook tools, spontaneous
+output, a live process, and human activity do not renew a session.
+
+After 2 hours of inactivity, cleanup enters a 10-minute grace period. New
+successful directed activity during grace reactivates the lease for another 2
+hours. When grace ends, Sentinel drains its MCP attachments and checks the
+exact stable runtime ID again. A remaining human or external Tmux client blocks
+cleanup until that client leaves; a missing session or reused name removes only
+the stale lease and never kills the replacement.
+
+Use the exact `leaseId` and current session name for explicit transitions:
+
+```json
+{ "leaseId": "lease_...", "confirmName": "agent-work" }
+```
+
+- `tmux_keep_session` removes the lease without stopping the session. The
+  session becomes persistent.
+- `tmux_close_session` drains MCP attachments and kills only the stable Tmux ID
+  recorded in the lease.
+
+A persistent session has no lease, so neither tool can adopt or close it. For a
+long-running job that may be silent for more than 2 hours, create it with
+`"lifetime": "persistent"` or call `tmux_keep_session` before leaving it
+unattended. Do not rely on process output or mere liveness as renewal.
 
 There is also deliberately no MCP tool to update a runbook. Agents can create a
 new explicit definition. As described by the trust boundary above,
@@ -202,8 +270,10 @@ for the requested interval; it does not claim that the process or command has
 finished. Use `tmux_read` with the returned cursor to continue following output.
 
 Attachments to the same OS user and tmux session share one native control-mode
-client. Each caller gets an independent lease. Idle leases expire after 30
-minutes, output is kept in a bounded event buffer, and `droppedEvents` reports
-when a cursor fell behind that buffer.
+client. Each caller gets an independent 30-minute attachment lease. This
+in-memory client lease is distinct from the persisted 2-hour session lifecycle
+lease: attachment expiry releases control-mode resources but does not by itself
+kill the Tmux session. Output is kept in a bounded event buffer, and
+`droppedEvents` reports when a cursor fell behind that buffer.
 
 `tmux_detach` only closes the lease. It never kills the tmux session.

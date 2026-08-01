@@ -36,6 +36,7 @@ type mockTmux struct {
 	listActivePaneCommandsFn func(ctx context.Context) (map[string]tmux.PaneSnapshot, error)
 	capturePaneFn            func(ctx context.Context, session string) (string, error)
 	createSessionFn          func(ctx context.Context, name, cwd string) error
+	getSessionFn             func(ctx context.Context, name string) (tmux.Session, error)
 	renameSessionFn          func(ctx context.Context, session, newName string) error
 	renameWindowFn           func(ctx context.Context, session string, index int, name string) error
 	renamePaneFn             func(ctx context.Context, paneID, title string) error
@@ -79,6 +80,13 @@ func (m *mockTmux) CreateSession(ctx context.Context, name, cwd string) error {
 		return m.createSessionFn(ctx, name, cwd)
 	}
 	return nil
+}
+
+func (m *mockTmux) GetSession(ctx context.Context, name string) (tmux.Session, error) {
+	if m.getSessionFn != nil {
+		return m.getSessionFn(ctx, name)
+	}
+	return tmux.Session{ID: "$1", Name: name}, nil
 }
 
 func (m *mockTmux) RenameSession(ctx context.Context, session, newName string) error {
@@ -509,6 +517,7 @@ func TestRegisterRoutesThroughMux(t *testing.T) {
 		configService,
 		settings,
 		1,
+		nil,
 	)
 	t.Cleanup(func() {
 		h.Shutdown(context.Background())

@@ -972,7 +972,7 @@ func getSessionVia(ctx context.Context, runner func(context.Context, ...string) 
 	if name == "" {
 		return Session{}, &Error{Kind: ErrKindInvalidIdentifier, Msg: errSessionRequired}
 	}
-	args := []string{"list-sessions", "-t", "=" + name, "-F", listSessionsFormatWithActivity}
+	args := []string{"list-sessions", "-F", listSessionsFormatWithActivity}
 	out, err := runner(ctx, args...)
 	if err != nil && shouldRetryListSessionsWithoutActivity(err) {
 		args[len(args)-1] = listSessionsFormatWithoutActivity
@@ -981,11 +981,12 @@ func getSessionVia(ctx context.Context, runner func(context.Context, ...string) 
 	if err != nil {
 		return Session{}, err
 	}
-	sessions := parseSessionListOutput(out)
-	if len(sessions) != 1 {
-		return Session{}, &Error{Kind: ErrKindSessionNotFound, Msg: "tmux session not found"}
+	for _, session := range parseSessionListOutput(out) {
+		if session.Name == name {
+			return session, nil
+		}
 	}
-	return sessions[0], nil
+	return Session{}, &Error{Kind: ErrKindSessionNotFound, Msg: "tmux session not found"}
 }
 
 func killSessionByIDVia(ctx context.Context, runner func(context.Context, ...string) (string, error), sessionID string) error {

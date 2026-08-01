@@ -114,6 +114,41 @@ func TestKeepAndCloseRespectClaimsAndStableIdentity(t *testing.T) {
 	}
 }
 
+func TestKeepAndCloseRejectReusedNameWithoutKill(t *testing.T) {
+	for _, operation := range []string{"keep", "close"} {
+		t.Run(operation, func(t *testing.T) {
+			ctx := context.Background()
+			now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+			st := newLifecycleStore(t)
+			lease := testLease(now, store.TmuxSessionLeaseActive)
+			seedLease(t, st, lease)
+			runtime := newFakeRuntime()
+			runtime.put(tmux.Session{ID: "$99", Name: lease.SessionName})
+			manager := newTestManager(st, &fakeClock{now: now}, runtime, Options{})
+			entry := &leaseEntry{lease: lease}
+			manager.mu.Lock()
+			manager.addEntryLocked(entry)
+			manager.mu.Unlock()
+
+			var err error
+			if operation == "keep" {
+				_, err = manager.Keep(ctx, lease.LeaseID, lease.SessionName)
+			} else {
+				err = manager.Close(ctx, lease.LeaseID, lease.SessionName)
+			}
+			if !errors.Is(err, ErrIdentityMismatch) {
+				t.Fatalf("%s reused-name error = %v", operation, err)
+			}
+			if got := runtime.killedIDs(); len(got) != 0 {
+				t.Fatalf("%s killed reused runtime ID: %q", operation, got)
+			}
+			if !runtime.hasSession(lease.SessionName) {
+				t.Fatalf("%s removed reused session", operation)
+			}
+		})
+	}
+}
+
 func TestManagerStartAndStopWaitsForSweeper(t *testing.T) {
 	st := newLifecycleStore(t)
 	runtime := newFakeRuntime()

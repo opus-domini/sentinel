@@ -98,6 +98,15 @@ There is no separate MCP token, agent principal, role, or scope. MCP also has no
 tool for approving or rejecting a Runbook approval step; that decision remains
 in the authenticated Sentinel UI. See [MCP Control](/features/mcp.md).
 
+The opaque lease returned for an ephemeral MCP-created Tmux session is a
+resource-lifecycle handle, not an authentication secret or agent ownership
+claim. It is valid only for the exact persisted Tmux runtime ID and confirmed
+session name. The shared token remains the authorization boundary, so trusted
+clients must protect lease values as operational handles and must not treat
+them as per-agent isolation. Persistent, human-created, and preexisting
+sessions have no lifecycle lease and cannot be adopted by the restricted MCP
+keep/close tools.
+
 Replacing the shared token does not change the credential held by the running
 process. The new value and MCP enablement remain restart pending until Sentinel
 restarts. Clearing the token requires a candidate configuration in which MCP is

@@ -163,11 +163,11 @@ func TestGetSession(t *testing.T) {
 
 	t.Run("exact_target", func(t *testing.T) {
 		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			want := []string{"list-sessions", "-t", "=dev", "-F", listSessionsFormatWithActivity}
+			want := []string{"list-sessions", "-F", listSessionsFormatWithActivity}
 			if !slices.Equal(args, want) {
 				t.Fatalf("args = %#v, want %#v", args, want)
 			}
-			return "$9\tdev\t2\t0\t1700000000\t1700000100\n", nil
+			return "$8\tdev-server\t1\t0\t1700000000\t1700000100\n$9\tdev\t2\t0\t1700000000\t1700000100\n", nil
 		})
 		session, err := GetSession(ctx, "dev")
 		if err != nil {

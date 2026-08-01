@@ -25,6 +25,7 @@ import (
 	opsplane "github.com/opus-domini/sentinel/internal/services"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/tmuxlifecycle"
 	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
@@ -36,6 +37,7 @@ var (
 
 type tmuxService interface {
 	ListSessions(ctx context.Context) ([]tmux.Session, error)
+	GetSession(ctx context.Context, name string) (tmux.Session, error)
 	ListActivePaneCommands(ctx context.Context) (map[string]tmux.PaneSnapshot, error)
 	CapturePane(ctx context.Context, session string) (string, error)
 	CreateSession(ctx context.Context, name, cwd string) error
@@ -226,6 +228,7 @@ type handlerRepo interface {
 	tmuxLauncherWriteRepo
 	managedTmuxWindowRepo
 	sessionUserRepo
+	DeleteTmuxSessionRuntimeState(ctx context.Context, sessionName string) error
 }
 
 // Compile-time check: *store.Store satisfies handlerRepo.
@@ -248,6 +251,7 @@ type Handler struct {
 	settingsControl    func(action, scope string) error
 	settingsRestartIn  time.Duration
 	restartScheduled   atomic.Bool
+	lifecycle          *tmuxlifecycle.Manager
 
 	// sessionUsers tracks which OS user owns each tmux session.
 	// Keys are session names, values are usernames (empty string = default user).
@@ -295,6 +299,7 @@ func Register(
 	configService *config.Service,
 	settings settingsRuntime,
 	runbookMaxConcurrent int,
+	lifecycle *tmuxlifecycle.Manager,
 ) *Handler {
 	if runbookMaxConcurrent <= 0 {
 		runbookMaxConcurrent = 5
@@ -315,6 +320,7 @@ func Register(
 		settingsBindCheck:  preflightSettingsBind,
 		settingsControl:    controlManagedService,
 		settingsRestartIn:  defaultSettingsRestartDelay,
+		lifecycle:          lifecycle,
 		runCtx:             runCtx,
 		runCancel:          runCancel,
 	}

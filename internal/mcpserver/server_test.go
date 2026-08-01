@@ -2,11 +2,14 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,9 +93,14 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools() error = %v", err)
 	}
+	if got := session.InitializeResult().ProtocolVersion; got != "2026-07-28" {
+		t.Fatalf("negotiated protocol = %q, want 2026-07-28", got)
+	}
 	got := make([]string, 0, len(result.Tools))
+	toolsByName := make(map[string]*mcp.Tool, len(result.Tools))
 	for _, tool := range result.Tools {
 		got = append(got, tool.Name)
+		toolsByName[tool.Name] = tool
 	}
 	slices.Sort(got)
 	want := []string{
@@ -105,9 +113,11 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 		"runbook_run",
 		"runbook_wait",
 		"tmux_attach",
+		"tmux_close_session",
 		"tmux_create_session",
 		"tmux_detach",
 		"tmux_interact",
+		"tmux_keep_session",
 		"tmux_list_panes",
 		"tmux_list_sessions",
 		"tmux_list_windows",
@@ -116,6 +126,70 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("tool names = %q, want %q", got, want)
 	}
+	keepAnnotations := toolsByName["tmux_keep_session"].Annotations
+	if keepAnnotations == nil || keepAnnotations.ReadOnlyHint || keepAnnotations.DestructiveHint == nil ||
+		*keepAnnotations.DestructiveHint {
+		t.Fatalf("tmux_keep_session annotations = %#v", keepAnnotations)
+	}
+	closeAnnotations := toolsByName["tmux_close_session"].Annotations
+	if closeAnnotations == nil || closeAnnotations.ReadOnlyHint || closeAnnotations.DestructiveHint == nil ||
+		!*closeAnnotations.DestructiveHint {
+		t.Fatalf("tmux_close_session annotations = %#v", closeAnnotations)
+	}
+
+	legacyInit := rawMCPPost(t, httpServer.URL, "", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"legacy-test","version":"test"}}}`)
+	var initResponse struct {
+		Result struct {
+			ProtocolVersion string `json:"protocolVersion"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(legacyInit, &initResponse); err != nil {
+		t.Fatalf("decode legacy initialize: %v; body=%s", err, legacyInit)
+	}
+	if initResponse.Result.ProtocolVersion != "2025-11-25" {
+		t.Fatalf("legacy negotiated protocol = %q; body=%s", initResponse.Result.ProtocolVersion, legacyInit)
+	}
+	legacyTools := rawMCPPost(t, httpServer.URL, "2025-11-25", `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`)
+	var toolsResponse struct {
+		Result struct {
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(legacyTools, &toolsResponse); err != nil {
+		t.Fatalf("decode legacy tools/list: %v; body=%s", err, legacyTools)
+	}
+	if len(toolsResponse.Result.Tools) == 0 {
+		t.Fatalf("legacy tools/list returned no Sentinel tools; body=%s", legacyTools)
+	}
+}
+
+func rawMCPPost(t *testing.T, endpoint, protocolVersion, body string) []byte {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer shared-token")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	if protocolVersion != "" {
+		req.Header.Set("MCP-Protocol-Version", protocolVersion)
+	}
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("raw MCP status = %d; body=%s", response.StatusCode, payload)
+	}
+	return payload
 }
 
 type testAvailability struct {

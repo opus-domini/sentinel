@@ -61,6 +61,7 @@ func newPerfMux(tb testing.TB) *http.ServeMux {
 		configService,
 		settings,
 		5,
+		nil,
 	)
 	return mux
 }

@@ -101,7 +101,9 @@ After current owner evidence is healthy, Now becomes calm again:
 - **OS Account Targeting** — launch Tmux work under allowed operating-system
   accounts. These are host accounts, not Sentinel identities.
 - **MCP** — expose bounded Sentinel tools to a trusted local agent using the
-  same shared secret.
+  same shared secret. Tmux sessions created by MCP are ephemeral by default and
+  expire after 2 hours without directed agent activity; agents can explicitly
+  keep them or request a persistent session at creation.
 - **Mobile/PWA** — use the same five destinations from a touch-oriented shell.
 
 ## How Sentinel Grew
@@ -161,6 +163,8 @@ Sentinel is designed for a trusted operator boundary around one host.
   not become Sentinel users.
 - MCP agents use the same shared trust boundary and cannot satisfy human
   approval steps.
+- MCP session leases are resource-lifecycle handles, not agent identities or
+  authorization grants.
 - If Sentinel listens beyond loopback, configure both `token` and
   `allowed_origins` and place transport security at the network edge.
 

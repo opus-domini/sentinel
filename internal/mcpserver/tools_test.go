@@ -9,6 +9,7 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/tmuxlifecycle"
 )
 
 func TestNormalizeWaitDefaultsAndBounds(t *testing.T) {
@@ -106,11 +107,14 @@ func TestTmuxDiscoveryAndCreationTools(t *testing.T) {
 		t.Fatalf("createdAt = %q, registered = %q", listed.Sessions[0].CreatedAt, registered)
 	}
 
-	_, created, err := toolset.createSession(context.Background(), nil, createSessionInput{Name: "agent", Cwd: "/srv/app", User: "deploy"})
+	_, created, err := toolset.createSession(context.Background(), nil, createSessionInput{
+		Name: "agent", Cwd: "/srv/app", User: "deploy", Lifetime: lifetimePersistent,
+	})
 	if err != nil {
 		t.Fatalf("createSession() error = %v", err)
 	}
-	if deploy.createdName != "agent" || deploy.createdCWD != "/srv/app" || created.Session.Windows != 1 {
+	if deploy.createdName != "agent" || deploy.createdCWD != "/srv/app" || created.Session.Windows != 1 ||
+		created.Lifecycle.Mode != lifetimePersistent {
 		t.Fatalf("createSession() output = %#v, service = %#v", created, deploy)
 	}
 
@@ -121,6 +125,134 @@ func TestTmuxDiscoveryAndCreationTools(t *testing.T) {
 	_, panes, err := toolset.listPanes(context.Background(), nil, sessionTargetInput{Session: "remote"})
 	if err != nil || panes.User != "deploy" || len(panes.Panes) != 1 {
 		t.Fatalf("listPanes() = %#v, error = %v", panes, err)
+	}
+}
+
+func TestCreateSessionDefaultsToEphemeralAndRejectsInvalidLifetime(t *testing.T) {
+	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	service := &fakeTmuxService{
+		windows: []tmux.Window{{Session: "agent", ID: "@1", Index: 0}},
+		panes:   []tmux.Pane{{Session: "agent", PaneID: "%1"}},
+	}
+	lifecycle := &fakeSessionLifecycle{
+		createSnapshot: tmuxlifecycle.Snapshot{
+			LeaseID:     "lease_001",
+			SessionID:   "$12",
+			SessionName: "agent",
+			Source:      "mcp",
+			State:       "active",
+			ExpiresAt:   now.Add(tmuxlifecycle.DefaultIdleTimeout),
+		},
+	}
+	toolset := &tools{
+		guard:          security.New("token", nil, security.CookieSecureAuto),
+		lifecycle:      lifecycle,
+		serviceForUser: func(string) tmuxService { return service },
+	}
+
+	_, created, err := toolset.createSession(context.Background(), nil, createSessionInput{Name: "agent"})
+	if err != nil {
+		t.Fatalf("createSession() error = %v", err)
+	}
+	if lifecycle.createdName != "agent" || service.createdName != "" {
+		t.Fatalf("ephemeral create routing: lifecycle=%q direct=%q", lifecycle.createdName, service.createdName)
+	}
+	if created.Lifecycle.Mode != lifetimeEphemeral || created.Lifecycle.LeaseID != "lease_001" ||
+		created.Lifecycle.IdleTimeoutSeconds != 7200 || created.Lifecycle.ExpiresAt != now.Add(2*time.Hour).Format(time.RFC3339) {
+		t.Fatalf("ephemeral lifecycle = %#v", created.Lifecycle)
+	}
+	lifecycle.managedUses = true
+	if _, _, err := toolset.listWindows(context.Background(), nil, sessionTargetInput{Session: "agent"}); err != nil {
+		t.Fatalf("listWindows() lifecycle error = %v", err)
+	}
+	if _, _, err := toolset.listPanes(context.Background(), nil, sessionTargetInput{Session: "agent"}); err != nil {
+		t.Fatalf("listPanes() lifecycle error = %v", err)
+	}
+	if len(lifecycle.finishResults) != 2 || !lifecycle.finishResults[0] || !lifecycle.finishResults[1] {
+		t.Fatalf("list lifecycle finishes = %v", lifecycle.finishResults)
+	}
+
+	_, _, err = toolset.createSession(context.Background(), nil, createSessionInput{Name: "other", Lifetime: "forever"})
+	if err == nil || !strings.Contains(err.Error(), "lifetime") {
+		t.Fatalf("invalid lifetime error = %v", err)
+	}
+}
+
+func TestListSessionsOverlaysLifecycleOnlyOnExactRuntimeID(t *testing.T) {
+	service := &fakeTmuxService{sessions: []tmux.Session{
+		{ID: "$7", Name: "managed"},
+		{ID: "$8", Name: "replacement"},
+		{ID: "$9", Name: "persistent"},
+	}}
+	lifecycle := &fakeSessionLifecycle{managedUses: true, snapshots: []tmuxlifecycle.Snapshot{
+		{LeaseID: "lease_match", SessionID: "$7", SessionName: "managed", Source: "mcp", State: "active"},
+		{LeaseID: "lease_stale", SessionID: "$77", SessionName: "replacement", Source: "mcp", State: "grace"},
+	}}
+	toolset := &tools{
+		guard:          security.New("token", nil, security.CookieSecureAuto),
+		lifecycle:      lifecycle,
+		serviceForUser: func(string) tmuxService { return service },
+	}
+
+	_, output, err := toolset.listSessions(context.Background(), nil, emptyInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := make(map[string]sessionOutput, len(output.Sessions))
+	for _, session := range output.Sessions {
+		byName[session.Name] = session
+	}
+	if byName["managed"].Lifecycle == nil || byName["managed"].Lifecycle.LeaseID != "lease_match" {
+		t.Fatalf("managed lifecycle = %#v", byName["managed"].Lifecycle)
+	}
+	if byName["replacement"].Lifecycle != nil || byName["persistent"].Lifecycle != nil {
+		t.Fatalf("unmanaged lifecycle leak: replacement=%#v persistent=%#v", byName["replacement"].Lifecycle, byName["persistent"].Lifecycle)
+	}
+	if len(lifecycle.beginTargets) != 0 {
+		t.Fatalf("tmux_list_sessions renewed lifecycle: %v", lifecycle.beginTargets)
+	}
+}
+
+func TestKeepAndCloseSessionToolsRequireExactLeaseConfirmation(t *testing.T) {
+	lifecycle := &fakeSessionLifecycle{
+		keepSnapshot: tmuxlifecycle.Snapshot{LeaseID: "lease_1", SessionName: "agent"},
+	}
+	toolset := &tools{lifecycle: lifecycle}
+
+	_, kept, err := toolset.keepSession(context.Background(), nil, lifecycleTransitionInput{
+		LeaseID: "lease_1", ConfirmName: "agent",
+	})
+	if err != nil || kept.Session != "agent" || kept.Lifecycle.Mode != lifetimePersistent {
+		t.Fatalf("keepSession() = %#v, %v", kept, err)
+	}
+	_, closed, err := toolset.closeSession(context.Background(), nil, lifecycleTransitionInput{
+		LeaseID: "lease_1", ConfirmName: "agent",
+	})
+	if err != nil || !closed.Closed || lifecycle.closedLease != "lease_1" {
+		t.Fatalf("closeSession() = %#v, %v", closed, err)
+	}
+	if _, _, err := toolset.closeSession(context.Background(), nil, lifecycleTransitionInput{LeaseID: "lease_1"}); err == nil {
+		t.Fatal("closeSession() accepted missing confirmName")
+	}
+
+	lifecycle.keepErr = tmuxlifecycle.ErrIdentityMismatch
+	if _, _, err := toolset.keepSession(context.Background(), nil, lifecycleTransitionInput{
+		LeaseID: "lease_1", ConfirmName: "agent",
+	}); err == nil {
+		t.Fatal("keepSession() accepted lifecycle identity mismatch")
+	}
+
+	lifecycle.keepErr = tmuxlifecycle.ErrLeaseNotFound
+	lifecycle.closeErr = tmuxlifecycle.ErrLeaseNotFound
+	if _, _, err := toolset.keepSession(context.Background(), nil, lifecycleTransitionInput{
+		LeaseID: "lease_persistent", ConfirmName: "persistent",
+	}); err == nil {
+		t.Fatal("keepSession() adopted a persistent session without a lease")
+	}
+	if _, _, err := toolset.closeSession(context.Background(), nil, lifecycleTransitionInput{
+		LeaseID: "lease_persistent", ConfirmName: "persistent",
+	}); err == nil {
+		t.Fatal("closeSession() adopted a persistent session without a lease")
 	}
 }
 
@@ -143,9 +275,11 @@ func TestTmuxAttachmentInteractionLifecycle(t *testing.T) {
 		streams:     map[string]*controlStream{stream.key: stream},
 		ttl:         time.Hour,
 	}
+	lifecycle := &fakeSessionLifecycle{managedUses: true}
 	toolset := &tools{
 		guard:          security.New("token", nil, security.CookieSecureAuto),
 		attachments:    manager,
+		lifecycle:      lifecycle,
 		serviceForUser: func(string) tmuxService { return service },
 	}
 
@@ -188,6 +322,15 @@ func TestTmuxAttachmentInteractionLifecycle(t *testing.T) {
 	if len(read.Events) != 1 || read.Events[0].Data != "ready\r\n" || read.Screen != "prompt$ " {
 		t.Fatalf("read() = %#v", read)
 	}
+	_, timeoutRead, err := toolset.read(context.Background(), nil, readInput{
+		AttachmentID: attached.AttachmentID,
+		Cursor:       read.Cursor,
+		PaneID:       "%1",
+		TimeoutMS:    1,
+	})
+	if err != nil || !timeoutRead.TimedOut || timeoutRead.Closed {
+		t.Fatalf("timeout read = %#v, error = %v", timeoutRead, err)
+	}
 
 	wait, err := normalizeWait(waitInput{Mode: waitModeIdle, QuietMS: 1, TimeoutMS: 20})
 	if err != nil {
@@ -212,7 +355,76 @@ func TestTmuxAttachmentInteractionLifecycle(t *testing.T) {
 	if err != nil || !detached.Detached || detached.Session != "dev" {
 		t.Fatalf("detach() = %#v, error = %v", detached, err)
 	}
+	if len(lifecycle.finishResults) != 4 {
+		t.Fatalf("targeted lifecycle finishes = %v, want four operations", lifecycle.finishResults)
+	}
+	for _, success := range lifecycle.finishResults {
+		if !success {
+			t.Fatalf("targeted lifecycle finish results = %v", lifecycle.finishResults)
+		}
+	}
 }
+
+type fakeSessionLifecycle struct {
+	createSnapshot tmuxlifecycle.Snapshot
+	keepSnapshot   tmuxlifecycle.Snapshot
+	snapshots      []tmuxlifecycle.Snapshot
+	createdName    string
+	createdCWD     string
+	createdUser    string
+	managedUses    bool
+	beginTargets   []string
+	finishResults  []bool
+	keepErr        error
+	closeErr       error
+	closedLease    string
+}
+
+func (l *fakeSessionLifecycle) Create(
+	ctx context.Context,
+	user, name, cwd string,
+	prepare func(context.Context, tmux.Session) error,
+) (tmuxlifecycle.Snapshot, error) {
+	l.createdUser = user
+	l.createdName = name
+	l.createdCWD = cwd
+	snapshot := l.createSnapshot
+	if snapshot.SessionName == "" {
+		snapshot.SessionName = name
+	}
+	if err := prepare(ctx, tmux.Session{ID: snapshot.SessionID, Name: snapshot.SessionName}); err != nil {
+		return tmuxlifecycle.Snapshot{}, err
+	}
+	return snapshot, nil
+}
+
+func (l *fakeSessionLifecycle) BeginUse(_ context.Context, user, session string) (tmuxlifecycle.Use, error) {
+	l.beginTargets = append(l.beginTargets, user+"/"+session)
+	if !l.managedUses {
+		return tmuxlifecycle.Use{}, nil
+	}
+	return tmuxlifecycle.Use{LeaseID: "lease_use"}, nil
+}
+
+func (l *fakeSessionLifecycle) Finish(_ context.Context, _ tmuxlifecycle.Use, success bool) error {
+	l.finishResults = append(l.finishResults, success)
+	return nil
+}
+
+func (l *fakeSessionLifecycle) Keep(context.Context, string, string) (tmuxlifecycle.Snapshot, error) {
+	return l.keepSnapshot, l.keepErr
+}
+
+func (l *fakeSessionLifecycle) Close(_ context.Context, leaseID, _ string) error {
+	l.closedLease = leaseID
+	return l.closeErr
+}
+
+func (l *fakeSessionLifecycle) Snapshot() []tmuxlifecycle.Snapshot {
+	return append([]tmuxlifecycle.Snapshot(nil), l.snapshots...)
+}
+
+var _ sessionLifecycle = (*fakeSessionLifecycle)(nil)
 
 type fakeTmuxService struct {
 	sessions    []tmux.Session

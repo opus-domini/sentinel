@@ -12,16 +12,19 @@ import (
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/tmuxlifecycle"
 )
 
 // Options are the Sentinel-owned dependencies used by MCP tools.
 type Options struct {
-	Version             string
-	Attachments         *AttachmentManager
-	SessionUser         func(string) string
-	KnownSessionUsers   func() []string
-	RegisterSessionUser func(string, string)
-	Runbooks            *runbook.Manager
+	Version               string
+	Attachments           *AttachmentManager
+	Lifecycle             *tmuxlifecycle.Manager
+	SessionUser           func(string) string
+	KnownSessionUsers     func() []string
+	RegisterSessionUser   func(string, string)
+	UnregisterSessionUser func(string)
+	Runbooks              *runbook.Manager
 }
 
 // Server owns the official MCP handler and tmux attachment manager.
@@ -41,13 +44,15 @@ func New(state availability, guard *security.Guard, opts Options) *Server {
 	toolset := &tools{
 		guard:       guard,
 		attachments: opts.Attachments,
+		lifecycle:   opts.Lifecycle,
 		serviceForUser: func(user string) tmuxService {
 			return tmux.Service{User: user}
 		},
-		sessionUser:         opts.SessionUser,
-		knownSessionUsers:   opts.KnownSessionUsers,
-		registerSessionUser: opts.RegisterSessionUser,
-		runbooks:            opts.Runbooks,
+		sessionUser:           opts.SessionUser,
+		knownSessionUsers:     opts.KnownSessionUsers,
+		registerSessionUser:   opts.RegisterSessionUser,
+		unregisterSessionUser: opts.UnregisterSessionUser,
+		runbooks:              opts.Runbooks,
 	}
 	version := strings.TrimSpace(opts.Version)
 	if version == "" {

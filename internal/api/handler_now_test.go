@@ -330,6 +330,7 @@ func TestNowRoutesRequireAuthenticationAndRestrictMethods(t *testing.T) {
 		configService,
 		settings,
 		1,
+		nil,
 	)
 	h.tmux = &mockTmux{}
 	t.Cleanup(func() { h.Shutdown(context.Background()) })

@@ -14,26 +14,31 @@ import (
 	"github.com/opus-domini/sentinel/internal/runbook"
 	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/tmuxlifecycle"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
 
 const (
-	maxToolWait   = 20 * time.Second
-	inputTypeKey  = "key"
-	inputTypeText = "text"
-	waitModeNone  = "none"
-	waitModeIdle  = "idle"
-	waitModeText  = "text"
+	maxToolWait        = 20 * time.Second
+	inputTypeKey       = "key"
+	inputTypeText      = "text"
+	waitModeNone       = "none"
+	waitModeIdle       = "idle"
+	waitModeText       = "text"
+	lifetimeEphemeral  = "ephemeral"
+	lifetimePersistent = "persistent"
 )
 
 type tools struct {
-	guard               *security.Guard
-	attachments         *AttachmentManager
-	serviceForUser      func(string) tmuxService
-	sessionUser         func(string) string
-	knownSessionUsers   func() []string
-	registerSessionUser func(string, string)
-	runbooks            *runbook.Manager
+	guard                 *security.Guard
+	attachments           *AttachmentManager
+	lifecycle             sessionLifecycle
+	serviceForUser        func(string) tmuxService
+	sessionUser           func(string) string
+	knownSessionUsers     func() []string
+	registerSessionUser   func(string, string)
+	unregisterSessionUser func(string)
+	runbooks              *runbook.Manager
 }
 
 type tmuxService interface {
@@ -47,15 +52,25 @@ type tmuxService interface {
 	CapturePaneScreen(context.Context, string) (string, error)
 }
 
+type sessionLifecycle interface {
+	Create(context.Context, string, string, string, func(context.Context, tmux.Session) error) (tmuxlifecycle.Snapshot, error)
+	BeginUse(context.Context, string, string) (tmuxlifecycle.Use, error)
+	Finish(context.Context, tmuxlifecycle.Use, bool) error
+	Keep(context.Context, string, string) (tmuxlifecycle.Snapshot, error)
+	Close(context.Context, string, string) error
+	Snapshot() []tmuxlifecycle.Snapshot
+}
+
 type emptyInput struct{}
 
 type sessionOutput struct {
-	Name       string `json:"name"`
-	User       string `json:"user,omitempty"`
-	Windows    int    `json:"windows"`
-	Attached   int    `json:"attached"`
-	CreatedAt  string `json:"createdAt,omitempty"`
-	ActivityAt string `json:"activityAt,omitempty"`
+	Name       string                  `json:"name"`
+	User       string                  `json:"user,omitempty"`
+	Windows    int                     `json:"windows"`
+	Attached   int                     `json:"attached"`
+	CreatedAt  string                  `json:"createdAt,omitempty"`
+	ActivityAt string                  `json:"activityAt,omitempty"`
+	Lifecycle  *sessionLifecycleOutput `json:"lifecycle,omitempty"`
 }
 
 type listSessionsOutput struct {
@@ -68,15 +83,42 @@ type sessionTargetInput struct {
 }
 
 type createSessionInput struct {
-	Name string `json:"name" jsonschema:"new tmux session name"`
-	Cwd  string `json:"cwd,omitempty" jsonschema:"optional absolute working directory"`
-	User string `json:"user,omitempty" jsonschema:"optional allowed OS user"`
+	Name     string `json:"name" jsonschema:"new tmux session name"`
+	Cwd      string `json:"cwd,omitempty" jsonschema:"optional absolute working directory"`
+	User     string `json:"user,omitempty" jsonschema:"optional allowed OS user"`
+	Lifetime string `json:"lifetime,omitempty" jsonschema:"session lifetime: ephemeral or persistent; defaults to ephemeral"`
 }
 
 type createSessionOutput struct {
-	Session sessionOutput `json:"session"`
-	Windows []tmux.Window `json:"windows"`
-	Panes   []tmux.Pane   `json:"panes"`
+	Session   sessionOutput          `json:"session"`
+	Windows   []tmux.Window          `json:"windows"`
+	Panes     []tmux.Pane            `json:"panes"`
+	Lifecycle sessionLifecycleOutput `json:"lifecycle"`
+}
+
+type sessionLifecycleOutput struct {
+	Mode               string `json:"mode"`
+	Source             string `json:"source,omitempty"`
+	LeaseID            string `json:"leaseId,omitempty"`
+	CleanupState       string `json:"cleanupState,omitempty"`
+	IdleTimeoutSeconds int64  `json:"idleTimeoutSeconds,omitempty"`
+	ExpiresAt          string `json:"expiresAt,omitempty"`
+	GraceUntil         string `json:"graceUntil,omitempty"`
+}
+
+type lifecycleTransitionInput struct {
+	LeaseID     string `json:"leaseId" jsonschema:"opaque lifecycle lease returned by tmux_create_session"`
+	ConfirmName string `json:"confirmName" jsonschema:"exact current tmux session name"`
+}
+
+type keepSessionOutput struct {
+	Session   string                 `json:"session"`
+	Lifecycle sessionLifecycleOutput `json:"lifecycle"`
+}
+
+type closeSessionOutput struct {
+	Session string `json:"session"`
+	Closed  bool   `json:"closed"`
 }
 
 type listWindowsOutput struct {
@@ -173,7 +215,7 @@ func (t *tools) register(server *mcp.Server) {
 	}, t.listSessions)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "tmux_create_session",
-		Description: "Create one detached tmux session and return its initial windows and panes.",
+		Description: "Create one detached tmux session, ephemeral with a 2-hour sliding idle lease by default, and return its initial windows and panes.",
 		Annotations: closedWorldAnnotations(false, false, false),
 	}, t.createSession)
 	mcp.AddTool(server, &mcp.Tool{
@@ -206,6 +248,16 @@ func (t *tools) register(server *mcp.Server) {
 		Description: "Detach an MCP control client without stopping or killing the tmux session.",
 		Annotations: closedWorldAnnotations(false, false, false),
 	}, t.detach)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "tmux_keep_session",
+		Description: "Promote one exact ephemeral MCP session to persistent by removing its lifecycle lease.",
+		Annotations: closedWorldAnnotations(false, false, false),
+	}, t.keepSession)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "tmux_close_session",
+		Description: "Close one exact ephemeral MCP session by lifecycle lease and stable tmux runtime ID.",
+		Annotations: closedWorldAnnotations(false, true, false),
+	}, t.closeSession)
 	if t.runbooks != nil {
 		t.registerRunbookTools(server)
 	}
@@ -220,13 +272,19 @@ func (t *tools) listSessions(ctx context.Context, _ *mcp.CallToolRequest, _ empt
 	}
 	users = uniqueStrings(users)
 	output := listSessionsOutput{Sessions: []sessionOutput{}}
+	lifecycleIndex := lifecycleRuntimeIndex(t.lifecycle)
 	for _, user := range users {
 		sessions, err := t.service(user).ListSessions(ctx)
 		if err != nil {
 			return nil, listSessionsOutput{}, toolError("list tmux sessions", err)
 		}
 		for _, session := range sessions {
-			output.Sessions = append(output.Sessions, sessionResult(session, user))
+			result := sessionResult(session, user)
+			if snapshot, ok := lifecycleIndex[lifecycleRuntimeKey(user, session.ID)]; ok {
+				lifecycle := lifecycleResult(snapshot, true)
+				result.Lifecycle = &lifecycle
+			}
+			output.Sessions = append(output.Sessions, result)
 			if user != "" && t.registerSessionUser != nil {
 				t.registerSessionUser(session.Name, user)
 			}
@@ -245,6 +303,13 @@ func (t *tools) createSession(ctx context.Context, _ *mcp.CallToolRequest, input
 	input.Name = strings.TrimSpace(input.Name)
 	input.Cwd = strings.TrimSpace(input.Cwd)
 	input.User = strings.TrimSpace(input.User)
+	input.Lifetime = strings.TrimSpace(input.Lifetime)
+	if input.Lifetime == "" {
+		input.Lifetime = lifetimeEphemeral
+	}
+	if input.Lifetime != lifetimeEphemeral && input.Lifetime != lifetimePersistent {
+		return nil, createSessionOutput{}, errors.New("lifetime must be ephemeral or persistent")
+	}
 	if !validate.SessionName(input.Name) {
 		return nil, createSessionOutput{}, errors.New("name must match ^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$")
 	}
@@ -257,24 +322,62 @@ func (t *tools) createSession(ctx context.Context, _ *mcp.CallToolRequest, input
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	service := t.service(input.User)
-	if err := service.CreateSession(ctx, input.Name, input.Cwd); err != nil {
-		return nil, createSessionOutput{}, toolError("create tmux session", err)
+	var windows []tmux.Window
+	var panes []tmux.Pane
+	if input.Lifetime == lifetimePersistent {
+		if err := service.CreateSession(ctx, input.Name, input.Cwd); err != nil {
+			return nil, createSessionOutput{}, toolError("create tmux session", err)
+		}
+		if input.User != "" && t.registerSessionUser != nil {
+			t.registerSessionUser(input.Name, input.User)
+		}
+		var err error
+		windows, err = service.ListWindows(ctx, input.Name)
+		if err != nil {
+			return nil, createSessionOutput{}, toolError("list created session windows", err)
+		}
+		panes, err = service.ListPanes(ctx, input.Name)
+		if err != nil {
+			return nil, createSessionOutput{}, toolError("list created session panes", err)
+		}
+		return nil, createSessionOutput{
+			Session:   sessionOutput{Name: input.Name, User: input.User, Windows: len(windows)},
+			Windows:   windows,
+			Panes:     panes,
+			Lifecycle: sessionLifecycleOutput{Mode: lifetimePersistent},
+		}, nil
 	}
-	if input.User != "" && t.registerSessionUser != nil {
-		t.registerSessionUser(input.Name, input.User)
+	if t.lifecycle == nil {
+		return nil, createSessionOutput{}, errors.New("tmux session lifecycle manager is unavailable")
 	}
-	windows, err := service.ListWindows(ctx, input.Name)
+	registered := false
+	snapshot, err := t.lifecycle.Create(ctx, input.User, input.Name, input.Cwd, func(ctx context.Context, session tmux.Session) error {
+		if input.User != "" && t.registerSessionUser != nil {
+			t.registerSessionUser(session.Name, input.User)
+			registered = true
+		}
+		var err error
+		windows, err = service.ListWindows(ctx, session.Name)
+		if err != nil {
+			return toolError("list created session windows", err)
+		}
+		panes, err = service.ListPanes(ctx, session.Name)
+		if err != nil {
+			return toolError("list created session panes", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, createSessionOutput{}, toolError("list created session windows", err)
-	}
-	panes, err := service.ListPanes(ctx, input.Name)
-	if err != nil {
-		return nil, createSessionOutput{}, toolError("list created session panes", err)
+		if registered && t.unregisterSessionUser != nil {
+			t.unregisterSessionUser(input.Name)
+		}
+		return nil, createSessionOutput{}, toolError("create ephemeral tmux session", err)
 	}
 	return nil, createSessionOutput{
-		Session: sessionOutput{Name: input.Name, User: input.User, Windows: len(windows)},
-		Windows: windows,
-		Panes:   panes,
+		Session:   sessionOutput{Name: snapshot.SessionName, User: input.User, Windows: len(windows)},
+		Windows:   windows,
+		Panes:     panes,
+		Lifecycle: lifecycleResult(snapshot, true),
 	}, nil
 }
 
@@ -283,9 +386,17 @@ func (t *tools) listWindows(ctx context.Context, _ *mcp.CallToolRequest, input s
 	if err != nil {
 		return nil, listWindowsOutput{}, err
 	}
+	use, err := t.beginUse(ctx, user, session)
+	if err != nil {
+		return nil, listWindowsOutput{}, err
+	}
 	windows, err := service.ListWindows(ctx, session)
 	if err != nil {
+		_ = t.finishUse(ctx, use, false)
 		return nil, listWindowsOutput{}, toolError("list tmux windows", err)
+	}
+	if err := t.finishUse(ctx, use, true); err != nil {
+		return nil, listWindowsOutput{}, err
 	}
 	return nil, listWindowsOutput{Session: session, User: user, Windows: windows}, nil
 }
@@ -295,9 +406,17 @@ func (t *tools) listPanes(ctx context.Context, _ *mcp.CallToolRequest, input ses
 	if err != nil {
 		return nil, listPanesOutput{}, err
 	}
+	use, err := t.beginUse(ctx, user, session)
+	if err != nil {
+		return nil, listPanesOutput{}, err
+	}
 	panes, err := service.ListPanes(ctx, session)
 	if err != nil {
+		_ = t.finishUse(ctx, use, false)
 		return nil, listPanesOutput{}, toolError("list tmux panes", err)
+	}
+	if err := t.finishUse(ctx, use, true); err != nil {
+		return nil, listPanesOutput{}, err
 	}
 	return nil, listPanesOutput{Session: session, User: user, Panes: panes}, nil
 }
@@ -307,15 +426,26 @@ func (t *tools) attach(ctx context.Context, _ *mcp.CallToolRequest, input sessio
 	if err != nil {
 		return nil, attachOutput{}, err
 	}
+	use, err := t.beginUse(ctx, user, session)
+	if err != nil {
+		return nil, attachOutput{}, err
+	}
 	if !service.HasSession(ctx, session) {
+		_ = t.finishUse(ctx, use, false)
 		return nil, attachOutput{}, errors.New("tmux session not found")
 	}
 	attachment, err := t.attachments.Open(user, session)
 	if err != nil {
+		_ = t.finishUse(ctx, use, false)
 		return nil, attachOutput{}, toolError("attach tmux control client", err)
 	}
 	windows, panes, paneID, screen, err := inspectTarget(ctx, service, session, "")
 	if err != nil {
+		_ = t.attachments.Detach(attachment.ID)
+		_ = t.finishUse(ctx, use, false)
+		return nil, attachOutput{}, err
+	}
+	if err := t.finishUse(ctx, use, true); err != nil {
 		_ = t.attachments.Detach(attachment.ID)
 		return nil, attachOutput{}, err
 	}
@@ -351,6 +481,16 @@ func (t *tools) interact(ctx context.Context, _ *mcp.CallToolRequest, input inte
 	if err != nil {
 		return nil, interactOutput{}, err
 	}
+	use, err := t.beginUse(ctx, attachment.User, attachment.Session)
+	if err != nil {
+		return nil, interactOutput{}, err
+	}
+	finishedUse := false
+	defer func() {
+		if !finishedUse {
+			_ = t.finishUse(ctx, use, false)
+		}
+	}()
 	service := t.service(attachment.User)
 	if err := ensurePane(ctx, service, attachment.Session, input.PaneID); err != nil {
 		return nil, interactOutput{}, err
@@ -385,6 +525,11 @@ func (t *tools) interact(ctx context.Context, _ *mcp.CallToolRequest, input inte
 	if err != nil {
 		return nil, interactOutput{}, toolError("capture tmux pane", err)
 	}
+	finishErr := t.finishUse(ctx, use, true)
+	finishedUse = true
+	if finishErr != nil {
+		return nil, interactOutput{}, finishErr
+	}
 	return nil, interactOutput{
 		AttachmentID: input.AttachmentID,
 		Session:      attachment.Session,
@@ -408,6 +553,16 @@ func (t *tools) read(ctx context.Context, _ *mcp.CallToolRequest, input readInpu
 	if err != nil {
 		return nil, readOutput{}, err
 	}
+	use, err := t.beginUse(ctx, attachment.User, attachment.Session)
+	if err != nil {
+		return nil, readOutput{}, err
+	}
+	finishedUse := false
+	defer func() {
+		if !finishedUse {
+			_ = t.finishUse(ctx, use, false)
+		}
+	}()
 	service := t.service(attachment.User)
 	paneID := strings.TrimSpace(input.PaneID)
 	if paneID == "" {
@@ -439,6 +594,11 @@ func (t *tools) read(ctx context.Context, _ *mcp.CallToolRequest, input readInpu
 			return nil, readOutput{}, toolError("capture tmux pane", err)
 		}
 	}
+	finishErr := t.finishUse(ctx, use, !batch.Closed)
+	finishedUse = true
+	if finishErr != nil {
+		return nil, readOutput{}, finishErr
+	}
 	return nil, output, nil
 }
 
@@ -451,6 +611,99 @@ func (t *tools) detach(_ context.Context, _ *mcp.CallToolRequest, input detachIn
 		return nil, detachOutput{}, err
 	}
 	return nil, detachOutput{AttachmentID: attachment.ID, Session: attachment.Session, Detached: true}, nil
+}
+
+func (t *tools) keepSession(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	input lifecycleTransitionInput,
+) (*mcp.CallToolResult, keepSessionOutput, error) {
+	input.LeaseID = strings.TrimSpace(input.LeaseID)
+	input.ConfirmName = strings.TrimSpace(input.ConfirmName)
+	if input.LeaseID == "" || !validate.SessionName(input.ConfirmName) {
+		return nil, keepSessionOutput{}, errors.New("leaseId and a valid confirmName are required")
+	}
+	if t.lifecycle == nil {
+		return nil, keepSessionOutput{}, errors.New("tmux session lifecycle manager is unavailable")
+	}
+	snapshot, err := t.lifecycle.Keep(ctx, input.LeaseID, input.ConfirmName)
+	if err != nil {
+		return nil, keepSessionOutput{}, toolError("keep tmux session", err)
+	}
+	return nil, keepSessionOutput{
+		Session:   snapshot.SessionName,
+		Lifecycle: sessionLifecycleOutput{Mode: lifetimePersistent},
+	}, nil
+}
+
+func (t *tools) closeSession(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	input lifecycleTransitionInput,
+) (*mcp.CallToolResult, closeSessionOutput, error) {
+	input.LeaseID = strings.TrimSpace(input.LeaseID)
+	input.ConfirmName = strings.TrimSpace(input.ConfirmName)
+	if input.LeaseID == "" || !validate.SessionName(input.ConfirmName) {
+		return nil, closeSessionOutput{}, errors.New("leaseId and a valid confirmName are required")
+	}
+	if t.lifecycle == nil {
+		return nil, closeSessionOutput{}, errors.New("tmux session lifecycle manager is unavailable")
+	}
+	if err := t.lifecycle.Close(ctx, input.LeaseID, input.ConfirmName); err != nil {
+		return nil, closeSessionOutput{}, toolError("close tmux session", err)
+	}
+	return nil, closeSessionOutput{Session: input.ConfirmName, Closed: true}, nil
+}
+
+func (t *tools) beginUse(ctx context.Context, user, session string) (tmuxlifecycle.Use, error) {
+	if t.lifecycle == nil {
+		return tmuxlifecycle.Use{}, nil
+	}
+	use, err := t.lifecycle.BeginUse(ctx, user, session)
+	if err != nil {
+		return tmuxlifecycle.Use{}, toolError("begin tmux session lifecycle use", err)
+	}
+	return use, nil
+}
+
+func (t *tools) finishUse(ctx context.Context, use tmuxlifecycle.Use, success bool) error {
+	if t.lifecycle == nil {
+		return nil
+	}
+	if err := t.lifecycle.Finish(ctx, use, success); err != nil {
+		return toolError("finish tmux session lifecycle use", err)
+	}
+	return nil
+}
+
+func lifecycleRuntimeIndex(lifecycle sessionLifecycle) map[string]tmuxlifecycle.Snapshot {
+	result := make(map[string]tmuxlifecycle.Snapshot)
+	if lifecycle == nil {
+		return result
+	}
+	for _, snapshot := range lifecycle.Snapshot() {
+		result[lifecycleRuntimeKey(snapshot.User, snapshot.SessionID)] = snapshot
+	}
+	return result
+}
+
+func lifecycleRuntimeKey(user, sessionID string) string {
+	return strings.TrimSpace(user) + "\x00" + strings.TrimSpace(sessionID)
+}
+
+func lifecycleResult(snapshot tmuxlifecycle.Snapshot, includeLease bool) sessionLifecycleOutput {
+	result := sessionLifecycleOutput{
+		Mode:               lifetimeEphemeral,
+		Source:             snapshot.Source,
+		CleanupState:       snapshot.State,
+		IdleTimeoutSeconds: int64(tmuxlifecycle.DefaultIdleTimeout / time.Second),
+		ExpiresAt:          formatTime(snapshot.ExpiresAt),
+		GraceUntil:         formatTime(snapshot.GraceUntil),
+	}
+	if includeLease {
+		result.LeaseID = snapshot.LeaseID
+	}
+	return result
 }
 
 func (t *tools) serviceForTarget(input sessionTargetInput) (tmuxService, string, string, error) {

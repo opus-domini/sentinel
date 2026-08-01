@@ -214,17 +214,17 @@ func (m *Manager) BeginUse(ctx context.Context, user, sessionName string) (Use, 
 		return Use{}, ErrCleanupClaimed
 	}
 	entry.inFlight++
-	return Use{leaseID: entry.lease.LeaseID, managed: true}, nil
+	return Use{LeaseID: entry.lease.LeaseID}, nil
 }
 
 // Finish releases an operation guard and renews successful managed activity.
 func (m *Manager) Finish(ctx context.Context, use Use, success bool) error {
-	if !use.managed {
+	if !use.Managed() {
 		return nil
 	}
 	now := m.now()
 	m.mu.Lock()
-	entry := m.byLease[use.leaseID]
+	entry := m.byLease[use.LeaseID]
 	if entry == nil {
 		m.mu.Unlock()
 		return ErrLeaseNotFound
@@ -249,7 +249,7 @@ func (m *Manager) Finish(ctx context.Context, use Use, success bool) error {
 
 	err := m.persistTouch(ctx, entry, lease)
 	m.mu.Lock()
-	if current := m.byLease[use.leaseID]; current == entry && entry.inFlight > 0 {
+	if current := m.byLease[use.LeaseID]; current == entry && entry.inFlight > 0 {
 		entry.inFlight--
 	}
 	m.mu.Unlock()

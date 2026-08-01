@@ -154,6 +154,7 @@ func newContractMux(t *testing.T) *http.ServeMux {
 		configService,
 		settings,
 		5,
+		nil,
 	)
 	handler.tmux = &mockTmux{}
 	return mux

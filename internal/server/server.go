@@ -121,14 +121,16 @@ func Serve(version string) int {
 	})
 
 	mux := http.NewServeMux()
-	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configService, liveSettings, cfg.Runbooks.MaxConcurrent)
+	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configService, liveSettings, cfg.Runbooks.MaxConcurrent, lifecycleManager)
 	mcpServer := mcpserver.New(liveSettings, guard, mcpserver.Options{
-		Version:             version,
-		Attachments:         attachments,
-		SessionUser:         apiHandler.SessionUser,
-		KnownSessionUsers:   apiHandler.KnownSessionUsers,
-		RegisterSessionUser: apiHandler.RegisterSessionUser,
-		Runbooks:            apiHandler.RunbookManager(),
+		Version:               version,
+		Attachments:           attachments,
+		Lifecycle:             lifecycleManager,
+		SessionUser:           apiHandler.SessionUser,
+		KnownSessionUsers:     apiHandler.KnownSessionUsers,
+		RegisterSessionUser:   apiHandler.RegisterSessionUser,
+		UnregisterSessionUser: apiHandler.UnregisterSessionUser,
+		Runbooks:              apiHandler.RunbookManager(),
 	})
 	mux.Handle("POST /mcp", mcpServer)
 	mux.Handle("GET /mcp", mcpServer)

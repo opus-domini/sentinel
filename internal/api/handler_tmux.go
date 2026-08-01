@@ -175,6 +175,15 @@ func (h *Handler) RegisterSessionUser(session, user string) {
 	h.registerSessionUser(session, user)
 }
 
+// UnregisterSessionUser removes a stale MCP-created user mapping after compensation.
+func (h *Handler) UnregisterSessionUser(session string) {
+	session = strings.TrimSpace(session)
+	h.sessionUsers.Delete(session)
+	if h.repo != nil {
+		_ = h.repo.DeleteSessionUser(context.Background(), session)
+	}
+}
+
 // registerSessionUser records which OS user owns a tmux session,
 // both in memory and in persistent storage.
 func (h *Handler) registerSessionUser(session, user string) {
@@ -255,12 +264,23 @@ func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	svc := h.tmuxForSession(ctx, session)
+	user := h.SessionUser(session)
+	current, err := svc.GetSession(ctx, session)
+	if err != nil {
+		writeTmuxError(w, err)
+		return
+	}
 	if err := svc.RenameSession(ctx, session, req.NewName); err != nil {
 		writeTmuxError(w, err)
 		return
 	}
+	if h.lifecycle != nil {
+		if err := h.lifecycle.Rename(ctx, user, current.ID, req.NewName); err != nil {
+			slog.Warn("failed to update tmux lifecycle after rename", keySession, req.NewName, "err", err)
+		}
+	}
 	// Migrate the user registry entry to the new session name.
-	if user := h.SessionUser(session); user != "" {
+	if user != "" {
 		h.sessionUsers.Delete(session)
 		h.registerSessionUser(req.NewName, user)
 		if h.repo != nil {
@@ -323,15 +343,30 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	if err := h.tmuxForSession(ctx, session).KillSession(ctx, session); err != nil &&
+	svc := h.tmuxForSession(ctx, session)
+	user := h.SessionUser(session)
+	current, lookupErr := svc.GetSession(ctx, session)
+	if lookupErr != nil && !tmux.IsKind(lookupErr, tmux.ErrKindSessionNotFound) &&
+		!tmux.IsKind(lookupErr, tmux.ErrKindServerNotRunning) {
+		writeTmuxError(w, lookupErr)
+		return
+	}
+	if err := svc.KillSession(ctx, session); err != nil &&
 		!tmux.IsKind(err, tmux.ErrKindSessionNotFound) &&
 		!tmux.IsKind(err, tmux.ErrKindServerNotRunning) {
 		writeTmuxError(w, err)
 		return
 	}
+	if h.lifecycle != nil && current.ID != "" {
+		if err := h.lifecycle.Forget(ctx, user, current.ID); err != nil {
+			slog.Warn("failed to forget tmux lifecycle after human delete", keySession, session, "err", err)
+		}
+	}
 	h.sessionUsers.Delete(session)
 	if h.repo != nil {
-		_ = h.repo.DeleteSessionUser(context.Background(), session)
+		if err := h.repo.DeleteTmuxSessionRuntimeState(context.Background(), session); err != nil {
+			slog.Warn("failed to clean tmux runtime state after human delete", keySession, session, "err", err)
+		}
 		_ = h.repo.DeleteSessionPreset(context.Background(), session)
 	}
 	h.emit(events.TypeTmuxSessions, map[string]any{keySession: session, keyAction: "delete"})
