@@ -192,6 +192,34 @@ func TestGetSession(t *testing.T) {
 	})
 }
 
+func TestCreateSessionWithID(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns_stable_identity", func(t *testing.T) {
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			want := []string{"new-session", "-d", "-P", "-F", createSessionFormat, "-s", "agent", "-c", "/srv/app"}
+			if !slices.Equal(args, want) {
+				t.Fatalf("args = %#v, want %#v", args, want)
+			}
+			return "$17\tagent\n", nil
+		})
+		session, err := CreateSessionWithID(ctx, "agent", "/srv/app")
+		if err != nil {
+			t.Fatalf("CreateSessionWithID() error = %v", err)
+		}
+		if session.ID != "$17" || session.Name != "agent" {
+			t.Fatalf("CreateSessionWithID() = %#v", session)
+		}
+	})
+
+	t.Run("rejects_invalid_identity", func(t *testing.T) {
+		setRun(t, func(_ context.Context, _ ...string) (string, error) { return "agent", nil })
+		if _, err := CreateSessionWithID(ctx, "agent", ""); !IsKind(err, ErrKindCommandFailed) {
+			t.Fatalf("CreateSessionWithID() error = %v", err)
+		}
+	})
+}
+
 // --- ListActivePaneCommands ---
 
 func TestListActivePaneCommands(t *testing.T) {

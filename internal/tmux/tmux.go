@@ -75,8 +75,10 @@ type PaneSnapshot struct {
 }
 
 const (
+	cmdNewSession                     = "new-session"
 	listSessionsFormatWithActivity    = "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{session_activity}"
 	listSessionsFormatWithoutActivity = "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}"
+	createSessionFormat               = "#{session_id}\t#{session_name}"
 )
 
 // Window represents window data.
@@ -262,7 +264,7 @@ func SessionHash(name string, epoch int64) string {
 
 // CreateSession creates session.
 func CreateSession(ctx context.Context, name, cwd string) error {
-	args := []string{"new-session", "-d", "-s", name}
+	args := []string{cmdNewSession, "-d", "-s", name}
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
@@ -544,6 +546,11 @@ func NewWindowAt(ctx context.Context, session string, index int, name, cwd strin
 	}
 	_, err := run(ctx, args...)
 	return err
+}
+
+// CreateSessionWithID creates a detached session and returns its stable runtime identity.
+func CreateSessionWithID(ctx context.Context, name, cwd string) (Session, error) {
+	return createSessionWithIDVia(ctx, run, name, cwd)
 }
 
 // KillWindow handles kill window.
@@ -996,6 +1003,30 @@ func validSessionID(sessionID string) bool {
 	}
 	_, err := strconv.ParseUint(sessionID[1:], 10, 64)
 	return err == nil
+}
+
+func createSessionWithIDVia(
+	ctx context.Context,
+	runner func(context.Context, ...string) (string, error),
+	name, cwd string,
+) (Session, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Session{}, &Error{Kind: ErrKindInvalidIdentifier, Msg: errSessionRequired}
+	}
+	args := []string{cmdNewSession, "-d", "-P", "-F", createSessionFormat, "-s", name}
+	if strings.TrimSpace(cwd) != "" {
+		args = append(args, "-c", cwd)
+	}
+	out, err := runner(ctx, args...)
+	if err != nil {
+		return Session{}, err
+	}
+	parts := strings.Split(strings.TrimSpace(out), "\t")
+	if len(parts) != 2 || !validSessionID(parts[0]) || strings.TrimSpace(parts[1]) == "" {
+		return Session{}, &Error{Kind: ErrKindCommandFailed, Msg: "tmux create returned an invalid session identity"}
+	}
+	return Session{ID: parts[0], Name: parts[1]}, nil
 }
 
 func shouldRetryListSessionsWithoutActivity(err error) bool {

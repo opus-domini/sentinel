@@ -20,6 +20,7 @@ func serviceMethodCalls() []serviceMethodCall {
 		{"GetSession", func(ctx context.Context, s Service) error { _, e := s.GetSession(ctx, "dev"); return e }},
 		{"ListActivePaneCommands", func(ctx context.Context, s Service) error { _, e := s.ListActivePaneCommands(ctx); return e }},
 		{"CapturePane", func(ctx context.Context, s Service) error { _, e := s.CapturePane(ctx, "dev"); return e }},
+		{"CreateSessionWithID", func(ctx context.Context, s Service) error { _, e := s.CreateSessionWithID(ctx, "dev", ""); return e }},
 		{"RenameSession", func(ctx context.Context, s Service) error { return s.RenameSession(ctx, "dev", "prod") }},
 		{"RenameWindow", func(ctx context.Context, s Service) error { return s.RenameWindow(ctx, "dev", 1, "logs") }},
 		{"RenamePane", func(ctx context.Context, s Service) error { return s.RenamePane(ctx, "%1", "title") }},

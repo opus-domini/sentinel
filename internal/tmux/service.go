@@ -166,12 +166,20 @@ func (s Service) CreateSession(ctx context.Context, name, cwd string) error {
 	if s.User == "" {
 		return CreateSession(ctx, name, cwd)
 	}
-	args := []string{"new-session", "-d", "-s", name}
+	args := []string{cmdNewSession, "-d", "-s", name}
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
 	_, err := s.run(ctx, args...)
 	return err
+}
+
+// CreateSessionWithID creates a detached session and returns its stable runtime identity.
+func (s Service) CreateSessionWithID(ctx context.Context, name, cwd string) (Session, error) {
+	if s.User == "" {
+		return CreateSessionWithID(ctx, name, cwd)
+	}
+	return createSessionWithIDVia(ctx, s.run, name, cwd)
 }
 
 // RenameSession renames session.

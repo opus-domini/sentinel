@@ -28,6 +28,7 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/term"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/tmuxlifecycle"
 	"github.com/opus-domini/sentinel/internal/ui"
 	"github.com/opus-domini/sentinel/internal/watchtower"
 )
@@ -108,11 +109,22 @@ func Serve(version string) int {
 	}
 
 	opsManager := services.NewManager(time.Now(), st)
+	attachments := mcpserver.NewAttachmentManager()
+	lifecycleManager := tmuxlifecycle.New(st, tmuxlifecycle.Options{
+		RuntimeForUser: func(user string) tmuxlifecycle.Runtime {
+			return tmux.Service{User: strings.TrimSpace(user)}
+		},
+		DetachSession: attachments.DetachSession,
+		Publish: func(eventType string, payload map[string]any) {
+			eventHub.Publish(events.NewEvent(eventType, payload))
+		},
+	})
 
 	mux := http.NewServeMux()
 	apiHandler := api.Register(mux, guard, st, opsManager, eventHub, version, configService, liveSettings, cfg.Runbooks.MaxConcurrent)
 	mcpServer := mcpserver.New(liveSettings, guard, mcpserver.Options{
 		Version:             version,
+		Attachments:         attachments,
 		SessionUser:         apiHandler.SessionUser,
 		KnownSessionUsers:   apiHandler.KnownSessionUsers,
 		RegisterSessionUser: apiHandler.RegisterSessionUser,
@@ -124,6 +136,11 @@ func Serve(version string) int {
 
 	if err := ui.Register(mux, guard, st, eventHub, opsManager, apiHandler.SessionUser); err != nil {
 		slog.Error("frontend init failed", "err", err)
+		return 1
+	}
+	if err := lifecycleManager.Start(context.Background()); err != nil {
+		slog.Error("tmux lifecycle manager failed to start", "err", err)
+		mcpServer.Shutdown(context.Background())
 		return 1
 	}
 
@@ -189,6 +206,11 @@ func Serve(version string) int {
 	apiShutdownCtx, cancelAPI := context.WithTimeout(context.Background(), 5*time.Second)
 	apiHandler.Shutdown(apiShutdownCtx)
 	cancelAPI()
+	lifecycleShutdownCtx, cancelLifecycle := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := lifecycleManager.Stop(lifecycleShutdownCtx); err != nil {
+		slog.Warn("tmux lifecycle manager failed to stop", "err", err)
+	}
+	cancelLifecycle()
 	mcpShutdownCtx, cancelMCP := context.WithTimeout(context.Background(), 3*time.Second)
 	mcpServer.Shutdown(mcpShutdownCtx)
 	cancelMCP()

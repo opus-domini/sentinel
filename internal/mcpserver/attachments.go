@@ -220,6 +220,30 @@ func (m *AttachmentManager) Detach(id string) error {
 	return nil
 }
 
+// DetachSession releases every MCP attachment for one user/session target.
+// It never sends a command to the tmux session itself.
+func (m *AttachmentManager) DetachSession(user, session string) {
+	if m == nil {
+		return
+	}
+	user = strings.TrimSpace(user)
+	session = strings.TrimSpace(session)
+	var closeStreams []*controlStream
+	m.mu.Lock()
+	for _, lease := range m.attachments {
+		stream := lease.stream
+		if stream.user == user && stream.session == session {
+			if closed := m.removeLeaseLocked(lease); closed != nil {
+				closeStreams = append(closeStreams, closed)
+			}
+		}
+	}
+	m.mu.Unlock()
+	for _, stream := range closeStreams {
+		stream.close()
+	}
+}
+
 // Close stops every control client and the lease sweeper.
 func (m *AttachmentManager) Close() {
 	if m == nil {

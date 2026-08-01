@@ -17,6 +17,7 @@ import (
 // Options are the Sentinel-owned dependencies used by MCP tools.
 type Options struct {
 	Version             string
+	Attachments         *AttachmentManager
 	SessionUser         func(string) string
 	KnownSessionUsers   func() []string
 	RegisterSessionUser func(string, string)
@@ -37,10 +38,9 @@ type availability interface {
 
 // New constructs the official Streamable HTTP MCP server.
 func New(state availability, guard *security.Guard, opts Options) *Server {
-	attachments := NewAttachmentManager()
 	toolset := &tools{
 		guard:       guard,
-		attachments: attachments,
+		attachments: opts.Attachments,
 		serviceForUser: func(user string) tmuxService {
 			return tmux.Service{User: user}
 		},
@@ -73,7 +73,7 @@ func New(state availability, guard *security.Guard, opts Options) *Server {
 	return &Server{
 		state:       state,
 		guard:       guard,
-		attachments: attachments,
+		attachments: opts.Attachments,
 		handler:     sdkHandler,
 	}
 }

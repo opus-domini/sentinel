@@ -88,6 +88,52 @@ func TestRemovingOldLeaseDoesNotRemoveReplacementStream(t *testing.T) {
 	}
 }
 
+func TestDetachSessionRemovesOnlyMatchingAttachments(t *testing.T) {
+	manager := &AttachmentManager{
+		attachments: make(map[string]*attachmentLease),
+		streams:     make(map[string]*controlStream),
+	}
+	target := newTestControlStream()
+	target.key = "deploy\x00agent"
+	target.user = "deploy"
+	target.session = "agent"
+	target.refs = 2
+	target.done = make(chan struct{})
+	close(target.done)
+	target.cancel = func() {}
+	target.stdin = testWriteCloser{}
+	other := newTestControlStream()
+	other.key = "deploy\x00other"
+	other.user = "deploy"
+	other.session = "other"
+	other.refs = 1
+	manager.streams[target.key] = target
+	manager.streams[other.key] = other
+	manager.attachments["one"] = &attachmentLease{id: "one", stream: target}
+	manager.attachments["two"] = &attachmentLease{id: "two", stream: target}
+	manager.attachments["other"] = &attachmentLease{id: "other", stream: other}
+
+	manager.DetachSession("deploy", "agent")
+
+	if _, ok := manager.attachments["one"]; ok {
+		t.Fatal("first target attachment remains")
+	}
+	if _, ok := manager.attachments["two"]; ok {
+		t.Fatal("second target attachment remains")
+	}
+	if manager.attachments["other"] == nil || manager.streams[other.key] != other {
+		t.Fatal("unrelated attachment was removed")
+	}
+	if _, ok := manager.streams[target.key]; ok {
+		t.Fatal("target control stream remains")
+	}
+}
+
+type testWriteCloser struct{}
+
+func (testWriteCloser) Write(p []byte) (int, error) { return len(p), nil }
+func (testWriteCloser) Close() error                { return nil }
+
 func newTestControlStream() *controlStream {
 	return &controlStream{
 		alive:   true,

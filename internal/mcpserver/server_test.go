@@ -27,7 +27,9 @@ func TestToolErrorAddsOperationContext(t *testing.T) {
 
 func TestServerAvailabilityAndBearerAuthentication(t *testing.T) {
 	state := &testAvailability{}
-	server := New(state, security.New("shared-token", nil, security.CookieSecureAuto), Options{})
+	server := New(state, security.New("shared-token", nil, security.CookieSecureAuto), Options{
+		Attachments: NewAttachmentManager(),
+	})
 	t.Cleanup(func() { server.Shutdown(context.Background()) })
 
 	req := httptest.NewRequest(http.MethodPost, "http://sentinel.test/mcp", nil)
@@ -61,7 +63,7 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	server := New(
 		&testAvailability{enabled: true},
 		security.New("shared-token", nil, security.CookieSecureAuto),
-		Options{Version: "test", Runbooks: runbooks},
+		Options{Version: "test", Attachments: NewAttachmentManager(), Runbooks: runbooks},
 	)
 	t.Cleanup(func() { server.Shutdown(context.Background()) })
 	httpServer := httptest.NewServer(server)
