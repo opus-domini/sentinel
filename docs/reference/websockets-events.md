@@ -76,6 +76,22 @@ belong to [Tmux](/features/tmux-workspace.md),
 [Runbooks](/features/runbooks.md). Exact HTTP resource shapes remain in the
 [HTTP API Reference](/reference/http-api.md).
 
+Tmux lifecycle creation, renewal, grace, blocked cleanup, keep, close, and
+expiry publish a session invalidation with this payload shape:
+
+```json
+{
+  "action": "lifecycle",
+  "session": "agent-task",
+  "user": "",
+  "state": "active"
+}
+```
+
+The event is an invalidation, not the authoritative lifecycle resource. The
+client refreshes `GET /api/tmux/sessions` to obtain the current optional
+`lifecycle` projection; terminal tabs do not run their own countdown.
+
 ### Now invalidation
 
 Now has no `now.updated` event. It invalidates its composed read only from

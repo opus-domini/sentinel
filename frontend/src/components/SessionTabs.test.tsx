@@ -14,6 +14,16 @@ vi.mock('@/contexts/ViewportContext', () => ({
   }),
 }))
 
+vi.mock('@/components/TooltipHelper', () => ({
+  TooltipHelper: ({ children }: { children: React.ReactNode }) => children,
+}))
+
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({
+    formatTimestamp: (value: string) => value,
+  }),
+}))
+
 function renderTabs(overrides = {}) {
   const props = {
     allSessions: ['api', 'worker'],
@@ -90,6 +100,36 @@ describe('SessionTabs', () => {
 
     fireEvent.contextMenu(unreadTab)
     expect(screen.getByText('Close tab')).toBeTruthy()
+  })
+
+  it('keeps the ephemeral marker visible when regular icons are hidden on mobile', () => {
+    mobileLayout.enabled = true
+    renderTabs({
+      sessionIcons: new Map([['api', 'terminal']]),
+      sessionLifecycles: new Map([
+        [
+          'api',
+          {
+            mode: 'ephemeral',
+            source: 'mcp',
+            cleanupState: 'active',
+            expiresAt: '2099-01-01T02:00:00Z',
+          },
+        ],
+      ]),
+    })
+
+    const tab = screen.getByRole('tab', { name: 'api, ephemeral MCP session' })
+    expect(tab.querySelectorAll('svg')).toHaveLength(1)
+    expect(screen.getByLabelText(/Ephemeral MCP session, active/)).toBeTruthy()
+  })
+
+  it('does not reserve a lifecycle marker for persistent tabs', () => {
+    mobileLayout.enabled = true
+    renderTabs()
+
+    expect(screen.queryByLabelText(/Ephemeral MCP session/)).toBeNull()
+    expect(screen.getByRole('tab', { name: 'api' }).querySelectorAll('svg')).toHaveLength(0)
   })
 
   it('prevents pointer text selection without removing keyboard access', () => {

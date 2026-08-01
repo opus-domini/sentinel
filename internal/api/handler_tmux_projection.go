@@ -11,6 +11,7 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
+	"github.com/opus-domini/sentinel/internal/tmuxlifecycle"
 )
 
 func sameProjectedWindowSet(live []tmux.Window, projected []store.WatchtowerWindow) bool {
@@ -240,10 +241,14 @@ func (h *Handler) loadEnrichedSessions(ctx context.Context) enrichedSessionsSnap
 		result = append(result, h.projectedSessionToEnriched(ctx, row, stored[row.SessionName]))
 	}
 
+	liveSessionIDs := make(map[string]string)
+	runtimeAvailable := make(map[string]bool)
 	liveSessions, runtimeErr := h.tmux.ListSessions(ctx)
 	if runtimeErr == nil {
+		runtimeAvailable[""] = true
 		snapshots := h.loadActivePaneSnapshots(ctx)
 		for _, sess := range liveSessions {
+			liveSessionIDs[lifecycleSessionKey("", sess.Name)] = sess.ID
 			if _, exists := seen[sess.Name]; exists {
 				continue
 			}
@@ -253,7 +258,16 @@ func (h *Handler) loadEnrichedSessions(ctx context.Context) enrichedSessionsSnap
 		}
 	}
 
-	result, activeNames = h.appendKnownUserSessions(ctx, result, activeNames, seen, stored)
+	result, activeNames = h.appendKnownUserSessions(
+		ctx,
+		result,
+		activeNames,
+		seen,
+		stored,
+		liveSessionIDs,
+		runtimeAvailable,
+	)
+	h.overlaySessionLifecycles(result, liveSessionIDs, runtimeAvailable)
 
 	if runtimeErr == nil || len(projected) > 0 {
 		h.purgeStoredSessionsBestEffort(ctx, activeNames)
@@ -300,6 +314,8 @@ func (h *Handler) appendKnownUserSessions(
 	activeNames []string,
 	seen map[string]struct{},
 	stored map[string]store.SessionMeta,
+	liveSessionIDs map[string]string,
+	runtimeAvailable map[string]bool,
 ) ([]enrichedSession, []string) {
 	for _, user := range h.knownSessionUsers() {
 		svc := tmux.Service{User: user}
@@ -308,8 +324,10 @@ func (h *Handler) appendKnownUserSessions(
 			slog.Warn("multi-user session list failed", "user", user, "err", listErr)
 			continue
 		}
+		runtimeAvailable[user] = true
 		userSnapshots, _ := svc.ListActivePaneCommands(ctx)
 		for _, sess := range userSessions {
+			liveSessionIDs[lifecycleSessionKey(user, sess.Name)] = sess.ID
 			if _, exists := seen[sess.Name]; exists {
 				continue
 			}
@@ -322,6 +340,64 @@ func (h *Handler) appendKnownUserSessions(
 		}
 	}
 	return result, activeNames
+}
+
+func (h *Handler) overlaySessionLifecycles(
+	sessions []enrichedSession,
+	liveSessionIDs map[string]string,
+	runtimeAvailable map[string]bool,
+) {
+	if h.lifecycle == nil {
+		return
+	}
+
+	byTarget := make(map[string]tmuxlifecycle.Snapshot)
+	byName := make(map[string]tmuxlifecycle.Snapshot)
+	for _, snapshot := range h.lifecycle.Snapshot() {
+		byTarget[lifecycleTargetKey(snapshot.User, snapshot.SessionID)] = snapshot
+		byName[lifecycleSessionKey(snapshot.User, snapshot.SessionName)] = snapshot
+	}
+
+	for index := range sessions {
+		user := strings.TrimSpace(sessions[index].User)
+		nameKey := lifecycleSessionKey(user, sessions[index].Name)
+		var (
+			snapshot tmuxlifecycle.Snapshot
+			found    bool
+		)
+		if runtimeAvailable[user] {
+			sessionID := liveSessionIDs[nameKey]
+			if sessionID != "" {
+				snapshot, found = byTarget[lifecycleTargetKey(user, sessionID)]
+			}
+		} else {
+			snapshot, found = byName[nameKey]
+		}
+		if found {
+			sessions[index].Lifecycle = lifecycleProjection(snapshot)
+		}
+	}
+}
+
+func lifecycleProjection(snapshot tmuxlifecycle.Snapshot) *enrichedSessionLifecycle {
+	projection := &enrichedSessionLifecycle{
+		Mode:         "ephemeral",
+		Source:       snapshot.Source,
+		CleanupState: snapshot.State,
+		ExpiresAt:    snapshot.ExpiresAt.UTC().Format(time.RFC3339),
+	}
+	if !snapshot.GraceUntil.IsZero() {
+		projection.GraceUntil = snapshot.GraceUntil.UTC().Format(time.RFC3339)
+	}
+	return projection
+}
+
+func lifecycleSessionKey(user, sessionName string) string {
+	return strings.TrimSpace(user) + "\x00" + strings.TrimSpace(sessionName)
+}
+
+func lifecycleTargetKey(user, sessionID string) string {
+	return strings.TrimSpace(user) + "\x00" + strings.TrimSpace(sessionID)
 }
 
 func (h *Handler) projectedSessionToEnriched(ctx context.Context, row store.WatchtowerSession, meta store.SessionMeta) enrichedSession {

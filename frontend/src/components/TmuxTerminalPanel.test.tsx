@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import TmuxTerminalPanel from './TmuxTerminalPanel'
 
-const { useTouchOptimizedMock } = vi.hoisted(() => ({
+const { sessionTabsPropsMock, useTouchOptimizedMock } = vi.hoisted(() => ({
+  sessionTabsPropsMock: vi.fn(),
   useTouchOptimizedMock: vi.fn(() => false),
 }))
 
@@ -25,7 +26,10 @@ vi.mock('./ConnectionBadge', () => ({
 }))
 
 vi.mock('./SessionTabs', () => ({
-  default: () => <div>Session Tabs</div>,
+  default: (props: unknown) => {
+    sessionTabsPropsMock(props)
+    return <div>Session Tabs</div>
+  },
 }))
 
 vi.mock('./TooltipHelper', () => ({
@@ -97,6 +101,7 @@ describe('TmuxTerminalPanel', () => {
   afterEach(() => {
     cleanup()
     useTouchOptimizedMock.mockReturnValue(false)
+    sessionTabsPropsMock.mockClear()
   })
 
   it('hides session tabs on desktop when the sidebar is expanded', () => {
@@ -112,6 +117,40 @@ describe('TmuxTerminalPanel', () => {
 
     expect(screen.getByText('Session Tabs')).toBeTruthy()
     expect(container.querySelector('main')?.className).toContain('grid-rows-[44px_30px_1fr_28px]')
+  })
+
+  it('forwards lifecycle projections to collapsed and mobile session tabs', () => {
+    const sessionLifecycles = new Map([
+      [
+        'dev',
+        {
+          mode: 'ephemeral' as const,
+          source: 'mcp' as const,
+          cleanupState: 'active' as const,
+          expiresAt: '2099-01-01T02:00:00Z',
+        },
+      ],
+    ])
+
+    const { unmount } = render(
+      <TmuxTerminalPanel {...baseProps} sidebarCollapsed sessionLifecycles={sessionLifecycles} />,
+    )
+    expect(sessionTabsPropsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionLifecycles }),
+    )
+
+    unmount()
+    useTouchOptimizedMock.mockReturnValue(true)
+    render(
+      <TmuxTerminalPanel
+        {...baseProps}
+        sidebarCollapsed={false}
+        sessionLifecycles={sessionLifecycles}
+      />,
+    )
+    expect(sessionTabsPropsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionLifecycles }),
+    )
   })
 
   it('keeps session tabs visible on mobile even when the sidebar is expanded', () => {

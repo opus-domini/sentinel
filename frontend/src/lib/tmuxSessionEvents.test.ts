@@ -78,6 +78,16 @@ describe('shouldRefreshSessionsFromEvent', () => {
     expect(decision).toEqual({ refresh: true })
   })
 
+  it('refreshes the session projection for lifecycle events', () => {
+    const decision = shouldRefreshSessionsFromEvent('lifecycle', {
+      hasInputPatches: false,
+      applied: false,
+      hasUnknownSession: false,
+    })
+
+    expect(decision).toEqual({ refresh: true })
+  })
+
   it('skips refresh for activity when patches exist but were ignored by policy', () => {
     const decision = shouldRefreshSessionsFromEvent('activity', {
       hasInputPatches: true,

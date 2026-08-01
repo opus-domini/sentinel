@@ -79,6 +79,34 @@ Create payload:
 
 `icon` and `user` are optional. On name collision the server tries `name-1` through `name-99`, so the response `name` may differ from the requested name.
 
+HTTP/SPA creation is always persistent. This endpoint does not accept an MCP
+`lifetime` value.
+
+`GET /api/tmux/sessions` includes `lifecycle` only for an ephemeral MCP session:
+
+```json
+{
+  "data": {
+    "sessions": [
+      {
+        "name": "agent-task",
+        "lifecycle": {
+          "mode": "ephemeral",
+          "source": "mcp",
+          "cleanupState": "active",
+          "expiresAt": "2026-08-01T18:00:00Z"
+        }
+      }
+    ]
+  }
+}
+```
+
+`cleanupState` is `active`, `grace`, or `cleanup_blocked`. `graceUntil` is
+present when the lifecycle has a grace deadline. The HTTP projection never
+exposes the MCP `leaseId`; control remains available only through the MCP
+lifecycle tools. Sessions without `lifecycle` are persistent or unmanaged.
+
 ## Window Launchers
 
 | Method   | Path                                                       | Purpose                       |

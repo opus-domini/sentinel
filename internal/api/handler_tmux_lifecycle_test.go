@@ -132,6 +132,109 @@ func TestSessionHandlersKeepLifecycleCoherent(t *testing.T) {
 	})
 }
 
+func TestListSessionsProjectsLifecycleWithoutLeaseIdentity(t *testing.T) {
+	t.Parallel()
+
+	const (
+		leaseID   = "lease_api_projection"
+		sessionID = "$52"
+	)
+	now := time.Now().UTC().Truncate(time.Second)
+	runtime := &apiLifecycleRuntime{session: tmux.Session{
+		ID: sessionID, Name: "agent", Windows: 1, CreatedAt: now, ActivityAt: now,
+	}}
+	tm := &mockTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{
+				runtime.session,
+				{ID: "$58", Name: "human", Windows: 1, CreatedAt: now, ActivityAt: now},
+			}, nil
+		},
+	}
+	h, st := newTestHandler(t, tm)
+	h.lifecycle = seedAPILifecycleManager(t, st, runtime, leaseID, sessionID, "agent")
+
+	w := httptest.NewRecorder()
+	h.listSessions(w, httptest.NewRequest(http.MethodGet, "/api/tmux/sessions", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "leaseId") || strings.Contains(w.Body.String(), leaseID) {
+		t.Fatalf("HTTP projection exposed lifecycle lease identity: %s", w.Body.String())
+	}
+	body := jsonBody(t, w)
+	data, _ := body["data"].(map[string]any)
+	sessions, _ := data["sessions"].([]any)
+	if len(sessions) != 2 {
+		t.Fatalf("sessions len = %d, want 2", len(sessions))
+	}
+	rows := make(map[string]map[string]any, len(sessions))
+	for _, raw := range sessions {
+		row, _ := raw.(map[string]any)
+		name, _ := row["name"].(string)
+		rows[name] = row
+	}
+	row := rows["agent"]
+	lifecycle, _ := row["lifecycle"].(map[string]any)
+	if lifecycle["mode"] != "ephemeral" || lifecycle["source"] != "mcp" || lifecycle["cleanupState"] != "active" {
+		t.Fatalf("lifecycle = %#v", lifecycle)
+	}
+	if lifecycle["expiresAt"] == "" {
+		t.Fatalf("lifecycle expiresAt missing: %#v", lifecycle)
+	}
+	if _, exists := rows["human"]["lifecycle"]; exists {
+		t.Fatalf("persistent human session received lifecycle: %#v", rows["human"])
+	}
+}
+
+func TestSessionLifecycleProjectionRequiresLiveStableIdentity(t *testing.T) {
+	t.Parallel()
+
+	const (
+		leaseID   = "lease_api_reused_name"
+		sessionID = "$53"
+	)
+	now := time.Now().UTC().Truncate(time.Second)
+	runtime := &apiLifecycleRuntime{session: tmux.Session{ID: sessionID, Name: "agent"}}
+	tm := &mockTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{{
+				ID: "$99", Name: "agent", Windows: 1, CreatedAt: now, ActivityAt: now,
+			}}, nil
+		},
+	}
+	h, st := newTestHandler(t, tm)
+	h.lifecycle = seedAPILifecycleManager(t, st, runtime, leaseID, sessionID, "agent")
+
+	snapshot := h.loadEnrichedSessions(context.Background())
+	if len(snapshot.Sessions) != 1 {
+		t.Fatalf("sessions len = %d, want 1", len(snapshot.Sessions))
+	}
+	if snapshot.Sessions[0].Lifecycle != nil {
+		t.Fatalf("reused session name inherited stale lifecycle: %#v", snapshot.Sessions[0].Lifecycle)
+	}
+}
+
+func TestSessionLifecycleProjectionFallsBackToPersistedNameWhenRuntimeUnavailable(t *testing.T) {
+	t.Parallel()
+
+	const (
+		leaseID   = "lease_api_fallback"
+		sessionID = "$54"
+	)
+	runtime := &apiLifecycleRuntime{session: tmux.Session{ID: sessionID, Name: "agent"}}
+	h, st := newTestHandler(t, &mockTmux{})
+	h.lifecycle = seedAPILifecycleManager(t, st, runtime, leaseID, sessionID, "agent")
+	sessions := []enrichedSession{{Name: "agent"}}
+
+	h.overlaySessionLifecycles(sessions, map[string]string{}, map[string]bool{})
+
+	if sessions[0].Lifecycle == nil || sessions[0].Lifecycle.Mode != "ephemeral" {
+		t.Fatalf("persisted lifecycle fallback = %#v", sessions[0].Lifecycle)
+	}
+}
+
 func seedAPILifecycleManager(
 	t *testing.T,
 	st *store.Store,

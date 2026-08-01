@@ -32,6 +32,25 @@ The UI and API are built to keep this hierarchy consistent with realtime updates
 
 Mouse stability in browser terminals is enforced server-side by tmux binding patches and mouse-mode enablement.
 
+## Session Lifecycle
+
+Sessions created by people in the SPA, including sessions started from pinned
+presets and launchers, are always persistent. The web interface has no lifetime
+selector and does not offer keep, extend, or lifecycle-close actions.
+
+The MCP integration can create ephemeral sessions. Sentinel identifies those
+sessions with a static hourglass in the sessions sidebar and in open session
+tabs, including the compact mobile layout. Its tooltip describes the current
+state, absolute deadline, and remaining time at minute/hour granularity. The
+marker does not animate or run a local countdown; lifecycle events refresh the
+server projection.
+
+An hourglass can report `active`, a cleanup grace period, or cleanup blocked by
+an attached client. The blocked state means a human or external tmux client is
+still attached after Sentinel drained its MCP attachments, so automatic cleanup
+will not kill the session. Sessions without the marker are persistent or
+otherwise unmanaged by the MCP lifecycle.
+
 ## Optimistic UX
 
 Frontend actions assume success first and reconcile with backend events.
@@ -99,7 +118,7 @@ Seen operations happen via WS events channel (`type: "seen"`) and emit patch upd
 
 The sidebar adapts to 3 tiers based on available width:
 
-- Minimal (<=250px): icon + name only.
+- Minimal (<=250px): icon + name, plus the lifecycle hourglass when applicable.
 - Compact (<=300px): badges visible.
 - Full (>300px): content preview visible.
 

@@ -1,3 +1,11 @@
+export type SessionLifecycle = {
+  mode: 'ephemeral'
+  source: 'mcp'
+  cleanupState: 'active' | 'grace' | 'cleanup_blocked'
+  expiresAt: string
+  graceUntil?: string
+}
+
 export type Session = {
   name: string
   sortOrder?: number
@@ -14,6 +22,7 @@ export type Session = {
   unreadWindows?: number
   unreadPanes?: number
   rev?: number
+  lifecycle?: SessionLifecycle
 }
 
 export type SessionPreset = {

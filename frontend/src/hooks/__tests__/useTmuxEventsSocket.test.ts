@@ -1726,6 +1726,32 @@ describe('useTmuxEventsSocket', () => {
       expect(refreshSessions.mock.calls.length).toBeGreaterThan(callsBefore)
     })
 
+    it('passes lifecycle actions through the existing session refresh path', () => {
+      mockedShouldRefreshSessions.mockReturnValue({ refresh: true })
+      const refreshSessions = vi.fn(() => Promise.resolve())
+      renderEventsHook(makeOptions({ refreshSessions }))
+
+      act(() => {
+        lastSocket().emitOpen()
+      })
+      const callsAfterOpen = refreshSessions.mock.calls.length
+
+      act(() => {
+        lastSocket().emitMessage({
+          type: 'tmux.sessions.updated',
+          eventId: 1,
+          payload: { action: 'lifecycle' },
+        })
+        vi.advanceTimersByTime(200)
+      })
+
+      expect(mockedShouldRefreshSessions).toHaveBeenCalledWith(
+        'lifecycle',
+        expect.objectContaining({ hasInputPatches: false }),
+      )
+      expect(refreshSessions.mock.calls.length).toBeGreaterThan(callsAfterOpen)
+    })
+
     it('does not schedule sessions refresh when shouldRefreshSessionsFromEvent returns false', () => {
       mockedShouldRefreshSessions.mockReturnValue({ refresh: false })
       const refreshSessions = vi.fn(() => Promise.resolve())

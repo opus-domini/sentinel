@@ -18,8 +18,9 @@ import { CSS } from '@dnd-kit/utilities'
 import { ChevronRight, X } from 'lucide-react'
 import type { ClientRect, DragEndEvent, Modifier } from '@dnd-kit/core'
 import type { Transform } from '@dnd-kit/utilities'
-import type { SessionLauncher } from '@/types'
+import type { SessionLauncher, SessionLifecycle } from '@/types'
 import { Button } from '@/components/ui/button'
+import SessionLifecycleIndicator from '@/components/SessionLifecycleIndicator'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -42,6 +43,7 @@ type SessionTabsProps = {
   activeSession: string
   activitySessions?: ReadonlySet<string>
   sessionIcons?: ReadonlyMap<string, string>
+  sessionLifecycles?: ReadonlyMap<string, SessionLifecycle>
   onSelect: (session: string) => void
   onClose: (session: string) => void
   onRename?: (session: string) => void
@@ -97,6 +99,7 @@ const restrictToSessionTabsBounds: Modifier = ({
 function SortableTab({
   tabName,
   iconKey,
+  lifecycle,
   isActive,
   hasActivity,
   showIcon,
@@ -109,6 +112,7 @@ function SortableTab({
 }: {
   tabName: string
   iconKey: string
+  lifecycle?: SessionLifecycle
   isActive: boolean
   hasActivity: boolean
   showIcon: boolean
@@ -148,6 +152,7 @@ function SortableTab({
         : 'text-secondary-foreground',
   )
 
+  const lifecycleLabel = lifecycle ? ', ephemeral MCP session' : ''
   const tabContent = (
     <div
       ref={setNodeRef}
@@ -167,10 +172,11 @@ function SortableTab({
       onKeyDown={handleKeyDown}
       role="tab"
       aria-selected={isActive}
-      aria-label={hasActivity ? `${tabName}, unread activity` : tabName}
+      aria-label={`${tabName}${hasActivity ? ', unread activity' : ''}${lifecycleLabel}`}
       tabIndex={0}
     >
       {showIcon && <SessionIcon className={iconClassName} />}
+      {lifecycle && <SessionLifecycleIndicator lifecycle={lifecycle} className="size-3.5" />}
       <span className="min-w-0 truncate pt-[5px] pr-2 leading-none">{tabName}</span>
       {!touchOptimized && (
         <Button
@@ -243,6 +249,7 @@ export default function SessionTabs({
   activeSession,
   activitySessions,
   sessionIcons,
+  sessionLifecycles,
   onSelect,
   onClose,
   onRename,
@@ -317,6 +324,7 @@ export default function SessionTabs({
                 key={tabName}
                 tabName={tabName}
                 iconKey={sessionIcons?.get(tabName) ?? ''}
+                lifecycle={sessionLifecycles?.get(tabName)}
                 isActive={tabName === activeSession}
                 hasActivity={tabName !== activeSession && (activitySessions?.has(tabName) ?? false)}
                 showIcon={!compactLayout}

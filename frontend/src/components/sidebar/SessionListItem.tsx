@@ -6,6 +6,7 @@ import { formatRelativeTime } from './sessionTime'
 import type { SidebarDensity } from '@/contexts/LayoutContext'
 import type { Session } from '@/types'
 import { TooltipHelper } from '@/components/TooltipHelper'
+import SessionLifecycleIndicator from '@/components/SessionLifecycleIndicator'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useDateFormat } from '@/hooks/useDateFormat'
 import {
@@ -138,6 +139,9 @@ export default function SessionListItem({
                 >
                   {session.name}
                 </span>
+                {session.lifecycle && (
+                  <SessionLifecycleIndicator lifecycle={session.lifecycle} className="size-3" />
+                )}
                 <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
                   {activityRelative}
                 </span>
@@ -164,6 +168,9 @@ export default function SessionListItem({
                   >
                     {session.name}
                   </span>
+                  {session.lifecycle && (
+                    <SessionLifecycleIndicator lifecycle={session.lifecycle} className="size-3.5" />
+                  )}
                   <TooltipHelper content="Windows">
                     <span
                       className="inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full border border-border-subtle bg-surface-overlay px-1 text-[10px] text-secondary-foreground"

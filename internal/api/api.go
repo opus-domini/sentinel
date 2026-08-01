@@ -641,21 +641,30 @@ func (h *Handler) wrap(next http.HandlerFunc) http.HandlerFunc {
 }
 
 type enrichedSession struct {
-	Name          string `json:"name"`
-	Windows       int    `json:"windows"`
-	Panes         int    `json:"panes"`
-	Attached      int    `json:"attached"`
-	CreatedAt     string `json:"createdAt"`
-	ActivityAt    string `json:"activityAt"`
-	Command       string `json:"command"`
-	Hash          string `json:"hash"`
-	LastContent   string `json:"lastContent"`
-	Icon          string `json:"icon"`
-	User          string `json:"user,omitempty"`
-	SortOrder     int    `json:"sortOrder"`
-	UnreadWindows int    `json:"unreadWindows"`
-	UnreadPanes   int    `json:"unreadPanes"`
-	Rev           int64  `json:"rev"`
+	Name          string                    `json:"name"`
+	Windows       int                       `json:"windows"`
+	Panes         int                       `json:"panes"`
+	Attached      int                       `json:"attached"`
+	CreatedAt     string                    `json:"createdAt"`
+	ActivityAt    string                    `json:"activityAt"`
+	Command       string                    `json:"command"`
+	Hash          string                    `json:"hash"`
+	LastContent   string                    `json:"lastContent"`
+	Icon          string                    `json:"icon"`
+	User          string                    `json:"user,omitempty"`
+	SortOrder     int                       `json:"sortOrder"`
+	UnreadWindows int                       `json:"unreadWindows"`
+	UnreadPanes   int                       `json:"unreadPanes"`
+	Rev           int64                     `json:"rev"`
+	Lifecycle     *enrichedSessionLifecycle `json:"lifecycle,omitempty"`
+}
+
+type enrichedSessionLifecycle struct {
+	Mode         string `json:"mode"`
+	Source       string `json:"source"`
+	CleanupState string `json:"cleanupState"`
+	ExpiresAt    string `json:"expiresAt"`
+	GraceUntil   string `json:"graceUntil,omitempty"`
 }
 
 type enrichedWindow struct {

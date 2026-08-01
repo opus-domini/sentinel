@@ -242,6 +242,70 @@ describe('SessionListItem', () => {
     expect(screen.queryByLabelText(/pane/i)).toBeNull()
   })
 
+  it.each([
+    ['minimal', 'active', '2099-01-01T02:00:00Z', undefined],
+    ['compact', 'grace', '2099-01-01T00:00:00Z', '2099-01-01T02:10:00Z'],
+    ['full', 'cleanup_blocked', '2099-01-01T00:00:00Z', '2099-01-01T02:10:00Z'],
+  ] as const)(
+    'shows a static ephemeral marker at %s density in %s state',
+    (density, cleanupState, expiresAt, graceUntil) => {
+      render(
+        <SortableTestShell>
+          <SessionListItem
+            session={{
+              ...baseSession,
+              lifecycle: {
+                mode: 'ephemeral',
+                source: 'mcp',
+                cleanupState,
+                expiresAt,
+                graceUntil,
+              },
+            }}
+            isActive={false}
+            isPinned={false}
+            density={density}
+            onAttach={() => {}}
+            onRename={() => {}}
+            onDetach={() => {}}
+            onKill={() => {}}
+            onChangeIcon={() => {}}
+            onPinSession={() => {}}
+            onUnpinSession={() => {}}
+            canDetach={false}
+          />
+        </SortableTestShell>,
+      )
+
+      const marker = screen.getByLabelText(/Ephemeral MCP session/)
+      expect(marker.getAttribute('data-session-lifecycle')).toBe(cleanupState)
+      expect(marker.querySelector('svg')?.classList.contains('animate-pulse')).toBe(false)
+    },
+  )
+
+  it('does not render an ephemeral marker for a persistent session', () => {
+    render(
+      <SortableTestShell>
+        <SessionListItem
+          session={baseSession}
+          isActive={false}
+          isPinned={false}
+          density="full"
+          onAttach={() => {}}
+          onRename={() => {}}
+          onDetach={() => {}}
+          onKill={() => {}}
+          onChangeIcon={() => {}}
+          onPinSession={() => {}}
+          onUnpinSession={() => {}}
+          canDetach={false}
+        />
+      </SortableTestShell>,
+    )
+
+    expect(screen.queryByLabelText(/Ephemeral MCP session/)).toBeNull()
+  })
+
   it('shows a user indicator when session user differs from process user', () => {
     render(
       <SortableTestShell>

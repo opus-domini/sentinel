@@ -46,6 +46,7 @@ import { TMUX_SESSIONS_QUERY_KEY } from '@/lib/tmuxQueryCache'
 import { applySidebarOrder, moveSidebarItem, sortBySidebarOrder } from '@/lib/sessionSidebarOrder'
 import { sanitizeTmuxPaneTitle, sanitizeTmuxWindowName, slugifyTmuxName } from '@/lib/tmuxName'
 import { parseTmuxSearch } from '@/lib/deepLinks'
+import { mapSessionLifecycles } from '@/lib/sessionLifecycle'
 import { loadPersistedTabs, persistTabs, tabsReducer } from '@/tabsReducer'
 
 const LaunchersDialog = lazy(() => import('@/components/tmux/LaunchersDialog'))
@@ -973,6 +974,7 @@ function TmuxPage() {
     () => new Map(sessions.map((session) => [session.name, session.icon])),
     [sessions],
   )
+  const sessionLifecycles = useMemo(() => mapSessionLifecycles(sessions), [sessions])
   const sessionNames = useMemo(() => sessions.map((session) => session.name), [sessions])
 
   // ---- JSX ----
@@ -1030,6 +1032,7 @@ function TmuxPage() {
         activeSession={tabsState.activeSession}
         activitySessions={activitySessions}
         sessionIcons={sessionIcons}
+        sessionLifecycles={sessionLifecycles}
         sessionUser={activeSessionUser}
         inspectorLoading={inspector.inspectorLoading}
         inspectorError={inspector.inspectorError}

@@ -9,7 +9,14 @@ import PaneStrip from './tmux/PaneStrip'
 import TerminalHost from './tmux/TerminalHost'
 import WindowStrip from './tmux/WindowStrip'
 import type { RefCallback } from 'react'
-import type { ConnectionState, PaneInfo, SessionLauncher, TmuxLauncher, WindowInfo } from '@/types'
+import type {
+  ConnectionState,
+  PaneInfo,
+  SessionLauncher,
+  SessionLifecycle,
+  TmuxLauncher,
+  WindowInfo,
+} from '@/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -33,6 +40,7 @@ type TmuxTerminalPanelProps = {
   activeSession: string
   activitySessions?: ReadonlySet<string>
   sessionIcons?: ReadonlyMap<string, string>
+  sessionLifecycles?: ReadonlyMap<string, SessionLifecycle>
   sessionUser?: string
   inspectorLoading: boolean
   inspectorError: string
@@ -92,6 +100,7 @@ export default function TmuxTerminalPanel({
   activeSession,
   activitySessions,
   sessionIcons,
+  sessionLifecycles,
   sessionUser,
   inspectorLoading,
   inspectorError,
@@ -447,6 +456,7 @@ export default function TmuxTerminalPanel({
           activeSession={activeSession}
           activitySessions={activitySessions}
           sessionIcons={sessionIcons}
+          sessionLifecycles={sessionLifecycles}
           onSelect={onSelectTab}
           onClose={onCloseTab}
           onRename={onRenameTab}
