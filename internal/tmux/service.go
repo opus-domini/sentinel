@@ -121,6 +121,14 @@ func (s Service) ListSessions(ctx context.Context) ([]Session, error) {
 	return parseSessionListOutput(out), nil
 }
 
+// GetSession returns one exact tmux session.
+func (s Service) GetSession(ctx context.Context, name string) (Session, error) {
+	if s.User == "" {
+		return GetSession(ctx, name)
+	}
+	return getSessionVia(ctx, s.run, name)
+}
+
 // ListActivePaneCommands lists active pane commands.
 func (s Service) ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
 	if s.User == "" {
@@ -199,6 +207,14 @@ func (s Service) KillSession(ctx context.Context, session string) error {
 	}
 	_, err := s.run(ctx, "kill-session", "-t", session)
 	return err
+}
+
+// KillSessionByID kills one exact tmux runtime session.
+func (s Service) KillSessionByID(ctx context.Context, sessionID string) error {
+	if s.User == "" {
+		return KillSessionByID(ctx, sessionID)
+	}
+	return killSessionByIDVia(ctx, s.run, sessionID)
 }
 
 // ListWindows lists windows.

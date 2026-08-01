@@ -226,12 +226,12 @@ func TestClassifyError(t *testing.T) {
 func TestParseSessionListOutput(t *testing.T) {
 	t.Parallel()
 
-	withActivity := "app\t3\t1\t1700000000\t1700000300"
+	withActivity := "$7\tapp\t3\t1\t1700000000\t1700000300"
 	sessions := parseSessionListOutput(withActivity)
 	if len(sessions) != 1 {
 		t.Fatalf("len(parseSessionListOutput) = %d, want 1", len(sessions))
 	}
-	if sessions[0].Name != "app" || sessions[0].Windows != 3 || sessions[0].Attached != 1 {
+	if sessions[0].ID != "$7" || sessions[0].Name != "app" || sessions[0].Windows != 3 || sessions[0].Attached != 1 {
 		t.Fatalf("unexpected parsed session: %+v", sessions[0])
 	}
 	if sessions[0].CreatedAt.Unix() != 1700000000 {
@@ -241,7 +241,7 @@ func TestParseSessionListOutput(t *testing.T) {
 		t.Fatalf("ActivityAt = %d, want 1700000300", sessions[0].ActivityAt.Unix())
 	}
 
-	withoutActivity := "legacy\t2\t0\t1700000500"
+	withoutActivity := "$8\tlegacy\t2\t0\t1700000500"
 	sessions = parseSessionListOutput(withoutActivity)
 	if len(sessions) != 1 {
 		t.Fatalf("len(parseSessionListOutput legacy) = %d, want 1", len(sessions))

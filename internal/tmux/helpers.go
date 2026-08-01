@@ -141,7 +141,7 @@ func killWindowVia(ctx context.Context, runFn runnerFunc, session string, index 
 func reorderWindowsVia(ctx context.Context, runFn runnerFunc, session string, orderedWindowIDs []string) error {
 	session = strings.TrimSpace(session)
 	if session == "" {
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux session is required"}
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errSessionRequired}
 	}
 	if len(orderedWindowIDs) == 0 {
 		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order is required"}

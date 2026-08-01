@@ -17,12 +17,14 @@ type serviceMethodCall struct {
 func serviceMethodCalls() []serviceMethodCall {
 	return []serviceMethodCall{
 		{"ListSessions", func(ctx context.Context, s Service) error { _, e := s.ListSessions(ctx); return e }},
+		{"GetSession", func(ctx context.Context, s Service) error { _, e := s.GetSession(ctx, "dev"); return e }},
 		{"ListActivePaneCommands", func(ctx context.Context, s Service) error { _, e := s.ListActivePaneCommands(ctx); return e }},
 		{"CapturePane", func(ctx context.Context, s Service) error { _, e := s.CapturePane(ctx, "dev"); return e }},
 		{"RenameSession", func(ctx context.Context, s Service) error { return s.RenameSession(ctx, "dev", "prod") }},
 		{"RenameWindow", func(ctx context.Context, s Service) error { return s.RenameWindow(ctx, "dev", 1, "logs") }},
 		{"RenamePane", func(ctx context.Context, s Service) error { return s.RenamePane(ctx, "%1", "title") }},
 		{"KillSession", func(ctx context.Context, s Service) error { return s.KillSession(ctx, "dev") }},
+		{"KillSessionByID", func(ctx context.Context, s Service) error { return s.KillSessionByID(ctx, "$1") }},
 		{"ListWindows", func(ctx context.Context, s Service) error { _, e := s.ListWindows(ctx, "dev"); return e }},
 		{"ListPanes", func(ctx context.Context, s Service) error { _, e := s.ListPanes(ctx, "dev"); return e }},
 		{"ReorderWindows", func(ctx context.Context, s Service) error { return s.ReorderWindows(ctx, "dev", []string{"@1"}) }},

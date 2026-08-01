@@ -60,6 +60,7 @@ func IsKind(err error, kind ErrorKind) bool {
 
 // Session represents session data.
 type Session struct {
+	ID         string    `json:"id"`
 	Name       string    `json:"name"`
 	Windows    int       `json:"windows"`
 	Attached   int       `json:"attached"`
@@ -74,8 +75,8 @@ type PaneSnapshot struct {
 }
 
 const (
-	listSessionsFormatWithActivity    = "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{session_activity}"
-	listSessionsFormatWithoutActivity = "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}"
+	listSessionsFormatWithActivity    = "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{session_activity}"
+	listSessionsFormatWithoutActivity = "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}"
 )
 
 // Window represents window data.
@@ -134,6 +135,11 @@ func ListSessions(ctx context.Context) ([]Session, error) {
 		}
 	}
 	return parseSessionListOutput(out), nil
+}
+
+// GetSession returns one exact tmux session.
+func GetSession(ctx context.Context, name string) (Session, error) {
+	return getSessionVia(ctx, run, name)
 }
 
 // runners are package runners / prefixes that should be skipped when
@@ -302,6 +308,7 @@ const (
 	errWindowOrderMismatch = "tmux window order does not match live windows"
 	errInvalidSplitDir     = "invalid split direction"
 	errPaneIDRequired      = "pane ID is required"
+	errSessionRequired     = "tmux session is required"
 )
 
 func setSessionOption(ctx context.Context, session, option string, enabled bool) error {
@@ -470,6 +477,11 @@ func KillSession(ctx context.Context, session string) error {
 	return err
 }
 
+// KillSessionByID kills one exact tmux runtime session.
+func KillSessionByID(ctx context.Context, sessionID string) error {
+	return killSessionByIDVia(ctx, run, sessionID)
+}
+
 // SelectWindow selects window.
 func SelectWindow(ctx context.Context, session string, index int) error {
 	target := fmt.Sprintf("%s:%d", session, index)
@@ -545,7 +557,7 @@ func KillWindow(ctx context.Context, session string, index int) error {
 func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
 	session = strings.TrimSpace(session)
 	if session == "" {
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux session is required"}
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errSessionRequired}
 	}
 	if len(orderedWindowIDs) == 0 {
 		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order is required"}
@@ -926,18 +938,19 @@ func parseSessionListOutput(out string) []Session {
 	sessions := make([]Session, 0, len(lines))
 	for _, line := range lines {
 		parts := strings.Split(line, "\t")
-		if len(parts) < 4 {
+		if len(parts) < 5 {
 			continue
 		}
-		windows, _ := strconv.Atoi(parts[1])
-		attached, _ := strconv.Atoi(parts[2])
-		createdEpoch, _ := strconv.ParseInt(parts[3], 10, 64)
+		windows, _ := strconv.Atoi(parts[2])
+		attached, _ := strconv.Atoi(parts[3])
+		createdEpoch, _ := strconv.ParseInt(parts[4], 10, 64)
 		activityEpoch := createdEpoch
-		if len(parts) >= 5 {
-			activityEpoch, _ = strconv.ParseInt(parts[4], 10, 64)
+		if len(parts) >= 6 {
+			activityEpoch, _ = strconv.ParseInt(parts[5], 10, 64)
 		}
 		sessions = append(sessions, Session{
-			Name:       parts[0],
+			ID:         parts[0],
+			Name:       parts[1],
 			Windows:    windows,
 			Attached:   attached,
 			CreatedAt:  time.Unix(createdEpoch, 0).UTC(),
@@ -945,6 +958,44 @@ func parseSessionListOutput(out string) []Session {
 		})
 	}
 	return sessions
+}
+
+func getSessionVia(ctx context.Context, runner func(context.Context, ...string) (string, error), name string) (Session, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Session{}, &Error{Kind: ErrKindInvalidIdentifier, Msg: errSessionRequired}
+	}
+	args := []string{"list-sessions", "-t", "=" + name, "-F", listSessionsFormatWithActivity}
+	out, err := runner(ctx, args...)
+	if err != nil && shouldRetryListSessionsWithoutActivity(err) {
+		args[len(args)-1] = listSessionsFormatWithoutActivity
+		out, err = runner(ctx, args...)
+	}
+	if err != nil {
+		return Session{}, err
+	}
+	sessions := parseSessionListOutput(out)
+	if len(sessions) != 1 {
+		return Session{}, &Error{Kind: ErrKindSessionNotFound, Msg: "tmux session not found"}
+	}
+	return sessions[0], nil
+}
+
+func killSessionByIDVia(ctx context.Context, runner func(context.Context, ...string) (string, error), sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if !validSessionID(sessionID) {
+		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux session ID must match $<number>"}
+	}
+	_, err := runner(ctx, "kill-session", "-t", sessionID)
+	return err
+}
+
+func validSessionID(sessionID string) bool {
+	if len(sessionID) < 2 || sessionID[0] != '$' {
+		return false
+	}
+	_, err := strconv.ParseUint(sessionID[1:], 10, 64)
+	return err == nil
 }
 
 func shouldRetryListSessionsWithoutActivity(err error) bool {

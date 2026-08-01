@@ -27,12 +27,12 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 20 || name != "runbook-target-latest" {
-		t.Fatalf("latest migration = (%d, %q), want (20, %q)", version, name, "runbook-target-latest")
+	if version != 21 || name != "tmux-session-leases" {
+		t.Fatalf("latest migration = (%d, %q), want (21, %q)", version, name, "tmux-session-leases")
 	}
 
 	// Spot-check that a few tables exist.
-	for _, table := range []string{"sessions", "session_presets", "session_launchers", "tmux_launchers", "managed_tmux_windows", "wt_sessions", "ops_runbooks", "ops_schedules"} {
+	for _, table := range []string{"sessions", "session_presets", "session_launchers", "tmux_launchers", "managed_tmux_windows", "tmux_session_leases", "wt_sessions", "ops_runbooks", "ops_schedules"} {
 		var n int
 		if err := db.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
@@ -55,6 +55,17 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	if targetIndex != 1 {
 		t.Fatalf("target latest index count = %d, want 1", targetIndex)
 	}
+	var leaseIndex int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type = 'index' AND name = 'idx_tmux_session_leases_deadlines'
+	`).Scan(&leaseIndex); err != nil {
+		t.Fatalf("check lease deadline index: %v", err)
+	}
+	if leaseIndex != 1 {
+		t.Fatalf("lease deadline index count = %d, want 1", leaseIndex)
+	}
 }
 
 func TestRunMigrationsIdempotent(t *testing.T) {
@@ -75,8 +86,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 17 {
-		t.Fatalf("schema_migrations rows = %d, want 17", count)
+	if count != 18 {
+		t.Fatalf("schema_migrations rows = %d, want 18", count)
 	}
 }
 

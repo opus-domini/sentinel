@@ -51,7 +51,7 @@ func TestListSessions(t *testing.T) {
 
 	t.Run("happy_path_with_activity", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t2\t1\t1700000000\t1700000300\nweb\t1\t0\t1700000100\t1700000400\n", nil
+			return "$1\tdev\t2\t1\t1700000000\t1700000300\n$2\tweb\t1\t0\t1700000100\t1700000400\n", nil
 		})
 
 		sessions, err := ListSessions(ctx)
@@ -90,7 +90,7 @@ func TestListSessions(t *testing.T) {
 			if calls == 1 {
 				return "", errCommandFailed("unknown format: session_activity")
 			}
-			return "legacy\t1\t0\t1700000500\n", nil
+			return "$3\tlegacy\t1\t0\t1700000500\n", nil
 		})
 
 		sessions, err := ListSessions(ctx)
@@ -154,6 +154,40 @@ func TestListSessions(t *testing.T) {
 		}
 		if !IsKind(err, ErrKindCommandFailed) {
 			t.Errorf("expected ErrKindCommandFailed, got %v", err)
+		}
+	})
+}
+
+func TestGetSession(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("exact_target", func(t *testing.T) {
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			want := []string{"list-sessions", "-t", "=dev", "-F", listSessionsFormatWithActivity}
+			if !slices.Equal(args, want) {
+				t.Fatalf("args = %#v, want %#v", args, want)
+			}
+			return "$9\tdev\t2\t0\t1700000000\t1700000100\n", nil
+		})
+		session, err := GetSession(ctx, "dev")
+		if err != nil {
+			t.Fatalf("GetSession() error = %v", err)
+		}
+		if session.ID != "$9" || session.Name != "dev" {
+			t.Fatalf("GetSession() = %#v", session)
+		}
+	})
+
+	t.Run("empty_name", func(t *testing.T) {
+		if _, err := GetSession(ctx, " "); !IsKind(err, ErrKindInvalidIdentifier) {
+			t.Fatalf("GetSession() error = %v", err)
+		}
+	})
+
+	t.Run("empty_result", func(t *testing.T) {
+		setRun(t, func(_ context.Context, _ ...string) (string, error) { return "", nil })
+		if _, err := GetSession(ctx, "missing"); !IsKind(err, ErrKindSessionNotFound) {
+			t.Fatalf("GetSession() error = %v", err)
 		}
 	})
 }
@@ -1421,6 +1455,24 @@ func TestSimpleWrappers(t *testing.T) {
 		}
 	})
 
+	t.Run("KillSessionByID", func(t *testing.T) {
+		setRun(t, func(_ context.Context, args ...string) (string, error) {
+			if !slices.Equal(args, []string{"kill-session", "-t", "$42"}) {
+				t.Fatalf("args = %#v", args)
+			}
+			return "", nil
+		})
+		if err := KillSessionByID(ctx, "$42"); err != nil {
+			t.Fatalf("KillSessionByID() error = %v", err)
+		}
+	})
+
+	t.Run("KillSessionByIDRejectsName", func(t *testing.T) {
+		if err := KillSessionByID(ctx, "dev"); !IsKind(err, ErrKindInvalidIdentifier) {
+			t.Fatalf("KillSessionByID() error = %v", err)
+		}
+	})
+
 	t.Run("KillWindow", func(t *testing.T) {
 		setRun(t, func(_ context.Context, args ...string) (string, error) {
 			if args[0] != "kill-window" {
@@ -1596,7 +1648,7 @@ func TestParseSessionListOutputExtended(t *testing.T) {
 
 	t.Run("multiple_sessions", func(t *testing.T) {
 		t.Parallel()
-		input := "a\t1\t0\t1700000000\t1700000100\nb\t2\t1\t1700000200\t1700000300\nc\t3\t0\t1700000400\t1700000500\n"
+		input := "$1\ta\t1\t0\t1700000000\t1700000100\n$2\tb\t2\t1\t1700000200\t1700000300\n$3\tc\t3\t0\t1700000400\t1700000500\n"
 		sessions := parseSessionListOutput(input)
 		if len(sessions) != 3 {
 			t.Fatalf("got %d sessions, want 3", len(sessions))
