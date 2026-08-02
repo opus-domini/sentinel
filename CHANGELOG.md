@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/opus-domini/sentinel/compare/v0.10.16...v0.11.0) (2026-08-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** tmux_create_session now creates a 2-hour sliding-idle ephemeral session unless lifetime is persistent.
+
+### Features
+
+* **mcp:** default tmux sessions to ephemeral ([5da6ab2](https://github.com/opus-domini/sentinel/commit/5da6ab2d564d0e2f99414a893ecffe1b9030609e))
+* **tmux:** add ephemeral session lifecycle controller ([ef42dc1](https://github.com/opus-domini/sentinel/commit/ef42dc1031245dffbf2afd15a28f4624bf93da6f))
+* **tmux:** identify ephemeral MCP sessions ([f342fe7](https://github.com/opus-domini/sentinel/commit/f342fe7b1c9adcfdb7beb33527fda156b48979d0))
+* **tmux:** persist stable session lifecycle leases ([7afdbdb](https://github.com/opus-domini/sentinel/commit/7afdbdb5077dd6f54a85314e604e06d756cc275b))
+
 ## [0.10.16](https://github.com/opus-domini/sentinel/compare/v0.10.15...v0.10.16) (2026-07-30)
 
 
