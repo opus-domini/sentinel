@@ -38,17 +38,15 @@ function runbookToDraft(runbook: OpsRunbook): RunbookDraft {
     enabled: runbook.enabled,
     webhookURL: runbook.webhookURL ?? '',
     targetService: runbook.targetService ?? '',
-    parameters: (runbook.parameters ?? []).map(
-      (p): RunbookParameterDraft => ({
-        key: randomId(),
-        name: p.name,
-        label: p.label,
-        type: p.type as RunbookParameterType,
-        default: p.default ?? '',
-        required: p.required,
-        options: p.options?.join(', ') ?? '',
-      }),
-    ),
+    parameters: (runbook.parameters ?? []).map((p): RunbookParameterDraft => ({
+      key: randomId(),
+      name: p.name,
+      label: p.label,
+      type: p.type as RunbookParameterType,
+      default: p.default ?? '',
+      required: p.required,
+      options: p.options?.join(', ') ?? '',
+    })),
     steps: runbook.steps.map((step): RunbookStepDraft => {
       // Backward compat: treat old 'check' and 'command' as 'run'
       let type: RunbookStepDraft['type'] = step.type
