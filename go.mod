@@ -10,7 +10,7 @@ require (
 	github.com/opus-domini/fast-shot v1.3.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
-	modernc.org/sqlite v1.55.0
+	modernc.org/sqlite v1.56.0
 	mvdan.cc/sh/v3 v3.13.1
 )
 
@@ -25,7 +25,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-quicktest/qt v1.102.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
-	github.com/google/pprof v0.0.0-20260709232956-b9395ee17fa0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
