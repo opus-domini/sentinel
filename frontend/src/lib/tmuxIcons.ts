@@ -1,4 +1,5 @@
-import type { LucideIcon } from 'lucide-react'
+import { createElement } from 'react'
+import type { LucideIcon, LucideProps } from 'lucide-react'
 import { Bot, Braces, Bug, Cloud, Database, Globe, Server, TerminalSquare } from 'lucide-react'
 
 export type TmuxIconEntry = {
@@ -24,4 +25,8 @@ export const DEFAULT_ICON_KEY = 'terminal'
 
 export function getTmuxIcon(key: string): LucideIcon {
   return iconMap.get(key) || iconMap.get(DEFAULT_ICON_KEY)!
+}
+
+export function TmuxIcon({ iconKey, ...props }: LucideProps & { iconKey: string }) {
+  return createElement(getTmuxIcon(iconKey), props)
 }

@@ -1,5 +1,5 @@
 import { Check, Copy, ShieldAlert } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ConnectionIssue } from '@/contexts/ConnectionHealthContext'
 import { writeClipboardText } from '@/lib/clipboardProvider'
 import { Button } from '@/components/ui/button'
@@ -13,11 +13,9 @@ export function ConnectionIssueBanner({
   checking: boolean
   onRetry: () => void
 }) {
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    setCopied(false)
-  }, [issue])
+  const copyKey = `${issue.code}\u0000${issue.configuration}`
+  const [copiedKey, setCopiedKey] = useState('')
+  const copied = copiedKey === copyKey
 
   const instruction = issue.configPath
     ? `Edit ${issue.configPath}, restart Sentinel, then retry.`
@@ -57,7 +55,7 @@ export function ConnectionIssueBanner({
                 className="h-11 gap-2 px-3"
                 onClick={() => {
                   writeClipboardText(issue.configuration)
-                  setCopied(true)
+                  setCopiedKey(copyKey)
                 }}
               >
                 {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}

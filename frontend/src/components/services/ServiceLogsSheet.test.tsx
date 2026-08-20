@@ -77,9 +77,8 @@ describe('ServiceLogsSheet', () => {
   beforeEach(() => {
     rafCallbacks = []
     useLogStreamMock.mockClear()
-    // LogViewer virtualizes its rows via @tanstack/react-virtual, which sizes the
-    // scroll viewport and rows from offsetHeight and needs ResizeObserver —
-    // neither of which jsdom provides. Stub both so virtualized rows render.
+    // LogViewer's bounded row window observes its scroll viewport, which jsdom
+    // does not provide.
     vi.stubGlobal(
       'ResizeObserver',
       class {
@@ -88,8 +87,6 @@ describe('ServiceLogsSheet', () => {
         disconnect() {}
       },
     )
-    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600)
-    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800)
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
       rafCallbacks.push(callback)
       return rafCallbacks.length

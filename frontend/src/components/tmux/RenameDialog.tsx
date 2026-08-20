@@ -33,7 +33,6 @@ export default function RenameDialog(props: RenameDialogProps) {
 
   useEffect(() => {
     if (!open) return
-    setError('')
     window.setTimeout(() => inputRef.current?.focus(), 0)
   }, [open])
 

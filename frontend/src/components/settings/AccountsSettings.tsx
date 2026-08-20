@@ -1,6 +1,6 @@
 import { useBlocker } from '@tanstack/react-router'
 import { Check, Search, Save, ShieldAlert, Undo2, UserRoundCog, UsersRound } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import {
   accountsDraftFromSettings,
@@ -58,13 +58,14 @@ export default function AccountsSettings() {
   const settings = settingsQuery.settings
   const accounts = settings?.accounts
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [editorSource, setEditorSource] = useState<typeof accounts>(undefined)
   const [errors, setErrors] = useState<AccountsDraftErrors>({})
   const [feedback, setFeedback] = useState<Feedback>(idleFeedback)
   const [search, setSearch] = useState('')
   const [rootConfirmationOpen, setRootConfirmationOpen] = useState(false)
 
-  useEffect(() => {
-    if (accounts == null) return
+  if (accounts != null && accounts !== editorSource) {
+    setEditorSource(accounts)
     const next = accountsDraftFromSettings(accounts)
     setEditor((current) => {
       if (current == null) return { base: next, draft: next }
@@ -76,7 +77,7 @@ export default function AccountsSettings() {
       }
       return { base: next, draft: preserved }
     })
-  }, [accounts])
+  }
 
   const changes = useMemo(
     () => (editor == null ? [] : diffAccountsDraft(editor.base, editor.draft)),

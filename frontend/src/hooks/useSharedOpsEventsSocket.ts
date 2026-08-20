@@ -46,59 +46,62 @@ export function useSharedOpsEventsSocket(options: {
     setConnectionState('disconnected')
   }, [clearRetry])
 
-  const connect = useCallback(() => {
-    if (disposedRef.current) return
-    if (!connectionReady) return
-    if (tokenRequired && !authenticated) return
-    if (subscribersRef.current.size === 0) return
-    if (document.visibilityState === 'hidden') return
-    clearRetry()
-    setConnectionState('connecting')
+  const connect = useCallback(
+    function connect() {
+      if (disposedRef.current) return
+      if (!connectionReady) return
+      if (tokenRequired && !authenticated) return
+      if (subscribersRef.current.size === 0) return
+      if (document.visibilityState === 'hidden') return
+      clearRetry()
+      setConnectionState('connecting')
 
-    const wsURL = new URL('/ws/events', window.location.origin)
-    wsURL.protocol = wsURL.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsURL = new URL('/ws/events', window.location.origin)
+      wsURL.protocol = wsURL.protocol === 'https:' ? 'wss:' : 'ws:'
 
-    const socket = new WebSocket(wsURL.toString(), buildWSProtocols())
-    socketRef.current = socket
+      const socket = new WebSocket(wsURL.toString(), buildWSProtocols())
+      socketRef.current = socket
 
-    socket.onopen = () => {
-      if (socketRef.current !== socket) return
-      reconnectRef.current.reset()
-      setConnectionState('connected')
-    }
-
-    socket.onmessage = (event) => {
-      if (socketRef.current !== socket) return
-      let message: unknown
-      try {
-        message = JSON.parse(String(event.data))
-      } catch {
-        return
+      socket.onopen = () => {
+        if (socketRef.current !== socket) return
+        reconnectRef.current.reset()
+        setConnectionState('connected')
       }
-      if (typeof message !== 'object' || message === null) return
-      for (const handler of subscribersRef.current) {
+
+      socket.onmessage = (event) => {
+        if (socketRef.current !== socket) return
+        let message: unknown
         try {
-          handler(message)
+          message = JSON.parse(String(event.data))
         } catch {
-          // keep stream alive
+          return
+        }
+        if (typeof message !== 'object' || message === null) return
+        for (const handler of subscribersRef.current) {
+          try {
+            handler(message)
+          } catch {
+            // keep stream alive
+          }
         }
       }
-    }
 
-    socket.onerror = () => {
-      if (socketRef.current !== socket) return
-      setConnectionState('error')
-    }
+      socket.onerror = () => {
+        if (socketRef.current !== socket) return
+        setConnectionState('error')
+      }
 
-    socket.onclose = () => {
-      if (socketRef.current !== socket) return
-      socketRef.current = null
-      setConnectionState('disconnected')
-      if (disposedRef.current || subscribersRef.current.size === 0) return
-      clearRetry()
-      retryTimerRef.current = window.setTimeout(connect, reconnectRef.current.next())
-    }
-  }, [authenticated, clearRetry, connectionReady, tokenRequired])
+      socket.onclose = () => {
+        if (socketRef.current !== socket) return
+        socketRef.current = null
+        setConnectionState('disconnected')
+        if (disposedRef.current || subscribersRef.current.size === 0) return
+        clearRetry()
+        retryTimerRef.current = window.setTimeout(connect, reconnectRef.current.next())
+      }
+    },
+    [authenticated, clearRetry, connectionReady, tokenRequired],
+  )
 
   const reconnectNow = useCallback(() => {
     if (

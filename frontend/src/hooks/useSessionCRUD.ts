@@ -199,7 +199,7 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
         if (op.sessionName !== target) {
           continue
         }
-        op.converged = true
+        pendingSessionCreateOpsRef.current.set(operationId, { ...op, converged: true })
         settlePendingSessionCreateIfReady(operationId)
       }
     },
@@ -358,7 +358,9 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     setTmuxUnavailable,
     tabsStateRef,
   ])
-  refreshSessionsFnRef.current = refreshSessions
+  useEffect(() => {
+    refreshSessionsFnRef.current = refreshSessions
+  }, [refreshSessions])
 
   const activateSession = useCallback(
     (session: string, icon = '') => {

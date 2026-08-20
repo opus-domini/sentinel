@@ -269,16 +269,20 @@ function TmuxPage() {
   )
 
   useEffect(() => {
-    void refreshSessionPresets({ quiet: true })
-  }, [refreshSessionPresets])
-
-  useEffect(() => {
-    void refreshLaunchers({ quiet: true })
-  }, [refreshLaunchers])
-
-  useEffect(() => {
-    void refreshSessionLaunchers({ quiet: true })
-  }, [refreshSessionLaunchers])
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      await Promise.all([
+        refreshSessionPresets({ quiet: true }),
+        refreshLaunchers({ quiet: true }),
+        refreshSessionLaunchers({ quiet: true }),
+      ])
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [refreshLaunchers, refreshSessionLaunchers, refreshSessionPresets])
 
   // ---- Terminal hook ----
   const handleAttachedMobile = useCallback(() => {

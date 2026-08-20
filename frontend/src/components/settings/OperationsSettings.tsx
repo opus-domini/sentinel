@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
 import { Activity, BookOpenCheck, FileText, Save, Undo2 } from 'lucide-react'
 
@@ -61,11 +61,12 @@ export default function OperationsSettings() {
   const settings = settingsQuery.settings
   const operations = settings?.operations
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [editorSource, setEditorSource] = useState<typeof settings>(null)
   const [errors, setErrors] = useState<OperationsDraftErrors>({})
   const [feedback, setFeedback] = useState<Feedback>(idleFeedback)
 
-  useEffect(() => {
-    if (settings == null) return
+  if (settings != null && settings !== editorSource) {
+    setEditorSource(settings)
     const next = operationsDraftFromSettings(settings.operations)
     setEditor((current) => {
       if (current == null) {
@@ -79,7 +80,7 @@ export default function OperationsSettings() {
       }
       return { base: next, draft: preserved }
     })
-  }, [settings])
+  }
 
   const changes = useMemo(
     () => (editor == null ? [] : diffOperationsDraft(editor.base, editor.draft)),

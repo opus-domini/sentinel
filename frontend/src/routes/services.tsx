@@ -208,19 +208,19 @@ const ServicesBrowseControls = memo(function ServicesBrowseControls({
 }: ServicesBrowseControlsProps) {
   const [searchDraft, setSearchDraft] = useState(searchValue)
   const debouncedSearchDraft = useDebouncedValue(searchDraft)
-  const searchValueRef = useRef(searchValue)
+  const [previousSearchValue, setPreviousSearchValue] = useState(searchValue)
 
-  useEffect(() => {
-    searchValueRef.current = searchValue
+  if (searchValue !== previousSearchValue) {
+    setPreviousSearchValue(searchValue)
     setSearchDraft(searchValue)
-  }, [searchValue])
+  }
 
   useEffect(() => {
-    if (debouncedSearchDraft === searchValueRef.current) return
+    if (debouncedSearchDraft === searchValue) return
     startTransition(() => {
       onSearchChange(debouncedSearchDraft)
     })
-  }, [debouncedSearchDraft, onSearchChange])
+  }, [debouncedSearchDraft, onSearchChange, searchValue])
 
   return (
     <div className="flex flex-nowrap items-center gap-2 border-b border-border-subtle p-2 md:flex-wrap">
@@ -730,21 +730,29 @@ function ServicesPage() {
 
   useEffect(() => {
     if (!browseQuery.isSuccess || !search.service || !search.panel) return
-    const key = `${search.service}:${search.panel}:${search.since ?? ''}`
-    const target = browseServices.find(
-      (service) => service.tracked && service.trackedName === search.service,
-    )
-    if (!target) {
-      clearServiceTarget()
-      return
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      const key = `${search.service}:${search.panel}:${search.since ?? ''}`
+      const target = browseServices.find(
+        (service) => service.tracked && service.trackedName === search.service,
+      )
+      if (!target) {
+        clearServiceTarget()
+        return
+      }
+      if (appliedDeepLinkRef.current === key) return
+      appliedDeepLinkRef.current = key
+      if (search.panel === 'logs') {
+        openServiceLogs(target, search.since)
+        return
+      }
+      await inspectBrowsedService(target)
+    })()
+    return () => {
+      cancelled = true
     }
-    if (appliedDeepLinkRef.current === key) return
-    appliedDeepLinkRef.current = key
-    if (search.panel === 'logs') {
-      openServiceLogs(target, search.since)
-      return
-    }
-    void inspectBrowsedService(target)
   }, [
     browseQuery.isSuccess,
     browseServices,

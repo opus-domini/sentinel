@@ -64,9 +64,16 @@ export default function CreateSessionDialog({
     setUser('')
   }, [normalizedDefaultCwd])
 
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
     if (!open) {
       resetForm()
+    }
+  }
+
+  useEffect(() => {
+    if (!open) {
       frequentDirsFetched.current = false
       return
     }
@@ -97,7 +104,7 @@ export default function CreateSessionDialog({
     })()
 
     return () => abort.abort()
-  }, [normalizedDefaultCwd, open, resetForm])
+  }, [normalizedDefaultCwd, open])
 
   const filteredFrequentDirs = useMemo(() => {
     if (!normalizedDefaultCwd) return frequentDirs

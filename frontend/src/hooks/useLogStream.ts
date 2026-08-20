@@ -59,6 +59,8 @@ export function useLogStream({
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const targetKey = logStreamTargetKey(target)
   const targetQuery = logStreamTargetQuery(target)
+  const shouldConnect =
+    enabled && targetKey !== '' && connectionReady && (!tokenRequired || authenticated)
 
   const onLineRef = useRef(onLine)
   useEffect(() => {
@@ -66,14 +68,7 @@ export function useLogStream({
   }, [onLine])
 
   useEffect(() => {
-    if (!enabled || targetKey === '' || !connectionReady) {
-      setConnectionState('disconnected')
-      return
-    }
-    if (tokenRequired && !authenticated) {
-      setConnectionState('disconnected')
-      return
-    }
+    if (!shouldConnect) return
 
     let disposed = false
     let socket: WebSocket | null = null
@@ -159,7 +154,7 @@ export function useLogStream({
         }
       }
     }
-  }, [authenticated, connectionReady, tokenRequired, targetKey, targetQuery, enabled])
+  }, [shouldConnect, targetQuery])
 
-  return connectionState
+  return shouldConnect ? connectionState : 'disconnected'
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useState } from 'react'
 import { Play } from 'lucide-react'
 import type { OpsRunbook, RunbookParameter } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -79,12 +79,16 @@ export function RunbookRunDialog({
   const steps = useMemo(() => stepsWithStableKeys(runbook?.steps ?? []), [runbook])
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const formKey = open && runbook ? `${runbook.id}:${JSON.stringify(params)}` : ''
+  const [activeFormKey, setActiveFormKey] = useState('')
 
-  useEffect(() => {
-    if (!open) return
-    setValues(buildDefaults(params))
-    setErrors({})
-  }, [open, params])
+  if (formKey !== activeFormKey) {
+    setActiveFormKey(formKey)
+    if (formKey !== '') {
+      setValues(buildDefaults(params))
+      setErrors({})
+    }
+  }
 
   const setValue = useCallback((name: string, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }))

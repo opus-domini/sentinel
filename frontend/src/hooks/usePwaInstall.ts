@@ -28,13 +28,11 @@ function canUsePwaFeatures(): boolean {
 
 export function usePwaInstall() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null)
-  const [installed, setInstalled] = useState(false)
+  const [installed, setInstalled] = useState(isStandaloneDisplayMode)
   const [updating, setUpdating] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState(() => hasSentinelPwaUpdate())
 
   useEffect(() => {
-    setInstalled(isStandaloneDisplayMode())
-
     const onBeforeInstallPrompt = (event: Event) => {
       const promptEvent = event as BeforeInstallPromptEvent
       promptEvent.preventDefault()

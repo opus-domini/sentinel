@@ -257,7 +257,9 @@ export function useTerminalTmux({
 
   const { touchOptimized: isMobile } = useViewport()
   const isMobileRef = useRef(isMobile)
-  isMobileRef.current = isMobile
+  useEffect(() => {
+    isMobileRef.current = isMobile
+  }, [isMobile])
 
   const isMountedRef = useRef(true)
   const [modifiers, setModifiers] = useState<TerminalModifiers>(EMPTY_TERMINAL_MODIFIERS)
@@ -756,7 +758,10 @@ export function useTerminalTmux({
   )
 
   const connectRuntime = useCallback(
-    (runtime: SessionRuntime, options?: { resetTerminal?: boolean; force?: boolean }) => {
+    function connectRuntime(
+      runtime: SessionRuntime,
+      options?: { resetTerminal?: boolean; force?: boolean },
+    ) {
       if (!connectionReady) {
         setRuntimeStatus(
           runtime,

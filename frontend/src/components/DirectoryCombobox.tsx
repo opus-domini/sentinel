@@ -40,8 +40,10 @@ export default function DirectoryCombobox({
   const containerRef = useRef<HTMLDivElement>(null)
   const blurTimerRef = useRef<number | undefined>(undefined)
   const listboxId = `${useId()}-listbox`
+  const query = value.trim() || fallbackPrefix.trim()
   const [suggestions, setSuggestions] = useState<Array<string>>([])
   const [loading, setLoading] = useState(false)
+  const [resultQuery, setResultQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
   // Set when a pointer press lands outside the field; keeps the listbox from
@@ -49,17 +51,13 @@ export default function DirectoryCombobox({
   const [suppressed, setSuppressed] = useState(false)
 
   useEffect(() => {
-    if (!open) return
-    const query = value.trim() || fallbackPrefix.trim()
-    if (query === '') {
-      setSuggestions([])
-      setLoading(false)
-      setActiveSuggestion(-1)
-      return
-    }
+    if (!open || query === '') return
 
     const abort = new AbortController()
     const timer = window.setTimeout(() => {
+      setResultQuery(query)
+      setSuggestions([])
+      setActiveSuggestion(-1)
       void (async () => {
         setLoading(true)
         try {
@@ -101,7 +99,7 @@ export default function DirectoryCombobox({
       window.clearTimeout(timer)
       abort.abort()
     }
-  }, [open, value, fallbackPrefix, limit])
+  }, [limit, open, query])
 
   // Hide the listbox on any pointer press outside the field (e.g. tapping a
   // frequent-directory chip or a dialog button), instead of relying solely on the
@@ -149,7 +147,12 @@ export default function DirectoryCombobox({
     setSuppressed(false)
   }
 
-  const expanded = open && focused && !suppressed && (loading || suggestions.length > 0)
+  const resultsCurrent = open && query !== '' && resultQuery === query
+  const visibleSuggestions = resultsCurrent ? suggestions : []
+  const visibleLoading = resultsCurrent && loading
+  const visibleActiveSuggestion = resultsCurrent ? activeSuggestion : -1
+  const expanded =
+    open && focused && !suppressed && (visibleLoading || visibleSuggestions.length > 0)
 
   return (
     <div ref={containerRef} className="relative">
@@ -167,8 +170,10 @@ export default function DirectoryCombobox({
         aria-autocomplete="list"
         aria-controls={expanded ? listboxId : undefined}
         aria-activedescendant={
-          expanded && activeSuggestion >= 0 && activeSuggestion < suggestions.length
-            ? `${listboxId}-option-${activeSuggestion}`
+          expanded &&
+          visibleActiveSuggestion >= 0 &&
+          visibleActiveSuggestion < visibleSuggestions.length
+            ? `${listboxId}-option-${visibleActiveSuggestion}`
             : undefined
         }
         onChange={(event) => {
@@ -195,12 +200,12 @@ export default function DirectoryCombobox({
             setActiveSuggestion(-1)
             return
           }
-          if (suggestions.length === 0) return
+          if (visibleSuggestions.length === 0) return
 
           if (event.key === 'ArrowDown') {
             event.preventDefault()
             setSuppressed(false)
-            setActiveSuggestion((prev) => Math.min(prev + 1, suggestions.length - 1))
+            setActiveSuggestion((prev) => Math.min(prev + 1, visibleSuggestions.length - 1))
             return
           }
           if (event.key === 'ArrowUp') {
@@ -213,15 +218,15 @@ export default function DirectoryCombobox({
           // move focus normally and Enter must reach the form, not select a hidden item.
           if (!expanded) return
           if (event.key === 'Enter' || event.key === 'Tab') {
-            const idx = activeSuggestion
-            if (idx >= 0 && idx < suggestions.length) {
+            const idx = visibleActiveSuggestion
+            if (idx >= 0 && idx < visibleSuggestions.length) {
               event.preventDefault()
-              selectSuggestion(suggestions[idx])
+              selectSuggestion(visibleSuggestions[idx])
               return
             }
-            if (event.key === 'Tab' && suggestions.length === 1) {
+            if (event.key === 'Tab' && visibleSuggestions.length === 1) {
               event.preventDefault()
-              selectSuggestion(suggestions[0])
+              selectSuggestion(visibleSuggestions[0])
             }
           }
         }}
@@ -233,21 +238,21 @@ export default function DirectoryCombobox({
           role="listbox"
           className="absolute left-0 right-0 z-20 mt-1 max-h-44 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
         >
-          {loading && (
+          {visibleLoading && (
             <div className="px-2 py-1 text-[11px] text-secondary-foreground">
               Searching directories...
             </div>
           )}
-          {!loading &&
-            suggestions.map((item, idx) => (
+          {!visibleLoading &&
+            visibleSuggestions.map((item, idx) => (
               <button
                 key={item}
                 id={`${listboxId}-option-${idx}`}
                 type="button"
                 role="option"
-                aria-selected={idx === activeSuggestion}
+                aria-selected={idx === visibleActiveSuggestion}
                 className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] ${
-                  idx === activeSuggestion
+                  idx === visibleActiveSuggestion
                     ? 'bg-accent text-accent-foreground'
                     : 'hover:bg-secondary'
                 }`}

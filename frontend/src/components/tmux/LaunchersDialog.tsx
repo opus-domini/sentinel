@@ -15,8 +15,8 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ChevronDown, Trash2 } from 'lucide-react'
-import { useEffect, useId, useMemo, useState } from 'react'
-import { DEFAULT_ICON_KEY, TMUX_ICONS, getTmuxIcon } from '@/lib/tmuxIcons'
+import { useId, useMemo, useState } from 'react'
+import { DEFAULT_ICON_KEY, TMUX_ICONS, TmuxIcon } from '@/lib/tmuxIcons'
 import type { LauncherCwdMode, LauncherUserMode, TmuxLauncher } from '@/types'
 import DirectoryCombobox from '@/components/DirectoryCombobox'
 import {
@@ -151,8 +151,6 @@ function SortableLauncherItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: launcher.id,
   })
-  const Icon = getTmuxIcon(launcher.icon)
-
   return (
     <li
       ref={setNodeRef}
@@ -177,7 +175,7 @@ function SortableLauncherItem({
         {...(dragEnabled ? attributes : {})}
         {...(dragEnabled ? listeners : {})}
       >
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <TmuxIcon iconKey={launcher.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12px] font-semibold">{launcher.name}</span>
           <span className="block truncate text-[10px] text-muted-foreground">
@@ -214,6 +212,7 @@ export default function LaunchersDialog({
   const [draft, setDraft] = useState<LauncherDraft>(DEFAULT_DRAFT)
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [dialogSource, setDialogSource] = useState({ open, launchers })
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -237,6 +236,8 @@ export default function LaunchersDialog({
   const selectLauncher = (id: string) => {
     setSaveError('')
     setSelectedID(id)
+    const launcher = launchers.find((item) => item.id === id)
+    setDraft(launcher ? draftFromLauncher(launcher) : DEFAULT_DRAFT)
   }
 
   const applyQuickStart = (preset: (typeof QUICK_STARTS)[number]) => {
@@ -245,10 +246,27 @@ export default function LaunchersDialog({
     setDraft({ ...DEFAULT_DRAFT, ...preset })
   }
 
-  const selectedLauncher = useMemo(
-    () => launchers.find((launcher) => launcher.id === selectedID) ?? null,
-    [launchers, selectedID],
-  )
+  if (dialogSource.open !== open || dialogSource.launchers !== launchers) {
+    setDialogSource({ open, launchers })
+    if (!open) {
+      setSaveError('')
+      setSaving(false)
+      setSelectedID('new')
+      setDraft(DEFAULT_DRAFT)
+    } else if (selectedID === 'new') {
+      setDraft(DEFAULT_DRAFT)
+    } else {
+      const selected = launchers.find((launcher) => launcher.id === selectedID)
+      if (selected) {
+        setDraft(draftFromLauncher(selected))
+      } else {
+        const next = launchers[0]
+        setSelectedID(next?.id ?? 'new')
+        setDraft(next ? draftFromLauncher(next) : DEFAULT_DRAFT)
+      }
+    }
+  }
+
   const selectedIconEntry = useMemo(
     () =>
       TMUX_ICONS.find((entry) => entry.key === draft.icon) ??
@@ -256,33 +274,6 @@ export default function LaunchersDialog({
       TMUX_ICONS[0],
     [draft.icon],
   )
-
-  useEffect(() => {
-    if (!open) {
-      setSaveError('')
-      setSaving(false)
-      setSelectedID('new')
-      setDraft(DEFAULT_DRAFT)
-      return
-    }
-    if (selectedID === 'new') {
-      return
-    }
-    if (selectedLauncher === null) {
-      setSelectedID(launchers[0]?.id ?? 'new')
-    }
-  }, [launchers, open, selectedID, selectedLauncher])
-
-  useEffect(() => {
-    if (!open) return
-    if (selectedLauncher !== null) {
-      setDraft(draftFromLauncher(selectedLauncher))
-      return
-    }
-    if (selectedID === 'new') {
-      setDraft(DEFAULT_DRAFT)
-    }
-  }, [open, selectedID, selectedLauncher])
 
   const handleSave = async () => {
     setSaving(true)
@@ -307,8 +298,9 @@ export default function LaunchersDialog({
     if (!draft.id) return
     const deleted = await onDelete(draft.id)
     if (deleted) {
-      setSelectedID(launchers.find((item) => item.id !== draft.id)?.id ?? 'new')
-      setDraft(DEFAULT_DRAFT)
+      const next = launchers.find((item) => item.id !== draft.id)
+      setSelectedID(next?.id ?? 'new')
+      setDraft(next ? draftFromLauncher(next) : DEFAULT_DRAFT)
     }
   }
   const handleDragEnd = (event: DragEndEvent) => {
@@ -319,8 +311,6 @@ export default function LaunchersDialog({
     hapticFeedback()
     onReorder(String(active.id), String(over.id))
   }
-  const SelectedIcon = selectedIconEntry.icon
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="inset-0 flex h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-4 overflow-hidden rounded-none sm:inset-auto sm:top-1/2 sm:left-1/2 sm:h-auto sm:min-h-[32rem] sm:max-h-[88vh] sm:max-w-4xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl">
@@ -363,14 +353,13 @@ export default function LaunchersDialog({
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Starter presets</DropdownMenuLabel>
                     {QUICK_STARTS.map((preset) => {
-                      const Icon = getTmuxIcon(preset.icon)
                       return (
                         <DropdownMenuItem
                           key={preset.name}
                           className="cursor-pointer"
                           onSelect={() => applyQuickStart(preset)}
                         >
-                          <Icon className="h-3.5 w-3.5" />
+                          <TmuxIcon iconKey={preset.icon} className="h-3.5 w-3.5" />
                           {preset.name}
                         </DropdownMenuItem>
                       )
@@ -443,7 +432,10 @@ export default function LaunchersDialog({
                         aria-labelledby={iconLabelId}
                         className="w-full cursor-pointer justify-start bg-surface-overlay text-[12px]"
                       >
-                        <SelectedIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <TmuxIcon
+                          iconKey={selectedIconEntry.key}
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                        />
                         {selectedIconEntry.label}
                       </Button>
                     </DropdownMenuTrigger>

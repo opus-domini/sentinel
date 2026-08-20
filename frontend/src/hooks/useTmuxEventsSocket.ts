@@ -238,13 +238,11 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     if (!connectionReady) {
       settlePendingSeenAcks(false)
       presenceSocketRef.current = null
-      setEventsSocketConnected(false)
       return
     }
     if (tokenRequired && !authenticated) {
       settlePendingSeenAcks(false)
       presenceSocketRef.current = null
-      setEventsSocketConnected(false)
       return
     }
 

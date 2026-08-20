@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { TooltipHelper } from '@/components/TooltipHelper'
 import { hapticFeedback } from '@/lib/device'
-import { getTmuxIcon } from '@/lib/tmuxIcons'
+import { TmuxIcon } from '@/lib/tmuxIcons'
 import { cn } from '@/lib/utils'
 import { useViewport } from '@/contexts/ViewportContext'
 
@@ -163,8 +163,7 @@ function WindowChip({
     }
     return `#${windowInfo.index}`
   })()
-  const WindowIcon =
-    asText(windowInfo.displayIcon) !== '' ? getTmuxIcon(asText(windowInfo.displayIcon)) : null
+  const windowIconKey = asText(windowInfo.displayIcon)
   const iconClassName = cn(
     'size-3.5 shrink-0',
     isActive
@@ -211,7 +210,7 @@ function WindowChip({
                 <User className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
               </TooltipHelper>
             )}
-            {WindowIcon !== null && <WindowIcon className={iconClassName} />}
+            {windowIconKey !== '' && <TmuxIcon iconKey={windowIconKey} className={iconClassName} />}
             <span className="min-w-0 truncate pt-[3px] leading-none">{displayName}</span>
             {hasUnread && unreadPanes > 1 && (
               <span className="ml-0.5 text-[9px] text-muted-foreground">{unreadPanes}</span>
@@ -496,10 +495,7 @@ export default function WindowStrip({
                       className="items-start"
                       onSelect={() => onLaunchLauncher(recentLauncher.id)}
                     >
-                      {(() => {
-                        const Icon = getTmuxIcon(recentLauncher.icon)
-                        return <Icon className="mt-0.5 h-3.5 w-3.5" />
-                      })()}
+                      <TmuxIcon iconKey={recentLauncher.icon} className="mt-0.5 h-3.5 w-3.5" />
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="truncate leading-tight">{recentLauncher.name}</span>
                         <span className="truncate text-[10px] leading-tight text-muted-foreground">
@@ -514,14 +510,13 @@ export default function WindowStrip({
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Launchers</DropdownMenuLabel>
                     {secondaryLaunchers.map((launcher) => {
-                      const Icon = getTmuxIcon(launcher.icon)
                       return (
                         <DropdownMenuItem
                           key={launcher.id}
                           className="items-start"
                           onSelect={() => onLaunchLauncher(launcher.id)}
                         >
-                          <Icon className="mt-0.5 h-3.5 w-3.5" />
+                          <TmuxIcon iconKey={launcher.icon} className="mt-0.5 h-3.5 w-3.5" />
                           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                             <span className="truncate leading-tight">{launcher.name}</span>
                             <span className="truncate text-[10px] leading-tight text-muted-foreground">

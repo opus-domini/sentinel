@@ -15,7 +15,7 @@ import {
   Undo2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import {
   accessDraftFromSettings,
@@ -88,6 +88,7 @@ export default function AccessSettings() {
   const settings = settingsQuery.settings
   const access = settings?.access
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [editorSource, setEditorSource] = useState<typeof access>(undefined)
   const [errors, setErrors] = useState<AccessDraftErrors>({})
   const [feedback, setFeedback] = useState<Feedback>(idleFeedback)
   const [confirmationOpen, setConfirmationOpen] = useState(false)
@@ -99,8 +100,8 @@ export default function AccessSettings() {
     [],
   )
 
-  useEffect(() => {
-    if (access == null) return
+  if (access != null && access !== editorSource) {
+    setEditorSource(access)
     const next = accessDraftFromSettings(access)
     setEditor((current) => {
       if (current == null) return { base: next, draft: next }
@@ -112,7 +113,7 @@ export default function AccessSettings() {
       }
       return { base: next, draft: preserved }
     })
-  }, [access])
+  }
 
   const changes = useMemo(
     () =>

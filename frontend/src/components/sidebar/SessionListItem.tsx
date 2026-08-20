@@ -19,7 +19,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { TMUX_ICONS, getTmuxIcon } from '@/lib/tmuxIcons'
+import { TMUX_ICONS, TmuxIcon } from '@/lib/tmuxIcons'
 import { cn } from '@/lib/utils'
 
 type SessionListItemProps = {
@@ -66,8 +66,6 @@ export default function SessionListItem({
   const activityRelative = formatRelativeTime(session.activityAt)
   const activityAbsolute = formatTimestamp(session.activityAt)
   const createdAbsolute = formatTimestamp(session.createdAt)
-
-  const SessionIcon = getTmuxIcon(session.icon)
 
   const iconTooltipLines = [
     session.name,
@@ -122,7 +120,8 @@ export default function SessionListItem({
               /* Minimal: single row — icon, name, relative time */
               <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                 <TooltipHelper content={iconTooltipLines}>
-                  <SessionIcon
+                  <TmuxIcon
+                    iconKey={session.icon}
                     className={cn(
                       'h-3 w-3 shrink-0',
                       isAttached && hasUnreadActivity
@@ -151,7 +150,8 @@ export default function SessionListItem({
                 {/* Line 1: Icon + Name + Badges */}
                 <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                   <TooltipHelper content={iconTooltipLines}>
-                    <SessionIcon
+                    <TmuxIcon
+                      iconKey={session.icon}
                       className={cn(
                         'h-3.5 w-3.5 shrink-0',
                         isAttached && hasUnreadActivity

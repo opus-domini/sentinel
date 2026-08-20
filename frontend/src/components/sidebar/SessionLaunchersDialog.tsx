@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Trash2 } from 'lucide-react'
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import type { SessionLauncher } from '@/types'
 import DirectoryCombobox from '@/components/DirectoryCombobox'
 import {
@@ -55,7 +55,7 @@ import {
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useViewport } from '@/contexts/ViewportContext'
 import { hapticFeedback } from '@/lib/device'
-import { DEFAULT_ICON_KEY, TMUX_ICONS, getTmuxIcon } from '@/lib/tmuxIcons'
+import { DEFAULT_ICON_KEY, TMUX_ICONS, TmuxIcon } from '@/lib/tmuxIcons'
 import { slugifyTmuxName } from '@/lib/tmuxName'
 import { cn } from '@/lib/utils'
 
@@ -123,8 +123,6 @@ function SortableSessionLauncherItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: launcher.id,
   })
-  const Icon = getTmuxIcon(launcher.icon)
-
   return (
     <li
       ref={setNodeRef}
@@ -149,7 +147,7 @@ function SortableSessionLauncherItem({
         {...(dragEnabled ? attributes : {})}
         {...(dragEnabled ? listeners : {})}
       >
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <TmuxIcon iconKey={launcher.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12px] font-semibold">{launcher.name}</span>
           <span className="block truncate text-[10px] text-muted-foreground">
@@ -188,6 +186,7 @@ export default function SessionLaunchersDialog({
   const [draft, setDraft] = useState<SessionLauncherDraft>(defaultDraft)
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [dialogSource, setDialogSource] = useState({ open, launchers, defaultDraft })
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -211,12 +210,35 @@ export default function SessionLaunchersDialog({
   const selectLauncher = (id: string) => {
     setSaveError('')
     setSelectedID(id)
+    const launcher = launchers.find((item) => item.id === id)
+    setDraft(launcher ? draftFromLauncher(launcher) : defaultDraft)
   }
 
-  const selectedLauncher = useMemo(
-    () => launchers.find((launcher) => launcher.id === selectedID) ?? null,
-    [launchers, selectedID],
-  )
+  if (
+    dialogSource.open !== open ||
+    dialogSource.launchers !== launchers ||
+    dialogSource.defaultDraft !== defaultDraft
+  ) {
+    setDialogSource({ open, launchers, defaultDraft })
+    if (!open) {
+      setSaveError('')
+      setSaving(false)
+      setSelectedID('new')
+      setDraft(defaultDraft)
+    } else if (selectedID === 'new') {
+      setDraft(defaultDraft)
+    } else {
+      const selected = launchers.find((launcher) => launcher.id === selectedID)
+      if (selected) {
+        setDraft(draftFromLauncher(selected))
+      } else {
+        const next = launchers[0]
+        setSelectedID(next?.id ?? 'new')
+        setDraft(next ? draftFromLauncher(next) : defaultDraft)
+      }
+    }
+  }
+
   const selectedIconEntry = useMemo(
     () =>
       TMUX_ICONS.find((entry) => entry.key === draft.icon) ??
@@ -224,35 +246,6 @@ export default function SessionLaunchersDialog({
       TMUX_ICONS[0],
     [draft.icon],
   )
-
-  useEffect(() => {
-    if (!open) {
-      setSaveError('')
-      setSaving(false)
-      setSelectedID('new')
-      setDraft(defaultDraft)
-      return
-    }
-    if (selectedID === 'new') {
-      return
-    }
-    if (selectedLauncher === null) {
-      setSelectedID(launchers[0]?.id ?? 'new')
-    }
-  }, [defaultDraft, open, launchers, selectedID, selectedLauncher])
-
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-    if (selectedLauncher !== null) {
-      setDraft(draftFromLauncher(selectedLauncher))
-      return
-    }
-    if (selectedID === 'new') {
-      setDraft(defaultDraft)
-    }
-  }, [defaultDraft, open, selectedID, selectedLauncher])
 
   const handleSave = async () => {
     const normalizedName = slugifyTmuxName(draft.name).trim()
@@ -306,6 +299,8 @@ export default function SessionLaunchersDialog({
     const nextID = launchers.find((launcher) => launcher.id !== targetID)?.id
     if (nextID) {
       setSelectedID(nextID)
+      const next = launchers.find((launcher) => launcher.id === nextID)
+      setDraft(next ? draftFromLauncher(next) : defaultDraft)
       return
     }
     setSelectedID('new')
@@ -320,8 +315,6 @@ export default function SessionLaunchersDialog({
     hapticFeedback()
     onReorder(String(active.id), String(over.id))
   }
-
-  const SelectedIcon = selectedIconEntry.icon
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -410,7 +403,10 @@ export default function SessionLaunchersDialog({
                         aria-labelledby={iconLabelId}
                         className="w-full cursor-pointer justify-start bg-surface-overlay text-[12px]"
                       >
-                        <SelectedIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <TmuxIcon
+                          iconKey={selectedIconEntry.key}
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                        />
                         {selectedIconEntry.label}
                       </Button>
                     </DropdownMenuTrigger>

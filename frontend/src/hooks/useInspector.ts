@@ -375,6 +375,7 @@ export function useInspector(options: UseInspectorOptions) {
     paneID: string
   } | null>(null)
   const [renamePaneValue, setRenamePaneValue] = useState('')
+  const [inspectorSession, setInspectorSession] = useState(activeSession.trim())
 
   const windowsRef = useRef<Array<WindowInfo>>([])
   const panesRef = useRef<Array<PaneInfo>>([])
@@ -384,6 +385,40 @@ export function useInspector(options: UseInspectorOptions) {
   // Tracks in-flight selectWindow / selectPane API calls. While > 0, the
   // server state may be stale relative to the optimistic override.
   const selectInFlightRef = useRef(0)
+
+  const normalizedActiveSession = activeSession.trim()
+  if (normalizedActiveSession !== inspectorSession) {
+    setInspectorSession(normalizedActiveSession)
+    setRenameWindowDialogOpen(false)
+    setRenameWindowTarget(null)
+    setRenameWindowValue('')
+    setRenamePaneDialogOpen(false)
+    setRenamePaneTarget(null)
+    setRenamePaneValue('')
+    setActiveWindowIndexOverride(null)
+    setActivePaneIDOverride(null)
+    if (normalizedActiveSession === '') {
+      setWindows([])
+      setPanes([])
+    } else {
+      const cached = queryClient.getQueryData<TmuxInspectorSnapshot>(
+        tmuxInspectorQueryKey(normalizedActiveSession),
+      )
+      if (cached) {
+        setWindows((previous) =>
+          sameWindowProjection(previous, cached.windows) ? previous : cached.windows,
+        )
+        setPanes((previous) =>
+          samePaneProjection(previous, cached.panes) ? previous : cached.panes,
+        )
+        setInspectorError('')
+        setInspectorLoading(false)
+      } else {
+        setWindows([])
+        setPanes([])
+      }
+    }
+  }
 
   // Sync refs
   useEffect(() => {
@@ -420,35 +455,6 @@ export function useInspector(options: UseInspectorOptions) {
       panes,
     })
   }, [panes, queryClient, activeSession, windows])
-
-  // Restore from cache on session switch
-  useEffect(() => {
-    const active = activeSession.trim()
-    setRenameWindowDialogOpen(false)
-    setRenameWindowTarget(null)
-    setRenameWindowValue('')
-    setRenamePaneDialogOpen(false)
-    setRenamePaneTarget(null)
-    setRenamePaneValue('')
-    if (active === '') {
-      setActiveWindowIndexOverride(null)
-      setActivePaneIDOverride(null)
-      return
-    }
-    const cached = queryClient.getQueryData<TmuxInspectorSnapshot>(tmuxInspectorQueryKey(active))
-    if (cached) {
-      setWindows((prev) => (sameWindowProjection(prev, cached.windows) ? prev : cached.windows))
-      setPanes((prev) => (samePaneProjection(prev, cached.panes) ? prev : cached.panes))
-      setInspectorError('')
-      setInspectorLoading(false)
-      inspectorLoadingRef.current = false
-    } else {
-      setWindows([])
-      setPanes([])
-    }
-    setActiveWindowIndexOverride(null)
-    setActivePaneIDOverride(null)
-  }, [queryClient, activeSession])
 
   const clearPendingInspectorSessionState = useCallback((session: string) => {
     clearPendingWindowCreatesForSession(pendingCreateWindowsRef.current, session)
@@ -527,7 +533,7 @@ export function useInspector(options: UseInspectorOptions) {
         if (operation.sessionName !== name || operation.windowIndex !== normalizedIndex) {
           continue
         }
-        operation.converged = true
+        pendingWindowCreateOpsRef.current.set(operationId, { ...operation, converged: true })
         settlePendingWindowCreateIfReady(operationId)
       }
     },
@@ -545,7 +551,7 @@ export function useInspector(options: UseInspectorOptions) {
         if (operation.sessionName !== name || operation.windowIndex !== normalizedIndex) {
           continue
         }
-        operation.converged = true
+        pendingPaneSplitOpsRef.current.set(operationId, { ...operation, converged: true })
         settlePendingPaneSplitIfReady(operationId)
       }
     },
@@ -1047,11 +1053,22 @@ export function useInspector(options: UseInspectorOptions) {
       setTmuxUnavailable,
     ],
   )
-  refreshInspectorFnRef.current = refreshInspector
+  useEffect(() => {
+    refreshInspectorFnRef.current = refreshInspector
+  }, [refreshInspector])
 
   // Keep inspector in sync when user switches active session/tab.
   useEffect(() => {
-    void refreshInspector(activeSession)
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (!cancelled) {
+        await refreshInspector(activeSession)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [refreshInspector, activeSession])
 
   const reorderWindows = useCallback(

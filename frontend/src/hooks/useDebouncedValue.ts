@@ -4,14 +4,14 @@ const DEFAULT_DEBOUNCE_MS = 180
 
 export function useDebouncedValue<T>(value: T, delayMs: number = DEFAULT_DEBOUNCE_MS): T {
   const [debounced, setDebounced] = useState(value)
+  const immediate = typeof value === 'string' && value.trim() === ''
 
   useEffect(() => {
     if (Object.is(value, debounced)) {
       return
     }
 
-    if (typeof value === 'string' && value.trim() === '') {
-      setDebounced(value)
+    if (immediate) {
       return
     }
 
@@ -22,7 +22,7 @@ export function useDebouncedValue<T>(value: T, delayMs: number = DEFAULT_DEBOUNC
     return () => {
       clearTimeout(timeoutID)
     }
-  }, [debounced, delayMs, value])
+  }, [debounced, delayMs, immediate, value])
 
-  return debounced
+  return immediate ? value : debounced
 }

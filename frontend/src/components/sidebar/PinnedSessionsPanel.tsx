@@ -20,7 +20,7 @@ import type { SidebarDensity } from '@/contexts/LayoutContext'
 import type { Session, SessionPreset } from '@/types'
 import { hapticFeedback } from '@/lib/device'
 import { useViewport } from '@/contexts/ViewportContext'
-import { getTmuxIcon } from '@/lib/tmuxIcons'
+import { TmuxIcon } from '@/lib/tmuxIcons'
 
 type PinnedSessionsPanelProps = {
   sessions: Array<Session>
@@ -55,8 +55,6 @@ function SortablePresetLaunchItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: preset.name,
   })
-  const PresetIcon = getTmuxIcon(preset.icon)
-
   return (
     <li
       ref={setNodeRef}
@@ -76,7 +74,7 @@ function SortablePresetLaunchItem({
         {...(dragEnabled ? attributes : {})}
         {...(dragEnabled ? listeners : {})}
       >
-        <PresetIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <TmuxIcon iconKey={preset.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12px] font-semibold">{preset.name}</span>
           <span className="block truncate text-[10px] text-muted-foreground">

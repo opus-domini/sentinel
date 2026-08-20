@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import type { OpsRunbookRun } from '@/types'
 import { RunbookExecutionReceipt } from '@/components/runbooks/RunbookExecutionReceipt'
@@ -64,12 +64,16 @@ export function RunbookJobHistory({
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
   const [filter, setFilter] = useState<JobFilter>('all')
   const [actingJobId, setActingJobId] = useState<string | null>(null)
+  const [appliedFocusJobId, setAppliedFocusJobId] = useState<string | null>(null)
+  const focusTarget = focusJobId && jobs.some((job) => job.id === focusJobId) ? focusJobId : null
 
-  useEffect(() => {
-    if (!focusJobId || !jobs.some((job) => job.id === focusJobId)) return
-    setFilter('all')
-    setExpandedJobId(focusJobId)
-  }, [focusJobId, jobs])
+  if (focusTarget !== appliedFocusJobId) {
+    setAppliedFocusJobId(focusTarget)
+    if (focusTarget !== null) {
+      setFilter('all')
+      setExpandedJobId(focusTarget)
+    }
+  }
 
   const filteredJobs = useMemo(() => {
     if (filter === 'all') return jobs

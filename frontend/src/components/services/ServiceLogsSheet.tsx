@@ -118,17 +118,24 @@ export function ServiceLogsSheet({
       url: buildServiceLogURL(target, since),
     }
   }, [fetchKey, open, service, since])
+  const [requestSource, setRequestSource] = useState<ServiceLogRequest | null>(null)
+
+  if (initialLogRequest !== requestSource) {
+    setRequestSource(initialLogRequest)
+    if (initialLogRequest !== null) {
+      setLoading(true)
+      setLogLines([])
+      setSearch('')
+      setFollow(true)
+      setStreamEnabled(false)
+    }
+  }
 
   // Fetch initial logs when fetchKey changes (i.e. when opened for a service)
   useEffect(() => {
     if (!initialLogRequest) return
     serviceRef.current = initialLogRequest.target
     sinceRef.current = initialLogRequest.since
-    setLoading(true)
-    setLogLines([])
-    setSearch('')
-    setFollow(true)
-    setStreamEnabled(false)
     lineCounterRef.current = 0
     clearStreamBuffer()
 

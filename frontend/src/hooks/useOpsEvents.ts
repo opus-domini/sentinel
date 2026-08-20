@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 import type { ConnectionState } from '@/types'
 import { useOpsEventsContext } from '@/contexts/OpsEventsContext'
 
@@ -10,12 +10,11 @@ import { useOpsEventsContext } from '@/contexts/OpsEventsContext'
  */
 export function useOpsEvents(onMessage: (message: unknown) => void): ConnectionState {
   const { connectionState, subscribe } = useOpsEventsContext()
-  const handlerRef = useRef(onMessage)
-  handlerRef.current = onMessage
+  const handleMessage = useEffectEvent(onMessage)
 
   useEffect(() => {
     const stableHandler = (message: unknown) => {
-      handlerRef.current(message)
+      handleMessage(message)
     }
     return subscribe(stableHandler)
   }, [subscribe])

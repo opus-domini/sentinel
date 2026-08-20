@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import type { ConnectionHealth, ConnectionIssue } from '@/contexts/ConnectionHealthContext'
 
 type ErrorPayload = {
@@ -65,28 +65,27 @@ export function useConnectionCheck(options: {
 }): ConnectionHealth {
   const { enabled, onUnauthorized } = options
   const [epoch, setEpoch] = useState(0)
-  const [ready, setReady] = useState(false)
-  const [checking, setChecking] = useState(false)
-  const [issue, setIssue] = useState<ConnectionIssue | null>(null)
-  const onUnauthorizedRef = useRef(onUnauthorized)
-  onUnauthorizedRef.current = onUnauthorized
+  const requestKey = enabled ? epoch : -1
+  const [state, setState] = useState(() => ({
+    requestKey,
+    ready: false,
+    checking: enabled,
+    issue: null as ConnectionIssue | null,
+  }))
+  const handleUnauthorized = useEffectEvent(onUnauthorized)
+
+  if (state.requestKey !== requestKey) {
+    setState({ requestKey, ready: false, checking: enabled, issue: null })
+  }
 
   const retry = useCallback(() => {
     setEpoch((value) => value + 1)
   }, [])
 
   useEffect(() => {
-    if (!enabled) {
-      setReady(false)
-      setChecking(false)
-      setIssue(null)
-      return
-    }
+    if (!enabled) return
 
     const controller = new AbortController()
-    setReady(false)
-    setChecking(true)
-    setIssue(null)
 
     void fetch('/api/connection/check', {
       method: 'POST',
@@ -96,35 +95,48 @@ export function useConnectionCheck(options: {
     })
       .then(async (response) => {
         if (response.ok) {
-          setReady(true)
+          setState((current) =>
+            current.requestKey === requestKey ? { ...current, ready: true } : current,
+          )
           return
         }
         const nextIssue = await responseIssue(response)
-        setIssue(nextIssue)
+        setState((current) =>
+          current.requestKey === requestKey ? { ...current, issue: nextIssue } : current,
+        )
         if (response.status === 401) {
-          onUnauthorizedRef.current()
+          handleUnauthorized()
         }
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return
         }
-        setIssue({
-          code: 'CONNECTION_FAILED',
-          title: 'Sentinel is unreachable',
-          message: 'The server did not answer the connection check.',
-          configPath: '',
-          configuration: '',
-        })
+        setState((current) =>
+          current.requestKey === requestKey
+            ? {
+                ...current,
+                issue: {
+                  code: 'CONNECTION_FAILED',
+                  title: 'Sentinel is unreachable',
+                  message: 'The server did not answer the connection check.',
+                  configPath: '',
+                  configuration: '',
+                },
+              }
+            : current,
+        )
       })
       .finally(() => {
         if (!controller.signal.aborted) {
-          setChecking(false)
+          setState((current) =>
+            current.requestKey === requestKey ? { ...current, checking: false } : current,
+          )
         }
       })
 
     return () => controller.abort()
-  }, [enabled, epoch])
+  }, [enabled, requestKey])
 
   useEffect(() => {
     const handleOnline = () => retry()
@@ -132,5 +144,8 @@ export function useConnectionCheck(options: {
     return () => window.removeEventListener('online', handleOnline)
   }, [retry])
 
-  return useMemo(() => ({ ready, checking, issue, retry }), [checking, issue, ready, retry])
+  return useMemo(
+    () => ({ ready: state.ready, checking: state.checking, issue: state.issue, retry }),
+    [retry, state.checking, state.issue, state.ready],
+  )
 }

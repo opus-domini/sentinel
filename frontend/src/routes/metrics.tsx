@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -36,7 +36,6 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useMetaContext } from '@/contexts/MetaContext'
 import { useOpsEvents, useOpsEventsReconnect } from '@/hooks/useOpsEvents'
 import { useTmuxApi } from '@/hooks/useTmuxApi'
-import { MetricsHistory } from '@/lib/MetricsHistory'
 import {
   OPS_METRICS_QUERY_KEY,
   OPS_OVERVIEW_QUERY_KEY,
@@ -542,9 +541,11 @@ function MetricsPage() {
   const api = useTmuxApi()
   const queryClient = useQueryClient()
 
-  const historyRef = useRef(new MetricsHistory())
-  const seededRef = useRef(false)
+  const [history, setHistory] = useState<Array<{ snapshot: MetricsSnapshot; timestamp: number }>>(
+    [],
+  )
   const [activeTab, setActiveTab] = useState<MetricsTab>('saturation')
+  const [appliedFocusKey, setAppliedFocusKey] = useState('')
 
   const overviewQuery = useQuery({
     queryKey: OPS_OVERVIEW_QUERY_KEY,
@@ -575,6 +576,17 @@ function MetricsPage() {
     metricsQuery.error != null ? toErrorMessage(metricsQuery.error, 'failed to load metrics') : ''
   const focusedMetric = search.signal ? presentMetricSignal(search.signal) : null
   const metricsAvailable = metrics != null
+  const focusKey =
+    metricsAvailable && focusedMetric != null
+      ? `${focusedMetric.tab}:${focusedMetric.elementID}`
+      : ''
+
+  if (focusKey !== appliedFocusKey) {
+    setAppliedFocusKey(focusKey)
+    if (focusedMetric != null) {
+      setActiveTab(focusedMetric.tab)
+    }
+  }
 
   useEffect(() => {
     const rawSearch = new URLSearchParams(window.location.search)
@@ -595,7 +607,6 @@ function MetricsPage() {
 
   useEffect(() => {
     if (!metricsAvailable || focusedMetric == null) return
-    setActiveTab(focusedMetric.tab)
     const frame = window.requestAnimationFrame(() => {
       const element = document.getElementById(focusedMetric.elementID)
       if (element == null) return
@@ -604,13 +615,6 @@ function MetricsPage() {
     })
     return () => window.cancelAnimationFrame(frame)
   }, [focusedMetric, metricsAvailable])
-
-  useEffect(() => {
-    if (metrics != null && !seededRef.current) {
-      historyRef.current.push(toSnapshot(metrics))
-      seededRef.current = true
-    }
-  }, [metrics])
 
   const refreshOverview = useCallback(async () => {
     await queryClient.refetchQueries({
@@ -646,7 +650,20 @@ function MetricsPage() {
         case 'ops.metrics.updated': {
           const next = metricsCacheValueFromMessage(message)
           if (next == null) break
-          historyRef.current.push(toSnapshot(next.metrics))
+          setHistory((current) => {
+            const seeded =
+              current.length === 0 && metrics != null
+                ? [
+                    {
+                      snapshot: toSnapshot(metrics),
+                      timestamp: metricsQuery.dataUpdatedAt || Date.now(),
+                    },
+                  ]
+                : current
+            return [...seeded, { snapshot: toSnapshot(next.metrics), timestamp: Date.now() }].slice(
+              -150,
+            )
+          })
           queryClient.setQueryData(OPS_METRICS_QUERY_KEY, next)
           break
         }
@@ -654,7 +671,7 @@ function MetricsPage() {
           break
       }
     },
-    [queryClient],
+    [metrics, metricsQuery.dataUpdatedAt, queryClient],
   )
 
   const connectionState = useOpsEvents(handleWSMessage)
@@ -665,9 +682,21 @@ function MetricsPage() {
     metricsLoading,
   })
 
-  const history = historyRef.current
-  const snapshots = history.toArray()
-  const ts = history.timestamps()
+  const { snapshots, ts } = useMemo(() => {
+    const entries =
+      history.length === 0 && metrics != null
+        ? [
+            {
+              snapshot: toSnapshot(metrics),
+              timestamp: metricsQuery.dataUpdatedAt,
+            },
+          ]
+        : history
+    return {
+      snapshots: entries.map((entry) => entry.snapshot),
+      ts: entries.map((entry) => entry.timestamp),
+    }
+  }, [history, metrics, metricsQuery.dataUpdatedAt])
   const trends = useMemo(
     () => ({
       cpu: trendFor(snapshots, ts, 'cpuPercent', { min: 0 }),

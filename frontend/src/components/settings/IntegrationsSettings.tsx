@@ -1,6 +1,6 @@
 import { useBlocker } from '@tanstack/react-router'
 import { Bot, HeartPulse, Plug, Save, Undo2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import HealthReportSettingsPanel from './HealthReportSettingsPanel'
 import {
@@ -55,11 +55,12 @@ export default function IntegrationsSettings() {
   const settings = settingsQuery.settings
   const integrations = settings?.integrations
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [editorSource, setEditorSource] = useState<typeof integrations>(undefined)
   const [errors, setErrors] = useState<IntegrationsDraftErrors>({})
   const [feedback, setFeedback] = useState<Feedback>(idleFeedback)
 
-  useEffect(() => {
-    if (integrations == null) return
+  if (integrations != null && integrations !== editorSource) {
+    setEditorSource(integrations)
     const next = integrationsDraftFromSettings(integrations)
     setEditor((current) => {
       if (current == null) return { base: next, draft: next }
@@ -71,7 +72,7 @@ export default function IntegrationsSettings() {
       }
       return { base: next, draft: preserved }
     })
-  }, [integrations])
+  }
 
   const changes = useMemo(
     () =>

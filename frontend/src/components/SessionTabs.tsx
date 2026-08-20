@@ -34,7 +34,7 @@ import {
 import { useViewport } from '@/contexts/ViewportContext'
 import { cn } from '@/lib/utils'
 import { hapticFeedback } from '@/lib/device'
-import { getTmuxIcon } from '@/lib/tmuxIcons'
+import { TmuxIcon } from '@/lib/tmuxIcons'
 
 type SessionTabsProps = {
   allSessions: Array<string>
@@ -142,7 +142,6 @@ function SortableTab({
     }
   }
 
-  const SessionIcon = getTmuxIcon(iconKey)
   const iconClassName = cn(
     'size-3.5 shrink-0',
     isActive
@@ -175,7 +174,7 @@ function SortableTab({
       aria-label={`${tabName}${hasActivity ? ', unread activity' : ''}${lifecycleLabel}`}
       tabIndex={0}
     >
-      {showIcon && <SessionIcon className={iconClassName} />}
+      {showIcon && <TmuxIcon iconKey={iconKey} className={iconClassName} />}
       {lifecycle && <SessionLifecycleIndicator lifecycle={lifecycle} className="size-3.5" />}
       <span className="min-w-0 truncate pt-[5px] pr-2 leading-none">{tabName}</span>
       {!touchOptimized && (
@@ -363,14 +362,16 @@ export default function SessionTabs({
             {sessionLaunchers.length > 0 && (
               <ContextMenuSubContent className="max-h-80 w-52 overflow-y-auto">
                 {sessionLaunchers.map((launcher) => {
-                  const LauncherIcon = getTmuxIcon(launcher.icon)
                   return (
                     <ContextMenuItem
                       key={launcher.id}
                       className="flex items-center gap-2"
                       onSelect={() => onLaunchSessionLauncher?.(launcher.id)}
                     >
-                      <LauncherIcon className="size-3.5 shrink-0 text-secondary-foreground" />
+                      <TmuxIcon
+                        iconKey={launcher.icon}
+                        className="size-3.5 shrink-0 text-secondary-foreground"
+                      />
                       <span className="min-w-0 truncate">{launcher.name}</span>
                     </ContextMenuItem>
                   )
@@ -390,14 +391,16 @@ export default function SessionTabs({
             {closedSessions.length > 0 && (
               <ContextMenuSubContent className="max-h-80 w-52 overflow-y-auto">
                 {closedSessions.map((session) => {
-                  const SessionIcon = getTmuxIcon(sessionIcons?.get(session) ?? '')
                   return (
                     <ContextMenuItem
                       key={session}
                       className="flex items-center gap-2"
                       onSelect={() => onSelect(session)}
                     >
-                      <SessionIcon className="size-3.5 shrink-0 text-secondary-foreground" />
+                      <TmuxIcon
+                        iconKey={sessionIcons?.get(session) ?? ''}
+                        className="size-3.5 shrink-0 text-secondary-foreground"
+                      />
                       <span className="min-w-0 truncate">{session}</span>
                     </ContextMenuItem>
                   )
