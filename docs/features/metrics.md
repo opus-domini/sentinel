@@ -19,6 +19,8 @@ Host-level resource metrics collected from the OS:
 - **Processes** — process and thread counts.
 - **Host uptime** — uptime and boot time.
 - **Pressure stall information** — CPU, memory, and I/O PSI `avg10` values on Linux.
+- **Hardware sensors** — best-effort temperature, fan, and power readings when
+  the host exposes them.
 
 Visual indicators use green/amber/red thresholds to highlight resource pressure at a glance.
 The backend also evaluates one canonical host posture, shared by Metrics and
@@ -31,8 +33,30 @@ Now:
 
 The posture evaluates CPU (80/90%), memory (80/90%), root disk (85/95%),
 inodes (80/90%), swap when configured (20/60%), and CPU/memory/I/O PSI avg10
-(2/10). Missing individual signals are ignored; an entirely unevaluable sample
-is never reported as nominal.
+(2/10). Sensor posture uses only hardware-provided temperature or power limits
+and explicit temperature, fan, or power alarms. A measured value without a
+reliable limit remains visible but does not become nominal or pressured by
+guesswork. Missing individual signals are ignored; an entirely unevaluable
+sample is never reported as nominal.
+
+## Hardware Sensors
+
+The **Sensors** tab groups physical telemetry into explicit categories:
+
+- **Temperature** — current Celsius readings with maximum and critical limits
+  when the device publishes them.
+- **Fans** — tachometer readings in RPM with minimum, maximum, and alarm state
+  when available. Zero RPM is a valid measurement and is not treated as a
+  failure without a hardware alarm.
+- **Power** — instantaneous `hwmon` readings in watts plus interval-derived
+  power from Linux `powercap` energy counters. A counter needs two samples
+  before Sentinel can calculate watts, and counter rollover is handled.
+
+Linux collection reads the kernel's `hwmon`, `thermal`, and `powercap` sysfs
+interfaces directly. Sentinel does not execute `sensors`, estimate power from
+CPU utilization, or require an external monitoring agent. Unsupported,
+unreadable, and absent categories remain empty without failing the host metrics
+sample.
 
 ## Runtime Metrics
 
@@ -49,14 +73,16 @@ Go runtime statistics for the Sentinel server process:
 - Dedicated `/metrics` route with full-page metrics dashboard.
 - Typed handoffs use
   `/metrics?signal=<canonical-signal>&focusAt=<RFC3339>`. The route selects
-  Saturation, scrolls to, focuses, and highlights the requested card. Canonical
-  signals are `cpu`, `memory`, `rootDisk`, `inodes`, `swap`, `cpuPressure`,
-  `memoryPressure`, and `ioPressure`.
+  the owning context, scrolls to, focuses, and highlights the requested card or
+  sensor category. Canonical signals are `cpu`, `memory`, `rootDisk`, `inodes`,
+  `swap`, `cpuPressure`, `memoryPressure`, `ioPressure`, `temperature`, `fan`,
+  and `power`.
 - `focusAt` identifies when the owner handoff evidence was observed. The page
   displays it as context while explicitly treating charts as current/live
   samples, not as a persisted historical sample for that instant.
 - Owner-focused dashboard with an always-visible host posture overview.
-- Context tabs for saturation, network, and Sentinel runtime metrics, so dense widgets have enough room for labels, details, and trends.
+- Context tabs for saturation, network, hardware sensors, and Sentinel runtime
+  metrics, so dense widgets have enough room for labels, details, and trends.
 - Metrics uses the full available panel width and keeps help, token, refresh, and connection controls in the page header.
 - Metrics are pushed from the server every **2 seconds** over WebSocket.
 - Real-time overview updates via WebSocket (`ops.overview.updated`).

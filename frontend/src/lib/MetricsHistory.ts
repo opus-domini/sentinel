@@ -17,7 +17,14 @@ export type MetricsSnapshot = {
   goMemAllocMB: number
   goMemSysMB: number
   goLastGcPauseMs: number
+  sensorTemperatures: Record<string, number>
+  sensorFanRPM: Record<string, number>
+  sensorPowerWatts: Record<string, number>
 }
+
+export type NumericMetricKey = {
+  [Key in keyof MetricsSnapshot]: MetricsSnapshot[Key] extends number ? Key : never
+}[keyof MetricsSnapshot]
 
 const CAPACITY = 150
 
@@ -61,7 +68,7 @@ export class MetricsHistory {
     return result
   }
 
-  field(key: keyof MetricsSnapshot): Array<number> {
+  field(key: NumericMetricKey): Array<number> {
     return this.toArray().map((s) => s[key])
   }
 

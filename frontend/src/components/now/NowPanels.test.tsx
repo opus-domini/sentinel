@@ -235,4 +235,38 @@ describe('Now panels', () => {
     expect(href).not.toContain('service')
     expect(href).not.toContain('process')
   })
+
+  it('names the hardware sensor subject in the decision queue', () => {
+    render(
+      <NowAttention
+        attention={{
+          total: 1,
+          visible: [
+            {
+              type: 'metrics_pressure',
+              severity: 'critical',
+              signals: [
+                {
+                  name: 'temperature',
+                  subject: 'Package id 0 (coretemp)',
+                  severity: 'critical',
+                  value: 96,
+                  since: '2026-08-28T12:00:00Z',
+                },
+              ],
+              observedAt: '2026-08-28T12:00:00Z',
+            },
+          ],
+          overflow: { approvals: 0, services: 0, metrics: 0 },
+        }}
+        degraded={false}
+        onRunProcedure={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Temperature: Package id 0 (coretemp)')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Host pressure/ }).getAttribute('href')).toBe(
+      '/metrics?signal=temperature&focusAt=2026-08-28T12%3A00%3A00Z',
+    )
+  })
 })

@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest'
 
 import {
   computeByteRate,
+  fanSensorSeverity,
   formatByteRate,
   formatDurationLong,
   formatPercentValue,
   percentSeverity,
   presentMetricPosture,
   presentMetricSignal,
+  powerSensorSeverity,
   pressureSeverity,
+  sensorStatusLabel,
+  temperatureSensorSeverity,
 } from './metricsView'
 
 describe('metricsView', () => {
@@ -26,7 +30,7 @@ describe('metricsView', () => {
     expect(pressureSeverity(-1)).toBe('unknown')
   })
 
-  it('maps every canonical posture signal to a stable Saturation target', () => {
+  it('maps every canonical posture signal to its stable owner tab', () => {
     expect(
       [
         'cpu',
@@ -37,6 +41,9 @@ describe('metricsView', () => {
         'cpuPressure',
         'memoryPressure',
         'ioPressure',
+        'temperature',
+        'fan',
+        'power',
       ].map((signal) => presentMetricSignal(signal as Parameters<typeof presentMetricSignal>[0])),
     ).toEqual([
       { elementID: 'metric-signal-cpu', label: 'CPU', tab: 'saturation' },
@@ -55,7 +62,58 @@ describe('metricsView', () => {
         tab: 'saturation',
       },
       { elementID: 'metric-signal-ioPressure', label: 'IO pressure', tab: 'saturation' },
+      { elementID: 'metric-signal-temperature', label: 'Temperature', tab: 'sensors' },
+      { elementID: 'metric-signal-fan', label: 'Fans', tab: 'sensors' },
+      { elementID: 'metric-signal-power', label: 'Power', tab: 'sensors' },
     ])
+  })
+
+  it('classifies hardware sensors only from reported thresholds and alarms', () => {
+    expect(
+      temperatureSensorSeverity({
+        id: 'temp1',
+        label: 'Package',
+        source: 'coretemp',
+        celsius: 81,
+        maxCelsius: 80,
+        criticalCelsius: 95,
+      }),
+    ).toBe('warn')
+    expect(
+      temperatureSensorSeverity({
+        id: 'temp1',
+        label: 'Package',
+        source: 'coretemp',
+        celsius: 60,
+      }),
+    ).toBe('unknown')
+    expect(
+      fanSensorSeverity({
+        id: 'fan1',
+        label: 'Chassis',
+        source: 'nct6798',
+        rpm: 0,
+      }),
+    ).toBe('unknown')
+    expect(
+      fanSensorSeverity({
+        id: 'fan1',
+        label: 'Chassis',
+        source: 'nct6798',
+        rpm: 0,
+        alarm: true,
+      }),
+    ).toBe('critical')
+    expect(
+      powerSensorSeverity({
+        id: 'power1',
+        label: 'Package',
+        source: 'zenpower',
+        watts: 70,
+        criticalWatts: 65,
+      }),
+    ).toBe('critical')
+    expect(sensorStatusLabel('unknown')).toBe('measured')
   })
 
   it('presents the canonical backend posture without recomputing host thresholds', () => {

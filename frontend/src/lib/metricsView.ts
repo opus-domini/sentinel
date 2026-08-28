@@ -1,5 +1,11 @@
 import { formatBytes, formatDurationLong, formatPercentValue } from './format'
-import type { MetricPosture, MetricPostureSignal } from '@/types'
+import type {
+  MetricPosture,
+  MetricPostureSignal,
+  OpsFanSensor,
+  OpsPowerSensor,
+  OpsTemperatureSensor,
+} from '@/types'
 
 export type MetricSeverity = 'ok' | 'warn' | 'critical' | 'unknown'
 
@@ -14,7 +20,7 @@ export type MetricPosturePresentation = {
 export type MetricSignalPresentation = {
   elementID: string
   label: string
-  tab: 'saturation'
+  tab: 'saturation' | 'sensors'
 }
 
 const METRIC_SIGNAL_PRESENTATIONS: Record<MetricPostureSignal['name'], MetricSignalPresentation> = {
@@ -38,6 +44,13 @@ const METRIC_SIGNAL_PRESENTATIONS: Record<MetricPostureSignal['name'], MetricSig
     label: 'IO pressure',
     tab: 'saturation',
   },
+  temperature: {
+    elementID: 'metric-signal-temperature',
+    label: 'Temperature',
+    tab: 'sensors',
+  },
+  fan: { elementID: 'metric-signal-fan', label: 'Fans', tab: 'sensors' },
+  power: { elementID: 'metric-signal-power', label: 'Power', tab: 'sensors' },
 }
 
 export function presentMetricSignal(signal: MetricPostureSignal['name']): MetricSignalPresentation {
@@ -102,6 +115,43 @@ export function pressureSeverity(value: number): MetricSeverity {
   if (value >= 10) return 'critical'
   if (value >= 2) return 'warn'
   return 'ok'
+}
+
+export function temperatureSensorSeverity(sensor: OpsTemperatureSensor): MetricSeverity {
+  return thresholdSensorSeverity(
+    sensor.celsius,
+    sensor.maxCelsius,
+    sensor.criticalCelsius,
+    sensor.alarm,
+  )
+}
+
+export function fanSensorSeverity(sensor: OpsFanSensor): MetricSeverity {
+  if (sensor.alarm === true) return 'critical'
+  if (sensor.alarm === false) return 'ok'
+  return 'unknown'
+}
+
+export function powerSensorSeverity(sensor: OpsPowerSensor): MetricSeverity {
+  return thresholdSensorSeverity(sensor.watts, sensor.maxWatts, sensor.criticalWatts, sensor.alarm)
+}
+
+export function sensorStatusLabel(severity: MetricSeverity): string {
+  return severity === 'unknown' ? 'measured' : severity
+}
+
+function thresholdSensorSeverity(
+  value: number,
+  warning: number | undefined,
+  critical: number | undefined,
+  alarm: boolean | undefined,
+): MetricSeverity {
+  if (!Number.isFinite(value)) return 'unknown'
+  if (alarm === true) return 'critical'
+  if (critical != null && Number.isFinite(critical) && value >= critical) return 'critical'
+  if (warning != null && Number.isFinite(warning) && value >= warning) return 'warn'
+  if (alarm === false || warning != null || critical != null) return 'ok'
+  return 'unknown'
 }
 
 export function computeByteRate(samples: Array<number>, timestamps: Array<number>): number {

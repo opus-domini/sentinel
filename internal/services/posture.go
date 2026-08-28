@@ -2,6 +2,7 @@ package services
 
 import (
 	"math"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +31,7 @@ const (
 // MetricPostureSignal identifies one host signal currently under pressure.
 type MetricPostureSignal struct {
 	Name     string  `json:"name"`
+	Subject  string  `json:"subject,omitempty"`
 	Severity string  `json:"severity"`
 	Value    float64 `json:"value"`
 	Since    string  `json:"since"`
@@ -52,17 +54,21 @@ type MetricsSnapshot struct {
 }
 
 type metricSignalPolicy struct {
-	name          string
-	value         float64
-	warning       float64
-	critical      float64
-	exitMargin    float64
-	enterDuration time.Duration
-	exitDuration  time.Duration
-	available     bool
+	name           string
+	subject        string
+	value          float64
+	signalValue    float64
+	hasSignalValue bool
+	warning        float64
+	critical       float64
+	exitMargin     float64
+	enterDuration  time.Duration
+	exitDuration   time.Duration
+	available      bool
 }
 
 type metricSignalState struct {
+	subject       string
 	severity      string
 	since         time.Time
 	aboveWarning  time.Time
@@ -99,7 +105,10 @@ func (e *metricPostureEvaluator) Evaluate(metrics HostMetrics) MetricPosture {
 	}
 
 	evaluated := 0
-	for _, policy := range metricSignalPolicies(metrics) {
+	policies := metricSignalPolicies(metrics)
+	seen := make(map[string]struct{}, len(policies))
+	for _, policy := range policies {
+		seen[policy.name] = struct{}{}
 		if policy.available {
 			evaluated++
 		}
@@ -113,6 +122,11 @@ func (e *metricPostureEvaluator) Evaluate(metrics HostMetrics) MetricPosture {
 			posture.CriticalCount++
 		case MetricPostureSeverityWarning:
 			posture.WarningCount++
+		}
+	}
+	for name := range e.states {
+		if _, exists := seen[name]; !exists {
+			delete(e.states, name)
 		}
 	}
 
@@ -140,8 +154,8 @@ func (e *metricPostureEvaluator) evaluateSignal(
 	}
 
 	state := e.states[policy.name]
-	if state == nil {
-		state = &metricSignalState{}
+	if state == nil || state.subject != policy.subject {
+		state = &metricSignalState{subject: policy.subject}
 		e.states[policy.name] = state
 	}
 	updateThresholdSince(&state.aboveWarning, policy.value >= policy.warning, now)
@@ -179,10 +193,15 @@ func (e *metricPostureEvaluator) evaluateSignal(
 		}
 	}
 
+	value := policy.value
+	if policy.hasSignalValue {
+		value = policy.signalValue
+	}
 	return MetricPostureSignal{
 		Name:     policy.name,
+		Subject:  policy.subject,
 		Severity: state.severity,
-		Value:    policy.value,
+		Value:    value,
 		Since:    state.since.UTC().Format(time.RFC3339),
 	}, true
 }
@@ -216,7 +235,7 @@ func updateThresholdSince(since *time.Time, above bool, now time.Time) {
 }
 
 func metricSignalPolicies(metrics HostMetrics) []metricSignalPolicy {
-	return []metricSignalPolicy{
+	policies := []metricSignalPolicy{
 		{
 			name: "cpu", value: metrics.CPUPercent, warning: 80, critical: 90,
 			exitMargin: 5, enterDuration: volatileSignalDuration,
@@ -265,6 +284,198 @@ func metricSignalPolicies(metrics HostMetrics) []metricSignalPolicy {
 			available: validMetricValue(metrics.IOPressureAvg10),
 		},
 	}
+	if policy, ok := temperatureSignalPolicy(metrics.Sensors.Temperatures); ok {
+		policies = append(policies, policy)
+	}
+	if policy, ok := fanSignalPolicy(metrics.Sensors.Fans); ok {
+		policies = append(policies, policy)
+	}
+	if policy, ok := powerSignalPolicy(metrics.Sensors.Power); ok {
+		policies = append(policies, policy)
+	}
+	return policies
+}
+
+type sensorPolicyCandidate struct {
+	policy    metricSignalPolicy
+	severity  int
+	proximity float64
+}
+
+func temperatureSignalPolicy(sensors []TemperatureSensor) (metricSignalPolicy, bool) {
+	candidates := make([]sensorPolicyCandidate, 0, len(sensors))
+	for _, sensor := range sensors {
+		if !validMetricValue(sensor.Celsius) {
+			continue
+		}
+		policy, ok := thresholdSensorPolicy(
+			"temperature",
+			sensorSubject(sensor.Label, sensor.Source),
+			sensor.Celsius,
+			sensor.MaxCelsius,
+			sensor.CriticalCelsius,
+			sensor.Alarm,
+			3,
+		)
+		if ok {
+			candidates = append(candidates, newSensorPolicyCandidate(policy))
+		}
+	}
+	return selectSensorPolicy(candidates)
+}
+
+func fanSignalPolicy(sensors []FanSensor) (metricSignalPolicy, bool) {
+	candidates := make([]sensorPolicyCandidate, 0, len(sensors))
+	for _, sensor := range sensors {
+		if sensor.RPM < 0 || sensor.Alarm == nil {
+			continue
+		}
+		policy := alarmSensorPolicy(
+			"fan",
+			sensorSubject(sensor.Label, sensor.Source),
+			float64(sensor.RPM),
+			*sensor.Alarm,
+		)
+		candidates = append(candidates, newSensorPolicyCandidate(policy))
+	}
+	return selectSensorPolicy(candidates)
+}
+
+func powerSignalPolicy(sensors []PowerSensor) (metricSignalPolicy, bool) {
+	candidates := make([]sensorPolicyCandidate, 0, len(sensors))
+	for _, sensor := range sensors {
+		if !validMetricValue(sensor.Watts) {
+			continue
+		}
+		policy, ok := thresholdSensorPolicy(
+			"power",
+			sensorSubject(sensor.Label, sensor.Source),
+			sensor.Watts,
+			sensor.MaxWatts,
+			sensor.CriticalWatts,
+			sensor.Alarm,
+			0,
+		)
+		if !ok {
+			continue
+		}
+		if policy.exitMargin == 0 && policy.warning > 0.5 {
+			policy.exitMargin = policy.warning * 0.05
+		}
+		candidates = append(candidates, newSensorPolicyCandidate(policy))
+	}
+	return selectSensorPolicy(candidates)
+}
+
+func thresholdSensorPolicy(
+	name string,
+	subject string,
+	value float64,
+	warningValue *float64,
+	criticalValue *float64,
+	alarm *bool,
+	exitMargin float64,
+) (metricSignalPolicy, bool) {
+	if alarm != nil && *alarm {
+		return alarmSensorPolicy(name, subject, value, true), true
+	}
+
+	warning, hasWarning := validThreshold(warningValue)
+	critical, hasCritical := validThreshold(criticalValue)
+	if hasWarning && hasCritical && warning > critical {
+		warning = critical
+	}
+	switch {
+	case hasWarning && !hasCritical:
+		critical = math.MaxFloat64
+	case !hasWarning && hasCritical:
+		warning = critical
+	case !hasWarning && !hasCritical:
+		if alarm == nil {
+			return metricSignalPolicy{}, false
+		}
+		return alarmSensorPolicy(name, subject, value, false), true
+	}
+	return metricSignalPolicy{
+		name:           name,
+		subject:        subject,
+		value:          value,
+		signalValue:    value,
+		hasSignalValue: true,
+		warning:        warning,
+		critical:       critical,
+		exitMargin:     exitMargin,
+		exitDuration:   pressureExitDuration,
+		available:      true,
+	}, true
+}
+
+func alarmSensorPolicy(name, subject string, signalValue float64, alarm bool) metricSignalPolicy {
+	value := 0.0
+	if alarm {
+		value = 1
+	}
+	return metricSignalPolicy{
+		name:           name,
+		subject:        subject,
+		value:          value,
+		signalValue:    signalValue,
+		hasSignalValue: true,
+		warning:        0.5,
+		critical:       0.5,
+		exitDuration:   pressureExitDuration,
+		available:      true,
+	}
+}
+
+func validThreshold(value *float64) (float64, bool) {
+	if value == nil || !validMetricValue(*value) || *value <= 0 {
+		return 0, false
+	}
+	return *value, true
+}
+
+func newSensorPolicyCandidate(policy metricSignalPolicy) sensorPolicyCandidate {
+	severity := 1
+	switch {
+	case policy.value >= policy.critical:
+		severity = 3
+	case policy.value >= policy.warning:
+		severity = 2
+	}
+	proximity := 0.0
+	if policy.warning > 0 {
+		proximity = policy.value / policy.warning
+	}
+	return sensorPolicyCandidate{policy: policy, severity: severity, proximity: proximity}
+}
+
+func selectSensorPolicy(candidates []sensorPolicyCandidate) (metricSignalPolicy, bool) {
+	if len(candidates) == 0 {
+		return metricSignalPolicy{}, false
+	}
+	best := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if candidate.severity > best.severity ||
+			(candidate.severity == best.severity && candidate.proximity > best.proximity) ||
+			(candidate.severity == best.severity && candidate.proximity == best.proximity &&
+				candidate.policy.subject < best.policy.subject) {
+			best = candidate
+		}
+	}
+	return best.policy, true
+}
+
+func sensorSubject(label, source string) string {
+	label = strings.TrimSpace(label)
+	source = strings.TrimSpace(source)
+	if label == "" {
+		return source
+	}
+	if source == "" || strings.EqualFold(label, source) {
+		return label
+	}
+	return label + " (" + source + ")"
 }
 
 func validMetricValue(value float64) bool {

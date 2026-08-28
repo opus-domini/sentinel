@@ -288,6 +288,168 @@ func TestMetricPostureEvaluatorPressureSignalsExitAfterTenSeconds(t *testing.T) 
 	}
 }
 
+func TestMetricPostureEvaluatorUsesHardwareTemperatureThresholds(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	now := start
+	evaluator := newMetricPostureEvaluator(func() time.Time { return now })
+	maxCelsius := 80.0
+	criticalCelsius := 95.0
+	metrics := unavailableHostMetrics()
+	metrics.Sensors = SensorMetrics{
+		Temperatures: []TemperatureSensor{
+			{
+				ID:              "hwmon0:temp1",
+				Label:           "Package id 0",
+				Source:          "coretemp",
+				Celsius:         80,
+				MaxCelsius:      &maxCelsius,
+				CriticalCelsius: &criticalCelsius,
+			},
+		},
+		Fans:  []FanSensor{},
+		Power: []PowerSensor{},
+	}
+
+	signal := requirePostureSignal(
+		t,
+		evaluator.Evaluate(metrics),
+		"temperature",
+		MetricPostureSeverityWarning,
+	)
+	if signal.Subject != "Package id 0 (coretemp)" || signal.Value != 80 {
+		t.Fatalf("temperature signal = %+v", signal)
+	}
+
+	metrics.Sensors.Temperatures[0].Celsius = 95
+	requirePostureSignal(
+		t,
+		evaluator.Evaluate(metrics),
+		"temperature",
+		MetricPostureSeverityCritical,
+	)
+
+	now = start.Add(time.Second)
+	metrics.Sensors.Temperatures[0].Celsius = 76.9
+	requirePostureSignal(
+		t,
+		evaluator.Evaluate(metrics),
+		"temperature",
+		MetricPostureSeverityCritical,
+	)
+	now = start.Add(11 * time.Second)
+	if got := evaluator.Evaluate(metrics); got.State != MetricPostureStateNormal {
+		t.Fatalf("temperature posture after hysteresis = %+v", got)
+	}
+}
+
+func TestMetricPostureEvaluatorUsesSensorAlarmsWithoutInventingThresholds(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	now := start
+	evaluator := newMetricPostureEvaluator(func() time.Time { return now })
+	alarm := true
+	metrics := unavailableHostMetrics()
+	metrics.Sensors = SensorMetrics{
+		Temperatures: []TemperatureSensor{},
+		Fans: []FanSensor{
+			{ID: "hwmon0:fan1", Label: "Chassis fan", Source: "nct6798", RPM: 0, Alarm: &alarm},
+		},
+		Power: []PowerSensor{
+			{ID: "powercap:intel-rapl:0", Label: "package-0", Source: "powercap", Watts: 12},
+		},
+	}
+
+	signal := requirePostureSignal(
+		t,
+		evaluator.Evaluate(metrics),
+		"fan",
+		MetricPostureSeverityCritical,
+	)
+	if signal.Subject != "Chassis fan (nct6798)" || signal.Value != 0 {
+		t.Fatalf("fan signal = %+v", signal)
+	}
+	if len(evaluator.Evaluate(metrics).Signals) != 1 {
+		t.Fatal("power measurement without a hardware limit became a posture signal")
+	}
+
+	alarm = false
+	now = start.Add(time.Second)
+	requirePostureSignal(
+		t,
+		evaluator.Evaluate(metrics),
+		"fan",
+		MetricPostureSeverityCritical,
+	)
+	now = start.Add(11 * time.Second)
+	if got := evaluator.Evaluate(metrics); got.State != MetricPostureStateNormal {
+		t.Fatalf("fan posture after alarm cleared = %+v", got)
+	}
+}
+
+func TestMetricPostureEvaluatorUsesReliablePowerThresholds(t *testing.T) {
+	t.Parallel()
+
+	maxWatts := 50.0
+	criticalWatts := 65.0
+	metrics := unavailableHostMetrics()
+	metrics.Sensors = SensorMetrics{
+		Temperatures: []TemperatureSensor{},
+		Fans:         []FanSensor{},
+		Power: []PowerSensor{
+			{
+				ID:            "hwmon0:power1",
+				Label:         "Package",
+				Source:        "zenpower",
+				Watts:         55,
+				MaxWatts:      &maxWatts,
+				CriticalWatts: &criticalWatts,
+			},
+		},
+	}
+
+	signal := requirePostureSignal(
+		t,
+		newMetricPostureEvaluator(time.Now).Evaluate(metrics),
+		"power",
+		MetricPostureSeverityWarning,
+	)
+	if signal.Subject != "Package (zenpower)" || signal.Value != 55 {
+		t.Fatalf("power signal = %+v", signal)
+	}
+}
+
+func TestMetricPostureEvaluatorDropsDisappearedSensorState(t *testing.T) {
+	t.Parallel()
+
+	alarm := true
+	evaluator := newMetricPostureEvaluator(time.Now)
+	metrics := unavailableHostMetrics()
+	metrics.Sensors = SensorMetrics{
+		Temperatures: []TemperatureSensor{},
+		Fans: []FanSensor{
+			{ID: "hwmon0:fan1", Label: "Chassis", Source: "hwmon", RPM: 0, Alarm: &alarm},
+		},
+		Power: []PowerSensor{},
+	}
+	requirePostureSignal(
+		t,
+		evaluator.Evaluate(metrics),
+		"fan",
+		MetricPostureSeverityCritical,
+	)
+
+	metrics.Sensors.Fans = []FanSensor{}
+	if got := evaluator.Evaluate(metrics); got.State != MetricPostureStateUnavailable {
+		t.Fatalf("posture after sensor disappeared = %+v", got)
+	}
+	if _, exists := evaluator.states["fan"]; exists {
+		t.Fatal("disappeared fan left temporal posture state behind")
+	}
+}
+
 func TestMetricPostureEvaluatorIsThreadSafe(t *testing.T) {
 	t.Parallel()
 

@@ -299,6 +299,25 @@ func TestMetricPostureSignatureIgnoresValuesTimestampsAndSignalOrder(t *testing.
 	}
 }
 
+func TestMetricPostureSignatureTracksSensorSubjectChanges(t *testing.T) {
+	t.Parallel()
+
+	first := services.MetricPosture{
+		State:    services.MetricPostureStatePressure,
+		Severity: services.MetricPostureSeverityCritical,
+		Signals: []services.MetricPostureSignal{
+			{Name: "temperature", Subject: "CPU package", Severity: services.MetricPostureSeverityCritical},
+		},
+	}
+	second := first
+	second.Signals = []services.MetricPostureSignal{
+		{Name: "temperature", Subject: "NVMe composite", Severity: services.MetricPostureSeverityCritical},
+	}
+	if metricPostureSignature(first) == metricPostureSignature(second) {
+		t.Fatal("sensor subject change did not change posture signature")
+	}
+}
+
 func TestServicesWatcherPublishesOnlyCanonicalStateChanges(t *testing.T) {
 	t.Parallel()
 

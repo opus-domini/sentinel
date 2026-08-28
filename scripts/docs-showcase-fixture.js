@@ -234,6 +234,45 @@
       cpuPressureAvg10: 25.2 + index * 0.7,
       memPressureAvg10: 3.1 + index * 0.08,
       ioPressureAvg10: 11.8 + index * 0.31,
+      sensors: {
+        temperatures: [
+          {
+            id: 'hwmon0:temp1',
+            label: 'CPU package',
+            source: 'coretemp',
+            celsius: 68.4 + index * 0.15,
+            maxCelsius: 85,
+            criticalCelsius: 100,
+            alarm: false,
+          },
+          {
+            id: 'hwmon1:temp1',
+            label: 'NVMe composite',
+            source: 'nvme',
+            celsius: 54.2 + index * 0.08,
+            criticalCelsius: 84.8,
+          },
+        ],
+        fans: [
+          {
+            id: 'hwmon2:fan1',
+            label: 'Chassis fan',
+            source: 'nct6798',
+            rpm: 1280 + index * 9,
+            minRpm: 500,
+            alarm: false,
+          },
+        ],
+        power: [
+          {
+            id: 'powercap:intel-rapl:0',
+            label: 'Package power',
+            source: 'powercap',
+            watts: 31.6 + index * 0.4,
+            capWatts: 65,
+          },
+        ],
+      },
       numGoroutines: 48 + (index % 4),
       goMemAllocMB: 92.4 + index * 0.6,
       goMemSysMB: 138.2,

@@ -29,6 +29,9 @@ const METRIC_SIGNALS = new Set<MetricPostureSignal['name']>([
   'cpuPressure',
   'memoryPressure',
   'ioPressure',
+  'temperature',
+  'fan',
+  'power',
 ])
 
 function optionalSearchText(value: unknown): string | undefined {

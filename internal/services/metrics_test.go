@@ -344,6 +344,50 @@ func TestMetricsCollectorUsesSlowerProcessInterval(t *testing.T) {
 	}
 }
 
+func TestMetricsCollectorUsesSlowerSensorsInterval(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	sensorCalls := 0
+	collectors := fakeMetricCollectors(
+		func(context.Context) processSample {
+			return processSample{processes: 1, threads: 1, complete: true}
+		},
+		func() float64 { return 1 },
+	)
+	collectors.sensors = func(time.Time) SensorMetrics {
+		sensorCalls++
+		return SensorMetrics{
+			Temperatures: []TemperatureSensor{{ID: "temp1", Celsius: float64(sensorCalls)}},
+			Fans:         []FanSensor{},
+			Power:        []PowerSensor{},
+		}
+	}
+	collector := newMetricsCollectorWith(
+		func() time.Time { return now },
+		metricsCollectionIntervals{
+			snapshotReuse: time.Nanosecond,
+			sensors:       10 * time.Second,
+		},
+		collectors,
+	)
+
+	first := collector.Collect(context.Background(), "/")
+	now = now.Add(2 * time.Second)
+	second := collector.Collect(context.Background(), "/")
+	now = now.Add(9 * time.Second)
+	third := collector.Collect(context.Background(), "/")
+
+	if sensorCalls != 2 {
+		t.Fatalf("sensor collector calls = %d, want 2", sensorCalls)
+	}
+	if first.Sensors.Temperatures[0].Celsius != 1 ||
+		second.Sensors.Temperatures[0].Celsius != 1 ||
+		third.Sensors.Temperatures[0].Celsius != 2 {
+		t.Fatalf("sensor snapshots = %+v, %+v, %+v", first.Sensors, second.Sensors, third.Sensors)
+	}
+}
+
 func TestMetricsCollectorKeepsPreviousProcessSampleWhenRefreshIsIncomplete(t *testing.T) {
 	t.Parallel()
 
@@ -399,6 +443,9 @@ func fakeMetricCollectors(processInfo func(context.Context) processSample, cpuPe
 		},
 		pressure: func() pressureSample {
 			return pressureSample{cpuAvg10: 1, memAvg10: 2, ioAvg10: 3}
+		},
+		sensors: func(time.Time) SensorMetrics {
+			return emptySensorMetrics()
 		},
 		numCPU:       func() int { return 4 },
 		numGoroutine: func() int { return 8 },

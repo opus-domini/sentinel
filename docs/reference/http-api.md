@@ -53,7 +53,7 @@ route in this reference requires the cookie when `server.token` is configured.
 
 | Method | Path                    | Purpose                                                                                                                                                                     |
 | ------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST` | `/api/connection/check` | Verify the authenticated origin/proxy path; returns `{ "status": "ready" }` after guards pass                                                                                |
+| `POST` | `/api/connection/check` | Verify the authenticated origin/proxy path; returns `{ "status": "ready" }` after guards pass                                                                               |
 | `GET`  | `/api/meta`             | Runtime metadata (`tokenRequired`, `defaultCwd`, `version`, `timezone`, `locale`, `hostname`, `processUser`, `isRoot`, `canSwitchUser`, `allowedUsers`, `userSwitchMethod`) |
 | `GET`  | `/api/fs/dirs`          | Directory suggestions for session creation                                                                                                                                  |
 
@@ -146,19 +146,19 @@ Session launchers are independent reusable presets shown in the session `+` spli
 
 ## Tmux Windows and Panes
 
-| Method  | Path                                          | Purpose                  |
-| ------- | --------------------------------------------- | ------------------------ |
-| `GET`   | `/api/tmux/sessions/{session}/windows`        | List windows             |
-| `GET`   | `/api/tmux/sessions/{session}/panes`          | List panes               |
-| `PATCH` | `/api/tmux/sessions/{session}/windows/order`  | Reorder all live windows |
-| `POST`  | `/api/tmux/sessions/{session}/select-window`  | Select window            |
-| `POST`  | `/api/tmux/sessions/{session}/select-pane`    | Select pane              |
-| `POST`  | `/api/tmux/sessions/{session}/new-window`     | Create window            |
-| `POST`  | `/api/tmux/sessions/{session}/kill-window`    | Kill window              |
-| `POST`  | `/api/tmux/sessions/{session}/kill-pane`      | Kill pane                |
-| `POST`  | `/api/tmux/sessions/{session}/split-pane`     | Split pane               |
-| `POST`  | `/api/tmux/sessions/{session}/rename-window`  | Rename window            |
-| `POST`  | `/api/tmux/sessions/{session}/rename-pane`    | Rename pane              |
+| Method  | Path                                         | Purpose                  |
+| ------- | -------------------------------------------- | ------------------------ |
+| `GET`   | `/api/tmux/sessions/{session}/windows`       | List windows             |
+| `GET`   | `/api/tmux/sessions/{session}/panes`         | List panes               |
+| `PATCH` | `/api/tmux/sessions/{session}/windows/order` | Reorder all live windows |
+| `POST`  | `/api/tmux/sessions/{session}/select-window` | Select window            |
+| `POST`  | `/api/tmux/sessions/{session}/select-pane`   | Select pane              |
+| `POST`  | `/api/tmux/sessions/{session}/new-window`    | Create window            |
+| `POST`  | `/api/tmux/sessions/{session}/kill-window`   | Kill window              |
+| `POST`  | `/api/tmux/sessions/{session}/kill-pane`     | Kill pane                |
+| `POST`  | `/api/tmux/sessions/{session}/split-pane`    | Split pane               |
+| `POST`  | `/api/tmux/sessions/{session}/rename-window` | Rename window            |
+| `POST`  | `/api/tmux/sessions/{session}/rename-pane`   | Rename pane              |
 
 Window reorder payload:
 
@@ -216,10 +216,10 @@ Payload:
 
 ## Now
 
-| Method | Path                                          | Purpose                                      |
-| ------ | --------------------------------------------- | -------------------------------------------- |
-| `GET`  | `/api/now`                                    | Compose the current operational read model   |
-| `POST` | `/api/now/services/{service}/runbook`         | Start the associated recovery procedure (202) |
+| Method | Path                                  | Purpose                                       |
+| ------ | ------------------------------------- | --------------------------------------------- |
+| `GET`  | `/api/now`                            | Compose the current operational read model    |
+| `POST` | `/api/now/services/{service}/runbook` | Start the associated recovery procedure (202) |
 
 `GET /api/now` fans out concurrently to Tmux, Services, Metrics, and Runbooks.
 It returns `200` with every usable result when one source fails; only a missing
@@ -334,10 +334,10 @@ No endpoint creates an Incident, timeline, or duplicate recovery record.
 
 ### Overview and Metrics
 
-| Method   | Path                          | Purpose                            |
-| -------- | ----------------------------- | ---------------------------------- |
-| `GET`    | `/api/ops/overview`           | Host + Sentinel + services summary |
-| `GET`    | `/api/ops/metrics`            | Host and Sentinel runtime metrics  |
+| Method | Path                | Purpose                            |
+| ------ | ------------------- | ---------------------------------- |
+| `GET`  | `/api/ops/overview` | Host + Sentinel + services summary |
+| `GET`  | `/api/ops/metrics`  | Host and Sentinel runtime metrics  |
 
 `GET /api/ops/metrics` returns the raw sample and the canonical temporal
 posture maintained by the shared Metrics evaluator:
@@ -347,6 +347,21 @@ posture maintained by the shared Metrics evaluator:
   "metrics": {
     "cpuPercent": 85,
     "memPercent": 65.2,
+    "sensors": {
+      "temperatures": [
+        {
+          "id": "hwmon0:temp1",
+          "label": "Package id 0",
+          "source": "coretemp",
+          "celsius": 67.5,
+          "maxCelsius": 80,
+          "criticalCelsius": 95,
+          "alarm": false
+        }
+      ],
+      "fans": [],
+      "power": []
+    },
     "collectedAt": "2026-07-27T12:00:10Z"
   },
   "posture": {
@@ -370,14 +385,22 @@ posture maintained by the shared Metrics evaluator:
 Posture state is `normal`, `pressure`, or `unavailable`; severity is `ok`,
 `warning`, `critical`, or `unknown`. `signals` contains only warning/critical
 entries, each with its canonical `name`, `severity`, sampled `value`, and
-threshold-crossing `since`. `observedAt` records when the shared evaluator last
-classified the posture. Arrays are always present, including `signals: []` for
-normal and unavailable states.
+threshold-crossing `since`. Hardware sensor signals also include the optional
+`subject` that identified the device reading. `observedAt` records when the
+shared evaluator last classified the posture. Arrays are always present,
+including `signals: []` and empty sensor categories for normal, unavailable, or
+unsupported states.
 
 Capacity signals (`rootDisk`, `inodes`) and PSI averages enter immediately.
 CPU, memory, and swap require ten continuous seconds above a threshold, as does
 their warning-to-critical escalation. Exit thresholds use the hysteresis
 documented in [Metrics](../features/metrics.md).
+
+Sensor categories are best effort. Linux reads temperature and fan values from
+`hwmon`, falls back to thermal zones when needed, reads instantaneous power from
+`hwmon`, and derives watts from consecutive `powercap` energy samples. Missing
+sensor files never invalidate the rest of the metrics response. Only
+hardware-provided limits or alarms participate in posture.
 
 ### Services
 
@@ -469,7 +492,7 @@ Frontend owner handoffs use validated search contracts:
   for the logs panel
 - `/metrics?signal=<name>&focusAt=<RFC3339>`; `signal` is one of `cpu`,
   `memory`, `rootDisk`, `inodes`, `swap`, `cpuPressure`, `memoryPressure`, or
-  `ioPressure`, and `focusAt` is optional
+  `ioPressure`, `temperature`, `fan`, or `power`, and `focusAt` is optional
 
 `focusAt` is handoff context from Now, not an API promise of persisted metric
 history. Invalid temporal values are omitted while valid owner identity is
@@ -570,11 +593,11 @@ explicitly for the host.
 
 ### Settings
 
-| Method   | Path                        | Purpose                                         |
-| -------- | --------------------------- | ----------------------------------------------- |
-| `GET`    | `/api/ops/settings`         | Read typed Settings state and current ETag      |
-| `PATCH`  | `/api/ops/settings`         | Persist a typed patch against a current ETag    |
-| `POST`   | `/api/ops/settings/restart` | Restart the exact managed deployment explicitly |
+| Method  | Path                        | Purpose                                         |
+| ------- | --------------------------- | ----------------------------------------------- |
+| `GET`   | `/api/ops/settings`         | Read typed Settings state and current ETag      |
+| `PATCH` | `/api/ops/settings`         | Persist a typed patch against a current ETag    |
+| `POST`  | `/api/ops/settings/restart` | Restart the exact managed deployment explicitly |
 
 Settings uses one typed read/write boundary. It never returns config-file
 contents or secret values.

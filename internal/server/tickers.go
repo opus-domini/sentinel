@@ -98,7 +98,7 @@ func publishMetrics(
 func metricPostureSignature(posture services.MetricPosture) string {
 	signals := make([]string, 0, len(posture.Signals))
 	for _, signal := range posture.Signals {
-		signals = append(signals, signal.Name+":"+signal.Severity)
+		signals = append(signals, signal.Name+":"+signal.Subject+":"+signal.Severity)
 	}
 	sort.Strings(signals)
 	return strings.Join(

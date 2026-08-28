@@ -18,16 +18,17 @@ var osHostname = os.Hostname
 
 // SystemMetrics is a snapshot of host resource metrics included in the report.
 type SystemMetrics struct {
-	CPUPercent     float64 `json:"cpuPercent"`
-	MemUsedBytes   int64   `json:"memUsedBytes"`
-	MemTotalBytes  int64   `json:"memTotalBytes"`
-	MemPercent     float64 `json:"memPercent"`
-	DiskUsedBytes  int64   `json:"diskUsedBytes"`
-	DiskTotalBytes int64   `json:"diskTotalBytes"`
-	DiskPercent    float64 `json:"diskPercent"`
-	LoadAvg1       float64 `json:"loadAvg1"`
-	LoadAvg5       float64 `json:"loadAvg5"`
-	LoadAvg15      float64 `json:"loadAvg15"`
+	CPUPercent     float64                `json:"cpuPercent"`
+	MemUsedBytes   int64                  `json:"memUsedBytes"`
+	MemTotalBytes  int64                  `json:"memTotalBytes"`
+	MemPercent     float64                `json:"memPercent"`
+	DiskUsedBytes  int64                  `json:"diskUsedBytes"`
+	DiskTotalBytes int64                  `json:"diskTotalBytes"`
+	DiskPercent    float64                `json:"diskPercent"`
+	LoadAvg1       float64                `json:"loadAvg1"`
+	LoadAvg5       float64                `json:"loadAvg5"`
+	LoadAvg15      float64                `json:"loadAvg15"`
+	Sensors        services.SensorMetrics `json:"sensors"`
 }
 
 // ServiceStat captures the status of a tracked service.
@@ -102,6 +103,7 @@ func (g *Generator) Generate(ctx context.Context) (*HealthReport, error) {
 			LoadAvg1:       m.LoadAvg1,
 			LoadAvg5:       m.LoadAvg5,
 			LoadAvg15:      m.LoadAvg15,
+			Sensors:        m.Sensors,
 		}
 	}
 

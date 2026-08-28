@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -8,6 +9,7 @@ import {
   Clock3,
   Cpu,
   Database,
+  Fan,
   Gauge,
   HardDrive,
   Layers3,
@@ -15,7 +17,9 @@ import {
   Network,
   ServerCog,
   ShieldAlert,
+  Thermometer,
   Waves,
+  Zap,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
@@ -23,8 +27,9 @@ import type {
   OpsHostMetrics,
   OpsMetricsResponse,
   OpsOverviewResponse,
+  OpsTemperatureSensor,
 } from '@/types'
-import type { MetricsSnapshot } from '@/lib/MetricsHistory'
+import type { MetricsSnapshot, NumericMetricKey } from '@/lib/MetricsHistory'
 import type { MetricSeverity } from '@/lib/metricsView'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'
@@ -51,10 +56,14 @@ import {
   formatByteRate,
   formatDurationLong,
   formatPercentValue,
+  fanSensorSeverity,
   percentSeverity,
   presentMetricPosture,
   presentMetricSignal,
   pressureSeverity,
+  powerSensorSeverity,
+  sensorStatusLabel,
+  temperatureSensorSeverity,
 } from '@/lib/metricsView'
 import { cn } from '@/lib/utils'
 
@@ -71,6 +80,9 @@ const SPARKLINE_COLORS = {
   process: 'var(--chart-process)',
   goroutines: 'var(--chart-goroutines)',
   goHeap: 'var(--chart-go-heap)',
+  temperature: 'var(--chart-temperature)',
+  fan: 'var(--chart-fan)',
+  power: 'var(--chart-power)',
 } as const
 
 const METRICS_HERO_SKELETON_KEYS = [
@@ -90,7 +102,7 @@ const METRICS_MINI_SKELETON_KEYS = [
   'metrics-mini-gc',
 ] as const
 
-type MetricsTab = 'saturation' | 'network' | 'runtime'
+type MetricsTab = 'saturation' | 'network' | 'sensors' | 'runtime'
 
 const METRICS_TABS: Array<{
   id: MetricsTab
@@ -111,6 +123,12 @@ const METRICS_TABS: Array<{
     Icon: Network,
   },
   {
+    id: 'sensors',
+    label: 'Sensors',
+    detail: 'temperature, fans, and power',
+    Icon: Thermometer,
+  },
+  {
     id: 'runtime',
     label: 'Runtime',
     detail: 'Sentinel process health',
@@ -129,6 +147,7 @@ const SAMPLE_RATE = {
   process: '~10s',
   pressure: '~10s',
   uptime: '~30s',
+  sensors: '~10s',
 } as const
 
 const METRIC_ICON_COLOR = 'var(--brand-glow)'
@@ -160,6 +179,13 @@ function toSnapshot(m: OpsHostMetrics): MetricsSnapshot {
     goMemAllocMB: round1(m.goMemAllocMB),
     goMemSysMB: round1(m.goMemSysMB),
     goLastGcPauseMs: round2(m.goLastGcPauseMs),
+    sensorTemperatures: Object.fromEntries(
+      m.sensors.temperatures.map((sensor) => [sensor.id, round1(sensor.celsius)]),
+    ),
+    sensorFanRPM: Object.fromEntries(m.sensors.fans.map((sensor) => [sensor.id, sensor.rpm])),
+    sensorPowerWatts: Object.fromEntries(
+      m.sensors.power.map((sensor) => [sensor.id, round2(sensor.watts)]),
+    ),
   }
 }
 
@@ -188,7 +214,7 @@ function formatMaybeBytes(value: number): string {
 function trendFor(
   snapshots: Array<MetricsSnapshot>,
   timestamps: Array<number>,
-  key: keyof MetricsSnapshot,
+  key: NumericMetricKey,
   { min = Number.NEGATIVE_INFINITY }: { min?: number } = {},
 ): { values: Array<number>; timestamps: Array<number> } {
   const values: Array<number> = []
@@ -200,6 +226,80 @@ function trendFor(
     filteredTimestamps.push(timestamps[index])
   })
   return { values, timestamps: filteredTimestamps }
+}
+
+type SensorSnapshotKey = 'sensorTemperatures' | 'sensorFanRPM' | 'sensorPowerWatts'
+
+function sensorTrend(
+  snapshots: Array<MetricsSnapshot>,
+  timestamps: Array<number>,
+  key: SensorSnapshotKey,
+  id: string,
+): { values: Array<number>; timestamps: Array<number> } {
+  const values: Array<number> = []
+  const filteredTimestamps: Array<number> = []
+  snapshots.forEach((snapshot, index) => {
+    const value = snapshot[key][id]
+    if (!Number.isFinite(value)) return
+    values.push(value)
+    filteredTimestamps.push(timestamps[index])
+  })
+  return { values, timestamps: filteredTimestamps }
+}
+
+function formatCelsius(value: number): string {
+  if (!Number.isFinite(value)) return '-'
+  return `${value.toFixed(1)} °C`
+}
+
+function formatRPM(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '-'
+  return `${numberFormatter.format(Math.round(value))} RPM`
+}
+
+function formatWatts(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '-'
+  return `${value < 10 ? value.toFixed(2) : value.toFixed(1)} W`
+}
+
+function sensorDetail(source: string, thresholds: Array<string>): string {
+  return [source, ...thresholds].filter((value) => value.trim() !== '').join(' · ')
+}
+
+function severityRank(severity: MetricSeverity): number {
+  switch (severity) {
+    case 'critical':
+      return 3
+    case 'warn':
+      return 2
+    case 'ok':
+      return 1
+    default:
+      return 0
+  }
+}
+
+function sortSensorsBySeverity<T extends { id: string; label: string }>(
+  sensors: Array<T>,
+  severity: (sensor: T) => MetricSeverity,
+  reading: (sensor: T) => number,
+): Array<T> {
+  return [...sensors].sort((left, right) => {
+    const severityDelta = severityRank(severity(right)) - severityRank(severity(left))
+    if (severityDelta !== 0) return severityDelta
+    const readingDelta = reading(right) - reading(left)
+    if (readingDelta !== 0) return readingDelta
+    const labelDelta = left.label.localeCompare(right.label)
+    return labelDelta !== 0 ? labelDelta : left.id.localeCompare(right.id)
+  })
+}
+
+function temperatureSensorDetail(sensor: OpsTemperatureSensor): string {
+  return sensorDetail(sensor.source, [
+    sensor.maxCelsius != null ? `max ${formatCelsius(sensor.maxCelsius)}` : '',
+    sensor.criticalCelsius != null ? `critical ${formatCelsius(sensor.criticalCelsius)}` : '',
+    sensor.alarm === true ? 'hardware alarm active' : '',
+  ])
 }
 
 type MetricsFooterSummaryParams = {
@@ -259,7 +359,7 @@ function SectionHeading({ title, detail }: { title: string; detail?: string }) {
       <h2 className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
         {title}
       </h2>
-      {detail && <span className="shrink-0 text-[10px] text-muted-foreground">{detail}</span>}
+      {detail && <span className="shrink-0 text-[10px] text-secondary-foreground">{detail}</span>}
     </div>
   )
 }
@@ -277,10 +377,7 @@ function MetricTitle({
 }) {
   return (
     <TooltipHelper content={metricTooltip(title, sampleRate)}>
-      <span
-        aria-label={metricTooltip(title, sampleRate).replace('\n', '. ')}
-        className="flex min-w-0 cursor-help items-center gap-2 rounded-sm"
-      >
+      <span className="flex min-w-0 cursor-help items-center gap-2 rounded-sm">
         <span
           className={cn(
             'flex shrink-0 items-center justify-center rounded-md border border-border-subtle bg-surface-overlay',
@@ -290,9 +387,10 @@ function MetricTitle({
         >
           <Icon className="h-3.5 w-3.5" />
         </span>
-        <span className="truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <span className="truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
           {title}
         </span>
+        {sampleRate && <span className="sr-only">. Sample rate: {sampleRate}</span>}
       </span>
     </TooltipHelper>
   )
@@ -314,6 +412,7 @@ function MetricPanel({
   sampleRate,
   signal,
   focused = false,
+  statusLabel,
 }: {
   title: string
   value: string
@@ -330,6 +429,7 @@ function MetricPanel({
   sampleRate?: string
   signal?: MetricPostureSignal['name']
   focused?: boolean
+  statusLabel?: string
 }) {
   const showProgress = typeof percent === 'number' && Number.isFinite(percent)
 
@@ -348,11 +448,11 @@ function MetricPanel({
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
         <MetricTitle title={title} Icon={Icon} sampleRate={sampleRate} />
-        <StatusPill severity={severity} label={severity} />
+        <StatusPill severity={severity} label={statusLabel ?? severity} />
       </div>
       <div className="mt-3 min-w-0">
         <p className="truncate text-[24px] font-semibold leading-none text-foreground">{value}</p>
-        {detail && <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{detail}</p>}
+        {detail && <p className="mt-1 text-[10px] leading-4 text-secondary-foreground">{detail}</p>}
         {showProgress && <ProgressBar percent={Math.max(0, percent)} />}
       </div>
       <div className={cn('mt-3 h-12 min-h-0 w-full', chartClassName)}>
@@ -374,6 +474,83 @@ function MetricPanel({
     </div>
   )
 }
+
+function SensorGroupSection({
+  signal,
+  title,
+  detail,
+  focused,
+  children,
+}: {
+  signal: Extract<MetricPostureSignal['name'], 'temperature' | 'fan' | 'power'>
+  title: string
+  detail: string
+  focused: boolean
+  children: ReactNode
+}) {
+  const target = presentMetricSignal(signal)
+  return (
+    <section
+      id={target.elementID}
+      tabIndex={focused ? -1 : undefined}
+      data-focused={focused || undefined}
+      className={cn(
+        'grid gap-2 rounded-lg',
+        focused &&
+          'ring-2 ring-brand-glow ring-offset-4 ring-offset-background motion-safe:transition-shadow',
+      )}
+    >
+      <SectionHeading title={title} detail={detail} />
+      {children}
+    </section>
+  )
+}
+
+function SensorEmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border-subtle bg-surface-overlay/50 px-4 py-5 text-[11px] leading-4 text-muted-foreground">
+      {children}
+    </div>
+  )
+}
+
+/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- the bounded scroll region must be keyboard-focusable */
+function TemperatureReadingList({ sensors }: { sensors: Array<OpsTemperatureSensor> }) {
+  return (
+    <div
+      aria-label="All temperature sensor readings"
+      role="region"
+      tabIndex={0}
+      className="max-h-[360px] overflow-y-auto rounded-lg border border-border-subtle bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-glow"
+    >
+      <ul className="divide-y divide-border-subtle">
+        {sensors.map((sensor) => {
+          const severity = temperatureSensorSeverity(sensor)
+          return (
+            <li
+              key={sensor.id}
+              className="flex min-h-12 items-center justify-between gap-4 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-semibold text-foreground">{sensor.label}</p>
+                <p className="truncate text-[10px] leading-4 text-secondary-foreground">
+                  {temperatureSensorDetail(sensor)}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-[13px] font-semibold text-foreground">
+                  {formatCelsius(sensor.celsius)}
+                </span>
+                <StatusPill severity={severity} label={sensorStatusLabel(severity)} />
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+/* eslint-enable jsx-a11y/no-noninteractive-tabindex */
 
 function MetricFocusNotice({
   signal,
@@ -724,6 +901,23 @@ function MetricsPage() {
   const txRate = computeByteRate(trends.tx.values, trends.tx.timestamps)
   const risk = presentMetricPosture(posture)
   const activeTabMeta = METRICS_TABS.find((tab) => tab.id === activeTab) ?? METRICS_TABS[0]
+  const temperatureSensors =
+    metrics == null
+      ? []
+      : sortSensorsBySeverity(
+          metrics.sensors.temperatures,
+          temperatureSensorSeverity,
+          (sensor) => sensor.celsius,
+        )
+  const primaryTemperature = temperatureSensors[0]
+  const fanSensors =
+    metrics == null
+      ? []
+      : sortSensorsBySeverity(metrics.sensors.fans, fanSensorSeverity, (sensor) => sensor.rpm)
+  const powerSensors =
+    metrics == null
+      ? []
+      : sortSensorsBySeverity(metrics.sensors.power, powerSensorSeverity, (sensor) => sensor.watts)
 
   return (
     <AppShell>
@@ -868,7 +1062,7 @@ function MetricsPage() {
                   <div
                     role="tablist"
                     aria-label="Metric contexts"
-                    className="grid grid-cols-1 gap-1 rounded-lg border border-border-subtle bg-surface-overlay p-1 sm:grid-cols-3"
+                    className="grid grid-cols-1 gap-1 rounded-lg border border-border-subtle bg-surface-overlay p-1 sm:grid-cols-2 xl:grid-cols-4"
                   >
                     {METRICS_TABS.map((tab) => (
                       <MetricsTabButton
@@ -1076,6 +1270,143 @@ function MetricsPage() {
                           sampleRate={SAMPLE_RATE.live}
                         />
                       </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'sensors' && (
+                    <div className="grid gap-5">
+                      <SensorGroupSection
+                        signal="temperature"
+                        title="Temperature"
+                        detail={`${temperatureSensors.length} detected`}
+                        focused={search.signal === 'temperature'}
+                      >
+                        {primaryTemperature == null ? (
+                          <SensorEmptyState>
+                            No compatible temperature sensors are exposed by this host.
+                          </SensorEmptyState>
+                        ) : (
+                          <div
+                            className={cn(
+                              'grid gap-3',
+                              temperatureSensors.length > 1 &&
+                                'xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]',
+                            )}
+                          >
+                            <MetricPanel
+                              title={primaryTemperature.label}
+                              value={formatCelsius(primaryTemperature.celsius)}
+                              detail={temperatureSensorDetail(primaryTemperature)}
+                              Icon={Thermometer}
+                              severity={temperatureSensorSeverity(primaryTemperature)}
+                              statusLabel={sensorStatusLabel(
+                                temperatureSensorSeverity(primaryTemperature),
+                              )}
+                              trend={sensorTrend(
+                                snapshots,
+                                ts,
+                                'sensorTemperatures',
+                                primaryTemperature.id,
+                              )}
+                              trendColor={SPARKLINE_COLORS.temperature}
+                              formatTrendValue={formatCelsius}
+                              className="min-h-[190px]"
+                              chartClassName="h-20"
+                              sampleRate={SAMPLE_RATE.sensors}
+                            />
+                            {temperatureSensors.length > 1 && (
+                              <TemperatureReadingList sensors={temperatureSensors} />
+                            )}
+                          </div>
+                        )}
+                      </SensorGroupSection>
+
+                      <SensorGroupSection
+                        signal="fan"
+                        title="Fans"
+                        detail={`${fanSensors.length} detected`}
+                        focused={search.signal === 'fan'}
+                      >
+                        {fanSensors.length === 0 ? (
+                          <SensorEmptyState>
+                            No compatible fan tachometers are exposed by this host.
+                          </SensorEmptyState>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+                            {fanSensors.map((sensor) => {
+                              const severity = fanSensorSeverity(sensor)
+                              return (
+                                <MetricPanel
+                                  key={sensor.id}
+                                  title={sensor.label}
+                                  value={formatRPM(sensor.rpm)}
+                                  detail={sensorDetail(sensor.source, [
+                                    sensor.minRpm != null ? `min ${formatRPM(sensor.minRpm)}` : '',
+                                    sensor.maxRpm != null ? `max ${formatRPM(sensor.maxRpm)}` : '',
+                                    sensor.alarm === true ? 'hardware alarm active' : '',
+                                  ])}
+                                  Icon={Fan}
+                                  severity={severity}
+                                  statusLabel={sensorStatusLabel(severity)}
+                                  trend={sensorTrend(snapshots, ts, 'sensorFanRPM', sensor.id)}
+                                  trendColor={SPARKLINE_COLORS.fan}
+                                  formatTrendValue={formatRPM}
+                                  className="min-h-[190px]"
+                                  chartClassName="h-20"
+                                  sampleRate={SAMPLE_RATE.sensors}
+                                />
+                              )
+                            })}
+                          </div>
+                        )}
+                      </SensorGroupSection>
+
+                      <SensorGroupSection
+                        signal="power"
+                        title="Power"
+                        detail={`${powerSensors.length} detected`}
+                        focused={search.signal === 'power'}
+                      >
+                        {powerSensors.length === 0 ? (
+                          <SensorEmptyState>
+                            No instantaneous or interval-derived power readings are available yet.
+                          </SensorEmptyState>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+                            {powerSensors.map((sensor) => {
+                              const severity = powerSensorSeverity(sensor)
+                              return (
+                                <MetricPanel
+                                  key={sensor.id}
+                                  title={sensor.label}
+                                  value={formatWatts(sensor.watts)}
+                                  detail={sensorDetail(sensor.source, [
+                                    sensor.maxWatts != null
+                                      ? `max ${formatWatts(sensor.maxWatts)}`
+                                      : '',
+                                    sensor.criticalWatts != null
+                                      ? `critical ${formatWatts(sensor.criticalWatts)}`
+                                      : '',
+                                    sensor.capWatts != null
+                                      ? `cap ${formatWatts(sensor.capWatts)}`
+                                      : '',
+                                    sensor.alarm === true ? 'hardware alarm active' : '',
+                                  ])}
+                                  Icon={Zap}
+                                  severity={severity}
+                                  statusLabel={sensorStatusLabel(severity)}
+                                  trend={sensorTrend(snapshots, ts, 'sensorPowerWatts', sensor.id)}
+                                  trendColor={SPARKLINE_COLORS.power}
+                                  formatTrendValue={formatWatts}
+                                  className="min-h-[190px]"
+                                  chartClassName="h-20"
+                                  sampleRate={SAMPLE_RATE.sensors}
+                                />
+                              )
+                            })}
+                          </div>
+                        )}
+                      </SensorGroupSection>
                     </div>
                   )}
 

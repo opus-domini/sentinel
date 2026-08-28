@@ -383,6 +383,43 @@ export type OpsServiceActionVerification = {
   attempts: number
 }
 
+export type OpsTemperatureSensor = {
+  id: string
+  label: string
+  source: string
+  celsius: number
+  maxCelsius?: number
+  criticalCelsius?: number
+  alarm?: boolean
+}
+
+export type OpsFanSensor = {
+  id: string
+  label: string
+  source: string
+  rpm: number
+  minRpm?: number
+  maxRpm?: number
+  alarm?: boolean
+}
+
+export type OpsPowerSensor = {
+  id: string
+  label: string
+  source: string
+  watts: number
+  maxWatts?: number
+  criticalWatts?: number
+  capWatts?: number
+  alarm?: boolean
+}
+
+export type OpsSensorMetrics = {
+  temperatures: Array<OpsTemperatureSensor>
+  fans: Array<OpsFanSensor>
+  power: Array<OpsPowerSensor>
+}
+
 export type OpsHostMetrics = {
   cpuPercent: number
   cpuCount: number
@@ -414,6 +451,7 @@ export type OpsHostMetrics = {
   cpuPressureAvg10: number
   memPressureAvg10: number
   ioPressureAvg10: number
+  sensors: OpsSensorMetrics
   numGoroutines: number
   goMemAllocMB: number
   goMemSysMB: number
@@ -433,6 +471,10 @@ export type MetricPostureSignal = {
     | 'cpuPressure'
     | 'memoryPressure'
     | 'ioPressure'
+    | 'temperature'
+    | 'fan'
+    | 'power'
+  subject?: string
   severity: 'warning' | 'critical'
   value: number
   since: string

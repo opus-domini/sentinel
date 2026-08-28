@@ -8,6 +8,7 @@ import type {
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/useDateFormat'
 import { metricsSignalSearch, runbookExecutionSearch, serviceStatusSearch } from '@/lib/deepLinks'
+import { presentMetricSignal } from '@/lib/metricsView'
 import { nowAttentionHiddenCount } from '@/lib/nowPresentation'
 
 type NowAttentionProps = {
@@ -136,7 +137,12 @@ export function NowAttention({ attention, degraded, onRunProcedure }: NowAttenti
                       Host pressure is {item.severity}
                     </p>
                     <p className="truncate text-[10px] text-secondary-foreground">
-                      {item.signals.map((signal) => signal.name).join(' · ')}
+                      {item.signals
+                        .map((signal) => {
+                          const label = presentMetricSignal(signal.name).label
+                          return signal.subject ? `${label}: ${signal.subject}` : label
+                        })
+                        .join(' · ')}
                     </p>
                     <p className="mt-1 text-[9px] text-muted-foreground">
                       Observed {formatRelativeTime(item.observedAt)}

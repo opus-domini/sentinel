@@ -45,6 +45,14 @@ export default function MetricsHelpDialog({ triggerClassName }: { triggerClassNa
               </p>
             </section>
             <section>
+              <h3 className="mb-1 font-medium text-foreground">Hardware Sensors</h3>
+              <p>
+                Temperature, fan, and power readings are collected on a best-effort basis. Missing
+                readings stay unavailable, and only hardware-provided thresholds or alarms affect
+                host posture.
+              </p>
+            </section>
+            <section>
               <h3 className="mb-1 font-medium text-foreground">Runtime Metrics</h3>
               <p>
                 Go runtime statistics include goroutine count, heap allocation, runtime memory, GC

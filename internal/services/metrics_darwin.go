@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 func collectCPUPercent(ctx context.Context) float64 {
@@ -163,4 +164,8 @@ func collectHostUptime() uptimeSample {
 
 func collectPressure() pressureSample {
 	return pressureSample{cpuAvg10: -1, memAvg10: -1, ioAvg10: -1}
+}
+
+func newSensorCollector() func(time.Time) SensorMetrics {
+	return func(time.Time) SensorMetrics { return emptySensorMetrics() }
 }

@@ -95,6 +95,9 @@
   --chart-process: #e879f9;
   --chart-goroutines: #06b6d4;
   --chart-go-heap: #f97316;
+  --chart-temperature: #f59e0b;
+  --chart-fan: #22d3ee;
+  --chart-power: #eab308;
   --log-info-foreground: #9ee7ff;
   --log-notice-foreground: var(--brand-glow);
   --log-timestamp-foreground: #8adff6;
@@ -194,6 +197,9 @@
   --color-chart-process: var(--chart-process);
   --color-chart-goroutines: var(--chart-goroutines);
   --color-chart-go-heap: var(--chart-go-heap);
+  --color-chart-temperature: var(--chart-temperature);
+  --color-chart-fan: var(--chart-fan);
+  --color-chart-power: var(--chart-power);
 
   /* Terminal controls */
   --color-border-bright: var(--border-bright);

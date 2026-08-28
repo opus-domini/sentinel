@@ -92,6 +92,13 @@ func TestGenerateMetricsPopulated(t *testing.T) {
 			CPUPercent: 55.5,
 			MemPercent: 70.0,
 			LoadAvg1:   2.0,
+			Sensors: services.SensorMetrics{
+				Temperatures: []services.TemperatureSensor{
+					{ID: "hwmon0:temp1", Label: "Package", Source: "coretemp", Celsius: 62.5},
+				},
+				Fans:  []services.FanSensor{},
+				Power: []services.PowerSensor{},
+			},
 		},
 	}, nil)
 
@@ -108,6 +115,10 @@ func TestGenerateMetricsPopulated(t *testing.T) {
 	}
 	if report.Metrics.LoadAvg1 != 2.0 {
 		t.Errorf("Metrics.LoadAvg1 = %f, want 2.0", report.Metrics.LoadAvg1)
+	}
+	if len(report.Metrics.Sensors.Temperatures) != 1 ||
+		report.Metrics.Sensors.Temperatures[0].Celsius != 62.5 {
+		t.Errorf("Metrics.Sensors = %+v", report.Metrics.Sensors)
 	}
 }
 

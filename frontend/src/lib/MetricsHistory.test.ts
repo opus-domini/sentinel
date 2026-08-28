@@ -23,6 +23,9 @@ function snap(cpu: number): MetricsSnapshot {
     goMemAllocMB: 8,
     goMemSysMB: 32,
     goLastGcPauseMs: 0.4,
+    sensorTemperatures: { package: 62 },
+    sensorFanRPM: { chassis: 1200 },
+    sensorPowerWatts: { package: 18 },
   }
 }
 

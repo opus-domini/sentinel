@@ -13,47 +13,49 @@ const (
 	metricsProcessInterval       = 10 * time.Second
 	metricsUptimeInterval        = 30 * time.Second
 	metricsPressureInterval      = 10 * time.Second
+	metricsSensorsInterval       = 10 * time.Second
 )
 
 // HostMetrics holds a snapshot of host resource metrics.
 type HostMetrics struct {
-	CPUPercent        float64 `json:"cpuPercent"`
-	CPUCount          int     `json:"cpuCount"`
-	LoadAvg1          float64 `json:"loadAvg1"`
-	LoadAvg5          float64 `json:"loadAvg5"`
-	LoadAvg15         float64 `json:"loadAvg15"`
-	LoadPerCPU        float64 `json:"loadPerCPU"`
-	MemUsedBytes      int64   `json:"memUsedBytes"`
-	MemTotalBytes     int64   `json:"memTotalBytes"`
-	MemAvailableBytes int64   `json:"memAvailableBytes"`
-	MemPercent        float64 `json:"memPercent"`
-	SwapUsedBytes     int64   `json:"swapUsedBytes"`
-	SwapTotalBytes    int64   `json:"swapTotalBytes"`
-	SwapPercent       float64 `json:"swapPercent"`
-	DiskUsedBytes     int64   `json:"diskUsedBytes"`
-	DiskTotalBytes    int64   `json:"diskTotalBytes"`
-	DiskFreeBytes     int64   `json:"diskFreeBytes"`
-	DiskPercent       float64 `json:"diskPercent"`
-	DiskInodesUsed    int64   `json:"diskInodesUsed"`
-	DiskInodesTotal   int64   `json:"diskInodesTotal"`
-	DiskInodesPercent float64 `json:"diskInodesPercent"`
-	NetRxBytes        int64   `json:"netRxBytes"`
-	NetTxBytes        int64   `json:"netTxBytes"`
-	NetInterfaces     int     `json:"netInterfaces"`
-	ProcessCount      int     `json:"processCount"`
-	ThreadCount       int     `json:"threadCount"`
-	HostUptimeSec     int64   `json:"hostUptimeSec"`
-	BootTime          string  `json:"bootTime"`
-	CPUPressureAvg10  float64 `json:"cpuPressureAvg10"`
-	MemPressureAvg10  float64 `json:"memPressureAvg10"`
-	IOPressureAvg10   float64 `json:"ioPressureAvg10"`
-	NumGoroutines     int     `json:"numGoroutines"`
-	GoMemAllocMB      float64 `json:"goMemAllocMB"`
-	GoMemSysMB        float64 `json:"goMemSysMB"`
-	GoHeapObjects     uint64  `json:"goHeapObjects"`
-	GoNumGC           uint32  `json:"goNumGC"`
-	GoLastGCPauseMs   float64 `json:"goLastGcPauseMs"`
-	CollectedAt       string  `json:"collectedAt"`
+	CPUPercent        float64       `json:"cpuPercent"`
+	CPUCount          int           `json:"cpuCount"`
+	LoadAvg1          float64       `json:"loadAvg1"`
+	LoadAvg5          float64       `json:"loadAvg5"`
+	LoadAvg15         float64       `json:"loadAvg15"`
+	LoadPerCPU        float64       `json:"loadPerCPU"`
+	MemUsedBytes      int64         `json:"memUsedBytes"`
+	MemTotalBytes     int64         `json:"memTotalBytes"`
+	MemAvailableBytes int64         `json:"memAvailableBytes"`
+	MemPercent        float64       `json:"memPercent"`
+	SwapUsedBytes     int64         `json:"swapUsedBytes"`
+	SwapTotalBytes    int64         `json:"swapTotalBytes"`
+	SwapPercent       float64       `json:"swapPercent"`
+	DiskUsedBytes     int64         `json:"diskUsedBytes"`
+	DiskTotalBytes    int64         `json:"diskTotalBytes"`
+	DiskFreeBytes     int64         `json:"diskFreeBytes"`
+	DiskPercent       float64       `json:"diskPercent"`
+	DiskInodesUsed    int64         `json:"diskInodesUsed"`
+	DiskInodesTotal   int64         `json:"diskInodesTotal"`
+	DiskInodesPercent float64       `json:"diskInodesPercent"`
+	NetRxBytes        int64         `json:"netRxBytes"`
+	NetTxBytes        int64         `json:"netTxBytes"`
+	NetInterfaces     int           `json:"netInterfaces"`
+	ProcessCount      int           `json:"processCount"`
+	ThreadCount       int           `json:"threadCount"`
+	HostUptimeSec     int64         `json:"hostUptimeSec"`
+	BootTime          string        `json:"bootTime"`
+	CPUPressureAvg10  float64       `json:"cpuPressureAvg10"`
+	MemPressureAvg10  float64       `json:"memPressureAvg10"`
+	IOPressureAvg10   float64       `json:"ioPressureAvg10"`
+	Sensors           SensorMetrics `json:"sensors"`
+	NumGoroutines     int           `json:"numGoroutines"`
+	GoMemAllocMB      float64       `json:"goMemAllocMB"`
+	GoMemSysMB        float64       `json:"goMemSysMB"`
+	GoHeapObjects     uint64        `json:"goHeapObjects"`
+	GoNumGC           uint32        `json:"goNumGC"`
+	GoLastGCPauseMs   float64       `json:"goLastGcPauseMs"`
+	CollectedAt       string        `json:"collectedAt"`
 }
 
 type memorySample struct {
@@ -101,6 +103,7 @@ type metricsCollectionIntervals struct {
 	process       time.Duration
 	uptime        time.Duration
 	pressure      time.Duration
+	sensors       time.Duration
 }
 
 type metricCollectors struct {
@@ -112,6 +115,7 @@ type metricCollectors struct {
 	processInfo  func(context.Context) processSample
 	hostUptime   func() uptimeSample
 	pressure     func() pressureSample
+	sensors      func(time.Time) SensorMetrics
 	numCPU       func() int
 	numGoroutine func() int
 	readMemStats func(*runtime.MemStats)
@@ -143,6 +147,10 @@ type metricsCollector struct {
 	hasPressure bool
 	pressure    pressureSample
 	pressureAt  time.Time
+
+	hasSensors bool
+	sensors    SensorMetrics
+	sensorsAt  time.Time
 }
 
 func newMetricsCollector() *metricsCollector {
@@ -202,6 +210,7 @@ func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMet
 	processes := c.processLocked(ctx, now)
 	uptime := c.uptimeLocked(now)
 	pressure := c.pressureLocked(now)
+	sensors := c.sensorsLocked(now)
 
 	var memPct float64
 	if mem.totalBytes > 0 {
@@ -266,6 +275,7 @@ func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMet
 		CPUPressureAvg10:  pressure.cpuAvg10,
 		MemPressureAvg10:  pressure.memAvg10,
 		IOPressureAvg10:   pressure.ioAvg10,
+		Sensors:           sensors,
 		NumGoroutines:     c.collectors.numGoroutine(),
 		GoMemAllocMB:      float64(memStats.Alloc) / (1024 * 1024),
 		GoMemSysMB:        float64(memStats.Sys) / (1024 * 1024),
@@ -331,6 +341,17 @@ func (c *metricsCollector) pressureLocked(now time.Time) pressureSample {
 	return c.pressure
 }
 
+func (c *metricsCollector) sensorsLocked(now time.Time) SensorMetrics {
+	if c.hasSensors && reusableAt(now, c.sensorsAt, c.intervals.sensors) {
+		return c.sensors
+	}
+
+	c.sensors = c.collectors.sensors(now)
+	c.sensorsAt = now
+	c.hasSensors = true
+	return c.sensors
+}
+
 func reusableAt(now, collectedAt time.Time, interval time.Duration) bool {
 	if interval <= 0 || collectedAt.IsZero() {
 		return false
@@ -346,6 +367,7 @@ func defaultMetricsCollectionIntervals() metricsCollectionIntervals {
 		process:       metricsProcessInterval,
 		uptime:        metricsUptimeInterval,
 		pressure:      metricsPressureInterval,
+		sensors:       metricsSensorsInterval,
 	}
 }
 
@@ -366,10 +388,14 @@ func (i metricsCollectionIntervals) withDefaults() metricsCollectionIntervals {
 	if i.pressure == 0 {
 		i.pressure = defaults.pressure
 	}
+	if i.sensors == 0 {
+		i.sensors = defaults.sensors
+	}
 	return i
 }
 
 func defaultMetricCollectors() metricCollectors {
+	sensors := newSensorCollector()
 	return metricCollectors{
 		cpuPercent:   collectCPUPercent,
 		memInfo:      collectMemInfo,
@@ -379,6 +405,7 @@ func defaultMetricCollectors() metricCollectors {
 		processInfo:  collectProcessInfo,
 		hostUptime:   collectHostUptime,
 		pressure:     collectPressure,
+		sensors:      sensors,
 		numCPU:       runtime.NumCPU,
 		numGoroutine: runtime.NumGoroutine,
 		readMemStats: runtime.ReadMemStats,
@@ -410,6 +437,9 @@ func (c metricCollectors) withDefaults() metricCollectors {
 	}
 	if c.pressure == nil {
 		c.pressure = defaults.pressure
+	}
+	if c.sensors == nil {
+		c.sensors = defaults.sensors
 	}
 	if c.numCPU == nil {
 		c.numCPU = defaults.numCPU

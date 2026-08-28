@@ -69,6 +69,9 @@ describe('owner deep links', () => {
     expect(parseMetricsSearch({ signal: 'cpu', focusAt: 'yesterday' })).toEqual({
       signal: 'cpu',
     })
+    expect(parseMetricsSearch({ signal: 'temperature' })).toEqual({ signal: 'temperature' })
+    expect(parseMetricsSearch({ signal: 'fan' })).toEqual({ signal: 'fan' })
+    expect(parseMetricsSearch({ signal: 'power' })).toEqual({ signal: 'power' })
     expect(parseMetricsSearch({ signal: 'load' })).toEqual({})
     expect(parseMetricsSearch({ focusAt: '2026-07-27T12:00:00Z' })).toEqual({})
   })

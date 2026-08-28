@@ -4636,6 +4636,7 @@ func TestOpsServiceLogsNotFound(t *testing.T) {
 func TestOpsMetricsHandler(t *testing.T) {
 	t.Parallel()
 
+	maxCelsius := 80.0
 	h, _ := newTestHandler(t, nil)
 	h.ops = &mockOpsControlPlane{
 		metricsSnapshotFn: func(context.Context) opsplane.MetricsSnapshot {
@@ -4646,6 +4647,19 @@ func TestOpsMetricsHandler(t *testing.T) {
 					DiskPercent:   78.0,
 					LoadAvg1:      1.5,
 					NumGoroutines: 120,
+					Sensors: opsplane.SensorMetrics{
+						Temperatures: []opsplane.TemperatureSensor{
+							{
+								ID:         "hwmon0:temp1",
+								Label:      "Package",
+								Source:     "coretemp",
+								Celsius:    62.5,
+								MaxCelsius: &maxCelsius,
+							},
+						},
+						Fans:  []opsplane.FanSensor{},
+						Power: []opsplane.PowerSensor{},
+					},
 				},
 				Posture: opsplane.MetricPosture{
 					State:      opsplane.MetricPostureStateNormal,
@@ -4668,6 +4682,17 @@ func TestOpsMetricsHandler(t *testing.T) {
 	metrics, _ := data["metrics"].(map[string]any)
 	if metrics["cpuPercent"] != 42.5 {
 		t.Fatalf("cpuPercent = %v, want 42.5", metrics["cpuPercent"])
+	}
+	sensors, ok := metrics["sensors"].(map[string]any)
+	if !ok {
+		t.Fatalf("sensors = %#v, want object", metrics["sensors"])
+	}
+	temperatures, ok := sensors["temperatures"].([]any)
+	if !ok || len(temperatures) != 1 {
+		t.Fatalf("temperatures = %#v, want one sensor", sensors["temperatures"])
+	}
+	if fans, ok := sensors["fans"].([]any); !ok || len(fans) != 0 {
+		t.Fatalf("fans = %#v, want non-nil empty array", sensors["fans"])
 	}
 	posture, _ := data["posture"].(map[string]any)
 	if posture["state"] != opsplane.MetricPostureStateNormal ||
