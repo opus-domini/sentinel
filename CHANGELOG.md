@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.1](https://github.com/opus-domini/sentinel/compare/v0.11.0...v0.11.1) (2026-08-28)
+
+
+### Features
+
+* **metrics:** add hardware sensor telemetry ([6a5b29d](https://github.com/opus-domini/sentinel/commit/6a5b29d476d2efbdd733eb42e6154cd730db7021))
+
+
+### Bug Fixes
+
+* **ci:** build CodeQL with declared Go version ([9dee0b3](https://github.com/opus-domini/sentinel/commit/9dee0b3a49456f56e37d9b7c98f1e38b67835e75))
+* **ci:** complete advanced CodeQL migration ([512f9c3](https://github.com/opus-domini/sentinel/commit/512f9c34295214fb4c9c16dff5ca50966ff7209b))
+* **ci:** separate Go and frontend CodeQL setup ([3bd8f0d](https://github.com/opus-domini/sentinel/commit/3bd8f0dc0445a22763471a4d96d8aab340df7fb5))
+
 ## [0.11.0](https://github.com/opus-domini/sentinel/compare/v0.10.16...v0.11.0) (2026-08-02)
 
 
