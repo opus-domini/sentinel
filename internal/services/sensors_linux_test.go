@@ -146,3 +146,54 @@ func writeSensorFixture(t *testing.T, dir, name, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestLinuxSensorCollectorCountsEachPowercapZoneOnce(t *testing.T) {
+	root := useSensorSysRoot(t)
+	class := filepath.Join(root, "class", "powercap")
+	// Sysfs registers every zone under its controller and links each one into
+	// the class directory, so one physical zone is reachable by several paths.
+	zone := filepath.Join(root, "devices", "virtual", "powercap", "intel-rapl", "intel-rapl:0")
+	sub := filepath.Join(zone, "intel-rapl:0:0")
+	writeSensorFixture(t, zone, "name", "package-0\n")
+	writeSensorFixture(t, zone, "energy_uj", "1000000\n")
+	writeSensorFixture(t, sub, "name", "core\n")
+	writeSensorFixture(t, sub, "energy_uj", "400000\n")
+
+	if err := os.MkdirAll(class, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	for link, target := range map[string]string{
+		filepath.Join(class, "intel-rapl"):     filepath.Dir(zone),
+		filepath.Join(class, "intel-rapl:0"):   zone,
+		filepath.Join(class, "intel-rapl:0:0"): sub,
+	} {
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatalf("Symlink(%s) error = %v", link, err)
+		}
+	}
+	// The kernel also exposes each sub-zone's parent as "device".
+	if err := os.Symlink(zone, filepath.Join(sub, "device")); err != nil {
+		t.Fatalf("Symlink(device) error = %v", err)
+	}
+
+	collector := newSensorCollector()
+	start := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	collector(start)
+	writeSensorFixture(t, zone, "energy_uj", "3000000\n")
+	writeSensorFixture(t, sub, "energy_uj", "1400000\n")
+	got := collector(start.Add(10 * time.Second))
+
+	if len(got.Power) != 2 {
+		t.Fatalf("power = %+v, want one reading per physical zone", got.Power)
+	}
+	// Readings are label-ordered, so "core" precedes "package-0".
+	wantIDs := []string{"powercap:intel-rapl:0:0", "powercap:intel-rapl:0"}
+	for index, want := range wantIDs {
+		if got.Power[index].ID != want {
+			t.Fatalf("power[%d].ID = %q, want %q", index, got.Power[index].ID, want)
+		}
+	}
+	if got.Power[0].Watts != 0.1 || got.Power[1].Watts != 0.2 {
+		t.Fatalf("watts = %+v", got.Power)
+	}
+}
