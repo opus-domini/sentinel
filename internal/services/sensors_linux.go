@@ -232,23 +232,42 @@ func readThermalCritical(dir string) *float64 {
 	return nil
 }
 
+// powercapEnergyPaths lists one energy counter per physical powercap zone.
+// Every zone, nested sub-zones included, is linked directly under
+// /sys/class/powercap, and each is reachable again through its parent zone and
+// through a "device" symlink. Those aliases are the same file, so zones are
+// deduplicated by resolved path. The shallowest alias wins, which keeps the
+// zone's canonical sysfs name in the sensor ID powercapSensorID derives.
 func powercapEnergyPaths() []string {
 	root := filepath.Join(sysRootPath, "class", "powercap")
-	patterns := []string{
+	matches := make([]string, 0)
+	for _, pattern := range []string{
 		filepath.Join(root, "*", "energy_uj"),
 		filepath.Join(root, "*", "*", "energy_uj"),
+	} {
+		found, _ := filepath.Glob(pattern)
+		matches = append(matches, found...)
 	}
-	seen := make(map[string]struct{})
-	paths := make([]string, 0)
-	for _, pattern := range patterns {
-		matches, _ := filepath.Glob(pattern)
-		for _, match := range matches {
-			if _, exists := seen[match]; exists {
-				continue
-			}
-			seen[match] = struct{}{}
-			paths = append(paths, match)
+	sort.Slice(matches, func(i, j int) bool {
+		left := strings.Count(matches[i], string(filepath.Separator))
+		right := strings.Count(matches[j], string(filepath.Separator))
+		if left != right {
+			return left < right
 		}
+		return matches[i] < matches[j]
+	})
+	seen := make(map[string]struct{}, len(matches))
+	paths := make([]string, 0, len(matches))
+	for _, match := range matches {
+		zone, err := filepath.EvalSymlinks(match)
+		if err != nil {
+			zone = match
+		}
+		if _, exists := seen[zone]; exists {
+			continue
+		}
+		seen[zone] = struct{}{}
+		paths = append(paths, match)
 	}
 	sort.Strings(paths)
 	return paths
