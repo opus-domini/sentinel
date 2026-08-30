@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.2](https://github.com/opus-domini/sentinel/compare/v0.11.1...v0.11.2) (2026-08-30)
+
+
+### Features
+
+* **mcp:** add metrics_list_sensors tool ([8ab1d57](https://github.com/opus-domini/sentinel/commit/8ab1d5715bdc7266de8248892813b2d1f71d42db))
+* **services:** classify sensor readings without posture hysteresis ([62947b8](https://github.com/opus-domini/sentinel/commit/62947b8cb86ed17d64d03880309f264c9c435b23))
+
+
+### Bug Fixes
+
+* **metrics:** dedupe powercap energy zones ([6984bce](https://github.com/opus-domini/sentinel/commit/6984bce5a3122b0a6316e4a1137afb8fb7420447))
+
 ## [0.11.1](https://github.com/opus-domini/sentinel/compare/v0.11.0...v0.11.1) (2026-08-28)
 
 
