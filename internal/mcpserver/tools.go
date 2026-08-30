@@ -39,6 +39,7 @@ type tools struct {
 	registerSessionUser   func(string, string)
 	unregisterSessionUser func(string)
 	runbooks              *runbook.Manager
+	metrics               metricsSource
 }
 
 type tmuxService interface {
@@ -261,6 +262,11 @@ func (t *tools) register(server *mcp.Server) {
 	if t.runbooks != nil {
 		t.registerRunbookTools(server)
 	}
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "metrics_list_sensors",
+		Description: "List host temperature, fan and power sensors with a derived ok, warning, critical or unknown status, ranked worst first. Hardware sensors are collected on Linux only.",
+		Annotations: closedWorldAnnotations(true, false, true),
+	}, t.listSensors)
 }
 
 func (t *tools) listSessions(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, listSessionsOutput, error) {
