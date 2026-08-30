@@ -147,3 +147,5 @@ Overview state is kept current via the `/ws/events` WebSocket:
 
 - `GET /api/ops/metrics` — `{ metrics, posture }` for host and Sentinel runtime
 - `GET /api/ops/overview` — host + Sentinel + services summary
+- MCP `metrics_list_sensors` — filtered, severity-ranked sensor readings with a
+  derived per-sensor status; see [MCP Control](/features/mcp.md)

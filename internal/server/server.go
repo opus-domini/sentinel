@@ -131,6 +131,7 @@ func Serve(version string) int {
 		RegisterSessionUser:   apiHandler.RegisterSessionUser,
 		UnregisterSessionUser: apiHandler.UnregisterSessionUser,
 		Runbooks:              apiHandler.RunbookManager(),
+		Metrics:               opsManager,
 	})
 	mux.Handle("POST /mcp", mcpServer)
 	mux.Handle("GET /mcp", mcpServer)

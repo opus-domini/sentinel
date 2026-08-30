@@ -104,6 +104,7 @@ func TestOfficialClientListsSentinelToolsBehindReverseProxy(t *testing.T) {
 	}
 	slices.Sort(got)
 	want := []string{
+		"metrics_list_sensors",
 		"runbook_create",
 		"runbook_delete",
 		"runbook_get",

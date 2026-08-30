@@ -1,9 +1,9 @@
 # MCP Control
 
-Sentinel can expose its tmux and runbook control planes as a Streamable HTTP MCP
-server at `/mcp`. This is intended for agents that need to work inside a remote
-machine's existing tmux sessions or execute its operational runbooks without SSH
-access.
+Sentinel can expose its tmux, runbook, and host sensor control planes as a
+Streamable HTTP MCP server at `/mcp`. This is intended for agents that need to
+work inside a remote machine's existing tmux sessions, execute its operational
+runbooks, or read its hardware sensors without SSH access.
 
 The server uses the official
 [Model Context Protocol Go SDK](https://github.com/modelcontextprotocol/go-sdk)
@@ -131,6 +131,7 @@ uses the same `sentinel-<hostname>` identifier in every client format.
 | `runbook_get_run` | Inspect one execution with bounded trailing step output |
 | `runbook_wait` | Wait for progress, completion, or a human approval boundary |
 | `runbook_list_runs` | List recent executions with bounded trailing step output |
+| `metrics_list_sensors` | Read host temperature, fan, and power sensors with a derived status, filters, and a host summary |
 
 There is deliberately no raw tmux-command tool.
 
@@ -169,8 +170,8 @@ Sessions without lifecycle data are persistent or unmanaged.
 The deadline is renewed after these directed operations succeed:
 `tmux_attach`, `tmux_interact`, `tmux_read`, `tmux_list_windows`, and
 `tmux_list_panes`. A normal `tmux_read` timeout renews; a closed stream or a
-failed operation does not. Global listing, detach, runbook tools, spontaneous
-output, a live process, and human activity do not renew a session.
+failed operation does not. Global listing, detach, runbook and sensor tools,
+spontaneous output, a live process, and human activity do not renew a session.
 
 After 2 hours of inactivity, cleanup enters a 10-minute grace period. New
 successful directed activity during grace reactivates the lease for another 2
@@ -234,6 +235,77 @@ MCP uses the same Runbook Manager as Now, the HTTP API, and the Scheduler.
 Therefore target ownership, immutable receipts, persisted source metadata, and
 the prohibition on agent approval are identical across entry points; MCP does
 not create a parallel execution path.
+
+## Host Sensors
+
+`metrics_list_sensors` reads the hardware sensors from the same host sample
+`GET /api/ops/metrics` serves, and returns them in the same three categories
+with the same field names. It answers "is anything overheating" in one call.
+
+Every sensor carries a derived `status`:
+
+| Status | Meaning |
+| --- | --- |
+| `critical` | The hardware alarm is asserted, or the critical limit is reached |
+| `warning` | The warning limit is reached |
+| `ok` | A usable limit or an alarm bit exists and none of them is met |
+| `unknown` | Measured, but the hardware published nothing to judge it against |
+
+The status is stateless. It is deliberately not the host
+[posture](/features/metrics.md), which applies entry and exit hysteresis and
+keeps at most one temperature, fan, and power signal for the whole machine. A
+status therefore always agrees with the reading printed beside it.
+
+Fans are classified by their alarm bit alone. Minimum and maximum RPM describe
+the tachometer range rather than failure limits, so a fan without an alarm bit
+stays `unknown` at any speed and zero RPM is never reported as a failure. A
+power sensor's `capWatts` is a configured budget and is likewise never a limit.
+
+Filters compose with AND:
+
+| Input | Behavior |
+| --- | --- |
+| `category` | One of `temperature`, `fan`, or `power`; every category when omitted |
+| `status` | Statuses to keep, such as `["warning", "critical"]` or `["unknown"]`; every status when omitted |
+| `match` | Case-insensitive substring matched against sensor `id`, `label`, or `source` |
+| `limit` | Maximum individual sensors per category; defaults to 100 and caps at 250. The `sources` rollup is never truncated |
+
+Sensors are ranked worst status first, then by highest reading, so `limit`
+always keeps the readings worth looking at. `matched` counts everything the
+filters kept, `returned` counts what the response holds, and `truncated`
+reports the difference.
+
+`sources` rolls the matched sensors up by chip, one row per category and
+`source`, and is never truncated. It exists because one population can crowd
+out another: a dual-socket server publishes one `coretemp` reading per physical
+core, so on a 128-core box those 130 readings outrank every NVMe and DIMM
+sensor and would fill the list alone. Each row carries `count`, the worst
+`status`, per-status counts, `lowest`/`average`/`highest`, and `worstId`:
+
+```json
+{"category":"temperature","source":"nvme","count":72,"status":"ok",
+ "lowest":33,"average":41.2,"highest":71,"worstId":"hwmon22:temp1"}
+```
+
+An agent that reads only `sources` therefore still sees every population that
+exists, how big it is, and which member to look at — so a truncated list can
+never be mistaken for the whole machine. Chip names repeat by design: 24 NVMe
+drives roll into one row of 72 sensors, and `worstId` names the drive to read.
+
+`summary` always describes the whole host before any filter, so a narrow query
+still reveals pressure it excluded. `summary.hottest` is the highest
+temperature reading even when it is unclassifiable and ranks last.
+
+Only `id` is unique. Labels and chip names repeat across chips, and `id` is
+opaque: `powercap` identifiers embed colons inside path segments, so it must
+never be parsed.
+
+Hardware sensors are collected on Linux only; `platform` reports the host OS so
+an empty result is never mistaken for a hardware fact. Readings refresh at most
+every 10 seconds, `powercap` power needs two samples before it appears, and
+reading it requires access to `energy_uj`. Sentinel returns the current sample
+only: there is deliberately no sensor history, time range, or causal
+attribution through MCP.
 
 ## Interaction Model
 

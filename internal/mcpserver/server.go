@@ -1,4 +1,4 @@
-// Package mcpserver exposes Sentinel's tmux and runbook control planes over MCP.
+// Package mcpserver exposes Sentinel's tmux, runbook and host sensor control planes over MCP.
 package mcpserver
 
 import (
@@ -25,6 +25,10 @@ type Options struct {
 	RegisterSessionUser   func(string, string)
 	UnregisterSessionUser func(string)
 	Runbooks              *runbook.Manager
+	// Metrics reads one host sample for the sensor tool. *services.Manager
+	// satisfies it. It is an interface so an omitted dependency stays a true
+	// nil and the handler's guard fires.
+	Metrics metricsSource
 }
 
 // Server owns the official MCP handler and tmux attachment manager.
@@ -53,6 +57,7 @@ func New(state availability, guard *security.Guard, opts Options) *Server {
 		registerSessionUser:   opts.RegisterSessionUser,
 		unregisterSessionUser: opts.UnregisterSessionUser,
 		runbooks:              opts.Runbooks,
+		metrics:               opts.Metrics,
 	}
 	version := strings.TrimSpace(opts.Version)
 	if version == "" {
