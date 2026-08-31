@@ -129,9 +129,9 @@ type UseTerminalTmuxResult = {
   statusDetail: string
   termCols: number
   termRows: number
-  setConnection: (next: ConnectionState, detail: string) => void
-  closeCurrentSocket: (reason?: string) => void
-  resetTerminal: () => void
+  setConnection: (next: ConnectionState, detail: string, session?: string) => void
+  closeCurrentSocket: (reason?: string, session?: string) => void
+  resetTerminal: (session?: string) => void
   fitTerminal: () => void
   sendKey: (input: TerminalInput) => boolean
   modifiers: TerminalModifiers
@@ -1190,8 +1190,12 @@ export function useTerminalTmux({
     [cleanupHostResizeObserver, openRuntimeInHost],
   )
 
-  const setConnection = useCallback((next: ConnectionState, detail: string) => {
-    const sessionName = activeSessionRef.current.trim()
+  // The teardown primitives below act on the active runtime unless a caller
+  // names a session. Callers that resume after an await must name the session
+  // they captured, or they tear down whichever session became active meanwhile.
+  const setConnection = useCallback((next: ConnectionState, detail: string, session?: string) => {
+    const activeName = activeSessionRef.current.trim()
+    const sessionName = (session ?? activeName).trim()
     if (sessionName !== '') {
       const runtime = runtimesRef.current.get(sessionName)
       if (runtime) {
@@ -1207,7 +1211,8 @@ export function useTerminalTmux({
       }
     }
 
-    if (!isMountedRef.current) {
+    // The status badge belongs to the visible terminal only.
+    if (!isMountedRef.current || sessionName !== activeName) {
       return
     }
     setConnectionState(next)
@@ -1215,8 +1220,8 @@ export function useTerminalTmux({
   }, [])
 
   const closeCurrentSocket = useCallback(
-    (reason?: string) => {
-      const sessionName = activeSessionRef.current.trim()
+    (reason?: string, session?: string) => {
+      const sessionName = (session ?? activeSessionRef.current).trim()
       if (sessionName === '') {
         return
       }
@@ -1229,23 +1234,31 @@ export function useTerminalTmux({
     [closeRuntimeSocket],
   )
 
-  const resetTerminal = useCallback(() => {
-    const sessionName = activeSessionRef.current.trim()
-    if (sessionName === '') {
-      return
-    }
-    const runtime = runtimesRef.current.get(sessionName)
-    if (!runtime) {
-      return
-    }
-    clearRuntimeWriteQueue(runtime)
-    runtime.terminal.reset()
-    runtime.terminal.clearSelection()
-    selectionModeRef.current = false
-    setSelectionMode(false)
-    setHasSelection(false)
-    resetModifiers()
-  }, [resetModifiers])
+  const resetTerminal = useCallback(
+    (session?: string) => {
+      const activeName = activeSessionRef.current.trim()
+      const sessionName = (session ?? activeName).trim()
+      if (sessionName === '') {
+        return
+      }
+      const runtime = runtimesRef.current.get(sessionName)
+      if (!runtime) {
+        return
+      }
+      clearRuntimeWriteQueue(runtime)
+      runtime.terminal.reset()
+      runtime.terminal.clearSelection()
+      // Selection and modifier state is shared by the visible terminal only.
+      if (sessionName !== activeName) {
+        return
+      }
+      selectionModeRef.current = false
+      setSelectionMode(false)
+      setHasSelection(false)
+      resetModifiers()
+    },
+    [resetModifiers],
+  )
 
   const fitTerminal = useCallback(() => {
     const sessionName = activeSessionRef.current.trim()
