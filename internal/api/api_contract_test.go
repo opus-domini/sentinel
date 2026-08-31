@@ -55,7 +55,6 @@ func TestContractRoutesAreMountedByFeature(t *testing.T) {
 		{name: "tmux-windows", method: http.MethodGet, path: "/api/tmux/sessions/dev/windows"},
 		{name: "tmux-panes", method: http.MethodGet, path: "/api/tmux/sessions/dev/panes"},
 		{name: "tmux-activity-delta", method: http.MethodGet, path: "/api/tmux/activity/delta"},
-		{name: "tmux-activity-stats", method: http.MethodGet, path: "/api/tmux/activity/stats"},
 		{name: "tmux-mark-seen", method: http.MethodPost, path: "/api/tmux/sessions/dev/seen", body: `{"scope":"session"}`},
 
 		{name: "ops-overview", method: http.MethodGet, path: "/api/ops/overview"},
@@ -128,6 +127,9 @@ func TestContractRemovedSettingsRoutesAreNotMounted(t *testing.T) {
 		{name: "locale", method: http.MethodPatch, path: "/api/ops/settings/locale"},
 		{name: "mcp-get", method: http.MethodGet, path: "/api/ops/settings/mcp"},
 		{name: "mcp-patch", method: http.MethodPatch, path: "/api/ops/settings/mcp"},
+		// Removed with the collector telemetry it read: the six runtime keys are
+		// gone, and the endpoint reported counters that survived restarts.
+		{name: "tmux-activity-stats", method: http.MethodGet, path: "/api/tmux/activity/stats"},
 	}
 	for _, tc := range removed {
 		t.Run(tc.name, func(t *testing.T) {
