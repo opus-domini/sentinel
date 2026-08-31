@@ -291,16 +291,10 @@ type UseInspectorOptions = {
   resetTerminal: (session?: string) => void
 }
 
-type PendingWindowCreateOperation = {
-  operationId: string
-  sessionName: string
-  windowIndex: number
-  eventSeen: boolean
-  converged: boolean
-  timeoutId: number | null
-}
-
-type PendingPaneSplitOperation = {
+// Window creation and pane splitting run the same optimistic protocol: record
+// the operation, arm a timeout, mark convergence, settle once both the HTTP
+// reply and the correlated event have landed, or roll back.
+type PendingInspectorOperation = {
   operationId: string
   sessionName: string
   windowIndex: number
@@ -337,8 +331,8 @@ export function useInspector(options: UseInspectorOptions) {
   const pendingCloseWindowsRef = useRef(new Map<string, Set<number>>())
   const pendingClosePanesRef = useRef(new Map<string, Set<string>>())
   const pendingWindowPaneFloorsRef = useRef(new Map<string, Map<number, number>>())
-  const pendingWindowCreateOpsRef = useRef(new Map<string, PendingWindowCreateOperation>())
-  const pendingPaneSplitOpsRef = useRef(new Map<string, PendingPaneSplitOperation>())
+  const pendingWindowCreateOpsRef = useRef(new Map<string, PendingInspectorOperation>())
+  const pendingPaneSplitOpsRef = useRef(new Map<string, PendingInspectorOperation>())
   const pendingSelectMutationKindRef = useRef<'window' | 'pane' | null>(null)
   const inspectorAbortRef = useRef<AbortController | null>(null)
   const refreshInspectorFnRef = useRef<
@@ -482,12 +476,7 @@ export function useInspector(options: UseInspectorOptions) {
   }, [])
 
   const clearInspectorCreateTimeout = useCallback(
-    (
-      operations:
-        | Map<string, PendingWindowCreateOperation>
-        | Map<string, PendingPaneSplitOperation>,
-      operationId: string,
-    ) => {
+    (operations: Map<string, PendingInspectorOperation>, operationId: string) => {
       const operation = operations.get(operationId)
       if (!operation || operation.timeoutId === null) {
         return
@@ -1816,15 +1805,10 @@ export function useInspector(options: UseInspectorOptions) {
     setRenamePaneDialogOpen,
     setRenamePaneTarget,
     setRenamePaneValue,
-    setWindows,
-    setPanes,
     setActiveWindowIndexOverride,
     setActivePaneIDOverride,
-    setInspectorError,
-    setInspectorLoading,
     applySessionActivityPatches,
     applyInspectorProjectionPatches,
-    mergeInspectorSnapshotWithPending,
     clearPendingInspectorSessionState,
   }
 }

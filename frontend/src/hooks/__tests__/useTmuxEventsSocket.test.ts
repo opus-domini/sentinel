@@ -137,7 +137,6 @@ function makeOptions(overrides?: Partial<Options>): Options {
     api: vi.fn(() => Promise.resolve(defaultDeltaResponse())) as unknown as ApiFunction,
     authenticated: true,
     tokenRequired: false,
-    setToken: vi.fn(),
     presenceSocketRef: makeRef<WebSocket | null>(null) as PresenceSocketRef,
     tabsStateRef: makeRef({
       openTabs: ['main'],
@@ -150,7 +149,6 @@ function makeOptions(overrides?: Partial<Options>): Options {
     sendPresenceOverWS: vi.fn(() => true),
     refreshSessions: vi.fn(() => Promise.resolve()),
     refreshInspector: makeRefreshInspectorMock(),
-    pushErrorToast: vi.fn(),
     applySessionActivityPatches: vi.fn(() => NO_PATCHES),
     applyInspectorProjectionPatches: vi.fn(() => false),
     settlePendingSeenAcks: vi.fn(),
@@ -733,33 +731,6 @@ describe('useTmuxEventsSocket', () => {
       expect(inspectorCallsAfterOpen).toHaveLength(0)
     })
 
-    it('handles tmux.auth.expired: clears token and closes socket', () => {
-      const setToken = vi.fn()
-      const settlePendingSeenAcks = vi.fn()
-      const opts = makeOptions({
-        setToken,
-        tokenRequired: true,
-        settlePendingSeenAcks,
-      })
-      renderEventsHook(opts)
-
-      const socket = lastSocket()
-      act(() => {
-        socket.emitOpen()
-      })
-
-      act(() => {
-        socket.emitMessage({
-          type: 'tmux.auth.expired',
-          eventId: 1,
-        })
-      })
-
-      expect(setToken).toHaveBeenCalledWith('')
-      expect(settlePendingSeenAcks).toHaveBeenCalledWith(false)
-      expect(socket.closed).toBe(true)
-    })
-
     it('handles tmux.seen.ack and resolves waiter', () => {
       const waiterCallback = vi.fn()
       const seenAckWaitersRef = makeRef(new Map([['req-1', waiterCallback]]))
@@ -796,18 +767,11 @@ describe('useTmuxEventsSocket', () => {
     })
 
     it('discards stale positive event ids before side effects', () => {
-      const pushErrorToast = vi.fn()
       const applySessionActivityPatches = vi.fn(() => NO_PATCHES)
       const applyInspectorProjectionPatches = vi.fn(() => false)
-      const setToken = vi.fn()
-      const settlePendingSeenAcks = vi.fn()
       const opts = makeOptions({
-        pushErrorToast,
         applySessionActivityPatches,
         applyInspectorProjectionPatches,
-        setToken,
-        settlePendingSeenAcks,
-        tokenRequired: true,
       })
       renderEventsHook(opts)
 
@@ -816,33 +780,30 @@ describe('useTmuxEventsSocket', () => {
       })
 
       act(() => {
-        lastSocket().emitMessage({ type: 'tmux.auth.expired', eventId: 2 })
+        lastSocket().emitMessage({ type: 'tmux.activity.updated', eventId: 2 })
       })
-      expect(setToken).toHaveBeenCalledWith('')
-      setToken.mockClear()
-      settlePendingSeenAcks.mockClear()
+      expect(applySessionActivityPatches).toHaveBeenCalledTimes(1)
+      applySessionActivityPatches.mockClear()
+      applyInspectorProjectionPatches.mockClear()
 
       act(() => {
         lastSocket().emitMessage({
-          type: 'tmux.auth.expired',
+          type: 'tmux.activity.updated',
           eventId: 2,
         })
         lastSocket().emitMessage({
-          type: 'tmux.auth.expired',
+          type: 'tmux.activity.updated',
           eventId: 1,
         })
       })
 
-      expect(pushErrorToast).not.toHaveBeenCalled()
-      expect(setToken).not.toHaveBeenCalled()
-      expect(settlePendingSeenAcks).not.toHaveBeenCalledWith(false)
       expect(applySessionActivityPatches).not.toHaveBeenCalled()
       expect(applyInspectorProjectionPatches).not.toHaveBeenCalled()
     })
 
     it('resets event-id ordering for a new socket stream and ignores stale sockets', () => {
-      const setToken = vi.fn()
-      const opts = makeOptions({ setToken, tokenRequired: true })
+      const applySessionActivityPatches = vi.fn(() => NO_PATCHES)
+      const opts = makeOptions({ applySessionActivityPatches })
       const { result } = renderEventsHook(opts)
 
       act(() => {
@@ -852,12 +813,12 @@ describe('useTmuxEventsSocket', () => {
 
       act(() => {
         firstSocket.emitMessage({
-          type: 'tmux.auth.expired',
+          type: 'tmux.activity.updated',
           eventId: 100,
         })
       })
-      expect(setToken).toHaveBeenCalledWith('')
-      setToken.mockClear()
+      expect(applySessionActivityPatches).toHaveBeenCalledTimes(1)
+      applySessionActivityPatches.mockClear()
 
       act(() => {
         result.current.forceReconnect()
@@ -868,24 +829,23 @@ describe('useTmuxEventsSocket', () => {
       act(() => {
         secondSocket.emitOpen()
         secondSocket.emitMessage({
-          type: 'tmux.auth.expired',
+          type: 'tmux.activity.updated',
           eventId: 1,
         })
         firstSocket.emitMessage({
-          type: 'tmux.auth.expired',
+          type: 'tmux.activity.updated',
           eventId: 101,
         })
       })
 
-      expect(setToken).toHaveBeenCalledTimes(1)
-      expect(setToken).toHaveBeenCalledWith('')
+      expect(applySessionActivityPatches).toHaveBeenCalledTimes(1)
     })
 
     it('ignores stale socket close events after reconnecting', async () => {
       vi.useFakeTimers()
       vi.spyOn(Math, 'random').mockReturnValue(0)
-      const setToken = vi.fn()
-      const opts = makeOptions({ setToken, tokenRequired: true })
+      const applySessionActivityPatches = vi.fn(() => NO_PATCHES)
+      const opts = makeOptions({ applySessionActivityPatches })
       renderEventsHook(opts)
 
       act(() => {
@@ -904,19 +864,23 @@ describe('useTmuxEventsSocket', () => {
 
       act(() => {
         secondSocket.emitOpen()
+      })
+      applySessionActivityPatches.mockClear()
+
+      act(() => {
         firstSocket.emitClose()
         secondSocket.emitMessage({
-          type: 'tmux.auth.expired',
+          type: 'tmux.activity.updated',
           eventId: 1,
         })
       })
 
-      expect(setToken).toHaveBeenCalledWith('')
+      expect(applySessionActivityPatches).toHaveBeenCalledTimes(1)
     })
 
     it('keeps processing messages without event ids', () => {
-      const setToken = vi.fn()
-      const opts = makeOptions({ setToken, tokenRequired: true })
+      const applySessionActivityPatches = vi.fn(() => NO_PATCHES)
+      const opts = makeOptions({ applySessionActivityPatches })
       renderEventsHook(opts)
 
       act(() => {
@@ -925,11 +889,11 @@ describe('useTmuxEventsSocket', () => {
 
       act(() => {
         lastSocket().emitMessage({
-          type: 'tmux.auth.expired',
+          type: 'tmux.activity.updated',
         })
       })
 
-      expect(setToken).toHaveBeenCalledWith('')
+      expect(applySessionActivityPatches).toHaveBeenCalledTimes(1)
     })
 
     it('ignores non-string WebSocket messages', () => {

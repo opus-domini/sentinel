@@ -1,6 +1,7 @@
 import type { SettingsPatch, SettingsResponse } from '@/api/settings'
 import type { ApiError } from '@/hooks/useTmuxApi'
 import type { SecretIntent } from './SecretSettingControl'
+import { readSettingsIssues } from './settingsIssues'
 
 export type IntegrationsDraft = {
   mcpEnabled: boolean
@@ -98,19 +99,11 @@ export function integrationsPatchFromChanges(
 }
 
 export function integrationsErrorsFromAPI(error: ApiError): IntegrationsDraftErrors {
-  const issues = readIssues(error.details)
+  const issues = readSettingsIssues(error.details)
   const result: IntegrationsDraftErrors = {}
   for (const issue of issues) {
     if (issue.includes('health_report.schedule')) result.schedule = issue
     if (issue.includes('health_report.webhook_url')) result.webhook = issue
   }
   return result
-}
-
-function readIssues(details: unknown): Array<string> {
-  if (details == null || typeof details !== 'object' || !('issues' in details)) return []
-  const issues = (details as { issues?: unknown }).issues
-  return Array.isArray(issues)
-    ? issues.filter((issue): issue is string => typeof issue === 'string')
-    : []
 }

@@ -1,5 +1,6 @@
 import type { SettingsPatch, SettingsResponse } from '@/api/settings'
 import type { ApiError } from '@/hooks/useTmuxApi'
+import { readSettingsIssues } from './settingsIssues'
 
 export type AccountsDraft = {
   allowedUsers: Array<string>
@@ -103,11 +104,7 @@ export function accountsPatchFromChanges(
 }
 
 export function accountsErrorsFromAPI(error: ApiError): AccountsDraftErrors {
-  const details = error.details as { issues?: unknown } | undefined
-  const issues = Array.isArray(details?.issues)
-    ? details.issues.filter((issue): issue is string => typeof issue === 'string')
-    : []
-  const joined = issues.join(' ')
+  const joined = readSettingsIssues(error.details).join(' ')
   return {
     ...(joined.includes('multi_user.allowed_users') ? { allowedUsers: joined } : {}),
     ...(joined.includes('multi_user.allow_root_target') ? { allowRootTarget: joined } : {}),

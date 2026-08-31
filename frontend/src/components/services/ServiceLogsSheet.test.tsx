@@ -179,6 +179,32 @@ describe('ServiceLogsSheet', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
   })
 
+  it('drains buffered lines through the timeout fallback when no frame arrives', async () => {
+    const { api, spy } = createAPI()
+
+    renderSheet({ api })
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+    const streamOptions = await waitFor(() => {
+      const enabledCall = useLogStreamMock.mock.calls.find((call) => call[0].enabled)
+      if (!enabledCall) throw new Error('stream not enabled')
+      return enabledCall[0]
+    })
+
+    rafCallbacks.length = 0
+    vi.mocked(window.requestAnimationFrame).mockClear()
+
+    act(() => {
+      streamOptions.onLine('background-line')
+    })
+
+    // requestAnimationFrame is stubbed to collect callbacks and never run them,
+    // which is what a hidden tab does. The paired timeout has to drain instead.
+    expect(screen.queryByText('background-line')).toBeNull()
+    expect(await screen.findByText('background-line')).toBeTruthy()
+    expect(rafCallbacks).toHaveLength(1)
+  })
+
   it('batches streamed lines into a single animation-frame flush', async () => {
     const { api, spy } = createAPI()
 

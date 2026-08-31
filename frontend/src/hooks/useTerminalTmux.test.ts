@@ -83,16 +83,6 @@ vi.mock('@xterm/addon-fit', () => ({
     dispose() {}
   },
 }))
-vi.mock('@xterm/addon-search', () => ({
-  SearchAddon: class {
-    dispose() {}
-  },
-}))
-vi.mock('@xterm/addon-serialize', () => ({
-  SerializeAddon: class {
-    dispose() {}
-  },
-}))
 vi.mock('@xterm/addon-web-links', () => ({
   WebLinksAddon: class {
     dispose() {}
@@ -381,6 +371,28 @@ describe('useTerminalTmux – shared input boundary', () => {
     expect(accepted).toBe(true)
     expect(Array.from(socket.send.mock.calls[0][0] as Uint8Array)).toEqual([3])
     expect(result.current.modifiers.ctrl).toBe('off')
+  })
+
+  it('slices a paste larger than the server frame cap into several sends', () => {
+    const { result } = renderTerminalHook()
+    const socket = connectSession()
+
+    // 100 KiB of ASCII: one frame over the server's 64 KiB inbound cap, which
+    // would close the socket rather than reject just the paste.
+    const paste = 'a'.repeat(100 * 1024)
+
+    let accepted = false
+    act(() => {
+      accepted = result.current.sendKey(paste)
+    })
+
+    expect(accepted).toBe(true)
+    const sent = socket.send.mock.calls.map((call) => call[0] as Uint8Array)
+    expect(sent.length).toBeGreaterThan(1)
+    for (const chunk of sent) {
+      expect(chunk.byteLength).toBeLessThanOrEqual(64 * 1024)
+    }
+    expect(sent.reduce((total, chunk) => total + chunk.byteLength, 0)).toBe(paste.length)
   })
 
   it('preserves sticky modifiers when the socket rejects input', () => {
@@ -1492,7 +1504,7 @@ describe('useTerminalTmux – terminal chrome', () => {
 
   it('does not load a WebGL renderer addon', () => {
     renderTerminalHook()
-    expect(latestTerminal()?.loadAddon).toHaveBeenCalledTimes(6)
+    expect(latestTerminal()?.loadAddon).toHaveBeenCalledTimes(4)
   })
 
   it('assigns a name to the hidden terminal textarea', async () => {
@@ -1560,8 +1572,8 @@ describe('useTerminalTmux – resize traffic', () => {
     ws.send.mockClear()
     terminal?.refresh.mockClear()
     act(() => {
-      result.current.fitTerminal()
-      result.current.fitTerminal()
+      window.dispatchEvent(new Event('resize'))
+      window.dispatchEvent(new Event('resize'))
     })
 
     expect(ws.send).not.toHaveBeenCalled()
@@ -1572,7 +1584,7 @@ describe('useTerminalTmux – resize traffic', () => {
       terminal.rows = 30
     }
     act(() => {
-      result.current.fitTerminal()
+      window.dispatchEvent(new Event('resize'))
     })
 
     expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'resize', cols: 100, rows: 30 }))

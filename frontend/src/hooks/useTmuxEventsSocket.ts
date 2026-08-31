@@ -19,7 +19,6 @@ type UseTmuxEventsSocketOptions = {
   api: ApiFunction
   authenticated: boolean
   tokenRequired: boolean
-  setToken: (token: string) => void
   presenceSocketRef: PresenceSocketRef
   tabsStateRef: TabsStateRef
   eventsSocketConnectedRef: React.MutableRefObject<boolean>
@@ -31,7 +30,6 @@ type UseTmuxEventsSocketOptions = {
     target: string,
     options?: { background?: boolean; force?: boolean },
   ) => Promise<void>
-  pushErrorToast: (title: string, message: string) => void
   applySessionActivityPatches: (
     rawPatches: Array<SessionActivityPatch> | undefined,
   ) => SessionPatchApplyResult
@@ -48,7 +46,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     api,
     authenticated,
     tokenRequired,
-    setToken,
     presenceSocketRef,
     tabsStateRef,
     eventsSocketConnectedRef,
@@ -57,7 +54,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     sendPresenceOverWS,
     refreshSessions,
     refreshInspector,
-    pushErrorToast,
     applySessionActivityPatches,
     applyInspectorProjectionPatches,
     settlePendingSeenAcks,
@@ -427,14 +423,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
               }
               break
             }
-            case 'tmux.auth.expired': {
-              settlePendingSeenAcks(false)
-              if (tokenRequired) {
-                setToken('')
-              }
-              socket?.close()
-              break
-            }
             default:
               break
           }
@@ -501,7 +489,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     applySessionActivityPatches,
     lastSessionsRefreshAtRef,
     presenceSocketRef,
-    pushErrorToast,
     reconnectEpoch,
     refreshInspector,
     refreshSessions,
@@ -510,7 +497,6 @@ export function useTmuxEventsSocket(options: UseTmuxEventsSocketOptions) {
     sendPresenceOverWS,
     handleTmuxInspectorEvent,
     handleTmuxSessionsEvent,
-    setToken,
     settlePendingSeenAcks,
     syncActivityDelta,
     tabsStateRef,

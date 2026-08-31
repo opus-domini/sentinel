@@ -81,7 +81,7 @@ export type TmuxLauncher = {
   cwdMode: LauncherCwdMode
   cwdValue: string
   windowName: string
-  userMode?: string
+  userMode: LauncherUserMode
   userValue?: string
   sortOrder?: number
   createdAt: string
@@ -686,14 +686,22 @@ export type WebhookTestResponse = {
   message: string
 }
 
+// Every event type carried by /ws/events that ships a JSON object payload.
+// `ops.services.updated` is emitted both with and without the full service
+// list: the action, register and unregister emitters send only the changed
+// service, so consumers must handle `services` being absent.
 export type OpsWsMessage =
+  | { type: 'events.ready'; payload: Record<string, unknown> }
   | { type: 'ops.overview.updated'; payload: { overview: OpsOverview } }
   | {
       type: 'ops.services.updated'
-      payload: { services: Array<OpsServiceStatus> }
+      payload: { services?: Array<OpsServiceStatus> }
     }
   | { type: 'ops.metrics.updated'; payload: OpsMetricsResponse }
   | { type: 'ops.posture.updated'; payload: { posture: MetricPosture } }
   | { type: 'ops.runbooks.updated'; payload: Record<string, unknown> }
   | { type: 'ops.job.updated'; payload: { job: OpsRunbookRun } }
   | { type: 'ops.schedule.updated'; payload: Record<string, unknown> }
+  | { type: 'tmux.sessions.updated'; payload: Record<string, unknown> }
+  | { type: 'tmux.inspector.updated'; payload: Record<string, unknown> }
+  | { type: 'tmux.activity.updated'; payload: Record<string, unknown> }

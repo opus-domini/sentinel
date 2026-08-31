@@ -950,6 +950,50 @@ describe('useInspector – optimistic createWindow', () => {
 
     expect(opts.refreshSessions).toHaveBeenCalledTimes(1)
   })
+
+  it('rolls back the optimistic window and reports the failure when the create fails', async () => {
+    const apiMock = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [
+            makeWindow({ index: 0, active: true }),
+            makeWindow({ index: 1, name: 'alt', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({ windowIndex: 0, paneId: '%1', active: true }),
+            makePane({ windowIndex: 1, paneId: '%2', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/new-window')) {
+        return Promise.reject(new Error('tmux refused the new window'))
+      }
+      return Promise.resolve(undefined)
+    })
+    const api = apiMock as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(2)
+    })
+
+    await act(async () => {
+      await result.current.createWindow()
+    })
+
+    expect(opts.pushErrorToast).toHaveBeenCalledWith('New Window', 'tmux refused the new window')
+    expect(opts.refreshSessions).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(result.current.windows.some((windowInfo) => windowInfo.index === 2)).toBe(false)
+    })
+  })
 })
 
 describe('useInspector – splitPane', () => {
@@ -1499,5 +1543,53 @@ describe('useInspector – closePane', () => {
     expect(opts.closeCurrentSocket).not.toHaveBeenCalled()
     expect(opts.resetTerminal).not.toHaveBeenCalled()
     expect(opts.dispatchTabs).not.toHaveBeenCalledWith({ type: 'close', session: 'dev' })
+  })
+})
+
+describe('useInspector – splitPane rollback', () => {
+  it('rolls back the optimistic pane and reports the failure when the split fails', async () => {
+    const apiMock = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({
+          windows: [
+            makeWindow({ index: 0, active: true }),
+            makeWindow({ index: 1, name: 'alt', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [
+            makePane({ windowIndex: 0, paneId: '%1', active: true }),
+            makePane({ windowIndex: 1, paneId: '%2', active: false }),
+          ],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/split-pane')) {
+        return Promise.reject(new Error('tmux refused the split'))
+      }
+      return Promise.resolve(undefined)
+    })
+    const api = apiMock as unknown as ApiFunction
+
+    const opts = createMockOptions({ api })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.panes.length).toBe(2)
+    })
+
+    await act(async () => {
+      await result.current.splitPane('vertical')
+    })
+
+    expect(opts.pushErrorToast).toHaveBeenCalledWith('Split Pane', 'tmux refused the split')
+    expect(opts.refreshSessions).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(
+        result.current.panes.some((paneInfo) => paneInfo.paneId.startsWith('__pending_split__')),
+      ).toBe(false)
+    })
   })
 })

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
-import { SearchAddon } from '@xterm/addon-search'
-import { SerializeAddon } from '@xterm/addon-serialize'
 import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal } from '@xterm/xterm'
@@ -38,6 +36,10 @@ const TERMINAL_WRITE_BATCH_MAX_BYTES = 1_048_576
 const TERMINAL_WRITE_FLUSH_FALLBACK_MS = 50
 const TERMINAL_WRITE_IN_FLIGHT_TIMEOUT_MS = 5_000
 const TERMINAL_WRITE_QUEUE_MAX_BYTES = 16 * 1_048_576
+// internal/ws caps an inbound frame payload at 64 KiB and closes the socket on
+// anything larger, so a paste is sliced below that instead of taking the tmux
+// attach down with it.
+const TERMINAL_INPUT_FRAME_MAX_BYTES = 32 * 1024
 const SELECTION_CLIPBOARD_DEBOUNCE_MS = 120
 const TERMINAL_FONT_FAMILY = [
   'JetBrains Mono Variable',
@@ -132,12 +134,10 @@ type UseTerminalTmuxResult = {
   setConnection: (next: ConnectionState, detail: string, session?: string) => void
   closeCurrentSocket: (reason?: string, session?: string) => void
   resetTerminal: (session?: string) => void
-  fitTerminal: () => void
   sendKey: (input: TerminalInput) => boolean
   modifiers: TerminalModifiers
   toggleModifier: (modifier: ModifierName) => void
   lockModifier: (modifier: ModifierName) => void
-  resetModifiers: () => void
   selectionMode: boolean
   hasSelection: boolean
   enterSelectionMode: () => void
@@ -320,7 +320,14 @@ export function useTerminalTmux({
       }
 
       try {
-        socket.send(runtime.encoder.encode(transformed.data))
+        const payload = runtime.encoder.encode(transformed.data)
+        for (
+          let offset = 0;
+          offset < payload.byteLength;
+          offset += TERMINAL_INPUT_FRAME_MAX_BYTES
+        ) {
+          socket.send(payload.subarray(offset, offset + TERMINAL_INPUT_FRAME_MAX_BYTES))
+        }
       } catch {
         return false
       }
@@ -982,8 +989,6 @@ export function useTerminalTmux({
 
       const fitAddon = new FitAddon()
       const clipboardAddon = new ClipboardAddon(undefined, createWebClipboardProvider())
-      const searchAddon = new SearchAddon({ highlightLimit: 2_000 })
-      const serializeAddon = new SerializeAddon()
       const webLinksAddon = new WebLinksAddon((event, uri) => {
         event.preventDefault()
         window.open(uri, '_blank', 'noopener,noreferrer')
@@ -996,8 +1001,6 @@ export function useTerminalTmux({
 
       terminal.loadAddon(fitAddon)
       terminal.loadAddon(clipboardAddon)
-      terminal.loadAddon(searchAddon)
-      terminal.loadAddon(serializeAddon)
       terminal.loadAddon(webLinksAddon)
       terminal.loadAddon(unicodeGraphemesAddon)
       terminal.unicode.activeVersion = '15-graphemes'
@@ -1687,12 +1690,10 @@ export function useTerminalTmux({
     setConnection,
     closeCurrentSocket,
     resetTerminal,
-    fitTerminal,
     sendKey,
     modifiers,
     toggleModifier,
     lockModifier,
-    resetModifiers,
     selectionMode,
     hasSelection,
     enterSelectionMode,

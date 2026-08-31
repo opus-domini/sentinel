@@ -1,6 +1,5 @@
 import type { MutableRefObject } from 'react'
 import type { PaneInfo, Session, WindowInfo } from '@/types'
-import type { MergePendingInspectorResult } from '@/lib/tmuxInspectorOptimistic'
 import type { SessionActivityPatch, SessionPatchApplyResult } from '@/lib/tmuxSessionEvents'
 import type { TabsAction, TabsState } from '@/tabsReducer'
 
@@ -189,17 +188,8 @@ export type InspectorActions = {
     rawPatches: Array<SessionActivityPatch> | undefined,
   ) => SessionPatchApplyResult
   applyInspectorProjectionPatches: (rawPatches: Array<InspectorSessionPatch> | undefined) => boolean
-  setWindows: React.Dispatch<React.SetStateAction<Array<WindowInfo>>>
-  setPanes: React.Dispatch<React.SetStateAction<Array<PaneInfo>>>
   setActiveWindowIndexOverride: (index: number | null) => void
   setActivePaneIDOverride: (id: string | null) => void
-  setInspectorError: (error: string) => void
-  setInspectorLoading: (loading: boolean) => void
-  mergeInspectorSnapshotWithPending: (
-    session: string,
-    sourceWindows: Array<WindowInfo>,
-    sourcePanes: Array<PaneInfo>,
-  ) => MergePendingInspectorResult
   clearPendingInspectorSessionState: (session: string) => void
 }
 

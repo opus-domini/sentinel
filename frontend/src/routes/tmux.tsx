@@ -127,7 +127,7 @@ function TmuxPage() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   const { tokenRequired, defaultCwd, hostname } = useMetaContext()
-  const { authenticated, setToken } = useTokenContext()
+  const { authenticated } = useTokenContext()
   const { pushToast } = useToastContext()
   const layout = useLayoutContext()
   const queryClient = useQueryClient()
@@ -804,7 +804,6 @@ function TmuxPage() {
     api,
     authenticated,
     tokenRequired,
-    setToken,
     presenceSocketRef,
     tabsStateRef,
     eventsSocketConnectedRef,
@@ -813,7 +812,6 @@ function TmuxPage() {
     sendPresenceOverWS: presence.sendPresenceOverWS,
     refreshSessions: sessionCRUD.refreshSessions,
     refreshInspector: inspector.refreshInspector,
-    pushErrorToast,
     applySessionActivityPatches: inspector.applySessionActivityPatches,
     applyInspectorProjectionPatches: inspector.applyInspectorProjectionPatches,
     settlePendingSeenAcks: seen.settlePendingSeenAcks,

@@ -1,6 +1,7 @@
 import type { SettingsPatch, SettingsResponse } from '@/api/settings'
 import type { ApiError } from '@/hooks/useTmuxApi'
 import type { SecretIntent } from './SecretSettingControl'
+import { readSettingsIssues } from './settingsIssues'
 
 export type AccessDraft = {
   host: string
@@ -201,7 +202,7 @@ export function accessPatchFromChanges(
 }
 
 export function accessErrorsFromAPI(error: ApiError): AccessDraftErrors {
-  const issues = readIssues(error.details)
+  const issues = readSettingsIssues(error.details)
   const result: AccessDraftErrors = {}
   for (const issue of issues) {
     if (issue.includes('server.host') || issue.includes('listener preflight')) result.host = issue
@@ -286,12 +287,4 @@ function validateOrigin(value: string): string {
   } catch {
     return `${value} must be an absolute HTTP(S) origin.`
   }
-}
-
-function readIssues(details: unknown): Array<string> {
-  if (details == null || typeof details !== 'object' || !('issues' in details)) return []
-  const issues = (details as { issues?: unknown }).issues
-  return Array.isArray(issues)
-    ? issues.filter((issue): issue is string => typeof issue === 'string')
-    : []
 }

@@ -58,6 +58,24 @@ describe('useShellLayout', () => {
     expect(onResizeEnd).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps a stable value identity across renders that change nothing', () => {
+    const onResizeEnd = vi.fn()
+    const { result, rerender } = renderLayout(onResizeEnd)
+
+    const first = result.current
+    rerender()
+    expect(result.current).toBe(first)
+
+    act(() => {
+      result.current.resizeSidebarTo(300)
+    })
+    expect(result.current).not.toBe(first)
+
+    const second = result.current
+    rerender()
+    expect(result.current).toBe(second)
+  })
+
   it('toggles the sidebar collapsed state with Ctrl+\\', () => {
     const { result } = renderLayout()
 

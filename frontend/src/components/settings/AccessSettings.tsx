@@ -42,6 +42,7 @@ import {
   SettingsField,
   ValidationError,
 } from './SettingsField'
+import SettingsGroup from './SettingsGroup'
 import SettingsSectionHeader from './SettingsSectionHeader'
 import type { SettingsResponse, StringListSetting } from '@/api/settings'
 import {
@@ -302,7 +303,7 @@ export default function AccessSettings() {
         onRestartComplete={() => setFeedback(idleFeedback)}
       />
 
-      <AccessGroup
+      <SettingsGroup
         title="Listener"
         description="The candidate is bind-checked before persistence. Wildcard listeners reconnect through this browser's hostname."
         icon={<Network className="size-4" aria-hidden="true" />}
@@ -380,9 +381,9 @@ export default function AccessSettings() {
           )}
           <ValidationError message={errors.reconnectOrigin ?? ''} />
         </div>
-      </AccessGroup>
+      </SettingsGroup>
 
-      <AccessGroup
+      <SettingsGroup
         title="Authentication"
         description="One shared operator token protects the SPA, API, WebSockets, and MCP."
         icon={<KeyRound className="size-4" aria-hidden="true" />}
@@ -410,9 +411,9 @@ export default function AccessSettings() {
               : 'authentication disabled'}
           </p>
         </SettingsField>
-      </AccessGroup>
+      </SettingsGroup>
 
-      <AccessGroup
+      <SettingsGroup
         title="Origins"
         description="Explicit browser origins accepted in addition to the listener's own same-origin requests."
         icon={<Globe2 className="size-4" aria-hidden="true" />}
@@ -435,9 +436,9 @@ export default function AccessSettings() {
           <EnvironmentOwnership setting={access.origins.allowed} />
           <ListSettingSummary setting={access.origins.allowed} />
         </SettingsField>
-      </AccessGroup>
+      </SettingsGroup>
 
-      <AccessGroup
+      <SettingsGroup
         title="Trusted proxies"
         description="Only direct peers in this list may supply HTTPS forwarding metadata; loopback peers are trusted automatically."
         icon={<Router className="size-4" aria-hidden="true" />}
@@ -460,9 +461,9 @@ export default function AccessSettings() {
           <EnvironmentOwnership setting={access.proxies.trusted} />
           <ListSettingSummary setting={access.proxies.trusted} />
         </SettingsField>
-      </AccessGroup>
+      </SettingsGroup>
 
-      <AccessGroup
+      <SettingsGroup
         title="Cookies"
         description="Control when the HttpOnly authentication cookie is marked Secure."
         icon={<Cookie className="size-4" aria-hidden="true" />}
@@ -538,7 +539,7 @@ export default function AccessSettings() {
             <SettingValueSummary setting={access.cookies.allowInsecure} />
           </SettingsField>
         </div>
-      </AccessGroup>
+      </SettingsGroup>
 
       <RecoveryPanel recovery={access.recovery} />
 
@@ -770,7 +771,7 @@ function StringListEditor({
 
 function RecoveryPanel({ recovery }: { recovery: SettingsResponse['access']['recovery'] }) {
   return (
-    <AccessGroup
+    <SettingsGroup
       title="Manual recovery"
       description="Sentinel never rolls back automatically. Keep these commands reachable before changing access or restarting the managed service."
       icon={<LifeBuoy className="size-4" aria-hidden="true" />}
@@ -799,7 +800,7 @@ function RecoveryPanel({ recovery }: { recovery: SettingsResponse['access']['rec
           </div>
         </dl>
       </div>
-    </AccessGroup>
+    </SettingsGroup>
   )
 }
 
@@ -881,31 +882,6 @@ function ListSettingSummary({ setting }: { setting: StringListSetting }) {
         <dd className="mt-0.5 break-words font-mono text-secondary-foreground">{persisted}</dd>
       </div>
     </dl>
-  )
-}
-
-function AccessGroup({
-  title,
-  description,
-  icon,
-  children,
-}: {
-  title: string
-  description: string
-  icon: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <section className="grid gap-3">
-      <div className="flex items-start gap-2 px-1">
-        <span className="mt-0.5 text-primary">{icon}</span>
-        <div>
-          <h2 className="text-[12px] font-medium">{title}</h2>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      <div className="grid gap-3">{children}</div>
-    </section>
   )
 }
 
