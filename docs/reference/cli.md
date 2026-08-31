@@ -183,9 +183,10 @@ Flags:
 - `--disable`: disable auto-start.
 - `--stop`: stop service.
 - `--remove-unit`: remove managed unit/plist.
-- `--purge`: also remove the autoupdate timer, the bash completion and the
-  deployment binary. The binary is retained if another deployment uses it.
-  Runtime data is left intact.
+- `--purge`: also remove the autoupdate timer, the installed shell completion
+  scripts (bash, zsh and fish, plus the system bash path) and the deployment
+  binary. The binary is retained if another deployment uses it. Runtime data is
+  left intact.
 
 `--purge` is the full teardown — it is what `make uninstall` runs.
 
@@ -332,23 +333,32 @@ sentinel update status --scope auto|user|system
 
 ## `sentinel completion`
 
-Print a shell completion script to stdout.
+Install the shell completion scripts, or print one to stdout.
 
 ```bash
+sentinel completion install --shell auto|bash|zsh|fish|all
 sentinel completion <bash|zsh|fish>
 ```
 
-`make install` and `install.sh` install the bash completion automatically.
-To install it manually:
+`sentinel completion install` is the supported path — it is what `install.sh`
+(and therefore `make install`) runs. With `--shell auto` (the default) it
+detects the invoking shell and writes:
+
+| Shell | Path |
+| --- | --- |
+| bash | `~/.local/share/bash-completion/completions/sentinel` |
+| zsh | `~/.local/share/zsh/site-functions/_sentinel` |
+| fish | `${XDG_CONFIG_HOME:-~/.config}/fish/completions/sentinel.fish` |
+
+`service uninstall --purge` removes exactly these paths, so installing
+elsewhere by hand leaves files behind. For zsh, make sure
+`~/.local/share/zsh/site-functions` is on `$fpath`.
+
+To write a script somewhere else, print it and redirect:
 
 ```bash
-# bash
 sentinel completion bash > ~/.local/share/bash-completion/completions/sentinel
-
-# zsh (ensure the directory is on $fpath)
 sentinel completion zsh > "${fpath[1]}/_sentinel"
-
-# fish
 sentinel completion fish > ~/.config/fish/completions/sentinel.fish
 ```
 
