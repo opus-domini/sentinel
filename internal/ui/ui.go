@@ -180,6 +180,16 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	if h.sessionUserLookup != nil {
 		targetUser = h.sessionUserLookup(session)
 	}
+	// The registry is persisted state; revalidate it before it becomes a PTY
+	// running as that account.
+	if targetUser != "" {
+		if err := h.guard.ValidateTargetUser(targetUser); err != nil {
+			slog.Warn("attach rejected by target-user policy",
+				keySession, session, "target_user", targetUser, "err", err)
+			http.Error(w, "target user not allowed", http.StatusForbidden)
+			return
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	var exists bool
@@ -707,8 +717,8 @@ func (h *Handler) attachPTY(wsConn *ws.Conn, opts attachPTYOptions) {
 	if !ok {
 		return
 	}
-	defer func() { _ = pty.Close() }()
 
+	// attachShutdown owns the PTY teardown; it is the single close path.
 	shutdown := attachShutdown(cancelAttach, pty, wsConn, opts.label)
 	defer shutdown("connection closed")
 

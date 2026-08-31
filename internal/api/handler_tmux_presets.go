@@ -36,6 +36,10 @@ func (h *Handler) createSessionPreset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
+	if err := h.guard.ValidateTargetUser(row.User); err != nil {
+		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -62,6 +66,10 @@ func (h *Handler) updateSessionPreset(w http.ResponseWriter, r *http.Request) {
 	row, err := decodeSessionPresetWrite(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	if err := h.guard.ValidateTargetUser(row.User); err != nil {
+		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
 		return
 	}
 

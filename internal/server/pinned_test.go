@@ -152,7 +152,7 @@ func TestRestorePinnedSessions(t *testing.T) {
 			},
 		}
 
-		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm })
+		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm }, nil)
 		if err != nil {
 			t.Fatalf("restorePinnedSessions() error = %v", err)
 		}
@@ -189,7 +189,7 @@ func TestRestorePinnedSessions(t *testing.T) {
 			},
 		}
 
-		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm })
+		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm }, nil)
 		if err != nil {
 			t.Fatalf("restorePinnedSessions() error = %v", err)
 		}
@@ -236,7 +236,7 @@ func TestRestorePinnedSessions(t *testing.T) {
 			},
 		}
 
-		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm })
+		restored, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return tm }, nil)
 		if err != nil {
 			t.Fatalf("restorePinnedSessions() error = %v", err)
 		}
@@ -266,7 +266,7 @@ func TestRestorePinnedSessions(t *testing.T) {
 		}
 		factory := &fakePinnedTmuxFactory{}
 
-		restored, err := restorePinnedSessions(context.Background(), repo, factory.starter)
+		restored, err := restorePinnedSessions(context.Background(), repo, factory.starter, nil)
 		if err != nil {
 			t.Fatalf("restorePinnedSessions() error = %v", err)
 		}
@@ -289,9 +289,46 @@ func TestRestorePinnedSessions(t *testing.T) {
 		wantErr := errors.New("list failed")
 		repo := &fakePinnedStore{listErr: wantErr}
 
-		_, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return &fakePinnedTmux{} })
+		_, err := restorePinnedSessions(context.Background(), repo, func(string) pinnedSessionStarter { return &fakePinnedTmux{} }, nil)
 		if !errors.Is(err, wantErr) {
 			t.Fatalf("error = %v, want %v", err, wantErr)
 		}
 	})
+}
+
+// Restore runs at boot over rows that may predate a narrowed allowed_users, so
+// a preset whose user the policy no longer permits must not be launched.
+func TestRestorePinnedSessionsSkipsUnauthorizedUser(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakePinnedStore{
+		presets: []store.SessionPreset{
+			{Name: "api", Cwd: "/srv/api", Icon: "server", User: "root"},
+			{Name: "web", Cwd: "/srv/web", Icon: "globe"},
+		},
+	}
+	factory := &fakePinnedTmuxFactory{}
+	denyRoot := func(user string) error {
+		if user == "root" {
+			return errors.New("root target not allowed")
+		}
+		return nil
+	}
+
+	restored, err := restorePinnedSessions(context.Background(), repo, factory.starter, denyRoot)
+	if err != nil {
+		t.Fatalf("restorePinnedSessions() error = %v", err)
+	}
+	if restored != 1 {
+		t.Fatalf("restored = %d, want 1", restored)
+	}
+	if rootTm := factory.byUser["root"]; rootTm != nil && len(rootTm.calls) != 0 {
+		t.Fatalf("rejected user was still used to create sessions: %+v", rootTm.calls)
+	}
+	if defaultTm := factory.byUser[""]; defaultTm == nil || len(defaultTm.calls) != 1 {
+		t.Fatalf("allowed preset was not restored: %+v", defaultTm)
+	}
+	if len(repo.markedLaunched) != 1 || repo.markedLaunched[0] != "web" {
+		t.Fatalf("marked launched = %v, want [web]", repo.markedLaunched)
+	}
 }

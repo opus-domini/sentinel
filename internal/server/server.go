@@ -100,7 +100,7 @@ func Serve(version string) int {
 	restorePinnedCtx, cancelRestorePinned := context.WithTimeout(context.Background(), 15*time.Second)
 	restoredPinned, err := restorePinnedSessions(restorePinnedCtx, st, func(user string) pinnedSessionStarter {
 		return tmux.Service{User: strings.TrimSpace(user)}
-	})
+	}, guard.ValidateTargetUser)
 	cancelRestorePinned()
 	if err != nil {
 		slog.Warn("failed to restore pinned sessions", "err", err)
@@ -179,7 +179,11 @@ func Serve(version string) int {
 
 	schedulerService := scheduler.New(st, st, scheduler.Options{
 		TickInterval: 5 * time.Second,
-		EventHub:     eventHub,
+		// Scheduled runs share the operator-configured runbook concurrency
+		// limit with manual runs; leaving this unset let the scheduler run its
+		// own fixed 5 on top of whatever runbooks.max_concurrent allowed.
+		MaxConcurrent: cfg.Runbooks.MaxConcurrent,
+		EventHub:      eventHub,
 	})
 	schedulerService.Start(context.Background())
 
