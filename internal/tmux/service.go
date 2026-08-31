@@ -1,10 +1,8 @@
 package tmux
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"strings"
@@ -12,8 +10,11 @@ import (
 	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
-// Service delegates to the package-level tmux functions. When User is
-// non-empty, commands are wrapped according to UserSwitchMethod.
+// Service runs tmux commands for one target user. When User is non-empty,
+// every command is wrapped according to UserSwitchMethod; when it is empty,
+// commands go through the package-level run variable. The two methods that can
+// start a tmux server keep an explicit branch so that the local case still
+// routes through the systemd-run isolation in createSessionRun.
 type Service struct {
 	User string
 }
@@ -32,8 +33,6 @@ var SystemUsers []string // set once at startup from main
 // UserSwitchMethod controls how multi-user tmux commands are launched.
 // Set from main.go after config.Load().
 var UserSwitchMethod = userswitch.DefaultMethod(runtime.GOOS) // set once at startup from config
-
-var execCommandContext = exec.CommandContext // var enables test injection
 
 // BuildControlCommand returns the executable and arguments for a persistent
 // tmux control-mode client. Multi-user targets use the same validated switch
@@ -87,81 +86,37 @@ func runAsUser(ctx context.Context, user string, args ...string) (string, error)
 	if err != nil {
 		return "", &Error{Kind: ErrKindCommandFailed, Msg: err.Error()}
 	}
-	cmd := execCommandContext(ctx, name, commandArgs...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return "", classifyError(err, stderr.String(), args)
-	}
-	return stdout.String(), nil
+	return executeTmuxCommand(ctx, name, commandArgs, args)
 }
 
 // ListSessions lists sessions.
 func (s Service) ListSessions(ctx context.Context) ([]Session, error) {
-	if s.User == "" {
-		return ListSessions(ctx)
-	}
-	out, err := s.run(ctx, "list-sessions", "-F", listSessionsFormatWithActivity)
-	if err != nil {
-		if IsKind(err, ErrKindServerNotRunning) {
-			return []Session{}, nil
-		}
-		if !shouldRetryListSessionsWithoutActivity(err) {
-			return nil, err
-		}
-		out, err = s.run(ctx, "list-sessions", "-F", listSessionsFormatWithoutActivity)
-		if err != nil {
-			if IsKind(err, ErrKindServerNotRunning) {
-				return []Session{}, nil
-			}
-			return nil, err
-		}
-	}
-	return parseSessionListOutput(out), nil
+	return listSessionsVia(ctx, s.run)
 }
 
 // GetSession returns one exact tmux session.
 func (s Service) GetSession(ctx context.Context, name string) (Session, error) {
-	if s.User == "" {
-		return GetSession(ctx, name)
-	}
 	return getSessionVia(ctx, s.run, name)
 }
 
 // ListActivePaneCommands lists active pane commands.
 func (s Service) ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
-	if s.User == "" {
-		return ListActivePaneCommands(ctx)
-	}
-	out, err := s.run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_start_command}\t#{pane_current_command}")
-	if err != nil {
-		if IsKind(err, ErrKindServerNotRunning) {
-			return map[string]PaneSnapshot{}, nil
-		}
-		return nil, err
-	}
-	return parseActivePaneCommandsOutput(out), nil
+	return listActivePaneCommandsVia(ctx, s.run)
 }
 
 // CapturePane captures pane.
 func (s Service) CapturePane(ctx context.Context, session string) (string, error) {
-	if s.User == "" {
-		return CapturePane(ctx, session)
-	}
 	return capturePane(ctx, s.run, session)
 }
 
 // HasSession reports whether session.
 func (s Service) HasSession(ctx context.Context, session string) bool {
-	if s.User == "" {
-		return HasSession(ctx, session)
-	}
 	_, err := s.run(ctx, "has-session", "-t", session)
 	return err == nil
 }
 
-// CreateSession creates session.
+// CreateSession creates session. The local case must go through the isolated
+// runner so a newly started tmux server does not inherit Sentinel's cgroup.
 func (s Service) CreateSession(ctx context.Context, name, cwd string) error {
 	if s.User == "" {
 		return CreateSession(ctx, name, cwd)
@@ -174,7 +129,8 @@ func (s Service) CreateSession(ctx context.Context, name, cwd string) error {
 	return err
 }
 
-// CreateSessionWithID creates a detached session and returns its stable runtime identity.
+// CreateSessionWithID creates a detached session and returns its stable runtime
+// identity. Like CreateSession, the local case uses the isolated runner.
 func (s Service) CreateSessionWithID(ctx context.Context, name, cwd string) (Session, error) {
 	if s.User == "" {
 		return CreateSessionWithID(ctx, name, cwd)
@@ -184,84 +140,54 @@ func (s Service) CreateSessionWithID(ctx context.Context, name, cwd string) (Ses
 
 // RenameSession renames session.
 func (s Service) RenameSession(ctx context.Context, session, newName string) error {
-	if s.User == "" {
-		return RenameSession(ctx, session, newName)
-	}
 	_, err := s.run(ctx, "rename-session", "-t", session, newName)
 	return err
 }
 
 // RenameWindow renames window.
 func (s Service) RenameWindow(ctx context.Context, session string, index int, name string) error {
-	if s.User == "" {
-		return RenameWindow(ctx, session, index, name)
-	}
 	return renameWindowVia(ctx, s.run, session, index, name)
 }
 
 // RenamePane renames pane.
 func (s Service) RenamePane(ctx context.Context, paneID, title string) error {
-	if s.User == "" {
-		return RenamePane(ctx, paneID, title)
-	}
 	_, err := s.run(ctx, "select-pane", "-t", paneID, "-T", title)
 	return err
 }
 
 // KillSession handles kill session.
 func (s Service) KillSession(ctx context.Context, session string) error {
-	if s.User == "" {
-		return KillSession(ctx, session)
-	}
 	_, err := s.run(ctx, "kill-session", "-t", session)
 	return err
 }
 
 // KillSessionByID kills one exact tmux runtime session.
 func (s Service) KillSessionByID(ctx context.Context, sessionID string) error {
-	if s.User == "" {
-		return KillSessionByID(ctx, sessionID)
-	}
 	return killSessionByIDVia(ctx, s.run, sessionID)
 }
 
 // ListWindows lists windows.
 func (s Service) ListWindows(ctx context.Context, session string) ([]Window, error) {
-	if s.User == "" {
-		return ListWindows(ctx, session)
-	}
 	return listWindowsVia(ctx, s.run, session)
 }
 
 // ListPanes lists panes.
 func (s Service) ListPanes(ctx context.Context, session string) ([]Pane, error) {
-	if s.User == "" {
-		return ListPanes(ctx, session)
-	}
 	return listPanesVia(ctx, s.run, session)
 }
 
 // ReorderWindows reorders windows.
 func (s Service) ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
-	if s.User == "" {
-		return ReorderWindows(ctx, session, orderedWindowIDs)
-	}
 	return reorderWindowsVia(ctx, s.run, session, orderedWindowIDs)
 }
 
 // SelectWindow selects window.
 func (s Service) SelectWindow(ctx context.Context, session string, index int) error {
-	if s.User == "" {
-		return SelectWindow(ctx, session, index)
-	}
 	return selectWindowVia(ctx, s.run, session, index)
 }
 
 // SelectPane selects pane.
 func (s Service) SelectPane(ctx context.Context, paneID string) error {
-	if s.User == "" {
-		return SelectPane(ctx, paneID)
-	}
 	_, err := s.run(ctx, "select-pane", "-t", paneID)
 	return err
 }
@@ -273,42 +199,27 @@ func (s Service) NewWindow(ctx context.Context, session string) (NewWindowResult
 
 // NewWindowWithOptions creates window with options.
 func (s Service) NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWindowResult, error) {
-	if s.User == "" {
-		return NewWindowWithOptions(ctx, session, name, cwd)
-	}
 	return newWindowWithOptionsVia(ctx, s.run, session, name, cwd)
 }
 
 // KillWindow handles kill window.
 func (s Service) KillWindow(ctx context.Context, session string, index int) error {
-	if s.User == "" {
-		return KillWindow(ctx, session, index)
-	}
 	return killWindowVia(ctx, s.run, session, index)
 }
 
 // KillPane handles kill pane.
 func (s Service) KillPane(ctx context.Context, paneID string) error {
-	if s.User == "" {
-		return KillPane(ctx, paneID)
-	}
 	_, err := s.run(ctx, "kill-pane", "-t", paneID)
 	return err
 }
 
 // SplitPane splits pane.
 func (s Service) SplitPane(ctx context.Context, paneID, direction string) (string, error) {
-	if s.User == "" {
-		return SplitPane(ctx, paneID, direction)
-	}
 	return splitPaneVia(ctx, s.run, paneID, direction)
 }
 
 // SessionExists handles session exists.
 func (s Service) SessionExists(ctx context.Context, session string) (bool, error) {
-	if s.User == "" {
-		return SessionExists(ctx, session)
-	}
 	_, err := s.run(ctx, "has-session", "-t", session)
 	if err != nil {
 		if IsKind(err, ErrKindSessionNotFound) || IsKind(err, ErrKindServerNotRunning) {
@@ -321,9 +232,6 @@ func (s Service) SessionExists(ctx context.Context, session string) (bool, error
 
 // SendKeys sends keys.
 func (s Service) SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
-	if s.User == "" {
-		return SendKeys(ctx, paneID, keys, enter)
-	}
 	return sendKeysVia(ctx, s.run, paneID, keys, enter)
 }
 
@@ -344,25 +252,16 @@ func (s Service) CapturePaneScreen(ctx context.Context, paneID string) (string, 
 
 // CapturePaneLines captures pane lines.
 func (s Service) CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
-	if s.User == "" {
-		return CapturePaneLines(ctx, target, lines)
-	}
 	return capturePaneLinesVia(ctx, s.run, target, lines)
 }
 
 // SetSessionMouse sets session mouse.
 func (s Service) SetSessionMouse(ctx context.Context, session string, enabled bool) error {
-	if s.User == "" {
-		return SetSessionMouse(ctx, session, enabled)
-	}
 	return setSessionOptionVia(ctx, s.run, session, "mouse", enabled)
 }
 
 // SetSessionStatus sets session status.
 func (s Service) SetSessionStatus(ctx context.Context, session string, enabled bool) error {
-	if s.User == "" {
-		return SetSessionStatus(ctx, session, enabled)
-	}
 	return setSessionOptionVia(ctx, s.run, session, "status", enabled)
 }
 

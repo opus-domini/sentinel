@@ -115,7 +115,7 @@ func TestNewWindowWithOptionsVia(t *testing.T) {
 				return "0\n1\n2\n", nil
 			case cmdNewWindow:
 				newWindowArgs = slices.Clone(args)
-				return "@9\t3\t%4\n", nil
+				return "@9\x1f3\x1f%4\n", nil
 			default:
 				return "", nil
 			}
@@ -146,7 +146,7 @@ func TestNewWindowWithOptionsVia(t *testing.T) {
 				return "/resolved/path\n", nil
 			case cmdNewWindow:
 				newWindowArgs = slices.Clone(args)
-				return "@2\t1\t%2", nil
+				return "@2\x1f1\x1f%2", nil
 			default:
 				return "", nil
 			}
@@ -177,7 +177,7 @@ func TestNewWindowWithOptionsVia(t *testing.T) {
 				return "", errors.New("no server")
 			case cmdNewWindow:
 				newWindowArgs = slices.Clone(args)
-				return "@1\t0\t%1", nil
+				return "@1\x1f0\x1f%1", nil
 			default:
 				return "", nil
 			}
@@ -251,7 +251,7 @@ func TestReorderWindowsVia(t *testing.T) {
 		t.Parallel()
 
 		runFn := func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t@1\t0\tw0\t1\t1\tlay\ndev\t@2\t1\tw1\t0\t1\tlay", nil
+			return "dev\x1f@1\x1f0\x1fw0\x1f1\x1f1\x1flay\ndev\x1f@2\x1f1\x1fw1\x1f0\x1f1\x1flay", nil
 		}
 		err := reorderWindowsVia(context.Background(), runFn, "dev", []string{"@1"})
 		if !IsKind(err, ErrKindInvalidIdentifier) {
@@ -263,7 +263,7 @@ func TestReorderWindowsVia(t *testing.T) {
 		t.Parallel()
 
 		runFn := func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t@1\t0\tw0\t1\t1\tlay\ndev\t@2\t1\tw1\t0\t1\tlay", nil
+			return "dev\x1f@1\x1f0\x1fw0\x1f1\x1f1\x1flay\ndev\x1f@2\x1f1\x1fw1\x1f0\x1f1\x1flay", nil
 		}
 		err := reorderWindowsVia(context.Background(), runFn, "dev", []string{"@1", "@9"})
 		if !IsKind(err, ErrKindInvalidIdentifier) {
@@ -277,7 +277,7 @@ func TestReorderWindowsVia(t *testing.T) {
 		var swaps [][]string
 		runFn := func(_ context.Context, args ...string) (string, error) {
 			if args[0] == "list-windows" {
-				return "dev\t@1\t0\tw0\t1\t1\tlay\ndev\t@2\t1\tw1\t0\t1\tlay", nil
+				return "dev\x1f@1\x1f0\x1fw0\x1f1\x1f1\x1flay\ndev\x1f@2\x1f1\x1fw1\x1f0\x1f1\x1flay", nil
 			}
 			swaps = append(swaps, slices.Clone(args))
 			return "", nil
@@ -299,7 +299,7 @@ func TestReorderWindowsVia(t *testing.T) {
 		var swaps int
 		runFn := func(_ context.Context, args ...string) (string, error) {
 			if args[0] == "list-windows" {
-				return "dev\t@1\t0\tw0\t1\t1\tlay\ndev\t@2\t1\tw1\t0\t1\tlay", nil
+				return "dev\x1f@1\x1f0\x1fw0\x1f1\x1f1\x1flay\ndev\x1f@2\x1f1\x1fw1\x1f0\x1f1\x1flay", nil
 			}
 			swaps++
 			return "", nil
@@ -316,7 +316,7 @@ func TestReorderWindowsVia(t *testing.T) {
 		t.Parallel()
 
 		runFn := func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t\t0\tw0\t1\t1\tlay\ndev\t@2\t1\tw1\t0\t1\tlay", nil
+			return "dev\x1f\x1f0\x1fw0\x1f1\x1f1\x1flay\ndev\x1f@2\x1f1\x1fw1\x1f0\x1f1\x1flay", nil
 		}
 		err := reorderWindowsVia(context.Background(), runFn, "dev", []string{"@1", "@2"})
 		if !IsKind(err, ErrKindInvalidIdentifier) {
@@ -330,7 +330,7 @@ func TestReorderWindowsVia(t *testing.T) {
 		wantErr := errors.New("swap failed")
 		runFn := func(_ context.Context, args ...string) (string, error) {
 			if args[0] == "list-windows" {
-				return "dev\t@1\t0\tw0\t1\t1\tlay\ndev\t@2\t1\tw1\t0\t1\tlay", nil
+				return "dev\x1f@1\x1f0\x1fw0\x1f1\x1f1\x1flay\ndev\x1f@2\x1f1\x1fw1\x1f0\x1f1\x1flay", nil
 			}
 			return "", wantErr
 		}

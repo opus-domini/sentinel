@@ -10,7 +10,7 @@ import (
 func TestParseActivePaneCommandsOutput(t *testing.T) {
 	t.Parallel()
 
-	got := parseActivePaneCommandsOutput("dev\t1\t1\tnpx vite\tvite\ndev\t0\t0\tbash\tbash\nbad\tline\n")
+	got := parseActivePaneCommandsOutput("dev\x1f1\x1f1\x1fnpx vite\x1fvite\ndev\x1f0\x1f0\x1fbash\x1fbash\nbad\x1fline\n")
 	if got["dev"].Panes != 2 {
 		t.Fatalf("dev panes = %d, want 2", got["dev"].Panes)
 	}
@@ -22,7 +22,7 @@ func TestParseActivePaneCommandsOutput(t *testing.T) {
 func TestParseWindowAndPaneListOutput(t *testing.T) {
 	t.Parallel()
 
-	windows := parseWindowListOutput("dev\t@1\t0\tmain\t1\t2\tlayout\nshort\n")
+	windows := parseWindowListOutput("dev\x1f@1\x1f0\x1fmain\x1f1\x1f2\x1flayout\nshort\n")
 	if len(windows) != 1 {
 		t.Fatalf("windows len = %d, want 1", len(windows))
 	}
@@ -30,12 +30,47 @@ func TestParseWindowAndPaneListOutput(t *testing.T) {
 		t.Fatalf("window = %+v, want parsed @1 window", windows[0])
 	}
 
-	panes := parsePaneListOutput("dev\t0\t1\t%2\tlogs\t1\t/dev/pts/2\t/tmp\tbash\tvim\t10\t20\t80\t24\nother\t0\t0\t%9\tx\t0\t/dev/null\n", "dev")
+	panes := parsePaneListOutput("dev\x1f0\x1f1\x1f%2\x1flogs\x1f1\x1f/dev/pts/2\x1f/tmp\x1fbash\x1fvim\x1f10\x1f20\x1f80\x1f24\nother\x1f0\x1f0\x1f%9\x1fx\x1f0\x1f/dev/null\n", "dev")
 	if len(panes) != 1 {
 		t.Fatalf("panes len = %d, want 1", len(panes))
 	}
 	if panes[0].PaneID != "%2" || panes[0].CurrentPath != "/tmp" || panes[0].Left != 10 || panes[0].Height != 24 {
 		t.Fatalf("pane = %+v, want parsed pane", panes[0])
+	}
+}
+
+// TestParsersToleratePathsWithTabs pins the reason the tmux -F field separator
+// is not a tab: tmux does not escape format values, and pane_current_path,
+// pane_start_command and pane_current_command carry raw bytes from the host.
+// A tab in any of them used to shift every later field, so pane geometry was
+// parsed from command text and silently became zero.
+func TestParsersToleratePathsWithTabs(t *testing.T) {
+	t.Parallel()
+
+	line := "dev" + fieldSep + "0" + fieldSep + "1" + fieldSep + "%2" + fieldSep + "logs" + fieldSep +
+		"1" + fieldSep + "/dev/pts/2" + fieldSep + "/home/hugo/we\tird" + fieldSep + "bash" + fieldSep +
+		"vim" + fieldSep + "10" + fieldSep + "20" + fieldSep + "80" + fieldSep + "24\n"
+
+	panes := parsePaneListOutput(line, "dev")
+	if len(panes) != 1 {
+		t.Fatalf("panes len = %d, want 1", len(panes))
+	}
+	got := panes[0]
+	if got.CurrentPath != "/home/hugo/we\tird" {
+		t.Errorf("CurrentPath = %q, want the path with its tab intact", got.CurrentPath)
+	}
+	if got.CurrentCommand != "vim" {
+		t.Errorf("CurrentCommand = %q, want vim", got.CurrentCommand)
+	}
+	if got.Left != 10 || got.Top != 20 || got.Width != 80 || got.Height != 24 {
+		t.Errorf("geometry = %d,%d %dx%d, want 10,20 80x24", got.Left, got.Top, got.Width, got.Height)
+	}
+
+	// The same shift used to drop the line entirely here, undercounting panes.
+	snapshots := parseActivePaneCommandsOutput(
+		"dev" + fieldSep + "1" + fieldSep + "1" + fieldSep + "sh -c 'a\tb'" + fieldSep + "vite\n")
+	if snapshots["dev"].Panes != 1 {
+		t.Fatalf("dev panes = %d, want 1", snapshots["dev"].Panes)
 	}
 }
 

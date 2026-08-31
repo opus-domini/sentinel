@@ -51,7 +51,7 @@ func TestListSessions(t *testing.T) {
 
 	t.Run("happy_path_with_activity", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "$1\tdev\t2\t1\t1700000000\t1700000300\n$2\tweb\t1\t0\t1700000100\t1700000400\n", nil
+			return "$1\x1fdev\x1f2\x1f1\x1f1700000000\x1f1700000300\n$2\x1fweb\x1f1\x1f0\x1f1700000100\x1f1700000400\n", nil
 		})
 
 		sessions, err := ListSessions(ctx)
@@ -90,7 +90,7 @@ func TestListSessions(t *testing.T) {
 			if calls == 1 {
 				return "", errCommandFailed("unknown format: session_activity")
 			}
-			return "$3\tlegacy\t1\t0\t1700000500\n", nil
+			return "$3\x1flegacy\x1f1\x1f0\x1f1700000500\n", nil
 		})
 
 		sessions, err := ListSessions(ctx)
@@ -167,7 +167,7 @@ func TestGetSession(t *testing.T) {
 			if !slices.Equal(args, want) {
 				t.Fatalf("args = %#v, want %#v", args, want)
 			}
-			return "$8\tdev-server\t1\t0\t1700000000\t1700000100\n$9\tdev\t2\t0\t1700000000\t1700000100\n", nil
+			return "$8\x1fdev-server\x1f1\x1f0\x1f1700000000\x1f1700000100\n$9\x1fdev\x1f2\x1f0\x1f1700000000\x1f1700000100\n", nil
 		})
 		session, err := GetSession(ctx, "dev")
 		if err != nil {
@@ -203,7 +203,7 @@ func TestCreateSessionWithID(t *testing.T) {
 			if !slices.Equal(args, want) {
 				t.Fatalf("args = %#v, want %#v", args, want)
 			}
-			return "$17\tagent\n", nil
+			return "$17\x1fagent\n", nil
 		})
 		session, err := CreateSessionWithID(ctx, "agent", "/srv/app")
 		if err != nil {
@@ -229,7 +229,7 @@ func TestListActivePaneCommands(t *testing.T) {
 
 	t.Run("happy_path", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t1\t1\tclaude --resume\tclaude\ndev\t0\t0\tbash\tbash\nweb\t1\t1\tnpx vite\tvite\n", nil
+			return "dev\x1f1\x1f1\x1fclaude --resume\x1fclaude\ndev\x1f0\x1f0\x1fbash\x1fbash\nweb\x1f1\x1f1\x1fnpx vite\x1fvite\n", nil
 		})
 
 		result, err := ListActivePaneCommands(ctx)
@@ -280,7 +280,7 @@ func TestListActivePaneCommands(t *testing.T) {
 
 	t.Run("malformed_lines_skipped", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "bad\tline\ndev\t1\t1\tclaude\tclaude\n", nil
+			return "bad\x1fline\ndev\x1f1\x1f1\x1fclaude\x1fclaude\n", nil
 		})
 
 		result, err := ListActivePaneCommands(ctx)
@@ -295,7 +295,7 @@ func TestListActivePaneCommands(t *testing.T) {
 	t.Run("non_active_pane_not_used_for_command", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
 			// window_active=0, pane_active=0 — not the active pane
-			return "app\t0\t0\tbash\tbash\n", nil
+			return "app\x1f0\x1f0\x1fbash\x1fbash\n", nil
 		})
 
 		result, err := ListActivePaneCommands(ctx)
@@ -324,7 +324,7 @@ func TestListActivePaneCommands(t *testing.T) {
 	t.Run("fallback_to_current_command", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
 			// pane_start_command is empty, falls back to pane_current_command
-			return "app\t1\t1\t\tnode\n", nil
+			return "app\x1f1\x1f1\x1f\x1fnode\n", nil
 		})
 
 		result, err := ListActivePaneCommands(ctx)
@@ -392,7 +392,7 @@ func TestListWindows(t *testing.T) {
 
 	t.Run("parses_multi_window_output", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t@1\t0\tcode\t1\t2\t83ed,204x51,0,0{102x51,0,0,0,101x51,103,0,1}\ndev\t@2\t1\tshell\t0\t1\t8502,204x51,0,0,2\n", nil
+			return "dev\x1f@1\x1f0\x1fcode\x1f1\x1f2\x1f83ed,204x51,0,0{102x51,0,0,0,101x51,103,0,1}\ndev\x1f@2\x1f1\x1fshell\x1f0\x1f1\x1f8502,204x51,0,0,2\n", nil
 		})
 
 		windows, err := ListWindows(ctx, "dev")
@@ -443,7 +443,7 @@ func TestListWindows(t *testing.T) {
 
 	t.Run("short_lines_skipped", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "bad\tshort\ndev\t@1\t0\tcode\t1\t1\t8502,204x51,0,0,2\n", nil
+			return "bad\x1fshort\ndev\x1f@1\x1f0\x1fcode\x1f1\x1f1\x1f8502,204x51,0,0,2\n", nil
 		})
 
 		windows, err := ListWindows(ctx, "dev")
@@ -457,7 +457,7 @@ func TestListWindows(t *testing.T) {
 
 	t.Run("no_layout_column", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t@1\t0\tcode\t1\t1\n", nil
+			return "dev\x1f@1\x1f0\x1fcode\x1f1\x1f1\n", nil
 		})
 
 		windows, err := ListWindows(ctx, "dev")
@@ -482,7 +482,7 @@ func TestReorderWindows(t *testing.T) {
 			commands = append(commands, append([]string{}, args...))
 			switch args[0] {
 			case cmdListWindows:
-				return "dev\t@1\t0\tclaude\t1\t1\tlayout-a\ndev\t@2\t1\tshell\t0\t1\tlayout-b\ndev\t@3\t2\trunner\t0\t1\tlayout-c\n", nil
+				return "dev\x1f@1\x1f0\x1fclaude\x1f1\x1f1\x1flayout-a\ndev\x1f@2\x1f1\x1fshell\x1f0\x1f1\x1flayout-b\ndev\x1f@3\x1f2\x1frunner\x1f0\x1f1\x1flayout-c\n", nil
 			case "swap-window":
 				return "", nil
 			default:
@@ -502,7 +502,7 @@ func TestReorderWindows(t *testing.T) {
 				"-t",
 				"dev",
 				"-F",
-				"#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}",
+				listWindowsFormat,
 			},
 			{"swap-window", "-d", "-s", "@1", "-t", "@2"},
 			{"swap-window", "-d", "-s", "@1", "-t", "@3"},
@@ -522,7 +522,7 @@ func TestReorderWindows(t *testing.T) {
 			if args[0] != cmdListWindows {
 				t.Fatalf("unexpected tmux command: %v", args)
 			}
-			return "dev\t@1\t0\tclaude\t1\t1\tlayout-a\ndev\t@2\t1\tshell\t0\t1\tlayout-b\n", nil
+			return "dev\x1f@1\x1f0\x1fclaude\x1f1\x1f1\x1flayout-a\ndev\x1f@2\x1f1\x1fshell\x1f0\x1f1\x1flayout-b\n", nil
 		})
 
 		err := ReorderWindows(ctx, "dev", []string{"@1", "@3"})
@@ -546,9 +546,9 @@ func TestListPanes(t *testing.T) {
 	t.Run("parses_and_filters_by_session", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
 			lines := []string{
-				"dev\t0\t0\t%0\ttitle0\t1\t/dev/pts/0\t/home\tbash\tbash\t0\t0\t102\t51",
-				"dev\t0\t1\t%1\ttitle1\t0\t/dev/pts/1\t/home\tbash\tvim\t103\t0\t101\t51",
-				"other\t0\t0\t%2\ttitle2\t1\t/dev/pts/2\t/tmp\tsh\tsh\t0\t0\t204\t51",
+				"dev\x1f0\x1f0\x1f%0\x1ftitle0\x1f1\x1f/dev/pts/0\x1f/home\x1fbash\x1fbash\x1f0\x1f0\x1f102\x1f51",
+				"dev\x1f0\x1f1\x1f%1\x1ftitle1\x1f0\x1f/dev/pts/1\x1f/home\x1fbash\x1fvim\x1f103\x1f0\x1f101\x1f51",
+				"other\x1f0\x1f0\x1f%2\x1ftitle2\x1f1\x1f/dev/pts/2\x1f/tmp\x1fsh\x1fsh\x1f0\x1f0\x1f204\x1f51",
 			}
 			return strings.Join(lines, "\n") + "\n", nil
 		})
@@ -601,7 +601,7 @@ func TestListPanes(t *testing.T) {
 
 	t.Run("short_lines_skipped", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
-			return "dev\t0\t0\n", nil
+			return "dev\x1f0\x1f0\n", nil
 		})
 
 		panes, err := ListPanes(ctx, "dev")
@@ -616,7 +616,7 @@ func TestListPanes(t *testing.T) {
 	t.Run("minimal_fields", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) {
 			// Only 7 fields (the minimum), no optional fields
-			return "dev\t0\t0\t%5\tmypane\t1\t/dev/pts/3\n", nil
+			return "dev\x1f0\x1f0\x1f%5\x1fmypane\x1f1\x1f/dev/pts/3\n", nil
 		})
 
 		panes, err := ListPanes(ctx, "dev")
@@ -1162,7 +1162,7 @@ func testNewWindowHappyPathWithNextIndex(ctx context.Context, t *testing.T) {
 		case cmdNewWindow:
 			assertNewWindowArg(t, args, "-t", "dev:3")
 			assertNewWindowArg(t, args, "-c", "/home/dev/project")
-			return "@3\t3\t%15\n", nil
+			return "@3\x1f3\x1f%15\n", nil
 		default:
 			return "", fmt.Errorf("unexpected command: %s", args[0])
 		}
@@ -1188,7 +1188,7 @@ func testNewWindowListWindowsFailsFallsBack(ctx context.Context, t *testing.T) {
 			return "/home/dev/project\n", nil
 		case cmdNewWindow:
 			assertNewWindowArg(t, args, "-t", "dev:")
-			return "@20\t0\t%20\n", nil
+			return "@20\x1f0\x1f%20\n", nil
 		default:
 			return "", fmt.Errorf("unexpected command: %s", args[0])
 		}
@@ -1258,7 +1258,7 @@ func testNewWindowDisplayMessageFailsOmitsCWD(ctx context.Context, t *testing.T)
 			return "", errCommandFailed("no session")
 		case cmdNewWindow:
 			assertNewWindowArgMissing(t, args, "-c")
-			return "@10\t1\t%10\n", nil
+			return "@10\x1f1\x1f%10\n", nil
 		default:
 			return "", fmt.Errorf("unexpected command: %s", args[0])
 		}
@@ -1288,7 +1288,7 @@ func testNewWindowWithNameAndExplicitCWD(ctx context.Context, t *testing.T) {
 			if !strings.Contains(joined, "-c /srv/api") {
 				t.Errorf("expected -c /srv/api, got: %v", args)
 			}
-			return "@22\t2\t%22\n", nil
+			return "@22\x1f2\x1f%22\n", nil
 		default:
 			return "", fmt.Errorf("unexpected command: %s", args[0])
 		}
@@ -1492,25 +1492,25 @@ func TestParseNewWindowOutputExtended(t *testing.T) {
 	}{
 		{
 			name:    "negative_index",
-			input:   "-1\t%5\n",
+			input:   "-1\x1f%5\n",
 			wantErr: true,
 			errKind: ErrKindCommandFailed,
 		},
 		{
 			name:    "non_numeric_index",
-			input:   "abc\t%5\n",
+			input:   "abc\x1f%5\n",
 			wantErr: true,
 			errKind: ErrKindCommandFailed,
 		},
 		{
 			name:    "missing_percent_prefix",
-			input:   "3\t5\n",
+			input:   "3\x1f5\n",
 			wantErr: true,
 			errKind: ErrKindCommandFailed,
 		},
 		{
 			name:    "too_many_fields",
-			input:   "3\t%5\textra\n",
+			input:   "3\x1f%5\x1fextra\n",
 			wantErr: true,
 			errKind: ErrKindCommandFailed,
 		},
@@ -1563,7 +1563,7 @@ func TestParseSessionListOutputExtended(t *testing.T) {
 
 	t.Run("multiple_sessions", func(t *testing.T) {
 		t.Parallel()
-		input := "$1\ta\t1\t0\t1700000000\t1700000100\n$2\tb\t2\t1\t1700000200\t1700000300\n$3\tc\t3\t0\t1700000400\t1700000500\n"
+		input := "$1\x1fa\x1f1\x1f0\x1f1700000000\x1f1700000100\n$2\x1fb\x1f2\x1f1\x1f1700000200\x1f1700000300\n$3\x1fc\x1f3\x1f0\x1f1700000400\x1f1700000500\n"
 		sessions := parseSessionListOutput(input)
 		if len(sessions) != 3 {
 			t.Fatalf("got %d sessions, want 3", len(sessions))
@@ -1575,7 +1575,7 @@ func TestParseSessionListOutputExtended(t *testing.T) {
 
 	t.Run("short_line_skipped", func(t *testing.T) {
 		t.Parallel()
-		input := "too\tshort\n"
+		input := "too\x1fshort\n"
 		sessions := parseSessionListOutput(input)
 		if len(sessions) != 0 {
 			t.Fatalf("got %d sessions, want 0", len(sessions))

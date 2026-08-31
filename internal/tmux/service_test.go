@@ -96,6 +96,38 @@ func TestRunAsUserWrapsWithSystemdRun(t *testing.T) {
 	}
 }
 
+// TestRunAsUserReportsMissingSwitchWrapper pins the diagnostic for a host that
+// has tmux but no user-switch wrapper. Reporting "tmux binary not found" there
+// points the operator at the wrong missing program.
+func TestRunAsUserReportsMissingSwitchWrapper(t *testing.T) {
+	// Not parallel: mutates execCommandContext, UserSwitchMethod and SystemUsers.
+
+	originalUsers := SystemUsers
+	t.Cleanup(func() { SystemUsers = originalUsers })
+	SystemUsers = []string{"testuser"}
+
+	originalMethod := UserSwitchMethod
+	t.Cleanup(func() { UserSwitchMethod = originalMethod })
+	UserSwitchMethod = userswitch.MethodSudo
+
+	originalExec := execCommandContext
+	t.Cleanup(func() { execCommandContext = originalExec })
+	execCommandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sentinel-absent-user-switch-wrapper")
+	}
+
+	_, err := runAsUser(context.Background(), "testuser", "list-sessions")
+	if err == nil {
+		t.Fatal("runAsUser() error = nil, want a missing wrapper error")
+	}
+	if IsKind(err, ErrKindNotFound) {
+		t.Fatalf("runAsUser() error = %v, want the wrapper diagnostic, not tmux-not-found", err)
+	}
+	if !strings.Contains(err.Error(), "sudo is required to isolate tmux sessions from Sentinel") {
+		t.Fatalf("runAsUser() error = %q, want the missing wrapper diagnostic", err)
+	}
+}
+
 func TestRunAsUserEmptyDelegatesToRun(t *testing.T) {
 	// Not parallel: mutates package-level run variable.
 
