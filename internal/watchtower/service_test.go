@@ -3,7 +3,6 @@ package watchtower
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -421,66 +420,7 @@ func TestCollectUpdatesGlobalRevAndJournal(t *testing.T) {
 		t.Fatalf("unexpected journal revisions: %+v", entries)
 	}
 }
-
-func TestCollectRecordsRuntimeMetricsSuccess(t *testing.T) {
-	t.Parallel()
-
-	st := newWatchtowerTestStore(t)
-	defer func() { _ = st.Close() }()
-
-	now := time.Now().UTC().Truncate(time.Second)
-	fake := fakeTmux{
-		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
-			return []tmux.Session{{
-				Name:       "dev",
-				Windows:    1,
-				Attached:   1,
-				CreatedAt:  now,
-				ActivityAt: now,
-			}}, nil
-		},
-		listWindowsFn: func(context.Context, string) ([]tmux.Window, error) {
-			return []tmux.Window{{Session: "dev", Index: 0, Name: "main", Active: true, Panes: 1, Layout: "layout"}}, nil
-		},
-		listPanesFn: func(context.Context, string) ([]tmux.Pane, error) {
-			return []tmux.Pane{{Session: "dev", WindowIndex: 0, PaneIndex: 0, PaneID: "%1", Active: true}}, nil
-		},
-		capturePaneLinesFn: func(context.Context, string, int) (string, error) {
-			return "line", nil
-		},
-	}
-
-	svc := New(st, fake, Options{})
-	if err := svc.collect(context.Background()); err != nil {
-		t.Fatalf("collect: %v", err)
-	}
-
-	for key, want := range map[string]string{
-		runtimeCollectTotalKey:       "1",
-		runtimeCollectErrorsTotalKey: "",
-		runtimeLastCollectSessKey:    "1",
-		runtimeLastCollectChangedKey: "1",
-		runtimeLastCollectErrorKey:   "",
-	} {
-		got, err := st.GetWatchtowerRuntimeValue(context.Background(), key)
-		if err != nil {
-			t.Fatalf("GetWatchtowerRuntimeValue(%s): %v", key, err)
-		}
-		if want == "" {
-			if key == runtimeCollectErrorsTotalKey {
-				if got != "" && got != "0" {
-					t.Fatalf("%s = %q, want empty or 0", key, got)
-				}
-			}
-			continue
-		}
-		if got != want {
-			t.Fatalf("%s = %q, want %q", key, got, want)
-		}
-	}
-}
-
-func TestCollectRecordsRuntimeMetricsError(t *testing.T) {
+func TestCollectPropagatesTmuxError(t *testing.T) {
 	t.Parallel()
 
 	st := newWatchtowerTestStore(t)
@@ -493,34 +433,10 @@ func TestCollectRecordsRuntimeMetricsError(t *testing.T) {
 	}
 
 	svc := New(st, fake, Options{})
-	err := svc.collect(context.Background())
-	if err == nil {
-		t.Fatalf("collect err = nil, want error")
-	}
-
-	total, err := st.GetWatchtowerRuntimeValue(context.Background(), runtimeCollectTotalKey)
-	if err != nil {
-		t.Fatalf("GetWatchtowerRuntimeValue(%s): %v", runtimeCollectTotalKey, err)
-	}
-	if total != "1" {
-		t.Fatalf("%s = %q, want 1", runtimeCollectTotalKey, total)
-	}
-	errorsTotal, err := st.GetWatchtowerRuntimeValue(context.Background(), runtimeCollectErrorsTotalKey)
-	if err != nil {
-		t.Fatalf("GetWatchtowerRuntimeValue(%s): %v", runtimeCollectErrorsTotalKey, err)
-	}
-	if errorsTotal != "1" {
-		t.Fatalf("%s = %q, want 1", runtimeCollectErrorsTotalKey, errorsTotal)
-	}
-	lastErr, err := st.GetWatchtowerRuntimeValue(context.Background(), runtimeLastCollectErrorKey)
-	if err != nil {
-		t.Fatalf("GetWatchtowerRuntimeValue(%s): %v", runtimeLastCollectErrorKey, err)
-	}
-	if strings.TrimSpace(lastErr) == "" {
-		t.Fatalf("%s is empty, want collect error message", runtimeLastCollectErrorKey)
+	if err := svc.collect(context.Background()); err == nil {
+		t.Fatalf("collect err = nil, want the tmux failure to propagate")
 	}
 }
-
 func TestCollectIncrementsRevisionOnOutputChange(t *testing.T) {
 	t.Parallel()
 

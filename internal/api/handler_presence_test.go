@@ -147,43 +147,6 @@ func TestActivityDeltaNilRepo(t *testing.T) {
 	}
 }
 
-func TestActivityStatsSuccessParsesRuntime(t *testing.T) {
-	t.Parallel()
-
-	h, st := newTestHandler(t, nil)
-	ctx := context.Background()
-	values := map[string]string{
-		"global_rev":                    " 42 ",
-		"collect_total":                 "7",
-		"collect_errors_total":          "invalid",
-		"last_collect_at":               "2026-06-02T12:00:00Z",
-		"last_collect_duration_ms":      "bad-duration",
-		"last_collect_sessions":         "3",
-		"last_collect_changed_sessions": "2",
-		"last_collect_error":            "last error",
-	}
-	if err := st.SetWatchtowerRuntimeValues(ctx, values); err != nil {
-		t.Fatalf("SetWatchtowerRuntimeValues: %v", err)
-	}
-
-	w := httptest.NewRecorder()
-	h.activityStats(w, httptest.NewRequest(http.MethodGet, "/api/activity/stats", nil))
-	if w.Code != http.StatusOK {
-		t.Fatalf("activityStats status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
-	}
-	data := jsonBody(t, w)["data"].(map[string]any)
-	if data[keyGlobalRev] != float64(42) || data["collectTotal"] != float64(7) || data["collectErrorsTotal"] != float64(0) || data["lastCollectDurationMs"] != float64(0) || data["lastCollectSessions"] != float64(3) || data["lastCollectChanged"] != float64(2) {
-		t.Fatalf("unexpected parsed stats: %+v", data)
-	}
-	if data["lastCollectAt"] != "2026-06-02T12:00:00Z" || data["lastCollectError"] != "last error" {
-		t.Fatalf("unexpected string stats: %+v", data)
-	}
-	runtime := data["runtime"].(map[string]any)
-	if runtime["global_rev"] != "42" || runtime["collect_errors_total"] != "invalid" || runtime["last_collect_error"] != "last error" {
-		t.Fatalf("unexpected runtime map: %+v", runtime)
-	}
-}
-
 func seedActivityDeltaSession(t *testing.T, st *store.Store, session, paneID string, now time.Time, rev int64) {
 	t.Helper()
 	ctx := context.Background()

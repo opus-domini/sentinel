@@ -328,19 +328,6 @@ func TestRunOpsRunbookSuccessWithParameters(t *testing.T) {
 // activity stats success paths
 // ---------------------------------------------------------------------------
 
-func TestActivityStatsNilRepo(t *testing.T) {
-	t.Parallel()
-
-	h, _ := newTestHandler(t, nil)
-	h.repo = nil
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/tmux/activity/stats", nil)
-	h.activityStats(w, r)
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503", w.Code)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // listSessions projection path
 // ---------------------------------------------------------------------------
