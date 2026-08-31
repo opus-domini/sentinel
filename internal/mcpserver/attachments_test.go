@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -126,6 +128,127 @@ func TestDetachSessionRemovesOnlyMatchingAttachments(t *testing.T) {
 	}
 	if _, ok := manager.streams[target.key]; ok {
 		t.Fatal("target control stream remains")
+	}
+}
+
+func TestControlStreamDrainsOutputBeforeReapingTheProcess(t *testing.T) {
+	stream := newTestControlStream()
+	stream.done = make(chan struct{})
+
+	drained := -1
+	stream.pump(strings.NewReader("%output %1 one\n%output %1 two\n"), func() string {
+		stream.mu.Lock()
+		defer stream.mu.Unlock()
+		drained = len(stream.events)
+		return ""
+	})
+
+	<-stream.done
+	if drained != 2 {
+		t.Fatalf("events recorded before the process was reaped = %d, want 2", drained)
+	}
+	if stream.isAlive() {
+		t.Fatal("stream is still alive after the process was reaped")
+	}
+	batch := stream.read(context.Background(), 0, "%1", 0)
+	if len(batch.Events) != 2 || !batch.Closed {
+		t.Fatalf("batch = %#v", batch)
+	}
+}
+
+func TestLockPaneTakesTheCursorAfterTheLockIsHeld(t *testing.T) {
+	stream := newTestControlStream()
+	stream.key = "\x00dev"
+	stream.session = "dev"
+	manager := &AttachmentManager{
+		attachments: make(map[string]*attachmentLease),
+		streams:     map[string]*controlStream{stream.key: stream},
+		ttl:         time.Hour,
+	}
+	lease := &attachmentLease{id: "att", stream: stream, lastUsed: time.Now()}
+	manager.attachments[lease.id] = lease
+
+	_, unlock, err := manager.LockPane(lease.id, "%1")
+	if err != nil {
+		t.Fatalf("LockPane() error = %v", err)
+	}
+
+	manager.mu.Lock()
+	lease.lastUsed = time.Now().Add(-time.Minute)
+	before := lease.lastUsed
+	manager.mu.Unlock()
+
+	type grant struct {
+		attachment Attachment
+		release    func()
+		err        error
+	}
+	granted := make(chan grant, 1)
+	go func() {
+		attachment, release, err := manager.LockPane(lease.id, "%1")
+		granted <- grant{attachment: attachment, release: release, err: err}
+	}()
+
+	// The contending call refreshes the lease before it can reach the pane
+	// lock, so once lastUsed moves it is blocked on the lock and nothing but
+	// the lock can still change the cursor it reports.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		manager.mu.Lock()
+		lookedUp := lease.lastUsed.After(before)
+		manager.mu.Unlock()
+		if lookedUp {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("contending LockPane() never looked the lease up")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	stream.mu.Lock()
+	stream.appendLocked(ControlEvent{Type: "output", PaneID: "%1", Data: "first client output"})
+	stream.mu.Unlock()
+	unlock()
+
+	result := <-granted
+	if result.err != nil {
+		t.Fatalf("contending LockPane() error = %v", result.err)
+	}
+	defer result.release()
+	if result.attachment.Cursor != 1 {
+		t.Fatalf("cursor = %d, want 1 (the cursor observed once the lock was granted)", result.attachment.Cursor)
+	}
+}
+
+func TestAttachmentManagerCloseHonorsTheShutdownBudget(t *testing.T) {
+	manager := &AttachmentManager{
+		attachments: make(map[string]*attachmentLease),
+		streams:     make(map[string]*controlStream),
+		ttl:         time.Hour,
+		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
+	}
+	go manager.sweep()
+	for index := range 3 {
+		stream := newTestControlStream()
+		stream.key = fmt.Sprintf("\x00session-%d", index)
+		// The control client never exits, so every close waits its full cap.
+		stream.done = make(chan struct{})
+		stream.cancel = func() {}
+		stream.stdin = testWriteCloser{}
+		manager.streams[stream.key] = stream
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	manager.Close(ctx)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Close() took %s, want it bounded by the caller's shutdown budget", elapsed)
+	}
+	if len(manager.streams) != 0 {
+		t.Fatal("Close() left control streams registered")
 	}
 }
 

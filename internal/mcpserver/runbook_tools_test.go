@@ -213,6 +213,45 @@ func TestRunbookWaitStopsForHumanApproval(t *testing.T) {
 	}
 }
 
+// blockingRunRepo holds every run lookup until release is closed, standing in
+// for the shared single-connection SQLite handle under load.
+type blockingRunRepo struct {
+	runbook.ManagerRepo
+	release chan struct{}
+	run     store.OpsRunbookRun
+}
+
+func (r *blockingRunRepo) GetOpsRunbookRun(ctx context.Context, _ string) (store.OpsRunbookRun, error) {
+	select {
+	case <-r.release:
+		return r.run, nil
+	case <-ctx.Done():
+		return store.OpsRunbookRun{}, ctx.Err()
+	}
+}
+
+func TestRunbookWaitReportsTimeoutWhenTheDeadlineCrossesAPoll(t *testing.T) {
+	t.Parallel()
+	repo := &blockingRunRepo{
+		release: make(chan struct{}),
+		run:     store.OpsRunbookRun{ID: "run_1", Status: store.OpsRunbookStatusRunning, TotalSteps: 2},
+	}
+	manager := runbook.NewManager(repo, nil, nil, 1, nil)
+	t.Cleanup(func() { manager.Shutdown(context.Background()) })
+	toolset := &tools{runbooks: manager}
+
+	timer := time.AfterFunc(400*time.Millisecond, func() { close(repo.release) })
+	t.Cleanup(func() { timer.Stop() })
+
+	_, waited, err := toolset.waitRunbook(context.Background(), nil, runbookWaitInput{RunID: "run_1", TimeoutMS: 200})
+	if err != nil {
+		t.Fatalf("waitRunbook() error = %v, want a timedOut result", err)
+	}
+	if !waited.TimedOut || waited.Run.ID != "run_1" {
+		t.Fatalf("waitRunbook() = %#v", waited)
+	}
+}
+
 func TestRunbookWaitTimeoutAndCursor(t *testing.T) {
 	t.Parallel()
 	if got, truncated := trailingRunes("áβcdef", 3); got != "def" || !truncated {

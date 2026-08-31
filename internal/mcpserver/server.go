@@ -111,10 +111,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
 }
 
-// Shutdown releases MCP attachments. Tmux sessions remain running.
-func (s *Server) Shutdown(_ context.Context) {
+// Shutdown releases MCP attachments within the caller's budget. Tmux sessions
+// remain running.
+func (s *Server) Shutdown(ctx context.Context) {
 	if s != nil && s.attachments != nil {
-		s.attachments.Close()
+		s.attachments.Close(ctx)
 	}
 }
 

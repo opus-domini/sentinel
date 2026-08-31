@@ -188,17 +188,24 @@ func (m *AttachmentManager) Read(ctx context.Context, id string, cursor int64, p
 	return stream.read(ctx, cursor, strings.TrimSpace(paneID), timeout), nil
 }
 
-// LockPane serializes interactive writes for one attachment target.
-func (m *AttachmentManager) LockPane(id, paneID string) (func(), error) {
+// LockPane serializes interactive writes for one attachment target and returns
+// the lease as observed once the lock is held, so callers start from a cursor
+// that no longer covers another client's output.
+func (m *AttachmentManager) LockPane(id, paneID string) (Attachment, func(), error) {
 	attachment, err := m.Lookup(id)
 	if err != nil {
-		return nil, err
+		return Attachment{}, nil, err
 	}
 	key := attachment.User + "\x00" + attachment.Session + "\x00" + strings.TrimSpace(paneID)
 	value, _ := m.paneLocks.LoadOrStore(key, &sync.Mutex{})
 	lock := value.(*sync.Mutex)
 	lock.Lock()
-	return lock.Unlock, nil
+	locked, err := m.Lookup(id)
+	if err != nil {
+		lock.Unlock()
+		return Attachment{}, nil, err
+	}
+	return locked, lock.Unlock, nil
 }
 
 // Detach releases a lease without touching the tmux session.
@@ -244,8 +251,10 @@ func (m *AttachmentManager) DetachSession(user, session string) {
 	}
 }
 
-// Close stops every control client and the lease sweeper.
-func (m *AttachmentManager) Close() {
+// Close stops every control client and the lease sweeper within the caller's
+// shutdown budget. Streams are closed concurrently so the total wait does not
+// grow with the number of open attachments.
+func (m *AttachmentManager) Close(ctx context.Context) {
 	if m == nil {
 		return
 	}
@@ -255,7 +264,10 @@ func (m *AttachmentManager) Close() {
 	default:
 		close(m.stop)
 	}
-	<-m.done
+	select {
+	case <-m.done:
+	case <-ctx.Done():
+	}
 
 	m.mu.Lock()
 	streams := make([]*controlStream, 0, len(m.streams))
@@ -265,8 +277,23 @@ func (m *AttachmentManager) Close() {
 	m.attachments = make(map[string]*attachmentLease)
 	m.streams = make(map[string]*controlStream)
 	m.mu.Unlock()
+
+	var wg sync.WaitGroup
 	for _, stream := range streams {
-		stream.close()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			stream.close()
+		}()
+	}
+	closed := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-ctx.Done():
 	}
 }
 
@@ -345,24 +372,32 @@ func startControlStream(key, user, session string) (*controlStream, error) {
 		alive:   true,
 		changed: make(chan struct{}),
 	}
-	go stream.scan(stdout)
-	go func() {
+	go stream.pump(stdout, func() string {
 		waitErr := cmd.Wait()
-		stream.mu.Lock()
-		stream.alive = false
 		message := strings.TrimSpace(stderr.String())
 		if message == "" && waitErr != nil && !errors.Is(ctx.Err(), context.Canceled) {
 			message = waitErr.Error()
 		}
-		if message != "" {
-			stream.appendLocked(ControlEvent{Type: "exit", Data: message})
-		} else {
-			stream.signalLocked()
-		}
-		stream.mu.Unlock()
-		close(stream.done)
-	}()
+		return message
+	})
 	return stream, nil
+}
+
+// pump drains control-mode output to EOF and only then reaps the process.
+// os/exec closes the stdout pipe inside Wait, so reaping concurrently with the
+// scanner would drop buffered lines and surface a spurious read error.
+func (s *controlStream) pump(stdout io.Reader, reap func() string) {
+	s.scan(stdout)
+	message := reap()
+	s.mu.Lock()
+	s.alive = false
+	if message != "" {
+		s.appendLocked(ControlEvent{Type: "exit", Data: message})
+	} else {
+		s.signalLocked()
+	}
+	s.mu.Unlock()
+	close(s.done)
 }
 
 func (s *controlStream) scan(reader io.Reader) {

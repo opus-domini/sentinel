@@ -329,7 +329,12 @@ func (t *tools) waitRunbook(ctx context.Context, _ *mcp.CallToolRequest, input r
 
 	var latest store.OpsRunbookRun
 	for {
-		item, getErr := t.runbooks.GetRun(waitCtx, id)
+		// The poll gets its own budget so the wait deadline expiring on an
+		// in-flight query reports timedOut through the select below instead of
+		// failing the tool call.
+		pollCtx, cancelPoll := context.WithTimeout(ctx, 5*time.Second)
+		item, getErr := t.runbooks.GetRun(pollCtx, id)
+		cancelPoll()
 		if getErr != nil {
 			return nil, runbookWaitOutput{}, runbookToolError("wait for runbook run", getErr)
 		}

@@ -385,13 +385,14 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 		return
 	}
 
-	// Mark as running again.
+	// Mark as running again. Every update on the resume path leaves StartedAt
+	// empty so the store preserves the original start time recorded by Run —
+	// the receipt must report when the run began, not when it was resumed.
 	runningJob, err := repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          job.ID,
 		Status:         runnerStatusRunning,
 		CompletedSteps: resumeFromStep + 1,
 		CurrentStep:    job.CurrentStep,
-		StartedAt:      now.Format(time.RFC3339),
 	})
 	if err != nil {
 		slog.Warn("runbook runner: failed to mark resumed run as running", "err", err)
@@ -439,7 +440,6 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 			CompletedSteps: stepIndex,
 			CurrentStep:    step.Title,
 			StepResults:    string(stepResultsJSON),
-			StartedAt:      now.Format(time.RFC3339),
 		})
 		if updateErr != nil {
 			slog.Warn("runbook runner: failed to update run before step", "err", updateErr)
@@ -472,7 +472,6 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 			CompletedSteps: totalCompleted,
 			CurrentStep:    stepTitle,
 			StepResults:    string(stepResultsJSON),
-			StartedAt:      now.Format(time.RFC3339),
 		})
 		if updateErr != nil {
 			slog.Warn("runbook runner: failed to update run progress", "err", updateErr)
@@ -503,7 +502,6 @@ func ResumeRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 			CompletedSteps: resumeFromStep + 1 + len(results),
 			CurrentStep:    lastStep,
 			StepResults:    string(stepResultsJSON),
-			StartedAt:      now.Format(time.RFC3339),
 		}); err != nil {
 			slog.Warn("runbook runner: failed to update run for approval", "err", err)
 		}

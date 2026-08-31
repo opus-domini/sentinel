@@ -277,12 +277,13 @@ func (m *Manager) Approve(ctx context.Context, runID string) (store.OpsRunbookRu
 	}()
 
 	now := time.Now().UTC()
+	// StartedAt is left empty so the store preserves the original start time:
+	// the receipt must report when the run began, not when it was approved.
 	running, err := m.repo.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
 		RunID:          job.ID,
 		Status:         runnerStatusRunning,
 		CompletedSteps: approvalStep + 1,
 		CurrentStep:    job.CurrentStep,
-		StartedAt:      now.Format(time.RFC3339),
 		FromStatus:     store.OpsRunbookStatusWaitingApproval,
 	})
 	if err != nil {

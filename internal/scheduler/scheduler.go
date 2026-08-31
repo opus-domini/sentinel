@@ -226,9 +226,7 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		s.releaseSchedule(sched.ID)
 		if errors.Is(rbErr, sql.ErrNoRows) {
 			slog.Warn("scheduler auto-heal: disabling orphan schedule", keySchedule, sched.ID, "runbook", sched.RunbookID)
-			if healErr := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); healErr != nil {
-				slog.Warn("scheduler auto-heal: update failed", keySchedule, sched.ID, "err", healErr)
-			}
+			s.disableSchedule(ctx, sched)
 			return
 		}
 		slog.Warn("scheduler load runbook failed", keySchedule, sched.ID, "runbook", sched.RunbookID, "err", rbErr)
@@ -237,9 +235,11 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 	params := runbook.ResolveParams(rb.Parameters, nil)
 	if err := runbook.ValidateParams(rb.Parameters, params); err != nil {
 		// A required parameter has no default; running with placeholders would be
-		// worse than skipping. Surface it instead of executing.
+		// worse than skipping. The scheduler never supplies overrides, so every
+		// future tick would fail identically: disable instead of warning forever.
 		s.releaseSchedule(sched.ID)
-		slog.Warn("scheduler skipping run: unmet required parameters", keySchedule, sched.ID, "runbook", sched.RunbookID, "err", err)
+		slog.Warn("scheduler disabling schedule: unmet required parameters", keySchedule, sched.ID, "runbook", sched.RunbookID, "err", err)
+		s.disableSchedule(ctx, sched)
 		return
 	}
 
@@ -333,12 +333,22 @@ func (s *Service) emitEvent(eventType string, payload map[string]any) {
 	s.publish(eventType, payload)
 }
 
+// computeNextRun returns the schedule's next fire time. A false second return
+// means the schedule cannot fire again and must be disabled: it is a one-time
+// schedule, or its cron expression will never produce another occurrence.
 func (s *Service) computeNextRun(sched store.OpsSchedule) (string, bool) {
 	if sched.ScheduleType == "once" {
 		return "", false
 	}
+	return nextCronRun(sched)
+}
 
-	// type="cron": compute next run time.
+// nextCronRun computes the next occurrence of a cron schedule. It returns false
+// when the expression cannot be parsed, or when it has no next occurrence at all
+// (robfig/cron gives up after five years and returns the zero time, e.g. for
+// "0 0 30 2 *"). Both are terminal: persisting the zero time would leave the
+// schedule permanently overdue and rewritten on every tick.
+func nextCronRun(sched store.OpsSchedule) (string, bool) {
 	loc, err := time.LoadLocation(sched.Timezone)
 	if err != nil {
 		slog.Warn("scheduler invalid timezone, using UTC", keySchedule, sched.ID, "timezone", sched.Timezone)
@@ -349,8 +359,12 @@ func (s *Service) computeNextRun(sched store.OpsSchedule) (string, bool) {
 		slog.Warn("scheduler invalid cron expression", keySchedule, sched.ID, "expr", sched.CronExpr, "err", err)
 		return "", false
 	}
-	nextRun := cronSched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
-	return nextRun, true
+	next := cronSched.Next(time.Now().In(loc))
+	if next.IsZero() {
+		slog.Warn("scheduler cron expression never fires", keySchedule, sched.ID, "expr", sched.CronExpr)
+		return "", false
+	}
+	return next.UTC().Format(time.RFC3339), true
 }
 
 func (s *Service) catchUpMissedRuns(ctx context.Context) {
@@ -381,24 +395,29 @@ func (s *Service) catchUpMissedRuns(ctx context.Context) {
 func (s *Service) recomputeNextRun(ctx context.Context, sched store.OpsSchedule) {
 	if sched.ScheduleType == "once" {
 		// One-time schedule that's past due and beyond catch-up: disable it.
-		if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, "", "", "", false); err != nil {
-			slog.Warn("scheduler: disable one-time schedule", keySchedule, sched.ID, "err", err)
-		}
+		s.disableSchedule(ctx, sched)
 		return
 	}
 
-	loc, err := time.LoadLocation(sched.Timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	cronSched, err := validate.ParseCron(sched.CronExpr)
-	if err != nil {
-		slog.Warn("scheduler recompute failed", keySchedule, sched.ID, "err", err)
+	nextRun, ok := nextCronRun(sched)
+	if !ok {
+		// The expression can never fire again. Leaving next_run_at in the past
+		// keeps the schedule due on every tick forever, so disable it instead.
+		slog.Warn("scheduler disabling schedule: cron expression has no next run", keySchedule, sched.ID, "expr", sched.CronExpr)
+		s.disableSchedule(ctx, sched)
 		return
 	}
-	nextRun := cronSched.Next(time.Now().In(loc)).UTC().Format(time.RFC3339)
 	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, sched.LastRunAt, sched.LastRunStatus, nextRun, true); err != nil {
 		slog.Warn("scheduler: recompute next run", keySchedule, sched.ID, "err", err)
+	}
+}
+
+// disableSchedule turns a schedule off after a terminal condition, clearing
+// next_run_at so it stops coming back as due. The last-run fields are kept so
+// the UI still shows what the schedule did before it stopped; callers log why.
+func (s *Service) disableSchedule(ctx context.Context, sched store.OpsSchedule) {
+	if err := s.repo.UpdateScheduleAfterRun(ctx, sched.ID, sched.LastRunAt, sched.LastRunStatus, "", false); err != nil {
+		slog.Warn("scheduler: disable schedule", keySchedule, sched.ID, "err", err)
 	}
 }
 
