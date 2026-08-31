@@ -158,7 +158,9 @@ Cause:
 Checks:
 
 - Verify `/etc/passwd` is readable by the sentinel process user.
-- Run `sentinel doctor` to confirm system user detection.
+- Run `sentinel config show` to confirm the effective `[multi_user]` values.
+- Open `/settings/accounts` to see whether the startup inventory loaded and
+  which accounts it holds.
 
 ## `sudo` failures for OS-account targeting
 
