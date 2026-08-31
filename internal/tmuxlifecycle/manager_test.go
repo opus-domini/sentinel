@@ -165,6 +165,42 @@ func TestManagerStartAndStopWaitsForSweeper(t *testing.T) {
 	}
 }
 
+// TestStartBoundsBootReconciliationOnWedgedRuntime pins the boot budget: the
+// HTTP listener only comes up after Start returns, so an unresponsive tmux
+// server must defer its leases to the next sweep instead of holding the
+// process before it can serve anything.
+func TestStartBoundsBootReconciliationOnWedgedRuntime(t *testing.T) {
+	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	st := newLifecycleStore(t)
+	lease := testLease(now, store.TmuxSessionLeaseActive)
+	seedLease(t, st, lease)
+	runtime := newFakeRuntime()
+	runtime.getBlocks = true
+	manager := newTestManager(st, &fakeClock{now: now}, runtime, Options{
+		SweepInterval: 50 * time.Millisecond,
+	})
+
+	started := make(chan error, 1)
+	go func() { started <- manager.Start(context.Background()) }()
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatalf("Start() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start() blocked on an unresponsive tmux runtime")
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := manager.Stop(stopCtx); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if _, ok := manager.SnapshotByID(lease.LeaseID); !ok {
+		t.Fatal("deferred boot reconciliation dropped the lease")
+	}
+}
+
 type fakeClock struct {
 	mu  sync.Mutex
 	now time.Time
@@ -190,6 +226,9 @@ type fakeRuntime struct {
 	getErr   error
 	listErr  error
 	killErr  error
+	// getBlocks makes GetSession answer only when its context ends, standing in
+	// for a wedged tmux server (a hung user switch, an unresponsive socket).
+	getBlocks bool
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -204,13 +243,18 @@ func (r *fakeRuntime) CreateSessionWithID(_ context.Context, name, _ string) (tm
 	return session, nil
 }
 
-func (r *fakeRuntime) GetSession(_ context.Context, name string) (tmux.Session, error) {
+func (r *fakeRuntime) GetSession(ctx context.Context, name string) (tmux.Session, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.getErr != nil {
-		return tmux.Session{}, r.getErr
-	}
+	blocks, getErr := r.getBlocks, r.getErr
 	session, ok := r.sessions[name]
+	r.mu.Unlock()
+	if blocks {
+		<-ctx.Done()
+		return tmux.Session{}, ctx.Err()
+	}
+	if getErr != nil {
+		return tmux.Session{}, getErr
+	}
 	if !ok {
 		return tmux.Session{}, &tmux.Error{Kind: tmux.ErrKindSessionNotFound, Msg: "missing"}
 	}
