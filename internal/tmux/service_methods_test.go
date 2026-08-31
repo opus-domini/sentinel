@@ -60,9 +60,10 @@ func serviceMethodCalls() []serviceMethodCall {
 	}
 }
 
-// TestServiceMethodsDelegateToPackageLevel covers the s.User == "" branch of
-// every Service method: it must route to the package-level tmux function,
-// which uses the injectable run variable.
+// TestServiceMethodsDelegateToPackageLevel covers the local (s.User == "")
+// case of every Service method: it must reach the injectable package-level run
+// variable, except for the methods that can start a tmux server, which must
+// reach createSessionRun instead.
 func TestServiceMethodsDelegateToPackageLevel(t *testing.T) {
 	// Not parallel: mutates the package-level run variable.
 

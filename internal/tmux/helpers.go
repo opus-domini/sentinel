@@ -12,6 +12,37 @@ import (
 // runnerFunc is the function signature for executing tmux commands.
 type runnerFunc func(ctx context.Context, args ...string) (string, error)
 
+func listSessionsVia(ctx context.Context, runFn runnerFunc) ([]Session, error) {
+	out, err := runFn(ctx, "list-sessions", "-F", listSessionsFormatWithActivity)
+	if err != nil {
+		if IsKind(err, ErrKindServerNotRunning) {
+			return []Session{}, nil
+		}
+		if !shouldRetryListSessionsWithoutActivity(err) {
+			return nil, err
+		}
+		out, err = runFn(ctx, "list-sessions", "-F", listSessionsFormatWithoutActivity)
+		if err != nil {
+			if IsKind(err, ErrKindServerNotRunning) {
+				return []Session{}, nil
+			}
+			return nil, err
+		}
+	}
+	return parseSessionListOutput(out), nil
+}
+
+func listActivePaneCommandsVia(ctx context.Context, runFn runnerFunc) (map[string]PaneSnapshot, error) {
+	out, err := runFn(ctx, "list-panes", "-a", "-F", activePaneCommandsFormat)
+	if err != nil {
+		if IsKind(err, ErrKindServerNotRunning) {
+			return map[string]PaneSnapshot{}, nil
+		}
+		return nil, err
+	}
+	return parseActivePaneCommandsOutput(out), nil
+}
+
 // parseActivePaneCommandsOutput parses list-panes output into a
 // session -> PaneSnapshot map.
 func parseActivePaneCommandsOutput(out string) map[string]PaneSnapshot {
@@ -21,7 +52,7 @@ func parseActivePaneCommandsOutput(out string) map[string]PaneSnapshot {
 	result := make(map[string]PaneSnapshot)
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	for _, line := range lines {
-		parts := strings.Split(line, "\t")
+		parts := strings.Split(line, fieldSep)
 		if len(parts) != 5 {
 			continue
 		}
@@ -46,6 +77,8 @@ func parseActivePaneCommandsOutput(out string) map[string]PaneSnapshot {
 func capturePane(ctx context.Context, runFn runnerFunc, session string) (string, error) {
 	out, err := runFn(ctx, "capture-pane", "-t", session+":", "-p", "-S", "-3")
 	if err != nil {
+		// A missing session legitimately yields an empty preview, but context
+		// cancellation/timeout must propagate so callers can stop work.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return "", err
 		}
@@ -68,7 +101,7 @@ func renameWindowVia(ctx context.Context, runFn runnerFunc, session string, inde
 }
 
 func listWindowsVia(ctx context.Context, runFn runnerFunc, session string) ([]Window, error) {
-	out, err := runFn(ctx, "list-windows", "-t", session, "-F", "#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}")
+	out, err := runFn(ctx, "list-windows", "-t", session, "-F", listWindowsFormat)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +112,7 @@ func listWindowsVia(ctx context.Context, runFn runnerFunc, session string) ([]Wi
 }
 
 func listPanesVia(ctx context.Context, runFn runnerFunc, session string) ([]Pane, error) {
-	out, err := runFn(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_id}\t#{pane_title}\t#{pane_active}\t#{pane_tty}\t#{pane_current_path}\t#{pane_start_command}\t#{pane_current_command}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}")
+	out, err := runFn(ctx, "list-panes", "-a", "-F", listPanesFormat)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +132,7 @@ func newWindowWithOptionsVia(ctx context.Context, runFn runnerFunc, session, nam
 			target = fmt.Sprintf("%s:%d", session, nextIndex)
 		}
 	}
-	args := []string{cmdNewWindow, "-P", "-F", "#{window_id}\t#{window_index}\t#{pane_id}", "-t", target}
+	args := []string{cmdNewWindow, "-P", "-F", newWindowFormat, "-t", target}
 	if strings.TrimSpace(name) != "" {
 		args = append(args, "-n", strings.TrimSpace(name))
 	}
@@ -286,7 +319,7 @@ func parseWindowListOutput(out string) []Window {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	windows := make([]Window, 0, len(lines))
 	for _, line := range lines {
-		parts := strings.Split(line, "\t")
+		parts := strings.Split(line, fieldSep)
 		if len(parts) < 6 {
 			continue
 		}
@@ -318,7 +351,7 @@ func parsePaneListOutput(out string, session string) []Pane {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	panes := make([]Pane, 0, len(lines))
 	for _, line := range lines {
-		parts := strings.Split(line, "\t")
+		parts := strings.Split(line, fieldSep)
 		if len(parts) < 7 {
 			continue
 		}

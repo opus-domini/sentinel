@@ -226,7 +226,7 @@ func TestClassifyError(t *testing.T) {
 func TestParseSessionListOutput(t *testing.T) {
 	t.Parallel()
 
-	withActivity := "$7\tapp\t3\t1\t1700000000\t1700000300"
+	withActivity := "$7\x1fapp\x1f3\x1f1\x1f1700000000\x1f1700000300"
 	sessions := parseSessionListOutput(withActivity)
 	if len(sessions) != 1 {
 		t.Fatalf("len(parseSessionListOutput) = %d, want 1", len(sessions))
@@ -241,7 +241,7 @@ func TestParseSessionListOutput(t *testing.T) {
 		t.Fatalf("ActivityAt = %d, want 1700000300", sessions[0].ActivityAt.Unix())
 	}
 
-	withoutActivity := "$8\tlegacy\t2\t0\t1700000500"
+	withoutActivity := "$8\x1flegacy\x1f2\x1f0\x1f1700000500"
 	sessions = parseSessionListOutput(withoutActivity)
 	if len(sessions) != 1 {
 		t.Fatalf("len(parseSessionListOutput legacy) = %d, want 1", len(sessions))
@@ -422,7 +422,7 @@ func TestParseNewWindowOutput(t *testing.T) {
 
 	t.Run("valid output", func(t *testing.T) {
 		t.Parallel()
-		got, err := parseNewWindowOutput("@19\t3\t%19\n")
+		got, err := parseNewWindowOutput("@19\x1f3\x1f%19\n")
 		if err != nil {
 			t.Fatalf("parseNewWindowOutput error = %v", err)
 		}

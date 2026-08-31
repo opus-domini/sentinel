@@ -74,11 +74,23 @@ type PaneSnapshot struct {
 	Panes   int
 }
 
+// fieldSep separates the fields of every tmux -F format this package requests.
+// tmux does not escape format values, and pane_current_path, pane_start_command
+// and pane_current_command can hold any byte a path or command line can hold —
+// a tab among them. Splitting such a line on a tab shifts every later field,
+// silently corrupting pane geometry. ASCII Unit Separator is not produced by
+// tmux itself and does not occur in real paths or command lines.
+const fieldSep = "\x1f"
+
 const (
 	cmdNewSession                     = "new-session"
-	listSessionsFormatWithActivity    = "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}\t#{session_activity}"
-	listSessionsFormatWithoutActivity = "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_created}"
-	createSessionFormat               = "#{session_id}\t#{session_name}"
+	listSessionsFormatWithActivity    = "#{session_id}" + fieldSep + "#{session_name}" + fieldSep + "#{session_windows}" + fieldSep + "#{session_attached}" + fieldSep + "#{session_created}" + fieldSep + "#{session_activity}"
+	listSessionsFormatWithoutActivity = "#{session_id}" + fieldSep + "#{session_name}" + fieldSep + "#{session_windows}" + fieldSep + "#{session_attached}" + fieldSep + "#{session_created}"
+	createSessionFormat               = "#{session_id}" + fieldSep + "#{session_name}"
+	listWindowsFormat                 = "#{session_name}" + fieldSep + "#{window_id}" + fieldSep + "#{window_index}" + fieldSep + "#{window_name}" + fieldSep + "#{window_active}" + fieldSep + "#{window_panes}" + fieldSep + "#{window_layout}"
+	listPanesFormat                   = "#{session_name}" + fieldSep + "#{window_index}" + fieldSep + "#{pane_index}" + fieldSep + "#{pane_id}" + fieldSep + "#{pane_title}" + fieldSep + "#{pane_active}" + fieldSep + "#{pane_tty}" + fieldSep + "#{pane_current_path}" + fieldSep + "#{pane_start_command}" + fieldSep + "#{pane_current_command}" + fieldSep + "#{pane_left}" + fieldSep + "#{pane_top}" + fieldSep + "#{pane_width}" + fieldSep + "#{pane_height}"
+	activePaneCommandsFormat          = "#{session_name}" + fieldSep + "#{window_active}" + fieldSep + "#{pane_active}" + fieldSep + "#{pane_start_command}" + fieldSep + "#{pane_current_command}"
+	newWindowFormat                   = "#{window_id}" + fieldSep + "#{window_index}" + fieldSep + "#{pane_id}"
 )
 
 // Window represents window data.
@@ -119,24 +131,7 @@ type NewWindowResult struct {
 
 // ListSessions lists sessions.
 func ListSessions(ctx context.Context) ([]Session, error) {
-	out, err := run(ctx, "list-sessions", "-F", listSessionsFormatWithActivity)
-	if err != nil {
-		if IsKind(err, ErrKindServerNotRunning) {
-			return []Session{}, nil
-		}
-		if !shouldRetryListSessionsWithoutActivity(err) {
-			return nil, err
-		}
-
-		out, err = run(ctx, "list-sessions", "-F", listSessionsFormatWithoutActivity)
-		if err != nil {
-			if IsKind(err, ErrKindServerNotRunning) {
-				return []Session{}, nil
-			}
-			return nil, err
-		}
-	}
-	return parseSessionListOutput(out), nil
+	return listSessionsVia(ctx, run)
 }
 
 // GetSession returns one exact tmux session.
@@ -153,40 +148,7 @@ var runners = map[string]bool{
 
 // ListActivePaneCommands lists active pane commands.
 func ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
-	out, err := run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_start_command}\t#{pane_current_command}")
-	if err != nil {
-		if IsKind(err, ErrKindServerNotRunning) {
-			return map[string]PaneSnapshot{}, nil
-		}
-		return nil, err
-	}
-	if strings.TrimSpace(out) == "" {
-		return map[string]PaneSnapshot{}, nil
-	}
-
-	result := make(map[string]PaneSnapshot)
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for _, line := range lines {
-		parts := strings.Split(line, "\t")
-		if len(parts) != 5 {
-			continue
-		}
-		name := parts[0]
-		snap := result[name]
-		snap.Panes++
-		if parts[1] == "1" && parts[2] == "1" {
-			cmd := inferCommand(parts[3])
-			if cmd == "" {
-				cmd = inferCommand(parts[4])
-			}
-			if cmd == "" {
-				cmd = parts[4]
-			}
-			snap.Command = cmd
-		}
-		result[name] = snap
-	}
-	return result, nil
+	return listActivePaneCommandsVia(ctx, run)
 }
 
 // inferCommand parses a command string and extracts the tool name,
@@ -237,23 +199,7 @@ func inferCommand(raw string) string {
 
 // CapturePane captures pane.
 func CapturePane(ctx context.Context, session string) (string, error) {
-	out, err := run(ctx, "capture-pane", "-t", session+":", "-p", "-S", "-3")
-	if err != nil {
-		// A missing session legitimately yields an empty preview, but context
-		// cancellation/timeout must propagate so callers can stop work.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return "", err
-		}
-		return "", nil
-	}
-	lines := strings.Split(out, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		trimmed := strings.TrimSpace(lines[i])
-		if trimmed != "" {
-			return trimmed, nil
-		}
-	}
-	return "", nil
+	return capturePane(ctx, run, session)
 }
 
 // SessionHash handles session hash.
@@ -314,12 +260,7 @@ const (
 )
 
 func setSessionOption(ctx context.Context, session, option string, enabled bool) error {
-	value := tmuxOff
-	if enabled {
-		value = tmuxOn
-	}
-	_, err := run(ctx, "set-option", "-t", session, option, value)
-	return err
+	return setSessionOptionVia(ctx, run, session, option, enabled)
 }
 
 // EnsureWebMouseBindings patches a subset of tmux default mouse bindings to
@@ -462,9 +403,7 @@ func RenameSession(ctx context.Context, session, newName string) error {
 
 // RenameWindow renames window.
 func RenameWindow(ctx context.Context, session string, index int, name string) error {
-	target := fmt.Sprintf("%s:%d", session, index)
-	_, err := run(ctx, "rename-window", "-t", target, name)
-	return err
+	return renameWindowVia(ctx, run, session, index, name)
 }
 
 // RenamePane renames pane.
@@ -486,9 +425,7 @@ func KillSessionByID(ctx context.Context, sessionID string) error {
 
 // SelectWindow selects window.
 func SelectWindow(ctx context.Context, session string, index int) error {
-	target := fmt.Sprintf("%s:%d", session, index)
-	_, err := run(ctx, "select-window", "-t", target)
-	return err
+	return selectWindowVia(ctx, run, session, index)
 }
 
 // SelectPane selects pane.
@@ -504,34 +441,7 @@ func NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
 
 // NewWindowWithOptions creates window with options.
 func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWindowResult, error) {
-	target := fmt.Sprintf("%s:", session)
-	if indexesOut, listErr := run(ctx, "list-windows", "-t", session, "-F", "#{window_index}"); listErr == nil {
-		if nextIndex, ok := nextWindowIndexFromListOutput(indexesOut); ok {
-			target = fmt.Sprintf("%s:%d", session, nextIndex)
-		}
-	}
-	args := []string{cmdNewWindow, "-P", "-F", "#{window_id}\t#{window_index}\t#{pane_id}", "-t", target}
-	if strings.TrimSpace(name) != "" {
-		args = append(args, "-n", strings.TrimSpace(name))
-	}
-	resolvedCWD := strings.TrimSpace(cwd)
-	if resolvedCWD == "" {
-		if pathOut, pathErr := run(ctx, "display-message", "-t", session, "-p", "#{session_path}"); pathErr == nil {
-			resolvedCWD = strings.TrimSpace(pathOut)
-		}
-	}
-	if resolvedCWD != "" {
-		args = append(args, "-c", resolvedCWD)
-	}
-	out, err := run(ctx, args...)
-	if err != nil {
-		return NewWindowResult{}, err
-	}
-	result, parseErr := parseNewWindowOutput(out)
-	if parseErr != nil {
-		return NewWindowResult{}, parseErr
-	}
-	return result, nil
+	return newWindowWithOptionsVia(ctx, run, session, name, cwd)
 }
 
 // CreateSessionWithID creates a detached session and returns its stable runtime
@@ -543,73 +453,12 @@ func CreateSessionWithID(ctx context.Context, name, cwd string) (Session, error)
 
 // KillWindow handles kill window.
 func KillWindow(ctx context.Context, session string, index int) error {
-	target := fmt.Sprintf("%s:%d", session, index)
-	_, err := run(ctx, "kill-window", "-t", target)
-	return err
+	return killWindowVia(ctx, run, session, index)
 }
 
 // ReorderWindows reorders windows.
 func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
-	session = strings.TrimSpace(session)
-	if session == "" {
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errSessionRequired}
-	}
-	if len(orderedWindowIDs) == 0 {
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window order is required"}
-	}
-
-	normalized := make([]string, 0, len(orderedWindowIDs))
-	seen := make(map[string]struct{}, len(orderedWindowIDs))
-	for _, item := range orderedWindowIDs {
-		windowID := strings.TrimSpace(item)
-		if windowID == "" {
-			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window id is required"}
-		}
-		if _, exists := seen[windowID]; exists {
-			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux window ids must be unique"}
-		}
-		seen[windowID] = struct{}{}
-		normalized = append(normalized, windowID)
-	}
-
-	liveWindows, err := ListWindows(ctx, session)
-	if err != nil {
-		return err
-	}
-	if len(liveWindows) != len(normalized) {
-		return &Error{Kind: ErrKindInvalidIdentifier, Msg: errWindowOrderMismatch}
-	}
-
-	current := make([]string, 0, len(liveWindows))
-	positions := make(map[string]int, len(liveWindows))
-	for index, window := range liveWindows {
-		windowID := strings.TrimSpace(window.ID)
-		if windowID == "" {
-			return &Error{Kind: ErrKindInvalidIdentifier, Msg: "tmux live window id is required"}
-		}
-		current = append(current, windowID)
-		positions[windowID] = index
-	}
-	for _, windowID := range normalized {
-		if _, ok := positions[windowID]; !ok {
-			return &Error{Kind: ErrKindInvalidIdentifier, Msg: errWindowOrderMismatch}
-		}
-	}
-
-	for index, wantID := range normalized {
-		currentID := current[index]
-		if currentID == wantID {
-			continue
-		}
-		swapIndex := positions[wantID]
-		if _, err := run(ctx, "swap-window", "-d", "-s", currentID, "-t", wantID); err != nil {
-			return err
-		}
-		current[index], current[swapIndex] = current[swapIndex], current[index]
-		positions[currentID] = swapIndex
-		positions[wantID] = index
-	}
-	return nil
+	return reorderWindowsVia(ctx, run, session, orderedWindowIDs)
 }
 
 // KillPane handles kill pane.
@@ -620,138 +469,27 @@ func KillPane(ctx context.Context, paneID string) error {
 
 // SplitPane splits pane.
 func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
-	args := []string{cmdSplitWindow, "-t", paneID}
-	switch direction {
-	case dirVertical:
-		args = append(args, "-h")
-	case dirHorizontal:
-		args = append(args, "-v")
-	default:
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errInvalidSplitDir}
-	}
-	args = append(args, "-P", "-F", "#{pane_id}")
-	out, err := run(ctx, args...)
-	if err != nil {
-		return "", err
-	}
-	createdPaneID, parseErr := parseSplitPaneOutput(out)
-	if parseErr != nil {
-		return "", parseErr
-	}
-	return createdPaneID, nil
+	return splitPaneVia(ctx, run, paneID, direction)
 }
 
 // SendKeys sends keys.
 func SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
-	keys = strings.TrimSpace(keys)
-	if keys != "" {
-		if _, err := run(ctx, "send-keys", "-t", paneID, "-l", keys); err != nil {
-			return err
-		}
-	}
-	if enter {
-		if _, err := run(ctx, "send-keys", "-t", paneID, "C-m"); err != nil {
-			return err
-		}
-	}
-	return nil
+	return sendKeysVia(ctx, run, paneID, keys, enter)
 }
 
 // ListWindows lists windows.
 func ListWindows(ctx context.Context, session string) ([]Window, error) {
-	out, err := run(ctx, "list-windows", "-t", session, "-F", "#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}")
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(out) == "" {
-		return []Window{}, nil
-	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	windows := make([]Window, 0, len(lines))
-	for _, line := range lines {
-		parts := strings.Split(line, "\t")
-		if len(parts) < 6 {
-			continue
-		}
-		windowID := strings.TrimSpace(parts[1])
-		idx, _ := strconv.Atoi(parts[2])
-		panes, _ := strconv.Atoi(parts[5])
-		layout := ""
-		if len(parts) > 6 {
-			layout = parts[6]
-		}
-		windows = append(windows, Window{
-			Session: parts[0],
-			ID:      windowID,
-			Index:   idx,
-			Name:    parts[3],
-			Active:  parts[4] == "1",
-			Panes:   panes,
-			Layout:  layout,
-		})
-	}
-	return windows, nil
+	return listWindowsVia(ctx, run, session)
 }
 
 // ListPanes lists panes.
 func ListPanes(ctx context.Context, session string) ([]Pane, error) {
-	out, err := run(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_id}\t#{pane_title}\t#{pane_active}\t#{pane_tty}\t#{pane_current_path}\t#{pane_start_command}\t#{pane_current_command}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}")
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(out) == "" {
-		return []Pane{}, nil
-	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	panes := make([]Pane, 0, len(lines))
-	for _, line := range lines {
-		parts := strings.Split(line, "\t")
-		if len(parts) < 7 {
-			continue
-		}
-		if parts[0] != session {
-			continue
-		}
-		windowIndex, _ := strconv.Atoi(parts[1])
-		paneIndex, _ := strconv.Atoi(parts[2])
-		left, _ := strconv.Atoi(valueAt(parts, 10))
-		top, _ := strconv.Atoi(valueAt(parts, 11))
-		width, _ := strconv.Atoi(valueAt(parts, 12))
-		height, _ := strconv.Atoi(valueAt(parts, 13))
-		panes = append(panes, Pane{
-			Session:        parts[0],
-			WindowIndex:    windowIndex,
-			PaneIndex:      paneIndex,
-			PaneID:         parts[3],
-			Title:          parts[4],
-			Active:         parts[5] == "1",
-			TTY:            parts[6],
-			CurrentPath:    valueAt(parts, 7),
-			StartCommand:   valueAt(parts, 8),
-			CurrentCommand: valueAt(parts, 9),
-			Left:           left,
-			Top:            top,
-			Width:          width,
-			Height:         height,
-		})
-	}
-	return panes, nil
+	return listPanesVia(ctx, run, session)
 }
 
 // CapturePaneLines captures pane lines.
 func CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
-	if strings.TrimSpace(target) == "" {
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: "target is required"}
-	}
-	if lines <= 0 {
-		lines = 80
-	}
-	start := fmt.Sprintf("-%d", lines)
-	out, err := run(ctx, "capture-pane", "-t", target, "-p", "-S", start)
-	if err != nil {
-		return "", err
-	}
-	return out, nil
+	return capturePaneLinesVia(ctx, run, target, lines)
 }
 
 // SessionExists handles session exists.
@@ -775,7 +513,7 @@ func valueAt(parts []string, idx int) string {
 
 func parseNewWindowOutput(out string) (NewWindowResult, error) {
 	line := strings.TrimSpace(out)
-	parts := strings.Split(line, "\t")
+	parts := strings.Split(line, fieldSep)
 	if len(parts) != 3 {
 		return NewWindowResult{}, &Error{
 			Kind: ErrKindCommandFailed,
@@ -847,8 +585,14 @@ var run = func(ctx context.Context, args ...string) (string, error) { // var ena
 	return executeTmuxCommand(ctx, "tmux", args, args)
 }
 
+var execCommandContext = exec.CommandContext // var enables test injection
+
+// executeTmuxCommand runs one tmux invocation, either directly or through a
+// wrapper (systemd-run for session creation, the user-switch command for
+// multi-user targets). tmuxArgs is the tmux argument vector used for error
+// messages, which is not the same as commandArgs once a wrapper is involved.
 func executeTmuxCommand(ctx context.Context, name string, commandArgs, tmuxArgs []string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, commandArgs...)
+	cmd := execCommandContext(ctx, name, commandArgs...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -904,7 +648,7 @@ func parseSessionListOutput(out string) []Session {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	sessions := make([]Session, 0, len(lines))
 	for _, line := range lines {
-		parts := strings.Split(line, "\t")
+		parts := strings.Split(line, fieldSep)
 		if len(parts) < 5 {
 			continue
 		}
@@ -983,7 +727,7 @@ func createSessionWithIDVia(
 	if err != nil {
 		return Session{}, err
 	}
-	parts := strings.Split(strings.TrimSpace(out), "\t")
+	parts := strings.Split(strings.TrimSpace(out), fieldSep)
 	if len(parts) != 2 || !validSessionID(parts[0]) || strings.TrimSpace(parts[1]) == "" {
 		return Session{}, &Error{Kind: ErrKindCommandFailed, Msg: "tmux create returned an invalid session identity"}
 	}
