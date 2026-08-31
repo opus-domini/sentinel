@@ -19,6 +19,9 @@ import { parseLogLines, parseSingleLine } from '@/lib/log-parser'
 import { cn } from '@/lib/utils'
 
 const LOG_BUFFER_MAX = 5_000
+// A hidden tab is served no animation frames, so the rAF drain is paired with
+// a timeout the same way the terminal write pipeline pairs its own.
+const LOG_FLUSH_FALLBACK_MS = 50
 
 type ServiceLogTarget = Pick<
   OpsBrowsedService,
@@ -79,17 +82,26 @@ export function ServiceLogsSheet({
   const sinceRef = useRef<string | undefined>(undefined)
   const streamBufferRef = useRef<Array<ParsedLogLine>>([])
   const flushFrameRef = useRef<number | null>(null)
+  const flushTimeoutRef = useRef<number | null>(null)
 
-  const clearStreamBuffer = useCallback(() => {
-    streamBufferRef.current = []
+  const cancelScheduledFlush = useCallback(() => {
     if (flushFrameRef.current != null) {
       window.cancelAnimationFrame(flushFrameRef.current)
       flushFrameRef.current = null
     }
+    if (flushTimeoutRef.current != null) {
+      window.clearTimeout(flushTimeoutRef.current)
+      flushTimeoutRef.current = null
+    }
   }, [])
 
+  const clearStreamBuffer = useCallback(() => {
+    streamBufferRef.current = []
+    cancelScheduledFlush()
+  }, [cancelScheduledFlush])
+
   const flushStreamBuffer = useCallback(() => {
-    flushFrameRef.current = null
+    cancelScheduledFlush()
     const buffered = streamBufferRef.current
     if (buffered.length === 0) return
     streamBufferRef.current = []
@@ -100,7 +112,7 @@ export function ServiceLogsSheet({
       }
       return next
     })
-  }, [])
+  }, [cancelScheduledFlush])
 
   const initialLogRequest = useMemo<ServiceLogRequest | null>(() => {
     if (!service || !open) return null
@@ -175,9 +187,19 @@ export function ServiceLogsSheet({
     (line: string) => {
       lineCounterRef.current += 1
       const parsed = parseSingleLine(line, lineCounterRef.current)
-      streamBufferRef.current.push(parsed)
+      const buffered = streamBufferRef.current
+      buffered.push(parsed)
+      // Hold the pending buffer to the same ceiling the flushed buffer has, so
+      // a chatty unit in a background tab drops its oldest lines here instead
+      // of growing without bound until the tab is foregrounded again.
+      if (buffered.length > LOG_BUFFER_MAX) {
+        buffered.splice(0, buffered.length - LOG_BUFFER_MAX)
+      }
       if (flushFrameRef.current == null) {
         flushFrameRef.current = window.requestAnimationFrame(flushStreamBuffer)
+      }
+      if (flushTimeoutRef.current == null) {
+        flushTimeoutRef.current = window.setTimeout(flushStreamBuffer, LOG_FLUSH_FALLBACK_MS)
       }
     },
     [flushStreamBuffer],

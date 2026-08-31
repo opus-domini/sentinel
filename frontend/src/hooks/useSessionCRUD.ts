@@ -796,19 +796,16 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
   return {
     // State
     renameDialogOpen,
-    renameSessionTarget,
     renameValue,
     sessionsLoaded,
     // Refs
     lastSessionsRefreshAtRef,
-    pendingRenameSessionsRef,
     // Actions
     refreshSessions,
     activateSession,
     createSession,
     handleTmuxSessionsEvent,
     killSession,
-    renameActive,
     setSessionIcon,
     handleOpenRenameDialogForSession,
     handleSubmitRename,
@@ -818,6 +815,5 @@ export function useSessionCRUD(options: UseSessionCRUDOptions) {
     setRenameDialogOpen,
     setRenameSessionTarget,
     setRenameValue,
-    clearPendingSessionRenamesForName,
   }
 }

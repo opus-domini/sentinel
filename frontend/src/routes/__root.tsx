@@ -111,6 +111,12 @@ function LoadingGate() {
   )
 }
 
+// Hoisted so useShellLayout's resize callbacks keep a stable identity across
+// root renders; an inline arrow would defeat the memoized layout value.
+function dispatchWindowResize() {
+  window.dispatchEvent(new Event('resize'))
+}
+
 function RootComponent() {
   useVisualViewport()
   const viewport = useViewportCapabilities()
@@ -122,9 +128,7 @@ function RootComponent() {
     minSidebarWidth: 240,
     maxSidebarWidth: 440,
     compactLayout: viewport.compactLayout,
-    onResizeEnd: () => {
-      window.dispatchEvent(new Event('resize'))
-    },
+    onResizeEnd: dispatchWindowResize,
   })
   const { setSidebarOpen } = layout
 

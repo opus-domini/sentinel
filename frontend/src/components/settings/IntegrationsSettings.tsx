@@ -19,6 +19,7 @@ import MCPSettingsPanel from './MCPSettingsPanel'
 import RestartPendingNotice from './RestartPendingNotice'
 import type { SecretIntent } from './SecretSettingControl'
 import { SaveFeedback } from './SettingsField'
+import SettingsGroup from './SettingsGroup'
 import SettingsSectionHeader from './SettingsSectionHeader'
 import {
   AlertDialog,
@@ -246,7 +247,7 @@ export default function IntegrationsSettings() {
         onRestartComplete={() => setFeedback(idleFeedback)}
       />
 
-      <IntegrationGroup
+      <SettingsGroup
         title="MCP"
         description="Control trusted agent access and its shared write-only credential."
         icon={<Bot className="size-4" aria-hidden="true" />}
@@ -258,9 +259,9 @@ export default function IntegrationsSettings() {
           saving={settingsQuery.isSaving}
           onEnabledChange={(enabled) => updateDraft('mcpEnabled', enabled)}
         />
-      </IntegrationGroup>
+      </SettingsGroup>
 
-      <IntegrationGroup
+      <SettingsGroup
         title="Health report"
         description="Schedule concise host health delivery to one write-only webhook."
         icon={<HeartPulse className="size-4" aria-hidden="true" />}
@@ -283,7 +284,7 @@ export default function IntegrationsSettings() {
             setErrors((current) => ({ ...current, webhook: undefined }))
           }}
         />
-      </IntegrationGroup>
+      </SettingsGroup>
 
       {dirty && (
         <aside
@@ -379,29 +380,4 @@ function preserveDraftValue(
       target.webhookValue = source.webhookValue
       break
   }
-}
-
-function IntegrationGroup({
-  title,
-  description,
-  icon,
-  children,
-}: {
-  title: string
-  description: string
-  icon: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <section className="grid gap-3">
-      <div className="flex items-start gap-2 px-1">
-        <span className="mt-0.5 text-primary">{icon}</span>
-        <div>
-          <h2 className="text-[12px] font-medium">{title}</h2>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      {children}
-    </section>
-  )
 }

@@ -16,6 +16,23 @@ const NOW_RELEVANT_EVENT_TYPES = new Set([
   'ops.runbooks.updated',
 ])
 
+// Discriminants the guard below actually proves. Kept as OpsWsMessage['type']
+// so a union member that is added here without a matching entry, or an entry
+// that no longer exists in the union, fails to compile.
+const OPS_WS_MESSAGE_TYPES: ReadonlySet<string> = new Set<OpsWsMessage['type']>([
+  'events.ready',
+  'ops.overview.updated',
+  'ops.services.updated',
+  'ops.metrics.updated',
+  'ops.posture.updated',
+  'ops.runbooks.updated',
+  'ops.job.updated',
+  'ops.schedule.updated',
+  'tmux.sessions.updated',
+  'tmux.inspector.updated',
+  'tmux.activity.updated',
+])
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -23,6 +40,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function isOpsWsMessage(msg: unknown): msg is OpsWsMessage {
   if (!isRecord(msg)) return false
   if (typeof msg.type !== 'string') return false
+  if (!OPS_WS_MESSAGE_TYPES.has(msg.type)) return false
   return isRecord(msg.payload)
 }
 

@@ -29,7 +29,7 @@ import type {
   OpsOverviewResponse,
   OpsTemperatureSensor,
 } from '@/types'
-import type { MetricsSnapshot, NumericMetricKey } from '@/lib/MetricsHistory'
+import type { MetricsSnapshot, NumericMetricKey } from '@/lib/metricsSnapshot'
 import type { MetricSeverity } from '@/lib/metricsView'
 import AppSectionTitle from '@/components/layout/AppSectionTitle'
 import AppShell from '@/components/layout/AppShell'

@@ -153,19 +153,37 @@ export function useShellLayout({
     ],
   )
 
-  return {
-    sidebarOpen,
-    setSidebarOpen,
-    sidebarCollapsed,
-    setSidebarCollapsed,
-    sidebarDensity,
-    sidebarWidth,
-    sidebarMinWidth: minSidebarWidth,
-    sidebarMaxWidth: maxSidebarWidth,
-    shellStyle,
-    layoutGridClass,
-    startSidebarResize,
-    resizeSidebarBy,
-    resizeSidebarTo,
-  }
+  // LayoutContext hands this object to every shell consumer, so a fresh
+  // identity per render would re-render the whole active route on any
+  // unrelated root state change (a toast, a socket transition).
+  return useMemo(
+    () => ({
+      sidebarOpen,
+      setSidebarOpen,
+      sidebarCollapsed,
+      setSidebarCollapsed,
+      sidebarDensity,
+      sidebarWidth,
+      sidebarMinWidth: minSidebarWidth,
+      sidebarMaxWidth: maxSidebarWidth,
+      shellStyle,
+      layoutGridClass,
+      startSidebarResize,
+      resizeSidebarBy,
+      resizeSidebarTo,
+    }),
+    [
+      layoutGridClass,
+      maxSidebarWidth,
+      minSidebarWidth,
+      resizeSidebarBy,
+      resizeSidebarTo,
+      shellStyle,
+      sidebarCollapsed,
+      sidebarDensity,
+      sidebarOpen,
+      sidebarWidth,
+      startSidebarResize,
+    ],
+  )
 }

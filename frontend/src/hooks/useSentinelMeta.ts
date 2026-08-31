@@ -87,19 +87,25 @@ export function useSentinelMeta() {
     [metaQuery.data],
   )
 
-  return {
-    tokenRequired: value.tokenRequired,
-    defaultCwd: value.defaultCwd,
-    version: value.version,
-    timezone: value.timezone,
-    locale: value.locale,
-    hostname: value.hostname,
-    processUser: value.processUser,
-    userSwitchMethod: value.userSwitchMethod,
-    isRoot: value.isRoot,
-    canSwitchUser: value.canSwitchUser,
-    allowedUsers: value.allowedUsers,
-    unauthorized: value.unauthorized,
-    loaded: metaQuery.isFetched,
-  }
+  // MetaContext hands this object to every consumer, so it has to keep the
+  // identity of the memoized snapshot above instead of being rebuilt per
+  // render.
+  return useMemo(
+    () => ({
+      tokenRequired: value.tokenRequired,
+      defaultCwd: value.defaultCwd,
+      version: value.version,
+      timezone: value.timezone,
+      locale: value.locale,
+      hostname: value.hostname,
+      processUser: value.processUser,
+      userSwitchMethod: value.userSwitchMethod,
+      isRoot: value.isRoot,
+      canSwitchUser: value.canSwitchUser,
+      allowedUsers: value.allowedUsers,
+      unauthorized: value.unauthorized,
+      loaded: metaQuery.isFetched,
+    }),
+    [metaQuery.isFetched, value],
+  )
 }

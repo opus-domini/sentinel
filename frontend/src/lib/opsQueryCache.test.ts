@@ -69,6 +69,22 @@ describe('opsQueryCache', () => {
     expect(isOpsWsMessage(null)).toBe(false)
   })
 
+  it('rejects discriminants that are not carried by the ops event stream', () => {
+    expect(isOpsWsMessage({ type: 'ops.unknown.updated', payload: {} })).toBe(false)
+    expect(isOpsWsMessage({ type: '', payload: {} })).toBe(false)
+    expect(isOpsWsMessage({ type: 'tmux.sessions.updated', payload: {} })).toBe(true)
+    expect(isOpsWsMessage({ type: 'events.ready', payload: {} })).toBe(true)
+  })
+
+  it('accepts a services update that omits the full service list', () => {
+    expect(
+      isOpsWsMessage({
+        type: 'ops.services.updated',
+        payload: { globalRev: 1, action: 'registered', service: 'sentinel' },
+      }),
+    ).toBe(true)
+  })
+
   it('keeps the HTTP metrics cache shape when applying websocket updates', () => {
     const metrics = { cpuPercent: 85 } as OpsHostMetrics
     const posture = {

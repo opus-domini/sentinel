@@ -7,7 +7,6 @@ import type {
   OpsRunbooksResponse,
   OpsSchedule,
   OpsServicesResponse,
-  OpsWsMessage,
   RunbookParameterType,
 } from '@/types'
 import type { RunbookDraft } from '@/components/RunbookEditor'
@@ -21,6 +20,7 @@ import { ApiError, useTmuxApi } from '@/hooks/useTmuxApi'
 import {
   OPS_RUNBOOKS_QUERY_KEY,
   OPS_SERVICES_QUERY_KEY,
+  isOpsWsMessage,
   upsertOpsRunbookJob,
 } from '@/lib/opsQueryCache'
 import { isActiveRunbookJob } from '@/lib/runbookPresentation'
@@ -333,7 +333,8 @@ export function useRunbooksPage(focusJobId?: string) {
 
   const handleWSMessage = useCallback(
     (message: unknown) => {
-      const msg = message as OpsWsMessage
+      if (!isOpsWsMessage(message)) return
+      const msg = message
       switch (msg.type) {
         case 'ops.job.updated': {
           const job = msg.payload.job

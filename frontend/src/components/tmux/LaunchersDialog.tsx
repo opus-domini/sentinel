@@ -124,7 +124,7 @@ function draftFromLauncher(launcher: TmuxLauncher): LauncherDraft {
     cwdMode: launcher.cwdMode,
     cwdValue: launcher.cwdValue,
     windowName: launcher.windowName,
-    userMode: (launcher.userMode as LauncherUserMode) || 'session',
+    userMode: launcher.userMode,
     userValue: launcher.userValue ?? '',
   }
 }

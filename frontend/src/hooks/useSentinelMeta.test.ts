@@ -49,6 +49,20 @@ describe('useSentinelMeta', () => {
     expect(result.current.unauthorized).toBe(false)
   })
 
+  it('keeps a stable value identity across renders that change nothing', async () => {
+    mockFetch(200, { data: { tokenRequired: true } })
+
+    const { result, rerender } = renderHook(() => useSentinelMeta(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.tokenRequired).toBe(true)
+    })
+
+    const settled = result.current
+    rerender()
+    expect(result.current).toBe(settled)
+  })
+
   it('sets tokenRequired from API response', async () => {
     mockFetch(200, { data: { tokenRequired: true } })
 
