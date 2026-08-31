@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 24 || name != "trim-watchtower-write-cost" {
-		t.Fatalf("latest migration = (%d, %q), want (24, %q)", version, name, "trim-watchtower-write-cost")
+	if version != 25 || name != "drop-orphan-runtime-metrics" {
+		t.Fatalf("latest migration = (%d, %q), want (25, %q)", version, name, "drop-orphan-runtime-metrics")
 	}
 
 	// Spot-check that a few tables exist.
@@ -117,8 +117,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 21 {
-		t.Fatalf("schema_migrations rows = %d, want 21", count)
+	if count != 22 {
+		t.Fatalf("schema_migrations rows = %d, want 22", count)
 	}
 }
 
