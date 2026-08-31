@@ -139,6 +139,171 @@ func TestComputeNextRun_InvalidTimezone(t *testing.T) {
 	}
 }
 
+// neverFiringCron parses cleanly but has no occurrence: February never has a
+// 30th, so cron.Schedule.Next gives up after five years and returns zero time.
+const neverFiringCron = "0 0 30 2 *"
+
+func TestComputeNextRun_NeverFiringCron(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{})
+
+	sched := store.OpsSchedule{
+		ScheduleType: "cron",
+		CronExpr:     neverFiringCron,
+		Timezone:     "UTC",
+	}
+
+	nextRun, enabled := svc.computeNextRun(sched)
+	if enabled {
+		t.Fatal("expected enabled=false for a cron expression with no next run")
+	}
+	if nextRun != "" {
+		t.Fatalf("expected empty nextRun, got %q", nextRun)
+	}
+}
+
+func TestTick_NeverFiringCronScheduleDisabled(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{})
+
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{Name: "never-fires", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// This is what the zero time from Next persists as: always <= now, so the
+	// schedule is due on every tick and beyond the catch-up window.
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "never-fires-schedule",
+		ScheduleType: "cron",
+		CronExpr:     neverFiringCron,
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    time.Time{}.UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc.tick(ctx)
+	svc.wg.Wait()
+
+	got := findSchedule(t, st, sched.ID)
+	if got.Enabled {
+		t.Fatal("a schedule whose cron never fires should be disabled, not left due forever")
+	}
+	if got.NextRunAt != "" {
+		t.Fatalf("next_run_at should be cleared, got %q", got.NextRunAt)
+	}
+}
+
+func TestRecomputeNextRun_InvalidCronDisables(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{})
+
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{Name: "bad-cron", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Now().UTC().Add(-48 * time.Hour)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "bad-cron-schedule",
+		ScheduleType: "cron",
+		CronExpr:     "not-a-cron",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    stale.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc.recomputeNextRun(ctx, sched)
+
+	got := findSchedule(t, st, sched.ID)
+	if got.Enabled {
+		t.Fatal("a schedule with an unparseable cron should be disabled, not left due forever")
+	}
+	if got.NextRunAt != "" {
+		t.Fatalf("next_run_at should be cleared, got %q", got.NextRunAt)
+	}
+}
+
+func TestExecuteDueSchedule_DisablesOnUnmetRequiredParameters(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{})
+
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:    "unmet-params",
+		Enabled: true,
+		Parameters: []store.RunbookParameter{
+			{Name: "TARGET", Label: "Target", Type: "string", Required: true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "unmet-params-schedule",
+		ScheduleType: "cron",
+		CronExpr:     "*/5 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    past.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc.tick(ctx)
+	svc.wg.Wait()
+
+	runs, err := st.ListOpsRunbookRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no run for a schedule with unmet required parameters, got %d", len(runs))
+	}
+
+	got := findSchedule(t, st, sched.ID)
+	if got.Enabled {
+		t.Fatal("a schedule the scheduler can never satisfy should be disabled, not retried every tick")
+	}
+	if got.NextRunAt != "" {
+		t.Fatalf("next_run_at should be cleared, got %q", got.NextRunAt)
+	}
+}
+
+func findSchedule(t *testing.T, st *store.Store, id string) store.OpsSchedule {
+	t.Helper()
+	schedules, err := st.ListOpsSchedules(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range schedules {
+		if s.ID == id {
+			return s
+		}
+	}
+	t.Fatalf("schedule %q not found", id)
+	return store.OpsSchedule{}
+}
+
 func TestTick_NoDueSchedules(t *testing.T) {
 	t.Parallel()
 	st := testStore(t)
@@ -328,7 +493,7 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 	}
 
 	// Wait for the async goroutine to complete so the store can close cleanly.
-	time.Sleep(300 * time.Millisecond)
+	svc.wg.Wait()
 }
 
 func TestTick_SkipsScheduleAlreadyInFlight(t *testing.T) {
@@ -380,7 +545,7 @@ func TestTick_SkipsScheduleAlreadyInFlight(t *testing.T) {
 		t.Fatalf("expected exactly one run after release, got %d", len(runs))
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	svc.wg.Wait()
 }
 
 func TestTick_FutureScheduleNotTriggered(t *testing.T) {
@@ -464,7 +629,7 @@ func TestCatchUpMissedRuns_WithinWindow(t *testing.T) {
 		t.Fatal("expected a catch-up run within the 24h window")
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	svc.wg.Wait()
 }
 
 func TestCatchUpMissedRuns_BeyondWindow(t *testing.T) {
@@ -652,8 +817,8 @@ func TestCronRecurrence_AfterRunCompletion(t *testing.T) {
 	// Tick triggers the run.
 	svc.tick(ctx)
 
-	// Wait for async run to complete (0 steps = instant).
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the async run to complete, including its OnFinish store write.
+	svc.wg.Wait()
 
 	// Verify: schedule must still be enabled AND have a valid future next_run_at.
 	schedules, err := st.ListOpsSchedules(ctx)
@@ -719,7 +884,7 @@ func TestOnceSchedule_DisabledAfterRunCompletion(t *testing.T) {
 	}
 
 	svc.tick(ctx)
-	time.Sleep(500 * time.Millisecond)
+	svc.wg.Wait()
 
 	schedules, err := st.ListOpsSchedules(ctx)
 	if err != nil {
@@ -817,17 +982,54 @@ func TestPublish_NilService(t *testing.T) {
 	svc.publish("test.event", map[string]any{"key": "value"})
 }
 
+// listCountingRepo signals every ListDueSchedules call so a test can wait for
+// the tick loop to actually run instead of sleeping for a guessed duration.
+type listCountingRepo struct {
+	calls chan struct{}
+}
+
+func (r *listCountingRepo) ListDueSchedules(context.Context, time.Time, int) ([]store.OpsSchedule, error) {
+	select {
+	case r.calls <- struct{}{}:
+	default:
+	}
+	return nil, nil
+}
+
+func (r *listCountingRepo) GetOpsRunbook(_ context.Context, id string) (store.OpsRunbook, error) {
+	return store.OpsRunbook{ID: id}, nil
+}
+
+func (r *listCountingRepo) CreateOpsRunbookRun(context.Context, store.OpsRunbookRunWrite) (store.OpsRunbookRun, error) {
+	return store.OpsRunbookRun{}, nil
+}
+
+func (r *listCountingRepo) UpdateScheduleAfterRun(context.Context, string, string, string, string, bool) error {
+	return nil
+}
+
+func (r *listCountingRepo) UpdateScheduleLastRun(context.Context, string, string, string) error {
+	return nil
+}
+
 func TestStartStop(t *testing.T) {
 	t.Parallel()
-	st := testStore(t)
-	svc := New(st, st, Options{TickInterval: 100 * time.Millisecond})
+	repo := &listCountingRepo{calls: make(chan struct{}, 4)}
+	svc := New(repo, schedulerRunbookRepo{}, Options{TickInterval: 10 * time.Millisecond})
 
 	ctx := context.Background()
 
 	svc.Start(ctx)
 
-	// Let it tick a few times.
-	time.Sleep(250 * time.Millisecond)
+	// Wait for the catch-up pass plus at least one tick, so Stop is exercised
+	// against a loop that is genuinely running.
+	for i := range 2 {
+		select {
+		case <-repo.calls:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for scheduler pass %d", i+1)
+		}
+	}
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +22,10 @@ type leaseEntry struct {
 	inFlight       int
 	cleanupClaimed bool
 	dirtyTouch     bool
+	// gen advances on every change to lease so a write back decided before an
+	// unlocked persistence gap can detect that it lost the race and drop its
+	// stale copy instead of clobbering the winner.
+	gen uint64
 }
 
 // Manager owns all active ephemeral tmux session leases in this process.
@@ -167,21 +171,21 @@ func (m *Manager) Create(
 
 	if prepare != nil {
 		if err := prepare(ctx, current); err != nil {
-			abortErr := m.Abort(ctx, leaseID)
+			abortErr := m.abort(ctx, leaseID)
 			return Snapshot{}, errors.Join(err, abortErr)
 		}
 	}
 	verified, err := runtime.GetSession(ctx, current.Name)
 	if err != nil || verified.ID != created.ID {
-		abortErr := m.Abort(ctx, leaseID)
+		abortErr := m.abort(ctx, leaseID)
 		return Snapshot{}, errors.Join(identityError(err), abortErr)
 	}
-	m.publish(entry.lease)
-	return snapshot(entry.lease), nil
+	m.publish(lease)
+	return snapshot(lease), nil
 }
 
-// Abort compensates a failed ephemeral create without killing a reused name.
-func (m *Manager) Abort(ctx context.Context, leaseID string) error {
+// abort compensates a failed ephemeral create without killing a reused name.
+func (m *Manager) abort(ctx context.Context, leaseID string) error {
 	entry, err := m.claim(leaseID, "")
 	if err != nil {
 		return err
@@ -218,6 +222,9 @@ func (m *Manager) BeginUse(ctx context.Context, user, sessionName string) (Use, 
 }
 
 // Finish releases an operation guard and renews successful managed activity.
+// The renewal is applied in memory before it is persisted and the sweeper
+// retries a failed write, so a store failure is logged instead of reported: the
+// caller already performed the operation this renewal accounts for.
 func (m *Manager) Finish(ctx context.Context, use Use, success bool) error {
 	if !use.Managed() {
 		return nil
@@ -244,6 +251,7 @@ func (m *Manager) Finish(ctx context.Context, use Use, success bool) error {
 	entry.lease.GraceUntil = time.Time{}
 	entry.lease.UpdatedAt = now
 	entry.dirtyTouch = true
+	entry.gen++
 	lease := entry.lease
 	m.mu.Unlock()
 
@@ -254,19 +262,10 @@ func (m *Manager) Finish(ctx context.Context, use Use, success bool) error {
 	}
 	m.mu.Unlock()
 	if err != nil {
-		return fmt.Errorf("persist tmux session lifecycle renewal: %w", err)
+		slog.Warn("tmux lifecycle renewal persistence deferred", "lease_id", lease.LeaseID, "err", err)
 	}
 	m.publish(lease)
 	return nil
-}
-
-// Touch renews one managed target without exposing the operation guard.
-func (m *Manager) Touch(ctx context.Context, user, sessionName string) error {
-	use, err := m.BeginUse(ctx, user, sessionName)
-	if err != nil {
-		return err
-	}
-	return m.Finish(ctx, use, true)
 }
 
 // Keep promotes one ephemeral session to persistent by deleting its lease.
@@ -363,6 +362,7 @@ func (m *Manager) Rename(ctx context.Context, user, sessionID, newName string) e
 	if current := m.byLease[leaseID]; current == entry {
 		entry.lease.SessionName = newName
 		entry.lease.UpdatedAt = now
+		entry.gen++
 		entry.inFlight--
 		lease = entry.lease
 	}
@@ -421,6 +421,23 @@ func (m *Manager) SnapshotByID(leaseID string) (Snapshot, bool) {
 		return Snapshot{}, false
 	}
 	return snapshot(entry.lease), true
+}
+
+// applyLeaseLocked writes a decided lease back into a shared entry only while
+// nothing advanced that entry during the unlocked persistence gap, and returns
+// the lease the entry holds afterwards. When the write back loses that race the
+// store now holds a decision the entry rejected, so a renewed lease is marked
+// dirty for the sweeper to re-persist. Callers must hold m.mu.
+func (m *Manager) applyLeaseLocked(entry *leaseEntry, lease Lease, gen uint64) Lease {
+	if m.byLease[lease.LeaseID] == entry && entry.gen == gen {
+		entry.lease = lease
+		entry.gen++
+		return lease
+	}
+	if entry.lease.State == store.TmuxSessionLeaseActive {
+		entry.dirtyTouch = true
+	}
+	return entry.lease
 }
 
 func (m *Manager) persistTouch(ctx context.Context, entry *leaseEntry, lease Lease) error {

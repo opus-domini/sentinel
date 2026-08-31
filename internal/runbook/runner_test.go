@@ -545,6 +545,47 @@ func TestResumeRunUsesImmutableReceiptAfterDefinitionChanges(t *testing.T) {
 	}
 }
 
+func TestResumeRunPreservesRecordedStartedAt(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepo{
+		runbook: store.OpsRunbook{
+			ID:   "rb-approval",
+			Name: "Approval",
+			Steps: []store.OpsRunbookStep{
+				{Type: "approval", Title: "Approve", Description: "confirm"},
+				{Type: "run", Title: "Apply", Command: "echo ok"},
+			},
+		},
+	}
+	job := executionJob("run-approval", repo.runbook)
+	job.Status = store.OpsRunbookStatusWaitingApproval
+	job.StartedAt = "2026-02-20T22:00:00Z"
+	job.StepResults = []store.OpsRunbookStepResult{{
+		StepIndex: 0,
+		Title:     "Approve",
+		Type:      "approval",
+	}}
+
+	ResumeRun(context.Background(), repo, func(string, map[string]any) {}, RunParams{
+		Job:           job,
+		StepTimeout:   time.Second,
+		RunTimeout:    time.Second,
+		CommandRunner: successfulTestCommandRunner,
+	}, 0)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.updatedRuns) == 0 {
+		t.Fatal("expected the resume path to update the run")
+	}
+	for i, update := range repo.updatedRuns {
+		if update.StartedAt != "" {
+			t.Fatalf("update %d wrote startedAt = %q, want empty so the store keeps the original start time", i, update.StartedAt)
+		}
+	}
+}
+
 func TestBuildWebhookPayloadOmitsEmptyFields(t *testing.T) {
 	t.Parallel()
 

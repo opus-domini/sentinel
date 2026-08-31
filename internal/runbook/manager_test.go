@@ -149,6 +149,76 @@ func TestManagerSharesValidationExecutionAndEventOrdering(t *testing.T) {
 	}
 }
 
+func TestManagerApprovePreservesOriginalStartedAt(t *testing.T) {
+	t.Parallel()
+
+	st, err := store.New(filepath.Join(t.TempDir(), "sentinel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	manager := NewManager(st, nil, nil, 1, func(context.Context, string, ...string) (string, error) {
+		return "ok", nil
+	})
+	t.Cleanup(func() { manager.Shutdown(context.Background()) })
+
+	rb, _, err := manager.Create(context.Background(), store.OpsRunbookWrite{
+		Name: "Approval receipt",
+		Steps: []store.OpsRunbookStep{
+			{Type: "run", Title: "Prepare", Command: "true"},
+			{Type: "approval", Title: "Confirm", Description: "Please confirm"},
+			{Type: "run", Title: "Apply", Command: "true"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := manager.Start(context.Background(), rb.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.WaitIdle()
+
+	paused, err := manager.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paused.Status != store.OpsRunbookStatusWaitingApproval {
+		t.Fatalf("paused status = %q, want %q", paused.Status, store.OpsRunbookStatusWaitingApproval)
+	}
+
+	// Pin a distinct start time so the assertion cannot pass by coincidence:
+	// RFC3339 has second granularity, so a run approved within the same second
+	// it started would look preserved even when it is overwritten.
+	const originalStart = "2026-01-02T03:04:05Z"
+	if _, err := st.UpdateOpsRunbookRun(context.Background(), store.OpsRunbookRunUpdate{
+		RunID:          run.ID,
+		Status:         paused.Status,
+		CompletedSteps: paused.CompletedSteps,
+		CurrentStep:    paused.CurrentStep,
+		StartedAt:      originalStart,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.Approve(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	manager.WaitIdle()
+
+	finished, err := manager.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finished.Status != runnerStatusSucceeded {
+		t.Fatalf("finished status = %q, want %q", finished.Status, runnerStatusSucceeded)
+	}
+	if finished.StartedAt != originalStart {
+		t.Fatalf("startedAt = %q, want %q preserved across approval", finished.StartedAt, originalStart)
+	}
+}
+
 func TestManagerValidatesUniqueTrackedServiceTargets(t *testing.T) {
 	t.Parallel()
 

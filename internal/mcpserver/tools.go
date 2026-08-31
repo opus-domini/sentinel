@@ -501,7 +501,7 @@ func (t *tools) interact(ctx context.Context, _ *mcp.CallToolRequest, input inte
 	if err := ensurePane(ctx, service, attachment.Session, input.PaneID); err != nil {
 		return nil, interactOutput{}, err
 	}
-	unlock, err := t.attachments.LockPane(input.AttachmentID, input.PaneID)
+	attachment, unlock, err := t.attachments.LockPane(input.AttachmentID, input.PaneID)
 	if err != nil {
 		return nil, interactOutput{}, err
 	}

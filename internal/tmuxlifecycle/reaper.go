@@ -57,12 +57,14 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 	for i := range leases {
 		m.mu.Lock()
 		entry := m.byLease[leases[i].LeaseID]
-		m.mu.Unlock()
 		if entry == nil {
+			m.mu.Unlock()
 			continue
 		}
-		now := m.now()
 		lease := entry.lease
+		gen := entry.gen
+		m.mu.Unlock()
+		now := m.now()
 		deadlineFuture := lease.State == store.TmuxSessionLeaseActive && lease.ExpiresAt.After(now)
 		graceFuture := lease.State == store.TmuxSessionLeaseGrace && lease.GraceUntil.After(now)
 		if !deadlineFuture && !graceFuture {
@@ -72,30 +74,28 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 			if err := m.store.UpdateTmuxSessionLeaseState(
 				ctx, lease.LeaseID, lease.State, lease.ExpiresAt, lease.GraceUntil, lease.UpdatedAt,
 			); err != nil {
-				slog.Warn("tmux lifecycle recovery grace persistence deferred", "lease_id", entry.lease.LeaseID, "err", err)
+				slog.Warn("tmux lifecycle recovery grace persistence deferred", "lease_id", lease.LeaseID, "err", err)
 			}
 			m.mu.Lock()
-			if current := m.byLease[lease.LeaseID]; current == entry {
-				entry.lease = lease
-			}
+			lease = m.applyLeaseLocked(entry, lease, gen)
 			m.mu.Unlock()
 			m.publish(lease)
 		}
-		status, err := m.resolveRuntime(ctx, entry)
+		status, err := m.resolveRuntime(ctx, entry, lease)
 		if err != nil {
-			slog.Warn("tmux lifecycle boot reconciliation deferred", "lease_id", entry.lease.LeaseID, "err", err)
+			slog.Warn("tmux lifecycle boot reconciliation deferred", "lease_id", lease.LeaseID, "err", err)
 			continue
 		}
 		switch status {
 		case resolutionSame:
 		case resolutionMissing:
 			if err := m.forgetResolved(ctx, entry, true); err != nil {
-				slog.Warn("tmux lifecycle stale lease cleanup deferred", "lease_id", entry.lease.LeaseID, "err", err)
+				slog.Warn("tmux lifecycle stale lease cleanup deferred", "lease_id", lease.LeaseID, "err", err)
 			}
 			continue
 		case resolutionMismatch:
 			if err := m.forgetResolved(ctx, entry, false); err != nil {
-				slog.Warn("tmux lifecycle mismatched lease cleanup deferred", "lease_id", entry.lease.LeaseID, "err", err)
+				slog.Warn("tmux lifecycle mismatched lease cleanup deferred", "lease_id", lease.LeaseID, "err", err)
 			}
 			continue
 		}
@@ -135,7 +135,7 @@ func (m *Manager) sweepEntry(ctx context.Context, entry *leaseEntry) error {
 		}
 	}
 
-	status, err := m.resolveRuntime(ctx, entry)
+	status, err := m.resolveRuntime(ctx, entry, lease)
 	if err != nil {
 		return err
 	}
@@ -153,6 +153,7 @@ func (m *Manager) sweepEntry(ctx context.Context, entry *leaseEntry) error {
 		return nil
 	}
 	lease = entry.lease
+	gen := entry.gen
 	if lease.State == store.TmuxSessionLeaseActive {
 		if lease.ExpiresAt.After(now) {
 			m.mu.Unlock()
@@ -168,11 +169,9 @@ func (m *Manager) sweepEntry(ctx context.Context, entry *leaseEntry) error {
 			return err
 		}
 		m.mu.Lock()
-		if current := m.byLease[lease.LeaseID]; current == entry {
-			entry.lease = lease
-		}
+		applied := m.applyLeaseLocked(entry, lease, gen)
 		m.mu.Unlock()
-		m.publish(lease)
+		m.publish(applied)
 		return nil
 	}
 	if lease.State == store.TmuxSessionLeaseGrace && lease.GraceUntil.After(now) {
@@ -187,19 +186,18 @@ func (m *Manager) sweepEntry(ctx context.Context, entry *leaseEntry) error {
 	m.mu.Unlock()
 
 	m.opts.DetachSession(lease.User, lease.SessionName)
-	status, current, err := m.resolveRuntimeForCleanup(ctx, entry)
+	status, current, err := m.resolveRuntimeForCleanup(ctx, lease)
 	if err != nil {
 		m.releaseClaim(entry)
 		return err
 	}
 	if status == resolutionMissing {
-		return m.forgetClaimed(ctx, entry, true)
+		return m.forgetClaimed(ctx, entry, lease, true)
 	}
 	if status == resolutionMismatch {
-		return m.forgetClaimed(ctx, entry, false)
+		return m.forgetClaimed(ctx, entry, lease, false)
 	}
 	if current.Attached > 0 {
-		lease = entry.lease
 		lease.State = store.TmuxSessionLeaseCleanupBlocked
 		lease.UpdatedAt = now
 		if lease.GraceUntil.IsZero() {
@@ -211,9 +209,12 @@ func (m *Manager) sweepEntry(ctx context.Context, entry *leaseEntry) error {
 			m.releaseClaim(entry)
 			return err
 		}
+		// The cleanup claim excludes every other mutator, so only the entry
+		// still being registered has to be re-checked here.
 		m.mu.Lock()
 		if m.byLease[lease.LeaseID] == entry {
 			entry.lease = lease
+			entry.gen++
 			entry.cleanupClaimed = false
 		}
 		m.mu.Unlock()
@@ -225,24 +226,25 @@ func (m *Manager) sweepEntry(ctx context.Context, entry *leaseEntry) error {
 		m.releaseClaim(entry)
 		return err
 	}
-	return m.forgetClaimed(ctx, entry, true)
+	return m.forgetClaimed(ctx, entry, lease, true)
 }
 
-func (m *Manager) resolveRuntime(ctx context.Context, entry *leaseEntry) (resolution, error) {
-	status, current, err := m.resolveRuntimeForCleanup(ctx, entry)
+func (m *Manager) resolveRuntime(ctx context.Context, entry *leaseEntry, lease Lease) (resolution, error) {
+	status, current, err := m.resolveRuntimeForCleanup(ctx, lease)
 	if err != nil || status != resolutionSame {
 		return status, err
 	}
-	if current.Name != entry.lease.SessionName {
+	if current.Name != lease.SessionName {
 		now := m.now()
-		if err := m.store.RenameTmuxSessionLease(ctx, entry.lease.LeaseID, current.Name, now); err != nil {
+		if err := m.store.RenameTmuxSessionLease(ctx, lease.LeaseID, current.Name, now); err != nil {
 			return resolutionSame, err
 		}
 		m.mu.Lock()
 		var updated Lease
-		if m.byLease[entry.lease.LeaseID] == entry {
+		if m.byLease[lease.LeaseID] == entry && !entry.cleanupClaimed {
 			entry.lease.SessionName = current.Name
 			entry.lease.UpdatedAt = now
+			entry.gen++
 			updated = entry.lease
 		}
 		m.mu.Unlock()
@@ -255,11 +257,11 @@ func (m *Manager) resolveRuntime(ctx context.Context, entry *leaseEntry) (resolu
 
 func (m *Manager) resolveRuntimeForCleanup(
 	ctx context.Context,
-	entry *leaseEntry,
+	lease Lease,
 ) (resolution, tmux.Session, error) {
-	runtime := m.opts.RuntimeForUser(entry.lease.User)
-	current, err := runtime.GetSession(ctx, entry.lease.SessionName)
-	if err == nil && current.ID == entry.lease.SessionID {
+	runtime := m.opts.RuntimeForUser(lease.User)
+	current, err := runtime.GetSession(ctx, lease.SessionName)
+	if err == nil && current.ID == lease.SessionID {
 		return resolutionSame, current, nil
 	}
 	if err != nil && !tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
@@ -270,7 +272,7 @@ func (m *Manager) resolveRuntimeForCleanup(
 		return resolutionMissing, tmux.Session{}, listErr
 	}
 	for _, session := range sessions {
-		if session.ID == entry.lease.SessionID {
+		if session.ID == lease.SessionID {
 			return resolutionSame, session, nil
 		}
 	}
@@ -287,24 +289,25 @@ func (m *Manager) forgetResolved(ctx context.Context, entry *leaseEntry, cleanup
 		return nil
 	}
 	entry.cleanupClaimed = true
+	lease := entry.lease
 	m.mu.Unlock()
-	return m.forgetClaimed(ctx, entry, cleanupRuntime)
+	return m.forgetClaimed(ctx, entry, lease, cleanupRuntime)
 }
 
-func (m *Manager) forgetClaimed(ctx context.Context, entry *leaseEntry, cleanupRuntime bool) error {
+func (m *Manager) forgetClaimed(ctx context.Context, entry *leaseEntry, lease Lease, cleanupRuntime bool) error {
 	if cleanupRuntime {
-		if err := m.store.DeleteTmuxSessionRuntimeState(ctx, entry.lease.SessionName); err != nil {
+		if err := m.store.DeleteTmuxSessionRuntimeState(ctx, lease.SessionName); err != nil {
 			m.releaseClaim(entry)
 			return err
 		}
 	}
-	if err := m.store.DeleteTmuxSessionLease(ctx, entry.lease.LeaseID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := m.store.DeleteTmuxSessionLease(ctx, lease.LeaseID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		m.releaseClaim(entry)
 		return err
 	}
 	m.mu.Lock()
 	m.removeEntryLocked(entry)
 	m.mu.Unlock()
-	m.publish(entry.lease)
+	m.publish(lease)
 	return nil
 }

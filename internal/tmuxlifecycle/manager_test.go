@@ -38,7 +38,7 @@ func TestCreateCompensatesPrepareFailureByExactID(t *testing.T) {
 	}
 }
 
-func TestFinishKeepsConservativeDeadlineWhenPersistenceFails(t *testing.T) {
+func TestFinishReportsSuccessAndRetriesDeferredRenewalPersistence(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 	base := newLifecycleStore(t)
@@ -59,8 +59,8 @@ func TestFinishKeepsConservativeDeadlineWhenPersistenceFails(t *testing.T) {
 		t.Fatalf("BeginUse() = %#v, %v", use, err)
 	}
 	clock.Advance(time.Minute)
-	if err := manager.Finish(ctx, use, true); err == nil {
-		t.Fatal("Finish() did not report persistence failure")
+	if err := manager.Finish(ctx, use, true); err != nil {
+		t.Fatalf("Finish() reported a deferred persistence failure: %v", err)
 	}
 	snapshot, ok := manager.SnapshotByID(lease.LeaseID)
 	if !ok || !snapshot.ExpiresAt.Equal(clock.Now().Add(DefaultIdleTimeout)) {

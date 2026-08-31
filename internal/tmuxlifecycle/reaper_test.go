@@ -2,6 +2,8 @@ package tmuxlifecycle
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,6 +123,126 @@ func TestSweepForgetsReusedNameWithoutKill(t *testing.T) {
 	if !runtime.hasSession(lease.SessionName) {
 		t.Fatal("replacement session was removed")
 	}
+}
+
+func TestSweepGraceTransitionKeepsConcurrentRenewal(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	base := newLifecycleStore(t)
+	lease := testLease(now, store.TmuxSessionLeaseActive)
+	lease.ExpiresAt = now.Add(30 * time.Minute)
+	seedLease(t, base, lease)
+	runtime := newFakeRuntime()
+	runtime.put(tmux.Session{ID: lease.SessionID, Name: lease.SessionName})
+	clock := &fakeClock{now: now}
+	hooked := &hookedStateStore{Store: base}
+	manager := newTestManager(hooked, clock, runtime, Options{})
+	if err := manager.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	clock.Advance(time.Hour)
+	// Renew inside the unlocked window the grace transition persists in.
+	hooked.setOnce(func() {
+		use, err := manager.BeginUse(ctx, lease.User, lease.SessionName)
+		if err != nil || !use.Managed() {
+			t.Errorf("concurrent BeginUse() = %#v, %v", use, err)
+			return
+		}
+		if err := manager.Finish(ctx, use, true); err != nil {
+			t.Errorf("concurrent Finish() error = %v", err)
+		}
+	})
+	if err := manager.Sweep(ctx); err != nil {
+		t.Fatalf("Sweep() error = %v", err)
+	}
+
+	snapshot, ok := manager.SnapshotByID(lease.LeaseID)
+	if !ok || snapshot.State != store.TmuxSessionLeaseActive ||
+		!snapshot.ExpiresAt.Equal(clock.Now().Add(DefaultIdleTimeout)) || !snapshot.GraceUntil.IsZero() {
+		t.Fatalf("renewed snapshot = %#v", snapshot)
+	}
+	clock.Advance(DefaultGracePeriod + time.Minute)
+	if err := manager.Sweep(ctx); err != nil {
+		t.Fatalf("Sweep() after grace error = %v", err)
+	}
+	if got := runtime.killedIDs(); len(got) != 0 {
+		t.Fatalf("renewed session was killed: %q", got)
+	}
+	persisted, err := base.GetTmuxSessionLease(ctx, lease.LeaseID)
+	if err != nil || persisted.State != store.TmuxSessionLeaseActive {
+		t.Fatalf("persisted lease = %#v, error = %v", persisted, err)
+	}
+}
+
+func TestSweepAndRenameDoNotRaceOnSharedLease(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	st := newLifecycleStore(t)
+	lease := testLease(now, store.TmuxSessionLeaseActive)
+	seedLease(t, st, lease)
+	runtime := newFakeRuntime()
+	runtime.put(tmux.Session{ID: lease.SessionID, Name: lease.SessionName})
+	manager := newTestManager(st, &fakeClock{now: now}, runtime, Options{})
+	if err := manager.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := range 200 {
+			if err := manager.Rename(ctx, lease.User, lease.SessionID, fmt.Sprintf("agent-%d", i)); err != nil {
+				t.Errorf("Rename() error = %v", err)
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 200 {
+			if err := manager.Sweep(ctx); err != nil {
+				t.Errorf("Sweep() error = %v", err)
+				return
+			}
+		}
+	}()
+	wg.Wait()
+
+	if got := runtime.killedIDs(); len(got) != 0 {
+		t.Fatalf("concurrent rename and sweep killed session: %q", got)
+	}
+	if _, ok := manager.SnapshotByID(lease.LeaseID); !ok {
+		t.Fatal("concurrent rename and sweep dropped a live lease")
+	}
+}
+
+type hookedStateStore struct {
+	*store.Store
+	mu     sync.Mutex
+	onCall func()
+}
+
+func (s *hookedStateStore) setOnce(hook func()) {
+	s.mu.Lock()
+	s.onCall = hook
+	s.mu.Unlock()
+}
+
+func (s *hookedStateStore) UpdateTmuxSessionLeaseState(
+	ctx context.Context,
+	leaseID, state string,
+	expiresAt, graceUntil, updatedAt time.Time,
+) error {
+	s.mu.Lock()
+	hook := s.onCall
+	s.onCall = nil
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return s.Store.UpdateTmuxSessionLeaseState(ctx, leaseID, state, expiresAt, graceUntil, updatedAt)
 }
 
 func TestReconcileExpiredLeaseGetsFreshRecoveryGrace(t *testing.T) {
