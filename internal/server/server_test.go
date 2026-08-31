@@ -3,11 +3,16 @@ package server
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -501,5 +506,205 @@ func TestServeFailsOnInvalidConfig(t *testing.T) {
 
 	if code := Serve("test-version"); code != 1 {
 		t.Fatalf("Serve() = %d, want 1 for invalid config", code)
+	}
+}
+
+// freeLoopbackConfig returns a config pointing at a loopback port that was
+// free at the moment of the call.
+func freeLoopbackConfig(t *testing.T) config.Config {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port: %v", err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatalf("release port: %v", err)
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("split addr: %v", err)
+	}
+	portNum, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.Server.Host = host
+	cfg.Server.Port = portNum
+	return cfg
+}
+
+// waitForListener blocks until addr answers an HTTP request or the deadline
+// expires, so a test only drives the server once it is really accepting.
+func waitForListener(t *testing.T, addr string) {
+	t.Helper()
+
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get("http://" + addr + "/ready")
+		if err == nil {
+			_ = resp.Body.Close()
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("server at %s never started listening", addr)
+}
+
+func readyMux(t *testing.T) *http.ServeMux {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	return mux
+}
+
+// TestRunServerWaitsForInFlightRequest is the regression guard for the drain
+// window: http.Server.Shutdown closes the listeners first, so ListenAndServe
+// returns ErrServerClosed while handlers are still running. If runServer
+// returns at that point, Serve's teardown (store close, handler stop) races
+// live handlers and the in-flight request is truncated.
+func TestRunServerWaitsForInFlightRequest(t *testing.T) {
+	t.Parallel()
+
+	cfg := freeLoopbackConfig(t)
+	entered := make(chan struct{})
+	var handlerFinished atomic.Bool
+
+	mux := readyMux(t)
+	mux.HandleFunc("GET /slow", func(w http.ResponseWriter, _ *http.Request) {
+		close(entered)
+		time.Sleep(300 * time.Millisecond)
+		handlerFinished.Store(true)
+		_, _ = w.Write([]byte("drained"))
+	})
+
+	shutdownCh := make(chan os.Signal, 1)
+	exit := make(chan int, 1)
+	go func() { exit <- runServer("test-version", cfg, mux, shutdownCh) }()
+
+	waitForListener(t, cfg.Address())
+
+	body := make(chan string, 1)
+	go func() {
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Get("http://" + cfg.Address() + "/slow")
+		if err != nil {
+			body <- "request error: " + err.Error()
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		payload, err := io.ReadAll(resp.Body)
+		if err != nil {
+			body <- "read error: " + err.Error()
+			return
+		}
+		body <- string(payload)
+	}()
+
+	<-entered
+	shutdownCh <- syscall.SIGTERM
+
+	select {
+	case code := <-exit:
+		if code != 0 {
+			t.Fatalf("runServer() = %d, want 0 after a shutdown signal", code)
+		}
+		if !handlerFinished.Load() {
+			t.Fatal("runServer returned while a request was still in flight; the graceful drain is not awaited")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("runServer did not return after the shutdown signal")
+	}
+
+	select {
+	case got := <-body:
+		if got != "drained" {
+			t.Fatalf("in-flight response = %q, want %q", got, "drained")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("in-flight request never completed")
+	}
+}
+
+func TestRunServerReturnsPromptlyWhenIdle(t *testing.T) {
+	t.Parallel()
+
+	cfg := freeLoopbackConfig(t)
+	shutdownCh := make(chan os.Signal, 1)
+	exit := make(chan int, 1)
+	go func() { exit <- runServer("test-version", cfg, readyMux(t), shutdownCh) }()
+
+	waitForListener(t, cfg.Address())
+	shutdownCh <- syscall.SIGINT
+
+	select {
+	case code := <-exit:
+		if code != 0 {
+			t.Fatalf("runServer() = %d, want 0 after a shutdown signal", code)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("idle runServer did not return promptly after the shutdown signal")
+	}
+}
+
+// TestRunServerShutdownDoesNotWaitForHijackedConnections pins the documented
+// contract that bounds the drain: Shutdown neither closes nor waits for
+// hijacked connections (the /ws/* routes), so an open WebSocket must not keep
+// runServer blocked for the whole 10s budget.
+func TestRunServerShutdownDoesNotWaitForHijackedConnections(t *testing.T) {
+	t.Parallel()
+
+	cfg := freeLoopbackConfig(t)
+	hijacked := make(chan net.Conn, 1)
+
+	mux := readyMux(t)
+	mux.HandleFunc("GET /hijack", func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Errorf("Hijack error = %v", err)
+			return
+		}
+		hijacked <- conn
+	})
+
+	shutdownCh := make(chan os.Signal, 1)
+	exit := make(chan int, 1)
+	go func() { exit <- runServer("test-version", cfg, mux, shutdownCh) }()
+
+	waitForListener(t, cfg.Address())
+
+	client, err := net.Dial("tcp", cfg.Address())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+	if _, err := fmt.Fprintf(client, "GET /hijack HTTP/1.1\r\nHost: %s\r\n\r\n", cfg.Address()); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+
+	var serverConn net.Conn
+	select {
+	case serverConn = <-hijacked:
+		defer func() { _ = serverConn.Close() }()
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler never hijacked the connection")
+	}
+
+	shutdownCh <- syscall.SIGTERM
+
+	select {
+	case code := <-exit:
+		if code != 0 {
+			t.Fatalf("runServer() = %d, want 0 after a shutdown signal", code)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("runServer waited on a hijacked connection instead of cutting it")
 	}
 }
