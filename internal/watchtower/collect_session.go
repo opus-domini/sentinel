@@ -33,6 +33,11 @@ type collectSessionState struct {
 	windowAgg map[int]*windowAggregate
 	paneIDs   []string
 
+	// Writes are buffered and committed once per session, in a single
+	// transaction, instead of one auto-committed write per pane and window.
+	paneWrites   []store.WatchtowerPaneWrite
+	windowWrites []store.WatchtowerWindowWrite
+
 	windowIndices []int
 	unreadWindows int
 	unreadPanes   int
@@ -136,6 +141,9 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, ts taggedSessi
 		windowAgg: make(map[int]*windowAggregate),
 		paneIDs:   make([]string, 0, len(panes)),
 
+		paneWrites:   make([]store.WatchtowerPaneWrite, 0, len(panes)),
+		windowWrites: make([]store.WatchtowerWindowWrite, 0, len(windows)),
+
 		windowIndices: make([]int, 0, len(windows)),
 
 		bestPreview:       strings.TrimSpace(existingSession.LastPreview),
@@ -203,31 +211,18 @@ func (s *Service) loadFocusedPanes(ctx context.Context, sessionName string, now 
 }
 
 func (c *collectSessionState) collect() (bool, error) {
-	if err := c.collectPanes(); err != nil {
-		return false, err
-	}
-	if err := c.purgePanes(); err != nil {
-		return false, err
-	}
-	if err := c.collectWindows(); err != nil {
-		return false, err
-	}
-	if err := c.purgeWindows(); err != nil {
-		return false, err
-	}
-	return c.persistSession()
+	c.collectPanes()
+	c.collectWindows()
+	return c.persistProjection()
 }
 
-func (c *collectSessionState) collectPanes() error {
+func (c *collectSessionState) collectPanes() {
 	for _, pane := range c.panes {
-		if err := c.collectPane(pane); err != nil {
-			return err
-		}
+		c.collectPane(pane)
 	}
-	return nil
 }
 
-func (c *collectSessionState) collectPane(pane tmux.Pane) error {
+func (c *collectSessionState) collectPane(pane tmux.Pane) {
 	rawPaneID := pane.PaneID
 	qualifiedID := qualifyPaneID(c.user, rawPaneID)
 
@@ -237,14 +232,11 @@ func (c *collectSessionState) collectPane(pane tmux.Pane) error {
 	tail := c.capturePaneTail(rawPaneID, prev, hadPrev)
 	revision := c.computePaneRevision(qualifiedID, prev, hadPrev, tail)
 
-	// Use qualified pane ID for store writes, raw for tmux calls.
-	qualifiedPane := pane
-	qualifiedPane.PaneID = qualifiedID
-
 	c.updateWindowAggregate(pane.WindowIndex, revision)
 	c.updateBestPreview(qualifiedID, tail.preview, revision.changedAt)
 
-	return c.service.store.UpsertWatchtowerPane(c.ctx, store.WatchtowerPaneWrite{
+	// Store writes use the qualified pane ID; tmux calls use the raw one.
+	c.paneWrites = append(c.paneWrites, store.WatchtowerPaneWrite{
 		PaneID:         qualifiedID,
 		SessionName:    c.name,
 		WindowIndex:    pane.WindowIndex,
@@ -341,11 +333,7 @@ func (c *collectSessionState) updateBestPreview(paneID, tailPreview string, chan
 	c.bestPreviewPaneID = paneID
 }
 
-func (c *collectSessionState) purgePanes() error {
-	return c.service.store.PurgeWatchtowerPanes(c.ctx, c.name, c.paneIDs)
-}
-
-func (c *collectSessionState) collectWindows() error {
+func (c *collectSessionState) collectWindows() {
 	for _, win := range c.windows {
 		c.windowIndices = append(c.windowIndices, win.Index)
 
@@ -378,7 +366,7 @@ func (c *collectSessionState) collectWindows() error {
 			windowRev = 1
 		}
 
-		if err := c.service.store.UpsertWatchtowerWindow(c.ctx, store.WatchtowerWindowWrite{
+		c.windowWrites = append(c.windowWrites, store.WatchtowerWindowWrite{
 			SessionName:      c.name,
 			TmuxWindowID:     win.ID,
 			WindowIndex:      win.Index,
@@ -390,11 +378,8 @@ func (c *collectSessionState) collectWindows() error {
 			HasUnread:        hasUnread,
 			Rev:              windowRev,
 			UpdatedAt:        c.now,
-		}); err != nil {
-			return err
-		}
+		})
 	}
-	return nil
 }
 
 func (c *collectSessionState) windowProjection(windowIndex int) (int, time.Time, bool, store.WatchtowerWindow) {
@@ -416,11 +401,7 @@ func (c *collectSessionState) windowProjection(windowIndex int) (int, time.Time,
 	return unread, activityAt, hadPrev, prev
 }
 
-func (c *collectSessionState) purgeWindows() error {
-	return c.service.store.PurgeWatchtowerWindows(c.ctx, c.name, c.windowIndices)
-}
-
-func (c *collectSessionState) persistSession() (bool, error) {
+func (c *collectSessionState) persistProjection() (bool, error) {
 	sessionRev := int64(0)
 	if c.hasExistingSession {
 		sessionRev = c.existingSession.Rev
@@ -433,19 +414,25 @@ func (c *collectSessionState) persistSession() (bool, error) {
 		sessionRev = 1
 	}
 
-	if err := c.service.store.UpsertWatchtowerSession(c.ctx, store.WatchtowerSessionWrite{
-		SessionName:       c.name,
-		Attached:          c.sess.Attached,
-		Windows:           c.sess.Windows,
-		Panes:             len(c.panes),
-		ActivityAt:        c.sess.ActivityAt.UTC(),
-		LastPreview:       c.bestPreview,
-		LastPreviewAt:     c.bestPreviewAt,
-		LastPreviewPaneID: c.bestPreviewPaneID,
-		UnreadWindows:     c.unreadWindows,
-		UnreadPanes:       c.unreadPanes,
-		Rev:               sessionRev,
-		UpdatedAt:         c.now,
+	if err := c.service.store.WriteWatchtowerSessionProjection(c.ctx, store.WatchtowerSessionProjection{
+		Session: store.WatchtowerSessionWrite{
+			SessionName:       c.name,
+			Attached:          c.sess.Attached,
+			Windows:           c.sess.Windows,
+			Panes:             len(c.panes),
+			ActivityAt:        c.sess.ActivityAt.UTC(),
+			LastPreview:       c.bestPreview,
+			LastPreviewAt:     c.bestPreviewAt,
+			LastPreviewPaneID: c.bestPreviewPaneID,
+			UnreadWindows:     c.unreadWindows,
+			UnreadPanes:       c.unreadPanes,
+			Rev:               sessionRev,
+			UpdatedAt:         c.now,
+		},
+		Windows:             c.windowWrites,
+		Panes:               c.paneWrites,
+		ActivePaneIDs:       c.paneIDs,
+		ActiveWindowIndices: c.windowIndices,
 	}); err != nil {
 		return false, err
 	}

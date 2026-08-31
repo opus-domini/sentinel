@@ -38,18 +38,14 @@ type tmuxClient interface {
 	CapturePaneLines(ctx context.Context, target string, lines int) (string, error)
 }
 
-// projectionRepo covers session/window upsert and purge operations.
+// projectionRepo covers projection writes and purges.
 type projectionRepo interface {
-	UpsertWatchtowerSession(ctx context.Context, row store.WatchtowerSessionWrite) error
-	UpsertWatchtowerWindow(ctx context.Context, row store.WatchtowerWindowWrite) error
+	WriteWatchtowerSessionProjection(ctx context.Context, projection store.WatchtowerSessionProjection) error
 	PurgeWatchtowerSessions(ctx context.Context, activeSessions []string) error
-	PurgeWatchtowerWindows(ctx context.Context, sessionName string, activeWindowIndices []int) error
-	PurgeWatchtowerPanes(ctx context.Context, sessionName string, activePaneIDs []string) error
 }
 
 // paneRepo covers pane state reads and presence lookups.
 type paneRepo interface {
-	UpsertWatchtowerPane(ctx context.Context, row store.WatchtowerPaneWrite) error
 	ListWatchtowerPanes(ctx context.Context, sessionName string) ([]store.WatchtowerPane, error)
 	GetWatchtowerSession(ctx context.Context, sessionName string) (store.WatchtowerSession, error)
 	ListWatchtowerWindows(ctx context.Context, sessionName string) ([]store.WatchtowerWindow, error)

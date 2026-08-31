@@ -138,11 +138,14 @@ func (h *Handler) deleteOpsJob(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := h.repo.DeleteOpsRunbookRun(ctx, jobID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
 			writeError(w, http.StatusNotFound, "OPS_JOB_NOT_FOUND", "job not found", nil)
-			return
+		case errors.Is(err, store.ErrOpsRunbookActive):
+			writeError(w, http.StatusConflict, "RUNBOOK_ACTIVE", "job is still executing", nil)
+		default:
+			writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete job", nil)
 		}
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to delete job", nil)
 		return
 	}
 	writeData(w, http.StatusOK, map[string]any{keyDeleted: true})

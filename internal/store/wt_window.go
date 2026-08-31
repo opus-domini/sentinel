@@ -54,6 +54,10 @@ func BuildWatchtowerWindowPatchesWithManaged(
 
 // UpsertWatchtowerWindow upserts watchtower window.
 func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindowWrite) error {
+	return upsertWatchtowerWindow(ctx, s.db, row)
+}
+
+func upsertWatchtowerWindow(ctx context.Context, ex sqlExecer, row WatchtowerWindowWrite) error {
 	name := strings.TrimSpace(row.SessionName)
 	if name == "" {
 		return errors.New("session name is required")
@@ -63,7 +67,7 @@ func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindow
 		updatedAt = time.Now().UTC()
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := ex.ExecContext(ctx,
 		`INSERT INTO wt_windows (
 			session_name, tmux_window_id, window_index, name, active, layout,
 			window_activity_at, unread_panes, has_unread, rev, updated_at
@@ -149,13 +153,17 @@ func (s *Store) ListWatchtowerWindows(ctx context.Context, sessionName string) (
 
 // PurgeWatchtowerWindows purges watchtower windows.
 func (s *Store) PurgeWatchtowerWindows(ctx context.Context, sessionName string, activeWindowIndices []int) error {
+	return purgeWatchtowerWindows(ctx, s.db, sessionName, activeWindowIndices)
+}
+
+func purgeWatchtowerWindows(ctx context.Context, ex sqlExecer, sessionName string, activeWindowIndices []int) error {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
 		return errors.New("session name is required")
 	}
 
 	if len(activeWindowIndices) == 0 {
-		_, err := s.db.ExecContext(ctx,
+		_, err := ex.ExecContext(ctx,
 			"DELETE FROM wt_windows WHERE session_name = ?",
 			sessionName,
 		)
@@ -168,7 +176,8 @@ func (s *Store) PurgeWatchtowerWindows(ctx context.Context, sessionName string, 
 	for _, value := range activeWindowIndices {
 		args = append(args, value)
 	}
-	query := "DELETE FROM wt_windows WHERE session_name = ? AND window_index NOT IN (" + placeholders + ")" //nolint:gosec // placeholders are generated literals
-	_, err := s.db.ExecContext(ctx, query, args...)
+	// placeholders is a generated run of "?" literals, never caller input.
+	query := "DELETE FROM wt_windows WHERE session_name = ? AND window_index NOT IN (" + placeholders + ")"
+	_, err := ex.ExecContext(ctx, query, args...)
 	return err
 }
