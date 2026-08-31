@@ -14,6 +14,7 @@ type pinnedSessionStore interface {
 	RecordSessionDirectory(ctx context.Context, path string) error
 	SetIcon(ctx context.Context, name, icon string) error
 	MarkSessionPresetLaunched(ctx context.Context, name string) error
+	SetSessionUser(ctx context.Context, session, user string) error
 	ListManagedTmuxWindowsBySession(ctx context.Context, sessionName string) ([]store.ManagedTmuxWindow, error)
 	UpdateManagedTmuxWindowRuntime(ctx context.Context, id, tmuxWindowID string, lastWindowIndex int) error
 }
@@ -67,6 +68,15 @@ func restorePinnedSessions(
 		}
 
 		restored++
+		// The session now exists under `user`; persist that ownership the way
+		// the HTTP create path does. Without it the session_users table stays
+		// empty for boot-restored sessions, and the watchtower — which scans the
+		// user servers listed there — never sees them.
+		if user != "" {
+			if err := repo.SetSessionUser(ctx, preset.Name, user); err != nil {
+				slog.Warn("failed to record pinned session user", "session", preset.Name, "target_user", user, "err", err)
+			}
+		}
 		if err := repo.RecordSessionDirectory(ctx, preset.Cwd); err != nil {
 			slog.Warn("failed to record pinned session directory", "session", preset.Name, "cwd", preset.Cwd, "err", err)
 		}

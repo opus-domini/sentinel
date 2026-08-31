@@ -970,3 +970,92 @@ func newWatchtowerTestStore(t *testing.T) *store.Store {
 	}
 	return st
 }
+
+// countingProjectionStore records how many projection writes a tick issues.
+type countingProjectionStore struct {
+	*store.Store
+	writes atomic.Int64
+	panes  atomic.Int64
+	wins   atomic.Int64
+}
+
+func (c *countingProjectionStore) WriteWatchtowerSessionProjection(
+	ctx context.Context,
+	projection store.WatchtowerSessionProjection,
+) error {
+	c.writes.Add(1)
+	c.panes.Add(int64(len(projection.Panes)))
+	c.wins.Add(int64(len(projection.Windows)))
+	return c.Store.WriteWatchtowerSessionProjection(ctx, projection)
+}
+
+func TestCollectGroupsSessionWritesIntoOneTransaction(t *testing.T) {
+	t.Parallel()
+
+	st := newWatchtowerTestStore(t)
+	defer func() { _ = st.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	fake := fakeTmux{
+		listSessionsFn: func(context.Context) ([]tmux.Session, error) {
+			return []tmux.Session{
+				{Name: "dev", Windows: 2, CreatedAt: now, ActivityAt: now},
+				{Name: "ops", Windows: 2, CreatedAt: now, ActivityAt: now},
+			}, nil
+		},
+		listWindowsFn: func(_ context.Context, session string) ([]tmux.Window, error) {
+			return []tmux.Window{
+				{Session: session, ID: "@0", Index: 0, Name: "main", Active: true, Panes: 2, Layout: "layout"},
+				{Session: session, ID: "@1", Index: 1, Name: "logs", Panes: 1, Layout: "layout"},
+			}, nil
+		},
+		listPanesFn: func(_ context.Context, session string) ([]tmux.Pane, error) {
+			return []tmux.Pane{
+				{Session: session, WindowIndex: 0, PaneIndex: 0, PaneID: "%" + session + "0", Active: true},
+				{Session: session, WindowIndex: 0, PaneIndex: 1, PaneID: "%" + session + "1"},
+				{Session: session, WindowIndex: 1, PaneIndex: 0, PaneID: "%" + session + "2"},
+			}, nil
+		},
+		capturePaneLinesFn: func(_ context.Context, target string, _ int) (string, error) {
+			return target + " output", nil
+		},
+	}
+
+	counting := &countingProjectionStore{Store: st}
+	svc := New(counting, fake, Options{CaptureLines: 80})
+	if err := svc.collect(context.Background()); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+
+	// Two sessions, three panes and two windows each: one grouped write per
+	// session, not one per row.
+	if got := counting.writes.Load(); got != 2 {
+		t.Fatalf("projection writes = %d, want 2 (one per session)", got)
+	}
+	if got := counting.panes.Load(); got != 6 {
+		t.Fatalf("panes written = %d, want 6", got)
+	}
+	if got := counting.wins.Load(); got != 4 {
+		t.Fatalf("windows written = %d, want 4", got)
+	}
+
+	for _, session := range []string{"dev", "ops"} {
+		panes, err := st.ListWatchtowerPanes(context.Background(), session)
+		if err != nil {
+			t.Fatalf("ListWatchtowerPanes(%s): %v", session, err)
+		}
+		if len(panes) != 3 {
+			t.Fatalf("panes(%s) = %d, want 3", session, len(panes))
+		}
+		windows, err := st.ListWatchtowerWindows(context.Background(), session)
+		if err != nil {
+			t.Fatalf("ListWatchtowerWindows(%s): %v", session, err)
+		}
+		if len(windows) != 2 {
+			t.Fatalf("windows(%s) = %d, want 2", session, len(windows))
+		}
+		if _, err := st.GetWatchtowerSession(context.Background(), session); err != nil {
+			t.Fatalf("GetWatchtowerSession(%s): %v", session, err)
+		}
+	}
+}

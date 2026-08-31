@@ -40,6 +40,10 @@ func BuildWatchtowerPanePatches(panes []WatchtowerPane) []map[string]any {
 
 // UpsertWatchtowerPane upserts watchtower pane.
 func (s *Store) UpsertWatchtowerPane(ctx context.Context, row WatchtowerPaneWrite) error {
+	return upsertWatchtowerPane(ctx, s.db, row)
+}
+
+func upsertWatchtowerPane(ctx context.Context, ex sqlExecer, row WatchtowerPaneWrite) error {
 	paneID := strings.TrimSpace(row.PaneID)
 	if paneID == "" {
 		return errors.New("pane id is required")
@@ -53,7 +57,7 @@ func (s *Store) UpsertWatchtowerPane(ctx context.Context, row WatchtowerPaneWrit
 		updatedAt = time.Now().UTC()
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := ex.ExecContext(ctx,
 		`INSERT INTO wt_panes (
 			pane_id, session_name, window_index, pane_index, title,
 			active, tty, current_path, start_command, current_command,
@@ -174,13 +178,17 @@ func (s *Store) ListWatchtowerPanes(ctx context.Context, sessionName string) ([]
 
 // PurgeWatchtowerPanes purges watchtower panes.
 func (s *Store) PurgeWatchtowerPanes(ctx context.Context, sessionName string, activePaneIDs []string) error {
+	return purgeWatchtowerPanes(ctx, s.db, sessionName, activePaneIDs)
+}
+
+func purgeWatchtowerPanes(ctx context.Context, ex sqlExecer, sessionName string, activePaneIDs []string) error {
 	sessionName = strings.TrimSpace(sessionName)
 	if sessionName == "" {
 		return errors.New("session name is required")
 	}
 
 	if len(activePaneIDs) == 0 {
-		_, err := s.db.ExecContext(ctx,
+		_, err := ex.ExecContext(ctx,
 			"DELETE FROM wt_panes WHERE session_name = ?",
 			sessionName,
 		)
@@ -191,8 +199,9 @@ func (s *Store) PurgeWatchtowerPanes(ctx context.Context, sessionName string, ac
 	args := make([]any, 0, len(activePaneIDs)+1)
 	args = append(args, sessionName)
 	args = append(args, stringsToAny(activePaneIDs)...)
-	query := "DELETE FROM wt_panes WHERE session_name = ? AND pane_id NOT IN (" + placeholders + ")" //nolint:gosec // placeholders are generated literals
-	_, err := s.db.ExecContext(ctx, query, args...)
+	// placeholders is a generated run of "?" literals, never caller input.
+	query := "DELETE FROM wt_panes WHERE session_name = ? AND pane_id NOT IN (" + placeholders + ")"
+	_, err := ex.ExecContext(ctx, query, args...)
 	return err
 }
 

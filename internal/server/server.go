@@ -155,22 +155,12 @@ func Serve(version string) int {
 		Publish: func(eventType string, payload map[string]any) {
 			eventHub.Publish(events.NewEvent(eventType, payload))
 		},
-		UserProvider: func(ctx context.Context) []string {
-			userMap, err := st.ListSessionUsers(ctx)
-			if err != nil {
-				return nil
-			}
-			seen := make(map[string]struct{})
-			for _, u := range userMap {
-				if u != "" {
-					seen[u] = struct{}{}
-				}
-			}
-			users := make([]string, 0, len(seen))
-			for u := range seen {
-				users = append(users, u)
-			}
-			return users
+		// Same registry the API routes commands through. Deriving the set here
+		// from st.ListSessionUsers instead used to leave out preset user
+		// overrides, so a pinned session restored under another account was
+		// attachable through the API yet invisible to the watchtower.
+		UserProvider: func(context.Context) []string {
+			return apiHandler.KnownSessionUsers()
 		},
 	})
 	if cfg.Watchtower.Enabled {

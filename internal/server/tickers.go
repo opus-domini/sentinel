@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -63,7 +64,9 @@ func startServicesWatcher(
 ) <-chan struct{} {
 	state := &servicesEventState{}
 	return loopTicker(ctx, 5*time.Second, func() {
-		_ = publishServicesIfChanged(ctx, mgr, hub, state)
+		if err := publishServicesIfChanged(ctx, mgr, hub, state); err != nil {
+			slog.Warn("services watcher enumeration failed", "err", err)
+		}
 	})
 }
 
@@ -83,13 +86,11 @@ func publishMetrics(
 	}))
 
 	signature := metricPostureSignature(snapshot.Posture)
-	if state != nil && state.initialized && state.signature == signature {
+	if state.initialized && state.signature == signature {
 		return
 	}
-	if state != nil {
-		state.initialized = true
-		state.signature = signature
-	}
+	state.initialized = true
+	state.signature = signature
 	hub.Publish(events.NewEvent(events.TypeOpsPosture, map[string]any{
 		"posture": snapshot.Posture,
 	}))
@@ -124,17 +125,15 @@ func publishServicesIfChanged(
 	}
 
 	fingerprint := servicesFingerprint(current)
-	if state != nil && !state.initialized {
+	if !state.initialized {
 		state.initialized = true
 		state.fingerprint = fingerprint
 		return nil
 	}
-	if state != nil && state.fingerprint == fingerprint {
+	if state.fingerprint == fingerprint {
 		return nil
 	}
-	if state != nil {
-		state.fingerprint = fingerprint
-	}
+	state.fingerprint = fingerprint
 	hub.Publish(events.NewEvent(events.TypeOpsServices, map[string]any{
 		"globalRev": time.Now().UTC().UnixMilli(),
 		"services":  current,

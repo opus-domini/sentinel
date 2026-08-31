@@ -402,14 +402,14 @@ func lifecycleTargetKey(user, sessionID string) string {
 
 func (h *Handler) projectedSessionToEnriched(ctx context.Context, row store.WatchtowerSession, meta store.SessionMeta) enrichedSession {
 	hash := strings.TrimSpace(meta.Hash)
-	if hash == "" {
-		hash = tmux.SessionHash(row.SessionName, row.ActivityAt.Unix())
-	}
 	lastContent := strings.TrimSpace(row.LastPreview)
 	if lastContent == "" {
 		lastContent = strings.TrimSpace(meta.LastContent)
 	}
-	h.upsertSessionMetaBestEffort(ctx, row.SessionName, hash, lastContent)
+	if hash == "" {
+		hash = tmux.SessionHash(row.SessionName, row.ActivityAt.Unix())
+		h.initSessionMetaBestEffort(ctx, row.SessionName, hash, lastContent)
+	}
 	return enrichedSession{
 		Name:          row.SessionName,
 		Windows:       row.Windows,
@@ -448,11 +448,11 @@ func (h *Handler) loadActivePaneSnapshots(ctx context.Context) map[string]tmux.P
 
 func (h *Handler) tmuxSessionToEnriched(ctx context.Context, sess tmux.Session, snap tmux.PaneSnapshot, meta store.SessionMeta) enrichedSession {
 	hash := strings.TrimSpace(meta.Hash)
+	lastContent := h.resolveSessionLastContent(ctx, sess.Name, meta.LastContent)
 	if hash == "" {
 		hash = tmux.SessionHash(sess.Name, sess.CreatedAt.Unix())
+		h.initSessionMetaBestEffort(ctx, sess.Name, hash, lastContent)
 	}
-	lastContent := h.resolveSessionLastContent(ctx, sess.Name, meta.LastContent)
-	h.upsertSessionMetaBestEffort(ctx, sess.Name, hash, lastContent)
 
 	return enrichedSession{
 		Name:          sess.Name,
@@ -514,7 +514,12 @@ func (h *Handler) resolveSessionPaneCount(ctx context.Context, sessionName strin
 	return len(paneList)
 }
 
-func (h *Handler) upsertSessionMetaBestEffort(ctx context.Context, sessionName, hash, lastContent string) {
+// initSessionMetaBestEffort persists the session hash the first time a session
+// is seen. Listing sessions is otherwise a read: re-upserting every row on every
+// GET /api/tmux/sessions and /api/now cost one write transaction per session per
+// request on the single SQLite connection, and rewrote values that were already
+// identical. last_preview belongs to the watchtower, so it is only seeded here.
+func (h *Handler) initSessionMetaBestEffort(ctx context.Context, sessionName, hash, lastContent string) {
 	if h.repo == nil {
 		return
 	}

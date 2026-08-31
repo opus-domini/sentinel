@@ -701,10 +701,22 @@ func isOpsRunbookTargetBusyConstraint(err error) bool {
 	)
 }
 
-// FailOrphanedRuns handles fail orphaned runs.
+// FailOrphanedRuns reconciles execution state left behind by a hard shutdown.
+// It owns both tables that record a run in flight: the run rows themselves and
+// the schedule's last-run column, which the scheduler stamps "running" at
+// dispatch and only rewrites on completion. Without the second update a
+// schedule reports "running" forever while its job row already reads failed.
+// Schedules whose runbook still has an approval-paused run are left alone —
+// that run legitimately survives a restart.
 func (s *Store) FailOrphanedRuns(ctx context.Context) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx,
 		`UPDATE ops_runbook_runs
 			SET status = ?, error = ?, finished_at = ?
 		  WHERE status IN (?, ?)`,
@@ -714,25 +726,60 @@ func (s *Store) FailOrphanedRuns(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE ops_schedules
+			SET last_run_status = ?, updated_at = datetime('now')
+		  WHERE last_run_status = ?
+			AND NOT EXISTS (
+				SELECT 1 FROM ops_runbook_runs
+				 WHERE ops_runbook_runs.runbook_id = ops_schedules.runbook_id
+				   AND ops_runbook_runs.status = ?
+			)`,
+		opsRunbookStatusFailed, opsRunbookStatusRunning, OpsRunbookStatusWaitingApproval,
+	); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return affected, nil
 }
 
-// DeleteOpsRunbookRun deletes ops runbook run.
+// DeleteOpsRunbookRun removes a finished run. Deleting a queued, running or
+// approval-paused run is refused with ErrOpsRunbookActive: the partial unique
+// index on (target_kind, target_name) is what keeps two executions off the same
+// service, and dropping the live row would release that lock mid-execution
+// while the shell steps keep running unrecorded. It also discards a pending
+// human approval decision without a trail.
 func (s *Store) DeleteOpsRunbookRun(ctx context.Context, runID string) error {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return sql.ErrNoRows
 	}
-	result, err := s.db.ExecContext(ctx, "DELETE FROM ops_runbook_runs WHERE id = ?", runID)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
+	defer func() { _ = tx.Rollback() }()
+
+	var status string
+	if err := tx.QueryRowContext(ctx,
+		"SELECT status FROM ops_runbook_runs WHERE id = ?", runID,
+	).Scan(&status); err != nil {
 		return err
 	}
-	if affected == 0 {
-		return sql.ErrNoRows
+	switch status {
+	case opsRunbookStatusQueued, opsRunbookStatusRunning, OpsRunbookStatusWaitingApproval:
+		return ErrOpsRunbookActive
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, "DELETE FROM ops_runbook_runs WHERE id = ?", runID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

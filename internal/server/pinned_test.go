@@ -15,6 +15,7 @@ type fakePinnedStore struct {
 	listErr        error
 	recordedDirs   []string
 	icons          map[string]string
+	sessionUsers   map[string]string
 	markedLaunched []string
 	runtimeUpdates []struct {
 		id           string
@@ -40,6 +41,14 @@ func (f *fakePinnedStore) SetIcon(_ context.Context, name, icon string) error {
 		f.icons = make(map[string]string)
 	}
 	f.icons[name] = icon
+	return nil
+}
+
+func (f *fakePinnedStore) SetSessionUser(_ context.Context, session, user string) error {
+	if f.sessionUsers == nil {
+		f.sessionUsers = make(map[string]string)
+	}
+	f.sessionUsers[session] = user
 	return nil
 }
 
@@ -330,5 +339,31 @@ func TestRestorePinnedSessionsSkipsUnauthorizedUser(t *testing.T) {
 	}
 	if len(repo.markedLaunched) != 1 || repo.markedLaunched[0] != "web" {
 		t.Fatalf("marked launched = %v, want [web]", repo.markedLaunched)
+	}
+}
+
+func TestRestorePinnedSessionsPersistsSessionUser(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakePinnedStore{
+		presets: []store.SessionPreset{
+			{Name: "db", Cwd: "/srv/db", Icon: "database", User: "postgres"},
+			{Name: "web", Cwd: "/srv/web", Icon: "globe"},
+		},
+	}
+	factory := &fakePinnedTmuxFactory{}
+
+	restored, err := restorePinnedSessions(context.Background(), repo, factory.starter, nil)
+	if err != nil {
+		t.Fatalf("restorePinnedSessions() error = %v", err)
+	}
+	if restored != 2 {
+		t.Fatalf("restored = %d, want 2", restored)
+	}
+	if got := repo.sessionUsers["db"]; got != "postgres" {
+		t.Fatalf("session user for db = %q, want postgres", got)
+	}
+	if _, ok := repo.sessionUsers["web"]; ok {
+		t.Fatalf("default-user preset must not write a session_users row, got %q", repo.sessionUsers["web"])
 	}
 }

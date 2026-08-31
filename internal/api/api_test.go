@@ -5895,6 +5895,12 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateOpsRunbookRun: %v", err)
 		}
+		if _, err := st.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+			RunID:  job.ID,
+			Status: store.OpsRunbookStatusSucceeded,
+		}); err != nil {
+			t.Fatalf("UpdateOpsRunbookRun: %v", err)
+		}
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/"+job.ID, nil)
@@ -5908,6 +5914,50 @@ func TestDeleteOpsJobHandler(t *testing.T) {
 		data, _ := body["data"].(map[string]any)
 		if data["deleted"] != true {
 			t.Fatalf("deleted = %v, want true", data["deleted"])
+		}
+	})
+
+	t.Run("active run is refused", func(t *testing.T) {
+		t.Parallel()
+
+		h, st := newTestHandler(t, nil)
+		ctx := context.Background()
+
+		rb, _ := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+			Name:          "active-job-rb",
+			Steps:         []store.OpsRunbookStep{{Type: "run", Title: "echo", Command: "echo ok"}},
+			TargetService: "nginx",
+		})
+		job, err := st.CreateOpsRunbookRun(ctx, store.OpsRunbookRunWrite{
+			Definition: rb,
+			Source:     store.OpsRunbookRunSourceRunbooks,
+			At:         time.Now().UTC(),
+		})
+		if err != nil {
+			t.Fatalf("CreateOpsRunbookRun: %v", err)
+		}
+		if _, err := st.UpdateOpsRunbookRun(ctx, store.OpsRunbookRunUpdate{
+			RunID:  job.ID,
+			Status: store.OpsRunbookStatusRunning,
+		}); err != nil {
+			t.Fatalf("UpdateOpsRunbookRun: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodDelete, "/api/ops/jobs/"+job.ID, nil)
+		r.SetPathValue("job", job.ID)
+		h.deleteOpsJob(w, r)
+
+		if w.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want 409; body=%s", w.Code, w.Body.String())
+		}
+		body := jsonBody(t, w)
+		errObj, _ := body["error"].(map[string]any)
+		if errObj["code"] != "RUNBOOK_ACTIVE" {
+			t.Fatalf("error code = %v, want RUNBOOK_ACTIVE", errObj["code"])
+		}
+		if _, err := st.GetOpsRunbookRun(ctx, job.ID); err != nil {
+			t.Fatalf("run must survive a refused delete: %v", err)
 		}
 	})
 

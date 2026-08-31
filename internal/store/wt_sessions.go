@@ -58,6 +58,10 @@ func BuildWatchtowerInspectorPatchWithManaged(
 
 // UpsertWatchtowerSession upserts watchtower session.
 func (s *Store) UpsertWatchtowerSession(ctx context.Context, row WatchtowerSessionWrite) error {
+	return upsertWatchtowerSession(ctx, s.db, row)
+}
+
+func upsertWatchtowerSession(ctx context.Context, ex sqlExecer, row WatchtowerSessionWrite) error {
 	name := strings.TrimSpace(row.SessionName)
 	if name == "" {
 		return errors.New("session name is required")
@@ -67,7 +71,7 @@ func (s *Store) UpsertWatchtowerSession(ctx context.Context, row WatchtowerSessi
 		updatedAt = time.Now().UTC()
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := ex.ExecContext(ctx,
 		`INSERT INTO wt_sessions (
 			session_name, attached, windows, panes, activity_at,
 			last_preview, last_preview_at, last_preview_pane_id,

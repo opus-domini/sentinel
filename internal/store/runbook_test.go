@@ -973,7 +973,34 @@ func TestDeleteOpsRunbookRun(t *testing.T) {
 		t.Fatalf("CreateOpsRunbookRun: %v", err)
 	}
 
+	t.Run("delete active run is refused", func(t *testing.T) {
+		for _, status := range []string{
+			opsRunbookStatusQueued,
+			opsRunbookStatusRunning,
+			OpsRunbookStatusWaitingApproval,
+		} {
+			if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+				RunID:  run.ID,
+				Status: status,
+			}); err != nil {
+				t.Fatalf("UpdateOpsRunbookRun(%s): %v", status, err)
+			}
+			if err := s.DeleteOpsRunbookRun(ctx, run.ID); !errors.Is(err, ErrOpsRunbookActive) {
+				t.Fatalf("delete with status %q: error = %v, want ErrOpsRunbookActive", status, err)
+			}
+			if _, err := s.GetOpsRunbookRun(ctx, run.ID); err != nil {
+				t.Fatalf("run must survive a refused delete (status %q): %v", status, err)
+			}
+		}
+	})
+
 	t.Run("delete existing run", func(t *testing.T) {
+		if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+			RunID:  run.ID,
+			Status: opsRunbookStatusSucceeded,
+		}); err != nil {
+			t.Fatalf("UpdateOpsRunbookRun: %v", err)
+		}
 		if err := s.DeleteOpsRunbookRun(ctx, run.ID); err != nil {
 			t.Fatalf("DeleteOpsRunbookRun: %v", err)
 		}
@@ -1340,5 +1367,84 @@ func assertSucceededRunUntouched(ctx context.Context, t *testing.T, s *Store, ru
 	}
 	if su.Error != "" {
 		t.Fatalf("succeeded run error = %q, want empty", su.Error)
+	}
+}
+
+func TestFailOrphanedRunsReconcilesScheduleLastRunStatus(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 2, 15, 14, 0, 0, 0, time.UTC)
+
+	seedOrphanRunbook(ctx, t, s)
+	if _, err := s.InsertOpsRunbook(ctx, OpsRunbookWrite{
+		ID:      "orphan.approval",
+		Name:    "Orphan Approval",
+		Steps:   []OpsRunbookStep{{Type: "run", Title: "Check status", Command: "echo ok"}},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("InsertOpsRunbook(approval): %v", err)
+	}
+
+	stuck, err := s.InsertOpsSchedule(ctx, OpsScheduleWrite{
+		RunbookID:    "orphan.test",
+		Name:         "stuck",
+		ScheduleType: "cron",
+		CronExpr:     "0 2 * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsSchedule(stuck): %v", err)
+	}
+	pending, err := s.InsertOpsSchedule(ctx, OpsScheduleWrite{
+		RunbookID:    "orphan.approval",
+		Name:         "pending-approval",
+		ScheduleType: "cron",
+		CronExpr:     "0 3 * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsSchedule(pending): %v", err)
+	}
+
+	// Both schedules were stamped "running" at dispatch and the process died.
+	for _, id := range []string{stuck.ID, pending.ID} {
+		if err := s.UpdateScheduleLastRun(ctx, id, now.Format(time.RFC3339), opsRunbookStatusRunning); err != nil {
+			t.Fatalf("UpdateScheduleLastRun(%s): %v", id, err)
+		}
+	}
+	// The second schedule's runbook still holds an approval-paused run, which
+	// legitimately survives a restart.
+	waitingRun, err := s.CreateOpsRunbookRun(ctx, testRunWrite(t, s, "orphan.approval", now, nil))
+	if err != nil {
+		t.Fatalf("CreateOpsRunbookRun(waiting): %v", err)
+	}
+	if _, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+		RunID:  waitingRun.ID,
+		Status: OpsRunbookStatusWaitingApproval,
+	}); err != nil {
+		t.Fatalf("UpdateOpsRunbookRun(waiting): %v", err)
+	}
+
+	if _, err := s.FailOrphanedRuns(ctx); err != nil {
+		t.Fatalf("FailOrphanedRuns: %v", err)
+	}
+
+	schedules, err := s.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatalf("ListOpsSchedules: %v", err)
+	}
+	byID := make(map[string]OpsSchedule, len(schedules))
+	for _, sched := range schedules {
+		byID[sched.ID] = sched
+	}
+	if got := byID[stuck.ID].LastRunStatus; got != opsRunbookStatusFailed {
+		t.Fatalf("stuck schedule lastRunStatus = %q, want %q", got, opsRunbookStatusFailed)
+	}
+	if got := byID[pending.ID].LastRunStatus; got != opsRunbookStatusRunning {
+		t.Fatalf("approval-paused schedule lastRunStatus = %q, want %q", got, opsRunbookStatusRunning)
 	}
 }
