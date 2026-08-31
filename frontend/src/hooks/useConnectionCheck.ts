@@ -75,7 +75,11 @@ export function useConnectionCheck(options: {
   const handleUnauthorized = useEffectEvent(onUnauthorized)
 
   if (state.requestKey !== requestKey) {
-    setState({ requestKey, ready: false, checking: enabled, issue: null })
+    // A re-check never regresses an approved session: dropping `ready` unmounts
+    // the route tree, which destroys every open terminal and its scrollback.
+    // Losing authorization (`enabled` going false) is the only way back to the
+    // gate. Later failures surface through `issue` instead.
+    setState({ requestKey, ready: enabled && state.ready, checking: enabled, issue: null })
   }
 
   const retry = useCallback(() => {

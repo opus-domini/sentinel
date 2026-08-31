@@ -72,4 +72,69 @@ describe('useConnectionCheck', () => {
     act(() => result.current.retry())
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2))
   })
+
+  it('stays ready while an online re-check is in flight', async () => {
+    let settleRecheck: (response: Response) => void = () => undefined
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            settleRecheck = resolve
+          }),
+      )
+
+    const { result } = renderHook(() =>
+      useConnectionCheck({ enabled: true, onUnauthorized: vi.fn() }),
+    )
+    await waitFor(() => expect(result.current.ready).toBe(true))
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2))
+    expect(result.current.ready).toBe(true)
+    expect(result.current.checking).toBe(true)
+
+    await act(async () => {
+      settleRecheck(new Response(null, { status: 200 }))
+    })
+    await waitFor(() => expect(result.current.checking).toBe(false))
+    expect(result.current.ready).toBe(true)
+  })
+
+  it('reports a late failure as an issue without gating the app again', async () => {
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { code: 'UNTRUSTED_PROXY', message: 'nope' } }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+    const { result } = renderHook(() =>
+      useConnectionCheck({ enabled: true, onUnauthorized: vi.fn() }),
+    )
+    await waitFor(() => expect(result.current.ready).toBe(true))
+
+    act(() => result.current.retry())
+
+    await waitFor(() => expect(result.current.issue?.code).toBe('UNTRUSTED_PROXY'))
+    expect(result.current.ready).toBe(true)
+  })
+
+  it('drops ready when the check is disabled', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 200 }))
+    const { result, rerender } = renderHook(
+      (props: { enabled: boolean }) =>
+        useConnectionCheck({ enabled: props.enabled, onUnauthorized: vi.fn() }),
+      { initialProps: { enabled: true } },
+    )
+
+    await waitFor(() => expect(result.current.ready).toBe(true))
+    rerender({ enabled: false })
+    expect(result.current.ready).toBe(false)
+  })
 })
