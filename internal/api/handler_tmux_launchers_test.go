@@ -24,6 +24,51 @@ func TestTmuxLauncherHandlers(t *testing.T) {
 	t.Run("launch launcher creates window and sends command", testTmuxLauncherLaunchCreatesWindowAndSendsCommand)
 	t.Run("launch launcher with blank command skips send keys", testTmuxLauncherLaunchSkipsBlankCommand)
 	t.Run("launch fixed-user launcher wraps command", testTmuxLauncherLaunchFixedUserWrapsCommand)
+	t.Run("launch rejects disallowed user before creating a window", testTmuxLauncherLaunchRejectsUserBeforeSideEffect)
+}
+
+func testTmuxLauncherLaunchRejectsUserBeforeSideEffect(t *testing.T) {
+	t.Parallel()
+
+	var newWindowCalls int
+	tm := &mockTmux{
+		newWindowWithOptionsFn: func(_ context.Context, _, _, _ string) (tmux.NewWindowResult, error) {
+			newWindowCalls++
+			return tmux.NewWindowResult{ID: "@12", Index: 2, PaneID: "%22"}, nil
+		},
+	}
+	h, st := newTestHandler(t, tm)
+	// postgres is a known system user but is not on the allowlist, so the guard
+	// must reject it.
+	h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
+		AllowedUsers: []string{"deploy"},
+		SystemUsers:  []string{"postgres", "deploy"},
+	})
+
+	launcher, err := st.CreateTmuxLauncher(context.Background(), store.TmuxLauncherWrite{
+		Name:      "PSQL",
+		Icon:      "database",
+		Command:   "psql",
+		CwdMode:   store.TmuxLauncherCwdModeSession,
+		UserMode:  store.TmuxLauncherUserModeFixed,
+		UserValue: "postgres",
+	})
+	if err != nil {
+		t.Fatalf("CreateTmuxLauncher() error = %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/tmux/sessions/dev/launchers/"+launcher.ID+"/launch", nil)
+	r.SetPathValue("session", "dev")
+	r.SetPathValue("launcher", launcher.ID)
+	h.launchTmuxLauncher(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if newWindowCalls != 0 {
+		t.Fatalf("NewWindowWithOptions() calls = %d, want 0 (403 must not leave an orphan window)", newWindowCalls)
+	}
 }
 
 func testTmuxLauncherCreateListUpdateDelete(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,10 @@ import (
 	"github.com/opus-domini/sentinel/internal/userswitch"
 	"github.com/opus-domini/sentinel/internal/validate"
 )
+
+// errInvalidTmuxLauncherCwdMode is a client input error, not a tmux failure:
+// the launcher row carries a cwd mode the resolver does not know.
+var errInvalidTmuxLauncherCwdMode = errors.New("invalid tmux launcher cwd mode")
 
 func (h *Handler) listTmuxLaunchers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -141,9 +146,8 @@ func (h *Handler) reorderTmuxLaunchers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 	launcherID := strings.TrimSpace(r.PathValue(keyLauncher))
@@ -165,8 +169,20 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorize and resolve everything that can fail before creating the window,
+	// so a rejected target user or a bad cwd mode costs no side effect.
+	launcherCommand, err := h.tmuxLauncherCommand(session, launcher)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
+		return
+	}
+
 	cwd, err := h.resolveTmuxLauncherCwd(ctx, session, launcher)
 	if err != nil {
+		if errors.Is(err, errInvalidTmuxLauncherCwdMode) {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+			return
+		}
 		writeTmuxError(w, err)
 		return
 	}
@@ -182,20 +198,16 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		writeTmuxError(w, err)
 		return
 	}
-	launcherCommand, err := h.tmuxLauncherCommand(session, launcher)
-	if err != nil {
-		writeError(w, http.StatusForbidden, "USER_NOT_ALLOWED", err.Error(), nil)
-		return
-	}
 	if strings.TrimSpace(launcherCommand) != "" {
 		if err := svc.SendKeys(ctx, createdWindow.PaneID, launcherCommand, true); err != nil {
 			writeTmuxError(w, err)
 			return
 		}
 	}
+	// The window exists from here on, so bookkeeping failures are logged and the
+	// launch is still reported as the success it was.
 	if err := h.repo.MarkTmuxLauncherUsed(ctx, launcher.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to record tmux launcher usage", nil)
-		return
+		slog.Warn("failed to record tmux launcher usage", keyLauncher, launcher.ID, "err", err)
 	}
 	managedWindow, err := h.repo.CreateManagedTmuxWindow(ctx, store.ManagedTmuxWindowWrite{
 		SessionName:     session,
@@ -211,8 +223,8 @@ func (h *Handler) launchTmuxLauncher(w http.ResponseWriter, r *http.Request) {
 		LastWindowIndex: createdWindow.Index,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "STORE_ERROR", "failed to persist managed tmux window", nil)
-		return
+		slog.Warn("failed to persist managed tmux window",
+			keySession, session, keyLauncher, launcher.ID, "err", err)
 	}
 
 	h.emit(events.TypeTmuxInspector, map[string]any{
@@ -282,7 +294,7 @@ func (h *Handler) resolveTmuxLauncherCwd(ctx context.Context, session string, la
 		}
 		return "", nil
 	default:
-		return "", errors.New("invalid tmux launcher cwd mode")
+		return "", errInvalidTmuxLauncherCwdMode
 	}
 }
 

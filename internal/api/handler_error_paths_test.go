@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/events"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
@@ -1031,4 +1032,50 @@ func TestMarshalMetadata(t *testing.T) {
 			t.Fatalf("got %q, want {}", got)
 		}
 	})
+}
+
+// A request that arrives after Shutdown has begun must be refused rather than
+// call wg.Add concurrently with wg.Wait, which sync.WaitGroup reports as misuse.
+func TestTriggerScheduleRefusedAfterShutdown(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, nil)
+	h.events = events.NewHub()
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:  "shutdown-rb",
+		Steps: []store.OpsRunbookStep{{Type: "run", Title: "echo", Command: "echo ok"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsRunbook: %v", err)
+	}
+	sched, err := st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "shutdown-sched",
+		ScheduleType: "cron",
+		CronExpr:     "0 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("InsertOpsSchedule: %v", err)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	h.Shutdown(shutdownCtx)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/ops/schedules/"+sched.ID+"/trigger", nil)
+	r.SetPathValue("schedule", sched.ID)
+	h.triggerSchedule(w, r)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body=%s", w.Code, w.Body.String())
+	}
+	if !h.stopping {
+		t.Fatal("Shutdown did not latch the stopping gate")
+	}
 }

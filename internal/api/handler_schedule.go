@@ -310,7 +310,12 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("trigger schedule: update after run failed", keySchedule, scheduleID, "err", err)
 	}
 
-	h.wg.Add(1)
+	if !h.beginBackgroundRun() {
+		// The run row stays queued and is reconciled by FailOrphanedRuns on the
+		// next boot, exactly as it would be if the process died here.
+		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "server is shutting down", nil)
+		return
+	}
 	go func() {
 		defer h.wg.Done()
 		runbook.Run(h.runCtx, h.repo, h.emitEvent, runbook.RunParams{

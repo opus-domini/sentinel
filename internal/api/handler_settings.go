@@ -450,7 +450,7 @@ func (h *Handler) settingsMutation(
 	}
 	keys := settingsChangedKeys(req, current)
 	if len(keys) == 0 && !hasExplicitSecretKeep(req.Integrations, req.Access) {
-		return nil, nil, errors.New("at least one supported settings field is required")
+		return nil, nil, fmt.Errorf("%w: at least one supported settings field is required", errInvalidSettingsRequest)
 	}
 
 	return keys, func(candidate *config.Config) error {
@@ -1456,10 +1456,6 @@ func writeSettingsError(w http.ResponseWriter, err error) {
 					Issues []string `json:"issues"`
 				}{Issues: issues},
 			)
-			return
-		}
-		if err != nil && err.Error() == "at least one supported settings field is required" {
-			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "CONFIG_WRITE_FAILED", "failed to update settings", nil)
