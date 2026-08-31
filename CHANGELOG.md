@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.11.3](https://github.com/opus-domini/sentinel/compare/v0.11.2...v0.11.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **api:** map service and unit errors to their real status codes ([9c79d56](https://github.com/opus-domini/sentinel/commit/9c79d56ecd3703298081adb62d638e183e0d33b8))
+* **ci:** run frontend tests on pull requests and fix the cosign verify command ([f23c2ff](https://github.com/opus-domini/sentinel/commit/f23c2ff3f6e0eb7fe01559f4ebccb6e0ddf6edb7))
+* **frontend:** correct render and lifecycle defects, drop dead modules ([3c487f2](https://github.com/opus-domini/sentinel/commit/3c487f27fa849da4fb26d34bca78e4d62982251f))
+* **frontend:** finish the pending-operation and launcher-shell cleanups ([ec3cc70](https://github.com/opus-domini/sentinel/commit/ec3cc70d304e4c5652116c079b04105c6d635aa2))
+* **frontend:** keep the route tree mounted across connection re-checks ([7ac1004](https://github.com/opus-domini/sentinel/commit/7ac10044f3e088cad94e771397fd6a542e731478))
+* **frontend:** tear down the session that ended, not the active one ([7e5c670](https://github.com/opus-domini/sentinel/commit/7e5c67010bd9b2ffbebde000278489022b057969))
+* **internal:** assorted audit corrections across supporting packages ([38bef49](https://github.com/opus-domini/sentinel/commit/38bef491bf37b57ab8befd28644ef4a4e9c51d65))
+* **mcp,tmux,runbook,scheduler:** correct lifecycle and dispatch defects ([b0cb6c4](https://github.com/opus-domini/sentinel/commit/b0cb6c4c0f26a8683348ea2fb0366e1e038ba701))
+* **runbook,report,scheduler:** one notification sender and no hot schedule loop ([cfa799b](https://github.com/opus-domini/sentinel/commit/cfa799ba325cf82bfbec1b5c658ccd002fae2d26))
+* **security:** gate target users on write and on every read of stored state ([6ed930f](https://github.com/opus-domini/sentinel/commit/6ed930fef8bd81146b0a64b57f8da1acf14e7f9e))
+* **server:** await the graceful drain before tearing down dependencies ([05cec51](https://github.com/opus-domini/sentinel/commit/05cec5108b06f5d9fc93394f16b091bae2d2db5e))
+* **services:** validate launchd units and drop the unbuildable fallback tier ([d0ea15a](https://github.com/opus-domini/sentinel/commit/d0ea15ad42eec358c6ea4e2dd3c532da8ba0f123))
+* **store:** keep unread alive across a session rename ([c3f5f09](https://github.com/opus-domini/sentinel/commit/c3f5f09daf03e3bf2f8c043291276641420e4fd4))
+* **store:** repair panes whose revision fell below seen_revision ([c3280c0](https://github.com/opus-domini/sentinel/commit/c3280c07d2628fe5edf7f8a8e4e8670a7d2b881c))
+* **tmux:** isolate session creation from Sentinel's cgroup on every path ([a93876c](https://github.com/opus-domini/sentinel/commit/a93876c21a2139e29d0f016989300861dbfa4ed2))
+* **tmuxlifecycle:** collect leases when the tmux server is gone, and bound boot ([a3c8599](https://github.com/opus-domini/sentinel/commit/a3c8599439807bef2764f38d3de2a7e1491e8713))
+
+
+### Performance
+
+* **store:** stop rewriting watchtower rows that did not change ([a3ebd71](https://github.com/opus-domini/sentinel/commit/a3ebd713e440019673c6731864867f70806c8cf4))
+* **watchtower:** remove the idle write floor ([e0c924d](https://github.com/opus-domini/sentinel/commit/e0c924db509dacb572f09a47af1b4cf56f581406))
+* **watchtower:** write one grouped projection per tick ([54dd31b](https://github.com/opus-domini/sentinel/commit/54dd31b52fea40c0a614c4c837938c89727d5532))
+
+
+### Refactors
+
+* **tmux,ws:** one creation runner, and drop the dormant origin hook ([790aae2](https://github.com/opus-domini/sentinel/commit/790aae2ff0e50d4d8ff5ceda855727775cedb31c))
+* **tmux:** collapse the three-layer command wrappers ([14db7b2](https://github.com/opus-domini/sentinel/commit/14db7b26e6a9f00de1505882d52be3a4dba03b9c))
+* **tmux:** remove the unused window and pane commands ([dbc5630](https://github.com/opus-domini/sentinel/commit/dbc5630a8f2e5753fe6241d6bd78e2bcf025ca3d))
+
+
+### Documentation
+
+* correct statements the code no longer supports ([d7a44e0](https://github.com/opus-domini/sentinel/commit/d7a44e016e3add0501860041dbfc19ddd7961d5b))
+* **store:** document the preserve-on-empty contract of run updates ([d364a2d](https://github.com/opus-domini/sentinel/commit/d364a2d92ddaec6e73200388f9a129355979cbf9))
+
 ## [0.11.2](https://github.com/opus-domini/sentinel/compare/v0.11.1...v0.11.2) (2026-08-30)
 
 
