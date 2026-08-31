@@ -129,26 +129,11 @@ type NewWindowResult struct {
 	PaneID string
 }
 
-// ListSessions lists sessions.
-func ListSessions(ctx context.Context) ([]Session, error) {
-	return listSessionsVia(ctx, run)
-}
-
-// GetSession returns one exact tmux session.
-func GetSession(ctx context.Context, name string) (Session, error) {
-	return getSessionVia(ctx, run, name)
-}
-
 // runners are package runners / prefixes that should be skipped when
 // inferring the actual tool from pane_start_command.
 var runners = map[string]bool{
 	"npx": true, "bunx": true, "pnpm": true, "yarn": true,
 	"env": true, "sudo": true, "exec": true,
-}
-
-// ListActivePaneCommands lists active pane commands.
-func ListActivePaneCommands(ctx context.Context) (map[string]PaneSnapshot, error) {
-	return listActivePaneCommandsVia(ctx, run)
 }
 
 // inferCommand parses a command string and extracts the tool name,
@@ -197,45 +182,10 @@ func inferCommand(raw string) string {
 	return ""
 }
 
-// CapturePane captures pane.
-func CapturePane(ctx context.Context, session string) (string, error) {
-	return capturePane(ctx, run, session)
-}
-
 // SessionHash handles session hash.
 func SessionHash(name string, epoch int64) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", name, epoch)))
 	return fmt.Sprintf("%x", h[:6])
-}
-
-// CreateSession creates session.
-func CreateSession(ctx context.Context, name, cwd string) error {
-	args := []string{cmdNewSession, "-d", "-s", name}
-	if cwd != "" {
-		args = append(args, "-c", cwd)
-	}
-	_, err := createSessionRun(ctx, args...)
-	return err
-}
-
-// HasSession reports whether a tmux session with the given name exists.
-func HasSession(ctx context.Context, session string) bool {
-	_, err := run(ctx, "has-session", "-t", session)
-	return err == nil
-}
-
-// SetSessionMouse toggles tmux mouse support for a target session.
-// When enabled, wheel gestures are handled by tmux copy-mode instead of
-// being interpreted as terminal cursor keys by applications.
-func SetSessionMouse(ctx context.Context, session string, enabled bool) error {
-	return setSessionOption(ctx, session, "mouse", enabled)
-}
-
-// SetSessionStatus toggles the tmux status bar for a target session.
-// When disabled, the status line is hidden — useful for web terminals that
-// provide their own window/pane management UI.
-func SetSessionStatus(ctx context.Context, session string, enabled bool) error {
-	return setSessionOption(ctx, session, "status", enabled)
 }
 
 const (
@@ -259,11 +209,7 @@ const (
 	errSessionRequired     = "tmux session is required"
 )
 
-func setSessionOption(ctx context.Context, session, option string, enabled bool) error {
-	return setSessionOptionVia(ctx, run, session, option, enabled)
-}
-
-// EnsureWebMouseBindings patches a subset of tmux default mouse bindings to
+// ensureWebMouseBindings patches a subset of tmux default mouse bindings to
 // behave consistently in browser terminals:
 //  1. Keep pane context menu open after button release (-O).
 //  2. Disable default double/triple-click auto-copy popup behavior.
@@ -274,7 +220,7 @@ func setSessionOption(ctx context.Context, session, option string, enabled bool)
 // propagate to the system clipboard via the browser terminal (xterm.js).
 //
 // The patch is idempotent and only rewrites known default patterns.
-func EnsureWebMouseBindings(ctx context.Context) error {
+func ensureWebMouseBindings(ctx context.Context) error {
 	// Enable OSC 52 clipboard output for copy-mode operations.
 	// The default "external" (tmux 3.2+) only passes through application
 	// OSC 52 but does not emit it for tmux's own copy commands.
@@ -393,115 +339,6 @@ func patchCopyModeDragEndBinding(line string) (string, bool) {
 	patched = strings.Replace(patched, "copy-pipe-and-cancel", "copy-pipe-no-clear", 1)
 	patched = strings.Replace(patched, "copy-selection-and-cancel", "copy-selection-no-clear", 1)
 	return patched, patched != line
-}
-
-// RenameSession renames session.
-func RenameSession(ctx context.Context, session, newName string) error {
-	_, err := run(ctx, "rename-session", "-t", session, newName)
-	return err
-}
-
-// RenameWindow renames window.
-func RenameWindow(ctx context.Context, session string, index int, name string) error {
-	return renameWindowVia(ctx, run, session, index, name)
-}
-
-// RenamePane renames pane.
-func RenamePane(ctx context.Context, paneID, title string) error {
-	_, err := run(ctx, "select-pane", "-t", paneID, "-T", title)
-	return err
-}
-
-// KillSession handles kill session.
-func KillSession(ctx context.Context, session string) error {
-	_, err := run(ctx, "kill-session", "-t", session)
-	return err
-}
-
-// KillSessionByID kills one exact tmux runtime session.
-func KillSessionByID(ctx context.Context, sessionID string) error {
-	return killSessionByIDVia(ctx, run, sessionID)
-}
-
-// SelectWindow selects window.
-func SelectWindow(ctx context.Context, session string, index int) error {
-	return selectWindowVia(ctx, run, session, index)
-}
-
-// SelectPane selects pane.
-func SelectPane(ctx context.Context, paneID string) error {
-	_, err := run(ctx, "select-pane", "-t", paneID)
-	return err
-}
-
-// NewWindow creates window.
-func NewWindow(ctx context.Context, session string) (NewWindowResult, error) {
-	return NewWindowWithOptions(ctx, session, "", "")
-}
-
-// NewWindowWithOptions creates window with options.
-func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWindowResult, error) {
-	return newWindowWithOptionsVia(ctx, run, session, name, cwd)
-}
-
-// CreateSessionWithID creates a detached session and returns its stable runtime
-// identity. Like CreateSession it routes through createSessionRun: this command
-// can start the tmux server, which must not inherit Sentinel's cgroup.
-func CreateSessionWithID(ctx context.Context, name, cwd string) (Session, error) {
-	return createSessionWithIDVia(ctx, createSessionRun, name, cwd)
-}
-
-// KillWindow handles kill window.
-func KillWindow(ctx context.Context, session string, index int) error {
-	return killWindowVia(ctx, run, session, index)
-}
-
-// ReorderWindows reorders windows.
-func ReorderWindows(ctx context.Context, session string, orderedWindowIDs []string) error {
-	return reorderWindowsVia(ctx, run, session, orderedWindowIDs)
-}
-
-// KillPane handles kill pane.
-func KillPane(ctx context.Context, paneID string) error {
-	_, err := run(ctx, "kill-pane", "-t", paneID)
-	return err
-}
-
-// SplitPane splits pane.
-func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
-	return splitPaneVia(ctx, run, paneID, direction)
-}
-
-// SendKeys sends keys.
-func SendKeys(ctx context.Context, paneID, keys string, enter bool) error {
-	return sendKeysVia(ctx, run, paneID, keys, enter)
-}
-
-// ListWindows lists windows.
-func ListWindows(ctx context.Context, session string) ([]Window, error) {
-	return listWindowsVia(ctx, run, session)
-}
-
-// ListPanes lists panes.
-func ListPanes(ctx context.Context, session string) ([]Pane, error) {
-	return listPanesVia(ctx, run, session)
-}
-
-// CapturePaneLines captures pane lines.
-func CapturePaneLines(ctx context.Context, target string, lines int) (string, error) {
-	return capturePaneLinesVia(ctx, run, target, lines)
-}
-
-// SessionExists handles session exists.
-func SessionExists(ctx context.Context, session string) (bool, error) {
-	_, err := run(ctx, "has-session", "-t", session)
-	if err != nil {
-		if IsKind(err, ErrKindSessionNotFound) || IsKind(err, ErrKindServerNotRunning) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 func valueAt(parts []string, idx int) string {

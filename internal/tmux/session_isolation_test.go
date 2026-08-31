@@ -1,27 +1,31 @@
 package tmux
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
 // isolatedCreationSites are the only functions allowed to build a tmux command
-// that can start the server. Each must reach exec through createSessionRun (the
-// systemd-run wrapper) or through Service.run (systemd-run --machine, which
-// also sets KillMode=process). Any other site would put the tmux server inside
+// that can start the server. Each must reach exec through Service.createRun,
+// which is systemd-run --scope locally and systemd-run --machine (KillMode=
+// process) for a target user. Any other site would put the tmux server inside
 // sentinel.service's cgroup, so stopping Sentinel would kill every pane on the
 // host — the regression cb02184 fixed and CreateSessionWithID reintroduced.
 // Service.CreateSessionWithID is absent on purpose: it builds no command of its
-// own, delegating to createSessionWithIDVia with Service.run as the runner.
+// own, delegating to createSessionWithIDVia with Service.createRun as runner.
 var isolatedCreationSites = map[string]string{
-	"CreateSession":          "createSessionRun",
-	"createSessionWithIDVia": "runner parameter, always createSessionRun or Service.run",
-	"Service.CreateSession":  "Service.run",
+	"createSessionWithIDVia": "runner parameter, always Service.createRun",
+	"Service.CreateSession":  "Service.createRun",
 }
 
 // TestSessionCreationStaysIsolated fails when a new call site starts the tmux
@@ -74,6 +78,87 @@ func TestSessionCreationStaysIsolated(t *testing.T) {
 		if !found[site] {
 			t.Errorf("isolatedCreationSites lists %s, but no such site builds a new-session command any more; drop the stale entry", site)
 		}
+	}
+}
+
+// TestUserSessionCreationWrapsInSystemdRun pins the argv of both creation
+// methods for a target user. Service.createRun sends them through the user
+// switch method, whose systemd-run --machine wrapper carries
+// KillMode=process — without that wrapper a tmux server started for another
+// account dies with the transient unit that spawned it.
+func TestUserSessionCreationWrapsInSystemdRun(t *testing.T) {
+	// Not parallel: mutates execCommandContext, UserSwitchMethod and SystemUsers.
+
+	originalUsers := SystemUsers
+	t.Cleanup(func() { SystemUsers = originalUsers })
+	SystemUsers = []string{"testuser"}
+
+	originalMethod := UserSwitchMethod
+	t.Cleanup(func() { UserSwitchMethod = originalMethod })
+	UserSwitchMethod = userswitch.MethodSystemdRun
+
+	var argv []string
+	originalExec := execCommandContext
+	t.Cleanup(func() { execCommandContext = originalExec })
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		argv = append([]string{name}, args...)
+		// Echo a create-session identity so CreateSessionWithID still parses.
+		cmd := exec.CommandContext(ctx, os.Args[0],
+			"-test.run=TestExecCommandRecorder", "--", "$17"+fieldSep+"agent")
+		cmd.Env = append(os.Environ(), "SENTINEL_EXEC_COMMAND_RECORDER=1")
+		return cmd
+	}
+
+	svc := Service{User: "testuser"}
+	tests := []struct {
+		name     string
+		call     func(*testing.T)
+		tmuxArgs []string
+	}{
+		{
+			name: "CreateSession",
+			call: func(t *testing.T) {
+				if err := svc.CreateSession(context.Background(), "agent", "/srv/app"); err != nil {
+					t.Fatalf("CreateSession() error = %v", err)
+				}
+			},
+			tmuxArgs: []string{"new-session", "-d", "-s", "agent", "-c", "/srv/app"},
+		},
+		{
+			name: "CreateSessionWithID",
+			call: func(t *testing.T) {
+				if _, err := svc.CreateSessionWithID(context.Background(), "agent", "/srv/app"); err != nil {
+					t.Fatalf("CreateSessionWithID() error = %v", err)
+				}
+			},
+			tmuxArgs: []string{
+				"new-session", "-d", "-P", "-F", createSessionFormat, "-s", "agent", "-c", "/srv/app",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			argv = nil
+			tt.call(t)
+			want := append([]string{
+				"sudo",
+				"-n",
+				"systemd-run",
+				"--user",
+				"--machine=testuser@.host",
+				"--collect",
+				"--quiet",
+				"--service-type=exec",
+				"--expand-environment=no",
+				"--property=KillMode=process",
+				"--wait",
+				"--pipe",
+				"tmux",
+			}, tt.tmuxArgs...)
+			if !slices.Equal(argv, want) {
+				t.Fatalf("%s argv = %#v, want %#v", tt.name, argv, want)
+			}
+		})
 	}
 }
 

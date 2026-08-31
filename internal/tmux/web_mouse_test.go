@@ -15,7 +15,7 @@ func TestHasSession(t *testing.T) {
 
 	t.Run("exists", func(t *testing.T) {
 		run = func(_ context.Context, _ ...string) (string, error) { return "", nil }
-		if !HasSession(context.Background(), "dev") {
+		if !local.HasSession(context.Background(), "dev") {
 			t.Fatal("HasSession() = false, want true when run succeeds")
 		}
 	})
@@ -24,7 +24,7 @@ func TestHasSession(t *testing.T) {
 		run = func(_ context.Context, _ ...string) (string, error) {
 			return "", errors.New("no such session")
 		}
-		if HasSession(context.Background(), "ghost") {
+		if local.HasSession(context.Background(), "ghost") {
 			t.Fatal("HasSession() = true, want false when run fails")
 		}
 	})
@@ -105,7 +105,7 @@ func TestEnsureWebMouseBindings(t *testing.T) {
 
 	t.Run("no bindings to patch", func(t *testing.T) {
 		run = func(_ context.Context, _ ...string) (string, error) { return "", nil }
-		if err := EnsureWebMouseBindings(context.Background()); err != nil {
+		if err := local.EnsureWebMouseBindings(context.Background()); err != nil {
 			t.Fatalf("EnsureWebMouseBindings() error = %v, want nil", err)
 		}
 	})
@@ -123,7 +123,7 @@ func TestEnsureWebMouseBindings(t *testing.T) {
 				return "", nil
 			}
 		}
-		if err := EnsureWebMouseBindings(context.Background()); err != nil {
+		if err := local.EnsureWebMouseBindings(context.Background()); err != nil {
 			t.Fatalf("EnsureWebMouseBindings() error = %v", err)
 		}
 		if sourced == 0 {
