@@ -421,6 +421,92 @@ func TestMetricPostureEvaluatorUsesReliablePowerThresholds(t *testing.T) {
 	}
 }
 
+// multiCoreTemperatureMetrics builds a two-core package with a warning at 80
+// and a critical at 95, which is the shape every multi-core CPU reports.
+func multiCoreTemperatureMetrics(core0, core1 float64) HostMetrics {
+	maxCelsius := 80.0
+	criticalCelsius := 95.0
+	metrics := unavailableHostMetrics()
+	metrics.Sensors = SensorMetrics{
+		Temperatures: []TemperatureSensor{
+			{
+				ID: "hwmon0:temp2", Label: "Core 0", Source: "coretemp",
+				Celsius: core0, MaxCelsius: &maxCelsius, CriticalCelsius: &criticalCelsius,
+			},
+			{
+				ID: "hwmon0:temp3", Label: "Core 1", Source: "coretemp",
+				Celsius: core1, MaxCelsius: &maxCelsius, CriticalCelsius: &criticalCelsius,
+			},
+		},
+		Fans:  []FanSensor{},
+		Power: []PowerSensor{},
+	}
+	return metrics
+}
+
+func TestMetricPostureEvaluatorKeepsHysteresisWhenHottestSensorChanges(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	now := start
+	evaluator := newMetricPostureEvaluator(func() time.Time { return now })
+
+	signal := requirePostureSignal(
+		t,
+		evaluator.Evaluate(multiCoreTemperatureMetrics(81, 79)),
+		"temperature",
+		MetricPostureSeverityWarning,
+	)
+	if signal.Subject != "Core 0 (coretemp)" {
+		t.Fatalf("temperature subject = %q, want the hottest core", signal.Subject)
+	}
+
+	// The hottest core changes but both stay above the exit threshold (77):
+	// the warning must be sustained, not restarted.
+	now = start.Add(time.Second)
+	signal = requirePostureSignal(
+		t,
+		evaluator.Evaluate(multiCoreTemperatureMetrics(78, 79)),
+		"temperature",
+		MetricPostureSeverityWarning,
+	)
+	if signal.Since != start.Format(time.RFC3339) {
+		t.Fatalf("temperature since = %q, want %q", signal.Since, start.Format(time.RFC3339))
+	}
+
+	// Only a real drop below the exit threshold, held for the exit duration,
+	// clears the signal.
+	now = start.Add(2 * time.Second)
+	requirePostureSignal(
+		t,
+		evaluator.Evaluate(multiCoreTemperatureMetrics(76, 76)),
+		"temperature",
+		MetricPostureSeverityWarning,
+	)
+	now = start.Add(12 * time.Second)
+	if got := evaluator.Evaluate(multiCoreTemperatureMetrics(76, 76)); got.State != MetricPostureStateNormal {
+		t.Fatalf("temperature posture after exit duration = %+v", got)
+	}
+}
+
+func TestMetricPostureEvaluatorReportsWorstSensorOfCategory(t *testing.T) {
+	t.Parallel()
+
+	evaluator := newMetricPostureEvaluator(time.Now)
+	posture := evaluator.Evaluate(multiCoreTemperatureMetrics(81, 96))
+
+	signal := requirePostureSignal(t, posture, "temperature", MetricPostureSeverityCritical)
+	if signal.Subject != "Core 1 (coretemp)" || signal.Value != 96 {
+		t.Fatalf("temperature signal = %+v, want the critical core", signal)
+	}
+	if len(posture.Signals) != 1 {
+		t.Fatalf("signals = %+v, want one signal per category", posture.Signals)
+	}
+	if posture.CriticalCount != 1 || posture.WarningCount != 0 {
+		t.Fatalf("counts = critical %d, warning %d; want 1 and 0", posture.CriticalCount, posture.WarningCount)
+	}
+}
+
 func TestMetricPostureEvaluatorDropsDisappearedSensorState(t *testing.T) {
 	t.Parallel()
 
@@ -445,8 +531,8 @@ func TestMetricPostureEvaluatorDropsDisappearedSensorState(t *testing.T) {
 	if got := evaluator.Evaluate(metrics); got.State != MetricPostureStateUnavailable {
 		t.Fatalf("posture after sensor disappeared = %+v", got)
 	}
-	if _, exists := evaluator.states["fan"]; exists {
-		t.Fatal("disappeared fan left temporal posture state behind")
+	if len(evaluator.states) != 0 {
+		t.Fatalf("disappeared fan left temporal posture state behind: %v", evaluator.states)
 	}
 }
 

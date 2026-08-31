@@ -1641,6 +1641,23 @@ func TestUnitValidationRejectsUnsafeValuesBeforeExec(t *testing.T) {
 	}
 }
 
+func TestUnitValidationAcceptsSystemdEscapedUnits(t *testing.T) {
+	t.Parallel()
+
+	// Names systemd itself generates: systemd-escape encodes a dash inside a
+	// path segment as \x2d, and those units are listed by Browse.
+	units := []string{
+		`systemd-cryptsetup@luks\x2dabc\x2ddef.service`,
+		`mnt-my\x2ddisk.mount`,
+		`dev-disk-by\x2duuid-1234.swap`,
+	}
+	for _, unit := range units {
+		if !IsValidUnit(unit) {
+			t.Fatalf("IsValidUnit(%q) = false, want true", unit)
+		}
+	}
+}
+
 func TestBuildInspectSummary(t *testing.T) {
 	t.Parallel()
 

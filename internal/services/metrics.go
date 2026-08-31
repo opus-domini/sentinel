@@ -131,10 +131,9 @@ type metricsCollector struct {
 	snapshot    HostMetrics
 	snapshotAt  time.Time
 
-	hasDisk  bool
-	disk     diskSample
-	diskAt   time.Time
-	diskPath string
+	hasDisk bool
+	disk    diskSample
+	diskAt  time.Time
 
 	hasProcess bool
 	process    processSample
@@ -168,18 +167,13 @@ func newMetricsCollectorWith(nowFn func() time.Time, intervals metricsCollection
 	}
 }
 
-// CollectMetrics gathers host resource metrics. diskPath is the filesystem
-// path to stat for disk usage (defaults to "/" if empty).
-func CollectMetrics(ctx context.Context, diskPath string) HostMetrics {
-	return newMetricsCollector().Collect(ctx, diskPath)
-}
+// rootDiskPath is the filesystem stat'ed for the host disk metrics.
+const rootDiskPath = "/"
 
-func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMetrics {
+// Collect gathers host resource metrics, reusing recent samples per category.
+func (c *metricsCollector) Collect(ctx context.Context) HostMetrics {
 	if c == nil {
-		return CollectMetrics(ctx, diskPath)
-	}
-	if diskPath == "" {
-		diskPath = "/"
+		return newMetricsCollector().Collect(ctx)
 	}
 	now := c.nowFn().UTC()
 
@@ -202,10 +196,19 @@ func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMet
 		return c.snapshot
 	}
 
+	// A caller that gave up mid-sample leaves partial values behind (the CPU
+	// collector returns -1 as soon as its context ends). This collector is a
+	// process singleton, so an abandoned request must never promote its own
+	// sample into the shared snapshot: serve the previous one instead.
+	aborted := ctx.Err() != nil
+	if aborted && c.hasSnapshot {
+		return c.snapshot
+	}
+
 	cpuCount := c.collectors.numCPU()
 	mem := c.collectors.memInfo(ctx)
 	avg1, avg5, avg15 := c.collectors.loadAvg(ctx)
-	disk := c.diskLocked(diskPath, now)
+	disk := c.diskLocked(now)
 	net := c.collectors.networkIO()
 	processes := c.processLocked(ctx, now)
 	uptime := c.uptimeLocked(now)
@@ -285,21 +288,22 @@ func (c *metricsCollector) Collect(ctx context.Context, diskPath string) HostMet
 		CollectedAt:       now.Format(time.RFC3339),
 	}
 
-	c.snapshot = metrics
-	c.snapshotAt = now
-	c.hasSnapshot = true
+	if !aborted {
+		c.snapshot = metrics
+		c.snapshotAt = now
+		c.hasSnapshot = true
+	}
 
 	return metrics
 }
 
-func (c *metricsCollector) diskLocked(path string, now time.Time) diskSample {
-	if c.hasDisk && c.diskPath == path && reusableAt(now, c.diskAt, c.intervals.disk) {
+func (c *metricsCollector) diskLocked(now time.Time) diskSample {
+	if c.hasDisk && reusableAt(now, c.diskAt, c.intervals.disk) {
 		return c.disk
 	}
 
-	c.disk = c.collectors.diskUsage(path)
+	c.disk = c.collectors.diskUsage(rootDiskPath)
 	c.diskAt = now
-	c.diskPath = path
 	c.hasDisk = true
 	return c.disk
 }

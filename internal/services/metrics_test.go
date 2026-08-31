@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -156,9 +157,9 @@ func TestDefaultMetricCollectorsUseIsolatedProc(t *testing.T) {
 		t.Fatalf("collectDiskUsage() = %+v", disk)
 	}
 
-	metrics := CollectMetrics(context.Background(), root)
+	metrics := newMetricsCollector().Collect(context.Background())
 	if metrics.MemTotalBytes != 1000*1024 || metrics.ProcessCount != 1 || metrics.CPUPercent != 0 {
-		t.Fatalf("CollectMetrics() = %+v", metrics)
+		t.Fatalf("Collect() = %+v", metrics)
 	}
 }
 
@@ -185,7 +186,7 @@ func collectTestMetrics() HostMetrics {
 			func() float64 { return 42 },
 		),
 	)
-	return collector.Collect(context.Background(), "/isolated-test-filesystem")
+	return collector.Collect(context.Background())
 }
 
 func TestManagerMetricsUsesIsolatedCollector(t *testing.T) {
@@ -288,9 +289,9 @@ func TestMetricsCollectorReusesRecentSnapshot(t *testing.T) {
 		}),
 	)
 
-	first := collector.Collect(context.Background(), "/")
+	first := collector.Collect(context.Background())
 	now = now.Add(500 * time.Millisecond)
-	second := collector.Collect(context.Background(), "/")
+	second := collector.Collect(context.Background())
 
 	if calls != 1 {
 		t.Fatalf("cpu collector calls = %d, want 1", calls)
@@ -300,6 +301,127 @@ func TestMetricsCollectorReusesRecentSnapshot(t *testing.T) {
 	}
 	if second.CollectedAt != first.CollectedAt {
 		t.Fatalf("CollectedAt = %s, want cached %s", second.CollectedAt, first.CollectedAt)
+	}
+}
+
+func TestMetricsCollectorDoesNotCacheAbandonedSample(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	collectors := fakeMetricCollectors(
+		func(context.Context) processSample {
+			return processSample{processes: 3, threads: 5, complete: true}
+		},
+		func() float64 { return 40 },
+	)
+	// Mirror the real CPU collector: a dead context yields the -1 sentinel.
+	collectors.cpuPercent = func(ctx context.Context) float64 {
+		if ctx.Err() != nil {
+			return -1
+		}
+		return 40
+	}
+	collector := newMetricsCollectorWith(
+		func() time.Time { return now },
+		metricsCollectionIntervals{snapshotReuse: time.Second},
+		collectors,
+	)
+
+	first := collector.Collect(context.Background())
+	if first.CPUPercent != 40 {
+		t.Fatalf("first CPUPercent = %f, want 40", first.CPUPercent)
+	}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	now = now.Add(2 * time.Second)
+	aborted := collector.Collect(cancelled)
+	if aborted.CPUPercent != 40 {
+		t.Fatalf("abandoned request CPUPercent = %f, want previous snapshot 40", aborted.CPUPercent)
+	}
+
+	cached := collector.Collect(context.Background())
+	if cached.CPUPercent != 40 {
+		t.Fatalf("shared snapshot CPUPercent = %f, want 40 (abandoned sample poisoned the cache)", cached.CPUPercent)
+	}
+}
+
+func TestMetricsCollectorDoesNotCacheFirstAbandonedSample(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	collectors := fakeMetricCollectors(
+		func(context.Context) processSample {
+			return processSample{processes: 3, threads: 5, complete: true}
+		},
+		func() float64 { return 40 },
+	)
+	collectors.cpuPercent = func(ctx context.Context) float64 {
+		if ctx.Err() != nil {
+			return -1
+		}
+		return 40
+	}
+	collector := newMetricsCollectorWith(
+		func() time.Time { return now },
+		metricsCollectionIntervals{snapshotReuse: time.Second},
+		collectors,
+	)
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if aborted := collector.Collect(cancelled); aborted.CPUPercent != -1 {
+		t.Fatalf("abandoned request CPUPercent = %f, want its own -1 sample", aborted.CPUPercent)
+	}
+
+	healthy := collector.Collect(context.Background())
+	if healthy.CPUPercent != 40 {
+		t.Fatalf("CPUPercent = %f, want 40 (abandoned sample was cached)", healthy.CPUPercent)
+	}
+}
+
+func TestMetricsCollectorConcurrentCollectBuildsOneSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	snapshotBuilds := 0
+	collectors := fakeMetricCollectors(
+		func(context.Context) processSample {
+			return processSample{processes: 3, threads: 5, complete: true}
+		},
+		func() float64 { return 40 },
+	)
+	// memInfo runs under the collector lock, so it counts full snapshot builds.
+	// The CPU sample deliberately runs outside the lock and is not counted here.
+	collectors.memInfo = func(context.Context) memorySample {
+		snapshotBuilds++
+		return memorySample{usedBytes: 25, totalBytes: 100, availableBytes: 75}
+	}
+	collector := newMetricsCollectorWith(
+		func() time.Time { return now },
+		metricsCollectionIntervals{snapshotReuse: time.Second},
+		collectors,
+	)
+
+	const callers = 32
+	results := make([]HostMetrics, callers)
+	var wg sync.WaitGroup
+	for i := range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = collector.Collect(context.Background())
+		}()
+	}
+	wg.Wait()
+
+	if snapshotBuilds != 1 {
+		t.Fatalf("snapshot builds = %d, want 1 for %d concurrent callers", snapshotBuilds, callers)
+	}
+	for i, got := range results {
+		if got.CollectedAt != results[0].CollectedAt || got.MemTotalBytes != 100 {
+			t.Fatalf("caller %d got %+v, want the shared snapshot %+v", i, got, results[0])
+		}
 	}
 }
 
@@ -324,11 +446,11 @@ func TestMetricsCollectorUsesSlowerProcessInterval(t *testing.T) {
 		}),
 	)
 
-	first := collector.Collect(context.Background(), "/")
+	first := collector.Collect(context.Background())
 	now = now.Add(2 * time.Second)
-	second := collector.Collect(context.Background(), "/")
+	second := collector.Collect(context.Background())
 	now = now.Add(9 * time.Second)
-	third := collector.Collect(context.Background(), "/")
+	third := collector.Collect(context.Background())
 
 	if cpuCalls != 3 {
 		t.Fatalf("cpu collector calls = %d, want 3", cpuCalls)
@@ -372,11 +494,11 @@ func TestMetricsCollectorUsesSlowerSensorsInterval(t *testing.T) {
 		collectors,
 	)
 
-	first := collector.Collect(context.Background(), "/")
+	first := collector.Collect(context.Background())
 	now = now.Add(2 * time.Second)
-	second := collector.Collect(context.Background(), "/")
+	second := collector.Collect(context.Background())
 	now = now.Add(9 * time.Second)
-	third := collector.Collect(context.Background(), "/")
+	third := collector.Collect(context.Background())
 
 	if sensorCalls != 2 {
 		t.Fatalf("sensor collector calls = %d, want 2", sensorCalls)
@@ -408,9 +530,9 @@ func TestMetricsCollectorKeepsPreviousProcessSampleWhenRefreshIsIncomplete(t *te
 		}, func() float64 { return 1 }),
 	)
 
-	first := collector.Collect(context.Background(), "/")
+	first := collector.Collect(context.Background())
 	now = now.Add(time.Second)
-	second := collector.Collect(context.Background(), "/")
+	second := collector.Collect(context.Background())
 
 	if first.ProcessCount != 10 {
 		t.Fatalf("first ProcessCount = %d, want 10", first.ProcessCount)

@@ -232,7 +232,7 @@ func NewManager(startedAt time.Time, csRepo customServicesRepo) *Manager {
 
 // MetricsSnapshot returns one host sample and its canonical temporal posture.
 func (m *Manager) MetricsSnapshot(ctx context.Context) MetricsSnapshot {
-	metrics := m.metricsCollector().Collect(ctx, "/")
+	metrics := m.metricsCollector().Collect(ctx)
 	return MetricsSnapshot{
 		Metrics: metrics,
 		Posture: m.postureEvaluator().Evaluate(metrics),
@@ -866,13 +866,21 @@ func normalizeServiceName(raw string) (string, bool) {
 }
 
 // IsValidUnit reports whether a systemd unit or launchd label is safe to pass to commands.
+//
+// The backslash is allowed because systemd-escape produces it for any path
+// segment containing a dash: `systemd-escape -p --suffix=mount /mnt/my-disk`
+// yields `mnt-my\x2ddisk.mount`, and such units are listed by Browse. No shell
+// is involved anywhere on this path, so well-formedness — not quoting — is what
+// this guard enforces: whitespace, control characters, path separators and a
+// leading dash stay rejected.
 func IsValidUnit(unit string) bool {
 	unit = strings.TrimSpace(unit)
 	if unit == "" || strings.HasPrefix(unit, "-") {
 		return false
 	}
 	for _, r := range unit {
-		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || strings.ContainsRune("._@:-", r) {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') ||
+			strings.ContainsRune(`._@:-\`, r) {
 			continue
 		}
 		return false
@@ -1442,9 +1450,9 @@ func (m *Manager) ActByUnit(
 	var err error
 	switch manager {
 	case managerSystemd:
-		err = m.actSystemdUnit(ctx, scope, unit, action)
+		err = m.actSystemd(ctx, scope, unit, action)
 	case managerLaunchd:
-		err = m.actLaunchdUnit(ctx, scope, unit, action)
+		err = m.actLaunchd(ctx, scope, unit, action)
 	default:
 		return ServiceActionResult{}, fmt.Errorf("unsupported service manager: %s", manager)
 	}
@@ -1460,55 +1468,6 @@ func (m *Manager) ActByUnit(
 		}
 		return inspect.Service, nil
 	}), nil
-}
-
-func (m *Manager) actSystemdUnit(ctx context.Context, scope, unit, action string) error {
-	args := make([]string, 0, 4)
-	if strings.EqualFold(scope, scopeUser) {
-		args = append(args, "--user")
-	}
-	args = append(args, action, unit)
-	_, err := m.commandRunner(ctx, "systemctl", args...)
-	if err != nil {
-		return fmt.Errorf("systemd action failed: %w", err)
-	}
-	return nil
-}
-
-func (m *Manager) actLaunchdUnit(ctx context.Context, scope, unit, action string) error {
-	target := launchdTarget(scope, m.uidFn, unit)
-
-	switch action {
-	case ActionStop:
-		_, err := m.commandRunner(ctx, "launchctl", "kill", "SIGTERM", target)
-		if err != nil && !isLaunchdMissingJobError(err) {
-			return fmt.Errorf("launchd stop failed: %w", err)
-		}
-		return nil
-	case ActionStart, ActionRestart:
-		if loaded, _ := m.isLaunchdLoaded(ctx, target); !loaded {
-			return fmt.Errorf("launchd service %s is not loaded", unit)
-		}
-		_, err := m.commandRunner(ctx, "launchctl", "kickstart", "-k", target)
-		if err != nil {
-			return fmt.Errorf("launchd %s failed: %w", action, err)
-		}
-		return nil
-	case ActionEnable:
-		_, err := m.commandRunner(ctx, "launchctl", "enable", target)
-		if err != nil {
-			return fmt.Errorf("launchd enable failed: %w", err)
-		}
-		return nil
-	case ActionDisable:
-		_, err := m.commandRunner(ctx, "launchctl", "disable", target)
-		if err != nil {
-			return fmt.Errorf("launchd disable failed: %w", err)
-		}
-		return nil
-	default:
-		return ErrInvalidAction
-	}
 }
 
 // InspectByUnit inspects a service identified by unit/scope/manager directly,
@@ -1543,10 +1502,9 @@ func (m *Manager) InspectByUnit(ctx context.Context, unit, scope, manager string
 			inspect.Summary = summary
 		}
 	case managerLaunchd:
-		tgt := launchdTarget(scope, m.uidFn, unit)
-		out, err := m.commandRunner(ctx, "launchctl", "print", tgt)
+		out, err := m.inspectLaunchd(ctx, target)
 		if err != nil {
-			return ServiceInspect{}, fmt.Errorf("launchd inspect failed: %w", err)
+			return ServiceInspect{}, err
 		}
 		inspect.Output = out
 		inspect.Properties, inspect.Condition = launchdCondition(out)
