@@ -196,7 +196,9 @@ func TestCreateSessionWithID(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("returns_stable_identity", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
+		// Injected through createSessionRun, not run: this command can start
+		// the tmux server, so it must take the systemd-run isolated path.
+		setCreateSessionRun(t, func(_ context.Context, args ...string) (string, error) {
 			want := []string{"new-session", "-d", "-P", "-F", createSessionFormat, "-s", "agent", "-c", "/srv/app"}
 			if !slices.Equal(args, want) {
 				t.Fatalf("args = %#v, want %#v", args, want)
@@ -213,7 +215,7 @@ func TestCreateSessionWithID(t *testing.T) {
 	})
 
 	t.Run("rejects_invalid_identity", func(t *testing.T) {
-		setRun(t, func(_ context.Context, _ ...string) (string, error) { return "agent", nil })
+		setCreateSessionRun(t, func(_ context.Context, _ ...string) (string, error) { return "agent", nil })
 		if _, err := CreateSessionWithID(ctx, "agent", ""); !IsKind(err, ErrKindCommandFailed) {
 			t.Fatalf("CreateSessionWithID() error = %v", err)
 		}

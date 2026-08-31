@@ -14,12 +14,21 @@ type serviceMethodCall struct {
 	call func(context.Context, Service) error
 }
 
+// isolatedRunnerMethods are the methods that can start the tmux server. They
+// must route through createSessionRun so the server lands outside Sentinel's
+// cgroup and survives a sentinel.service restart.
+var isolatedRunnerMethods = map[string]bool{
+	"CreateSession":       true,
+	"CreateSessionWithID": true,
+}
+
 func serviceMethodCalls() []serviceMethodCall {
 	return []serviceMethodCall{
 		{"ListSessions", func(ctx context.Context, s Service) error { _, e := s.ListSessions(ctx); return e }},
 		{"GetSession", func(ctx context.Context, s Service) error { _, e := s.GetSession(ctx, "dev"); return e }},
 		{"ListActivePaneCommands", func(ctx context.Context, s Service) error { _, e := s.ListActivePaneCommands(ctx); return e }},
 		{"CapturePane", func(ctx context.Context, s Service) error { _, e := s.CapturePane(ctx, "dev"); return e }},
+		{"CreateSession", func(ctx context.Context, s Service) error { return s.CreateSession(ctx, "dev", "") }},
 		{"CreateSessionWithID", func(ctx context.Context, s Service) error { _, e := s.CreateSessionWithID(ctx, "dev", ""); return e }},
 		{"RenameSession", func(ctx context.Context, s Service) error { return s.RenameSession(ctx, "dev", "prod") }},
 		{"RenameWindow", func(ctx context.Context, s Service) error { return s.RenameWindow(ctx, "dev", 1, "logs") }},
@@ -63,22 +72,32 @@ func serviceMethodCalls() []serviceMethodCall {
 func TestServiceMethodsDelegateToPackageLevel(t *testing.T) {
 	// Not parallel: mutates the package-level run variable.
 
-	original := run
-	t.Cleanup(func() { run = original })
+	originalRun, originalCreate := run, createSessionRun
+	t.Cleanup(func() { run, createSessionRun = originalRun, originalCreate })
 
-	var called bool
+	var calledRun, calledCreate bool
 	run = func(_ context.Context, _ ...string) (string, error) {
-		called = true
+		calledRun = true
+		return "", nil
+	}
+	createSessionRun = func(_ context.Context, _ ...string) (string, error) {
+		calledCreate = true
 		return "", nil
 	}
 
 	for _, m := range serviceMethodCalls() {
 		t.Run(m.name, func(t *testing.T) {
-			called = false
-			// Result/error is tmux-output dependent; we only assert the
-			// method routed through the package-level run variable.
+			calledRun, calledCreate = false, false
+			// Result/error is tmux-output dependent; we only assert which
+			// package-level runner the method routed through.
 			_ = m.call(context.Background(), Service{})
-			if !called {
+			if isolatedRunnerMethods[m.name] {
+				if !calledCreate || calledRun {
+					t.Fatalf("%s: createSessionRun = %v, run = %v; want the isolated runner only", m.name, calledCreate, calledRun)
+				}
+				return
+			}
+			if !calledRun {
 				t.Fatalf("%s did not delegate to the package-level run", m.name)
 			}
 		})

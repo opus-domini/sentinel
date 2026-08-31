@@ -548,9 +548,11 @@ func NewWindowAt(ctx context.Context, session string, index int, name, cwd strin
 	return err
 }
 
-// CreateSessionWithID creates a detached session and returns its stable runtime identity.
+// CreateSessionWithID creates a detached session and returns its stable runtime
+// identity. Like CreateSession it routes through createSessionRun: this command
+// can start the tmux server, which must not inherit Sentinel's cgroup.
 func CreateSessionWithID(ctx context.Context, name, cwd string) (Session, error) {
-	return createSessionWithIDVia(ctx, run, name, cwd)
+	return createSessionWithIDVia(ctx, createSessionRun, name, cwd)
 }
 
 // KillWindow handles kill window.
