@@ -41,7 +41,6 @@ type TmuxTerminalPanelProps = {
   activitySessions?: ReadonlySet<string>
   sessionIcons?: ReadonlyMap<string, string>
   sessionLifecycles?: ReadonlyMap<string, SessionLifecycle>
-  sessionUser?: string
   inspectorLoading: boolean
   inspectorError: string
   windows: Array<WindowInfo>
@@ -101,7 +100,6 @@ export default function TmuxTerminalPanel({
   activitySessions,
   sessionIcons,
   sessionLifecycles,
-  sessionUser,
   inspectorLoading,
   inspectorError,
   windows,
@@ -484,7 +482,6 @@ export default function TmuxTerminalPanel({
                 inspectorError={inspectorError}
                 windows={windows}
                 activeWindowIndex={activeWindowIndex}
-                sessionUser={sessionUser}
                 launchers={launchers}
                 recentLauncher={recentLauncher}
                 onSelectWindow={(idx) => {

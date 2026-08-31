@@ -10,26 +10,16 @@ import type { DragEndEvent } from '@dnd-kit/core'
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, Trash2 } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
-import { DEFAULT_ICON_KEY, TMUX_ICONS, TmuxIcon } from '@/lib/tmuxIcons'
+import { ChevronDown } from 'lucide-react'
+import { useId, useState } from 'react'
+import { TmuxIcon } from '@/lib/tmuxIcons'
 import type { LauncherCwdMode, LauncherUserMode, TmuxLauncher } from '@/types'
 import DirectoryCombobox from '@/components/DirectoryCombobox'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import LauncherDialogActions from '@/components/launcher/LauncherDialogActions'
+import LauncherIconSelect from '@/components/launcher/LauncherIconSelect'
+import SortableLauncherRow from '@/components/launcher/SortableLauncherRow'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -58,7 +48,6 @@ import {
 import { useViewport } from '@/contexts/ViewportContext'
 import { hapticFeedback } from '@/lib/device'
 import { useMetaContext } from '@/contexts/MetaContext'
-import { cn } from '@/lib/utils'
 
 export type LauncherDraft = {
   id?: string
@@ -135,56 +124,6 @@ function describeLauncherCommand(command: string) {
     return normalized
   }
   return 'plain shell'
-}
-
-function SortableLauncherItem({
-  launcher,
-  selected,
-  dragEnabled,
-  onSelect,
-}: {
-  launcher: TmuxLauncher
-  selected: boolean
-  dragEnabled: boolean
-  onSelect: (id: string) => void
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: launcher.id,
-  })
-  return (
-    <li
-      ref={setNodeRef}
-      className="min-w-0 shrink-0"
-      style={{
-        transform: dragEnabled ? CSS.Transform.toString(transform) : undefined,
-        transition: dragEnabled ? transition : undefined,
-        opacity: dragEnabled && isDragging ? 0.5 : undefined,
-        zIndex: dragEnabled && isDragging ? 10 : undefined,
-      }}
-    >
-      <button
-        type="button"
-        className={cn(
-          'flex w-full cursor-pointer items-center gap-2 rounded-md border px-2 py-2 text-left transition-colors',
-          selected
-            ? 'border-primary/60 bg-surface-active-primary'
-            : 'border-transparent hover:border-border-subtle hover:bg-surface-hover',
-        )}
-        onClick={() => onSelect(launcher.id)}
-        style={{ touchAction: dragEnabled ? undefined : 'pan-y' }}
-        {...(dragEnabled ? attributes : {})}
-        {...(dragEnabled ? listeners : {})}
-      >
-        <TmuxIcon iconKey={launcher.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12px] font-semibold">{launcher.name}</span>
-          <span className="block truncate text-[10px] text-muted-foreground">
-            {describeLauncherCommand(launcher.command)}
-          </span>
-        </span>
-      </button>
-    </li>
-  )
 }
 
 export default function LaunchersDialog({
@@ -266,14 +205,6 @@ export default function LaunchersDialog({
       }
     }
   }
-
-  const selectedIconEntry = useMemo(
-    () =>
-      TMUX_ICONS.find((entry) => entry.key === draft.icon) ??
-      TMUX_ICONS.find((entry) => entry.key === DEFAULT_ICON_KEY) ??
-      TMUX_ICONS[0],
-    [draft.icon],
-  )
 
   const handleSave = async () => {
     setSaving(true)
@@ -387,9 +318,12 @@ export default function LaunchersDialog({
                   >
                     <ul className="flex min-h-0 min-w-0 flex-col list-none gap-1 overflow-x-hidden rounded-lg border border-border-subtle bg-secondary p-2 md:overflow-y-auto">
                       {launchers.map((launcher) => (
-                        <SortableLauncherItem
+                        <SortableLauncherRow
                           key={launcher.id}
-                          launcher={launcher}
+                          id={launcher.id}
+                          iconKey={launcher.icon}
+                          name={launcher.name}
+                          description={describeLauncherCommand(launcher.command)}
                           selected={launcher.id === selectedID}
                           dragEnabled={dragEnabled}
                           onSelect={selectLauncher}
@@ -422,45 +356,16 @@ export default function LaunchersDialog({
                   />
                 </label>
 
-                <div className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary-foreground">
-                  <span id={iconLabelId}>Icon</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        aria-labelledby={iconLabelId}
-                        className="w-full cursor-pointer justify-start bg-surface-overlay text-[12px]"
-                      >
-                        <TmuxIcon
-                          iconKey={selectedIconEntry.key}
-                          className="h-3.5 w-3.5 text-muted-foreground"
-                        />
-                        {selectedIconEntry.label}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="z-[60]">
-                      {TMUX_ICONS.map((entry) => {
-                        const Icon = entry.icon
-                        return (
-                          <DropdownMenuItem
-                            key={entry.key}
-                            className="cursor-pointer"
-                            onSelect={() =>
-                              updateDraft((prev) => ({
-                                ...prev,
-                                icon: entry.key,
-                              }))
-                            }
-                          >
-                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                            {entry.label}
-                          </DropdownMenuItem>
-                        )
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                <LauncherIconSelect
+                  labelId={iconLabelId}
+                  value={draft.icon}
+                  onChange={(iconKey) =>
+                    updateDraft((prev) => ({
+                      ...prev,
+                      icon: iconKey,
+                    }))
+                  }
+                />
               </div>
 
               <label
@@ -634,48 +539,13 @@ export default function LaunchersDialog({
                 </div>
               )}
 
-              <div className="mt-auto flex flex-wrap items-center gap-2">
-                <div className="ml-auto flex items-center gap-2">
-                  {draft.id && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          className="cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Delete
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete launcher?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction variant="destructive" onClick={handleDelete}>
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="cursor-pointer"
-                    onClick={handleSave}
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : 'Save'}
-                  </Button>
-                </div>
-              </div>
+              <LauncherDialogActions
+                deleteTitle="Delete launcher?"
+                canDelete={Boolean(draft.id)}
+                saving={saving}
+                onDelete={handleDelete}
+                onSave={handleSave}
+              />
             </section>
           </div>
         </div>

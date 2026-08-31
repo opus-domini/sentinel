@@ -119,7 +119,6 @@ export type WindowInfo = {
   launcherId?: string
   active: boolean
   panes: number
-  user?: string
   unreadPanes?: number
   hasUnread?: boolean
   rev?: number
