@@ -878,6 +878,23 @@ func TestUpdateOpsRunbookRun(t *testing.T) {
 			t.Fatalf("finishedAt = %q, want %q", updated.FinishedAt, finished)
 		}
 	})
+
+	t.Run("empty FinishedAt preserves previous value", func(t *testing.T) {
+		// The previous sub-test left finished_at set; re-updating without it
+		// must not clear the recorded completion time.
+		finished := now.Add(10 * time.Second).Format(time.RFC3339)
+		updated, err := s.UpdateOpsRunbookRun(ctx, OpsRunbookRunUpdate{
+			RunID:      run.ID,
+			Status:     opsRunbookStatusSucceeded,
+			FinishedAt: "",
+		})
+		if err != nil {
+			t.Fatalf("UpdateOpsRunbookRun: %v", err)
+		}
+		if updated.FinishedAt != finished {
+			t.Fatalf("finishedAt = %q, want %q (should be preserved)", updated.FinishedAt, finished)
+		}
+	})
 }
 
 func TestUpdateOpsRunbookRunFromStatusGuard(t *testing.T) {

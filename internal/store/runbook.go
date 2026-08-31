@@ -149,6 +149,12 @@ type OpsRunbookDeleteResult struct {
 }
 
 // OpsRunbookRunUpdate represents ops runbook run update data.
+//
+// Status, CompletedSteps, CurrentStep and Error are always written. StepResults,
+// StartedAt and FinishedAt are preserve-on-empty: an empty string leaves the
+// stored column untouched, any other value overwrites it. Clearing step results
+// therefore requires the explicit "[]", and a caller that must not move an
+// already-recorded timestamp (a resumed run, for example) passes "".
 type OpsRunbookRunUpdate struct {
 	RunID          string
 	Status         string
