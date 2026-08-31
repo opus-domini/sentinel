@@ -16,7 +16,7 @@ func BuildWatchtowerSessionActivityPatch(row WatchtowerSession) map[string]any {
 		activityAt = row.ActivityAt.UTC().Format(time.RFC3339)
 	}
 	return map[string]any{
-		"name":          row.SessionName,
+		wtColName:       row.SessionName,
 		"attached":      row.Attached,
 		"windows":       row.Windows,
 		wtKeyPanes:      row.Panes,

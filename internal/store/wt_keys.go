@@ -6,4 +6,6 @@ const (
 	wtKeySession     = "session"
 	wtKeyPanes       = "panes"
 	wtColSessionName = "session_name"
+	// wtColName is the sessions table's own session-name column.
+	wtColName = "name"
 )

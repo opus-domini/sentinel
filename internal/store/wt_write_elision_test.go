@@ -362,3 +362,55 @@ func TestWatchtowerSessionUpsertPersistsEveryGuardedField(t *testing.T) {
 		})
 	}
 }
+
+// TestWatchtowerPaneRevisionNeverGoesBackwards pins the clamp that keeps a pane
+// able to report unread. The collector reads existing panes filtered by session
+// name while the upsert conflicts on pane_id alone, so after a session rename a
+// pane arrives looking brand new, with revision 1. Without the clamp that
+// overwrote a high revision while seen_revision kept its own clamped value,
+// leaving revision permanently below seen_revision — and unread is
+// revision > seen_revision, so the pane could never light up again.
+func TestWatchtowerPaneRevisionNeverGoesBackwards(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
+
+	at := time.Date(2026, 8, 31, 4, 0, 0, 0, time.UTC)
+	established := WatchtowerPaneWrite{
+		PaneID: "%1", SessionName: "old", WindowIndex: 0, PaneIndex: 0,
+		Title: "shell", TailHash: "aaa", Revision: 500, SeenRevision: 500,
+		TailCapturedAt: at, ChangedAt: at, UpdatedAt: at,
+	}
+	if err := s.UpsertWatchtowerPane(ctx, established); err != nil {
+		t.Fatalf("UpsertWatchtowerPane() error = %v", err)
+	}
+
+	// The same pane as the collector sees it after a rename: no prior row was
+	// found for the new session name, so it starts counting from one again.
+	renamed := established
+	renamed.SessionName = "new"
+	renamed.Revision = 1
+	renamed.SeenRevision = 0
+	renamed.TailHash = "bbb"
+	if err := s.UpsertWatchtowerPane(ctx, renamed); err != nil {
+		t.Fatalf("UpsertWatchtowerPane(renamed) error = %v", err)
+	}
+
+	var revision, seen int64
+	var session string
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT session_name, revision, seen_revision FROM wt_panes WHERE pane_id = ?", "%1",
+	).Scan(&session, &revision, &seen); err != nil {
+		t.Fatalf("QueryRow() error = %v", err)
+	}
+	if session != "new" {
+		t.Fatalf("session_name = %q, want the renamed value", session)
+	}
+	if revision < seen {
+		t.Fatalf("revision = %d, seen_revision = %d: revision fell below seen, so the pane can never report unread again", revision, seen)
+	}
+	if revision != 500 {
+		t.Fatalf("revision = %d, want the established 500 to be kept", revision)
+	}
+}

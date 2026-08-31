@@ -77,7 +77,14 @@ func upsertWatchtowerPane(ctx context.Context, ex sqlExecer, row WatchtowerPaneW
 			tail_hash = excluded.tail_hash,
 			tail_preview = excluded.tail_preview,
 			tail_captured_at = excluded.tail_captured_at,
-			revision = excluded.revision,
+			-- revision only ever moves forward, for the same reason seen_revision
+			-- does. The collector reads existing panes filtered by session_name
+			-- but this upsert conflicts on pane_id alone, so after a session
+			-- rename the pane looks new, arrives with revision 1, and would
+			-- overwrite a high revision while seen_revision kept its clamped
+			-- value -- leaving revision permanently below seen_revision, which is
+			-- the unread condition, so the pane could never report unread again.
+			revision = max(revision, excluded.revision),
 			-- seen_revision only ever moves forward: a collection upsert carries
 			-- the value it read at the start of the tick, so without this clamp a
 			-- concurrent "mark seen" (which raises seen_revision) would be lost and
@@ -99,7 +106,7 @@ func upsertWatchtowerPane(ctx context.Context, ex sqlExecer, row WatchtowerPaneW
 		    IS NOT (excluded.session_name, excluded.window_index, excluded.pane_index,
 		        excluded.title, excluded.active, excluded.tty, excluded.current_path,
 		        excluded.start_command, excluded.current_command, excluded.tail_hash,
-		        excluded.tail_preview, excluded.revision,
+		        excluded.tail_preview, max(revision, excluded.revision),
 		        max(seen_revision, excluded.seen_revision), excluded.changed_at)`,
 		paneID,
 		name,

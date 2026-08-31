@@ -34,7 +34,7 @@ func BuildWatchtowerWindowPatchesWithManaged(
 			wtKeySession:      row.SessionName,
 			"tmuxWindowId":    strings.TrimSpace(row.TmuxWindowID),
 			"index":           row.WindowIndex,
-			"name":            row.Name,
+			wtColName:         row.Name,
 			"displayName":     displayName,
 			"displayIcon":     strings.TrimSpace(managed.Icon),
 			"managed":         strings.TrimSpace(managed.ID) != "",
