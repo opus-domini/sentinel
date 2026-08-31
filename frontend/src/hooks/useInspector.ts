@@ -285,10 +285,10 @@ type UseInspectorOptions = {
   refreshSessions: () => Promise<void>
   pushErrorToast: (title: string, message: string) => void
   pushSuccessToast: (title: string, message: string) => void
-  setConnection: (state: ConnectionState, detail: string) => void
+  setConnection: (state: ConnectionState, detail: string, session?: string) => void
   dispatchTabs: DispatchTabs
-  closeCurrentSocket: (reason: string) => void
-  resetTerminal: () => void
+  closeCurrentSocket: (reason: string, session?: string) => void
+  resetTerminal: (session?: string) => void
 }
 
 type PendingWindowCreateOperation = {
@@ -1306,10 +1306,12 @@ export function useInspector(options: UseInspectorOptions) {
       setPanes([])
       setActiveWindowIndexOverride(null)
       setActivePaneIDOverride(null)
-      closeCurrentSocket(reason)
-      resetTerminal()
+      // Reached after an await, so the session that ended may no longer be the
+      // active one — name it explicitly instead of tearing down whatever is.
+      closeCurrentSocket(reason, session)
+      resetTerminal(session)
       dispatchTabs({ type: 'close', session })
-      setConnection('disconnected', reason)
+      setConnection('disconnected', reason, session)
       void refreshSessions()
     },
     [

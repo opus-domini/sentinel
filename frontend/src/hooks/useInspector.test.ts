@@ -1279,9 +1279,64 @@ describe('useInspector – closeWindow', () => {
     expect(result.current.activeWindowIndexOverride).toBeNull()
     expect(result.current.activePaneIDOverride).toBeNull()
     expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(true)
-    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last window closed')
-    expect(opts.resetTerminal).toHaveBeenCalled()
-    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last window closed')
+    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last window closed', 'dev')
+    expect(opts.resetTerminal).toHaveBeenCalledWith('dev')
+    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last window closed', 'dev')
+  })
+
+  it('tears down the session that ended, not the one activated mid-flight', async () => {
+    let settleKill: () => void = () => undefined
+    const api = vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/windows')) {
+        return Promise.resolve({ windows: [makeWindow({ index: 0, active: true })] })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        return Promise.resolve({
+          panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/kill-window')) {
+        return new Promise<undefined>((resolve) => {
+          settleKill = () => resolve(undefined)
+        })
+      }
+      return Promise.resolve(undefined)
+    }) as unknown as ApiFunction
+    const opts = createMockOptions({
+      api,
+      windows: [makeWindow({ index: 0, active: true })],
+      panes: [makePane({ windowIndex: 0, paneId: '%1', active: true })],
+    })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows).toHaveLength(1)
+    })
+
+    act(() => {
+      result.current.closeWindow(0)
+    })
+
+    // The user switches to another session while the kill is still in flight.
+    opts.tabsStateRef.current = {
+      openTabs: ['dev', 'other'],
+      activeSession: 'other',
+      activeEpoch: 1,
+    }
+
+    await act(async () => {
+      settleKill()
+      await waitFor(() => {
+        expect(opts.dispatchTabs).toHaveBeenCalledWith({ type: 'close', session: 'dev' })
+      })
+    })
+
+    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last window closed', 'dev')
+    expect(opts.resetTerminal).toHaveBeenCalledWith('dev')
+    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last window closed', 'dev')
+    expect(opts.closeCurrentSocket).not.toHaveBeenCalledWith('last window closed', 'other')
+    expect(opts.resetTerminal).not.toHaveBeenCalledWith('other')
   })
 
   it('keeps the session recoverable when closing the last window fails', async () => {
@@ -1392,9 +1447,9 @@ describe('useInspector – closePane', () => {
     expect(result.current.activeWindowIndexOverride).toBeNull()
     expect(result.current.activePaneIDOverride).toBeNull()
     expect(result.current.pendingKillSessionsRef.current.has('dev')).toBe(true)
-    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last pane closed')
-    expect(opts.resetTerminal).toHaveBeenCalled()
-    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last pane closed')
+    expect(opts.closeCurrentSocket).toHaveBeenCalledWith('last pane closed', 'dev')
+    expect(opts.resetTerminal).toHaveBeenCalledWith('dev')
+    expect(opts.setConnection).toHaveBeenCalledWith('disconnected', 'last pane closed', 'dev')
     expect(queryClient.getQueryData(tmuxInspectorQueryKey('dev'))).toBeUndefined()
 
     const removeSession = opts.setSessions.mock.calls.at(-1)?.[0]

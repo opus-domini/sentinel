@@ -1980,3 +1980,77 @@ describe('useTerminalTmux – renderer refresh', () => {
     hostB.remove()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Session-scoped teardown
+// ---------------------------------------------------------------------------
+
+describe('useTerminalTmux – session-scoped teardown', () => {
+  beforeEach(() => {
+    setupEnvironment()
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWebSocket
+  })
+
+  it('tears down the named session instead of the visible one', () => {
+    const { result, rerender } = renderTerminalHook({
+      openTabs: ['session-a'],
+      activeSession: 'session-a',
+      activeEpoch: 0,
+    })
+    connectSession()
+
+    rerender({
+      openTabs: ['session-a', 'session-b'],
+      activeSession: 'session-b',
+      activeEpoch: 1,
+    })
+    const socketB = connectSession()
+
+    expect(result.current.connectionState).toBe('connected')
+    expect(result.current.statusDetail).toBe('attached session-b')
+
+    const [terminalA, terminalB] = terminalInstances()
+    terminalA.reset.mockClear()
+    terminalB.reset.mockClear()
+
+    // Late teardown of session-a, e.g. its last window died while the user had
+    // already switched to session-b.
+    act(() => {
+      result.current.closeCurrentSocket('last window closed', 'session-a')
+      result.current.resetTerminal('session-a')
+      result.current.setConnection('disconnected', 'last window closed', 'session-a')
+    })
+
+    expect(terminalA.reset).toHaveBeenCalled()
+    expect(terminalB.reset).not.toHaveBeenCalled()
+    expect(socketB.readyState).toBe(MockWebSocket.OPEN)
+    expect(result.current.connectionState).toBe('connected')
+    expect(result.current.statusDetail).toBe('attached session-b')
+  })
+
+  it('still targets the active session when no session is named', () => {
+    const { result } = renderTerminalHook({
+      openTabs: ['session-a'],
+      activeSession: 'session-a',
+      activeEpoch: 0,
+    })
+    const socket = connectSession()
+
+    const [terminalA] = terminalInstances()
+    terminalA.reset.mockClear()
+
+    act(() => {
+      result.current.closeCurrentSocket('session killed')
+      result.current.resetTerminal()
+      result.current.setConnection('disconnected', 'session killed')
+    })
+
+    expect(terminalA.reset).toHaveBeenCalled()
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED)
+    expect(result.current.connectionState).toBe('disconnected')
+    expect(result.current.statusDetail).toBe('session killed')
+  })
+})
