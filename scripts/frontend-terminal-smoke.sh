@@ -5,6 +5,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 artifacts_dir="${SENTINEL_SMOKE_ARTIFACTS_DIR:-$(mktemp -d)}"
 keep_artifacts="${SENTINEL_SMOKE_KEEP_ARTIFACTS:-0}"
 data_dir="$(mktemp -d)"
+tmux_dir="$(mktemp -d)"
 server_pid=""
 session_name="sentinel-smoke-$(date +%s)-$$"
 browser_session="sentinel-smoke-${session_name}"
@@ -22,12 +23,27 @@ require_cmd() {
   fi
 }
 
+# Every tmux call — the script's own and the daemon's — must land on the private
+# server rooted at $tmux_dir, never on the developer's live tmux server.
+smoke_tmux() {
+  env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$tmux_dir" tmux -f /dev/null "$@"
+}
+
+assert_tmux_isolated() {
+  local socket_path expected_socket
+  expected_socket="$tmux_dir/tmux-$(id -u)/default"
+  socket_path="$(smoke_tmux display-message -p -t "=$session_name" '#{socket_path}' 2>/dev/null || true)"
+  if [[ "$socket_path" != "$expected_socket" ]]; then
+    echo "tmux isolation check failed: session socket is '${socket_path:-none}', expected '$expected_socket'" >&2
+    exit 1
+  fi
+  echo "tmux isolated at $socket_path"
+}
+
 cleanup() {
   local status=$?
 
-  case "$session_name" in
-    sentinel-smoke-*) tmux kill-session -t "$session_name" 2>/dev/null || true ;;
-  esac
+  smoke_tmux kill-server >/dev/null 2>&1 || true
 
   agent-browser --session "$browser_session" close --all >/dev/null 2>&1 || true
 
@@ -36,7 +52,7 @@ cleanup() {
     wait "$server_pid" >/dev/null 2>&1 || true
   fi
 
-  rm -rf "$data_dir"
+  rm -rf "$data_dir" "$tmux_dir"
 
   if [[ "$status" -eq 0 && "$keep_artifacts" != "1" ]]; then
     rm -rf "$artifacts_dir"
@@ -120,13 +136,13 @@ send_terminal_output() {
   local end="$3"
   local emoji_pack="\\U0001f469\\u200d\\U0001f4bb\\U0001f3f3\\ufe0f\\u200d\\U0001f308\\U0001f1e7\\U0001f1f7\\U0001f1fa\\U0001f1f8\\U0001f680\\U0001f525\\U0001f600\\U0001f602\\U0001f60a\\U0001f970\\U0001f60e\\U0001f92f\\u2728\\u26a1\\U0001f308\\U0001f48e\\U0001f9ea\\U0001f6e0\\ufe0f\\u2705\\u274c"
 
-  tmux send-keys -t "$session_name" \
+  smoke_tmux send-keys -t "$session_name" \
     "python3 -c 'emoji=\"${emoji_pack}\"; [print(\"${prefix}_%04d \\u2699 \\u03bb \\ue0b6\\ue0b4 \\u250c\\u2500\\u252c\\u2500\\u2510 \\u2502 \\U0001f60a \\u2502 \\u25e2\\u25e3 \\u2591\\u2592\\u2593 \\u2714 \\u2718 \\u2192 \\u2190 EMOJI_STRESS %s\" % (i, emoji)) for i in range(${start}, ${end} + 1)]'" \
     C-m
 }
 
 send_pixel_probe() {
-  tmux send-keys -t "$session_name" \
+  smoke_tmux send-keys -t "$session_name" \
     "python3 -c 'print(\"\\033[2J\\033[H\", end=\"\"); colors=[(255,210,40,\"PIXEL_PROBE_YELLOW\"),(40,220,160,\"PIXEL_PROBE_GREEN\"),(245,80,140,\"PIXEL_PROBE_PINK\")]; fill=\"\\u2588\\u2593\\u2592\\u2591\"*4; [print(\"\\033[38;2;%d;%d;%dm%s %s\\033[0m\" % (r,g,b,label,fill)) for r,g,b,label in colors]; print(\"\\033[30mPIXEL_PROBE_LOW_CONTRAST \" + \"\\u2588\"*16 + \"\\033[0m\")'" \
     C-m
 }
@@ -508,8 +524,10 @@ npm --prefix "$root_dir/frontend" run build
 echo "starting sentinel at $base_url"
 (
   cd "$root_dir"
-  SENTINEL_SERVER_HOST="127.0.0.1" \
-  SENTINEL_SERVER_PORT="${port}" \
+  env -u TMUX -u TMUX_PANE \
+    TMUX_TMPDIR="$tmux_dir" \
+    SENTINEL_SERVER_HOST="127.0.0.1" \
+    SENTINEL_SERVER_PORT="${port}" \
     SENTINEL_CONFIG="$data_dir/config.toml" \
     SENTINEL_DATA_DIR="$data_dir" \
     SENTINEL_STORAGE_PATH="$data_dir/sentinel.db" \
@@ -524,6 +542,8 @@ curl -fsS -X POST "$base_url/api/tmux/sessions" \
   -H 'Content-Type: application/json' \
   --data "$(create_session_payload)" \
   >"$artifacts_dir/create-session.json"
+
+assert_tmux_isolated
 
 send_terminal_output "SOAK" 1 "$initial_line_count"
 

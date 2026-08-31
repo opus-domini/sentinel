@@ -108,7 +108,10 @@ func (s *Service) Read() (State, error) {
 	return s.readLocked()
 }
 
-// ValidatePersisted validates the file without applying environment overrides.
+// ValidatePersisted validates the field values stored in the file. Cross-field
+// rules are not applied: they depend on values that may legitimately arrive
+// only from the environment, so they belong to the effective config checked by
+// Read.
 func (s *Service) ValidatePersisted() error {
 	if s == nil {
 		return errors.New("config service is nil")
@@ -122,7 +125,7 @@ func (s *Service) ValidatePersisted() error {
 	if !exists {
 		return fmt.Errorf("config file not found: %s", s.path)
 	}
-	_, _, err = decodeConfigBytes(s.path, raw, s.defaults, true)
+	_, _, err = decodeConfigBytes(s.path, raw, s.defaults)
 	return err
 }
 
@@ -267,7 +270,7 @@ func (s *Service) readLocked() (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	persisted, fileFields, err := decodeConfigBytes(s.path, raw, s.defaults, false)
+	persisted, fileFields, err := decodeConfigBytes(s.path, raw, s.defaults)
 	if err != nil {
 		return State{}, err
 	}
@@ -300,7 +303,7 @@ func (s *Service) readLocked() (State, error) {
 	return state, nil
 }
 
-func decodeConfigBytes(path string, raw []byte, defaults Config, standalone bool) (Config, map[string]bool, error) {
+func decodeConfigBytes(path string, raw []byte, defaults Config) (Config, map[string]bool, error) {
 	cfg := defaults
 	var meta toml.MetaData
 	var err error
@@ -317,11 +320,7 @@ func decodeConfigBytes(path string, raw []byte, defaults Config, standalone bool
 	if err := cfg.normalizeWithDefaults(defaults); err != nil {
 		issues = append(issues, err.Error())
 	}
-	if standalone {
-		if err := validateEffectiveConfig(cfg); err != nil {
-			issues = append(issues, err.Error())
-		}
-	} else if err := validateConfigValues(cfg); err != nil {
+	if err := validateConfigValues(cfg); err != nil {
 		issues = append(issues, err.Error())
 	}
 	if len(issues) > 0 {

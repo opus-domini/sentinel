@@ -1859,34 +1859,58 @@ func TestUninstallUserAutoUpdateSystemdDaemonReloadError(t *testing.T) {
 	}
 }
 
-func TestStopUserAutoUpdateTimer(t *testing.T) {
+func TestTeardownSystemdUnit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name      string
+		unit      string
 		disable   bool
 		stop      bool
 		wantCalls []string
 	}{
 		{
-			name:      "disable and stop",
+			name:      "timer disable and stop",
+			unit:      userAutoUpdateTimerName,
 			disable:   true,
 			stop:      true,
 			wantCalls: []string{"disable --now sentinel-updater.timer"},
 		},
 		{
-			name:      "disable only",
+			name:      "timer disable only",
+			unit:      userAutoUpdateTimerName,
 			disable:   true,
 			wantCalls: []string{"disable sentinel-updater.timer"},
 		},
 		{
-			name:      "stop only",
+			name:      "timer stop only",
+			unit:      userAutoUpdateTimerName,
 			stop:      true,
 			wantCalls: []string{"stop sentinel-updater.timer"},
 		},
 		{
-			name:      "noop",
+			name:      "timer noop",
+			unit:      userAutoUpdateTimerName,
 			wantCalls: nil,
+		},
+		{
+			name:      "service disable and stop",
+			unit:      "sentinel",
+			disable:   true,
+			stop:      true,
+			wantCalls: []string{"disable --now sentinel"},
+		},
+		{
+			name:      "service disable only",
+			unit:      "sentinel",
+			disable:   true,
+			wantCalls: []string{"disable sentinel"},
+		},
+		{
+			name:      "service stop only",
+			unit:      "sentinel",
+			stop:      true,
+			wantCalls: []string{"stop sentinel"},
 		},
 	}
 
@@ -1894,7 +1918,7 @@ func TestStopUserAutoUpdateTimer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var calls []string
-			stopUserAutoUpdateTimer(tc.disable, tc.stop, func(args ...string) error {
+			teardownSystemdUnit(tc.unit, tc.disable, tc.stop, func(args ...string) error {
 				calls = append(calls, strings.Join(args, " "))
 				return nil
 			})

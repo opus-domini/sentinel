@@ -1032,6 +1032,52 @@ func TestResolveConfigTargetWithoutManagedDeployment(t *testing.T) {
 	}
 }
 
+func TestResolveConfigTargetExplicitScopeBeatsEnvironment(t *testing.T) {
+	home := t.TempDir()
+	adHoc := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SENTINEL_CONFIG", "")
+	t.Setenv("SENTINEL_DATA_DIR", adHoc)
+	origResolve := resolveDeploymentFn
+	origAccess := requireScopeAccessFn
+	t.Cleanup(func() {
+		resolveDeploymentFn = origResolve
+		requireScopeAccessFn = origAccess
+	})
+	resolveDeploymentFn = func(string) (daemon.Deployment, error) {
+		return daemon.Deployment{}, daemon.ErrNoServiceInstalled
+	}
+	requireScopeAccessFn = func(string) error { return nil }
+
+	systemLayout, err := daemon.LayoutForScope(daemon.ScopeSystem)
+	if err != nil {
+		t.Fatalf("LayoutForScope(system) error = %v", err)
+	}
+	system, err := resolveConfigTarget(optionSystem)
+	if err != nil {
+		t.Fatalf("resolveConfigTarget(system) error = %v", err)
+	}
+	if system.path != systemLayout.ConfigPath || system.dataDir != systemLayout.DataDir {
+		t.Fatalf("system target = %+v, want %+v", system, systemLayout)
+	}
+
+	user, err := resolveConfigTarget(optionUser)
+	if err != nil {
+		t.Fatalf("resolveConfigTarget(user) error = %v", err)
+	}
+	if wantUserPath := filepath.Join(home, ".sentinel", "config.toml"); user.path != wantUserPath {
+		t.Fatalf("user path = %q, want %q", user.path, wantUserPath)
+	}
+
+	automatic, err := resolveConfigTarget(optionAuto)
+	if err != nil {
+		t.Fatalf("resolveConfigTarget(auto) error = %v", err)
+	}
+	if automatic.dataDir != adHoc {
+		t.Fatalf("auto data dir = %q, want %q", automatic.dataDir, adHoc)
+	}
+}
+
 func TestServiceConfigHelperErrors(t *testing.T) {
 	if _, _, err := prepareServiceConfig("bogus", false); err == nil {
 		t.Fatal("prepareServiceConfig() accepted an invalid scope")

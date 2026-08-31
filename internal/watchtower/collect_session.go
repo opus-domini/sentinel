@@ -29,7 +29,6 @@ type collectSessionState struct {
 	existingPaneByID   map[string]store.WatchtowerPane
 	existingWindowByID map[int]store.WatchtowerWindow
 	focusedPanes       map[string]bool
-	windowNameByIndex  map[int]string
 
 	windowAgg map[int]*windowAggregate
 	paneIDs   []string
@@ -112,11 +111,9 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, ts taggedSessi
 	if err != nil {
 		return nil, true, err
 	}
-	managedWindows, err := s.reconcileManagedTmuxWindows(ctx, name, windows)
-	if err != nil {
+	if err := s.reconcileManagedTmuxWindows(ctx, name, windows); err != nil {
 		return nil, true, err
 	}
-	managedByRuntime := managedWindowRuntimeMap(managedWindows)
 
 	state := &collectSessionState{
 		service:      s,
@@ -135,7 +132,6 @@ func (s *Service) prepareCollectSessionState(ctx context.Context, ts taggedSessi
 		existingPaneByID:   existingPaneByID,
 		existingWindowByID: existingWindowByID,
 		focusedPanes:       focusedPanes,
-		windowNameByIndex:  windowNamesByIndex(windows, managedByRuntime),
 
 		windowAgg: make(map[int]*windowAggregate),
 		paneIDs:   make([]string, 0, len(panes)),

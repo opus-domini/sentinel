@@ -3,9 +3,12 @@ package report
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/services"
 )
 
@@ -14,9 +17,18 @@ type mockMetrics struct {
 	metrics      services.HostMetrics
 	servicesList []services.ServiceStatus
 	listErr      error
+	// collections, when set, receives one value per MetricsSnapshot call so
+	// loop tests can count scheduled collections.
+	collections chan struct{}
 }
 
 func (m *mockMetrics) MetricsSnapshot(_ context.Context) services.MetricsSnapshot {
+	if m.collections != nil {
+		select {
+		case m.collections <- struct{}{}:
+		default:
+		}
+	}
 	return services.MetricsSnapshot{Metrics: m.metrics}
 }
 
@@ -227,8 +239,157 @@ func TestStopWithoutStart(t *testing.T) {
 	t.Parallel()
 
 	g := New(&mockMetrics{}, nil)
-	// Stop without Start should not panic or block.
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	// Stop without Start has no loop to wait for, so it must return right
+	// away instead of burning the caller's whole shutdown budget.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	start := time.Now()
 	g.Stop(ctx)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Stop() without Start took %v, want immediate return", elapsed)
+	}
+}
+
+func TestStopAfterStart(t *testing.T) {
+	t.Parallel()
+
+	g := New(&mockMetrics{}, nil)
+	if err := g.StartSchedule(context.Background(), "0 3 * * *", "UTC"); err != nil {
+		t.Fatalf("StartSchedule() error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	g.Stop(ctx)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Stop() after Start took %v, want the loop to exit well before the deadline", elapsed)
+	}
+
+	select {
+	case <-g.doneCh:
+	default:
+		t.Fatal("Stop() returned before the schedule loop closed doneCh")
+	}
+}
+
+func TestRunScheduleDeliversReport(t *testing.T) {
+	t.Parallel()
+
+	payloads := make(chan HealthReport, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var got HealthReport
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode webhook payload: %v", err)
+		}
+		select {
+		case payloads <- got:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	g := New(&mockMetrics{
+		metrics: services.HostMetrics{CPUPercent: 12.5},
+		servicesList: []services.ServiceStatus{
+			{Name: "sentinel", DisplayName: "Sentinel service", ActiveState: "active", EnabledState: "enabled"},
+		},
+	}, notify.New(srv.URL))
+
+	done := runScheduleInBackground(t, g)
+
+	select {
+	case got := <-payloads:
+		if got.Event != "health.report" {
+			t.Errorf("Event = %q, want %q", got.Event, "health.report")
+		}
+		if got.Host != "sentinel-test-host" {
+			t.Errorf("Host = %q, want %q", got.Host, "sentinel-test-host")
+		}
+		if got.GeneratedAt.IsZero() {
+			t.Error("GeneratedAt is zero")
+		}
+		if got.Metrics.CPUPercent != 12.5 {
+			t.Errorf("Metrics.CPUPercent = %f, want 12.5", got.Metrics.CPUPercent)
+		}
+		if len(got.ServiceStatus) != 1 {
+			t.Errorf("ServiceStatus count = %d, want 1", len(got.ServiceStatus))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("no health report delivered")
+	}
+
+	done()
+}
+
+func TestRunScheduleSurvivesDeliveryFailure(t *testing.T) {
+	t.Parallel()
+
+	// Buffered so the handler never blocks once the test has seen enough.
+	hits := make(chan struct{}, 8)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		select {
+		case hits <- struct{}{}:
+		default:
+		}
+		// 4xx is not retried by the notifier, so each tick fails immediately.
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	// Counting collections rather than webhook hits keeps the assertion about
+	// the loop surviving, independent of the notifier's retry policy.
+	collections := make(chan struct{}, 8)
+	g := New(&mockMetrics{collections: collections}, notify.New(srv.URL))
+
+	done := runScheduleInBackground(t, g)
+
+	// A second tick proves the loop outlived the first failed delivery.
+	for range 2 {
+		select {
+		case <-collections:
+		case <-time.After(10 * time.Second):
+			t.Fatal("schedule loop stopped after a failed delivery")
+		}
+	}
+
+	select {
+	case <-hits:
+	default:
+		t.Error("webhook was never called, so no delivery failure was exercised")
+	}
+
+	done()
+}
+
+// fakeSchedule fires every interval, so loop tests do not wait on wall-clock
+// cron boundaries.
+type fakeSchedule struct{ interval time.Duration }
+
+func (f fakeSchedule) Next(t time.Time) time.Time { return t.Add(f.interval) }
+
+// runScheduleInBackground starts g.runSchedule on a fast fake schedule and
+// returns a func that cancels it and waits for the loop to exit.
+func runScheduleInBackground(t *testing.T, g *Generator) func() {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		g.runSchedule(ctx, fakeSchedule{interval: time.Millisecond}, time.UTC)
+	}()
+
+	return func() {
+		t.Helper()
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("runSchedule did not return after cancellation")
+		}
+	}
 }
