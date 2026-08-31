@@ -45,15 +45,9 @@ func serviceMethodCalls() []serviceMethodCall {
 			_, e := s.NewWindowWithOptions(ctx, "dev", "w", "/tmp")
 			return e
 		}},
-		{"NewWindowAt", func(ctx context.Context, s Service) error { return s.NewWindowAt(ctx, "dev", 2, "w", "/tmp") }},
 		{"KillWindow", func(ctx context.Context, s Service) error { return s.KillWindow(ctx, "dev", 1) }},
 		{"KillPane", func(ctx context.Context, s Service) error { return s.KillPane(ctx, "%1") }},
 		{"SplitPane", func(ctx context.Context, s Service) error { _, e := s.SplitPane(ctx, "%1", dirVertical); return e }},
-		{"SplitPaneIn", func(ctx context.Context, s Service) error {
-			_, e := s.SplitPaneIn(ctx, "%1", dirVertical, "/tmp")
-			return e
-		}},
-		{"SelectLayout", func(ctx context.Context, s Service) error { return s.SelectLayout(ctx, "dev", 0, "tiled") }},
 		{"SendKeys", func(ctx context.Context, s Service) error { return s.SendKeys(ctx, "%1", "ls", true) }},
 		{"CapturePaneLines", func(ctx context.Context, s Service) error { _, e := s.CapturePaneLines(ctx, "dev", 10); return e }},
 		{"SetSessionMouse", func(ctx context.Context, s Service) error { return s.SetSessionMouse(ctx, "dev", true) }},

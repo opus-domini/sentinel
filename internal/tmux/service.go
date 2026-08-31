@@ -279,14 +279,6 @@ func (s Service) NewWindowWithOptions(ctx context.Context, session, name, cwd st
 	return newWindowWithOptionsVia(ctx, s.run, session, name, cwd)
 }
 
-// NewWindowAt creates window at.
-func (s Service) NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
-	if s.User == "" {
-		return NewWindowAt(ctx, session, index, name, cwd)
-	}
-	return newWindowAtVia(ctx, s.run, session, index, name, cwd)
-}
-
 // KillWindow handles kill window.
 func (s Service) KillWindow(ctx context.Context, session string, index int) error {
 	if s.User == "" {
@@ -325,22 +317,6 @@ func (s Service) SessionExists(ctx context.Context, session string) (bool, error
 		return false, err
 	}
 	return true, nil
-}
-
-// SplitPaneIn splits pane in.
-func (s Service) SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
-	if s.User == "" {
-		return SplitPaneIn(ctx, paneID, direction, cwd)
-	}
-	return splitPaneInVia(ctx, s.run, paneID, direction, cwd)
-}
-
-// SelectLayout selects layout.
-func (s Service) SelectLayout(ctx context.Context, session string, index int, layout string) error {
-	if s.User == "" {
-		return SelectLayout(ctx, session, index, layout)
-	}
-	return selectLayoutVia(ctx, s.run, session, index, layout)
 }
 
 // SendKeys sends keys.

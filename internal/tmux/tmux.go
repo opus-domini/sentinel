@@ -534,20 +534,6 @@ func NewWindowWithOptions(ctx context.Context, session, name, cwd string) (NewWi
 	return result, nil
 }
 
-// NewWindowAt creates window at.
-func NewWindowAt(ctx context.Context, session string, index int, name, cwd string) error {
-	target := fmt.Sprintf("%s:%d", session, index)
-	args := []string{cmdNewWindow, "-d", "-t", target}
-	if strings.TrimSpace(name) != "" {
-		args = append(args, "-n", name)
-	}
-	if strings.TrimSpace(cwd) != "" {
-		args = append(args, "-c", cwd)
-	}
-	_, err := run(ctx, args...)
-	return err
-}
-
 // CreateSessionWithID creates a detached session and returns its stable runtime
 // identity. Like CreateSession it routes through createSessionRun: this command
 // can start the tmux server, which must not inherit Sentinel's cgroup.
@@ -653,34 +639,6 @@ func SplitPane(ctx context.Context, paneID, direction string) (string, error) {
 		return "", parseErr
 	}
 	return createdPaneID, nil
-}
-
-// SplitPaneIn splits pane in.
-func SplitPaneIn(ctx context.Context, paneID, direction, cwd string) (string, error) {
-	args := []string{cmdSplitWindow, "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
-	switch direction {
-	case dirVertical:
-		args = append(args, "-h")
-	case dirHorizontal:
-		args = append(args, "-v")
-	default:
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errInvalidSplitDir}
-	}
-	if strings.TrimSpace(cwd) != "" {
-		args = append(args, "-c", cwd)
-	}
-	out, err := run(ctx, args...)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
-}
-
-// SelectLayout selects layout.
-func SelectLayout(ctx context.Context, session string, index int, layout string) error {
-	target := fmt.Sprintf("%s:%d", session, index)
-	_, err := run(ctx, "select-layout", "-t", target, layout)
-	return err
 }
 
 // SendKeys sends keys.
