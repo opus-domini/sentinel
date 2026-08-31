@@ -239,6 +239,23 @@ func Serve(version string) int {
 }
 
 func run(version string, cfg config.Config, mux *http.ServeMux) int {
+	shutdownCh := make(chan os.Signal, 1)
+	signal.Notify(shutdownCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(shutdownCh)
+	return runServer(version, cfg, mux, shutdownCh)
+}
+
+// runServer serves HTTP until shutdownCh fires or the listener fails, and does
+// not return until the graceful drain has finished. http.Server.Shutdown
+// closes the listeners first, so ListenAndServe returns ErrServerClosed while
+// in-flight requests are still being served; draining in an unawaited
+// goroutine would let Serve's teardown (handler stop, ticker drain, st.Close)
+// run concurrently with live handlers, so the drain is awaited here instead.
+//
+// Hijacked connections — the /ws/* routes — are cut, not drained: Shutdown
+// neither closes nor waits for them, which is also what keeps this wait
+// bounded by the 10s budget below.
+func runServer(version string, cfg config.Config, mux *http.ServeMux, shutdownCh <-chan os.Signal) int {
 	server := &http.Server{
 		Addr:         cfg.Address(),
 		Handler:      requestLog(mux),
@@ -253,19 +270,6 @@ func run(version string, cfg config.Config, mux *http.ServeMux) int {
 	// HTTP server's connection lifecycle entirely.
 	server.SetKeepAlivesEnabled(false)
 
-	shutdownCh := make(chan os.Signal, 1)
-	signal.Notify(shutdownCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-shutdownCh
-		slog.Info("shutting down...")
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(ctx); err != nil {
-			slog.Error("shutdown error", "err", err)
-		}
-	}()
-
 	slog.Info("sentinel starting", "version", version, "listen", cfg.Address(), "data_dir", cfg.DataDir(), "log", cfg.Log.Path)
 	slog.Info("security", "token_required", cfg.Server.Token != "", "allowed_origins", len(cfg.Server.AllowedOrigins))
 
@@ -275,9 +279,24 @@ func run(version string, cfg config.Config, mux *http.ServeMux) int {
 		slog.Info("watchtower disabled")
 	}
 
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("server error", "err", err)
-		return 1
+	// Buffered so ListenAndServe's goroutine always exits, including on the
+	// shutdown path where nobody reads the ErrServerClosed it reports.
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.ListenAndServe() }()
+
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server error", "err", err)
+			return 1
+		}
+	case <-shutdownCh:
+		slog.Info("shutting down...")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			slog.Error("shutdown error", "err", err)
+		}
 	}
 	slog.Info("sentinel stopped")
 	return 0
