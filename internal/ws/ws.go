@@ -30,8 +30,6 @@ const (
 const (
 	// CloseNormal identifies a normal WebSocket close.
 	CloseNormal = 1000
-	// CloseGoingAway identifies a going-away WebSocket close.
-	CloseGoingAway = 1001
 	// CloseProtocol identifies a protocol-error WebSocket close.
 	CloseProtocol = 1002
 	// CloseTooLarge identifies a message-too-large WebSocket close.
@@ -71,28 +69,18 @@ type Conn struct {
 	closed    atomic.Bool
 }
 
-// Upgrade handles upgrade.
-func Upgrade(w http.ResponseWriter, r *http.Request, originCheck func(*http.Request) error) (*Conn, error) {
-	conn, _, err := UpgradeWithSubprotocols(w, r, originCheck, nil)
-	return conn, err
-}
-
-// UpgradeWithSubprotocols handles upgrade with subprotocols.
-func UpgradeWithSubprotocols(
+// Upgrade performs the RFC 6455 handshake and returns the connection together
+// with the negotiated subprotocol, empty when none of preferred was offered.
+// Origin is not checked here: the caller authorizes the request (including
+// security.Guard.CheckOrigin) before reaching the transport.
+func Upgrade(
 	w http.ResponseWriter,
 	r *http.Request,
-	originCheck func(*http.Request) error,
 	preferred []string,
 ) (*Conn, string, error) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return nil, "", fmt.Errorf("method not allowed")
-	}
-	if originCheck != nil {
-		if err := originCheck(r); err != nil {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return nil, "", err
-		}
 	}
 	if !headerContainsToken(r.Header, "Connection", "upgrade") {
 		http.Error(w, "bad websocket request", http.StatusBadRequest)

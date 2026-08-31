@@ -195,7 +195,7 @@ func readServerFrame(r io.Reader) (byte, []byte, error) {
 func setupWSServer(t *testing.T, handler func(*Conn)) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := Upgrade(w, r, nil)
+		conn, _, err := Upgrade(w, r, nil)
 		if err != nil {
 			return
 		}
@@ -294,7 +294,7 @@ func TestUpgrade(t *testing.T) {
 		t.Parallel()
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = Upgrade(w, r, nil)
+			_, _, _ = Upgrade(w, r, nil)
 		}))
 		defer srv.Close()
 
@@ -320,7 +320,7 @@ func TestUpgrade(t *testing.T) {
 		t.Parallel()
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = Upgrade(w, r, nil)
+			_, _, _ = Upgrade(w, r, nil)
 		}))
 		defer srv.Close()
 
@@ -351,7 +351,7 @@ func TestUpgrade(t *testing.T) {
 		t.Parallel()
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = Upgrade(w, r, nil)
+			_, _, _ = Upgrade(w, r, nil)
 		}))
 		defer srv.Close()
 
@@ -382,7 +382,7 @@ func TestUpgrade(t *testing.T) {
 		t.Parallel()
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = Upgrade(w, r, nil)
+			_, _, _ = Upgrade(w, r, nil)
 		}))
 		defer srv.Close()
 
@@ -409,13 +409,17 @@ func TestUpgrade(t *testing.T) {
 		}
 	})
 
-	t.Run("origin check fails", func(t *testing.T) {
+	t.Run("negotiates preferred subprotocol", func(t *testing.T) {
 		t.Parallel()
 
+		selected := make(chan string, 1)
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = Upgrade(w, r, func(_ *http.Request) error {
-				return fmt.Errorf("origin denied")
-			})
+			conn, protocol, err := Upgrade(w, r, []string{"sentinel.v1"})
+			if err != nil {
+				return
+			}
+			selected <- protocol
+			_ = conn.Close()
 		}))
 		defer srv.Close()
 
@@ -434,13 +438,33 @@ func TestUpgrade(t *testing.T) {
 			"Upgrade: websocket\r\n" +
 			"Sec-WebSocket-Version: 13\r\n" +
 			"Sec-WebSocket-Key: " + key + "\r\n" +
+			"Sec-WebSocket-Protocol: other, sentinel.v1\r\n" +
 			"\r\n"
 		_, _ = conn.Write([]byte(req))
 
 		reader := bufio.NewReader(conn)
-		status, _ := reader.ReadString('\n')
-		if !strings.Contains(status, "403") {
-			t.Errorf("expected 403, got: %s", status)
+		var handshake strings.Builder
+		for {
+			line, readErr := reader.ReadString('\n')
+			if readErr != nil {
+				t.Fatalf("read handshake error = %v", readErr)
+			}
+			handshake.WriteString(line)
+			if strings.TrimSpace(line) == "" {
+				break
+			}
+		}
+		if !strings.Contains(handshake.String(), "Sec-WebSocket-Protocol: sentinel.v1") {
+			t.Errorf("handshake = %q, want the negotiated subprotocol echoed", handshake.String())
+		}
+
+		select {
+		case got := <-selected:
+			if got != "sentinel.v1" {
+				t.Errorf("Upgrade() protocol = %q, want sentinel.v1", got)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for the upgraded connection")
 		}
 	})
 }

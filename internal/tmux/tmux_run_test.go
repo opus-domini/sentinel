@@ -13,6 +13,12 @@ const (
 	cmdDisplayMessage = "display-message"
 )
 
+// local is the default-user tmux service. With an empty User every command
+// routes through the injectable package-level run variable (and every command
+// that can start the server through createSessionRun), so these tests exercise
+// the exact path production takes on the host account.
+var local = Service{}
+
 // setRun swaps the package-level run function for the duration of the
 // test and restores the original in t.Cleanup.
 // Tests that call setRun must NOT use t.Parallel() at the top level
@@ -54,7 +60,7 @@ func TestListSessions(t *testing.T) {
 			return "$1\x1fdev\x1f2\x1f1\x1f1700000000\x1f1700000300\n$2\x1fweb\x1f1\x1f0\x1f1700000100\x1f1700000400\n", nil
 		})
 
-		sessions, err := ListSessions(ctx)
+		sessions, err := local.ListSessions(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -74,7 +80,7 @@ func TestListSessions(t *testing.T) {
 			return "", errServerNotRunning()
 		})
 
-		sessions, err := ListSessions(ctx)
+		sessions, err := local.ListSessions(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -93,7 +99,7 @@ func TestListSessions(t *testing.T) {
 			return "$3\x1flegacy\x1f1\x1f0\x1f1700000500\n", nil
 		})
 
-		sessions, err := ListSessions(ctx)
+		sessions, err := local.ListSessions(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -115,7 +121,7 @@ func TestListSessions(t *testing.T) {
 			return "", errServerNotRunning()
 		})
 
-		sessions, err := ListSessions(ctx)
+		sessions, err := local.ListSessions(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -134,7 +140,7 @@ func TestListSessions(t *testing.T) {
 			return "", errCommandFailed("some other failure")
 		})
 
-		_, err := ListSessions(ctx)
+		_, err := local.ListSessions(ctx)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -148,7 +154,7 @@ func TestListSessions(t *testing.T) {
 			return "", errCommandFailed("permission denied")
 		})
 
-		_, err := ListSessions(ctx)
+		_, err := local.ListSessions(ctx)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -169,7 +175,7 @@ func TestGetSession(t *testing.T) {
 			}
 			return "$8\x1fdev-server\x1f1\x1f0\x1f1700000000\x1f1700000100\n$9\x1fdev\x1f2\x1f0\x1f1700000000\x1f1700000100\n", nil
 		})
-		session, err := GetSession(ctx, "dev")
+		session, err := local.GetSession(ctx, "dev")
 		if err != nil {
 			t.Fatalf("GetSession() error = %v", err)
 		}
@@ -179,14 +185,14 @@ func TestGetSession(t *testing.T) {
 	})
 
 	t.Run("empty_name", func(t *testing.T) {
-		if _, err := GetSession(ctx, " "); !IsKind(err, ErrKindInvalidIdentifier) {
+		if _, err := local.GetSession(ctx, " "); !IsKind(err, ErrKindInvalidIdentifier) {
 			t.Fatalf("GetSession() error = %v", err)
 		}
 	})
 
 	t.Run("empty_result", func(t *testing.T) {
 		setRun(t, func(_ context.Context, _ ...string) (string, error) { return "", nil })
-		if _, err := GetSession(ctx, "missing"); !IsKind(err, ErrKindSessionNotFound) {
+		if _, err := local.GetSession(ctx, "missing"); !IsKind(err, ErrKindSessionNotFound) {
 			t.Fatalf("GetSession() error = %v", err)
 		}
 	})
@@ -205,7 +211,7 @@ func TestCreateSessionWithID(t *testing.T) {
 			}
 			return "$17\x1fagent\n", nil
 		})
-		session, err := CreateSessionWithID(ctx, "agent", "/srv/app")
+		session, err := local.CreateSessionWithID(ctx, "agent", "/srv/app")
 		if err != nil {
 			t.Fatalf("CreateSessionWithID() error = %v", err)
 		}
@@ -216,7 +222,7 @@ func TestCreateSessionWithID(t *testing.T) {
 
 	t.Run("rejects_invalid_identity", func(t *testing.T) {
 		setCreateSessionRun(t, func(_ context.Context, _ ...string) (string, error) { return "agent", nil })
-		if _, err := CreateSessionWithID(ctx, "agent", ""); !IsKind(err, ErrKindCommandFailed) {
+		if _, err := local.CreateSessionWithID(ctx, "agent", ""); !IsKind(err, ErrKindCommandFailed) {
 			t.Fatalf("CreateSessionWithID() error = %v", err)
 		}
 	})
@@ -232,7 +238,7 @@ func TestListActivePaneCommands(t *testing.T) {
 			return "dev\x1f1\x1f1\x1fclaude --resume\x1fclaude\ndev\x1f0\x1f0\x1fbash\x1fbash\nweb\x1f1\x1f1\x1fnpx vite\x1fvite\n", nil
 		})
 
-		result, err := ListActivePaneCommands(ctx)
+		result, err := local.ListActivePaneCommands(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -255,7 +261,7 @@ func TestListActivePaneCommands(t *testing.T) {
 			return "  \n", nil
 		})
 
-		result, err := ListActivePaneCommands(ctx)
+		result, err := local.ListActivePaneCommands(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -269,7 +275,7 @@ func TestListActivePaneCommands(t *testing.T) {
 			return "", errServerNotRunning()
 		})
 
-		result, err := ListActivePaneCommands(ctx)
+		result, err := local.ListActivePaneCommands(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -283,7 +289,7 @@ func TestListActivePaneCommands(t *testing.T) {
 			return "bad\x1fline\ndev\x1f1\x1f1\x1fclaude\x1fclaude\n", nil
 		})
 
-		result, err := ListActivePaneCommands(ctx)
+		result, err := local.ListActivePaneCommands(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -298,7 +304,7 @@ func TestListActivePaneCommands(t *testing.T) {
 			return "app\x1f0\x1f0\x1fbash\x1fbash\n", nil
 		})
 
-		result, err := ListActivePaneCommands(ctx)
+		result, err := local.ListActivePaneCommands(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -315,7 +321,7 @@ func TestListActivePaneCommands(t *testing.T) {
 			return "", errCommandFailed("timeout")
 		})
 
-		_, err := ListActivePaneCommands(ctx)
+		_, err := local.ListActivePaneCommands(ctx)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -327,7 +333,7 @@ func TestListActivePaneCommands(t *testing.T) {
 			return "app\x1f1\x1f1\x1f\x1fnode\n", nil
 		})
 
-		result, err := ListActivePaneCommands(ctx)
+		result, err := local.ListActivePaneCommands(ctx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -347,7 +353,7 @@ func TestCapturePane(t *testing.T) {
 			return "first line\nsecond line\n  \n\n", nil
 		})
 
-		got, err := CapturePane(ctx, "dev")
+		got, err := local.CapturePane(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -361,7 +367,7 @@ func TestCapturePane(t *testing.T) {
 			return "  \n  \n\n", nil
 		})
 
-		got, err := CapturePane(ctx, "dev")
+		got, err := local.CapturePane(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -375,7 +381,7 @@ func TestCapturePane(t *testing.T) {
 			return "", errCommandFailed("pane not found")
 		})
 
-		got, err := CapturePane(ctx, "dev")
+		got, err := local.CapturePane(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -395,7 +401,7 @@ func TestListWindows(t *testing.T) {
 			return "dev\x1f@1\x1f0\x1fcode\x1f1\x1f2\x1f83ed,204x51,0,0{102x51,0,0,0,101x51,103,0,1}\ndev\x1f@2\x1f1\x1fshell\x1f0\x1f1\x1f8502,204x51,0,0,2\n", nil
 		})
 
-		windows, err := ListWindows(ctx, "dev")
+		windows, err := local.ListWindows(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -418,7 +424,7 @@ func TestListWindows(t *testing.T) {
 			return "  \n", nil
 		})
 
-		windows, err := ListWindows(ctx, "dev")
+		windows, err := local.ListWindows(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -432,7 +438,7 @@ func TestListWindows(t *testing.T) {
 			return "", errSessionNotFound()
 		})
 
-		_, err := ListWindows(ctx, "dev")
+		_, err := local.ListWindows(ctx, "dev")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -446,7 +452,7 @@ func TestListWindows(t *testing.T) {
 			return "bad\x1fshort\ndev\x1f@1\x1f0\x1fcode\x1f1\x1f1\x1f8502,204x51,0,0,2\n", nil
 		})
 
-		windows, err := ListWindows(ctx, "dev")
+		windows, err := local.ListWindows(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -460,7 +466,7 @@ func TestListWindows(t *testing.T) {
 			return "dev\x1f@1\x1f0\x1fcode\x1f1\x1f1\n", nil
 		})
 
-		windows, err := ListWindows(ctx, "dev")
+		windows, err := local.ListWindows(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -491,7 +497,7 @@ func TestReorderWindows(t *testing.T) {
 			}
 		})
 
-		err := ReorderWindows(ctx, "dev", []string{"@2", "@3", "@1"})
+		err := local.ReorderWindows(ctx, "dev", []string{"@2", "@3", "@1"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -525,7 +531,7 @@ func TestReorderWindows(t *testing.T) {
 			return "dev\x1f@1\x1f0\x1fclaude\x1f1\x1f1\x1flayout-a\ndev\x1f@2\x1f1\x1fshell\x1f0\x1f1\x1flayout-b\n", nil
 		})
 
-		err := ReorderWindows(ctx, "dev", []string{"@1", "@3"})
+		err := local.ReorderWindows(ctx, "dev", []string{"@1", "@3"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -553,7 +559,7 @@ func TestListPanes(t *testing.T) {
 			return strings.Join(lines, "\n") + "\n", nil
 		})
 
-		panes, err := ListPanes(ctx, "dev")
+		panes, err := local.ListPanes(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -579,7 +585,7 @@ func TestListPanes(t *testing.T) {
 			return " \n", nil
 		})
 
-		panes, err := ListPanes(ctx, "dev")
+		panes, err := local.ListPanes(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -593,7 +599,7 @@ func TestListPanes(t *testing.T) {
 			return "", errSessionNotFound()
 		})
 
-		_, err := ListPanes(ctx, "dev")
+		_, err := local.ListPanes(ctx, "dev")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -604,7 +610,7 @@ func TestListPanes(t *testing.T) {
 			return "dev\x1f0\x1f0\n", nil
 		})
 
-		panes, err := ListPanes(ctx, "dev")
+		panes, err := local.ListPanes(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -619,7 +625,7 @@ func TestListPanes(t *testing.T) {
 			return "dev\x1f0\x1f0\x1f%5\x1fmypane\x1f1\x1f/dev/pts/3\n", nil
 		})
 
-		panes, err := ListPanes(ctx, "dev")
+		panes, err := local.ListPanes(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -646,7 +652,7 @@ func TestSessionExists(t *testing.T) {
 			return "", nil
 		})
 
-		got, err := SessionExists(ctx, "dev")
+		got, err := local.SessionExists(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -660,7 +666,7 @@ func TestSessionExists(t *testing.T) {
 			return "", errSessionNotFound()
 		})
 
-		got, err := SessionExists(ctx, "dev")
+		got, err := local.SessionExists(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -674,7 +680,7 @@ func TestSessionExists(t *testing.T) {
 			return "", errServerNotRunning()
 		})
 
-		got, err := SessionExists(ctx, "dev")
+		got, err := local.SessionExists(ctx, "dev")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -688,7 +694,7 @@ func TestSessionExists(t *testing.T) {
 			return "", errCommandFailed("permission denied")
 		})
 
-		_, err := SessionExists(ctx, "dev")
+		_, err := local.SessionExists(ctx, "dev")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -706,7 +712,7 @@ func TestCapturePaneLines(t *testing.T) {
 			return "", nil
 		})
 
-		_, err := CapturePaneLines(ctx, "  ", 10)
+		_, err := local.CapturePaneLines(ctx, "  ", 10)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -726,7 +732,7 @@ func TestCapturePaneLines(t *testing.T) {
 			return "line 1\nline 2\n", nil
 		})
 
-		got, err := CapturePaneLines(ctx, "%0", 50)
+		got, err := local.CapturePaneLines(ctx, "%0", 50)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -745,7 +751,7 @@ func TestCapturePaneLines(t *testing.T) {
 			return "output\n", nil
 		})
 
-		_, err := CapturePaneLines(ctx, "%0", 0)
+		_, err := local.CapturePaneLines(ctx, "%0", 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -756,7 +762,7 @@ func TestCapturePaneLines(t *testing.T) {
 			return "", errSessionNotFound()
 		})
 
-		_, err := CapturePaneLines(ctx, "%0", 10)
+		_, err := local.CapturePaneLines(ctx, "%0", 10)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -777,7 +783,7 @@ func TestSplitPane(t *testing.T) {
 			return "%42\n", nil
 		})
 
-		got, err := SplitPane(ctx, "%0", "vertical")
+		got, err := local.SplitPane(ctx, "%0", "vertical")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -795,7 +801,7 @@ func TestSplitPane(t *testing.T) {
 			return "%43\n", nil
 		})
 
-		got, err := SplitPane(ctx, "%0", "horizontal")
+		got, err := local.SplitPane(ctx, "%0", "horizontal")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -810,7 +816,7 @@ func TestSplitPane(t *testing.T) {
 			return "", nil
 		})
 
-		_, err := SplitPane(ctx, "%0", "diagonal")
+		_, err := local.SplitPane(ctx, "%0", "diagonal")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -824,7 +830,7 @@ func TestSplitPane(t *testing.T) {
 			return "", errCommandFailed("no space")
 		})
 
-		_, err := SplitPane(ctx, "%0", "vertical")
+		_, err := local.SplitPane(ctx, "%0", "vertical")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -835,7 +841,7 @@ func TestSplitPane(t *testing.T) {
 			return "bad-output", nil // not starting with %
 		})
 
-		_, err := SplitPane(ctx, "%0", "vertical")
+		_, err := local.SplitPane(ctx, "%0", "vertical")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -874,7 +880,7 @@ func TestSendKeys(t *testing.T) {
 			return "", nil
 		})
 
-		err := SendKeys(ctx, "%0", "ls", true)
+		err := local.SendKeys(ctx, "%0", "ls", true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -894,7 +900,7 @@ func TestSendKeys(t *testing.T) {
 			return "", nil
 		})
 
-		err := SendKeys(ctx, "%0", "", true)
+		err := local.SendKeys(ctx, "%0", "", true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -914,7 +920,7 @@ func TestSendKeys(t *testing.T) {
 			return "", nil
 		})
 
-		err := SendKeys(ctx, "%0", "text", false)
+		err := local.SendKeys(ctx, "%0", "text", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -928,7 +934,7 @@ func TestSendKeys(t *testing.T) {
 			return "", errCommandFailed("pane gone")
 		})
 
-		err := SendKeys(ctx, "%0", "text", true)
+		err := local.SendKeys(ctx, "%0", "text", true)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -944,7 +950,7 @@ func TestSendKeys(t *testing.T) {
 			return "", errCommandFailed("pane gone")
 		})
 
-		err := SendKeys(ctx, "%0", "text", true)
+		err := local.SendKeys(ctx, "%0", "text", true)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -968,7 +974,7 @@ func TestCreateSession(t *testing.T) {
 			return "", nil
 		})
 
-		err := CreateSession(ctx, "myapp", "/home/user")
+		err := local.CreateSession(ctx, "myapp", "/home/user")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -983,7 +989,7 @@ func TestCreateSession(t *testing.T) {
 			return "", nil
 		})
 
-		err := CreateSession(ctx, "myapp", "")
+		err := local.CreateSession(ctx, "myapp", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -994,7 +1000,7 @@ func TestCreateSession(t *testing.T) {
 			return "", &Error{Kind: ErrKindSessionExists, Msg: "already exists"}
 		})
 
-		err := CreateSession(ctx, "myapp", "")
+		err := local.CreateSession(ctx, "myapp", "")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -1067,7 +1073,7 @@ func TestSetSessionMouse(t *testing.T) {
 			return "", nil
 		})
 
-		err := SetSessionMouse(ctx, "dev", true)
+		err := local.SetSessionMouse(ctx, "dev", true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1082,7 +1088,7 @@ func TestSetSessionMouse(t *testing.T) {
 			return "", nil
 		})
 
-		err := SetSessionMouse(ctx, "dev", false)
+		err := local.SetSessionMouse(ctx, "dev", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1103,7 +1109,7 @@ func TestSetSessionStatus(t *testing.T) {
 			return "", nil
 		})
 
-		err := SetSessionStatus(ctx, "dev", true)
+		err := local.SetSessionStatus(ctx, "dev", true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1118,7 +1124,7 @@ func TestSetSessionStatus(t *testing.T) {
 			return "", nil
 		})
 
-		err := SetSessionStatus(ctx, "dev", false)
+		err := local.SetSessionStatus(ctx, "dev", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1168,7 +1174,7 @@ func testNewWindowHappyPathWithNextIndex(ctx context.Context, t *testing.T) {
 		}
 	})
 
-	result, err := NewWindow(ctx, "dev")
+	result, err := local.NewWindow(ctx, "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1194,7 +1200,7 @@ func testNewWindowListWindowsFailsFallsBack(ctx context.Context, t *testing.T) {
 		}
 	})
 
-	result, err := NewWindow(ctx, "dev")
+	result, err := local.NewWindow(ctx, "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1219,7 +1225,7 @@ func testNewWindowError(ctx context.Context, t *testing.T) {
 		}
 	})
 
-	_, err := NewWindow(ctx, "dev")
+	_, err := local.NewWindow(ctx, "dev")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1241,7 +1247,7 @@ func testNewWindowParseError(ctx context.Context, t *testing.T) {
 		}
 	})
 
-	_, err := NewWindow(ctx, "dev")
+	_, err := local.NewWindow(ctx, "dev")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1264,7 +1270,7 @@ func testNewWindowDisplayMessageFailsOmitsCWD(ctx context.Context, t *testing.T)
 		}
 	})
 
-	result, err := NewWindow(ctx, "dev")
+	result, err := local.NewWindow(ctx, "dev")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1294,7 +1300,7 @@ func testNewWindowWithNameAndExplicitCWD(ctx context.Context, t *testing.T) {
 		}
 	})
 
-	result, err := NewWindowWithOptions(ctx, "dev", "codex", "/srv/api")
+	result, err := local.NewWindowWithOptions(ctx, "dev", "codex", "/srv/api")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1335,7 +1341,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := RenameSession(ctx, "old", "new"); err != nil {
+		if err := local.RenameSession(ctx, "old", "new"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1353,7 +1359,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := RenameWindow(ctx, "dev", 1, "newname"); err != nil {
+		if err := local.RenameWindow(ctx, "dev", 1, "newname"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1365,7 +1371,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := RenamePane(ctx, "%5", "mytitle"); err != nil {
+		if err := local.RenamePane(ctx, "%5", "mytitle"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1377,7 +1383,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := KillSession(ctx, "dev"); err != nil {
+		if err := local.KillSession(ctx, "dev"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1389,13 +1395,13 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := KillSessionByID(ctx, "$42"); err != nil {
+		if err := local.KillSessionByID(ctx, "$42"); err != nil {
 			t.Fatalf("KillSessionByID() error = %v", err)
 		}
 	})
 
 	t.Run("KillSessionByIDRejectsName", func(t *testing.T) {
-		if err := KillSessionByID(ctx, "dev"); !IsKind(err, ErrKindInvalidIdentifier) {
+		if err := local.KillSessionByID(ctx, "dev"); !IsKind(err, ErrKindInvalidIdentifier) {
 			t.Fatalf("KillSessionByID() error = %v", err)
 		}
 	})
@@ -1407,7 +1413,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := KillWindow(ctx, "dev", 2); err != nil {
+		if err := local.KillWindow(ctx, "dev", 2); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1419,7 +1425,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := KillPane(ctx, "%3"); err != nil {
+		if err := local.KillPane(ctx, "%3"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1431,7 +1437,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := SelectWindow(ctx, "dev", 1); err != nil {
+		if err := local.SelectWindow(ctx, "dev", 1); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1443,7 +1449,7 @@ func TestSimpleWrappers(t *testing.T) {
 			}
 			return "", nil
 		})
-		if err := SelectPane(ctx, "%7"); err != nil {
+		if err := local.SelectPane(ctx, "%7"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})

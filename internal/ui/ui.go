@@ -44,13 +44,15 @@ const (
 	maxTermRows     = 200
 )
 
+// Seams for testing. The tmux ones bind the default-user service; the
+// multi-user paths build tmux.Service{User: ...} at the call site.
 var (
-	tmuxSessionExistsFn     = tmux.SessionExists
-	tmuxEnsureWebMouse      = tmux.EnsureWebMouseBindings
-	tmuxSetSessionMouse     = tmux.SetSessionMouse
-	tmuxSetSessionStatus    = tmux.SetSessionStatus
+	tmuxSessionExistsFn     = tmux.Service{}.SessionExists
+	tmuxEnsureWebMouse      = tmux.Service{}.EnsureWebMouseBindings
+	tmuxSetSessionMouse     = tmux.Service{}.SetSessionMouse
+	tmuxSetSessionStatus    = tmux.Service{}.SetSessionStatus
 	startTmuxAttachFn       = term.StartTmuxAttach
-	startTmuxAttachAsUserFn = term.StartTmuxAttachAsUser // seam for testing
+	startTmuxAttachAsUserFn = term.StartTmuxAttachAsUser
 )
 
 // OpsLogStreamer provides streaming log access for managed services.
@@ -219,7 +221,7 @@ func (h *Handler) attachWS(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, rows := parseAttachDimensions(r)
 
-	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{subprotocolSentinelV1})
+	wsConn, _, err := ws.Upgrade(w, r, []string{subprotocolSentinelV1})
 	if err != nil {
 		return
 	}
@@ -288,7 +290,7 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{subprotocolSentinelV1})
+	wsConn, _, err := ws.Upgrade(w, r, []string{subprotocolSentinelV1})
 	if err != nil {
 		return
 	}
@@ -317,7 +319,7 @@ func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsConn, _, err := ws.UpgradeWithSubprotocols(w, r, nil, []string{subprotocolSentinelV1})
+	wsConn, _, err := ws.Upgrade(w, r, []string{subprotocolSentinelV1})
 	if err != nil {
 		return
 	}

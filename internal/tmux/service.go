@@ -10,17 +10,28 @@ import (
 	"github.com/opus-domini/sentinel/internal/userswitch"
 )
 
-// Service runs tmux commands for one target user. When User is non-empty,
-// every command is wrapped according to UserSwitchMethod; when it is empty,
-// commands go through the package-level run variable. The two methods that can
-// start a tmux server keep an explicit branch so that the local case still
-// routes through the systemd-run isolation in createSessionRun.
+// Service is the single entry point for tmux commands, scoped to one target
+// user. When User is non-empty every command is wrapped according to
+// UserSwitchMethod; when it is empty commands go through the package-level run
+// variable, which tests replace.
 type Service struct {
 	User string
 }
 
 func (s Service) run(ctx context.Context, args ...string) (string, error) {
 	return runAsUser(ctx, s.User, args...)
+}
+
+// createRun runs a command that can start the tmux server. The local case goes
+// through systemd-run --scope (createSessionRun) and the multi-user case
+// through the user switch method, which wraps in systemd-run --machine. Either
+// way the new server lands outside sentinel.service's cgroup, so stopping
+// Sentinel does not kill every pane on the host.
+func (s Service) createRun(ctx context.Context, args ...string) (string, error) {
+	if s.User == "" {
+		return createSessionRun(ctx, args...)
+	}
+	return s.run(ctx, args...)
 }
 
 // validUserRe restricts user names to safe characters (POSIX portable).
@@ -115,27 +126,20 @@ func (s Service) HasSession(ctx context.Context, session string) bool {
 	return err == nil
 }
 
-// CreateSession creates session. The local case must go through the isolated
-// runner so a newly started tmux server does not inherit Sentinel's cgroup.
+// CreateSession creates a detached session through the isolated runner.
 func (s Service) CreateSession(ctx context.Context, name, cwd string) error {
-	if s.User == "" {
-		return CreateSession(ctx, name, cwd)
-	}
 	args := []string{cmdNewSession, "-d", "-s", name}
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
-	_, err := s.run(ctx, args...)
+	_, err := s.createRun(ctx, args...)
 	return err
 }
 
 // CreateSessionWithID creates a detached session and returns its stable runtime
-// identity. Like CreateSession, the local case uses the isolated runner.
+// identity. Like CreateSession it uses the isolated runner.
 func (s Service) CreateSessionWithID(ctx context.Context, name, cwd string) (Session, error) {
-	if s.User == "" {
-		return CreateSessionWithID(ctx, name, cwd)
-	}
-	return createSessionWithIDVia(ctx, s.run, name, cwd)
+	return createSessionWithIDVia(ctx, s.createRun, name, cwd)
 }
 
 // RenameSession renames session.
@@ -268,9 +272,11 @@ func (s Service) SetSessionStatus(ctx context.Context, session string, enabled b
 // EnsureWebMouseBindings ensures web mouse bindings.
 func (s Service) EnsureWebMouseBindings(ctx context.Context) error {
 	if s.User == "" {
-		return EnsureWebMouseBindings(ctx)
+		return ensureWebMouseBindings(ctx)
 	}
-	// Best-effort for multi-user: apply global bindings via the user's server.
+	// Best-effort for multi-user: the binding patch sources a temp file this
+	// process owns, which the target account cannot read, so only the option
+	// that needs no file is applied to the user's server.
 	_, _ = s.run(ctx, "set-option", "-s", "set-clipboard", "on")
 	return nil
 }
