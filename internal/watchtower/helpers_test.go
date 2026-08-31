@@ -28,29 +28,6 @@ func TestManagedWindowRuntimeMap(t *testing.T) {
 	}
 }
 
-func TestWindowNamesByIndex(t *testing.T) {
-	t.Parallel()
-
-	windows := []tmux.Window{
-		{ID: "@1", Index: 0, Name: "shell"},
-		{ID: "@2", Index: 1, Name: "runner"},
-		{ID: "@3", Index: 2, Name: "   "},
-	}
-	managed := map[string]store.ManagedTmuxWindow{
-		"@1": {WindowName: "Codex"},
-		"@2": {WindowName: "   "},
-	}
-
-	got := windowNamesByIndex(windows, managed)
-	want := map[int]string{
-		0: "Codex",
-		1: "runner",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("windowNamesByIndex = %#v, want %#v", got, want)
-	}
-}
-
 func TestCurrentGlobalRev(t *testing.T) {
 	t.Parallel()
 
@@ -305,28 +282,10 @@ func TestReconcileManagedTmuxWindows(t *testing.T) {
 	}
 
 	svc := New(st, fakeTmux{}, Options{})
-	filtered, err := svc.reconcileManagedTmuxWindows(ctx, testDevSession, []tmux.Window{
+	if err := svc.reconcileManagedTmuxWindows(ctx, testDevSession, []tmux.Window{
 		{ID: "@1", Index: 2, Name: "main"},
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("reconcileManagedTmuxWindows: %v", err)
-	}
-
-	if len(filtered) != 2 {
-		t.Fatalf("filtered len = %d, want 2", len(filtered))
-	}
-	filteredByID := make(map[string]store.ManagedTmuxWindow, len(filtered))
-	for _, row := range filtered {
-		filteredByID[row.ID] = row
-	}
-	if _, ok := filteredByID[blankRuntime.ID]; !ok {
-		t.Fatalf("blank runtime row was removed: %#v", filtered)
-	}
-	if got := filteredByID[updatedRuntime.ID].LastWindowIndex; got != 2 {
-		t.Fatalf("updated runtime LastWindowIndex = %d, want 2", got)
-	}
-	if _, ok := filteredByID[staleRuntime.ID]; ok {
-		t.Fatalf("stale runtime row still present: %#v", filteredByID[staleRuntime.ID])
 	}
 
 	rows, err := st.ListManagedTmuxWindowsBySession(ctx, testDevSession)
@@ -335,6 +294,19 @@ func TestReconcileManagedTmuxWindows(t *testing.T) {
 	}
 	if len(rows) != 2 {
 		t.Fatalf("stored managed windows len = %d, want 2", len(rows))
+	}
+	storedByID := make(map[string]store.ManagedTmuxWindow, len(rows))
+	for _, row := range rows {
+		storedByID[row.ID] = row
+	}
+	if _, ok := storedByID[blankRuntime.ID]; !ok {
+		t.Fatalf("blank runtime row was removed: %#v", rows)
+	}
+	if got := storedByID[updatedRuntime.ID].LastWindowIndex; got != 2 {
+		t.Fatalf("updated runtime LastWindowIndex = %d, want 2", got)
+	}
+	if _, ok := storedByID[staleRuntime.ID]; ok {
+		t.Fatalf("stale runtime row still present: %#v", storedByID[staleRuntime.ID])
 	}
 }
 

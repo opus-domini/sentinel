@@ -37,7 +37,6 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 		execPath        string
 		enable          bool
 		start           bool
-		serviceUnit     string
 		scope           string
 		onCalendar      string
 		randomizedDelay time.Duration
@@ -101,12 +100,10 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&execPath, "exec", "", "binary path for the updater unit (default: current executable)")
 	cmd.Flags().BoolVar(&enable, "enable", true, "enable the autoupdate timer at startup")
 	cmd.Flags().BoolVar(&start, "start", true, "start the autoupdate timer immediately")
-	cmd.Flags().StringVar(&serviceUnit, "service", "sentinel", "service unit/label to restart after an update")
 	cmd.Flags().StringVar(&scope, "scope", defaultAutoUpdateScope, "target deployment: auto|user|system")
 	cmd.Flags().StringVar(&onCalendar, "on-calendar", "daily", "update schedule: daily|hourly|weekly|duration|seconds")
 	cmd.Flags().DurationVar(&randomizedDelay, "randomized-delay", time.Hour, "randomized delay before updating (systemd only)")
 	_ = cmd.Flags().MarkHidden("exec")
-	_ = cmd.Flags().MarkHidden("service")
 	return cmd
 }
 

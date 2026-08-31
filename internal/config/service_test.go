@@ -86,6 +86,36 @@ func TestServiceTracksDefaultFileAndEnvironmentSources(t *testing.T) {
 	}
 }
 
+func TestServiceValidatePersistedLeavesCrossFieldRulesToTheEffectiveConfig(t *testing.T) {
+	clearConfigEnv(t)
+	root := t.TempDir()
+	path := filepath.Join(root, "config.toml")
+	remoteWithoutToken := "[server]\nhost = \"0.0.0.0\"\nallowed_origins = [\"https://sentinel.example\"]\n"
+	if err := os.WriteFile(path, []byte(remoteWithoutToken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewService(
+		path,
+		DefaultForDeployment(filepath.Join(root, "data"), filepath.Join(root, "sentinel.log")),
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.ValidatePersisted(); err != nil {
+		t.Fatalf("ValidatePersisted() error = %v, want nil for a token supplied by the environment", err)
+	}
+	if _, err := service.Read(); err == nil || !strings.Contains(err.Error(), "token is required") {
+		t.Fatalf("Read() error = %v, want missing token", err)
+	}
+
+	t.Setenv("SENTINEL_SERVER_TOKEN", "shared-secret")
+	if _, err := service.Read(); err != nil {
+		t.Fatalf("Read() error = %v, want nil once the token is in the environment", err)
+	}
+}
+
 func TestServiceUpdateCreatesCanonicalConfigAndBackup(t *testing.T) {
 	clearConfigEnv(t)
 	root := t.TempDir()

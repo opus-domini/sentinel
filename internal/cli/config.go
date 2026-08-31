@@ -271,8 +271,15 @@ func configServiceForTarget(target configTarget) (*config.Service, error) {
 	)
 }
 
+// resolveConfigTarget maps a --scope value to the config, data and log paths a
+// config subcommand acts on. An explicit scope always wins: the ad-hoc target
+// derived from SENTINEL_CONFIG/SENTINEL_DATA_DIR is only used when the scope is
+// left at auto, so `--scope system` can never silently write to an environment
+// path instead of the system deployment.
 func resolveConfigTarget(scopeRaw string) (configTarget, error) {
-	if strings.TrimSpace(os.Getenv("SENTINEL_CONFIG")) != "" || strings.TrimSpace(os.Getenv("SENTINEL_DATA_DIR")) != "" {
+	scope := strings.ToLower(strings.TrimSpace(scopeRaw))
+	adHocEnv := strings.TrimSpace(os.Getenv("SENTINEL_CONFIG")) != "" || strings.TrimSpace(os.Getenv("SENTINEL_DATA_DIR")) != ""
+	if adHocEnv && (scope == "" || scope == optionAuto) {
 		cfg := config.Default()
 		return configTarget{
 			path:    config.Path(),
@@ -297,7 +304,6 @@ func resolveConfigTarget(scopeRaw string) (configTarget, error) {
 	if !errors.Is(err, daemon.ErrNoServiceInstalled) {
 		return configTarget{}, err
 	}
-	scope := strings.ToLower(strings.TrimSpace(scopeRaw))
 	if scope == "" || scope == optionAuto {
 		cfg := config.Default()
 		return configTarget{path: config.Path(), dataDir: cfg.DataDir(), logPath: cfg.Log.Path}, nil

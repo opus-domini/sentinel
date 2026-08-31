@@ -54,6 +54,12 @@ type metricsCollector interface {
 	ListServices(ctx context.Context) ([]services.ServiceStatus, error)
 }
 
+// schedule is the subset of cron.Schedule the report loop needs: the next
+// activation time strictly after the given time.
+type schedule interface {
+	Next(time.Time) time.Time
+}
+
 // Generator produces health reports and delivers them via webhook.
 // A nil *Generator is safe — all methods are no-ops.
 type Generator struct {
@@ -63,7 +69,9 @@ type Generator struct {
 	startOnce sync.Once
 	stopOnce  sync.Once
 	stopFn    context.CancelFunc
-	doneCh    chan struct{}
+	// doneCh is allocated by StartSchedule and closed when the loop exits, so
+	// it stays nil while no loop has ever been started.
+	doneCh chan struct{}
 }
 
 // New creates a Generator. If notifier is nil the generator can still produce
@@ -72,7 +80,6 @@ func New(metrics metricsCollector, notifier *notify.Notifier) *Generator {
 	return &Generator{
 		metrics:  metrics,
 		notifier: notifier,
-		doneCh:   make(chan struct{}),
 	}
 }
 
@@ -173,34 +180,41 @@ func (g *Generator) StartSchedule(parent context.Context, cronExpr, timezone str
 	g.startOnce.Do(func() {
 		ctx, cancel := context.WithCancel(parent)
 		g.stopFn = cancel
+		g.doneCh = make(chan struct{})
 
 		go func() {
 			defer close(g.doneCh)
-			for {
-				now := time.Now().In(loc)
-				next := sched.Next(now)
-				delay := time.Until(next)
-
-				slog.Info("health report scheduled", "next", next.Format(time.RFC3339), "delay", delay.Truncate(time.Second))
-
-				timer := time.NewTimer(delay)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					return
-				case <-timer.C:
-				}
-
-				sendCtx, sendCancel := context.WithTimeout(ctx, 30*time.Second)
-				if err := g.GenerateAndSend(sendCtx); err != nil {
-					slog.Warn("health report delivery failed", "error", err)
-				}
-				sendCancel()
-			}
+			g.runSchedule(ctx, sched, loc)
 		}()
 	})
 
 	return nil
+}
+
+// runSchedule blocks until ctx is cancelled, sending a report at every time
+// sched produces. A delivery failure is logged and the loop keeps running.
+func (g *Generator) runSchedule(ctx context.Context, sched schedule, loc *time.Location) {
+	for {
+		now := time.Now().In(loc)
+		next := sched.Next(now)
+		delay := time.Until(next)
+
+		slog.Info("health report scheduled", "next", next.Format(time.RFC3339), "delay", delay.Truncate(time.Second))
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+
+		sendCtx, sendCancel := context.WithTimeout(ctx, 30*time.Second)
+		if err := g.GenerateAndSend(sendCtx); err != nil {
+			slog.Warn("health report delivery failed", "error", err)
+		}
+		sendCancel()
+	}
 }
 
 // Stop gracefully stops the scheduled report loop. Accepts a context for

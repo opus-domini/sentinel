@@ -419,9 +419,6 @@ func (c *Config) normalizeWithDefaults(defaults Config) error {
 	if strings.TrimSpace(c.Server.Host) == "" {
 		c.Server.Host = defaults.Server.Host
 	}
-	if c.Server.Port == 0 {
-		c.Server.Port = defaults.Server.Port
-	}
 	if strings.TrimSpace(c.Server.CookieSecure) == "" {
 		c.Server.CookieSecure = defaults.Server.CookieSecure
 	} else {
@@ -443,21 +440,6 @@ func (c *Config) normalizeWithDefaults(defaults Config) error {
 	c.Log.Level = strings.ToLower(strings.TrimSpace(c.Log.Level))
 	if strings.TrimSpace(c.Log.Path) == "" {
 		c.Log.Path = defaults.Log.Path
-	}
-	if c.Runbooks.MaxConcurrent == 0 {
-		c.Runbooks.MaxConcurrent = defaults.Runbooks.MaxConcurrent
-	}
-	if c.Watchtower.TickInterval == 0 {
-		c.Watchtower.TickInterval = defaults.Watchtower.TickInterval
-	}
-	if c.Watchtower.CaptureLines == 0 {
-		c.Watchtower.CaptureLines = defaults.Watchtower.CaptureLines
-	}
-	if c.Watchtower.CaptureTimeout == 0 {
-		c.Watchtower.CaptureTimeout = defaults.Watchtower.CaptureTimeout
-	}
-	if c.Watchtower.JournalRows == 0 {
-		c.Watchtower.JournalRows = defaults.Watchtower.JournalRows
 	}
 	c.MultiUser.AllowedUsers = cleanStrings(c.MultiUser.AllowedUsers)
 	if strings.TrimSpace(c.MultiUser.UserSwitchMethod) == "" {
@@ -1039,17 +1021,15 @@ func ValidateMultiUser(cfg *Config) {
 		return
 	}
 
-	// Remove root from allowlist if allow_root_target is false.
-	if !cfg.MultiUser.AllowRootTarget {
-		filtered := cfg.MultiUser.AllowedUsers[:0]
-		for _, u := range cfg.MultiUser.AllowedUsers {
-			if u == "root" {
-				slog.Warn("removing root from allowed_users because allow_root_target is false")
-				continue
-			}
-			filtered = append(filtered, u)
-		}
-		cfg.MultiUser.AllowedUsers = filtered
+	// Remove root from allowlist if allow_root_target is false. The allowlist is
+	// shared with the config snapshot the caller copied from, so replace it with
+	// a new slice instead of compacting the backing array in place.
+	if !cfg.MultiUser.AllowRootTarget && slices.Contains(cfg.MultiUser.AllowedUsers, "root") {
+		slog.Warn("removing root from allowed_users because allow_root_target is false")
+		cfg.MultiUser.AllowedUsers = slices.DeleteFunc(
+			slices.Clone(cfg.MultiUser.AllowedUsers),
+			func(u string) bool { return u == "root" },
+		)
 	}
 
 	// Cross-reference allowed_users against system users.

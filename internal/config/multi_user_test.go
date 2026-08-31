@@ -145,6 +145,18 @@ func TestValidateMultiUserRemovesRootWhenNotAllowed(t *testing.T) {
 	}
 }
 
+func TestValidateMultiUserLeavesTheCallerAllowlistUntouched(t *testing.T) {
+	t.Parallel()
+
+	shared := []string{"root", "deploy"}
+	cfg := &Config{MultiUser: MultiUserConfig{AllowedUsers: shared}}
+
+	ValidateMultiUser(cfg)
+
+	assertStrings(t, cfg.MultiUser.AllowedUsers, []string{"deploy"})
+	assertStrings(t, shared, []string{"root", "deploy"})
+}
+
 func TestValidateMultiUserKeepsRootWhenAllowed(t *testing.T) {
 	t.Parallel()
 

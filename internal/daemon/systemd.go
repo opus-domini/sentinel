@@ -345,14 +345,7 @@ func UninstallUser(opts UninstallUserOptions) error {
 }
 
 func uninstallUserSystemd(opts UninstallUserOptions, servicePath string, runFn func(args ...string) error) error {
-	switch {
-	case opts.Disable && opts.Stop:
-		_ = runFn("disable", "--now", "sentinel")
-	case opts.Disable:
-		_ = runFn("disable", "sentinel")
-	case opts.Stop:
-		_ = runFn("stop", "sentinel")
-	}
+	teardownSystemdUnit("sentinel", opts.Disable, opts.Stop, runFn)
 
 	if opts.RemoveUnit {
 		if err := os.Remove(servicePath); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -392,7 +385,7 @@ func UninstallUserAutoUpdate(opts UninstallUserAutoUpdateOptions) error {
 }
 
 func uninstallUserAutoUpdateSystemd(opts UninstallUserAutoUpdateOptions, runFn func(args ...string) error) error {
-	stopUserAutoUpdateTimer(opts.Disable, opts.Stop, runFn)
+	teardownSystemdUnit(userAutoUpdateTimerName, opts.Disable, opts.Stop, runFn)
 	if opts.RemoveUnit {
 		if err := removeUserAutoUpdateUnits(opts.Scope); err != nil {
 			return err
@@ -403,17 +396,6 @@ func uninstallUserAutoUpdateSystemd(opts UninstallUserAutoUpdateOptions, runFn f
 		return withSystemdUserBusHint(err)
 	}
 	return nil
-}
-
-func stopUserAutoUpdateTimer(disable, stop bool, runFn func(args ...string) error) {
-	switch {
-	case disable && stop:
-		_ = runFn("disable", "--now", "sentinel-updater.timer")
-	case disable:
-		_ = runFn("disable", "sentinel-updater.timer")
-	case stop:
-		_ = runFn("stop", "sentinel-updater.timer")
-	}
 }
 
 func removeUserAutoUpdateUnits(scope string) error {
@@ -697,14 +679,7 @@ func uninstallSystemServiceLinux(opts UninstallUserOptions) error {
 	if os.Geteuid() != 0 {
 		return errors.New("system service uninstall requires root privileges")
 	}
-	switch {
-	case opts.Disable && opts.Stop:
-		_ = runSystemctlSystem("disable", "--now", "sentinel")
-	case opts.Disable:
-		_ = runSystemctlSystem("disable", "sentinel")
-	case opts.Stop:
-		_ = runSystemctlSystem("stop", "sentinel")
-	}
+	teardownSystemdUnit("sentinel", opts.Disable, opts.Stop, runSystemctlSystem)
 
 	if opts.RemoveUnit {
 		if err := os.Remove(systemUnitPath); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -804,14 +779,7 @@ func uninstallSystemAutoUpdateLinux(opts UninstallUserAutoUpdateOptions) error {
 		return errors.New("scope=system requires root privileges")
 	}
 
-	switch {
-	case opts.Disable && opts.Stop:
-		_ = runSystemctlSystem("disable", "--now", "sentinel-updater.timer")
-	case opts.Disable:
-		_ = runSystemctlSystem("disable", "sentinel-updater.timer")
-	case opts.Stop:
-		_ = runSystemctlSystem("stop", "sentinel-updater.timer")
-	}
+	teardownSystemdUnit(userAutoUpdateTimerName, opts.Disable, opts.Stop, runSystemctlSystem)
 
 	if opts.RemoveUnit {
 		if err := os.Remove(systemAutoUpdateService); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -858,6 +826,20 @@ func isSystemctlUserActive(unit string) bool {
 func isSystemctlSystemActive(unit string) bool {
 	cmd := exec.CommandContext(context.Background(), "systemctl", "is-active", "--quiet", unit)
 	return cmd.Run() == nil
+}
+
+// teardownSystemdUnit applies the disable/stop half of an uninstall to unit.
+// Failures are ignored on purpose: uninstall must keep going and remove the
+// unit files even when the unit is already gone or the manager is unreachable.
+func teardownSystemdUnit(unit string, disable, stop bool, runFn func(args ...string) error) {
+	switch {
+	case disable && stop:
+		_ = runFn(actionDisable, "--now", unit)
+	case disable:
+		_ = runFn(actionDisable, unit)
+	case stop:
+		_ = runFn(actionStop, unit)
+	}
 }
 
 func applySystemdUnitState(

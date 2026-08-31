@@ -477,6 +477,12 @@ func TestValidateRemoteExposure(t *testing.T) {
 			wantErr:    ErrRemoteToken,
 		},
 		{
+			name:       "wildcard ip requires token",
+			listenAddr: "0.0.0.0:4040",
+			token:      "",
+			wantErr:    ErrRemoteToken,
+		},
+		{
 			name:       "remote with token requires allowed origin",
 			listenAddr: "0.0.0.0:4040",
 			token:      "secret",
@@ -505,16 +511,6 @@ func TestValidateRemoteExposure(t *testing.T) {
 				t.Fatalf("ValidateRemoteExposure() error = %v, want %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestValidateRemoteExposureRequiresAllowedOriginWhenProvided(t *testing.T) {
-	t.Parallel()
-	if err := ValidateRemoteExposure("0.0.0.0:4040", "secret", nil); !errors.Is(err, ErrRemoteAllowedOrigin) {
-		t.Fatalf("ValidateRemoteExposure() error = %v, want %v", err, ErrRemoteAllowedOrigin)
-	}
-	if err := ValidateRemoteExposure("0.0.0.0:4040", "secret", []string{"https://example.com"}); err != nil {
-		t.Fatalf("ValidateRemoteExposure() unexpected error = %v", err)
 	}
 }
 

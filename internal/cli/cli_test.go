@@ -1145,7 +1145,6 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 		"--exec", testSentinelPath,
 		"--enable=false",
 		"--start=false",
-		"--service", "sentinel-custom",
 		"--scope", testScopeSystem,
 		"--on-calendar", "hourly",
 		"--randomized-delay", "30m",
@@ -1173,6 +1172,16 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 	}
 	if got.RandomizedDelay != 30*time.Minute {
 		t.Fatalf("RandomizedDelay = %s, want 30m", got.RandomizedDelay)
+	}
+
+	// The unit name is fixed: the renderers ignore it, so the command must not
+	// accept a --service flag that pretends otherwise.
+	var rejectedOut, rejectedErr bytes.Buffer
+	if code := Run([]string{
+		"service", "autoupdate", "install",
+		"--service", "sentinel-custom",
+	}, &rejectedOut, &rejectedErr); code == 0 {
+		t.Fatal("service autoupdate install accepted --service, which never reached the unit renderer")
 	}
 }
 

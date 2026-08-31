@@ -20,10 +20,10 @@ func managedWindowRuntimeMap(rows []store.ManagedTmuxWindow) map[string]store.Ma
 	return byRuntime
 }
 
-func (s *Service) reconcileManagedTmuxWindows(ctx context.Context, sessionName string, liveWindows []tmux.Window) ([]store.ManagedTmuxWindow, error) {
+func (s *Service) reconcileManagedTmuxWindows(ctx context.Context, sessionName string, liveWindows []tmux.Window) error {
 	rows, err := s.store.ListManagedTmuxWindowsBySession(ctx, sessionName)
 	if err != nil || len(rows) == 0 {
-		return rows, err
+		return err
 	}
 
 	liveByID := make(map[string]tmux.Window, len(liveWindows))
@@ -37,11 +37,9 @@ func (s *Service) reconcileManagedTmuxWindows(ctx context.Context, sessionName s
 		liveIDs = append(liveIDs, windowID)
 	}
 
-	filtered := make([]store.ManagedTmuxWindow, 0, len(rows))
 	for _, row := range rows {
 		runtimeID := strings.TrimSpace(row.TmuxWindowID)
 		if runtimeID == "" {
-			filtered = append(filtered, row)
 			continue
 		}
 		liveWindow, ok := liveByID[runtimeID]
@@ -49,32 +47,10 @@ func (s *Service) reconcileManagedTmuxWindows(ctx context.Context, sessionName s
 			continue
 		}
 		if row.LastWindowIndex != liveWindow.Index {
-			if err := s.store.UpdateManagedTmuxWindowRuntime(ctx, row.ID, runtimeID, liveWindow.Index); err == nil {
-				row.LastWindowIndex = liveWindow.Index
-			}
+			// Best-effort: a failed index refresh is retried on the next tick.
+			_ = s.store.UpdateManagedTmuxWindowRuntime(ctx, row.ID, runtimeID, liveWindow.Index)
 		}
-		filtered = append(filtered, row)
 	}
 
-	if err := s.store.DeleteManagedTmuxWindowsMissingRuntime(ctx, sessionName, liveIDs); err != nil {
-		return nil, err
-	}
-	return filtered, nil
-}
-
-func windowNamesByIndex(windows []tmux.Window, managedByRuntime map[string]store.ManagedTmuxWindow) map[int]string {
-	byIndex := make(map[int]string, len(windows))
-	for _, window := range windows {
-		name := strings.TrimSpace(window.Name)
-		if managed, ok := managedByRuntime[strings.TrimSpace(window.ID)]; ok {
-			if managedName := strings.TrimSpace(managed.WindowName); managedName != "" {
-				name = managedName
-			}
-		}
-		if name == "" {
-			continue
-		}
-		byIndex[window.Index] = name
-	}
-	return byIndex
+	return s.store.DeleteManagedTmuxWindowsMissingRuntime(ctx, sessionName, liveIDs)
 }
