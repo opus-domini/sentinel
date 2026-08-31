@@ -28,16 +28,14 @@ run: check-go build-frontend ## Run the server with go run
 	$(GOCMD) run $(ENTRY)
 
 .PHONY: dev
-dev: check-go check-npm ## Run Go server and Vite dev server concurrently
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+dev: check-go frontend-install-dev ## Run Go server and Vite dev server concurrently
 	@$(GOCMD) run $(ENTRY) & GO_PID=$$!; \
 	$(NPM) --prefix "$(FRONTEND)" run dev & NPM_PID=$$!; \
 	trap 'kill $$GO_PID $$NPM_PID 2>/dev/null; wait' INT TERM; \
 	wait
 
 .PHONY: dev-frontend
-dev-frontend: check-npm ## Run the Vite dev server only
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+dev-frontend: frontend-install-dev ## Run the Vite dev server only
 	$(NPM) --prefix "$(FRONTEND)" run dev
 
 # --- Build -----------------------------------------------------
@@ -61,6 +59,10 @@ build-frontend: frontend-install ## Build embedded frontend assets
 frontend-install: check-npm ## Install frontend dependencies reproducibly
 	$(NPM) ci --prefix "$(FRONTEND)"
 
+.PHONY: frontend-install-dev
+frontend-install-dev: check-npm ## Install frontend dependencies for the local loop, skipping when present
+	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+
 # --- Quality ---------------------------------------------------
 
 .PHONY: test-isolation
@@ -72,9 +74,8 @@ test: check-go test-isolation ## Run Go tests with race detection and shuffle
 	$(GOCMD) test -race -shuffle=on $(PKG_LIST)
 
 .PHONY: test-unit
-test-unit: check-go check-npm test-isolation ## Run fast unit test layer (Go + frontend)
+test-unit: check-go frontend-install-dev test-isolation ## Run fast unit test layer (Go + frontend)
 	$(GOCMD) test $(PKG_LIST)
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
 	$(NPM) --prefix "$(FRONTEND)" run test:unit
 
 .PHONY: test-contract
@@ -98,13 +99,11 @@ coverage-check: check-go ## Validate an existing coverage profile against COVERA
 	COVERAGE_MIN=$(COVERAGE_MIN) $(COVERAGE_CHECK) "$(COVERAGE_PROFILE)"
 
 .PHONY: test-frontend
-test-frontend: check-npm test-isolation ## Run frontend tests
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+test-frontend: frontend-install test-isolation ## Run frontend tests
 	$(NPM) --prefix "$(FRONTEND)" test
 
 .PHONY: test-e2e
-test-e2e: check-npm test-isolation ## Run frontend end-to-end component flows
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+test-e2e: frontend-install test-isolation ## Run frontend end-to-end component flows
 	$(NPM) --prefix "$(FRONTEND)" run test:e2e
 
 .PHONY: benchmark
@@ -136,13 +135,11 @@ lint: check-go check-lint ## Run golangci-lint
 	$(LINT) run
 
 .PHONY: lint-frontend
-lint-frontend: check-npm ## Lint frontend code
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+lint-frontend: frontend-install ## Lint frontend code
 	$(NPM) --prefix "$(FRONTEND)" run lint
 
 .PHONY: typecheck-frontend
-typecheck-frontend: check-npm ## Typecheck frontend code
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+typecheck-frontend: frontend-install ## Typecheck frontend code
 	$(NPM) --prefix "$(FRONTEND)" run typecheck
 
 .PHONY: tidy
@@ -172,20 +169,18 @@ docs-showcase-check: ## Validate the captured documentation showcase
 	./scripts/docs-showcase-check.sh "$(abspath $(DOCS_SHOWCASE_OUTPUT))"
 
 .PHONY: smoke-frontend-terminal
-smoke-frontend-terminal: check-go check-npm ## Run browser smoke for tmux terminal rendering
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+smoke-frontend-terminal: check-go frontend-install-dev ## Run browser smoke for tmux terminal rendering
 	./scripts/frontend-terminal-smoke.sh
 
 .PHONY: smoke-frontend-terminal-soak
-smoke-frontend-terminal-soak: check-go check-npm ## Run heavier browser soak for tmux terminal rendering
-	@test -d "$(FRONTEND)/node_modules" || $(NPM) --prefix "$(FRONTEND)" install
+smoke-frontend-terminal-soak: check-go frontend-install-dev ## Run heavier browser soak for tmux terminal rendering
 	SENTINEL_SMOKE_INITIAL_LINES=4000 SENTINEL_SMOKE_LIVE_LINES=12000 ./scripts/frontend-terminal-smoke.sh
 
 .PHONY: ci-fast
-ci-fast: tidy-check fmt-check vet lint lint-frontend typecheck-frontend test-coverage docs-check build ## Fast CI gate for pull requests
+ci-fast: tidy-check fmt-check vet lint lint-frontend typecheck-frontend test-coverage test-frontend docs-check build ## Fast CI gate for pull requests
 
 .PHONY: ci-full
-ci-full: ci-fast test-frontend test-contract test-integration test-e2e test-perf vuln ## Full CI gate for mainline
+ci-full: ci-fast test-contract test-integration test-e2e test-perf vuln ## Full CI gate for mainline
 
 .PHONY: ci
 ci: ci-full ## Run the full CI pipeline

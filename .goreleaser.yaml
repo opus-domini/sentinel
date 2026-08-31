@@ -62,9 +62,13 @@ sboms:
 # the whole release. The .bundle (signature + certificate + Rekor proof) is
 # uploaded alongside the checksums and can be verified with:
 #   cosign verify-blob --bundle sentinel-<version>-checksums.txt.bundle \
-#     --certificate-identity-regexp 'https://github.com/opus-domini/sentinel/.*' \
+#     --certificate-identity-regexp '^https://github\.com/opus-domini/actions/\.github/workflows/release\.yml@' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 #     sentinel-<version>-checksums.txt
+# The signature is produced inside the reusable release workflow, so Fulcio
+# issues the certificate against that workflow's job_workflow_ref: the identity
+# is opus-domini/actions, not this repository. Update the regexp above if
+# signing ever moves back into .github/workflows/release.yml here.
 signs:
   - id: checksums
     cmd: cosign
