@@ -205,7 +205,7 @@ func DefaultForDeployment(dataRoot, logPath string) Config {
 			TickInterval:   1 * time.Second,
 			CaptureLines:   80,
 			CaptureTimeout: 150 * time.Millisecond,
-			JournalRows:    5000,
+			JournalRows:    300,
 		},
 		Runbooks: RunbooksConfig{MaxConcurrent: 5},
 		MultiUser: MultiUserConfig{

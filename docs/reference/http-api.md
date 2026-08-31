@@ -183,7 +183,6 @@ Direction: `vertical` or `horizontal`.
 | Method | Path                       | Purpose                          |
 | ------ | -------------------------- | -------------------------------- |
 | `GET`  | `/api/tmux/activity/delta` | Delta patches by global revision |
-| `GET`  | `/api/tmux/activity/stats` | Tmux activity runtime metrics    |
 | `GET`  | `/api/tmux/frequent-dirs`  | Frequently used directories      |
 
 `/api/tmux/activity/delta` query params:

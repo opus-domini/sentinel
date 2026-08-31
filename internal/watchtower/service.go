@@ -19,16 +19,13 @@ const (
 	defaultTickInterval   = time.Second
 	defaultCaptureLines   = 80
 	defaultCaptureTimeout = 150 * time.Millisecond
-	defaultJournalRows    = 5000
+	defaultJournalRows    = 300
+	// journalPruneInterval amortizes the retention DELETE: it removes a whole
+	// batch in one statement, so running it every tick scanned the retention
+	// index for nothing on the ticks that inserted nothing.
+	journalPruneInterval = 50
 
-	runtimeGlobalRevKey          = "global_rev"
-	runtimeCollectTotalKey       = "collect_total"
-	runtimeCollectErrorsTotalKey = "collect_errors_total"
-	runtimeLastCollectAtKey      = "last_collect_at"
-	runtimeLastCollectMSKey      = "last_collect_duration_ms"
-	runtimeLastCollectSessKey    = "last_collect_sessions"
-	runtimeLastCollectChangedKey = "last_collect_changed_sessions"
-	runtimeLastCollectErrorKey   = "last_collect_error"
+	runtimeGlobalRevKey = "global_rev"
 )
 
 type tmuxClient interface {
@@ -66,7 +63,6 @@ type journalRepo interface {
 type runtimeRepo interface {
 	GetWatchtowerRuntimeValue(ctx context.Context, key string) (string, error)
 	SetWatchtowerRuntimeValue(ctx context.Context, key, value string) error
-	SetWatchtowerRuntimeValues(ctx context.Context, values map[string]string) error
 }
 
 // watchtowerStore is the composite data-access interface used by Service.
@@ -113,6 +109,10 @@ type Service struct {
 	// userCache holds the last resolved multi-user list with a TTL.
 	userCache     []string
 	userCacheTime time.Time
+
+	// journalWrites counts journal rows inserted since the last prune. Only the
+	// collector loop touches it, so it needs no lock.
+	journalWrites int
 }
 
 type windowAggregate struct {
@@ -228,17 +228,10 @@ func (s *Service) collect(ctx context.Context) error {
 	return s.collectOnce(ctx)
 }
 
-func (s *Service) collectOnce(ctx context.Context) (err error) {
+func (s *Service) collectOnce(ctx context.Context) error {
 	if s == nil || s.store == nil || s.tmux == nil {
 		return nil
 	}
-	startedAt := time.Now().UTC()
-	sessionsCount := 0
-	changedCount := 0
-	defer func() {
-		s.recordCollectMetrics(ctx, startedAt, sessionsCount, changedCount, err)
-	}()
-
 	s.prunePresenceBestEffort(ctx)
 
 	tagged, proceed, err := s.listCollectSessions(ctx)
@@ -248,20 +241,28 @@ func (s *Service) collectOnce(ctx context.Context) (err error) {
 	if !proceed {
 		return nil
 	}
-	sessionsCount = len(tagged)
 
 	summary := s.collectSessionsProjection(ctx, tagged)
 	if err := s.store.PurgeWatchtowerSessions(ctx, summary.activeSessions); err != nil {
 		return err
 	}
-	changedCount = len(summary.changedSessions)
 
 	globalRev, err := s.persistActivityJournal(ctx, summary.changedSessions)
 	if err != nil {
 		return err
 	}
 
-	s.pruneRetentionBestEffort(ctx)
+	// Only prune after rows were actually inserted, and only every
+	// journalPruneInterval insertions: the DELETE removes a whole batch in one
+	// statement, so running it on every tick scanned the retention index for
+	// nothing on the ticks that wrote nothing.
+	if len(summary.changedSessions) > 0 {
+		s.journalWrites += len(summary.changedSessions)
+		if s.journalWrites >= journalPruneInterval {
+			s.journalWrites = 0
+			s.pruneRetentionBestEffort(ctx)
+		}
+	}
 	s.publishCollectEvents(ctx, summary, globalRev)
 	return nil
 }
@@ -492,51 +493,4 @@ func (s *Service) currentGlobalRev(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return value, nil
-}
-
-func (s *Service) recordCollectMetrics(ctx context.Context, startedAt time.Time, sessionsCount, changedCount int, collectErr error) {
-	if s == nil || s.store == nil {
-		return
-	}
-
-	durationMS := time.Since(startedAt).Milliseconds()
-	errStr := ""
-	if collectErr != nil {
-		errStr = collectErr.Error()
-	}
-
-	// Batch every per-tick metric write into one transaction (one fsync) rather
-	// than ~8-10 auto-committed writes on the single SQLite connection.
-	values := map[string]string{
-		runtimeLastCollectAtKey:      startedAt.Format(time.RFC3339),
-		runtimeLastCollectMSKey:      strconv.FormatInt(durationMS, 10),
-		runtimeLastCollectSessKey:    strconv.Itoa(sessionsCount),
-		runtimeLastCollectChangedKey: strconv.Itoa(changedCount),
-		runtimeLastCollectErrorKey:   errStr,
-		runtimeCollectTotalKey:       strconv.FormatInt(s.readRuntimeCounter(ctx, runtimeCollectTotalKey)+1, 10),
-	}
-	if collectErr != nil {
-		values[runtimeCollectErrorsTotalKey] = strconv.FormatInt(s.readRuntimeCounter(ctx, runtimeCollectErrorsTotalKey)+1, 10)
-	}
-
-	if err := s.store.SetWatchtowerRuntimeValues(ctx, values); err != nil {
-		slog.Warn("watchtower metric batch write failed", "err", err)
-	}
-}
-
-func (s *Service) readRuntimeCounter(ctx context.Context, key string) int64 {
-	raw, err := s.store.GetWatchtowerRuntimeValue(ctx, key)
-	if err != nil {
-		slog.Warn("watchtower runtime metric read failed", "key", key, "err", err)
-		return 0
-	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0
-	}
-	parsed, parseErr := strconv.ParseInt(raw, 10, 64)
-	if parseErr != nil {
-		return 0
-	}
-	return parsed
 }

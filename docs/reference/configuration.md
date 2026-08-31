@@ -117,7 +117,7 @@ enabled = true
 tick_interval = "1s"
 capture_lines = 80
 capture_timeout = "150ms"
-journal_rows = 5000
+journal_rows = 300
 
 [runbooks]
 max_concurrent = 5
@@ -155,7 +155,7 @@ user_switch_method = "systemd-run"
 | `SENTINEL_WATCHTOWER_TICK_INTERVAL`     | `1s`                                     | Watchtower collect interval                                     |
 | `SENTINEL_WATCHTOWER_CAPTURE_LINES`     | `80`                                     | Pane tail capture lines                                         |
 | `SENTINEL_WATCHTOWER_CAPTURE_TIMEOUT`   | `150ms`                                  | Per-pane capture timeout                                        |
-| `SENTINEL_WATCHTOWER_JOURNAL_ROWS`      | `5000`                                   | Tmux activity retention                                         |
+| `SENTINEL_WATCHTOWER_JOURNAL_ROWS`      | `300`                                    | Tmux activity retention                                         |
 | `SENTINEL_RUNBOOK_MAX_CONCURRENT`       | `5`                                      | Max concurrent manual runbook executions                        |
 | `SENTINEL_MCP_ENABLED`                  | `false`                                  | Expose the Streamable HTTP MCP endpoint at `/mcp`                |
 | `SENTINEL_ALLOWED_USERS`                | empty                                    | Comma-separated OS users allowed as session targets             |
