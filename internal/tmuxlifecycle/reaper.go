@@ -39,7 +39,11 @@ func (m *Manager) run() {
 	}
 }
 
-// Reconcile restores persisted leases without performing immediate cleanup.
+// Reconcile restores persisted leases without performing immediate cleanup. It
+// rebuilds byLease/byTarget from scratch, discarding the inFlight and
+// cleanupClaimed guards of every entry, so it is a boot step owned by Start and
+// a seam for reconciliation tests — never a mutator to re-enter on a running
+// manager, which would leave in-flight operations unprotected against cleanup.
 func (m *Manager) Reconcile(ctx context.Context) error {
 	leases, err := m.store.ListTmuxSessionLeases(ctx)
 	if err != nil {
@@ -264,7 +268,12 @@ func (m *Manager) resolveRuntimeForCleanup(
 	if err == nil && current.ID == lease.SessionID {
 		return resolutionSame, current, nil
 	}
-	if err != nil && !tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
+	// A dead tmux server is proof of absence, exactly like a missing session:
+	// api and watchtower already read the kind that way. Deferral is reserved
+	// for genuinely ambiguous failures (command failed, permission denied),
+	// otherwise every ephemeral lease survives a kill-server or a reboot
+	// forever and the sweep warns once a minute for the life of the process.
+	if err != nil && !isAbsenceKind(err) {
 		return resolutionMissing, tmux.Session{}, err
 	}
 	sessions, listErr := runtime.ListSessions(ctx)
@@ -280,6 +289,13 @@ func (m *Manager) resolveRuntimeForCleanup(
 		return resolutionMismatch, current, nil
 	}
 	return resolutionMissing, tmux.Session{}, nil
+}
+
+// isAbsenceKind reports whether a tmux lookup error proves the session is gone
+// rather than leaving its fate unknown.
+func isAbsenceKind(err error) bool {
+	return tmux.IsKind(err, tmux.ErrKindSessionNotFound) ||
+		tmux.IsKind(err, tmux.ErrKindServerNotRunning)
 }
 
 func (m *Manager) forgetResolved(ctx context.Context, entry *leaseEntry, cleanupRuntime bool) error {

@@ -83,7 +83,14 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.started = true
 	m.mu.Unlock()
-	if err := m.Reconcile(ctx); err != nil {
+	// Reconciliation talks to tmux once or twice per persisted lease, and the
+	// HTTP listener only comes up after Start returns. Bound it like a sweep so
+	// a wedged tmux server defers the remaining leases to the next sweep
+	// instead of holding the whole process before it can serve anything.
+	reconcileCtx, cancel := context.WithTimeout(ctx, m.opts.SweepInterval)
+	err := m.Reconcile(reconcileCtx)
+	cancel()
+	if err != nil {
 		m.mu.Lock()
 		m.started = false
 		m.mu.Unlock()

@@ -72,7 +72,6 @@ type Runtime interface {
 // LeaseStore is the persistence surface owned by lifecycle.
 type LeaseStore interface {
 	CreateTmuxSessionLease(context.Context, store.TmuxSessionLease) error
-	GetTmuxSessionLease(context.Context, string) (store.TmuxSessionLease, error)
 	ListTmuxSessionLeases(context.Context) ([]store.TmuxSessionLease, error)
 	UpdateTmuxSessionLeaseState(context.Context, string, string, time.Time, time.Time, time.Time) error
 	TouchTmuxSessionLease(context.Context, string, time.Time, time.Time, time.Time) error

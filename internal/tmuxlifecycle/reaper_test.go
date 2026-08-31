@@ -125,6 +125,38 @@ func TestSweepForgetsReusedNameWithoutKill(t *testing.T) {
 	}
 }
 
+// TestSweepCollectsLeaseAfterTmuxServerDies pins the convergence that a dead
+// tmux server must produce: without it every sweep returned an error, the lease
+// row and its projections were never deleted, and the warning repeated once per
+// tick for the life of the process.
+func TestSweepCollectsLeaseAfterTmuxServerDies(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	st := newLifecycleStore(t)
+	lease := testLease(now, store.TmuxSessionLeaseActive)
+	seedLease(t, st, lease)
+	runtime := newFakeRuntime()
+	// kill-server, a reboot, or the last session exiting: no sessions and every
+	// lookup reports the server itself as gone.
+	runtime.getErr = &tmux.Error{Kind: tmux.ErrKindServerNotRunning, Msg: "no server running"}
+	manager := newTestManager(st, &fakeClock{now: now}, runtime, Options{})
+	entry := &leaseEntry{lease: lease}
+	manager.mu.Lock()
+	manager.addEntryLocked(entry)
+	manager.mu.Unlock()
+
+	if err := manager.Sweep(ctx); err != nil {
+		t.Fatalf("Sweep() with a dead tmux server error = %v", err)
+	}
+	if len(manager.Snapshot()) != 0 {
+		t.Fatalf("lease survived a dead tmux server: %#v", manager.Snapshot())
+	}
+	leases, err := st.ListTmuxSessionLeases(ctx)
+	if err != nil || len(leases) != 0 {
+		t.Fatalf("persisted leases = %#v, error = %v", leases, err)
+	}
+}
+
 func TestSweepGraceTransitionKeepsConcurrentRenewal(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
