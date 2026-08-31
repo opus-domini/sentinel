@@ -67,13 +67,63 @@ type metricSignalPolicy struct {
 	available      bool
 }
 
+// stateKey identifies the temporal state this policy accumulates. Sensor
+// categories evaluate every physical sensor separately, so the subject is part
+// of the identity; single-source signals carry no subject.
+func (p metricSignalPolicy) stateKey() string {
+	if p.subject == "" {
+		return p.name
+	}
+	return p.name + "\x00" + p.subject
+}
+
+// proximity is how close the reading sits to its own warning threshold, which
+// is the only scale-free way to rank sensors with different limits.
+func (p metricSignalPolicy) proximity() float64 {
+	if p.warning <= 0 {
+		return 0
+	}
+	return p.value / p.warning
+}
+
 type metricSignalState struct {
-	subject       string
 	severity      string
 	since         time.Time
 	aboveWarning  time.Time
 	aboveCritical time.Time
 	belowExit     time.Time
+}
+
+// evaluatedSignal pairs an active signal with the policy that produced it, so
+// the per-category projection can rank sensors against their own thresholds.
+type evaluatedSignal struct {
+	policy metricSignalPolicy
+	signal MetricPostureSignal
+}
+
+// worseThan reports whether s outranks other as the reported signal for their
+// shared name: higher severity first, then the reading closest to its own
+// warning threshold, then a stable subject order.
+func (s evaluatedSignal) worseThan(other evaluatedSignal) bool {
+	rank, otherRank := severityRank(s.signal.Severity), severityRank(other.signal.Severity)
+	if rank != otherRank {
+		return rank > otherRank
+	}
+	if proximity, otherProximity := s.policy.proximity(), other.policy.proximity(); proximity != otherProximity {
+		return proximity > otherProximity
+	}
+	return s.policy.subject < other.policy.subject
+}
+
+func severityRank(severity string) int {
+	switch severity {
+	case MetricPostureSeverityCritical:
+		return 2
+	case MetricPostureSeverityWarning:
+		return 1
+	default:
+		return 0
+	}
 }
 
 type metricPostureEvaluator struct {
@@ -107,26 +157,31 @@ func (e *metricPostureEvaluator) Evaluate(metrics HostMetrics) MetricPosture {
 	evaluated := 0
 	policies := metricSignalPolicies(metrics)
 	seen := make(map[string]struct{}, len(policies))
+	active := make([]evaluatedSignal, 0, len(policies))
 	for _, policy := range policies {
-		seen[policy.name] = struct{}{}
+		seen[policy.stateKey()] = struct{}{}
 		if policy.available {
 			evaluated++
 		}
-		signal, active := e.evaluateSignal(policy, now)
-		if !active {
+		signal, ok := e.evaluateSignal(policy, now)
+		if !ok {
 			continue
 		}
+		active = append(active, evaluatedSignal{policy: policy, signal: signal})
+	}
+	for key := range e.states {
+		if _, exists := seen[key]; !exists {
+			delete(e.states, key)
+		}
+	}
+
+	for _, signal := range projectWorstPerName(active) {
 		posture.Signals = append(posture.Signals, signal)
 		switch signal.Severity {
 		case MetricPostureSeverityCritical:
 			posture.CriticalCount++
 		case MetricPostureSeverityWarning:
 			posture.WarningCount++
-		}
-	}
-	for name := range e.states {
-		if _, exists := seen[name]; !exists {
-			delete(e.states, name)
 		}
 	}
 
@@ -144,19 +199,46 @@ func (e *metricPostureEvaluator) Evaluate(metrics HostMetrics) MetricPosture {
 	return posture
 }
 
+// projectWorstPerName keeps one signal per policy name. Sensor categories track
+// hysteresis per physical sensor — the hottest core changes constantly, and
+// resetting the dwell timers on every swap would defeat it — but the posture
+// still reports a single signal per category: the worst one currently active.
+func projectWorstPerName(active []evaluatedSignal) []MetricPostureSignal {
+	order := make([]string, 0, len(active))
+	worst := make(map[string]evaluatedSignal, len(active))
+	for _, candidate := range active {
+		current, exists := worst[candidate.signal.Name]
+		if !exists {
+			order = append(order, candidate.signal.Name)
+			worst[candidate.signal.Name] = candidate
+			continue
+		}
+		if candidate.worseThan(current) {
+			worst[candidate.signal.Name] = candidate
+		}
+	}
+
+	signals := make([]MetricPostureSignal, 0, len(order))
+	for _, name := range order {
+		signals = append(signals, worst[name].signal)
+	}
+	return signals
+}
+
 func (e *metricPostureEvaluator) evaluateSignal(
 	policy metricSignalPolicy,
 	now time.Time,
 ) (MetricPostureSignal, bool) {
+	key := policy.stateKey()
 	if !policy.available {
-		delete(e.states, policy.name)
+		delete(e.states, key)
 		return MetricPostureSignal{}, false
 	}
 
-	state := e.states[policy.name]
-	if state == nil || state.subject != policy.subject {
-		state = &metricSignalState{subject: policy.subject}
-		e.states[policy.name] = state
+	state := e.states[key]
+	if state == nil {
+		state = &metricSignalState{}
+		e.states[key] = state
 	}
 	updateThresholdSince(&state.aboveWarning, policy.value >= policy.warning, now)
 	updateThresholdSince(&state.aboveCritical, policy.value >= policy.critical, now)
@@ -176,7 +258,7 @@ func (e *metricPostureEvaluator) evaluateSignal(
 			state.belowExit = now
 		}
 		if now.Sub(state.belowExit) >= policy.exitDuration {
-			delete(e.states, policy.name)
+			delete(e.states, key)
 			return MetricPostureSignal{}, false
 		}
 	} else {
@@ -284,26 +366,14 @@ func metricSignalPolicies(metrics HostMetrics) []metricSignalPolicy {
 			available: validMetricValue(metrics.IOPressureAvg10),
 		},
 	}
-	if policy, ok := temperatureSignalPolicy(metrics.Sensors.Temperatures); ok {
-		policies = append(policies, policy)
-	}
-	if policy, ok := fanSignalPolicy(metrics.Sensors.Fans); ok {
-		policies = append(policies, policy)
-	}
-	if policy, ok := powerSignalPolicy(metrics.Sensors.Power); ok {
-		policies = append(policies, policy)
-	}
+	policies = append(policies, temperatureSignalPolicies(metrics.Sensors.Temperatures)...)
+	policies = append(policies, fanSignalPolicies(metrics.Sensors.Fans)...)
+	policies = append(policies, powerSignalPolicies(metrics.Sensors.Power)...)
 	return policies
 }
 
-type sensorPolicyCandidate struct {
-	policy    metricSignalPolicy
-	severity  int
-	proximity float64
-}
-
-func temperatureSignalPolicy(sensors []TemperatureSensor) (metricSignalPolicy, bool) {
-	candidates := make([]sensorPolicyCandidate, 0, len(sensors))
+func temperatureSignalPolicies(sensors []TemperatureSensor) []metricSignalPolicy {
+	policies := make([]metricSignalPolicy, 0, len(sensors))
 	for _, sensor := range sensors {
 		if !validMetricValue(sensor.Celsius) {
 			continue
@@ -318,31 +388,30 @@ func temperatureSignalPolicy(sensors []TemperatureSensor) (metricSignalPolicy, b
 			3,
 		)
 		if ok {
-			candidates = append(candidates, newSensorPolicyCandidate(policy))
+			policies = append(policies, policy)
 		}
 	}
-	return selectSensorPolicy(candidates)
+	return policies
 }
 
-func fanSignalPolicy(sensors []FanSensor) (metricSignalPolicy, bool) {
-	candidates := make([]sensorPolicyCandidate, 0, len(sensors))
+func fanSignalPolicies(sensors []FanSensor) []metricSignalPolicy {
+	policies := make([]metricSignalPolicy, 0, len(sensors))
 	for _, sensor := range sensors {
 		if sensor.RPM < 0 || sensor.Alarm == nil {
 			continue
 		}
-		policy := alarmSensorPolicy(
+		policies = append(policies, alarmSensorPolicy(
 			"fan",
 			sensorSubject(sensor.Label, sensor.Source),
 			float64(sensor.RPM),
 			*sensor.Alarm,
-		)
-		candidates = append(candidates, newSensorPolicyCandidate(policy))
+		))
 	}
-	return selectSensorPolicy(candidates)
+	return policies
 }
 
-func powerSignalPolicy(sensors []PowerSensor) (metricSignalPolicy, bool) {
-	candidates := make([]sensorPolicyCandidate, 0, len(sensors))
+func powerSignalPolicies(sensors []PowerSensor) []metricSignalPolicy {
+	policies := make([]metricSignalPolicy, 0, len(sensors))
 	for _, sensor := range sensors {
 		if !validMetricValue(sensor.Watts) {
 			continue
@@ -362,9 +431,9 @@ func powerSignalPolicy(sensors []PowerSensor) (metricSignalPolicy, bool) {
 		if policy.exitMargin == 0 && policy.warning > 0.5 {
 			policy.exitMargin = policy.warning * 0.05
 		}
-		candidates = append(candidates, newSensorPolicyCandidate(policy))
+		policies = append(policies, policy)
 	}
-	return selectSensorPolicy(candidates)
+	return policies
 }
 
 func thresholdSensorPolicy(
@@ -433,37 +502,6 @@ func validThreshold(value *float64) (float64, bool) {
 		return 0, false
 	}
 	return *value, true
-}
-
-func newSensorPolicyCandidate(policy metricSignalPolicy) sensorPolicyCandidate {
-	severity := 1
-	switch {
-	case policy.value >= policy.critical:
-		severity = 3
-	case policy.value >= policy.warning:
-		severity = 2
-	}
-	proximity := 0.0
-	if policy.warning > 0 {
-		proximity = policy.value / policy.warning
-	}
-	return sensorPolicyCandidate{policy: policy, severity: severity, proximity: proximity}
-}
-
-func selectSensorPolicy(candidates []sensorPolicyCandidate) (metricSignalPolicy, bool) {
-	if len(candidates) == 0 {
-		return metricSignalPolicy{}, false
-	}
-	best := candidates[0]
-	for _, candidate := range candidates[1:] {
-		if candidate.severity > best.severity ||
-			(candidate.severity == best.severity && candidate.proximity > best.proximity) ||
-			(candidate.severity == best.severity && candidate.proximity == best.proximity &&
-				candidate.policy.subject < best.policy.subject) {
-			best = candidate
-		}
-	}
-	return best.policy, true
 }
 
 func sensorSubject(label, source string) string {

@@ -39,7 +39,7 @@ func (m *Manager) Logs(ctx context.Context, name string, lines int, since time.T
 	case managerSystemd:
 		return m.logsSystemd(ctx, target, lines, since)
 	case managerLaunchd:
-		return m.logsLaunchd(ctx, target, lines, since)
+		return m.logsLaunchd(ctx, target.Unit, lines, since)
 	default:
 		return "", fmt.Errorf("unsupported service manager: %s", target.Manager)
 	}
@@ -99,18 +99,21 @@ func (m *Manager) LogsByUnit(
 	case managerSystemd:
 		return m.logsSystemd(ctx, target, lines, since)
 	case managerLaunchd:
-		return m.logsLaunchdUnit(ctx, unit, lines, since)
+		return m.logsLaunchd(ctx, unit, lines, since)
 	default:
 		return "", fmt.Errorf("unsupported service manager: %s", manager)
 	}
 }
 
-func (m *Manager) logsLaunchdUnit(
+func (m *Manager) logsLaunchd(
 	ctx context.Context,
 	label string,
 	lines int,
 	since time.Time,
 ) (string, error) {
+	if !IsValidUnit(label) {
+		return "", ErrInvalidUnit
+	}
 	args := []string{
 		"show",
 		"--predicate", fmt.Sprintf(`senderImagePath CONTAINS "%s" OR subsystem == "%s"`, label, label),
@@ -130,17 +133,4 @@ func (m *Manager) logsLaunchdUnit(
 		outputLines = outputLines[len(outputLines)-lines:]
 	}
 	return strings.Join(outputLines, "\n"), nil
-}
-
-func (m *Manager) logsLaunchd(
-	ctx context.Context,
-	target ServiceStatus,
-	lines int,
-	since time.Time,
-) (string, error) {
-	label := target.Unit
-	if !IsValidUnit(label) {
-		return "", ErrInvalidUnit
-	}
-	return m.logsLaunchdUnit(ctx, label, lines, since)
 }

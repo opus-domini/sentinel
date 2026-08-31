@@ -40,7 +40,18 @@ func collectCPUPercent(ctx context.Context) float64 {
 	return float64(totalDelta-idleDelta) / float64(totalDelta) * 100
 }
 
+// Field positions on the aggregate "cpu " line of /proc/stat.
+const (
+	cpuStatIdleField      = 4
+	cpuStatGuestField     = 9
+	cpuStatGuestNiceField = 10
+)
+
 // readCPUStat reads /proc/stat and returns (idle, total) CPU time values.
+//
+// The kernel accounts guest time inside user time and guest_nice inside nice
+// time, so both are skipped when summing the total to avoid counting them
+// twice — which would inflate the busy percentage on virtualization hosts.
 func readCPUStat() (idle, total uint64, err error) {
 	data, err := os.ReadFile(filepath.Join(procRootPath, "stat"))
 	if err != nil {
@@ -51,20 +62,23 @@ func readCPUStat() (idle, total uint64, err error) {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 5 {
+		if len(fields) <= cpuStatIdleField {
 			return 0, 0, fmt.Errorf("unexpected /proc/stat cpu line: %s", line)
 		}
-		// fields: cpu user nice system idle ...
+		// fields: cpu user nice system idle iowait irq softirq steal guest guest_nice
 		var sum uint64
 		for i := 1; i < len(fields); i++ {
 			v, parseErr := strconv.ParseUint(fields[i], 10, 64)
 			if parseErr != nil {
-				continue
+				return 0, 0, fmt.Errorf("unexpected /proc/stat cpu field %q: %w", fields[i], parseErr)
 			}
-			sum += v
-			if i == 4 {
+			switch i {
+			case cpuStatGuestField, cpuStatGuestNiceField:
+				continue
+			case cpuStatIdleField:
 				idle = v
 			}
+			sum += v
 		}
 		return idle, sum, nil
 	}
