@@ -15,7 +15,6 @@ type CustomService struct {
 	Manager     string `json:"manager"`
 	Unit        string `json:"unit"`
 	Scope       string `json:"scope"`
-	Enabled     bool   `json:"enabled"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
 }
@@ -53,8 +52,8 @@ func (s *Store) InsertCustomService(ctx context.Context, w CustomServiceWrite) (
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO ops_custom_services (
-		name, display_name, manager, unit, scope, enabled, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+		name, display_name, manager, unit, scope, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		name, displayName, manager, unit, scope, now, now,
 	); err != nil {
 		return CustomService{}, err
@@ -65,7 +64,6 @@ func (s *Store) InsertCustomService(ctx context.Context, w CustomServiceWrite) (
 		Manager:     manager,
 		Unit:        unit,
 		Scope:       scope,
-		Enabled:     true,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
@@ -74,9 +72,8 @@ func (s *Store) InsertCustomService(ctx context.Context, w CustomServiceWrite) (
 // ListCustomServices lists custom services.
 func (s *Store) ListCustomServices(ctx context.Context) ([]CustomService, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		name, display_name, manager, unit, scope, enabled, created_at, updated_at
+		name, display_name, manager, unit, scope, created_at, updated_at
 	FROM ops_custom_services
-	WHERE enabled = 1
 	ORDER BY name ASC`)
 	if err != nil {
 		return nil, err
@@ -86,15 +83,13 @@ func (s *Store) ListCustomServices(ctx context.Context) ([]CustomService, error)
 	out := make([]CustomService, 0, 8)
 	for rows.Next() {
 		var item CustomService
-		var enabled int
 		if err := rows.Scan(
 			&item.Name, &item.DisplayName, &item.Manager,
-			&item.Unit, &item.Scope, &enabled,
+			&item.Unit, &item.Scope,
 			&item.CreatedAt, &item.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
-		item.Enabled = enabled == 1
 		out = append(out, item)
 	}
 	return out, rows.Err()

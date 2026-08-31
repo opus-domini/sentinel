@@ -7,13 +7,8 @@ import (
 	"time"
 )
 
-// BuildWatchtowerWindowPatches returns projection rows suitable for
+// BuildWatchtowerWindowPatchesWithManaged returns projection rows suitable for
 // client-side window strip reconciliation without additional API reads.
-func BuildWatchtowerWindowPatches(windows []WatchtowerWindow, panes []WatchtowerPane) []map[string]any {
-	return BuildWatchtowerWindowPatchesWithManaged(windows, panes, nil)
-}
-
-// BuildWatchtowerWindowPatchesWithManaged builds watchtower window patches with managed.
 func BuildWatchtowerWindowPatchesWithManaged(
 	windows []WatchtowerWindow,
 	panes []WatchtowerPane,
@@ -82,7 +77,15 @@ func (s *Store) UpsertWatchtowerWindow(ctx context.Context, row WatchtowerWindow
 			unread_panes = excluded.unread_panes,
 			has_unread = excluded.has_unread,
 			rev = excluded.rev,
-			updated_at = excluded.updated_at`,
+			updated_at = excluded.updated_at
+		 -- Same per-tick write elision as wt_panes: skip the update when no
+		 -- observable column moved. updated_at is excluded from the comparison
+		 -- because the collector always sends "now" and nothing reads it.
+		 WHERE (tmux_window_id, name, active, layout, window_activity_at,
+		        unread_panes, has_unread, rev)
+		    IS NOT (excluded.tmux_window_id, excluded.name, excluded.active,
+		        excluded.layout, excluded.window_activity_at, excluded.unread_panes,
+		        excluded.has_unread, excluded.rev)`,
 		name,
 		strings.TrimSpace(row.TmuxWindowID),
 		row.WindowIndex,

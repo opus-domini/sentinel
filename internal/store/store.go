@@ -46,6 +46,14 @@ func New(dbPath string) (*Store, error) {
 	ctx := context.Background()
 	for _, pragma := range []string{
 		"PRAGMA journal_mode=WAL",
+		// NORMAL is the durability level WAL is designed for: commits no longer
+		// fsync the WAL, so the single connection stops stalling every writer
+		// and reader behind a disk flush. The trade is that an OS crash or power
+		// cut can lose the most recent commits (the database itself stays
+		// consistent — only a WAL checkpoint fsyncs). Accepted here: the hot
+		// tables are a rebuildable projection of tmux state, and the durable
+		// tables are edited by hand at human rates.
+		"PRAGMA synchronous=NORMAL",
 		"PRAGMA busy_timeout=5000",
 	} {
 		if _, err := db.ExecContext(ctx, pragma); err != nil {
@@ -131,19 +139,6 @@ func (s *Store) Rename(ctx context.Context, oldName, newName string) error {
 		newName, oldName,
 	)
 	return err
-}
-
-// GetSessionIcon returns session icon.
-func (s *Store) GetSessionIcon(ctx context.Context, name string) (string, error) {
-	var icon string
-	err := s.db.QueryRowContext(ctx,
-		"SELECT icon FROM sessions WHERE name = ?",
-		name,
-	).Scan(&icon)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	return icon, err
 }
 
 // SetIcon sets icon.

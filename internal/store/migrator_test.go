@@ -27,8 +27,8 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 21 || name != "tmux-session-leases" {
-		t.Fatalf("latest migration = (%d, %q), want (21, %q)", version, name, "tmux-session-leases")
+	if version != 22 || name != "drop-custom-service-enabled" {
+		t.Fatalf("latest migration = (%d, %q), want (22, %q)", version, name, "drop-custom-service-enabled")
 	}
 
 	// Spot-check that a few tables exist.
@@ -68,6 +68,37 @@ func TestRunMigrationsFreshDB(t *testing.T) {
 	}
 }
 
+// Custom services are registered and deregistered by INSERT/DELETE; nothing
+// ever wrote enabled = 0, so the column and its filter were a soft-delete stub.
+func TestCustomServicesHaveNoEnabledColumn(t *testing.T) {
+	t.Parallel()
+
+	db := openTestDB(t)
+	ctx := context.Background()
+	if err := runMigrations(ctx, db); err != nil {
+		t.Fatalf("runMigrations: %v", err)
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT name FROM pragma_table_info('ops_custom_services')")
+	if err != nil {
+		t.Fatalf("pragma_table_info: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			t.Fatalf("scan column: %v", err)
+		}
+		if column == "enabled" {
+			t.Fatal("ops_custom_services still has an enabled column")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate columns: %v", err)
+	}
+}
+
 func TestRunMigrationsIdempotent(t *testing.T) {
 	t.Parallel()
 
@@ -86,8 +117,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 18 {
-		t.Fatalf("schema_migrations rows = %d, want 18", count)
+	if count != 19 {
+		t.Fatalf("schema_migrations rows = %d, want 19", count)
 	}
 }
 

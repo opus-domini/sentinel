@@ -2,37 +2,9 @@
 package store
 
 import (
-	"context"
 	"testing"
 	"time"
 )
-
-func TestGetSessionIcon(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	defer func() { _ = s.Close() }()
-	ctx := context.Background()
-
-	icon, err := s.GetSessionIcon(ctx, "missing")
-	if err != nil {
-		t.Fatalf("GetSessionIcon(missing): %v", err)
-	}
-	if icon != "" {
-		t.Fatalf("missing icon = %q, want empty", icon)
-	}
-	const iconSession = "icon-session"
-	if err := s.SetIcon(ctx, iconSession, "server"); err != nil {
-		t.Fatalf("SetIcon: %v", err)
-	}
-	icon, err = s.GetSessionIcon(ctx, iconSession)
-	if err != nil {
-		t.Fatalf("GetSessionIcon(dev): %v", err)
-	}
-	if icon != "server" {
-		t.Fatalf("icon = %q, want server", icon)
-	}
-}
 
 func TestBuildWatchtowerPatchHelpers(t *testing.T) {
 	t.Parallel()

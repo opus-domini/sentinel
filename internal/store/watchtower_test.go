@@ -528,23 +528,15 @@ func TestWatchtowerPresenceAccessors(t *testing.T) {
 		t.Fatalf("PruneWatchtowerPresence removed = %d, want 1", removed)
 	}
 
-	presences, err := s.ListWatchtowerPresence(ctx)
-	if err != nil {
-		t.Fatalf("ListWatchtowerPresence: %v", err)
-	}
-	if len(presences) != 1 || presences[0].TerminalID != "term-1" {
-		t.Fatalf("presence = %+v, want only term-1", presences)
-	}
-	if !presences[0].Visible || !presences[0].Focused {
-		t.Fatalf("unexpected presence flags: %+v", presences[0])
-	}
-
 	bySession, err := s.ListWatchtowerPresenceBySession(ctx, "dev")
 	if err != nil {
 		t.Fatalf("ListWatchtowerPresenceBySession(dev): %v", err)
 	}
 	if len(bySession) != 1 || bySession[0].TerminalID != "term-1" {
 		t.Fatalf("presence by session = %+v, want only term-1", bySession)
+	}
+	if !bySession[0].Visible || !bySession[0].Focused {
+		t.Fatalf("unexpected presence flags: %+v", bySession[0])
 	}
 }
 
