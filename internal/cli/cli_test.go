@@ -1161,9 +1161,6 @@ func TestRunCLIServiceAutoUpdateInstallParsesFlags(t *testing.T) {
 	if got.Start {
 		t.Fatal("Start = true, want false")
 	}
-	if got.ServiceUnit != "sentinel" {
-		t.Fatalf("ServiceUnit = %q, want sentinel", got.ServiceUnit)
-	}
 	if got.SystemdScope != testScopeSystem {
 		t.Fatalf("SystemdScope = %q, want %s", got.SystemdScope, testScopeSystem)
 	}

@@ -66,7 +66,7 @@ func reconcileSystemdAutoUpdate(opts InstallUserAutoUpdateOptions, status UserAu
 	mode := systemdUnitFileMode(cfg.scope)
 	serviceReplacement, err := replaceManagedFile(
 		servicePath,
-		[]byte(renderUserAutoUpdateUnit(cfg.execPath, cfg.configPath, cfg.dataDir, cfg.serviceUnit, cfg.scope)),
+		[]byte(renderUserAutoUpdateUnit(cfg.execPath, cfg.configPath, cfg.dataDir, cfg.scope)),
 		mode,
 	)
 	if err != nil {

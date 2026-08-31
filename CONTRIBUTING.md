@@ -45,11 +45,11 @@ Thank you for contributing to Sentinel. We prioritize reliability, clear UX, and
   real browser, validates desktop and mobile terminal pixels, and checks runtime
   stability metrics:
   ```bash
-  make smoke-client-terminal
+  make smoke-frontend-terminal
   ```
 - For changes that can affect long terminal sessions, also run the heavier soak:
   ```bash
-  make smoke-client-terminal-soak
+  make smoke-frontend-terminal-soak
   ```
   These targets require `agent-browser`, `curl`, `go`, `npm`, `python3`, and
   `tmux` on the local machine.

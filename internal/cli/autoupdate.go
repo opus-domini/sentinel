@@ -73,7 +73,6 @@ func newServiceAutoUpdateInstallCmd(app *App) *cobra.Command {
 				DataDir:         deployment.DataDir,
 				Enable:          enable,
 				Start:           start,
-				ServiceUnit:     sentinelServiceUnit,
 				SystemdScope:    deployment.Scope,
 				OnCalendar:      strings.TrimSpace(onCalendar),
 				RandomizedDelay: randomizedDelay,
