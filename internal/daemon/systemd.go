@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,11 +15,6 @@ import (
 
 	"github.com/opus-domini/sentinel/internal/config"
 )
-
-// serviceUnitNameRE bounds an installed unit name to systemd-safe characters.
-// In particular it forbids '%', which systemd treats as a specifier, and any
-// path/whitespace characters that could break the generated unit file.
-var serviceUnitNameRE = regexp.MustCompile(`^[A-Za-z0-9:_.@-]{1,128}$`)
 
 const (
 	userUnitName              = "sentinel.service"
@@ -76,7 +70,6 @@ type InstallUserAutoUpdateOptions struct {
 	DataDir         string
 	Enable          bool
 	Start           bool
-	ServiceUnit     string
 	SystemdScope    string // user, system
 	OnCalendar      string
 	RandomizedDelay time.Duration
@@ -116,7 +109,6 @@ type installUserAutoUpdateConfig struct {
 	execPath        string
 	configPath      string
 	dataDir         string
-	serviceUnit     string
 	onCalendar      string
 	randomizedDelay time.Duration
 }
@@ -214,7 +206,6 @@ func InstallUserAutoUpdate(opts InstallUserAutoUpdateOptions) error {
 			cfg.execPath,
 			cfg.configPath,
 			cfg.dataDir,
-			cfg.serviceUnit,
 			cfg.onCalendar,
 			cfg.randomizedDelay,
 			opts.Enable,
@@ -237,14 +228,6 @@ func resolveInstallUserAutoUpdateConfig(opts InstallUserAutoUpdateOptions) (inst
 		return installUserAutoUpdateConfig{}, err
 	}
 
-	serviceUnit := strings.TrimSpace(opts.ServiceUnit)
-	if serviceUnit == "" {
-		serviceUnit = "sentinel"
-	}
-	if !serviceUnitNameRE.MatchString(serviceUnit) {
-		return installUserAutoUpdateConfig{}, errors.New("invalid service unit name")
-	}
-
 	onCalendar := strings.TrimSpace(opts.OnCalendar)
 	if onCalendar == "" {
 		onCalendar = defaultOnCalendar
@@ -259,7 +242,6 @@ func resolveInstallUserAutoUpdateConfig(opts InstallUserAutoUpdateOptions) (inst
 		execPath:        execPath,
 		configPath:      strings.TrimSpace(opts.ConfigPath),
 		dataDir:         strings.TrimSpace(opts.DataDir),
-		serviceUnit:     serviceUnit,
 		onCalendar:      onCalendar,
 		randomizedDelay: randomizedDelay,
 	}, nil
@@ -279,7 +261,7 @@ func installUserAutoUpdateLinuxUser(cfg installUserAutoUpdateConfig, opts Instal
 		return fmt.Errorf("create systemd user directory: %w", err)
 	}
 
-	serviceUnitText := renderUserAutoUpdateUnit(cfg.execPath, cfg.configPath, cfg.dataDir, cfg.serviceUnit, cfg.scope)
+	serviceUnitText := renderUserAutoUpdateUnit(cfg.execPath, cfg.configPath, cfg.dataDir, cfg.scope)
 	wasActive := isSystemctlUserActive("sentinel-updater.timer")
 	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), systemdUnitFileMode(cfg.scope))
 	if err != nil {
@@ -707,7 +689,7 @@ func userStatusSystemLinux() UserServiceStatus {
 	return st
 }
 
-func installSystemAutoUpdateLinux(execPath, configPath, dataDir, serviceUnit, onCalendar string, randomizedDelay time.Duration, enable, start bool) error {
+func installSystemAutoUpdateLinux(execPath, configPath, dataDir, onCalendar string, randomizedDelay time.Duration, enable, start bool) error {
 	if os.Geteuid() != 0 {
 		return errors.New("scope=system requires root privileges")
 	}
@@ -718,7 +700,7 @@ func installSystemAutoUpdateLinux(execPath, configPath, dataDir, serviceUnit, on
 		return fmt.Errorf("create systemd system directory: %w", err)
 	}
 
-	serviceUnitText := renderUserAutoUpdateUnit(execPath, configPath, dataDir, serviceUnit, managerScopeSystem)
+	serviceUnitText := renderUserAutoUpdateUnit(execPath, configPath, dataDir, managerScopeSystem)
 	wasActive := isSystemctlSystemActive("sentinel-updater.timer")
 	serviceReplacement, err := replaceManagedFile(servicePath, []byte(serviceUnitText), systemdUnitFileMode(managerScopeSystem))
 	if err != nil {
@@ -960,7 +942,7 @@ WantedBy=default.target
 `, escapeSystemdExec(execPath), configArg, escapeSystemdEnvironment(dataDir), config.ManagedDefaultLogPathEnv, escapeSystemdEnvironment(logPath))
 }
 
-func renderUserAutoUpdateUnit(execPath, configPath, dataDir, _ string, scope string) string {
+func renderUserAutoUpdateUnit(execPath, configPath, dataDir, scope string) string {
 	configArg := ""
 	if strings.TrimSpace(configPath) != "" {
 		configArg = " --config=" + escapeSystemdExec(configPath)

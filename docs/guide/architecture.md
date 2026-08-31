@@ -70,6 +70,7 @@ machine.
 - `internal/ws` — browser terminal transport.
 - `internal/events` — shared operational event hub.
 - `internal/tmux` — Tmux command and account-targeting adapter.
+- `internal/mcpserver` — MCP tool surface for tmux, runbooks, and sensors.
 - `internal/tmuxlifecycle` — persisted ephemeral MCP session leases,
   reconciliation, renewal, and exact-runtime cleanup.
 - `internal/watchtower` — internal Tmux activity and unread projection.

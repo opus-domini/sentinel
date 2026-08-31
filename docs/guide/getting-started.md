@@ -24,6 +24,32 @@ operation:
 go install github.com/opus-domini/sentinel/cmd/sentinel@latest
 ```
 
+## Verify a Downloaded Release
+
+Every release ships a `sentinel-<version>-checksums.txt` covering each archive
+and SBOM by SHA-256, plus a keyless cosign bundle over that checksums file.
+`install.sh` already verifies the checksum; verify the signature when you
+download archives by hand.
+
+```bash
+VERSION=0.11.1
+cosign verify-blob \
+  --bundle "sentinel-${VERSION}-checksums.txt.bundle" \
+  --certificate-identity-regexp '^https://github\.com/opus-domini/actions/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  "sentinel-${VERSION}-checksums.txt"
+```
+
+Then check your archive against the verified checksums file:
+
+```bash
+sha256sum --ignore-missing -c "sentinel-${VERSION}-checksums.txt"
+```
+
+The signature is produced inside the shared release workflow, so Fulcio issues
+the certificate against that workflow's `job_workflow_ref`. The signing
+identity is therefore `opus-domini/actions`, not `opus-domini/sentinel`.
+
 ## Verify the Runtime
 
 Run the diagnostics before debugging in the browser:

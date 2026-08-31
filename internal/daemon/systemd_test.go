@@ -43,7 +43,7 @@ func TestRenderUserUnitIncludesExecStart(t *testing.T) {
 func TestRenderUserAutoUpdateUnitIncludesExecAndService(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserAutoUpdateUnit("/usr/local/bin/sentinel", "", "", "sentinel", managerScopeUser)
+	unit := renderUserAutoUpdateUnit("/usr/local/bin/sentinel", "", "", managerScopeUser)
 	if !strings.Contains(unit, "ExecStart=/usr/local/bin/sentinel update apply") {
 		t.Fatalf("rendered updater unit missing ExecStart: %s", unit)
 	}
@@ -524,12 +524,11 @@ func TestResolveInstallUserAutoUpdateConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name             string
-		opts             InstallUserAutoUpdateOptions
-		wantErr          string
-		checkServiceUnit string
-		checkOnCalendar  string
-		checkDelay       time.Duration
+		name            string
+		opts            InstallUserAutoUpdateOptions
+		wantErr         string
+		checkOnCalendar string
+		checkDelay      time.Duration
 	}{
 		{
 			name: "defaults filled in",
@@ -537,40 +536,19 @@ func TestResolveInstallUserAutoUpdateConfig(t *testing.T) {
 				ExecPath:     "/usr/bin/sentinel",
 				SystemdScope: "user",
 			},
-			checkServiceUnit: "sentinel",
-			checkOnCalendar:  "daily",
-			checkDelay:       time.Hour,
+			checkOnCalendar: "daily",
+			checkDelay:      time.Hour,
 		},
 		{
 			name: "explicit values preserved",
 			opts: InstallUserAutoUpdateOptions{
 				ExecPath:        "/usr/bin/sentinel",
 				SystemdScope:    "user",
-				ServiceUnit:     "my-sentinel",
 				OnCalendar:      "hourly",
 				RandomizedDelay: 30 * time.Minute,
 			},
-			checkServiceUnit: "my-sentinel",
-			checkOnCalendar:  "hourly",
-			checkDelay:       30 * time.Minute,
-		},
-		{
-			name: "whitespace-only service unit uses default",
-			opts: InstallUserAutoUpdateOptions{
-				ExecPath:     "/usr/bin/sentinel",
-				SystemdScope: "user",
-				ServiceUnit:  "   ",
-			},
-			checkServiceUnit: "sentinel",
-		},
-		{
-			name: "invalid service unit with spaces",
-			opts: InstallUserAutoUpdateOptions{
-				ExecPath:     "/usr/bin/sentinel",
-				SystemdScope: "user",
-				ServiceUnit:  "bad name",
-			},
-			wantErr: "invalid service unit name",
+			checkOnCalendar: "hourly",
+			checkDelay:      30 * time.Minute,
 		},
 		{
 			name: "invalid scope",
@@ -620,9 +598,6 @@ func TestResolveInstallUserAutoUpdateConfig(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
-			}
-			if tc.checkServiceUnit != "" && cfg.serviceUnit != tc.checkServiceUnit {
-				t.Fatalf("serviceUnit = %q, want %q", cfg.serviceUnit, tc.checkServiceUnit)
 			}
 			if tc.checkOnCalendar != "" && cfg.onCalendar != tc.checkOnCalendar {
 				t.Fatalf("onCalendar = %q, want %q", cfg.onCalendar, tc.checkOnCalendar)
@@ -707,7 +682,7 @@ func TestRenderUserUnitEscapesSpacesInPath(t *testing.T) {
 func TestRenderUserAutoUpdateUnitSystemScope(t *testing.T) {
 	t.Parallel()
 
-	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "", "", "myservice", managerScopeSystem)
+	unit := renderUserAutoUpdateUnit("/usr/bin/sentinel", "", "", managerScopeSystem)
 	if strings.Contains(unit, "--service=") {
 		t.Fatalf("unit must not override the deployment service: %s", unit)
 	}
@@ -1008,7 +983,6 @@ func TestInstallUserAutoUpdateLinuxUser(t *testing.T) {
 		execPath:        "/opt/sentinel/bin/sentinel",
 		configPath:      filepath.Join(home, ".sentinel", "config.toml"),
 		dataDir:         filepath.Join(home, ".sentinel"),
-		serviceUnit:     "sentinel",
 		onCalendar:      "daily",
 		randomizedDelay: time.Minute,
 	}
@@ -1155,7 +1129,6 @@ func TestUserAutoUpdateLifecycleLinuxUser(t *testing.T) {
 		DataDir:         dataDir,
 		Enable:          true,
 		Start:           false,
-		ServiceUnit:     "sentinel",
 		SystemdScope:    ScopeUser,
 		OnCalendar:      "hourly",
 		RandomizedDelay: time.Minute,
@@ -1259,7 +1232,7 @@ func TestInstallSystemAutoUpdateLinuxNonRoot(t *testing.T) {
 		t.Skip("test requires non-root")
 	}
 
-	err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "", "", "sentinel", "daily", time.Hour, false, false)
+	err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "", "", "daily", time.Hour, false, false)
 	if err == nil {
 		t.Fatal("expected error for non-root")
 	}
@@ -1359,7 +1332,7 @@ func TestInstallSystemAutoUpdateLinuxBadExecPath(t *testing.T) {
 	}
 
 	// Even with a valid exec path, non-root should fail with privilege error
-	err := installSystemAutoUpdateLinux("/usr/bin/sentinel\nevil", "", "", "sentinel", "daily", time.Hour, false, false)
+	err := installSystemAutoUpdateLinux("/usr/bin/sentinel\nevil", "", "", "daily", time.Hour, false, false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1393,7 +1366,7 @@ func TestInstallSystemAutoUpdateLinuxEnableStartBranches(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "", "", "sentinel", "daily", time.Hour, tc.enable, tc.start)
+			err := installSystemAutoUpdateLinux("/usr/bin/sentinel", "", "", "daily", time.Hour, tc.enable, tc.start)
 			if err == nil {
 				t.Fatal("expected error for non-root")
 			}
@@ -1608,22 +1581,6 @@ func TestWithSystemdUserBusHintNonBusError(t *testing.T) {
 	}
 }
 
-func TestResolveInstallUserAutoUpdateConfigServiceUnitWithTabs(t *testing.T) {
-	t.Parallel()
-
-	_, err := resolveInstallUserAutoUpdateConfig(InstallUserAutoUpdateOptions{
-		ExecPath:     "/usr/bin/sentinel",
-		SystemdScope: "user",
-		ServiceUnit:  "bad\tname",
-	})
-	if err == nil {
-		t.Fatal("expected error for tab in service unit name")
-	}
-	if !strings.Contains(err.Error(), "invalid service unit name") {
-		t.Fatalf("error = %v, want invalid service unit name", err)
-	}
-}
-
 func TestResolveInstallUserAutoUpdateConfigWhitespaceOnCalendar(t *testing.T) {
 	t.Parallel()
 
@@ -1637,26 +1594,6 @@ func TestResolveInstallUserAutoUpdateConfigWhitespaceOnCalendar(t *testing.T) {
 	}
 	if cfg.onCalendar != "daily" {
 		t.Fatalf("onCalendar = %q, want daily", cfg.onCalendar)
-	}
-}
-
-func TestInstallUserAutoUpdateBadServiceUnit(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS != systemdSupportedOS {
-		t.Skip("test requires Linux")
-	}
-
-	err := InstallUserAutoUpdate(InstallUserAutoUpdateOptions{
-		ExecPath:     "/usr/bin/sentinel",
-		SystemdScope: "user",
-		ServiceUnit:  "bad name",
-	})
-	if err == nil {
-		t.Fatal("expected error for invalid service unit name")
-	}
-	if !strings.Contains(err.Error(), "invalid service unit name") {
-		t.Fatalf("error = %v, want invalid service unit name", err)
 	}
 }
 

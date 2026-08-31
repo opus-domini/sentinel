@@ -121,7 +121,6 @@ func runServiceInstall(app *App, execPath, scopeRaw string, enable, start, check
 		ExecPath:     resolvedExecPath,
 		ConfigPath:   configPath,
 		DataDir:      dataDir,
-		ServiceUnit:  sentinelServiceUnit,
 		SystemdScope: scope,
 	})
 	if err != nil {
