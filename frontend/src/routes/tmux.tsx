@@ -957,11 +957,6 @@ function TmuxPage() {
     [api, pushErrorToast, sessionCRUD, sessionPresets, sessions],
   )
 
-  const activeSessionUser = useMemo(
-    () => sessions.find((s) => s.name === tabsState.activeSession)?.user ?? '',
-    [sessions, tabsState.activeSession],
-  )
-
   const activitySessions = useMemo(
     () =>
       new Set(
@@ -1035,7 +1030,6 @@ function TmuxPage() {
         activitySessions={activitySessions}
         sessionIcons={sessionIcons}
         sessionLifecycles={sessionLifecycles}
-        sessionUser={activeSessionUser}
         inspectorLoading={inspector.inspectorLoading}
         inspectorError={inspector.inspectorError}
         windows={inspector.windows}

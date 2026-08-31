@@ -303,6 +303,27 @@ type PendingInspectorOperation = {
   timeoutId: number | null
 }
 
+// The two kinds differ only in how a failure is announced and whether rolling
+// back also drops the optimistic window (a split happens inside a window that
+// already exists, so it must leave it alone).
+type InspectorOperationDescriptor = {
+  toastTitle: string
+  timeoutMessage: string
+  dropsOptimisticWindow: boolean
+}
+
+const windowCreateOperation: InspectorOperationDescriptor = {
+  toastTitle: 'New Window',
+  timeoutMessage: 'timed out waiting for window creation confirmation',
+  dropsOptimisticWindow: true,
+}
+
+const paneSplitOperation: InspectorOperationDescriptor = {
+  toastTitle: 'Split Pane',
+  timeoutMessage: 'timed out waiting for pane split confirmation',
+  dropsOptimisticWindow: false,
+}
+
 const inspectorCreateConvergenceTimeoutMs = 4_000
 
 export function useInspector(options: UseInspectorOptions) {
@@ -487,88 +508,63 @@ export function useInspector(options: UseInspectorOptions) {
     [],
   )
 
-  const settlePendingWindowCreateIfReady = useCallback(
-    (operationId: string) => {
-      const operation = pendingWindowCreateOpsRef.current.get(operationId)
+  const settlePendingInspectorOperation = useCallback(
+    (operations: Map<string, PendingInspectorOperation>, operationId: string) => {
+      const operation = operations.get(operationId)
       if (!operation || !operation.eventSeen || !operation.converged) {
         return
       }
-      clearInspectorCreateTimeout(pendingWindowCreateOpsRef.current, operationId)
-      pendingWindowCreateOpsRef.current.delete(operationId)
+      clearInspectorCreateTimeout(operations, operationId)
+      operations.delete(operationId)
     },
     [clearInspectorCreateTimeout],
   )
 
-  const settlePendingPaneSplitIfReady = useCallback(
-    (operationId: string) => {
-      const operation = pendingPaneSplitOpsRef.current.get(operationId)
-      if (!operation || !operation.eventSeen || !operation.converged) {
-        return
-      }
-      clearInspectorCreateTimeout(pendingPaneSplitOpsRef.current, operationId)
-      pendingPaneSplitOpsRef.current.delete(operationId)
-    },
-    [clearInspectorCreateTimeout],
-  )
-
-  const markPendingWindowCreateConverged = useCallback(
-    (session: string, windowIndex: number) => {
+  const markPendingInspectorOperationConverged = useCallback(
+    (operations: Map<string, PendingInspectorOperation>, session: string, windowIndex: number) => {
       const name = session.trim()
       if (name === '' || !Number.isFinite(windowIndex) || windowIndex < 0) {
         return
       }
       const normalizedIndex = Math.trunc(windowIndex)
-      for (const [operationId, operation] of pendingWindowCreateOpsRef.current) {
+      for (const [operationId, operation] of operations) {
         if (operation.sessionName !== name || operation.windowIndex !== normalizedIndex) {
           continue
         }
-        pendingWindowCreateOpsRef.current.set(operationId, { ...operation, converged: true })
-        settlePendingWindowCreateIfReady(operationId)
+        operations.set(operationId, { ...operation, converged: true })
+        settlePendingInspectorOperation(operations, operationId)
       }
     },
-    [settlePendingWindowCreateIfReady],
+    [settlePendingInspectorOperation],
   )
 
-  const markPendingPaneSplitConverged = useCallback(
-    (session: string, windowIndex: number) => {
-      const name = session.trim()
-      if (name === '' || !Number.isFinite(windowIndex) || windowIndex < 0) {
-        return
-      }
-      const normalizedIndex = Math.trunc(windowIndex)
-      for (const [operationId, operation] of pendingPaneSplitOpsRef.current) {
-        if (operation.sessionName !== name || operation.windowIndex !== normalizedIndex) {
-          continue
-        }
-        pendingPaneSplitOpsRef.current.set(operationId, { ...operation, converged: true })
-        settlePendingPaneSplitIfReady(operationId)
-      }
-    },
-    [settlePendingPaneSplitIfReady],
-  )
-
-  const rollbackPendingWindowCreate = useCallback(
-    (operationId: string, message: string, rollbackOptions?: { quiet?: boolean }) => {
-      const operation = pendingWindowCreateOpsRef.current.get(operationId)
+  const rollbackPendingInspectorOperation = useCallback(
+    (
+      operations: Map<string, PendingInspectorOperation>,
+      descriptor: InspectorOperationDescriptor,
+      operationId: string,
+      message: string,
+    ) => {
+      const operation = operations.get(operationId)
       if (!operation) {
         return
       }
-      clearInspectorCreateTimeout(pendingWindowCreateOpsRef.current, operationId)
-      pendingWindowCreateOpsRef.current.delete(operationId)
-      removePendingWindowCreate(
-        pendingCreateWindowsRef.current,
-        operation.sessionName,
-        operation.windowIndex,
-      )
+      clearInspectorCreateTimeout(operations, operationId)
+      operations.delete(operationId)
+      if (descriptor.dropsOptimisticWindow) {
+        removePendingWindowCreate(
+          pendingCreateWindowsRef.current,
+          operation.sessionName,
+          operation.windowIndex,
+        )
+      }
       clearPendingWindowPaneFloor(
         pendingWindowPaneFloorsRef.current,
         operation.sessionName,
         operation.windowIndex,
       )
-      if (!rollbackOptions?.quiet) {
-        setInspectorError(message)
-        pushErrorToast('New Window', message)
-      }
+      setInspectorError(message)
+      pushErrorToast(descriptor.toastTitle, message)
       void refreshInspectorFnRef.current(operation.sessionName, {
         background: true,
       })
@@ -577,40 +573,19 @@ export function useInspector(options: UseInspectorOptions) {
     [clearInspectorCreateTimeout, pushErrorToast, refreshSessions],
   )
 
-  const rollbackPendingPaneSplit = useCallback(
-    (operationId: string, message: string, rollbackOptions?: { quiet?: boolean }) => {
-      const operation = pendingPaneSplitOpsRef.current.get(operationId)
-      if (!operation) {
-        return
-      }
-      clearInspectorCreateTimeout(pendingPaneSplitOpsRef.current, operationId)
-      pendingPaneSplitOpsRef.current.delete(operationId)
-      clearPendingWindowPaneFloor(
-        pendingWindowPaneFloorsRef.current,
-        operation.sessionName,
-        operation.windowIndex,
-      )
-      if (!rollbackOptions?.quiet) {
-        setInspectorError(message)
-        pushErrorToast('Split Pane', message)
-      }
-      void refreshInspectorFnRef.current(operation.sessionName, {
-        background: true,
-      })
-      void refreshSessions()
-    },
-    [clearInspectorCreateTimeout, pushErrorToast, refreshSessions],
-  )
-
-  const armPendingWindowCreateTimeout = useCallback(
-    (operationId: string) => {
-      const operation = pendingWindowCreateOpsRef.current.get(operationId)
+  const armPendingInspectorTimeout = useCallback(
+    (
+      operations: Map<string, PendingInspectorOperation>,
+      descriptor: InspectorOperationDescriptor,
+      operationId: string,
+    ) => {
+      const operation = operations.get(operationId)
       if (!operation || operation.timeoutId !== null) {
         return
       }
       operation.timeoutId = window.setTimeout(() => {
         void (async () => {
-          const currentOperation = pendingWindowCreateOpsRef.current.get(operationId)
+          const currentOperation = operations.get(operationId)
           if (!currentOperation) {
             return
           }
@@ -618,55 +593,25 @@ export function useInspector(options: UseInspectorOptions) {
             background: true,
           })
           await refreshSessions()
-          const refreshedOperation = pendingWindowCreateOpsRef.current.get(operationId)
+          const refreshedOperation = operations.get(operationId)
           if (!refreshedOperation) {
             return
           }
           if (refreshedOperation.converged) {
-            clearInspectorCreateTimeout(pendingWindowCreateOpsRef.current, operationId)
-            pendingWindowCreateOpsRef.current.delete(operationId)
+            clearInspectorCreateTimeout(operations, operationId)
+            operations.delete(operationId)
             return
           }
-          rollbackPendingWindowCreate(
+          rollbackPendingInspectorOperation(
+            operations,
+            descriptor,
             operationId,
-            'timed out waiting for window creation confirmation',
+            descriptor.timeoutMessage,
           )
         })()
       }, inspectorCreateConvergenceTimeoutMs)
     },
-    [clearInspectorCreateTimeout, refreshSessions, rollbackPendingWindowCreate],
-  )
-
-  const armPendingPaneSplitTimeout = useCallback(
-    (operationId: string) => {
-      const operation = pendingPaneSplitOpsRef.current.get(operationId)
-      if (!operation || operation.timeoutId !== null) {
-        return
-      }
-      operation.timeoutId = window.setTimeout(() => {
-        void (async () => {
-          const currentOperation = pendingPaneSplitOpsRef.current.get(operationId)
-          if (!currentOperation) {
-            return
-          }
-          await refreshInspectorFnRef.current(currentOperation.sessionName, {
-            background: true,
-          })
-          await refreshSessions()
-          const refreshedOperation = pendingPaneSplitOpsRef.current.get(operationId)
-          if (!refreshedOperation) {
-            return
-          }
-          if (refreshedOperation.converged) {
-            clearInspectorCreateTimeout(pendingPaneSplitOpsRef.current, operationId)
-            pendingPaneSplitOpsRef.current.delete(operationId)
-            return
-          }
-          rollbackPendingPaneSplit(operationId, 'timed out waiting for pane split confirmation')
-        })()
-      }, inspectorCreateConvergenceTimeoutMs)
-    },
-    [clearInspectorCreateTimeout, refreshSessions, rollbackPendingPaneSplit],
+    [clearInspectorCreateTimeout, refreshSessions, rollbackPendingInspectorOperation],
   )
 
   useEffect(() => {
@@ -708,12 +653,12 @@ export function useInspector(options: UseInspectorOptions) {
       }
       for (const index of merged.confirmedWindowPaneFloors) {
         clearPendingWindowPaneFloor(pendingWindowPaneFloorsRef.current, session, index)
-        markPendingWindowCreateConverged(session, index)
-        markPendingPaneSplitConverged(session, index)
+        markPendingInspectorOperationConverged(pendingWindowCreateOpsRef.current, session, index)
+        markPendingInspectorOperationConverged(pendingPaneSplitOpsRef.current, session, index)
       }
       return merged
     },
-    [markPendingPaneSplitConverged, markPendingWindowCreateConverged],
+    [markPendingInspectorOperationConverged],
   )
 
   const applySessionActivityPatches = useCallback(
@@ -1270,18 +1215,27 @@ export function useInspector(options: UseInspectorOptions) {
         method: 'POST',
         body: JSON.stringify({ operationId }),
       })
-      armPendingWindowCreateTimeout(operationId)
-      settlePendingWindowCreateIfReady(operationId)
+      armPendingInspectorTimeout(
+        pendingWindowCreateOpsRef.current,
+        windowCreateOperation,
+        operationId,
+      )
+      settlePendingInspectorOperation(pendingWindowCreateOpsRef.current, operationId)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'failed to create window'
-      rollbackPendingWindowCreate(operationId, message)
+      rollbackPendingInspectorOperation(
+        pendingWindowCreateOpsRef.current,
+        windowCreateOperation,
+        operationId,
+        message,
+      )
     }
   }, [
     api,
-    armPendingWindowCreateTimeout,
-    rollbackPendingWindowCreate,
+    armPendingInspectorTimeout,
+    rollbackPendingInspectorOperation,
     setSessions,
-    settlePendingWindowCreateIfReady,
+    settlePendingInspectorOperation,
     tabsStateRef,
   ])
 
@@ -1598,20 +1552,25 @@ export function useInspector(options: UseInspectorOptions) {
           method: 'POST',
           body: JSON.stringify({ paneId: targetID, direction, operationId }),
         })
-        armPendingPaneSplitTimeout(operationId)
-        settlePendingPaneSplitIfReady(operationId)
+        armPendingInspectorTimeout(pendingPaneSplitOpsRef.current, paneSplitOperation, operationId)
+        settlePendingInspectorOperation(pendingPaneSplitOpsRef.current, operationId)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed to split pane'
-        rollbackPendingPaneSplit(operationId, message)
+        rollbackPendingInspectorOperation(
+          pendingPaneSplitOpsRef.current,
+          paneSplitOperation,
+          operationId,
+          message,
+        )
       }
     },
     [
       api,
-      armPendingPaneSplitTimeout,
+      armPendingInspectorTimeout,
       pushErrorToast,
-      rollbackPendingPaneSplit,
+      rollbackPendingInspectorOperation,
       setSessions,
-      settlePendingPaneSplitIfReady,
+      settlePendingInspectorOperation,
       tabsStateRef,
     ],
   )
@@ -1636,7 +1595,7 @@ export function useInspector(options: UseInspectorOptions) {
           force: true,
         })
         void refreshSessions()
-        settlePendingWindowCreateIfReady(operationId)
+        settlePendingInspectorOperation(pendingWindowCreateOpsRef.current, operationId)
         return true
       }
 
@@ -1651,13 +1610,13 @@ export function useInspector(options: UseInspectorOptions) {
           force: true,
         })
         void refreshSessions()
-        settlePendingPaneSplitIfReady(operationId)
+        settlePendingInspectorOperation(pendingPaneSplitOpsRef.current, operationId)
         return true
       }
 
       return false
     },
-    [refreshSessions, settlePendingPaneSplitIfReady, settlePendingWindowCreateIfReady],
+    [refreshSessions, settlePendingInspectorOperation],
   )
 
   const renameWindow = useCallback(

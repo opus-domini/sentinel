@@ -1593,3 +1593,137 @@ describe('useInspector – splitPane rollback', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// Tests — convergence timeout (window create and pane split share the protocol)
+// ---------------------------------------------------------------------------
+
+const convergenceTimeoutMs = 4_000
+
+describe('useInspector – convergence timeout', () => {
+  it('rolls back the optimistic window when the correlated event never arrives', async () => {
+    const opts = createMockOptions()
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(2)
+    })
+
+    vi.useFakeTimers()
+    try {
+      await act(async () => {
+        await result.current.createWindow()
+      })
+
+      expect(result.current.windows.some((windowInfo) => windowInfo.index === 2)).toBe(true)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(convergenceTimeoutMs)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(opts.pushErrorToast).toHaveBeenCalledWith(
+      'New Window',
+      'timed out waiting for window creation confirmation',
+    )
+    expect(result.current.windows.some((windowInfo) => windowInfo.index === 2)).toBe(false)
+  })
+
+  it('rolls back the optimistic split when the correlated event never arrives', async () => {
+    const opts = createMockOptions()
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.panes.length).toBe(2)
+    })
+
+    vi.useFakeTimers()
+    try {
+      await act(async () => {
+        await result.current.splitPane('vertical')
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(convergenceTimeoutMs)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(opts.pushErrorToast).toHaveBeenCalledWith(
+      'Split Pane',
+      'timed out waiting for pane split confirmation',
+    )
+    expect(
+      result.current.panes.some((paneInfo) => paneInfo.paneId.startsWith('__pending_split__')),
+    ).toBe(false)
+  })
+
+  it('settles quietly when the event lands and the window converges', async () => {
+    let created = false
+    let operationId = ''
+    const apiMock = vi.fn((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/new-window')) {
+        created = true
+        const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
+        operationId = body?.operationId ?? ''
+        return Promise.resolve(undefined)
+      }
+      if (typeof url === 'string' && url.includes('/windows')) {
+        const windows = [
+          makeWindow({ index: 0, active: true }),
+          makeWindow({ index: 1, name: 'alt', active: false }),
+        ]
+        if (created) {
+          windows.push(makeWindow({ index: 2, name: 'new', displayName: 'new', active: true }))
+        }
+        return Promise.resolve({ windows })
+      }
+      if (typeof url === 'string' && url.includes('/panes')) {
+        const panes = [
+          makePane({ windowIndex: 0, paneId: '%1', active: true }),
+          makePane({ windowIndex: 1, paneId: '%2', active: false }),
+        ]
+        if (created) {
+          panes.push(makePane({ windowIndex: 2, paneId: '%3', active: true }))
+        }
+        return Promise.resolve({ panes })
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const opts = createMockOptions({ api: apiMock as unknown as ApiFunction })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useInspector(opts), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.windows.length).toBe(2)
+    })
+
+    vi.useFakeTimers()
+    try {
+      await act(async () => {
+        await result.current.createWindow()
+      })
+
+      await act(async () => {
+        result.current.handleTmuxInspectorEvent?.({
+          action: 'new-window',
+          session: 'dev',
+          index: 2,
+          operationId,
+        })
+        await vi.advanceTimersByTimeAsync(convergenceTimeoutMs)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(opts.pushErrorToast).not.toHaveBeenCalled()
+    expect(result.current.windows.some((windowInfo) => windowInfo.index === 2)).toBe(true)
+  })
+})
