@@ -132,13 +132,27 @@ func (s *Store) Purge(ctx context.Context, activeNames []string) error {
 	return err
 }
 
-// Rename renames value.
+// Rename moves every row keyed by a tmux session name to the new name, in one
+// transaction. Renaming only the sessions row used to strand the others: the
+// watchtower reads panes filtered by session_name, so after a rename it saw no
+// prior pane and rebuilt the row from scratch, while managed windows kept
+// pointing at a name tmux no longer knows.
 func (s *Store) Rename(ctx context.Context, oldName, newName string) error {
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE sessions SET name = ? WHERE name = ?",
-		newName, oldName,
-	)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, item := range sessionScopedTables {
+		// OR REPLACE because a rename onto an existing name must not fail the
+		// whole transaction; the surviving row is the one being renamed.
+		query := "UPDATE OR REPLACE " + item.table + " SET " + item.column + " = ? WHERE " + item.column + " = ?" //nolint:gosec // fixed table and column literals
+		if _, err := tx.ExecContext(ctx, query, newName, oldName); err != nil {
+			return fmt.Errorf("rename %s: %w", item.table, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // SetIcon sets icon.

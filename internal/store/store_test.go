@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestNew(t *testing.T) {
@@ -343,4 +344,61 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatalf("New() error = %v", err)
 	}
 	return s
+}
+
+// TestRenameFollowsEverySessionKeyedTable pins that a rename is not just the
+// sessions row. The watchtower reads panes filtered by session_name, so a
+// stranded row makes the collector rebuild the pane from scratch; managed
+// windows stranded on the old name point at a session tmux no longer knows.
+func TestRenameFollowsEverySessionKeyedTable(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := newTestStore(t)
+	defer func() { _ = s.Close() }()
+
+	at := time.Date(2026, 8, 31, 4, 0, 0, 0, time.UTC)
+	if err := s.UpsertSession(ctx, "old", "h", "c"); err != nil {
+		t.Fatalf("UpsertSession() error = %v", err)
+	}
+	if err := s.UpsertWatchtowerPane(ctx, WatchtowerPaneWrite{
+		PaneID: "%9", SessionName: "old", Title: "shell", TailHash: "a",
+		Revision: 7, SeenRevision: 3, TailCapturedAt: at, ChangedAt: at, UpdatedAt: at,
+	}); err != nil {
+		t.Fatalf("UpsertWatchtowerPane() error = %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO managed_tmux_windows (id, session_name, tmux_window_id)
+		 VALUES (?, ?, ?)`, "mw-1", "old", "@3",
+	); err != nil {
+		t.Fatalf("insert managed window error = %v", err)
+	}
+
+	if err := s.Rename(ctx, "old", "new"); err != nil {
+		t.Fatalf("Rename() error = %v", err)
+	}
+
+	for _, check := range []struct{ table, column string }{
+		{"wt_panes", "session_name"},
+		{"managed_tmux_windows", "session_name"},
+	} {
+		var stranded int
+		if err := s.db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM "+check.table+" WHERE "+check.column+" = ?", "old",
+		).Scan(&stranded); err != nil {
+			t.Fatalf("count %s error = %v", check.table, err)
+		}
+		if stranded != 0 {
+			t.Errorf("%s kept %d row(s) on the old session name", check.table, stranded)
+		}
+	}
+	// The rename must not reset the unread bookkeeping it carries.
+	var revision, seen int64
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT revision, seen_revision FROM wt_panes WHERE pane_id = ?", "%9",
+	).Scan(&revision, &seen); err != nil {
+		t.Fatalf("QueryRow() error = %v", err)
+	}
+	if revision != 7 || seen != 3 {
+		t.Fatalf("revision/seen = %d/%d, want 7/3 preserved across the rename", revision, seen)
+	}
 }
