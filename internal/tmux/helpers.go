@@ -119,19 +119,6 @@ func newWindowWithOptionsVia(ctx context.Context, runFn runnerFunc, session, nam
 	return parseNewWindowOutput(out)
 }
 
-func newWindowAtVia(ctx context.Context, runFn runnerFunc, session string, index int, name, cwd string) error {
-	target := fmt.Sprintf("%s:%d", session, index)
-	args := []string{cmdNewWindow, "-d", "-t", target}
-	if strings.TrimSpace(name) != "" {
-		args = append(args, "-n", name)
-	}
-	if strings.TrimSpace(cwd) != "" {
-		args = append(args, "-c", cwd)
-	}
-	_, err := runFn(ctx, args...)
-	return err
-}
-
 func killWindowVia(ctx context.Context, runFn runnerFunc, session string, index int) error {
 	target := fmt.Sprintf("%s:%d", session, index)
 	_, err := runFn(ctx, "kill-window", "-t", target)
@@ -217,32 +204,6 @@ func splitPaneVia(ctx context.Context, runFn runnerFunc, paneID, direction strin
 		return "", err
 	}
 	return parseSplitPaneOutput(out)
-}
-
-func splitPaneInVia(ctx context.Context, runFn runnerFunc, paneID, direction, cwd string) (string, error) {
-	args := []string{cmdSplitWindow, "-d", "-P", "-F", "#{pane_id}", "-t", paneID}
-	switch direction {
-	case dirVertical:
-		args = append(args, "-h")
-	case dirHorizontal:
-		args = append(args, "-v")
-	default:
-		return "", &Error{Kind: ErrKindInvalidIdentifier, Msg: errInvalidSplitDir}
-	}
-	if strings.TrimSpace(cwd) != "" {
-		args = append(args, "-c", cwd)
-	}
-	out, err := runFn(ctx, args...)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
-}
-
-func selectLayoutVia(ctx context.Context, runFn runnerFunc, session string, index int, layout string) error {
-	target := fmt.Sprintf("%s:%d", session, index)
-	_, err := runFn(ctx, "select-layout", "-t", target, layout)
-	return err
 }
 
 func sendKeysVia(ctx context.Context, runFn runnerFunc, paneID, keys string, enter bool) error {

@@ -79,23 +79,6 @@ func TestSelectWindowVia(t *testing.T) {
 	}
 }
 
-func TestSelectLayoutVia(t *testing.T) {
-	t.Parallel()
-
-	var gotArgs []string
-	runFn := func(_ context.Context, args ...string) (string, error) {
-		gotArgs = slices.Clone(args)
-		return "", nil
-	}
-	if err := selectLayoutVia(context.Background(), runFn, "dev", 3, "tiled"); err != nil {
-		t.Fatalf("selectLayoutVia() error = %v", err)
-	}
-	want := []string{"select-layout", "-t", "dev:3", "tiled"}
-	if !slices.Equal(gotArgs, want) {
-		t.Fatalf("args = %#v, want %#v", gotArgs, want)
-	}
-}
-
 func TestKillWindowVia(t *testing.T) {
 	t.Parallel()
 
@@ -117,100 +100,6 @@ func TestKillWindowVia(t *testing.T) {
 	if err := killWindowVia(context.Background(), errRun, "dev", 1); !errors.Is(err, wantErr) {
 		t.Fatalf("killWindowVia() error = %v, want %v", err, wantErr)
 	}
-}
-
-func TestNewWindowAtVia(t *testing.T) {
-	t.Parallel()
-
-	t.Run("with name and cwd", func(t *testing.T) {
-		t.Parallel()
-
-		var gotArgs []string
-		runFn := func(_ context.Context, args ...string) (string, error) {
-			gotArgs = slices.Clone(args)
-			return "", nil
-		}
-		if err := newWindowAtVia(context.Background(), runFn, "dev", 2, "logs", "/tmp"); err != nil {
-			t.Fatalf("newWindowAtVia() error = %v", err)
-		}
-		for _, want := range []string{"-d", "-t", "dev:2", "-n", "logs", "-c", "/tmp"} {
-			if !slices.Contains(gotArgs, want) {
-				t.Fatalf("args = %#v, missing %q", gotArgs, want)
-			}
-		}
-	})
-
-	t.Run("without name or cwd", func(t *testing.T) {
-		t.Parallel()
-
-		var gotArgs []string
-		runFn := func(_ context.Context, args ...string) (string, error) {
-			gotArgs = slices.Clone(args)
-			return "", nil
-		}
-		if err := newWindowAtVia(context.Background(), runFn, "dev", 0, "  ", " "); err != nil {
-			t.Fatalf("newWindowAtVia() error = %v", err)
-		}
-		if slices.Contains(gotArgs, "-n") || slices.Contains(gotArgs, "-c") {
-			t.Fatalf("args = %#v, should omit -n and -c", gotArgs)
-		}
-	})
-}
-
-func TestSplitPaneInVia(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		direction string
-		wantFlag  string
-	}{
-		{name: "vertical", direction: dirVertical, wantFlag: "-h"},
-		{name: "horizontal", direction: dirHorizontal, wantFlag: "-v"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			var gotArgs []string
-			runFn := func(_ context.Context, args ...string) (string, error) {
-				gotArgs = slices.Clone(args)
-				return "  %7\n", nil
-			}
-			paneID, err := splitPaneInVia(context.Background(), runFn, "%1", tt.direction, "/work")
-			if err != nil {
-				t.Fatalf("splitPaneInVia() error = %v", err)
-			}
-			if paneID != "%7" {
-				t.Fatalf("paneID = %q, want %%7", paneID)
-			}
-			if !slices.Contains(gotArgs, tt.wantFlag) {
-				t.Fatalf("args = %#v, want flag %s", gotArgs, tt.wantFlag)
-			}
-			if !slices.Contains(gotArgs, "-c") {
-				t.Fatalf("args = %#v, want -c for cwd", gotArgs)
-			}
-		})
-	}
-
-	t.Run("invalid direction", func(t *testing.T) {
-		t.Parallel()
-
-		runFn := func(_ context.Context, _ ...string) (string, error) { return "", nil }
-		if _, err := splitPaneInVia(context.Background(), runFn, "%1", "diagonal", ""); !IsKind(err, ErrKindInvalidIdentifier) {
-			t.Fatalf("splitPaneInVia() error = %v, want ErrKindInvalidIdentifier", err)
-		}
-	})
-
-	t.Run("runner error", func(t *testing.T) {
-		t.Parallel()
-
-		wantErr := errors.New("fail")
-		runFn := func(_ context.Context, _ ...string) (string, error) { return "", wantErr }
-		if _, err := splitPaneInVia(context.Background(), runFn, "%1", dirVertical, ""); !errors.Is(err, wantErr) {
-			t.Fatalf("splitPaneInVia() error = %v, want %v", err, wantErr)
-		}
-	})
 }
 
 func TestNewWindowWithOptionsVia(t *testing.T) {

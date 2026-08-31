@@ -845,64 +845,6 @@ func TestSplitPane(t *testing.T) {
 	})
 }
 
-// --- SplitPaneIn ---
-
-func TestSplitPaneIn(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("vertical_with_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			joined := strings.Join(args, " ")
-			if !strings.Contains(joined, "-h") {
-				t.Errorf("expected -h for vertical, got: %v", args)
-			}
-			if !strings.Contains(joined, "-c /home/user") {
-				t.Errorf("expected -c /home/user, got: %v", args)
-			}
-			return "%5", nil
-		})
-
-		paneID, err := SplitPaneIn(ctx, "%0", "vertical", "/home/user")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if paneID != "%5" {
-			t.Errorf("expected paneID %%5, got %q", paneID)
-		}
-	})
-
-	t.Run("horizontal_no_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			joined := strings.Join(args, " ")
-			if !strings.Contains(joined, "-v") {
-				t.Errorf("expected -v for horizontal, got: %v", args)
-			}
-			if strings.Contains(joined, "-c") {
-				t.Errorf("expected no -c flag for empty cwd, got: %v", args)
-			}
-			return "%6", nil
-		})
-
-		paneID, err := SplitPaneIn(ctx, "%0", "horizontal", "")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if paneID != "%6" {
-			t.Errorf("expected paneID %%6, got %q", paneID)
-		}
-	})
-
-	t.Run("invalid_direction", func(t *testing.T) {
-		_, err := SplitPaneIn(ctx, "%0", "diagonal", "/tmp")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-		if !IsKind(err, ErrKindInvalidIdentifier) {
-			t.Errorf("expected ErrKindInvalidIdentifier, got %v", err)
-		}
-	})
-}
-
 // --- SendKeys ---
 
 func TestSendKeys(t *testing.T) {
@@ -1381,51 +1323,6 @@ func assertNewWindowArgMissing(t *testing.T, args []string, flag string) {
 	}
 }
 
-// --- NewWindowAt ---
-
-func TestNewWindowAt(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("with_name_and_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			joined := strings.Join(args, " ")
-			if !strings.Contains(joined, "-n code") {
-				t.Errorf("expected -n code, got: %v", args)
-			}
-			if !strings.Contains(joined, "-c /home/user") {
-				t.Errorf("expected -c /home/user, got: %v", args)
-			}
-			if !strings.Contains(joined, "-t dev:2") {
-				t.Errorf("expected -t dev:2, got: %v", args)
-			}
-			return "", nil
-		})
-
-		err := NewWindowAt(ctx, "dev", 2, "code", "/home/user")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("without_name_or_cwd", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			joined := strings.Join(args, " ")
-			if strings.Contains(joined, "-n") {
-				t.Errorf("expected no -n flag, got: %v", args)
-			}
-			if strings.Contains(joined, "-c") {
-				t.Errorf("expected no -c flag, got: %v", args)
-			}
-			return "", nil
-		})
-
-		err := NewWindowAt(ctx, "dev", 0, "", "")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-}
-
 // --- Simple wrappers (RenameSession, KillSession, SelectWindow, etc.) ---
 
 func TestSimpleWrappers(t *testing.T) {
@@ -1547,18 +1444,6 @@ func TestSimpleWrappers(t *testing.T) {
 			return "", nil
 		})
 		if err := SelectPane(ctx, "%7"); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("SelectLayout", func(t *testing.T) {
-		setRun(t, func(_ context.Context, args ...string) (string, error) {
-			if args[0] != "select-layout" {
-				t.Errorf("expected select-layout, got %s", args[0])
-			}
-			return "", nil
-		})
-		if err := SelectLayout(ctx, "dev", 0, "even-horizontal"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
