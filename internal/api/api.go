@@ -264,6 +264,25 @@ type Handler struct {
 	runCancel context.CancelFunc
 	wg        sync.WaitGroup
 	runbooks  *runbook.Manager
+
+	// stopping (under stoppingMu) makes wg.Add and Shutdown's wg.Wait mutually
+	// exclusive, so a request goroutine cannot register background work after
+	// Shutdown began waiting — which sync.WaitGroup reports as misuse.
+	stoppingMu sync.Mutex
+	stopping   bool
+}
+
+// beginBackgroundRun registers a background goroutine with the wait group
+// unless the handler is shutting down. It must wrap the matching wg.Done in
+// the spawned goroutine.
+func (h *Handler) beginBackgroundRun() bool {
+	h.stoppingMu.Lock()
+	defer h.stoppingMu.Unlock()
+	if h.stopping {
+		return false
+	}
+	h.wg.Add(1)
+	return true
 }
 
 const (
@@ -341,6 +360,9 @@ func (h *Handler) Shutdown(ctx context.Context) {
 	if h == nil {
 		return
 	}
+	h.stoppingMu.Lock()
+	h.stopping = true
+	h.stoppingMu.Unlock()
 	if h.runCancel != nil {
 		h.runCancel()
 	}

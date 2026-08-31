@@ -222,6 +222,28 @@ func TestRegisterOpsServiceErrorPaths(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects unsupported manager", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHandler(t, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{"name":"api","unit":"api.service","manager":"openrc","scope":"system"}`))
+		h.registerOpsService(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("rejects unsupported scope", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHandler(t, nil)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/services", strings.NewReader(`{"name":"api","unit":"api.service","manager":"systemd","scope":"cluster"}`))
+		h.registerOpsService(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
 	t.Run("rejects duplicate registration", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHandler(t, nil)
@@ -332,6 +354,60 @@ func TestOpsUnitActionErrorPaths(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(`{"unit":"x.service","action":"start","manager":"systemd","scope":"system"}`))
 		h.opsUnitAction(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("maps invalid unit error to 400", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHandler(t, nil)
+		h.ops = &mockOpsControlPlane{
+			actByUnitFn: func(context.Context, string, string, string, string) error {
+				return opsplane.ErrInvalidUnit
+			},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/ops/units/action", strings.NewReader(`{"unit":"x.service","action":"start","manager":"systemd","scope":"system"}`))
+		h.opsUnitAction(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+}
+
+// A malformed `unit` query parameter is a client input error on the
+// unit-addressed read endpoints, not a host failure.
+func TestOpsUnitReadHandlersMapInvalidUnitTo400(t *testing.T) {
+	t.Parallel()
+
+	t.Run("status", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHandler(t, nil)
+		h.ops = &mockOpsControlPlane{
+			inspectByUnitFn: func(context.Context, string, string, string) (opsplane.ServiceInspect, error) {
+				return opsplane.ServiceInspect{}, opsplane.ErrInvalidUnit
+			},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/services/unit/status?unit=x%0A.service&manager=systemd&scope=system", nil)
+		h.opsUnitStatus(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
+		}
+	})
+
+	t.Run("logs", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHandler(t, nil)
+		h.ops = &mockOpsControlPlane{
+			logsByUnitFn: func(context.Context, string, string, string, int) (string, error) {
+				return "", opsplane.ErrInvalidUnit
+			},
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/api/ops/services/unit/logs?unit=x%0A.service&manager=systemd&scope=system", nil)
+		h.opsUnitLogs(w, r)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
 		}

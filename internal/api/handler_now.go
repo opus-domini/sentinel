@@ -14,6 +14,10 @@ import (
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
+// nowFanOutTimeout bounds the four Now loads. It matches the budget the same
+// tmux projection already gets in listSessions.
+const nowFanOutTimeout = 5 * time.Second
+
 type nowTmuxResult struct {
 	sessions []enrichedSession
 	presets  []store.SessionPreset
@@ -42,6 +46,11 @@ func (h *Handler) now(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bound the fan-out so a stuck tmux or systemctl degrades to an
+	// unavailable source instead of holding the request until WriteTimeout.
+	ctx, cancel := context.WithTimeout(r.Context(), nowFanOutTimeout)
+	defer cancel()
+
 	var (
 		tmuxResult     nowTmuxResult
 		servicesResult nowServicesResult
@@ -53,19 +62,19 @@ func (h *Handler) now(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		defer wg.Done()
-		tmuxResult = h.loadNowTmux(r.Context())
+		tmuxResult = h.loadNowTmux(ctx)
 	}()
 	go func() {
 		defer wg.Done()
-		servicesResult = h.loadNowServices(r.Context())
+		servicesResult = h.loadNowServices(ctx)
 	}()
 	go func() {
 		defer wg.Done()
-		metricsResult = h.loadNowMetrics(r.Context())
+		metricsResult = h.loadNowMetrics(ctx)
 	}()
 	go func() {
 		defer wg.Done()
-		runbooksResult = h.loadNowRunbooks(r.Context())
+		runbooksResult = h.loadNowRunbooks(ctx)
 	}()
 	wg.Wait()
 

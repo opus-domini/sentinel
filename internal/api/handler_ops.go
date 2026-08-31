@@ -226,6 +226,18 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is invalid", nil)
 		return
 	}
+	// The store normalises and defaults these, but an unsupported value would be
+	// stored verbatim and leave the service permanently unprobeable.
+	req.Manager = strings.ToLower(strings.TrimSpace(req.Manager))
+	req.Scope = strings.ToLower(strings.TrimSpace(req.Scope))
+	if req.Manager != "" && !slices.Contains(validManagers, req.Manager) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "manager must be systemd or launchd", nil)
+		return
+	}
+	if !slices.Contains(validScopes, req.Scope) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "scope must be user or system", nil)
+		return
+	}
 	if opsplane.IsBuiltinServiceReference(req.Name, req.Unit) {
 		writeError(w, http.StatusConflict, "OPS_SERVICE_BUILTIN", "built-in services are tracked from the runtime", nil)
 		return
@@ -241,7 +253,7 @@ func (h *Handler) registerOpsService(w http.ResponseWriter, r *http.Request) {
 		Unit:        req.Unit,
 		Scope:       req.Scope,
 	}); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint") {
+		if isUniqueConstraintError(err) {
 			writeError(w, http.StatusConflict, "OPS_SERVICE_EXISTS", "service already registered", nil)
 		} else {
 			slog.Warn("register ops service failed", keyName, req.Name, "err", err)
@@ -470,9 +482,14 @@ func (h *Handler) opsUnitAction(w http.ResponseWriter, r *http.Request) {
 
 	actionResult, err := h.ops.ActByUnit(ctx, req.Unit, req.Scope, req.Manager, req.Action)
 	if err != nil {
-		if errors.Is(err, opsplane.ErrInvalidAction) {
+		switch {
+		case errors.Is(err, opsplane.ErrInvalidAction):
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid action", nil)
-		} else {
+		case errors.Is(err, opsplane.ErrInvalidUnit):
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is invalid", nil)
+		case errors.Is(err, opsplane.ErrServiceNotFound):
+			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
+		default:
 			slog.Warn("ops unit action failed", "unit", req.Unit, keyAction, req.Action, "err", err)
 			writeError(w, http.StatusInternalServerError, "OPS_ACTION_FAILED", "unit action failed", nil)
 		}
@@ -534,8 +551,15 @@ func (h *Handler) opsUnitStatus(w http.ResponseWriter, r *http.Request) {
 
 	status, err := h.ops.InspectByUnit(ctx, unit, scope, manager)
 	if err != nil {
-		slog.Warn("ops unit inspect failed", "unit", unit, "err", err)
-		writeError(w, http.StatusInternalServerError, "OPS_ACTION_FAILED", "failed to inspect unit", nil)
+		switch {
+		case errors.Is(err, opsplane.ErrInvalidUnit):
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is invalid", nil)
+		case errors.Is(err, opsplane.ErrServiceNotFound):
+			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
+		default:
+			slog.Warn("ops unit inspect failed", "unit", unit, "err", err)
+			writeError(w, http.StatusInternalServerError, "OPS_ACTION_FAILED", "failed to inspect unit", nil)
+		}
 		return
 	}
 
@@ -584,8 +608,15 @@ func (h *Handler) opsUnitLogs(w http.ResponseWriter, r *http.Request) {
 
 	output, err := h.ops.LogsByUnit(ctx, unit, scope, manager, lines, since)
 	if err != nil {
-		slog.Warn("ops unit logs failed", "unit", unit, "err", err)
-		writeError(w, http.StatusInternalServerError, "OPS_LOGS_FAILED", "failed to fetch unit logs", nil)
+		switch {
+		case errors.Is(err, opsplane.ErrInvalidUnit):
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "unit is invalid", nil)
+		case errors.Is(err, opsplane.ErrServiceNotFound):
+			writeError(w, http.StatusNotFound, "OPS_SERVICE_NOT_FOUND", "service not found", nil)
+		default:
+			slog.Warn("ops unit logs failed", "unit", unit, "err", err)
+			writeError(w, http.StatusInternalServerError, "OPS_LOGS_FAILED", "failed to fetch unit logs", nil)
+		}
 		return
 	}
 

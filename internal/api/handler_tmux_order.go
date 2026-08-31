@@ -48,9 +48,8 @@ func (h *Handler) reorderSessionPresets(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) reorderWindows(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 

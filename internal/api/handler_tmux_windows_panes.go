@@ -17,9 +17,8 @@ import (
 )
 
 func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -96,9 +95,8 @@ func (h *Handler) listWindows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -163,9 +161,8 @@ func (h *Handler) listPanes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) markSessionSeen(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 	if h.repo == nil {
@@ -316,9 +313,8 @@ func buildSeenResponsePayload(session, scope string, acked bool, globalRev int64
 }
 
 func (h *Handler) selectWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -350,9 +346,8 @@ func (h *Handler) selectWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) selectPane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -372,12 +367,7 @@ func (h *Handler) selectPane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
-		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			writeTmuxError(w, err)
-			return
-		}
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+	if !h.requirePaneInSession(ctx, w, session, req.PaneID) {
 		return
 	}
 	if err := h.tmuxForSession(ctx, session).SelectPane(ctx, req.PaneID); err != nil {
@@ -393,9 +383,8 @@ func (h *Handler) selectPane(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renameWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -441,9 +430,8 @@ func (h *Handler) renameWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -469,12 +457,7 @@ func (h *Handler) renamePane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
-		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			writeTmuxError(w, err)
-			return
-		}
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+	if !h.requirePaneInSession(ctx, w, session, req.PaneID) {
 		return
 	}
 	if err := h.tmuxForSession(ctx, session).RenamePane(ctx, req.PaneID, req.Title); err != nil {
@@ -535,9 +518,8 @@ func defaultPaneTitle(paneID string) string {
 }
 
 func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -605,9 +587,8 @@ func (h *Handler) newWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -650,9 +631,8 @@ func (h *Handler) killWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -672,12 +652,7 @@ func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
-		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			writeTmuxError(w, err)
-			return
-		}
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+	if !h.requirePaneInSession(ctx, w, session, req.PaneID) {
 		return
 	}
 	if err := h.tmuxForSession(ctx, session).KillPane(ctx, req.PaneID); err != nil {
@@ -694,9 +669,8 @@ func (h *Handler) killPane(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -724,12 +698,7 @@ func (h *Handler) splitPane(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	if err := h.ensureSessionPane(ctx, session, req.PaneID); err != nil {
-		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
-			writeTmuxError(w, err)
-			return
-		}
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+	if !h.requirePaneInSession(ctx, w, session, req.PaneID) {
 		return
 	}
 	svc := h.tmuxForSession(ctx, session)

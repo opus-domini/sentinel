@@ -341,3 +341,113 @@ func healthyNowSources() nowSources {
 		Runbooks: nowSource{Status: nowSourceCurrent, ObservedAt: observedAt},
 	}
 }
+
+// The failed-service → runbook join is the most valuable thing /api/now does:
+// it turns an attention item into an actionable CTA. Cover the join itself,
+// the exclusion of disabled runbooks, and a runbook targeting another service.
+func TestBuildNowModelJoinsFailedServiceToRunbook(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	failed := opsplane.ServiceStatus{Name: "sentinel", ActiveState: "failed"}
+
+	cases := []struct {
+		name        string
+		runbooks    []store.OpsRunbook
+		wantRunbook string
+	}{
+		{
+			name: "enabled runbook targeting the failed service is attached",
+			runbooks: []store.OpsRunbook{{
+				ID:            "rb-1",
+				Name:          "Restart Sentinel",
+				Enabled:       true,
+				TargetService: "sentinel",
+			}},
+			wantRunbook: "rb-1",
+		},
+		{
+			name: "disabled runbook is not attached",
+			runbooks: []store.OpsRunbook{{
+				ID:            "rb-1",
+				Name:          "Restart Sentinel",
+				Enabled:       false,
+				TargetService: "sentinel",
+			}},
+			wantRunbook: "",
+		},
+		{
+			name: "runbook targeting another service is not attached",
+			runbooks: []store.OpsRunbook{{
+				ID:            "rb-2",
+				Name:          "Restart Postgres",
+				Enabled:       true,
+				TargetService: "postgres",
+			}},
+			wantRunbook: "",
+		},
+		{
+			name:        "runbook without a target service is not attached",
+			runbooks:    []store.OpsRunbook{{ID: "rb-3", Name: "Ad hoc", Enabled: true}},
+			wantRunbook: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			model := buildNowModel(nowModelInput{
+				GeneratedAt: base,
+				Services:    []opsplane.ServiceStatus{failed},
+				Metrics:     normalNowPosture(base),
+				Runbooks:    tc.runbooks,
+				Sources:     healthyNowSources(),
+			})
+
+			if len(model.Attention.Visible) != 1 {
+				t.Fatalf("visible = %d, want 1", len(model.Attention.Visible))
+			}
+			item := model.Attention.Visible[0]
+			if item.Type != nowAttentionServiceFailed {
+				t.Fatalf("type = %q, want %q", item.Type, nowAttentionServiceFailed)
+			}
+			if tc.wantRunbook == "" {
+				if item.Runbook != nil {
+					t.Fatalf("runbook = %+v, want nil", item.Runbook)
+				}
+				return
+			}
+			if item.Runbook == nil {
+				t.Fatal("runbook = nil, want a reference")
+			}
+			if item.Runbook.ID != tc.wantRunbook {
+				t.Fatalf("runbook id = %q, want %q", item.Runbook.ID, tc.wantRunbook)
+			}
+			// The reference must carry non-nil collections so the SPA can render
+			// the CTA form without a null guard.
+			if item.Runbook.Parameters == nil || item.Runbook.Steps == nil {
+				t.Fatalf("runbook reference has nil collections: %+v", item.Runbook)
+			}
+		})
+	}
+}
+
+// /api/now must degrade to an unavailable runbooks source rather than fail the
+// whole response when the runbook store cannot be read.
+func TestUnavailableNowRunbooksReportsDegradedSource(t *testing.T) {
+	t.Parallel()
+
+	result := unavailableNowRunbooks()
+	if result.source.Status != nowSourceUnavailable {
+		t.Fatalf("status = %q, want %q", result.source.Status, nowSourceUnavailable)
+	}
+	if result.source.Message != "runbooks_unavailable" {
+		t.Fatalf("message = %q, want runbooks_unavailable", result.source.Message)
+	}
+	if result.runbooks == nil || result.active == nil {
+		t.Fatalf("degraded result must carry empty, non-nil slices: %+v", result)
+	}
+	if len(result.runbooks) != 0 || len(result.active) != 0 {
+		t.Fatalf("degraded result must be empty: %+v", result)
+	}
+}
