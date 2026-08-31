@@ -492,6 +492,44 @@ func TestAttachWSTmuxError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// attachWS — registered target user rejected by the target-user policy
+// ---------------------------------------------------------------------------
+
+func TestAttachWSRejectsDisallowedTargetUser(t *testing.T) {
+	t.Parallel()
+
+	var probed bool
+	originalExists := tmuxSessionExistsFn
+	t.Cleanup(func() { tmuxSessionExistsFn = originalExists })
+	tmuxSessionExistsFn = func(_ context.Context, _ string) (bool, error) {
+		probed = true
+		return true, nil
+	}
+
+	// postgres is a known system user but is off the allowlist, so a mapping
+	// persisted before the allowlist was narrowed must not become a PTY.
+	guard := security.NewWithMultiUser("", nil, security.CookieSecureNever, security.MultiUserConfig{
+		AllowedUsers: []string{"deploy"},
+		SystemUsers:  []string{"deploy", "postgres"},
+	})
+	h := &Handler{
+		guard:             guard,
+		sessionUserLookup: func(string) string { return "postgres" },
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ws/tmux?session=db", nil)
+
+	h.attachWS(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+	if probed {
+		t.Fatal("attachWS probed tmux for a session it was not allowed to attach")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // attachLogsWS — missing service/unit param
 // ---------------------------------------------------------------------------
 

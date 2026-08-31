@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opus-domini/sentinel/internal/security"
 	"github.com/opus-domini/sentinel/internal/store"
 	"github.com/opus-domini/sentinel/internal/tmux"
 )
@@ -19,6 +20,55 @@ func TestSessionPresetHandlers(t *testing.T) {
 	t.Run("launch creates session and records launch", testSessionPresetLaunchCreatesSessionAndRecordsLaunch)
 	t.Run("launch existing session opens pinned session", testSessionPresetLaunchExistingSession)
 	t.Run("create session accepts optional icon", testSessionPresetCreateSessionAcceptsOptionalIcon)
+	t.Run("write refuses a target user the policy rejects", testSessionPresetWriteRefusesDisallowedUser)
+}
+
+// A preset is a launch capability: a user the policy forbids must be refused on
+// the write, not only when the preset is later launched.
+func testSessionPresetWriteRefusesDisallowedUser(t *testing.T) {
+	t.Parallel()
+
+	h, st := newTestHandler(t, &mockTmux{})
+	h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
+		AllowedUsers: []string{"deploy"},
+		SystemUsers:  []string{"deploy", "root"},
+	})
+
+	createW := httptest.NewRecorder()
+	createR := httptest.NewRequest(http.MethodPost, "/api/tmux/session-presets",
+		strings.NewReader(`{"name":"rooted","cwd":"/root","icon":"server","user":"root"}`))
+	h.createSessionPreset(createW, createR)
+	if createW.Code != http.StatusForbidden {
+		t.Fatalf("create status = %d, want 403; body=%s", createW.Code, createW.Body.String())
+	}
+	presets, err := st.ListSessionPresets(context.Background())
+	if err != nil {
+		t.Fatalf("ListSessionPresets() error = %v", err)
+	}
+	if len(presets) != 0 {
+		t.Fatalf("presets = %#v, want none persisted", presets)
+	}
+
+	if _, err := st.CreateSessionPreset(context.Background(), store.SessionPresetWrite{
+		Name: "api", Cwd: "/srv/api", Icon: "server", User: "deploy",
+	}); err != nil {
+		t.Fatalf("CreateSessionPreset() error = %v", err)
+	}
+	updateW := httptest.NewRecorder()
+	updateR := httptest.NewRequest(http.MethodPut, "/api/tmux/session-presets/api",
+		strings.NewReader(`{"name":"api","cwd":"/srv/api","icon":"server","user":"root"}`))
+	updateR.SetPathValue("preset", "api")
+	h.updateSessionPreset(updateW, updateR)
+	if updateW.Code != http.StatusForbidden {
+		t.Fatalf("update status = %d, want 403; body=%s", updateW.Code, updateW.Body.String())
+	}
+	stored, err := st.ListSessionPresets(context.Background())
+	if err != nil {
+		t.Fatalf("ListSessionPresets() error = %v", err)
+	}
+	if len(stored) != 1 || stored[0].User != "deploy" {
+		t.Fatalf("presets = %#v, want the original deploy preset untouched", stored)
+	}
 }
 
 func testSessionPresetCreateListUpdateDelete(t *testing.T) {

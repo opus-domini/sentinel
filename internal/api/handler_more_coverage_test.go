@@ -302,9 +302,17 @@ func TestTmuxForUserAndSessionUser(t *testing.T) {
 		t.Fatalf("SessionUser(unknown) = %q, want empty", got)
 	}
 
+	h.guard = security.NewWithMultiUser("", nil, security.CookieSecureAuto, security.MultiUserConfig{
+		SystemUsers: []string{"postgres"},
+	})
 	h.registerSessionUser("dev", "postgres")
 	if got := h.SessionUser("dev"); got != "postgres" {
 		t.Fatalf("SessionUser(dev) = %q, want postgres", got)
+	}
+	// A user the target-user policy rejects never enters the registry.
+	h.registerSessionUser("rogue", "root")
+	if got := h.SessionUser("rogue"); got != "" {
+		t.Fatalf("SessionUser(rogue) = %q, want empty", got)
 	}
 	// Empty user is a no-op.
 	h.registerSessionUser("noop", "")

@@ -29,7 +29,17 @@ type pinnedSessionStarter interface {
 
 type pinnedSessionStarterFactory func(user string) pinnedSessionStarter
 
-func restorePinnedSessions(ctx context.Context, repo pinnedSessionStore, starterForUser pinnedSessionStarterFactory) (int, error) {
+// authorizeTargetUser reports whether a stored target user may still be used to
+// launch work. Restore runs at boot from rows written under an older policy, so
+// the preset user is revalidated here rather than trusted.
+type authorizeTargetUser func(user string) error
+
+func restorePinnedSessions(
+	ctx context.Context,
+	repo pinnedSessionStore,
+	starterForUser pinnedSessionStarterFactory,
+	authorize authorizeTargetUser,
+) (int, error) {
 	presets, err := repo.ListSessionPresets(ctx)
 	if err != nil {
 		return 0, err
@@ -37,7 +47,15 @@ func restorePinnedSessions(ctx context.Context, repo pinnedSessionStore, starter
 
 	restored := 0
 	for _, preset := range presets {
-		tm := starterForUser(strings.TrimSpace(preset.User))
+		user := strings.TrimSpace(preset.User)
+		if authorize != nil {
+			if err := authorize(user); err != nil {
+				slog.Warn("skipping pinned session rejected by target-user policy",
+					"session", preset.Name, "target_user", user, "err", err)
+				continue
+			}
+		}
+		tm := starterForUser(user)
 		created := true
 		err := tm.CreateSession(ctx, preset.Name, preset.Cwd)
 		if err != nil && !tmux.IsKind(err, tmux.ErrKindSessionExists) {

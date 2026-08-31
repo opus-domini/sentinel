@@ -17,6 +17,31 @@ import (
 
 const maxSessionNameVariants = 99
 
+// sessionParam reads the session path value shared by every session-scoped tmux
+// route. It writes the 400 response itself, so callers only branch on ok.
+func sessionParam(w http.ResponseWriter, r *http.Request) (string, bool) {
+	session := strings.TrimSpace(r.PathValue(keySession))
+	if !validate.SessionName(session) {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+		return "", false
+	}
+	return session, true
+}
+
+// requirePaneInSession checks that paneID belongs to the live session. It writes
+// the response itself, so callers only branch on the boolean.
+func (h *Handler) requirePaneInSession(ctx context.Context, w http.ResponseWriter, session, paneID string) bool {
+	if err := h.ensureSessionPane(ctx, session, paneID); err != nil {
+		if tmux.IsKind(err, tmux.ErrKindSessionNotFound) {
+			writeTmuxError(w, err)
+			return false
+		}
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "paneId does not belong to session", nil)
+		return false
+	}
+	return true
+}
+
 func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
@@ -136,7 +161,7 @@ func (h *Handler) tmuxForUser(user string) tmuxService {
 // tmux servers as a fallback (the registry can be lost on restart).
 func (h *Handler) tmuxForSession(ctx context.Context, session string) tmuxService {
 	if user, ok := h.sessionUsers.Load(session); ok {
-		if u, _ := user.(string); u != "" {
+		if u, _ := user.(string); u != "" && h.authorizeSessionUser(session, u) {
 			return tmux.Service{User: u}
 		}
 	}
@@ -153,6 +178,21 @@ func (h *Handler) tmuxForSession(ctx context.Context, session string) tmuxServic
 	}
 
 	return h.tmux
+}
+
+// authorizeSessionUser is the single target-user gate for the session registry.
+// Every write into the registry and every read that promotes a stored name to
+// an executable tmux service goes through it, so narrowing allowed_users or
+// turning off allow_root_target also disarms mappings that were persisted
+// before the change. A rejected mapping is dropped and logged, never silently
+// honoured.
+func (h *Handler) authorizeSessionUser(session, user string) bool {
+	if err := h.guard.ValidateTargetUser(user); err != nil {
+		slog.Warn("session user mapping rejected by target-user policy",
+			keySession, session, "target_user", user, "err", err)
+		return false
+	}
+	return true
 }
 
 // SessionUser returns the OS user that owns the given session, or "".
@@ -191,6 +231,9 @@ func (h *Handler) registerSessionUser(session, user string) {
 	if user == "" {
 		return
 	}
+	if !h.authorizeSessionUser(session, user) {
+		return
+	}
 	h.sessionUsers.Store(session, user)
 	if h.repo != nil {
 		_ = h.repo.SetSessionUser(context.Background(), session, user)
@@ -224,7 +267,9 @@ func (h *Handler) populateSessionUsersFromPresets(ctx context.Context) {
 	// Load from dedicated session_users table first.
 	if userMap, err := h.repo.ListSessionUsers(ctx); err == nil {
 		for session, user := range userMap {
-			h.sessionUsers.Store(session, user)
+			if h.authorizeSessionUser(session, user) {
+				h.sessionUsers.Store(session, user)
+			}
 		}
 	}
 	// Also load pinned session presets, which may have user overrides.
@@ -234,16 +279,15 @@ func (h *Handler) populateSessionUsersFromPresets(ctx context.Context) {
 		return
 	}
 	for _, preset := range presets {
-		if preset.User != "" {
+		if preset.User != "" && h.authorizeSessionUser(preset.Name, preset.User) {
 			h.sessionUsers.Store(preset.Name, preset.User)
 		}
 	}
 }
 
 func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid source session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -300,9 +344,8 @@ func (h *Handler) renameSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) setSessionIcon(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
@@ -334,9 +377,8 @@ func (h *Handler) setSessionIcon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
-	session := strings.TrimSpace(r.PathValue(keySession))
-	if !validate.SessionName(session) {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session name", nil)
+	session, ok := sessionParam(w, r)
+	if !ok {
 		return
 	}
 
