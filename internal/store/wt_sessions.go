@@ -84,7 +84,17 @@ func (s *Store) UpsertWatchtowerSession(ctx context.Context, row WatchtowerSessi
 			unread_windows = excluded.unread_windows,
 			unread_panes = excluded.unread_panes,
 			rev = excluded.rev,
-			updated_at = excluded.updated_at`,
+			updated_at = excluded.updated_at
+		 -- Same per-tick write elision as wt_panes: skip the update when no
+		 -- observable column moved. updated_at is excluded from the comparison
+		 -- because the collector always sends "now" and nothing reads it.
+		 WHERE (attached, windows, panes, activity_at, last_preview,
+		        last_preview_at, last_preview_pane_id, unread_windows,
+		        unread_panes, rev)
+		    IS NOT (excluded.attached, excluded.windows, excluded.panes,
+		        excluded.activity_at, excluded.last_preview, excluded.last_preview_at,
+		        excluded.last_preview_pane_id, excluded.unread_windows,
+		        excluded.unread_panes, excluded.rev)`,
 		name,
 		row.Attached,
 		row.Windows,

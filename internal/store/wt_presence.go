@@ -44,47 +44,6 @@ func (s *Store) UpsertWatchtowerPresence(ctx context.Context, row WatchtowerPres
 	return err
 }
 
-// ListWatchtowerPresence lists watchtower presence.
-func (s *Store) ListWatchtowerPresence(ctx context.Context) ([]WatchtowerPresence, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT terminal_id, session_name, window_index, pane_id,
-		        visible, focused, updated_at, expires_at
-		   FROM wt_presence
-		  ORDER BY terminal_id ASC`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	out := make([]WatchtowerPresence, 0, 8)
-	for rows.Next() {
-		var (
-			row                        WatchtowerPresence
-			visibleRaw, focusedRaw     int
-			updatedAtRaw, expiresAtRaw string
-		)
-		if err := rows.Scan(
-			&row.TerminalID,
-			&row.SessionName,
-			&row.WindowIndex,
-			&row.PaneID,
-			&visibleRaw,
-			&focusedRaw,
-			&updatedAtRaw,
-			&expiresAtRaw,
-		); err != nil {
-			return nil, err
-		}
-		row.Visible = visibleRaw == 1
-		row.Focused = focusedRaw == 1
-		row.UpdatedAt = parseStoreTime(updatedAtRaw)
-		row.ExpiresAt = parseStoreTime(expiresAtRaw)
-		out = append(out, row)
-	}
-	return out, rows.Err()
-}
-
 // ListWatchtowerPresenceBySession lists watchtower presence by session.
 func (s *Store) ListWatchtowerPresenceBySession(ctx context.Context, sessionName string) ([]WatchtowerPresence, error) {
 	sessionName = strings.TrimSpace(sessionName)

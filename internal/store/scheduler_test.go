@@ -197,46 +197,6 @@ func TestListDueSchedulesNoLimit(t *testing.T) {
 	}
 }
 
-func TestListSchedulesByRunbook(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	defer func() { _ = s.Close() }()
-	ctx := context.Background()
-
-	for range 2 {
-		_, err := s.InsertOpsSchedule(ctx, OpsScheduleWrite{
-			RunbookID:    "rb-target",
-			Name:         "target-sched",
-			ScheduleType: "cron",
-			CronExpr:     "* * * * *",
-			Timezone:     "UTC",
-			Enabled:      true,
-		})
-		if err != nil {
-			t.Fatalf("InsertOpsSchedule: %v", err)
-		}
-	}
-	_, err := s.InsertOpsSchedule(ctx, OpsScheduleWrite{
-		RunbookID:    "rb-other",
-		Name:         "other-sched",
-		ScheduleType: "once",
-		Timezone:     "UTC",
-		Enabled:      true,
-	})
-	if err != nil {
-		t.Fatalf("InsertOpsSchedule: %v", err)
-	}
-
-	schedules, err := s.ListSchedulesByRunbook(ctx, "rb-target")
-	if err != nil {
-		t.Fatalf("ListSchedulesByRunbook: %v", err)
-	}
-	if len(schedules) != 2 {
-		t.Fatalf("len = %d, want 2", len(schedules))
-	}
-}
-
 func TestUpdateScheduleAfterRun(t *testing.T) {
 	t.Parallel()
 
@@ -271,40 +231,6 @@ func TestUpdateScheduleAfterRun(t *testing.T) {
 	}
 	if all[0].LastRunStatus != "success" {
 		t.Fatalf("LastRunStatus = %q, want success", all[0].LastRunStatus)
-	}
-}
-
-func TestDeleteSchedulesByRunbook(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	defer func() { _ = s.Close() }()
-	ctx := context.Background()
-
-	for range 3 {
-		_, err := s.InsertOpsSchedule(ctx, OpsScheduleWrite{
-			RunbookID:    "rb-delete-me",
-			Name:         "sched",
-			ScheduleType: "cron",
-			CronExpr:     "* * * * *",
-			Timezone:     "UTC",
-			Enabled:      true,
-		})
-		if err != nil {
-			t.Fatalf("InsertOpsSchedule: %v", err)
-		}
-	}
-
-	if err := s.DeleteSchedulesByRunbook(ctx, "rb-delete-me"); err != nil {
-		t.Fatalf("DeleteSchedulesByRunbook: %v", err)
-	}
-
-	all, err := s.ListOpsSchedules(ctx)
-	if err != nil {
-		t.Fatalf("ListOpsSchedules: %v", err)
-	}
-	if len(all) != 0 {
-		t.Fatalf("len = %d, want 0 after bulk delete", len(all))
 	}
 }
 

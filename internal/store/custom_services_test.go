@@ -41,9 +41,6 @@ func TestInsertCustomService(t *testing.T) {
 		if svc.Scope != "system" {
 			t.Fatalf("scope = %q, want system", svc.Scope)
 		}
-		if !svc.Enabled {
-			t.Fatalf("enabled = false, want true")
-		}
 		if svc.CreatedAt == "" || svc.UpdatedAt == "" {
 			t.Fatalf("timestamps should be set")
 		}

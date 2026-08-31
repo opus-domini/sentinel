@@ -73,21 +73,6 @@ func (s *Store) ListDueSchedules(ctx context.Context, now time.Time, limit int) 
 	return scanOpsSchedules(rows)
 }
 
-// ListSchedulesByRunbook returns schedules for a specific runbook.
-func (s *Store) ListSchedulesByRunbook(ctx context.Context, runbookID string) ([]OpsSchedule, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, runbook_id, name, schedule_type, cron_expr, timezone,
-		        run_at, enabled, last_run_at, last_run_status, next_run_at,
-		        created_at, updated_at
-		 FROM ops_schedules WHERE runbook_id = ?
-		 ORDER BY created_at ASC`, runbookID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	return scanOpsSchedules(rows)
-}
-
 // InsertOpsSchedule creates a new schedule.
 func (s *Store) InsertOpsSchedule(ctx context.Context, w OpsScheduleWrite) (OpsSchedule, error) {
 	id := w.ID
@@ -160,12 +145,6 @@ func (s *Store) UpdateScheduleLastRun(ctx context.Context, id, lastRunAt, lastRu
 		 last_run_at = ?, last_run_status = ?, updated_at = datetime('now')
 		 WHERE id = ?`,
 		lastRunAt, lastRunStatus, id)
-	return err
-}
-
-// DeleteSchedulesByRunbook removes all schedules for a runbook.
-func (s *Store) DeleteSchedulesByRunbook(ctx context.Context, runbookID string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM ops_schedules WHERE runbook_id = ?", runbookID)
 	return err
 }
 

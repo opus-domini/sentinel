@@ -80,7 +80,23 @@ func (s *Store) UpsertWatchtowerPane(ctx context.Context, row WatchtowerPaneWrit
 			-- the pane would pop back as unread. max() keeps the highest seen.
 			seen_revision = max(seen_revision, excluded.seen_revision),
 			changed_at = excluded.changed_at,
-			updated_at = excluded.updated_at`,
+			updated_at = excluded.updated_at
+		 -- The collector re-upserts every pane once per tick. Without this guard
+		 -- an idle host still dirties one page per pane per second, which the WAL
+		 -- then has to journal and checkpoint. Skipping the update when nothing
+		 -- observable changed makes the idle cost zero. updated_at and
+		 -- tail_captured_at are deliberately excluded from the comparison: both
+		 -- are re-stamped with "now" on every tick, so including them would make
+		 -- the guard always true, and neither has a reader (changed_at already
+		 -- records when the tail last moved).
+		 WHERE (session_name, window_index, pane_index, title, active, tty,
+		        current_path, start_command, current_command, tail_hash,
+		        tail_preview, revision, seen_revision, changed_at)
+		    IS NOT (excluded.session_name, excluded.window_index, excluded.pane_index,
+		        excluded.title, excluded.active, excluded.tty, excluded.current_path,
+		        excluded.start_command, excluded.current_command, excluded.tail_hash,
+		        excluded.tail_preview, excluded.revision,
+		        max(seen_revision, excluded.seen_revision), excluded.changed_at)`,
 		paneID,
 		name,
 		row.WindowIndex,
