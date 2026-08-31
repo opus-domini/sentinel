@@ -465,6 +465,86 @@ func TestListServicesSkipsMissingUpdater(t *testing.T) {
 	}
 }
 
+// failingBuiltinProbe fails the systemd state probe for the given unit in the
+// user scope and reports every other unit as not installed.
+func failingBuiltinProbe(unit string, next commandRunner) commandRunner {
+	return func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == cmdSystemctl && slices.Contains(args, "show") &&
+			slices.Contains(args, "--property=UnitFileState,ActiveState,LoadState") {
+			if slices.Contains(args, unit) && slices.Contains(args, argUser) {
+				return "", errors.New("systemctl show failed: Failed to connect to bus")
+			}
+			return probeMissingResponse, nil
+		}
+		if next != nil {
+			return next(ctx, name, args...)
+		}
+		return "", nil
+	}
+}
+
+func TestListServicesKeepsBuiltinWhenProbeFails(t *testing.T) {
+	t.Parallel()
+
+	m := newTestManager("linux", nil)
+	m.commandRunner = failingBuiltinProbe(sentinelSystemdUnit, nil)
+
+	services, err := m.ListServices(context.Background())
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if len(services) != 1 || services[0].Name != ServiceNameSentinel {
+		t.Fatalf("services = %+v, want sentinel retained with unknown state", services)
+	}
+	if services[0].Scope != scopeUser {
+		t.Fatalf("scope = %q, want %q", services[0].Scope, scopeUser)
+	}
+	if services[0].ActiveState != stateUnknown || services[0].EnabledState != stateUnknown {
+		t.Fatalf("states = %q/%q, want unknown/unknown",
+			services[0].ActiveState, services[0].EnabledState)
+	}
+}
+
+func TestActReachesBuiltinWhenProbeFails(t *testing.T) {
+	t.Parallel()
+
+	var calls [][]string
+	m := newTestManager("linux", nil)
+	m.commandRunner = failingBuiltinProbe(
+		sentinelSystemdUnit,
+		func(_ context.Context, name string, args ...string) (string, error) {
+			calls = append(calls, append([]string{name}, args...))
+			return "", nil
+		},
+	)
+
+	if _, err := m.Act(context.Background(), ServiceNameSentinel, ActionRestart); err != nil {
+		t.Fatalf("Act: %v", err)
+	}
+	want := []string{cmdSystemctl, argUser, ActionRestart, sentinelSystemdUnit}
+	if !slices.ContainsFunc(calls, func(c []string) bool { return reflect.DeepEqual(c, want) }) {
+		t.Fatalf("expected %v among calls %v", want, calls)
+	}
+}
+
+func TestProbeCustomServiceLaunchdTransientFailure(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{
+		uidFn: func() int { return 1000 },
+		commandRunner: func(_ context.Context, _ string, _ ...string) (string, error) {
+			return "", errors.New("launchctl print failed: Connection invalid")
+		},
+	}
+	svc := &ServiceStatus{Manager: managerLaunchd, Unit: "com.example.app", Scope: scopeUser}
+	if m.probeCustomService(context.Background(), svc) {
+		t.Fatal("probe should report an unreachable launchd as inconclusive")
+	}
+	if svc.ActiveState != stateUnknown || svc.EnabledState != stateUnknown {
+		t.Fatalf("states = %q/%q, want unknown/unknown", svc.ActiveState, svc.EnabledState)
+	}
+}
+
 func TestListServicesRejectsBuiltinScopeConflict(t *testing.T) {
 	t.Parallel()
 
@@ -780,6 +860,34 @@ func TestInspectLaunchdService(t *testing.T) {
 	}
 	if details.Service.ActiveState != stateFailed {
 		t.Fatalf("service.activeState = %q, want failed", details.Service.ActiveState)
+	}
+}
+
+func TestInspectByUnitReportsSameSummaryAsInspect(t *testing.T) {
+	t.Parallel()
+
+	m := newTestManager("darwin", func(_ context.Context, name string, args ...string) (string, error) {
+		if name == cmdLaunchctl && len(args) > 0 && args[0] == argPrint {
+			return "state = running\nlast exit code = 0", nil
+		}
+		return "", nil
+	})
+
+	byName, err := m.Inspect(context.Background(), ServiceNameSentinel)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	byUnit, err := m.InspectByUnit(
+		context.Background(), sentinelLaunchdLabel, scopeUser, managerLaunchd,
+	)
+	if err != nil {
+		t.Fatalf("InspectByUnit: %v", err)
+	}
+	if byName.Summary != "enabled=- active=running" {
+		t.Fatalf("Inspect summary = %q, want %q", byName.Summary, "enabled=- active=running")
+	}
+	if byUnit.Summary != byName.Summary {
+		t.Fatalf("InspectByUnit summary = %q, want %q", byUnit.Summary, byName.Summary)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -232,6 +233,29 @@ func TestStartScheduleInvalidCron(t *testing.T) {
 	err := g.StartSchedule(context.Background(), "not-a-cron", "UTC")
 	if err == nil {
 		t.Fatal("StartSchedule() with invalid cron should return error")
+	}
+}
+
+func TestStartScheduleNeverFiringCron(t *testing.T) {
+	t.Parallel()
+
+	// "0 0 30 2 *" parses, but February never has a 30th: cron gives up after
+	// five years and returns the zero time. Starting the loop on it would spin
+	// at network speed, so StartSchedule must refuse.
+	g := New(&mockMetrics{}, nil)
+	err := g.StartSchedule(context.Background(), "0 0 30 2 *", "UTC")
+	if err == nil {
+		t.Fatal("StartSchedule() with a never-firing cron should return an error")
+	}
+	if !strings.Contains(err.Error(), "never fires") {
+		t.Fatalf("error = %v, want it to mention that the schedule never fires", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	g.Stop(ctx)
+	if g.doneCh != nil {
+		t.Fatal("StartSchedule() must not start a loop for a never-firing cron")
 	}
 }
 

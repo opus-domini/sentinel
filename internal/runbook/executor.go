@@ -53,6 +53,10 @@ type ExecuteResult struct {
 	NeedsApproval bool
 	PausedAtStep  int   // index of the approval step that paused execution
 	CtxErr        error // non-nil when execution was aborted by context cancellation/timeout
+	// Failed reports that execution stopped because a step failed and was not
+	// marked continue-on-error. A continue-on-error step that fails never sets
+	// it, wherever it sits in the sequence — including last.
+	Failed bool
 }
 
 // Executor runs a sequence of runbook steps.
@@ -151,6 +155,7 @@ func (e *Executor) ExecuteFrom(ctx context.Context, steps []Step, startFrom int,
 		if result.Error != "" && !step.ContinueOnError {
 			return ExecuteResult{
 				Results: results,
+				Failed:  true,
 			}
 		}
 	}
@@ -169,14 +174,13 @@ func (r ExecuteResult) Err() error {
 	if r.CtxErr != nil {
 		return r.CtxErr
 	}
-	if len(r.Results) == 0 {
+	if !r.Failed || len(r.Results) == 0 {
 		return nil
 	}
+	// ExecuteFrom returns as soon as a step fails hard, so the last result is
+	// that step.
 	last := r.Results[len(r.Results)-1]
-	if last.Error != "" {
-		return fmt.Errorf("step %d %q failed: %s", last.StepIndex, last.Title, last.Error)
-	}
-	return nil
+	return fmt.Errorf("step %d %q failed: %s", last.StepIndex, last.Title, last.Error)
 }
 
 func (e *Executor) executeStepWithRetries(ctx context.Context, timeout time.Duration, index int, step Step) StepResult {

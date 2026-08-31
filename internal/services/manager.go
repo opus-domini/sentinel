@@ -372,6 +372,7 @@ func (m *Manager) listBuiltinServices(ctx context.Context, updatedAt string) ([]
 	out := make([]ServiceStatus, 0, len(definitions))
 	for _, definition := range definitions {
 		matches := make([]ServiceStatus, 0, 2)
+		unreachable := make([]ServiceStatus, 0, 2)
 		scopes := m.systemdScopes()
 		if manager == managerLaunchd {
 			scopes = []string{scopeUser}
@@ -389,7 +390,10 @@ func (m *Manager) listBuiltinServices(ctx context.Context, updatedAt string) ([]
 				Unit:         definition.unit,
 				UpdatedAt:    updatedAt,
 			}
-			m.probeCustomService(ctx, &status)
+			if !m.probeCustomService(ctx, &status) {
+				unreachable = append(unreachable, status)
+				continue
+			}
 			if status.Exists {
 				matches = append(matches, status)
 			}
@@ -401,19 +405,34 @@ func (m *Manager) listBuiltinServices(ctx context.Context, updatedAt string) ([]
 				definition.name,
 			)
 		}
-		if len(matches) == 1 {
+		switch {
+		case len(matches) == 1:
 			out = append(out, matches[0])
+		case len(unreachable) > 0:
+			// The probe could not reach the service manager, which is not the
+			// same as the unit being absent. Keep the built-in in the catalog
+			// with unknown state so a transient failure does not make it
+			// disappear from the overview and turn actions on it into 404s.
+			out = append(out, unreachable[0])
 		}
 	}
 	return out, nil
 }
 
-func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
-	if m.commandRunner == nil {
+// probeCustomService fills in the observed state of svc and reports whether the
+// probe was conclusive. A false result means the service manager could not be
+// reached, so svc carries unknown state rather than proof of absence.
+func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) bool {
+	markUnknown := func() {
 		svc.Exists = false
 		svc.ActiveState = stateUnknown
 		svc.EnabledState = stateUnknown
-		return
+	}
+	if m.commandRunner == nil {
+		// No way to probe at all, same terminal answer as an unsupported
+		// manager rather than a transient failure worth keeping in the catalog.
+		markUnknown()
+		return true
 	}
 	switch svc.Manager {
 	case managerSystemd:
@@ -425,39 +444,43 @@ func (m *Manager) probeCustomService(ctx context.Context, svc *ServiceStatus) {
 			"--property=UnitFileState,ActiveState,LoadState")
 		out, err := m.commandRunner(ctx, "systemctl", args...)
 		if err != nil {
-			svc.Exists = false
-			svc.ActiveState = stateUnknown
-			svc.EnabledState = stateUnknown
-			return
+			// `systemctl show` exits 0 for a unit that is not installed and
+			// reports LoadState=not-found, so a command failure always means
+			// the probe itself failed.
+			markUnknown()
+			return false
 		}
 		props := parseSystemdShow(out)
 		loadState := strings.ToLower(strings.TrimSpace(props["LoadState"]))
 		svc.Exists = loadState != "" && loadState != "not-found"
 		svc.ActiveState = normalizeState(props["ActiveState"])
 		svc.EnabledState = normalizeState(props["UnitFileState"])
+		return true
 	case managerLaunchd:
 		label := svc.Unit
 		if !IsValidUnit(label) {
-			svc.Exists = false
-			svc.ActiveState = stateUnknown
-			svc.EnabledState = stateUnknown
-			return
+			markUnknown()
+			return true
 		}
 		target := launchdTarget(svc.Scope, m.uidFn, label)
 		out, err := m.commandRunner(ctx, "launchctl", "print", target)
 		if err != nil {
+			if !isLaunchdMissingJobError(err) {
+				markUnknown()
+				return false
+			}
 			svc.Exists = false
 			svc.ActiveState = stateInactive
 			svc.EnabledState = "-"
-			return
+			return true
 		}
 		svc.Exists = true
 		svc.ActiveState = launchdActiveState(out)
 		svc.EnabledState = "-"
+		return true
 	default:
-		svc.Exists = false
-		svc.ActiveState = stateUnknown
-		svc.EnabledState = stateUnknown
+		markUnknown()
+		return true
 	}
 }
 
@@ -481,17 +504,8 @@ func (m *Manager) Act(ctx context.Context, name, action string) (ServiceActionRe
 	if !ok {
 		return ServiceActionResult{}, ErrServiceNotFound
 	}
-	switch target.Manager {
-	case managerSystemd:
-		if err := m.actSystemd(ctx, target.Scope, target.Unit, action); err != nil {
-			return ServiceActionResult{}, err
-		}
-	case managerLaunchd:
-		if err := m.actLaunchd(ctx, target.Scope, target.Unit, action); err != nil {
-			return ServiceActionResult{}, err
-		}
-	default:
-		return ServiceActionResult{}, fmt.Errorf("unsupported service manager: %s", target.Manager)
+	if err := m.actOnTarget(ctx, target, action); err != nil {
+		return ServiceActionResult{}, err
 	}
 
 	latestServices := services
@@ -528,29 +542,33 @@ func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, err
 		return ServiceInspect{}, ErrServiceNotFound
 	}
 
+	return m.inspectTarget(ctx, target)
+}
+
+// inspectTarget runs the manager-specific inspection for an already resolved
+// target. Both the by-name and the by-unit port go through here, so the two
+// report the same properties, condition and summary for the same unit.
+func (m *Manager) inspectTarget(ctx context.Context, target ServiceStatus) (ServiceInspect, error) {
 	inspect := ServiceInspect{
 		Service:    target,
-		Summary:    fmt.Sprintf("enabled=%s active=%s", target.EnabledState, target.ActiveState),
 		ObservedAt: m.nowUTC().Format(time.RFC3339),
 	}
 
 	switch target.Manager {
 	case managerSystemd:
-		props, output, inspectErr := m.inspectSystemd(ctx, target)
-		if inspectErr != nil {
-			return ServiceInspect{}, inspectErr
+		props, output, err := m.inspectSystemd(ctx, target)
+		if err != nil {
+			return ServiceInspect{}, err
 		}
 		inspect.Properties = props
 		inspect.Output = output
 		inspect.Condition = systemdCondition(props)
 		applySystemdProperties(&inspect.Service, props)
-		if summary := strings.TrimSpace(buildInspectSummary(props)); summary != "" {
-			inspect.Summary = summary
-		}
+		inspect.Summary = strings.TrimSpace(buildInspectSummary(props))
 	case managerLaunchd:
-		output, inspectErr := m.inspectLaunchd(ctx, target)
-		if inspectErr != nil {
-			return ServiceInspect{}, inspectErr
+		output, err := m.inspectLaunchd(ctx, target)
+		if err != nil {
+			return ServiceInspect{}, err
 		}
 		inspect.Output = output
 		inspect.Properties, inspect.Condition = launchdCondition(output)
@@ -559,7 +577,27 @@ func (m *Manager) Inspect(ctx context.Context, name string) (ServiceInspect, err
 		return ServiceInspect{}, fmt.Errorf("unsupported service manager: %s", target.Manager)
 	}
 
+	if inspect.Summary == "" {
+		inspect.Summary = fmt.Sprintf(
+			"enabled=%s active=%s",
+			inspect.Service.EnabledState,
+			inspect.Service.ActiveState,
+		)
+	}
 	return inspect, nil
+}
+
+// actOnTarget dispatches an action to the service manager owning an already
+// resolved target.
+func (m *Manager) actOnTarget(ctx context.Context, target ServiceStatus, action string) error {
+	switch target.Manager {
+	case managerSystemd:
+		return m.actSystemd(ctx, target.Scope, target.Unit, action)
+	case managerLaunchd:
+		return m.actLaunchd(ctx, target.Scope, target.Unit, action)
+	default:
+		return fmt.Errorf("unsupported service manager: %s", target.Manager)
+	}
 }
 
 func (m *Manager) actSystemd(ctx context.Context, scope, unit, action string) error {
@@ -1447,20 +1485,11 @@ func (m *Manager) ActByUnit(
 		return ServiceActionResult{}, ErrInvalidAction
 	}
 
-	var err error
-	switch manager {
-	case managerSystemd:
-		err = m.actSystemd(ctx, scope, unit, action)
-	case managerLaunchd:
-		err = m.actLaunchd(ctx, scope, unit, action)
-	default:
-		return ServiceActionResult{}, fmt.Errorf("unsupported service manager: %s", manager)
-	}
-	if err != nil {
+	initial := ServiceStatus{Unit: unit, Scope: scope, Manager: manager}
+	if err := m.actOnTarget(ctx, initial, action); err != nil {
 		return ServiceActionResult{}, err
 	}
 
-	initial := ServiceStatus{Unit: unit, Scope: scope, Manager: manager}
 	return m.verifyAction(ctx, action, initial, func(observeCtx context.Context) (ServiceStatus, error) {
 		inspect, inspectErr := m.InspectByUnit(observeCtx, unit, scope, manager)
 		if inspectErr != nil {
@@ -1476,44 +1505,11 @@ func (m *Manager) InspectByUnit(ctx context.Context, unit, scope, manager string
 	if !IsValidUnit(unit) {
 		return ServiceInspect{}, ErrInvalidUnit
 	}
-	target := ServiceStatus{
+	return m.inspectTarget(ctx, ServiceStatus{
 		Unit:    unit,
 		Scope:   scope,
 		Manager: manager,
-	}
-
-	inspect := ServiceInspect{
-		Service:    target,
-		Summary:    fmt.Sprintf("unit=%s scope=%s", unit, scope),
-		ObservedAt: m.nowUTC().Format(time.RFC3339),
-	}
-
-	switch manager {
-	case managerSystemd:
-		props, output, err := m.inspectSystemd(ctx, target)
-		if err != nil {
-			return ServiceInspect{}, err
-		}
-		inspect.Properties = props
-		inspect.Output = output
-		inspect.Condition = systemdCondition(props)
-		applySystemdProperties(&inspect.Service, props)
-		if summary := strings.TrimSpace(buildInspectSummary(props)); summary != "" {
-			inspect.Summary = summary
-		}
-	case managerLaunchd:
-		out, err := m.inspectLaunchd(ctx, target)
-		if err != nil {
-			return ServiceInspect{}, err
-		}
-		inspect.Output = out
-		inspect.Properties, inspect.Condition = launchdCondition(out)
-		applyLaunchdCondition(&inspect.Service, inspect.Condition)
-	default:
-		return ServiceInspect{}, fmt.Errorf("unsupported service manager: %s", manager)
-	}
-
-	return inspect, nil
+	})
 }
 
 func buildInspectSummary(props map[string]string) string {

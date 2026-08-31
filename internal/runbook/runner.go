@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	fastshot "github.com/opus-domini/fast-shot"
-
+	"github.com/opus-domini/sentinel/internal/notify"
 	"github.com/opus-domini/sentinel/internal/store"
 )
 
@@ -255,7 +254,12 @@ func finishRun(ctx context.Context, repo Repo, emit EmitFunc, params RunParams, 
 	})
 
 	if webhookURL != "" {
-		fireWebhook(ctx, webhookURL, buildWebhookPayload(params, updatedJob))
+		// notify owns the single delivery policy and deliberately discards the
+		// transport error, which embeds the webhook URL — itself the credential
+		// for Slack and Discord targets. Never log err alongside the URL.
+		if err := notify.New(webhookURL).SendJSON(ctx, buildWebhookPayload(params, updatedJob)); err != nil {
+			slog.Warn("runbook webhook delivery failed", "run", params.Job.ID, "status", status, "err", err)
+		}
 	}
 
 	if params.OnFinish != nil {
@@ -338,32 +342,6 @@ func buildWebhookPayload(params RunParams, job store.OpsRunbookRun) webhookPaylo
 			Steps:          steps,
 		},
 	}
-}
-
-func fireWebhook(ctx context.Context, webhookURL string, payload any) {
-	client := fastshot.NewClient(webhookURL).
-		Config().SetTimeout(10 * time.Second).
-		Build()
-
-	resp, err := client.POST("").
-		Body().AsJSON(payload).
-		Context().Set(ctx).
-		Retry().SetExponentialBackoffWithJitter(1*time.Second, 3, 2.0).
-		Retry().WithMaxDelay(5 * time.Second).
-		Retry().WithRetryCondition(func(r *fastshot.Response) bool {
-		return r.Status().Is5xxServerError()
-	}).
-		Send()
-	if err != nil {
-		slog.Warn("webhook delivery failed", "error", err)
-		return
-	}
-	defer resp.Body().Close()
-	if resp.Status().IsError() {
-		slog.Warn("webhook delivery rejected", "status", resp.Status().Code())
-		return
-	}
-	slog.Info("webhook delivered", "status", resp.Status().Code())
 }
 
 // ResumeRun continues a paused runbook run from the immutable receipt.

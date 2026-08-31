@@ -177,6 +177,14 @@ func (g *Generator) StartSchedule(parent context.Context, cronExpr, timezone str
 		loc = time.UTC
 	}
 
+	// robfig/cron gives up after five years and returns the zero time for an
+	// expression that never occurs (e.g. "0 0 30 2 *"). time.Until of the zero
+	// time is a ~2000-year negative duration, so the loop's timer would fire
+	// immediately and spin, sending a report per iteration. Refuse to start.
+	if sched.Next(time.Now().In(loc)).IsZero() {
+		return fmt.Errorf("health report schedule %q never fires", cronExpr)
+	}
+
 	g.startOnce.Do(func() {
 		ctx, cancel := context.WithCancel(parent)
 		g.stopFn = cancel
