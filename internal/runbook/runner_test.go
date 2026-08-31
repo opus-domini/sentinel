@@ -1,8 +1,11 @@
 package runbook
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -622,82 +625,103 @@ func TestBuildWebhookPayloadOmitsEmptyFields(t *testing.T) {
 	}
 }
 
-func TestFireWebhookDeliversPayload(t *testing.T) {
+// lockedBuffer collects log output. Writes are serialized because the default
+// slog handler is process-wide and other parallel tests log into it too.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func TestFinishRunDeliversWebhookPayload(t *testing.T) {
 	t.Parallel()
 
-	var received webhookPayload
+	received := make(chan webhookPayload, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+		var payload webhookPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Errorf("decode body: %v", err)
+		}
+		select {
+		case received <- payload:
+		default:
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	payload := webhookPayload{
-		Event:  "runbook.completed",
-		SentAt: "2026-02-20T22:00:00Z",
-		Runbook: webhookRunbook{
-			ID:   "rb-1",
-			Name: "Test",
-		},
-		Job: webhookJob{
-			ID:             "run-1",
-			Status:         "succeeded",
-			TotalSteps:     1,
-			CompletedSteps: 1,
-		},
-	}
-
-	fireWebhook(context.Background(), server.URL, payload)
-
-	if received.Event != "runbook.completed" {
-		t.Fatalf("received event = %q, want runbook.completed", received.Event)
-	}
-	if received.Runbook.ID != "rb-1" {
-		t.Fatalf("received runbook.id = %q, want rb-1", received.Runbook.ID)
-	}
-	if received.Job.Status != "succeeded" {
-		t.Fatalf("received job.status = %q, want succeeded", received.Job.Status)
-	}
-}
-
-func TestFireWebhookHandlesServerError(t *testing.T) {
-	t.Parallel()
-
-	var mu sync.Mutex
-	var attempts int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		attempts++
-		mu.Unlock()
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server.Close()
-
-	// Should not panic; logs a warning instead.
-	fireWebhook(context.Background(), server.URL, map[string]string{"test": "true"})
-
-	mu.Lock()
-	got := attempts
-	mu.Unlock()
-	if got < 1 {
-		t.Fatalf("attempts = %d, want at least 1", got)
-	}
-}
-
-func TestFireWebhookHandlesInvalidURL(t *testing.T) {
-	t.Parallel()
-
-	// Use a malformed URL so the request fails before any network access.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	repo := &mockRepo{}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	finishRun(ctx, repo, func(string, map[string]any) {}, RunParams{
+		Job: store.OpsRunbookRun{ID: "run-1", RunbookID: "rb-1", RunbookName: "Test"},
+	}, 1, "step", "", "", server.URL)
 
-	// Should not panic when request construction fails.
-	fireWebhook(ctx, "://invalid-webhook", map[string]string{"test": "true"})
+	select {
+	case payload := <-received:
+		if payload.Event != "runbook.completed" {
+			t.Fatalf("event = %q, want runbook.completed", payload.Event)
+		}
+		if payload.Runbook.ID != "rb-1" {
+			t.Fatalf("runbook.id = %q, want rb-1", payload.Runbook.ID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("webhook payload not delivered")
+	}
+}
+
+// TestFinishRunDoesNotLogWebhookURL pins the redaction guarantee the notify
+// package provides by construction: the webhook URL is the credential for
+// Slack and Discord targets, so a delivery failure must never write it to the
+// journal. It fails if the runner ever goes back to logging a transport error,
+// which wraps a *url.Error carrying the full URL with its query string.
+func TestFinishRunDoesNotLogWebhookURL(t *testing.T) {
+	t.Parallel()
+
+	const secret = "s3cret-webhook-token"
+
+	logs := &lockedBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	// Bind then close, so the address refuses connections immediately and the
+	// sender's failure path runs without waiting on the network.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+	webhookURL := "http://" + addr + "/services/" + secret + "?token=" + secret
+
+	repo := &mockRepo{}
+	// Short budget: the sender abandons its retry backoff with the context.
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	finishRun(ctx, repo, func(string, map[string]any) {}, RunParams{
+		Job: store.OpsRunbookRun{ID: "run-leak", RunbookID: "rb-leak", RunbookName: "Leak"},
+	}, 1, "step", "", "", webhookURL)
+
+	if got := logs.String(); strings.Contains(got, secret) {
+		t.Fatalf("webhook URL leaked into logs: %s", got)
+	}
 }
 
 func TestRunApprovalStepPauses(t *testing.T) {

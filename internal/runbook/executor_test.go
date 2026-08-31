@@ -709,6 +709,38 @@ func TestContinueOnError(t *testing.T) {
 	}
 }
 
+func TestContinueOnErrorAsFinalStep(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockRunner{
+		results: []mockResult{
+			{output: "ok"},
+			{output: "FAIL", err: fmt.Errorf("exit status 1")},
+		},
+	}
+
+	steps := []Step{
+		{Type: "run", Title: "Deploy", Command: "deploy"},
+		{Type: "run", Title: "Warm cache", Command: "warm", ContinueOnError: true},
+	}
+
+	exec := NewExecutor(mock.run, time.Minute)
+	res := exec.ExecuteFrom(context.Background(), steps, 0, nil, nil)
+
+	if res.Failed {
+		t.Error("Failed = true, want false: the failing step is continue-on-error")
+	}
+	if err := res.Err(); err != nil {
+		t.Errorf("Err() = %v, want nil: a best-effort final step must not fail the run", err)
+	}
+	if len(res.Results) != 2 {
+		t.Fatalf("got %d results, want 2", len(res.Results))
+	}
+	if res.Results[1].Error == "" {
+		t.Error("final step should still record its error in the receipt")
+	}
+}
+
 func TestContinueOnErrorFollowedByFailure(t *testing.T) {
 	t.Parallel()
 

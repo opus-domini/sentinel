@@ -232,6 +232,15 @@ func (s *Service) executeDueSchedule(ctx context.Context, sched store.OpsSchedul
 		slog.Warn("scheduler load runbook failed", keySchedule, sched.ID, "runbook", sched.RunbookID, "err", rbErr)
 		return
 	}
+	if !rb.Enabled {
+		// The operator disabled the runbook. Skip this occurrence and advance to
+		// the next one; leaving next_run_at in the past would make the schedule
+		// due on every tick forever.
+		s.releaseSchedule(sched.ID)
+		slog.Info("scheduler skipping disabled runbook", keySchedule, sched.ID, "runbook", sched.RunbookID)
+		s.recomputeNextRun(ctx, sched)
+		return
+	}
 	params := runbook.ResolveParams(rb.Parameters, nil)
 	if err := runbook.ValidateParams(rb.Parameters, params); err != nil {
 		// A required parameter has no default; running with placeholders would be

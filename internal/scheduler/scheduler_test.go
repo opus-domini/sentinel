@@ -399,7 +399,7 @@ func (r *busyTargetScheduleRepo) ListDueSchedules(context.Context, time.Time, in
 
 func (r *busyTargetScheduleRepo) GetOpsRunbook(_ context.Context, id string) (store.OpsRunbook, error) {
 	return store.OpsRunbook{
-		ID: id, Name: "Busy", TargetService: "nginx",
+		ID: id, Name: "Busy", TargetService: "nginx", Enabled: true,
 		Steps: []store.OpsRunbookStep{{Type: "run", Title: "Run", Command: "true"}},
 	}, nil
 }
@@ -494,6 +494,63 @@ func TestTick_DueScheduleCreatesRun(t *testing.T) {
 
 	// Wait for the async goroutine to complete so the store can close cleanly.
 	svc.wg.Wait()
+}
+
+func TestTick_DisabledRunbookIsNotRun(t *testing.T) {
+	t.Parallel()
+	st := testStore(t)
+	svc := New(st, st, Options{})
+
+	ctx := context.Background()
+
+	rb, err := st.InsertOpsRunbook(ctx, store.OpsRunbookWrite{
+		Name:    "disabled-test",
+		Enabled: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	_, err = st.InsertOpsSchedule(ctx, store.OpsScheduleWrite{
+		RunbookID:    rb.ID,
+		Name:         "disabled-runbook-schedule",
+		ScheduleType: "cron",
+		CronExpr:     "*/5 * * * *",
+		Timezone:     "UTC",
+		Enabled:      true,
+		NextRunAt:    past.Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc.tick(ctx)
+	svc.wg.Wait()
+
+	runs, err := st.ListOpsRunbookRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no runs for a disabled runbook, got %d", len(runs))
+	}
+
+	// next_run_at must move forward, or the schedule stays due on every tick.
+	schedules, err := st.ListOpsSchedules(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(schedules) != 1 {
+		t.Fatalf("got %d schedules, want 1", len(schedules))
+	}
+	next, err := time.Parse(time.RFC3339, schedules[0].NextRunAt)
+	if err != nil {
+		t.Fatalf("parse next_run_at %q: %v", schedules[0].NextRunAt, err)
+	}
+	if !next.After(time.Now().UTC()) {
+		t.Fatalf("next_run_at = %q, want a future time", schedules[0].NextRunAt)
+	}
 }
 
 func TestTick_SkipsScheduleAlreadyInFlight(t *testing.T) {
