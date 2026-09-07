@@ -7,11 +7,11 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.7.0
-	github.com/opus-domini/fast-shot v1.3.3
+	github.com/opus-domini/fast-shot v1.4.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
-	modernc.org/sqlite v1.57.0
-	mvdan.cc/sh/v3 v3.13.1
+	modernc.org/sqlite v1.58.0
+	mvdan.cc/sh/v3 v3.14.0
 )
 
 require (
@@ -23,7 +23,6 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-quicktest/qt v1.102.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
