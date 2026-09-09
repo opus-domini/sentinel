@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
+import type { ErrorComponentProps } from '@tanstack/react-router'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ServerOfflineBanner } from '@/components/ServerOfflineBanner'
 import { ConnectionIssueBanner } from '@/components/ConnectionIssueBanner'
@@ -33,6 +34,7 @@ import { useVisualViewport } from '@/hooks/useVisualViewport'
 import { useViewportCapabilities } from '@/hooks/useViewportCapabilities'
 import { applyDocumentAppBrand } from '@/lib/appBrand'
 import { authCookieUpdateErrorMessage, updateAuthCookie } from '@/lib/authToken'
+import { toErrorMessage } from '@/lib/opsUtils'
 import type { AuthCookieUpdateResult } from '@/lib/authToken'
 
 function TokenGateDialog({
@@ -242,12 +244,14 @@ function NotFoundComponent() {
   )
 }
 
-function ErrorComponent({ error }: { error: Error }) {
+function ErrorComponent({ error }: ErrorComponentProps) {
   return (
     <div className="grid h-dvh place-items-center bg-background text-foreground">
       <div className="text-center">
         <h1 className="text-2xl font-bold text-destructive">Error</h1>
-        <p className="mt-2 text-secondary-foreground">{error.message}</p>
+        <p className="mt-2 text-secondary-foreground">
+          {toErrorMessage(error, 'An unexpected error occurred')}
+        </p>
       </div>
     </div>
   )

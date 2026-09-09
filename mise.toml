@@ -1,5 +1,5 @@
 [tools]
-go = "1.27.0"
+go = "1.27.1"
 # Keep npm before node so the pinned npm shim wins over Node's bundled npm.
 "npm:npm" = "12.0.2"
 node = "26"
