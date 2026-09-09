@@ -253,8 +253,8 @@ export default function LaunchersDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto md:overflow-hidden">
-          <div className="grid gap-4 md:h-full md:grid-cols-[15rem_minmax(0,1fr)]">
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto md:flex md:flex-col md:overflow-hidden">
+          <div className="grid gap-4 md:min-h-0 md:flex-1 md:grid-cols-[15rem_minmax(0,1fr)]">
             <section className="grid min-h-0 min-w-0 content-start gap-3 md:grid-rows-[auto_minmax(0,1fr)]">
               <div className="flex items-center">
                 <Button
