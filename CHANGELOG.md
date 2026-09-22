@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.4](https://github.com/opus-domini/sentinel/compare/v0.11.3...v0.11.4) (2026-09-22)
+
+
+### Bug Fixes
+
+* **ci:** align reusable workflow pins with runner policy ([1b52726](https://github.com/opus-domini/sentinel/commit/1b527267c80a1a8807cd06df4a9be217def78a94))
+* **ci:** align reusable workflow pins with runner policy ([e9313ed](https://github.com/opus-domini/sentinel/commit/e9313ed777a99043e8208c1229ce85197859c36d))
+* **frontend:** restore scrolling in launcher dialogs ([a6ac2fa](https://github.com/opus-domini/sentinel/commit/a6ac2fa9afab0a85ed5ddc87ed08dea02ed56fe4))
+
 ## [0.11.3](https://github.com/opus-domini/sentinel/compare/v0.11.2...v0.11.3) (2026-08-31)
 
 
