@@ -35,6 +35,6 @@ jobs:
       id-token: write
       issues: write
       pull-requests: write
-    uses: opus-domini/actions/.github/workflows/release.yml@8076cfe3446015fb5b14aec84aa7e69cd231bd37
+    uses: opus-domini/actions/.github/workflows/release.yml@9a41fa5fbbd6bc092388077cfaf533af7a6458fc
     with:
       recovery_release_sha: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || '' }}
