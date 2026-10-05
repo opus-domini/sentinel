@@ -29,8 +29,8 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@tanstack/react-query": "^5.103.1",
-    "@tanstack/react-router": "^1.170.38",
+    "@tanstack/react-query": "^5.104.0",
+    "@tanstack/react-router": "^1.170.41",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode-graphemes": "^0.4.0",
@@ -40,7 +40,7 @@
     "clsx": "^2.1.1",
     "cron-parser": "^5.10.1",
     "cronstrue": "^3.27.0",
-    "lucide-react": "^1.47.0",
+    "lucide-react": "^1.49.0",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -48,18 +48,18 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "@tanstack/router-plugin": "^1.168.40",
+    "@tanstack/router-plugin": "^1.168.42",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
-    "@types/node": "^26.6.1",
+    "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "jsdom": "~30.0.1",
-    "oxfmt": "^0.68.0",
-    "oxlint": "^1.83.0",
+    "jsdom": "~30.1.1",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.1"
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
   }
 }
