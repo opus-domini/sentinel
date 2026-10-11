@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   ci:
-    uses: opus-domini/actions/.github/workflows/ci.yml@9a41fa5fbbd6bc092388077cfaf533af7a6458fc
+    uses: opus-domini/actions/.github/workflows/ci.yml@316a3d4f2a83de3212e66312ba0c886fab04e6bc
     with:
       frontend: true
       upload-codecov: true
