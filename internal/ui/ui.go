@@ -300,8 +300,8 @@ func (h *Handler) attachEventsWS(w http.ResponseWriter, r *http.Request) {
 	defer unsubscribe()
 
 	writeEventsReadyPayload(wsConn)
-	readErrCh := startEventsWSReader(wsConn, h.handleEventsClientMessage)
-	runEventsWSLoop(wsConn, eventsCh, readErrCh)
+	readDone := startEventsWSReader(wsConn, h.handleEventsClientMessage)
+	runEventsWSLoop(wsConn, eventsCh, readDone)
 }
 
 func (h *Handler) attachLogsWS(w http.ResponseWriter, r *http.Request) {
@@ -408,20 +408,14 @@ func writeEventsReadyPayload(wsConn *ws.Conn) {
 	_ = wsConn.WriteText(readyPayload)
 }
 
-func startEventsWSReader(wsConn *ws.Conn, handleMessage func([]byte) []byte) <-chan error {
-	readErrCh := make(chan error, 1)
-	sendReadErr := func(err error) {
-		select {
-		case readErrCh <- err:
-		default:
-		}
-	}
+func startEventsWSReader(wsConn *ws.Conn, handleMessage func([]byte) []byte) <-chan struct{} {
+	readDone := make(chan struct{})
 	go func() {
-		defer recoverWSGoroutine("eventsRead", sendReadErr)
+		defer close(readDone)
+		defer recoverWSGoroutine("eventsRead", nil)
 		for {
 			opcode, payload, readErr := wsConn.ReadMessage()
 			if readErr != nil {
-				sendReadErr(readErr)
 				return
 			}
 			if opcode != ws.OpText {
@@ -429,16 +423,15 @@ func startEventsWSReader(wsConn *ws.Conn, handleMessage func([]byte) []byte) <-c
 			}
 			if responsePayload := handleMessage(payload); len(responsePayload) > 0 {
 				if err := wsConn.WriteText(responsePayload); err != nil {
-					sendReadErr(err)
 					return
 				}
 			}
 		}
 	}()
-	return readErrCh
+	return readDone
 }
 
-func runEventsWSLoop(wsConn *ws.Conn, eventsCh <-chan events.Event, readErrCh <-chan error) {
+func runEventsWSLoop(wsConn *ws.Conn, eventsCh <-chan events.Event, readDone <-chan struct{}) {
 	pingTicker := time.NewTicker(20 * time.Second)
 	defer pingTicker.Stop()
 
@@ -459,7 +452,7 @@ func runEventsWSLoop(wsConn *ws.Conn, eventsCh <-chan events.Event, readErrCh <-
 			if err := wsConn.WritePing([]byte("k")); err != nil {
 				return
 			}
-		case <-readErrCh:
+		case <-readDone:
 			return
 		}
 	}
