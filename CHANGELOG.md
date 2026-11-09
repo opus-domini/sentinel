@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.11.4](https://github.com/opus-domini/sentinel/compare/v0.11.3...v0.11.4) (2026-10-12)
+## [0.11.4](https://github.com/opus-domini/sentinel/compare/v0.11.3...v0.11.4) (2026-11-09)
 
 
 ### Bug Fixes
@@ -16,6 +16,12 @@
 
 * pin validated shared CI workflow ([ccc785e](https://github.com/opus-domini/sentinel/commit/ccc785eb9ba02637eb0da117c296a35c8ae35e9d))
 * pin validated shared CI workflow ([8fe12ba](https://github.com/opus-domini/sentinel/commit/8fe12ba8639db641894515929d68180902d86a8c))
+
+
+### Documentation
+
+* **skills:** align execute-plan CI cadence with make-plan ([16e1284](https://github.com/opus-domini/sentinel/commit/16e128417982b934a9f2be0e804f88309f998f80))
+* **skills:** run full CI only when the plan is complete ([b5a6012](https://github.com/opus-domini/sentinel/commit/b5a6012c6df12df2cc140b921a6c929097972bfa))
 
 ## [0.11.3](https://github.com/opus-domini/sentinel/compare/v0.11.2...v0.11.3) (2026-08-31)
 
