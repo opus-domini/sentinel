@@ -676,6 +676,55 @@ func TestAttachEventsWSAllowsConcurrentSubscribers(t *testing.T) {
 	}
 }
 
+func TestEventsWSReaderStopsLoop(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name           string
+		panicOnMessage bool
+	}{
+		{name: "client disconnect"},
+		{name: "message handler panic", panicOnMessage: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stopped := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer close(stopped)
+				wsConn, _, err := ws.Upgrade(w, r, []string{subprotocolSentinelV1})
+				if err != nil {
+					t.Errorf("Upgrade error = %v", err)
+					return
+				}
+				defer func() { _ = wsConn.Close() }()
+
+				readDone := startEventsWSReader(wsConn, func([]byte) []byte {
+					panic("event handler failed")
+				})
+				runEventsWSLoop(wsConn, nil, readDone)
+			}))
+			defer srv.Close()
+
+			conn := dialWebSocketPath(t, srv.URL, "/ws/events")
+			defer func() { _ = conn.Close() }()
+			if tc.panicOnMessage {
+				if err := writeClientFrame(conn, ws.OpText, []byte("trigger panic")); err != nil {
+					t.Fatalf("writeClientFrame error = %v", err)
+				}
+			} else if err := conn.Close(); err != nil {
+				t.Fatalf("Close error = %v", err)
+			}
+
+			select {
+			case <-stopped:
+			case <-time.After(2 * time.Second):
+				t.Fatal("event loop did not stop when the reader exited")
+			}
+		})
+	}
+}
+
 func TestHandleEventsClientMessagePresence(t *testing.T) {
 	t.Parallel()
 

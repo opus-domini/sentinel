@@ -250,8 +250,8 @@ describe('SessionTabs', () => {
     expect(screen.getByRole('tab', { name: 'api' }).className).toContain('h-full')
     expect(screen.getByRole('tab', { name: 'api' }).className).not.toContain('h-[30px]')
     expect(tabs.getAttribute('data-sentinel-session-tabs-scroll')).toBe('true')
-    expect(tabs.getAttribute('style')).toContain('overscroll-behavior-x: contain')
-    expect(tabs.getAttribute('style')).toContain('overscroll-behavior-y: none')
+    expect(tabs.style.overscrollBehaviorX).toBe('contain')
+    expect(tabs.style.overscrollBehaviorY).toBe('none')
   })
 
   it('keeps dragged session tabs inside the visible strip bounds', () => {

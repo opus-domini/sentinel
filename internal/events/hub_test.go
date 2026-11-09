@@ -90,7 +90,8 @@ func TestHubConcurrentPublishUnsubscribe(t *testing.T) {
 				ch, unsubscribe := hub.Subscribe(1)
 				drained := make(chan struct{})
 				go func() {
-					for range ch { //nolint:revive // drain until unsubscribe closes ch
+					for range ch {
+						// Drain until unsubscribe closes ch.
 					}
 					close(drained)
 				}()

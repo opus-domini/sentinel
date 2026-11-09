@@ -1,6 +1,11 @@
 GOCMD ?= go
 NPM   ?= npm
-LINT   = golangci-lint
+
+# Keep in sync with mise.toml. Run the pinned tools even on older CI images.
+GOLANGCI_LINT_VERSION := v2.15.0
+GOVULNCHECK_VERSION  := v1.9.0
+LINT = $(GOCMD) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+VULN = $(GOCMD) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
 APP      := sentinel
 BIN_DIR  := bin
@@ -114,7 +119,7 @@ benchmark: check-go test-isolation ## Run Go benchmarks
 test-perf: benchmark ## Run performance benchmark suite
 
 .PHONY: fmt
-fmt: check-go check-lint ## Format Go code
+fmt: check-go ## Format Go code
 	$(LINT) fmt
 
 .PHONY: fmt-check
@@ -131,7 +136,7 @@ vet: check-go ## Run go vet
 	$(GOCMD) vet $(PKG_LIST)
 
 .PHONY: lint
-lint: check-go check-lint ## Run golangci-lint
+lint: check-go ## Run golangci-lint
 	$(LINT) run
 
 .PHONY: lint-frontend
@@ -152,8 +157,8 @@ tidy-check: check-go ## Verify go.mod and go.sum are tidy
 	git diff --exit-code go.mod go.sum
 
 .PHONY: vuln
-vuln: check-go check-govulncheck ## Run vulnerability scanner
-	govulncheck $(PKG_LIST)
+vuln: check-go ## Run vulnerability scanner
+	$(VULN) $(PKG_LIST)
 
 .PHONY: docs-check
 docs-check: ## Validate docs navigation and file references
@@ -242,19 +247,13 @@ help: ## Show available targets
 
 # Dependency checks (internal)
 
-.PHONY: check-go check-npm check-lint check-govulncheck check-goreleaser
+.PHONY: check-go check-npm check-goreleaser
 
 check-go:
 	@command -v $(GOCMD) >/dev/null 2>&1 || { echo "error: go is not installed - https://go.dev/doc/install"; exit 1; }
 
 check-npm:
 	@command -v $(NPM) >/dev/null 2>&1 || { echo "error: npm is not installed - https://nodejs.org"; exit 1; }
-
-check-lint:
-	@command -v $(LINT) >/dev/null 2>&1 || { echo "error: $(LINT) is not installed - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; exit 1; }
-
-check-govulncheck:
-	@command -v govulncheck >/dev/null 2>&1 || { echo "error: govulncheck is not installed - go install golang.org/x/vuln/cmd/govulncheck@latest"; exit 1; }
 
 check-goreleaser:
 	@command -v goreleaser >/dev/null 2>&1 || { echo "error: goreleaser is not installed - https://goreleaser.com/install"; exit 1; }
