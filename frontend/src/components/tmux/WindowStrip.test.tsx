@@ -480,13 +480,13 @@ describe('WindowStrip', () => {
 
     const stripRoot = screen
       .getByRole('button', { name: 'Create blank window' })
-      .closest('div[class*="overflow-x-auto"]')
+      .closest<HTMLElement>('div[class*="overflow-x-auto"]')
 
     expect(stripRoot?.className).toContain('overflow-y-hidden')
     expect(stripRoot?.className).toContain('no-scrollbar')
     expect(stripRoot?.getAttribute('data-sentinel-window-strip-scroll')).toBe('true')
-    expect(stripRoot?.getAttribute('style')).toContain('overscroll-behavior-x: contain')
-    expect(stripRoot?.getAttribute('style')).toContain('overscroll-behavior-y: none')
+    expect(stripRoot?.style.overscrollBehaviorX).toBe('contain')
+    expect(stripRoot?.style.overscrollBehaviorY).toBe('none')
   })
 
   it('maps wheel movement to horizontal strip scrolling', () => {
