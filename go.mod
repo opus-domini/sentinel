@@ -3,11 +3,11 @@ module github.com/opus-domini/sentinel
 go 1.27.3
 
 require (
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/opus-domini/fast-shot v1.4.0
+	github.com/opus-domini/fast-shot v1.5.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.62.0
