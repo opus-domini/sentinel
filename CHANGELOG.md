@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.5](https://github.com/opus-domini/sentinel/compare/v0.11.4...v0.11.5) (2026-11-23)
+
+
+### Bug Fixes
+
+* **ci:** align release and vulnerability workflow pins ([#271](https://github.com/opus-domini/sentinel/issues/271)) ([5849a94](https://github.com/opus-domini/sentinel/commit/5849a94f88ece8992b7d28324191240cd81cba2e))
+
+
+### Build
+
+* **deps:** update Go to 1.27.4 ([d4744cf](https://github.com/opus-domini/sentinel/commit/d4744cf3f90e9d634f26a922b780febf4dc3d5d3))
+* **deps:** update govulncheck to 1.10.0 ([cfc3b66](https://github.com/opus-domini/sentinel/commit/cfc3b66fd31f1f699cfb799ba3fa017d913f14a5))
+
 ## [0.11.4](https://github.com/opus-domini/sentinel/compare/v0.11.3...v0.11.4) (2026-11-09)
 
 
