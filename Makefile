@@ -3,7 +3,7 @@ NPM   ?= npm
 
 # Keep in sync with mise.toml. Run the pinned tools even on older CI images.
 GOLANGCI_LINT_VERSION := v2.15.0
-GOVULNCHECK_VERSION  := v1.9.0
+GOVULNCHECK_VERSION  := v1.10.0
 LINT = $(GOCMD) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 VULN = $(GOCMD) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
